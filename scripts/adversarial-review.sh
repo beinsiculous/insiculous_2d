@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Adversarial review loop between Claude Code and kimi-cli.
+# Adversarial review loop between Claude Code and the kimi CLI.
 #
 #   adversarial-review.sh plan <task-spec.md> --author=claude|kimi
 #   adversarial-review.sh code <changes.diff> --author=claude|kimi
@@ -16,29 +16,27 @@
 # `adversarial-review` skill (.claude/skills/adversarial-review/), which calls
 # scripts/request-review.sh for the review step — as does this driver.
 #
-# Non-interactive invocation (verified against installed CLIs, Aug 2026):
-#   claude: prompt piped on stdin to `claude -p`, response on stdout.
-#   kimi:   prompt passed as an argument to `kimi -p <prompt>` (kimi-code
-#           0.36+; the old --quiet/--work-dir flags are gone). Progress logs
-#           go to stderr, the final message to stdout. No work-dir flag
-#           anymore, so the invocation cd's into review/ to keep any tool use
-#           scoped there; the prompts also instruct text-only. Linux caps a
-#           single argv string at ~128 KiB, so oversized payloads fail loud.
+# How each agent is actually invoked lives in scripts/lib/headless-agent.sh, which this and
+# request-review.sh both source. They used to spell it out separately and drifted: this file went
+# on passing --quiet and --work-dir long after request-review.sh had recorded that kimi-code
+# dropped both, so a kimi-authored run died on any machine without a legacy kimi-cli install.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 REVIEW_DIR="$REPO_ROOT/review"
 REVISED_MARKER='=== REVISED PLAN ==='
+# shellcheck source=lib/headless-agent.sh
+. "$SCRIPT_DIR/lib/headless-agent.sh"
 
 usage() {
-    cat >&2 <<EOF
+    cat >&2 <<USAGE
 Usage: $(basename "$0") <plan|code> <input-path> --author=claude|kimi
 
   plan mode: <input-path> is a task spec; the author drafts a plan first.
   code mode: <input-path> is a diff; the diff itself is the draft.
   --author   who authors/rebuts; the other agent reviews.
-EOF
+USAGE
     exit 1
 }
 
@@ -60,7 +58,7 @@ done
 if [[ "$AUTHOR" == "claude" ]]; then REVIEWER="kimi"; else REVIEWER="claude"; fi
 
 command -v claude >/dev/null || { echo "error: 'claude' not on PATH" >&2; exit 1; }
-command -v kimi   >/dev/null || { echo "error: 'kimi' not on PATH" >&2; exit 1; }
+[[ -n "$(headless_kimi_binary)" ]] || { echo "error: kimi not on PATH (set KIMI_BIN)" >&2; exit 1; }
 mkdir -p "$REVIEW_DIR"
 
 if compgen -G "$REVIEW_DIR/*.md" >/dev/null; then
@@ -71,24 +69,15 @@ rm -f "$REVIEW_DIR"/plan.md "$REVIEW_DIR"/plan-v*.md "$REVIEW_DIR"/review-*.md \
 
 # --- agent invocation --------------------------------------------------------
 
-# invoke <claude|kimi>: prompt on stdin, response text on stdout.
+# invoke <claude|kimi>: prompt on stdin, response text on stdout. The prompt lands in a file on
+# the way through, because past a certain size it can no longer be passed to kimi as an argv
+# argument and the library hands it over on disk instead.
 invoke() {
-    case "$1" in
-        claude) claude -p ;;
-        kimi)
-            local payload
-            payload="$(cat)"
-            # kimi -p takes the prompt as one argv string; Linux caps those
-            # at ~128 KiB (MAX_ARG_STRLEN) — fail loud, not cryptically.
-            local payload_bytes
-            payload_bytes=$(printf '%s' "$payload" | wc -c)
-            if [[ "$payload_bytes" -gt 120000 ]]; then
-                echo "error: payload is $payload_bytes bytes (>120000); too large for kimi -p" >&2
-                return 1
-            fi
-            (cd "$REVIEW_DIR" && kimi -p "$payload")
-            ;;
-    esac
+    local prompt_tmp="$REVIEW_DIR/.driver-prompt.$$" status=0
+    cat > "$prompt_tmp"
+    if run_headless_agent "$1" "$prompt_tmp" "$REVIEW_DIR"; then status=0; else status=$?; fi
+    rm -f "$prompt_tmp"
+    return "$status"
 }
 
 step() { echo "==> [$1] $2" >&2; }
@@ -101,14 +90,14 @@ if [[ "$MODE" == "plan" ]]; then
 
     step "1/3" "author ($AUTHOR) drafting plan from $INPUT"
     {
-        cat <<'EOF'
+        cat <<'PROMPT'
 Write a concrete implementation plan for the task below. Be specific about
 steps, files, data flow, failure handling, and how the result is verified.
 This plan will be adversarially reviewed, so make your assumptions explicit.
 Respond with the plan in markdown only — do not modify any files.
 
 === TASK ===
-EOF
+PROMPT
         cat "$INPUT"
     } | invoke "$AUTHOR" > "$DRAFT"
 else
@@ -126,7 +115,7 @@ step "2/3" "reviewer ($REVIEWER) critiquing"
 step "3/3" "author ($AUTHOR) rebutting"
 {
     if [[ "$MODE" == "plan" ]]; then
-        cat <<EOF
+        cat <<PROMPT
 You wrote the plan below, which then received the adversarial review that
 follows it. Address every numbered finding (F1, F2, ...) explicitly — for each
 one, state either ACCEPT (and exactly how the plan changes) or REBUT (and why
@@ -137,16 +126,16 @@ containing exactly:
 $REVISED_MARKER
 If you rebut everything, omit that marker and the revised plan.
 Respond with text only — do not modify any files.
-EOF
+PROMPT
     else
-        cat <<'EOF'
+        cat <<'PROMPT'
 You authored the diff below, which then received the adversarial review that
 follows it. Address every numbered finding (F1, F2, ...) explicitly — for each
 one, state either ACCEPT (acknowledging the issue and what the fix would be) or
 REBUT (and why the failure scenario does not hold). Do not skip or merge
 findings. Do not produce a revised diff and do not modify any files — respond
 with the rebuttal text only.
-EOF
+PROMPT
     fi
     printf '\n=== YOUR %s ===\n' "$DRAFT_LABEL"
     cat "$DRAFT"
@@ -156,10 +145,16 @@ EOF
 
 # Split rebuttal from revised plan on the marker (plan mode only; marker absent
 # means the author rebutted everything and there is no v2).
-if [[ "$MODE" == "plan" ]] && grep -qF "$REVISED_MARKER" "$REVIEW_DIR/rebuttal-1.raw"; then
-    awk -v m="$REVISED_MARKER" 'index($0, m) { found=1; next } !found' \
+# The marker must be the WHOLE line, not merely present in one. Substring matching split the
+# file on any line that mentioned the marker — and the rebuttal prompt above quotes it verbatim,
+# so an author who rebutted everything while quoting the instruction back ("you asked for a
+# revised plan after the marker line; I decline because...") had half its rebuttal filed as a
+# revised plan. A marker that does not stand alone now leaves the rebuttal whole, which is the
+# harmless direction: no plan-v2.md rather than a bogus one.
+if [[ "$MODE" == "plan" ]] && grep -qxF "$REVISED_MARKER" "$REVIEW_DIR/rebuttal-1.raw"; then
+    awk -v m="$REVISED_MARKER" '$0 == m { found=1; next } !found' \
         "$REVIEW_DIR/rebuttal-1.raw" > "$REVIEW_DIR/rebuttal-1.md"
-    awk -v m="$REVISED_MARKER" 'found; index($0, m) { found=1 }' \
+    awk -v m="$REVISED_MARKER" 'found; $0 == m { found=1 }' \
         "$REVIEW_DIR/rebuttal-1.raw" > "$REVIEW_DIR/plan-v2.md"
 else
     mv "$REVIEW_DIR/rebuttal-1.raw" "$REVIEW_DIR/rebuttal-1.md"
