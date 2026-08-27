@@ -118,7 +118,7 @@ Core engine: Game trait, run_game(), managers, scene loading/saving, asset manag
 - Loader attaches a `Name` component for named entities (in addition to `SceneInstance.named_entities`), so names survive an editor load→save round-trip
 
 ## Testing
-- 343 passing (incl. doc tests; GPU/window-bound ones compile-only `no_run`), 0 ignored — `cargo test -p engine_core`
+- 350 passing (incl. doc tests; GPU/window-bound ones compile-only `no_run`), 0 ignored — `cargo test -p engine_core`
 
 ## Godot Oracle
 - Game loop: `main/main.cpp` — `iteration()` method

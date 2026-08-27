@@ -1,15 +1,19 @@
 //! Spring-mass grid — a general-purpose deformable grid effect.
 //!
-//! A grid of mass-points connected by springs, simulated on the CPU and
-//! rendered as glowing lines. Apply impulses with [`GridMesh::apply_impulse`]
-//! to deform the grid — gameplay events (hits, explosions, pickups) ripple
-//! outward Geometry-Wars style. This is an engine-level effect, usable by any
-//! game as a reactive background, and a candidate backing for editor grid
-//! visualization.
+//! A honeycomb of mass-points connected by springs, simulated on the CPU
+//! and rendered as glowing lines. Apply impulses with
+//! [`GridMesh::apply_impulse`] to deform the grid — gameplay events (hits,
+//! explosions, pickups) ripple outward through the hexagons. The grid rests
+//! translucent and brightens where it moves (per-node activity envelope →
+//! per-vertex alpha), so it reads as a subtle reactive backdrop rather than
+//! a constant neon lattice. This is an engine-level effect, usable by any
+//! game as a reactive background.
 //!
-//! The `Default` field values (stiffness, damping, color, glow) are starting
-//! points, not requirements — configure per game via the public fields or
-//! [`GridMesh::new`].
+//! The `Default` field values (stiffness, damping, color, glow, activity
+//! response) are starting points, not requirements — configure per game via
+//! the public fields or [`GridMesh::new`]. Games that prefer the classic
+//! square lattice build with [`GridMesh::new_square`] instead — same
+//! simulation and motion-driven opacity, different lattice shape.
 //!
 //! Render path: each frame, build the line vertex buffer with
 //! [`GridMesh::build_line_vertices`] and hand it to
@@ -18,16 +22,19 @@
 
 mod grid_mesh;
 mod impulse;
+#[cfg(test)]
+mod opacity_tests;
+mod topology;
 
 pub use grid_mesh::GridMesh;
 pub use impulse::GridImpulse;
 
-/// The shared playfield backdrop: a 32×24-node grid at 36px spacing, tinted
-/// to the chaos theme, sized to cover an ~800×600 window with overscan.
-/// Every arcade game uses this exact preset; override fields per game only
-/// where the art genuinely differs.
+/// The shared playfield backdrop: a 44×19-node honeycomb with 30px hexagon
+/// sides (≈1117×825px), tinted to the chaos theme, sized to cover an
+/// ~800×600 window with overscan. Every arcade game uses this exact preset;
+/// override fields per game only where the art genuinely differs.
 pub fn default_playfield_grid(theme: &crate::chaos_theme::ChaosTheme) -> GridMesh {
-    GridMesh::new(32, 24, 36.0, glam::Vec2::ZERO)
+    GridMesh::new(44, 19, 30.0, glam::Vec2::ZERO)
         .with_color(theme.grid_color)
         .with_emissive(0.7)
         .with_stiffness(60.0)
