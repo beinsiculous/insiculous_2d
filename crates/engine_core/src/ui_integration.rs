@@ -104,8 +104,18 @@ pub fn render_ui_commands(
                 DrawCommand::Circle { center, radius, .. } => {
                     Some(Rect::new(center.x - radius, center.y - radius, radius * 2.0, radius * 2.0))
                 }
-                DrawCommand::Line { start, end, .. } => {
-                    Some(Rect::new(start.x.min(end.x), start.y.min(end.y), (end.x - start.x).abs(), (end.y - start.y).abs()))
+                DrawCommand::Line { start, end, width, .. } => {
+                    // Grow the bbox by the stroke width: an axis-aligned line
+                    // has a zero-width or zero-height bbox, and a degenerate
+                    // bbox never overlaps the clip rect — which silently
+                    // culled every horizontal/vertical line (crosshair,
+                    // collider boxes, selection outlines).
+                    Some(Rect::new(
+                        start.x.min(end.x) - width * 0.5,
+                        start.y.min(end.y) - width * 0.5,
+                        (end.x - start.x).abs() + width,
+                        (end.y - start.y).abs() + width,
+                    ))
                 }
                 _ => None, // PushClipRect / PopClipRect handled below
             };
@@ -456,5 +466,60 @@ mod tests {
         assert_eq!(instances[0].scale, [16.0, 16.0], "sprite spans the diameter");
         // Screen center of an 800x600 window = world origin
         assert_eq!(instances[0].position, [0.0, 0.0]);
+    }
+
+    #[test]
+    fn test_axis_aligned_lines_survive_clip_rect() {
+        // Regression: a horizontal line has a zero-height bbox (vertical:
+        // zero-width), and a degenerate bbox never overlaps the clip rect —
+        // so every axis-aligned line inside a clipped panel was silently
+        // culled (origin crosshair, collider boxes, selection outlines).
+        let mut batcher = SpriteBatcher::new();
+        let clip = Rect::new(100.0, 100.0, 400.0, 300.0);
+        let cmds = [
+            DrawCommand::PushClipRect { bounds: clip },
+            DrawCommand::Line {
+                start: Vec2::new(150.0, 200.0),
+                end: Vec2::new(350.0, 200.0), // horizontal, inside the clip
+                color: Color::WHITE,
+                width: 1.0,
+                depth: 0.5,
+            },
+            DrawCommand::Line {
+                start: Vec2::new(200.0, 150.0),
+                end: Vec2::new(200.0, 350.0), // vertical, inside the clip
+                color: Color::WHITE,
+                width: 1.0,
+                depth: 0.5,
+            },
+            DrawCommand::PopClipRect,
+        ];
+        render_ui_commands(&mut batcher, &cmds, &test_camera(), &HashMap::new());
+        assert_eq!(
+            white_instances(&batcher).len(),
+            2,
+            "axis-aligned lines inside the clip must render"
+        );
+    }
+
+    #[test]
+    fn test_line_outside_clip_rect_is_culled() {
+        let mut batcher = SpriteBatcher::new();
+        let cmds = [
+            DrawCommand::PushClipRect { bounds: Rect::new(100.0, 100.0, 400.0, 300.0) },
+            DrawCommand::Line {
+                start: Vec2::new(600.0, 500.0),
+                end: Vec2::new(700.0, 500.0), // fully outside the clip
+                color: Color::WHITE,
+                width: 1.0,
+                depth: 0.5,
+            },
+            DrawCommand::PopClipRect,
+        ];
+        render_ui_commands(&mut batcher, &cmds, &test_camera(), &HashMap::new());
+        assert!(
+            !batcher.batches().contains_key(&TextureHandle { id: 0 }),
+            "a line fully outside the clip stays culled"
+        );
     }
 }
