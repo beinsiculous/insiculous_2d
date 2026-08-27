@@ -33,7 +33,7 @@ systems. The crate has **no dependency on `engine_core`** — it depends on `ecs
 ### Status (2026-04-15)
 - **Tests**: 214 passing, 0 failed, 0 ignored (`cargo test -p editor --lib`); 3 ignored doctests
 - **Phase 1**: Complete (all milestones 1A–1H)
-- **Phase 2**: In progress — 2F (Status Bar) complete, 2G (Theme) started
+- **Phase 2**: lettering retired Aug 27 2026 — editor work now follows the UX-audit sprint order (`docs/EDITOR_UX_AUDIT.md`, roadmap § "Editor — UX Audit & Work Order"; 2G theme work continues in board issue #26)
 - **Dependencies**: ui, ecs, input, renderer, physics, common, audio (no engine_core)
 
 ## Architecture

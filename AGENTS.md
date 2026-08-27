@@ -19,7 +19,7 @@
 - **Editor Integration**: `run_game_with_editor()` wrapper + inspector writeback + play/pause/stop + scene save/load + viewport↔render camera sync + asset browser panel + editor prefs persistence + editor-font scoping (locale fonts apply to the game view only) + engine-time freeze outside Play (particles/animations hold still while Editing), 77 tests
 
 ### Key Metrics
-- **Total Tests**: 1268/1268 passing (100% success rate), 0 ignored
+- **Total Tests**: 1282/1282 passing (100% success rate), 0 ignored
 - **Code Quality**: every doc example compiles and runs (window/GPU-bound ones are compile-only `no_run`); 1 tracked TODO in production code (`scene_loader.rs` — the ARCH-006/GPP-06 dynamic-component gap, deliberate)
 - Games (in `../games/`): breakout 47 tests, pong 11, space_invaders 36, snake 38, asteroids 42, frogger 43 — all clippy-clean, all 2-player; Pong and Frogger are fully localized (en + pirate, locale-driven font); Frogger is the first Tilemap consumer (Jul 2026)
 
@@ -112,7 +112,7 @@ Notes: Escape is NOT a hard-coded exit — it flows to `Game::on_key_pressed()`.
 **Commands:**
 ```bash
 cargo check --workspace              # Fast compile check (no tests)
-cargo test --workspace               # Run all 1268 tests
+cargo test --workspace               # Run all 1282 tests
 cargo test -p editor                 # Run editor tests only
 cargo test -p editor_integration     # Run editor integration tests
 cargo test -p ecs                    # Run ECS tests only
@@ -136,7 +136,7 @@ cargo run --bin editor --features editor -- ../games/pong  # Standalone editor o
 **Test Status:**
 ```
 $ cargo test --workspace
-passed: 1268/1268 (100%)
+passed: 1282/1282 (100%)
 ignored: 0
 failed: 0
 ```
