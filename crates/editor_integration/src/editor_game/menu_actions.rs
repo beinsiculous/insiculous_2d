@@ -45,11 +45,15 @@ impl<G: Game> EditorGame<G> {
             | "Create UI Label" | "Create UI Panel" | "Create UI Button"
                 if !self.editor.is_playing() =>
             {
+                // Spawn at the center of the current view — a hardcoded
+                // world origin lands off-screen whenever the camera has
+                // panned (users read that as "the button does nothing").
+                let spawn_pos = self.editor.viewport.camera_position();
                 if let Some(entity) = entity_ops::handle_create_action(
                     &action,
                     ctx.world,
                     &mut self.editor.selection,
-                    Vec2::ZERO,
+                    spawn_pos,
                     &mut self.entity_counter,
                 ) {
                     let cmd = editor::commands::CreateEntityCommand::already_created(ctx.world, entity);
