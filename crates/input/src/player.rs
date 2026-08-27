@@ -73,6 +73,9 @@ pub struct PlayerBindings {
     pad: Option<u32>,
     /// Action → bound sources
     bindings: HashMap<GameAction, Vec<PlayerSource>>,
+    /// True when a mutation actually changed state since the last
+    /// [`InputSettings::take_dirty`] — drives the engine's save-on-change.
+    dirty: bool,
 }
 
 impl PlayerBindings {
@@ -88,7 +91,10 @@ impl PlayerBindings {
 
     /// Assign (or clear) this player's gamepad
     pub fn set_pad(&mut self, pad: Option<u32>) {
-        self.pad = pad;
+        if self.pad != pad {
+            self.pad = pad;
+            self.dirty = true;
+        }
     }
 
     /// Bind a source to an action. Binding the same pair twice is a no-op.
@@ -96,13 +102,18 @@ impl PlayerBindings {
         let sources = self.bindings.entry(action).or_default();
         if !sources.contains(&source) {
             sources.push(source);
+            self.dirty = true;
         }
     }
 
     /// Remove one source from an action's bindings
     pub fn unbind(&mut self, action: GameAction, source: &PlayerSource) {
         if let Some(sources) = self.bindings.get_mut(&action) {
+            let before = sources.len();
             sources.retain(|s| s != source);
+            if sources.len() != before {
+                self.dirty = true;
+            }
             if sources.is_empty() {
                 self.bindings.remove(&action);
             }
@@ -182,9 +193,35 @@ impl Default for InputSettings {
 }
 
 impl InputSettings {
-    /// Build settings from explicit per-player bindings
+    /// Build settings from explicit per-player bindings. The result starts
+    /// clean: construction (e.g. loading a settings file) is not a change
+    /// worth re-saving.
     pub fn from_players(players: Vec<PlayerBindings>) -> Self {
-        Self { players }
+        let mut settings = Self { players };
+        settings.clear_dirty();
+        settings
+    }
+
+    /// True if any binding mutation happened since the last call; clears the
+    /// flag. The engine polls this each frame to save settings on change.
+    pub fn take_dirty(&mut self) -> bool {
+        let dirty = self.players.iter().any(|p| p.dirty);
+        self.clear_dirty();
+        dirty
+    }
+
+    /// Re-flag the settings as needing a save (used when a save attempt
+    /// failed and should be retried).
+    pub fn mark_dirty(&mut self) {
+        if let Some(player) = self.players.first_mut() {
+            player.dirty = true;
+        }
+    }
+
+    fn clear_dirty(&mut self) {
+        for player in &mut self.players {
+            player.dirty = false;
+        }
     }
 
     /// The engine's default two-player pairing:
@@ -221,9 +258,8 @@ impl InputSettings {
         p2.bind(GameAction::Menu, PlayerSource::Keyboard(KeyCode::Escape));
         bind_standard_pad_layout(&mut p2);
 
-        Self {
-            players: vec![p1, p2],
-        }
+        // Defaults are a baseline, not a player change — start clean.
+        Self::from_players(vec![p1, p2])
     }
 
     /// Number of configured player slots
@@ -396,6 +432,54 @@ mod tests {
             input.queue_event(event.clone());
         }
         input.process_queued_events();
+    }
+
+    #[test]
+    fn fresh_settings_are_not_dirty() {
+        let mut settings = InputSettings::default_two_player();
+        assert!(!settings.take_dirty(), "construction must not trigger a save");
+        let mut loaded = InputSettings::from_players(vec![PlayerBindings::new()]);
+        assert!(!loaded.take_dirty(), "loading a settings file must not trigger a save");
+    }
+
+    #[test]
+    fn binding_changes_set_dirty_and_take_dirty_clears_it() {
+        let mut settings = InputSettings::default_two_player();
+
+        settings.assign_pad(PlayerId::P2, Some(3));
+        assert!(settings.take_dirty(), "a pad reassignment is a change");
+        assert!(!settings.take_dirty(), "take_dirty must clear the flag");
+
+        let p1 = settings.player_mut(PlayerId::P1).unwrap();
+        p1.bind(GameAction::Action3, PlayerSource::Keyboard(KeyCode::KeyQ));
+        assert!(settings.take_dirty(), "a new binding via player_mut is a change");
+
+        let p1 = settings.player_mut(PlayerId::P1).unwrap();
+        p1.unbind(GameAction::Action3, &PlayerSource::Keyboard(KeyCode::KeyQ));
+        assert!(settings.take_dirty(), "removing a binding is a change");
+    }
+
+    #[test]
+    fn redundant_mutations_do_not_set_dirty() {
+        let mut settings = InputSettings::default_two_player();
+
+        settings.assign_pad(PlayerId::P1, Some(0)); // already pad 0
+        assert!(!settings.take_dirty(), "assigning the same pad is not a change");
+
+        let p1 = settings.player_mut(PlayerId::P1).unwrap();
+        p1.bind(GameAction::MoveUp, PlayerSource::Keyboard(KeyCode::KeyW)); // already bound
+        assert!(!settings.take_dirty(), "duplicate bind is not a change");
+
+        let p1 = settings.player_mut(PlayerId::P1).unwrap();
+        p1.unbind(GameAction::Action4, &PlayerSource::Keyboard(KeyCode::KeyZ)); // never bound
+        assert!(!settings.take_dirty(), "unbinding an absent source is not a change");
+    }
+
+    #[test]
+    fn mark_dirty_requeues_a_failed_save() {
+        let mut settings = InputSettings::default_two_player();
+        settings.mark_dirty();
+        assert!(settings.take_dirty(), "mark_dirty must make the next poll save again");
     }
 
     #[test]

@@ -11,6 +11,7 @@ pub use crate::{
     chaos_mode::ChaosMode,
     chaos_theme::ChaosTheme,
     achievements::{Achievement, AchievementManager, AchievementError},
+    scores::{ScoreEntry, Scores, ScoresError, MAX_SCORES_PER_MODE},
     // Asset management
     assets::{AssetManager, AssetConfig, AssetError},
     // Sprite sheets (`load_sprite_sheet` + the `.sheet.ron` schema)

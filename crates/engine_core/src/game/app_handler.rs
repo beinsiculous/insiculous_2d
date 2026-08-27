@@ -23,6 +23,7 @@ impl<G: Game> GameRunner<G> {
     /// from `RedrawRequested` on the web.
     fn drive_frame(&mut self, event_loop: &ActiveEventLoop) {
         self.update_and_render();
+        self.save_input_settings_if_dirty();
         if self.exit_requested {
             self.shutdown(event_loop);
             return;
@@ -31,6 +32,30 @@ impl<G: Game> GameRunner<G> {
         // (no-op on wasm — requestAnimationFrame paces the loop).
         self.game_loop_manager.throttle();
         self.window_manager.request_redraw();
+    }
+
+    /// Persist input bindings when a mutation happened this frame
+    /// (write-through — a browser tab may never reach `shutdown`, so waiting
+    /// for the clean-exit save would lose web rebindings). A failed save
+    /// re-marks the settings dirty to retry next frame, warning only once
+    /// per failure streak.
+    fn save_input_settings_if_dirty(&mut self) {
+        if !self.player_input.take_dirty() {
+            return;
+        }
+        let Some(path) = &self.config.input_settings_path else {
+            return;
+        };
+        match crate::input_settings_io::save(std::path::Path::new(path), &self.player_input) {
+            Ok(()) => self.input_save_failing = false,
+            Err(e) => {
+                if !self.input_save_failing {
+                    log::warn!("Could not save input settings to {}: {}", path, e);
+                }
+                self.input_save_failing = true;
+                self.player_input.mark_dirty();
+            }
+        }
     }
 
     /// Clean shutdown: notify the game, persist input bindings, tear the
@@ -146,6 +171,7 @@ impl<G: Game> ApplicationHandler<()> for GameRunner<G> {
                             time_scale: self.time_scale,
                             exit_requested: false,
                             achievements: &mut self.achievements,
+                            scores: &mut self.scores,
                             particles: &mut self.particles,
                             lines: &mut self.lines,
                             strings: &mut self.strings,

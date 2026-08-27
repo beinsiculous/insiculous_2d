@@ -30,6 +30,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use crate::save_store;
 use common::clock::{SystemTime, UNIX_EPOCH};
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
@@ -196,8 +197,16 @@ impl AchievementManager {
         let path = path.into();
         let mut mgr = Self::in_memory();
         mgr.save_path = Some(path.clone());
-        if path.exists() {
-            if let Err(e) = mgr.load() {
+        // Absence is queried through the save_store seam, not Path::exists() — the
+        // latter is always false on wasm, where the slot is a localStorage key.
+        match save_store::read(&path) {
+            Ok(Some(_)) => {
+                if let Err(e) = mgr.load() {
+                    log::warn!("Failed to load achievements from {}: {}", path.display(), e);
+                }
+            }
+            Ok(None) => {} // nothing unlocked yet
+            Err(e) => {
                 log::warn!("Failed to load achievements from {}: {}", path.display(), e);
             }
         }
@@ -281,7 +290,7 @@ impl AchievementManager {
 
         if let Some(path) = &self.save_path {
             let path = path.clone();
-            if let Err(e) = self.save_to(&path) {
+            if let Err(e) = self.save_to(&path, true) {
                 log::warn!("Failed to save achievements: {}", e);
             }
         }
@@ -297,7 +306,7 @@ impl AchievementManager {
         self.toasts.clear();
         if let Some(path) = &self.save_path {
             let path = path.clone();
-            if let Err(e) = self.save_to(&path) {
+            if let Err(e) = self.save_to(&path, false) {
                 log::warn!("Failed to save achievements after reset: {}", e);
             }
         }
@@ -352,37 +361,42 @@ impl AchievementManager {
     /// Returns `Ok(false)` with no action if no save path is configured.
     pub fn save(&self) -> Result<bool, AchievementError> {
         let Some(path) = &self.save_path else { return Ok(false); };
-        self.save_to(path)?;
+        self.save_to(path, true)?;
         Ok(true)
     }
 
-    /// Write atomically: serialize to a sibling temp file, then rename over
-    /// the target. A crash mid-write can never leave a truncated save file
-    /// (rename is atomic on the same filesystem, and `std::fs::rename`
-    /// replaces an existing destination on every platform).
+    /// Persist through the [`crate::save_store`] seam (native: atomic JSON file;
+    /// web: localStorage — see save_store.rs for the temp-file consequences).
     ///
-    /// Consequences of the temp-file strategy: the save *directory* must be
-    /// writable (not just the file), and the file's inode is replaced — a
-    /// save path that is a symlink becomes a regular file on first save.
-    fn save_to(&self, path: &Path) -> Result<(), AchievementError> {
-        if let Some(parent) = path.parent() {
-            if !parent.as_os_str().is_empty() {
-                std::fs::create_dir_all(parent)?;
+    /// With `merge`, unlock records already in the slot are unioned into the
+    /// outgoing set first, keeping the earliest `unlocked_at` per id — so a
+    /// browser tab's save preserves unlocks another tab persisted earlier.
+    /// (The read-merge-write is not atomic: same-instant saves from two tabs
+    /// can still race, and the loser's unlock returns on its next save.)
+    /// `reset()` passes `merge: false`: an explicit clear must actually clear.
+    /// An unreadable or unparsable existing slot skips the merge (the write
+    /// then replaces the corrupt state).
+    fn save_to(&self, path: &Path, merge: bool) -> Result<(), AchievementError> {
+        let mut unlocks = self.unlocks.clone();
+        if merge {
+            if let Ok(Some(existing)) = save_store::read(path) {
+                if let Ok(disk) = serde_json::from_str::<SaveFile>(&existing) {
+                    for (id, record) in disk.unlocks {
+                        let entry = unlocks.entry(id).or_insert(UnlockRecord {
+                            unlocked_at: record.unlocked_at,
+                        });
+                        entry.unlocked_at = entry.unlocked_at.min(record.unlocked_at);
+                    }
+                }
             }
         }
-        let save = SaveFile { unlocks: self.unlocks.clone() };
-        let json = serde_json::to_string_pretty(&save)?;
-        let tmp = path.with_extension("json.tmp");
-        std::fs::write(&tmp, json)?;
-        if let Err(e) = std::fs::rename(&tmp, path) {
-            let _ = std::fs::remove_file(&tmp);
-            return Err(e.into());
-        }
+        let json = serde_json::to_string_pretty(&SaveFile { unlocks })?;
+        save_store::write(path, &json)?;
         Ok(())
     }
 
     /// Reload unlock state from the configured save path, discarding any
-    /// in-memory unlocks. Errors if no path is set.
+    /// in-memory unlocks. Errors if no path is set or the slot is absent.
     pub fn load(&mut self) -> Result<(), AchievementError> {
         let Some(path) = &self.save_path else {
             return Err(AchievementError::Io(std::io::Error::new(
@@ -390,7 +404,12 @@ impl AchievementManager {
                 "no save path configured",
             )));
         };
-        let data = std::fs::read_to_string(path)?;
+        let data = save_store::read(path)?.ok_or_else(|| {
+            AchievementError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("no save data at {}", path.display()),
+            ))
+        })?;
         let save: SaveFile = serde_json::from_str(&data)?;
         self.unlocks = save.unlocks;
         Ok(())

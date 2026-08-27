@@ -201,6 +201,9 @@ struct GameRunner<G: Game> {
     /// Player-aware input bindings (universal per-player mapping layer),
     /// loaded from `GameConfig::input_settings_path` when set.
     player_input: input::InputSettings,
+    /// True while the last dirty-triggered input-settings save failed —
+    /// gates the warning to once per failure streak (retries stay silent).
+    input_save_failing: bool,
     /// UI management
     ui_manager: UIManager,
     /// Game loop timing and frame management
@@ -221,6 +224,9 @@ struct GameRunner<G: Game> {
     scene: Scene,
     /// Achievement / trophy manager
     achievements: AchievementManager,
+    /// High-score lists (top-N per game-defined mode), persisted when
+    /// `GameConfig::score_save_path` is set.
+    scores: crate::scores::Scores,
     /// CPU-pooled particle system. Lives across frames so emitters can
     /// accumulate over time and spawn bursts can persist for their lifetime.
     particles: crate::particles::ParticleManager,
@@ -264,6 +270,11 @@ impl<G: Game> GameRunner<G> {
             None => AchievementManager::in_memory(),
         };
 
+        let scores = match &config.score_save_path {
+            Some(path) => crate::scores::Scores::with_save_path(path),
+            None => crate::scores::Scores::in_memory(),
+        };
+
         let mut game_loop_manager = GameLoopManager::new();
         game_loop_manager.set_target_fps(config.target_fps);
 
@@ -288,6 +299,7 @@ impl<G: Game> GameRunner<G> {
             input: InputHandler::new(),
             gamepad_backend: crate::gamepad_backend::GamepadBackend::new_or_disabled(),
             player_input,
+            input_save_failing: false,
             ui_manager: UIManager::new(),
             game_loop_manager,
             glyph_textures: GlyphTextureCache::new(),
@@ -297,6 +309,7 @@ impl<G: Game> GameRunner<G> {
             exit_requested: false,
             scene: Scene::new("main"),
             achievements,
+            scores,
             particles: crate::particles::ParticleManager::default(),
             lines: Vec::new(),
             game_batcher: SpriteBatcher::new(),
@@ -429,6 +442,7 @@ impl<G: Game> GameRunner<G> {
             time_scale: self.time_scale,
             exit_requested: false,
             achievements: &mut self.achievements,
+            scores: &mut self.scores,
             particles: &mut self.particles,
             lines: &mut self.lines,
             strings: &mut self.strings,

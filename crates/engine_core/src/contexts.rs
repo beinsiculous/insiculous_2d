@@ -89,6 +89,10 @@ pub struct GameContext<'a> {
     /// Achievement / trophy manager. Register achievements in `init()`, then
     /// call `ctx.achievements.unlock("id")` from gameplay code.
     pub achievements: &'a mut AchievementManager,
+    /// High-score lists (top-N per game-defined mode string). Call
+    /// `ctx.scores.submit("single", score)` at game over; persisted when
+    /// `GameConfig::score_save_path` is set.
+    pub scores: &'a mut crate::scores::Scores,
     /// Particle system. Spawn bursts directly with
     /// `ctx.particles.spawn_burst(pos, &config)`, or attach a
     /// [`ParticleEmitter`](crate::particles::ParticleEmitter) component to

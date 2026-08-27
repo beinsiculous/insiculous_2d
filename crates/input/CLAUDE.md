@@ -14,6 +14,9 @@ player-aware settings layer (the universal mapping games consume).
   &input) -> f32` (digital merged with left stick, clamped −1..1, +y = up).
   `default_two_player()`: P1 = WASD+Space+mouse+pad 0, P2 = arrows+Enter+pad 1.
   Persisted via engine_core `input_settings_io` (JSON; `GameConfig::input_settings_path`).
+  Dirty tracking: real mutations (`set_pad` change, new `bind`, effective `unbind`)
+  flag the settings; the engine polls `take_dirty()` each frame and saves on change
+  (`mark_dirty()` re-queues a failed save). Constructors/`from_players` start clean.
 - `InputMapping<A>` — generic action bindings; games may define private enums:
   `mapping.bind(MyAction::Jump, InputSource::Keyboard(KeyCode::Space))`
 - `GameAction` — the fixed engine action vocabulary (MoveUp/Down/Left/Right,
@@ -52,4 +55,4 @@ player-aware settings layer (the universal mapping games consume).
 - Stick Y follows gilrs convention: **positive = up**
 
 ## Testing
-- 77 passing (14 unit + 58 integration + 5 doc), 0 ignored — `cargo test -p input`
+- 79 passing (18 unit + 56 integration/doc), 0 ignored — `cargo test -p input`

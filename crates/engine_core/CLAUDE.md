@@ -56,7 +56,20 @@ Core engine: Game trait, run_game(), managers, scene loading/saving, asset manag
 - `input_settings_io.rs` — JSON load/save for player input bindings (versioned
   Vec-of-entries DTO; missing file → defaults written for hand-editing; corrupt/wrong
   version → warn + defaults, never panics). Wired to `GameConfig::input_settings_path`
-  (load at startup, save on CloseRequested)
+  (load at startup, save on change via `InputSettings` dirty tracking — polled each
+  `drive_frame`, failed saves retried with a once-per-streak warn — plus the
+  CloseRequested save). Routes through `save_store`
+- `save_store.rs` — **the player-save persistence seam** (roadmap H6, #6/#17):
+  `read(slot)`/`write(slot, contents)` where a slot is a filesystem path natively
+  (atomic tmp+rename, parents created) and a localStorage key on wasm (each persist
+  dispatches the `insiculous-save` CustomEvent; storage-blocked browsers degrade to a
+  session-local `MemoryStore` with one warn). Contract with the website:
+  `docs/WEB_SAVES.md` — keys `beinsiculous.games.<slug>.{achievements,scores,input}`,
+  values byte-identical to the native JSON save files
+- `scores.rs` — `Scores` high-score lists (`ctx.scores`): top-10 per game-defined mode
+  string, `submit(mode, score) -> bool` write-through persist, `best`/`top`; wired to
+  `GameConfig::score_save_path`. Achievements + scores both merge-on-save (multi-tab
+  web safety); their `reset()` overwrites (an explicit clear must clear)
 - `glyph_texture_cache.rs` — GlyphTextureCache: UI glyph bitmap → GPU texture cache (extracted from GameRunner)
 - `game_config.rs` — GameConfig struct (incl. `input_settings_path`)
 - `game_loop_manager.rs` — Frame timing and delta
@@ -118,7 +131,7 @@ Core engine: Game trait, run_game(), managers, scene loading/saving, asset manag
 - Loader attaches a `Name` component for named entities (in addition to `SceneInstance.named_entities`), so names survive an editor load→save round-trip
 
 ## Testing
-- 356 passing (incl. doc tests; GPU/window-bound ones compile-only `no_run`), 0 ignored — `cargo test -p engine_core`
+- 372 passing (incl. doc tests; GPU/window-bound ones compile-only `no_run`), 0 ignored — `cargo test -p engine_core`
 
 ## Godot Oracle
 - Game loop: `main/main.cpp` — `iteration()` method

@@ -105,6 +105,40 @@ fn persistence_round_trip() {
 }
 
 #[test]
+fn concurrent_managers_merge_unlocks_instead_of_clobbering() {
+    // Two managers on the same slot = the browser's two-tabs scenario.
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("ach.json");
+
+    let mut tab_a = AchievementManager::with_save_path(&path);
+    tab_a.register(sample());
+    tab_a.register(Achievement::new("second", "Second", "Do it again"));
+    let mut tab_b = AchievementManager::with_save_path(&path);
+    tab_b.register(sample());
+    tab_b.register(Achievement::new("second", "Second", "Do it again"));
+
+    tab_a.unlock("test_id"); // writes {test_id}
+    tab_b.unlock("second"); // writes last, must merge {test_id} back in
+
+    let restored = AchievementManager::with_save_path(&path);
+    assert!(restored.is_unlocked("test_id"), "tab A's unlock must survive tab B's save");
+    assert!(restored.is_unlocked("second"));
+}
+
+#[test]
+fn reset_clears_the_save_despite_merge_on_save() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("ach.json");
+    let mut mgr = AchievementManager::with_save_path(&path);
+    mgr.register(sample());
+    mgr.unlock("test_id");
+    mgr.reset();
+
+    let restored = AchievementManager::with_save_path(&path);
+    assert_eq!(restored.unlocked_count(), 0, "an explicit clear must actually clear");
+}
+
+#[test]
 fn persistence_creates_parent_dir() {
     let dir = tempdir().unwrap();
     let path = dir.path().join("nested/subdir/ach.json");

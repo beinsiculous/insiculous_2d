@@ -48,6 +48,11 @@ pub struct GameConfig {
     /// survive restarts. When `None`, achievements are in-memory only.
     #[serde(default)]
     pub achievement_save_path: Option<String>,
+    /// Optional path to persist high scores (JSON). When set, the engine
+    /// creates [`crate::scores::Scores`] with this save path so top scores
+    /// survive restarts. When `None`, scores are in-memory only.
+    #[serde(default)]
+    pub score_save_path: Option<String>,
     /// Base directory for asset loading. Relative asset paths passed to
     /// `GameContext::assets` are resolved against this. When `None`, the
     /// default is `assets` relative to the current working directory.
@@ -86,6 +91,7 @@ impl Default for GameConfig {
             vsync: true,
             chaos_mode: ChaosMode::Normal,
             achievement_save_path: None,
+            score_save_path: None,
             asset_base_path: None,
             input_settings_path: None,
             locale: default_locale(),
@@ -140,6 +146,13 @@ impl GameConfig {
     /// Parent directories are created on first save.
     pub fn with_achievement_save_path(mut self, path: impl Into<String>) -> Self {
         self.achievement_save_path = Some(path.into());
+        self
+    }
+
+    /// Persist high scores to this JSON path so they survive restarts.
+    /// Parent directories are created on first save.
+    pub fn with_score_save_path(mut self, path: impl Into<String>) -> Self {
+        self.score_save_path = Some(path.into());
         self
     }
 
@@ -213,6 +226,8 @@ mod tests {
         assert_eq!(config.locales_dir, "locales");
         // Same for a config written before the texture-filter knob existed.
         assert_eq!(config.texture_filter, TextureFilter::Linear);
+        // And before the score-save knob existed.
+        assert_eq!(config.score_save_path, None);
     }
 
     #[test]

@@ -98,20 +98,21 @@ impl From<SettingsFile> for InputSettings {
 /// - File unreadable, corrupt, or wrong version → warn + defaults; the file
 ///   is left untouched.
 pub fn load_or_create(path: &Path) -> InputSettings {
-    if !path.exists() {
-        let defaults = InputSettings::default_two_player();
-        if let Err(e) = save(path, &defaults) {
-            log::warn!(
-                "Could not write default input settings to {}: {}",
-                path.display(),
-                e
-            );
+    // Absence is queried through the save_store seam, not Path::exists() — the
+    // latter is always false on wasm, where the slot is a localStorage key.
+    let contents = match crate::save_store::read(path) {
+        Ok(Some(contents)) => contents,
+        Ok(None) => {
+            let defaults = InputSettings::default_two_player();
+            if let Err(e) = save(path, &defaults) {
+                log::warn!(
+                    "Could not write default input settings to {}: {}",
+                    path.display(),
+                    e
+                );
+            }
+            return defaults;
         }
-        return defaults;
-    }
-
-    let contents = match std::fs::read_to_string(path) {
-        Ok(contents) => contents,
         Err(e) => {
             log::warn!(
                 "Could not read input settings {}: {} — using defaults",
@@ -144,16 +145,12 @@ pub fn load_or_create(path: &Path) -> InputSettings {
     }
 }
 
-/// Save input settings to `path` as pretty JSON, creating parent directories.
+/// Save input settings to `path` as pretty JSON through the [`crate::save_store`]
+/// seam (native: atomic file write, parents created; web: localStorage).
 pub fn save(path: &Path, settings: &InputSettings) -> Result<(), InputSettingsError> {
-    if let Some(parent) = path.parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent)?;
-        }
-    }
     let file = SettingsFile::from(settings);
     let json = serde_json::to_string_pretty(&file)?;
-    std::fs::write(path, json)?;
+    crate::save_store::write(path, &json)?;
     Ok(())
 }
 

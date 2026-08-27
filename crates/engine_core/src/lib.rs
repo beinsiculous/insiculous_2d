@@ -55,6 +55,8 @@ pub mod ui_manager;
 pub mod game_config;
 pub mod gamepad_backend;
 pub mod input_settings_io;
+pub mod save_store;
+pub mod scores;
 pub mod contexts;
 pub mod ui_integration;
 pub mod chaos_mode;
@@ -113,6 +115,7 @@ pub use menu_panel::{MenuMouse, MenuPanel, MenuStyle};
 pub use pause::{PauseAction, PauseMenu, PauseMenuLabels};
 pub use input_settings_io::{load_or_create as load_input_settings, save as save_input_settings, InputSettingsError};
 pub use chaos_mode::ChaosMode;
+pub use scores::{ScoreEntry, Scores, ScoresError, MAX_SCORES_PER_MODE};
 pub use achievements::{
     Achievement, AchievementError, AchievementManager, ToastStyle, DEFAULT_TOAST_DURATION,
 };
