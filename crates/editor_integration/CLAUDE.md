@@ -42,7 +42,7 @@ editor_integration ──→ editor, engine_core, ecs, ui, input, renderer, comm
 - Input routing: Editing/Paused → editor gets input. Playing → game gets input, editor hotkeys still work.
 - Inspector writeback: generated per-component by `editor_component_registry!` (editor crate) — `edit_*()` returns `Option<ComponentEdit<T>>` → `editor::apply_component_edit()` writes to world and records undo via `try_merge_or_push` (continuous edits merge by `field_hint`)
 - Play/Stop: snapshot world on Play (typed clone via `WorldSnapshot`), restore on Stop
-- Save/Load: Ctrl+S / Ctrl+Shift+S / Ctrl+O / Ctrl+N — uses `scene_serializer::world_to_scene_data` for save, `SceneLoader` for load. Hardcoded paths (no file picker yet)
+- Save/Load: Ctrl+S / Ctrl+Shift+S / Ctrl+O / Ctrl+N — `save_scene_with` (scene_io.rs) is the MANDATORY save choke point; save AND new/open are refused with a status-bar error during a play session (Playing or Paused — the world is mid-simulation). `SceneLoader` for load. Hardcoded paths (no file picker yet)
 - Status messages: `editor.status_bar.show_message("Saved")` after successful operations
 - Minimum window size: 1024x720 enforced for editor usability
 - **Editor prefs**: camera/grid/panel layout loaded in `init`, saved in `on_exit` (`editor_prefs.json`); menu Exit sets `ctx.exit_requested` (clean shutdown), never `process::exit`
@@ -61,7 +61,7 @@ retired.
 See `TECH_DEBT.md` (all files < 600 lines since June 2026; remaining: no file picker, menu-label string matching)
 
 ## Testing
-- 79 passing (incl. 1 compile-only doc test), 0 ignored — `cargo test -p editor_integration` (component-dispatch tests moved to the editor crate with the registry; `editor_game/time_freeze_tests.rs` locks the engine-time freeze)
+- 88 passing (incl. 1 compile-only doc test), 0 ignored — `cargo test -p editor_integration` (component-dispatch tests moved to the editor crate with the registry; `editor_game/time_freeze_tests.rs` locks the engine-time freeze; `editor_game/play_guard_tests.rs` locks the play-session save/new/open guards + snapshot loss warnings)
 - `entity_ops` is fully headless-testable (no UI dependency)
 
 ## Godot Oracle — When Stuck

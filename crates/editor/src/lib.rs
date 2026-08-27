@@ -103,8 +103,8 @@ pub use selection_outline::{
 pub use status_bar::{StatusBar, StatusBarStats, STATUS_BAR_HEIGHT};
 pub use stored_component::{
     available_components, capture_all_components, categorized_components,
-    edit_all_components, inspect_all_components, restore_components,
-    ComponentCategory, ComponentKind, StoredComponent,
+    edit_all_components, inspect_all_components, registered_component_type_ids,
+    restore_components, ComponentCategory, ComponentKind, StoredComponent,
 };
 pub use theme::EditorTheme;
 pub use toolbar::{toolbar_position_for, EditorTool, Toolbar};

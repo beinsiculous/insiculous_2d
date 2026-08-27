@@ -58,8 +58,8 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, com
 
 ### Persistence + commands
 - `commands/` — EditorCommand trait + CommandHistory (`mod.rs`), entity commands, component commands, `impl_set_component_command!` macro for the 5 Set*Commands (`set_commands.rs`); `push_already_executed`, `try_merge_or_push`
-- `stored_component.rs` — **Component registry macro (single source of truth). ADD NEW EDITOR-VISIBLE COMPONENTS HERE** — one line in `editor_component_registry!` generates StoredComponent, ComponentKind (add/capture/remove/is_present/display_name/category), capture_all_components, inspect_all_components, AND edit_all_components (the editable inspector — entries carry `{ edit edit_x => SetXCommand }` or `{ readonly }`)
-- `world_snapshot.rs` — WorldSnapshot save/restore (used by play/stop)
+- `stored_component/` — **Component registry macro (single source of truth). ADD NEW EDITOR-VISIBLE COMPONENTS HERE** — one line in `editor_component_registry!` generates StoredComponent, ComponentKind (add/capture/remove/is_present/display_name/category), capture_all_components, registered_component_type_ids, inspect_all_components, AND edit_all_components (the editable inspector — entries carry `{ edit edit_x => SetXCommand }` or `{ readonly }`)
+- `world_snapshot.rs` — WorldSnapshot save/restore (used by play/stop): registry-driven capture (auto-includes new registry types) + explicit Parent/Children; unregistered component types are detected (`uncaptured_types`/`loss_warning`/`drop_report`) and lost on restore
 - Scene save/load file I/O lives in `editor_integration` (via `engine_core::scene_serializer`), not in this crate
 
 ## Key Patterns
@@ -71,7 +71,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, com
 - Theme is on `EditorContext.theme` (public field); call `theme.gizmo_palette()`, `inspector_style()`, `editable_field_style()`, `grid_colors()`, `collider_overlay_colors()` instead of hardcoding colors. Menu/Toolbar/Hierarchy `render()` take `&EditorTheme`
 
 ## Testing
-- 311 passing (incl. 3 doc tests), 0 ignored — `cargo test -p editor`
+- 317 passing (incl. 3 doc tests), 0 ignored — `cargo test -p editor`
 
 ## Godot Oracle — When Stuck
 Use `WebFetch` to read from `https://github.com/godotengine/godot/blob/master/`

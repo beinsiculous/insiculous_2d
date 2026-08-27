@@ -189,6 +189,23 @@ macro_rules! editor_component_registry {
             components
         }
 
+        /// The `TypeId` of every component type this registry captures and
+        /// restores. Snapshot code diffs an entity's actual components
+        /// (`World::component_types`) against this set to detect component
+        /// types that would be silently lost by a capture/restore round-trip.
+        ///
+        /// Components that store `EntityId` references need snapshot-reference
+        /// auditing (repair or exclusion) before being registered — restored
+        /// references to entities that are not part of the same snapshot
+        /// dangle. No registered component stores `EntityId` today.
+        pub fn registered_component_type_ids() -> Vec<std::any::TypeId> {
+            vec![
+                $( std::any::TypeId::of::<$h_ty>(), )+
+                $( std::any::TypeId::of::<$b_ty>(), )+
+                $( std::any::TypeId::of::<$r_ty>(), )+
+            ]
+        }
+
         /// The component kinds that can be added to / removed from entities.
         ///
         /// This is THE editor-wide `ComponentKind` — commands, the inspector,
@@ -367,222 +384,4 @@ pub fn categorized_components() -> Vec<(ComponentCategory, Vec<ComponentKind>)> 
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use glam::Vec2;
-
-    #[test]
-    fn test_edit_all_components_covers_present_components_and_advances_y() {
-        let mut world = World::new();
-        let entity = world.create_entity();
-        world
-            .add_component(&entity, common::Transform2D::new(Vec2::new(1.0, 2.0)))
-            .unwrap();
-        world.add_component(&entity, Sprite::new(0)).unwrap();
-        world.add_component(&entity, EntityTag::new("player")).unwrap();
-
-        let mut ui = UIContext::new();
-        let mut history = CommandHistory::new();
-        let inspect_style = InspectorStyle::default();
-        let field_style = EditableFieldStyle::default();
-
-        let start_y = 40.0;
-        let mut drag_drop = crate::DragDropState::new();
-        let mut extras = crate::InspectorExtras { drag_drop: &mut drag_drop, texture_display: None };
-        let (y, count) = edit_all_components(
-            &mut ui, &mut world, entity, &mut history,
-            10.0, start_y, &inspect_style, &field_style, 10.0, &mut extras,
-        );
-
-        assert_eq!(count, 3, "one block per present registry component");
-        assert!(y > start_y, "rendering must advance the layout cursor");
-        assert!(
-            !history.can_undo(),
-            "rendering without input must not record any edit"
-        );
-        // Registry order is builtin-then-removable, so absent components
-        // (RigidBody etc.) contribute nothing.
-        let bare = world.create_entity();
-        let (_, none_count) = edit_all_components(
-            &mut ui, &mut world, bare, &mut history,
-            10.0, start_y, &inspect_style, &field_style, 10.0, &mut extras,
-        );
-        assert_eq!(none_count, 0, "an entity with no components renders no blocks");
-    }
-
-    #[test]
-    fn test_capture_empty_entity() {
-        let mut world = World::new();
-        let entity = world.create_entity();
-        let captured = capture_all_components(&world, entity);
-        assert!(captured.is_empty());
-    }
-
-    #[test]
-    fn test_capture_and_restore_round_trip() {
-        let mut world = World::new();
-        let entity = world.create_entity();
-        let pos = Vec2::new(42.0, 99.0);
-        world.add_component(&entity, common::Transform2D::new(pos)).ok();
-        world.add_component(&entity, GlobalTransform2D::default()).ok();
-        world.add_component(&entity, Name::new("TestEntity")).ok();
-        world.add_component(&entity, Sprite::new(5)).ok();
-        world.add_component(&entity, RigidBody::default()).ok();
-
-        let captured = capture_all_components(&world, entity);
-        assert_eq!(captured.len(), 5);
-
-        // Create a fresh entity and restore onto it
-        let new_entity = world.create_entity();
-        restore_components(&mut world, new_entity, &captured);
-
-        let t = world.get::<common::Transform2D>(new_entity).unwrap();
-        assert_eq!(t.position, pos);
-        assert!(world.get::<Name>(new_entity).is_some());
-        assert!(world.get::<Sprite>(new_entity).is_some());
-        assert!(world.get::<RigidBody>(new_entity).is_some());
-        assert!(world.get::<GlobalTransform2D>(new_entity).is_some());
-    }
-
-    #[test]
-    fn test_capture_includes_all_component_types() {
-        let mut world = World::new();
-        let entity = world.create_entity();
-        world.add_component(&entity, common::Transform2D::default()).ok();
-        world.add_component(&entity, GlobalTransform2D::default()).ok();
-        world.add_component(&entity, Name::new("All")).ok();
-        world.add_component(&entity, common::Camera::default()).ok();
-        world.add_component(&entity, Sprite::default()).ok();
-        world.add_component(&entity, SpriteAnimation::default()).ok();
-        world.add_component(&entity, RigidBody::default()).ok();
-        world.add_component(&entity, Collider::default()).ok();
-        world.add_component(&entity, AudioSource::default()).ok();
-        world.add_component(&entity, AudioListener::default()).ok();
-        world.add_component(&entity, Behavior::default()).ok();
-        world.add_component(&entity, BehaviorState::default()).ok();
-        world.add_component(&entity, EntityTag::default()).ok();
-        world.add_component(&entity, UiLabel::default()).ok();
-        world.add_component(&entity, UiPanel::default()).ok();
-        world.add_component(&entity, UiButton::default()).ok();
-
-        let captured = capture_all_components(&world, entity);
-        assert_eq!(captured.len(), 16);
-    }
-
-    #[test]
-    fn test_gameplay_components_registered_under_gameplay_category() {
-        assert_eq!(ComponentKind::Behavior.category(), ComponentCategory::Gameplay);
-        assert_eq!(ComponentKind::EntityTag.category(), ComponentCategory::Gameplay);
-
-        let categories = categorized_components();
-        let (_, gameplay_kinds) = categories
-            .iter()
-            .find(|(c, _)| *c == ComponentCategory::Gameplay)
-            .expect("Gameplay category present");
-        assert!(gameplay_kinds.contains(&ComponentKind::Behavior));
-        assert!(gameplay_kinds.contains(&ComponentKind::EntityTag));
-    }
-
-    // ==================== ComponentKind dispatch ====================
-
-    #[test]
-    fn test_add_default_creates_each_component_kind() {
-        let mut world = World::new();
-        let entity = world.create_entity();
-
-        for &kind in ComponentKind::ALL {
-            kind.add_default(&mut world, entity);
-            assert!(
-                kind.is_present(&world, entity),
-                "add_default did not add {:?}",
-                kind
-            );
-        }
-    }
-
-    #[test]
-    fn test_remove_deletes_each_component_kind() {
-        let mut world = World::new();
-        let entity = world.create_entity();
-
-        for &kind in ComponentKind::ALL {
-            kind.add_default(&mut world, entity);
-            kind.remove(&mut world, entity);
-            assert!(
-                !kind.is_present(&world, entity),
-                "remove did not delete {:?}",
-                kind
-            );
-        }
-    }
-
-    #[test]
-    fn test_remove_absent_component_is_safe() {
-        let mut world = World::new();
-        let entity = world.create_entity();
-        // Should not panic
-        ComponentKind::Sprite.remove(&mut world, entity);
-        assert!(!ComponentKind::Sprite.is_present(&world, entity));
-    }
-
-    #[test]
-    fn test_capture_returns_value_when_present() {
-        let mut world = World::new();
-        let entity = world.create_entity();
-        world.add_component(&entity, Sprite::new(7)).ok();
-
-        let stored = ComponentKind::Sprite.capture(&world, entity);
-        assert!(matches!(stored, Some(StoredComponent::Sprite(s)) if s.texture_handle == 7));
-        assert!(ComponentKind::Camera.capture(&world, entity).is_none());
-    }
-
-    #[test]
-    fn test_display_names_match_variant_names() {
-        assert_eq!(ComponentKind::Camera.display_name(), "Camera");
-        assert_eq!(ComponentKind::SpriteAnimation.display_name(), "SpriteAnimation");
-        for &kind in ComponentKind::ALL {
-            assert!(!kind.display_name().is_empty());
-        }
-    }
-
-    #[test]
-    fn test_available_components_filters_present() {
-        let mut world = World::new();
-        let entity = world.create_entity();
-        world.add_component(&entity, Sprite::default()).ok();
-        world.add_component(&entity, RigidBody::default()).ok();
-
-        let available = available_components(&world, entity);
-        assert!(!available.contains(&ComponentKind::Sprite));
-        assert!(!available.contains(&ComponentKind::RigidBody));
-        assert!(available.contains(&ComponentKind::Camera));
-        assert!(available.contains(&ComponentKind::Collider));
-        assert!(available.contains(&ComponentKind::AudioSource));
-    }
-
-    #[test]
-    fn test_categorized_components_covers_all_kinds() {
-        let categories = categorized_components();
-        let all: Vec<ComponentKind> = categories
-            .iter()
-            .flat_map(|(_, kinds)| kinds.iter().copied())
-            .collect();
-        assert_eq!(all.len(), ComponentKind::ALL.len());
-        for &kind in ComponentKind::ALL {
-            assert!(all.contains(&kind), "{:?} missing from categories", kind);
-        }
-    }
-
-    #[test]
-    fn test_every_kind_has_consistent_category() {
-        for &kind in ComponentKind::ALL {
-            let category = kind.category();
-            let categories = categorized_components();
-            let (_, kinds) = categories
-                .iter()
-                .find(|(c, _)| *c == category)
-                .expect("category present");
-            assert!(kinds.contains(&kind));
-        }
-    }
-}
+mod tests;

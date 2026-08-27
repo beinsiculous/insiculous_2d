@@ -441,3 +441,53 @@ fn test_deep_hierarchy_ancestor_descendant_queries() {
     assert_eq!(world.get_ancestors(leaf).len(), 50);
     assert_eq!(world.get_descendants(root).len(), 50);
 }
+
+#[test]
+fn test_component_types_reports_concrete_type_names() {
+    use ecs::Transform2D;
+
+    struct EnemyAi;
+
+    let mut world = World::new();
+    let entity = world.create_entity();
+    world.add_component(&entity, Transform2D::default()).unwrap();
+    world.add_component(&entity, EnemyAi).unwrap();
+
+    let types = world.component_types(entity);
+    assert_eq!(types.len(), 2);
+    // Names must be the concrete component types, never the Box's own name
+    // (the blanket Component impl on Box<dyn Component> would report that).
+    assert!(types.iter().any(|(_, name)| name.contains("Transform2D")));
+    assert!(types.iter().any(|(_, name)| name.contains("EnemyAi")));
+    assert!(
+        types.iter().all(|(_, name)| !name.contains("Box<")),
+        "type names must come from the concrete component, got {:?}",
+        types
+    );
+}
+
+#[test]
+fn test_component_types_empty_for_bare_entity() {
+    let mut world = World::new();
+    let entity = world.create_entity();
+    assert!(world.component_types(entity).is_empty());
+
+    world.remove_entity(&entity).unwrap();
+    assert!(world.component_types(entity).is_empty(), "dead entity reports no components");
+}
+
+#[test]
+fn test_component_types_reflects_removal() {
+    use ecs::{Sprite, Transform2D};
+
+    let mut world = World::new();
+    let entity = world.create_entity();
+    world.add_component(&entity, Transform2D::default()).unwrap();
+    world.add_component(&entity, Sprite::default()).unwrap();
+    assert_eq!(world.component_types(entity).len(), 2);
+
+    world.remove_component::<Sprite>(&entity).unwrap();
+    let types = world.component_types(entity);
+    assert_eq!(types.len(), 1);
+    assert!(types[0].1.contains("Transform2D"));
+}

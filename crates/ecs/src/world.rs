@@ -304,6 +304,19 @@ impl World {
         Ok(self.components.has::<T>(entity_id))
     }
 
+    /// Get the `(TypeId, type name)` of every component currently attached
+    /// to an entity, in unspecified order.
+    ///
+    /// Returns an empty `Vec` for a dead or stale entity. This is the only
+    /// type-erased view of an entity's components; snapshot/duplication code
+    /// uses it to detect component types it doesn't know how to clone.
+    pub fn component_types(&self, entity_id: EntityId) -> Vec<(std::any::TypeId, &'static str)> {
+        if self.validate_entity(&entity_id).is_err() {
+            return Vec::new();
+        }
+        self.components.component_types(&entity_id)
+    }
+
     /// Add a system.
     ///
     /// Systems added after `initialize()`/`start()` get the missed

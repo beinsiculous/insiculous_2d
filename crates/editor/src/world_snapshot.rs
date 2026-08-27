@@ -1,71 +1,46 @@
 //! World state snapshot for play-mode save/restore.
 //!
-//! Captures all known component types from a `World` into a plain struct
-//! and restores them on stop. This uses typed cloning — no serialization
-//! required — so it is fast and does not change the `Component` trait.
+//! Captures every component type known to the editor component registry
+//! (`editor_component_registry!` in `stored_component/`) plus the hierarchy
+//! components into a plain struct, and restores them on stop. This uses
+//! typed cloning — no serialization required — so it is fast and does not
+//! change the `Component` trait. New registry entries are captured
+//! automatically; there is no second list to maintain here.
 //!
-//! **Known limitation:** Custom component types not in the known list are
-//! lost on restore. Acceptable for Phase 1C.
+//! Component types NOT in the registry (e.g. game-defined generics like
+//! `HierarchicalStateMachine<S, P>`) cannot be cloned by any engine-side
+//! list. Capture detects them via [`ecs::World::component_types`], reports
+//! them through [`WorldSnapshot::uncaptured_types`] /
+//! [`WorldSnapshot::loss_warning`], and they are lost on restore.
 
+use std::any::TypeId;
+use std::collections::HashSet;
+
+use ecs::hierarchy::{Children, Parent};
 use ecs::{EntityId, World};
-use ecs::behavior::{Behavior, BehaviorState, EntityTag};
-use ecs::hierarchy::{Children, GlobalTransform2D, Parent};
-use ecs::sprite_components::{Name, Sprite, SpriteAnimation};
-use ecs::audio_components::{AudioListener, AudioSource};
-use ecs::ui_components::{UiButton, UiLabel, UiPanel};
-use physics::components::{Collider, RigidBody};
+
+use crate::stored_component::{
+    capture_all_components, registered_component_type_ids, restore_components, StoredComponent,
+};
 
 /// Snapshot of a single entity's components.
 struct EntitySnapshot {
     id: EntityId,
-    // Core
-    transform: Option<common::Transform2D>,
-    global_transform: Option<GlobalTransform2D>,
-    camera: Option<common::Camera>,
-    name: Option<Name>,
-    // Rendering
-    sprite: Option<Sprite>,
-    sprite_animation: Option<SpriteAnimation>,
-    // Physics
-    rigid_body: Option<RigidBody>,
-    collider: Option<Collider>,
-    // Audio
-    audio_source: Option<AudioSource>,
-    audio_listener: Option<AudioListener>,
-    // Behavior
-    behavior: Option<Behavior>,
-    behavior_state: Option<BehaviorState>,
-    entity_tag: Option<EntityTag>,
-    // UI elements
-    ui_label: Option<UiLabel>,
-    ui_panel: Option<UiPanel>,
-    ui_button: Option<UiButton>,
-    // Hierarchy
+    /// Every registry-known component on the entity, captured via the
+    /// editor component registry (the single source of truth).
+    components: Vec<StoredComponent>,
+    // The registry deliberately excludes hierarchy (commands manage it), so
+    // the snapshot carries Parent/Children explicitly.
     parent: Option<Parent>,
     children: Option<Children>,
 }
 
 impl EntitySnapshot {
-    /// Capture all known components from a single entity.
+    /// Capture all registry components plus hierarchy from a single entity.
     fn capture(world: &World, id: EntityId) -> Self {
         Self {
             id,
-            transform: world.get::<common::Transform2D>(id).cloned(),
-            global_transform: world.get::<GlobalTransform2D>(id).cloned(),
-            camera: world.get::<common::Camera>(id).cloned(),
-            name: world.get::<Name>(id).cloned(),
-            sprite: world.get::<Sprite>(id).cloned(),
-            sprite_animation: world.get::<SpriteAnimation>(id).cloned(),
-            rigid_body: world.get::<RigidBody>(id).cloned(),
-            collider: world.get::<Collider>(id).cloned(),
-            audio_source: world.get::<AudioSource>(id).cloned(),
-            audio_listener: world.get::<AudioListener>(id).cloned(),
-            behavior: world.get::<Behavior>(id).cloned(),
-            behavior_state: world.get::<BehaviorState>(id).cloned(),
-            entity_tag: world.get::<EntityTag>(id).cloned(),
-            ui_label: world.get::<UiLabel>(id).cloned(),
-            ui_panel: world.get::<UiPanel>(id).cloned(),
-            ui_button: world.get::<UiButton>(id).cloned(),
+            components: capture_all_components(world, id),
             parent: world.get::<Parent>(id).cloned(),
             children: world.get::<Children>(id).cloned(),
         }
@@ -74,48 +49,72 @@ impl EntitySnapshot {
     /// Restore this snapshot's components onto an existing entity in the world.
     fn restore(self, world: &mut World) {
         let id = self.id;
-        if let Some(c) = self.transform { world.add_component(&id, c).ok(); }
-        if let Some(c) = self.global_transform { world.add_component(&id, c).ok(); }
-        if let Some(c) = self.camera { world.add_component(&id, c).ok(); }
-        if let Some(c) = self.name { world.add_component(&id, c).ok(); }
-        if let Some(c) = self.sprite { world.add_component(&id, c).ok(); }
-        if let Some(c) = self.sprite_animation { world.add_component(&id, c).ok(); }
-        if let Some(c) = self.rigid_body { world.add_component(&id, c).ok(); }
-        if let Some(c) = self.collider { world.add_component(&id, c).ok(); }
-        if let Some(c) = self.audio_source { world.add_component(&id, c).ok(); }
-        if let Some(c) = self.audio_listener { world.add_component(&id, c).ok(); }
-        if let Some(c) = self.behavior { world.add_component(&id, c).ok(); }
-        if let Some(c) = self.behavior_state { world.add_component(&id, c).ok(); }
-        if let Some(c) = self.entity_tag { world.add_component(&id, c).ok(); }
-        if let Some(c) = self.ui_label { world.add_component(&id, c).ok(); }
-        if let Some(c) = self.ui_panel { world.add_component(&id, c).ok(); }
-        if let Some(c) = self.ui_button { world.add_component(&id, c).ok(); }
-        if let Some(c) = self.parent { world.add_component(&id, c).ok(); }
-        if let Some(c) = self.children { world.add_component(&id, c).ok(); }
+        restore_components(world, id, &self.components);
+        if let Some(p) = self.parent {
+            world.add_component(&id, p).ok();
+        }
+        if let Some(c) = self.children {
+            world.add_component(&id, c).ok();
+        }
     }
 }
 
-/// A complete snapshot of all entities and their known components.
+/// A complete snapshot of all entities and their capturable components.
 ///
 /// Created by `WorldSnapshot::capture()` before entering play mode and
 /// consumed by `WorldSnapshot::restore()` when stopping play mode.
 pub struct WorldSnapshot {
     snapshots: Vec<EntitySnapshot>,
+    /// Full type paths of component types present at capture time that no
+    /// registry entry covers — these are lost on restore. Deduped, sorted.
+    uncaptured_types: Vec<&'static str>,
 }
 
 impl WorldSnapshot {
     /// Capture the current world state.
+    ///
+    /// Component types outside the editor registry cannot be captured; they
+    /// are recorded (see [`Self::uncaptured_types`]) and logged, never a
+    /// block — a game-defined generic component can never be registered, and
+    /// refusing Play would make such games uneditable.
     pub fn capture(world: &World) -> Self {
-        let snapshots = world.entities()
+        let mut known: HashSet<TypeId> = registered_component_type_ids().into_iter().collect();
+        known.insert(TypeId::of::<Parent>());
+        known.insert(TypeId::of::<Children>());
+
+        let mut uncaptured: Vec<&'static str> = Vec::new();
+        let snapshots = world
+            .entities()
             .into_iter()
-            .map(|id| EntitySnapshot::capture(world, id))
+            .map(|id| {
+                for (type_id, name) in world.component_types(id) {
+                    if !known.contains(&type_id) && !uncaptured.contains(&name) {
+                        uncaptured.push(name);
+                    }
+                }
+                EntitySnapshot::capture(world, id)
+            })
             .collect();
-        Self { snapshots }
+        uncaptured.sort_unstable();
+
+        if !uncaptured.is_empty() {
+            log::warn!(
+                "WorldSnapshot: {} component type(s) not in the editor registry \
+                 will be lost on restore: {}",
+                uncaptured.len(),
+                uncaptured.join(", ")
+            );
+        }
+
+        Self { snapshots, uncaptured_types: uncaptured }
     }
 
     /// Restore the captured state, replacing the current world contents.
     ///
-    /// Clears all entities and components, then recreates them from the snapshot.
+    /// Clears all entities and components, then recreates them from the
+    /// snapshot. The world is wholesale-replaced, so the caller must reset
+    /// any entity-indexed system caches afterwards (the editor's Stop path
+    /// resets the transform propagation system).
     pub fn restore(self, world: &mut World) {
         world.clear();
 
@@ -129,190 +128,66 @@ impl WorldSnapshot {
     pub fn entity_count(&self) -> usize {
         self.snapshots.len()
     }
+
+    /// Full type paths of component types that were present at capture time
+    /// but could not be captured (not in the editor registry). Restoring
+    /// this snapshot loses them.
+    pub fn uncaptured_types(&self) -> &[&'static str] {
+        &self.uncaptured_types
+    }
+
+    /// Player-facing warning to show when entering Play, if anything will be
+    /// lost by the Play → Stop round-trip. `None` when capture was complete.
+    pub fn loss_warning(&self) -> Option<String> {
+        if self.uncaptured_types.is_empty() {
+            return None;
+        }
+        Some(format!(
+            "{} component type(s) not in the editor registry will be lost on Stop: {}",
+            self.uncaptured_types.len(),
+            display_names(&self.uncaptured_types).join(", ")
+        ))
+    }
+
+    /// Player-facing report to show after this snapshot has been restored,
+    /// naming what was actually dropped. `None` when capture was complete.
+    pub fn drop_report(&self) -> Option<String> {
+        if self.uncaptured_types.is_empty() {
+            return None;
+        }
+        Some(format!(
+            "Restored authored scene; dropped {} unregistered component type(s): {}",
+            self.uncaptured_types.len(),
+            display_names(&self.uncaptured_types).join(", ")
+        ))
+    }
+}
+
+/// Shorten a full type path for display: strip generic arguments, keep the
+/// last path segment (`game::ai::Brain<State>` → `Brain`).
+fn short_type_name(full: &str) -> &str {
+    let base = full.split('<').next().unwrap_or(full);
+    base.rsplit("::").next().unwrap_or(base)
+}
+
+/// Display names for the status bar: shortened, except that names which
+/// collide after shortening fall back to their full paths so distinct types
+/// stay distinguishable. Full paths always go to the log regardless.
+fn display_names(full_paths: &[&'static str]) -> Vec<String> {
+    let shorts: Vec<&str> = full_paths.iter().map(|f| short_type_name(f)).collect();
+    shorts
+        .iter()
+        .enumerate()
+        .map(|(i, short)| {
+            let collides = shorts.iter().enumerate().any(|(j, other)| j != i && other == short);
+            if collides {
+                full_paths[i].to_string()
+            } else {
+                (*short).to_string()
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use glam::Vec2;
-
-    #[test]
-    fn test_snapshot_empty_world() {
-        let world = World::new();
-        let snapshot = WorldSnapshot::capture(&world);
-        assert_eq!(snapshot.entity_count(), 0);
-    }
-
-    #[test]
-    fn test_snapshot_captures_entities() {
-        let mut world = World::new();
-        world.create_entity();
-        world.create_entity();
-        world.create_entity();
-
-        let snapshot = WorldSnapshot::capture(&world);
-        assert_eq!(snapshot.entity_count(), 3);
-    }
-
-    #[test]
-    fn test_snapshot_restore_preserves_entity_ids() {
-        let mut world = World::new();
-        let e1 = world.create_entity();
-        let e2 = world.create_entity();
-        world.add_component(&e1, common::Transform2D::new(Vec2::new(10.0, 20.0))).ok();
-        world.add_component(&e2, common::Transform2D::new(Vec2::new(30.0, 40.0))).ok();
-
-        let snapshot = WorldSnapshot::capture(&world);
-
-        // Modify world
-        world.clear();
-        assert_eq!(world.entity_count(), 0);
-
-        // Restore
-        snapshot.restore(&mut world);
-
-        assert_eq!(world.entity_count(), 2);
-        let t1 = world.get::<common::Transform2D>(e1).unwrap();
-        assert_eq!(t1.position, Vec2::new(10.0, 20.0));
-        let t2 = world.get::<common::Transform2D>(e2).unwrap();
-        assert_eq!(t2.position, Vec2::new(30.0, 40.0));
-    }
-
-    #[test]
-    fn test_snapshot_restore_discards_play_changes() {
-        let mut world = World::new();
-        let entity = world.create_entity();
-        world.add_component(&entity, common::Transform2D::new(Vec2::ZERO)).ok();
-
-        let snapshot = WorldSnapshot::capture(&world);
-
-        // Simulate play-mode changes
-        if let Some(t) = world.get_mut::<common::Transform2D>(entity) {
-            t.position = Vec2::new(999.0, 999.0);
-        }
-        let new_entity = world.create_entity();
-        world.add_component(&new_entity, common::Transform2D::new(Vec2::ONE)).ok();
-
-        // Restore should undo play changes
-        snapshot.restore(&mut world);
-
-        assert_eq!(world.entity_count(), 1);
-        let t = world.get::<common::Transform2D>(entity).unwrap();
-        assert_eq!(t.position, Vec2::ZERO);
-    }
-
-    #[test]
-    fn test_snapshot_preserves_hierarchy() {
-        use ecs::WorldHierarchyExt;
-
-        let mut world = World::new();
-        let parent = world.create_entity();
-        let child = world.create_entity();
-        world.set_parent(child, parent).unwrap();
-
-        let snapshot = WorldSnapshot::capture(&world);
-        world.clear();
-        snapshot.restore(&mut world);
-
-        // Hierarchy components should be restored
-        let p = world.get::<Parent>(child).unwrap();
-        assert_eq!(p.entity(), parent);
-        let c = world.get::<Children>(parent).unwrap();
-        assert!(c.entities().contains(&child));
-    }
-
-    #[test]
-    fn test_snapshot_preserves_physics_components() {
-        let mut world = World::new();
-        let entity = world.create_entity();
-        let mut body = RigidBody::default();
-        body.gravity_scale = 0.5;
-        body.linear_damping = 2.0;
-        world.add_component(&entity, body).ok();
-
-        let mut collider = Collider::default();
-        collider.friction = 0.9;
-        collider.is_sensor = true;
-        world.add_component(&entity, collider).ok();
-
-        let snapshot = WorldSnapshot::capture(&world);
-        world.clear();
-        snapshot.restore(&mut world);
-
-        let rb = world.get::<RigidBody>(entity).unwrap();
-        assert_eq!(rb.gravity_scale, 0.5);
-        assert_eq!(rb.linear_damping, 2.0);
-
-        let col = world.get::<Collider>(entity).unwrap();
-        assert_eq!(col.friction, 0.9);
-        assert!(col.is_sensor);
-    }
-
-    #[test]
-    fn test_snapshot_preserves_ui_element_components() {
-        let mut world = World::new();
-        let entity = world.create_entity();
-        world
-            .add_component(&entity, UiLabel { text: "@hud.score".into(), ..Default::default() })
-            .ok();
-        world.add_component(&entity, UiPanel { border_width: 3.0, ..Default::default() }).ok();
-        world
-            .add_component(&entity, UiButton { id: "play".into(), ..Default::default() })
-            .ok();
-
-        let snapshot = WorldSnapshot::capture(&world);
-        world.clear();
-        snapshot.restore(&mut world);
-
-        assert_eq!(world.get::<UiLabel>(entity).unwrap().text, "@hud.score");
-        assert_eq!(world.get::<UiPanel>(entity).unwrap().border_width, 3.0);
-        assert_eq!(world.get::<UiButton>(entity).unwrap().id, "play");
-    }
-
-    #[test]
-    fn test_snapshot_preserves_behavior_components() {
-        let mut world = World::new();
-        let entity = world.create_entity();
-        let behavior = Behavior::PlayerPlatformer {
-            move_speed: 150.0,
-            jump_impulse: 500.0,
-            jump_cooldown: 0.25,
-            tag: "hero".to_string(),
-        };
-        world.add_component(&entity, behavior).ok();
-
-        let state = BehaviorState {
-            timer: 1.5,
-            look_offset: glam::Vec2::new(120.0, -40.0),
-            ..Default::default()
-        };
-        world.add_component(&entity, state).ok();
-
-        world.add_component(&entity, EntityTag::new("hero")).ok();
-
-        let snapshot = WorldSnapshot::capture(&world);
-        world.clear();
-        snapshot.restore(&mut world);
-
-        // Behavior should survive the snapshot round-trip
-        let b = world.get::<Behavior>(entity).unwrap();
-        match b {
-            Behavior::PlayerPlatformer { move_speed, tag, .. } => {
-                assert_eq!(*move_speed, 150.0);
-                assert_eq!(tag, "hero");
-            }
-            _ => panic!("Wrong behavior variant"),
-        }
-
-        let bs = world.get::<BehaviorState>(entity).unwrap();
-        assert_eq!(bs.timer, 1.5);
-        assert_eq!(
-            bs.look_offset,
-            glam::Vec2::new(120.0, -40.0),
-            "camera look-ahead offset must survive play/stop"
-        );
-
-        let tag = world.get::<EntityTag>(entity).unwrap();
-        assert!(tag.matches("hero"));
-    }
-}
+mod tests;

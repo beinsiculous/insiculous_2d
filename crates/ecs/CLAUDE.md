@@ -55,7 +55,8 @@ components like any other type, but the physics crate owns their definitions.
       transform.position += offset;
   }
   ```
-- **New components**: derive `DeriveComponentMeta`, register in global registry, add to `WorldSnapshot` known types
+- **Type-erased enumeration**: `world.component_types(entity)` -> `Vec<(TypeId, &'static str)>` — the only way to see components you don't know the type of (snapshot loss detection); names come from the concrete component via `.as_ref().type_name()`
+- **New components**: derive `DeriveComponentMeta`, register in global registry, add one line to `editor_component_registry!` (editor crate) — the play/stop `WorldSnapshot` captures registry types automatically
 
 ## Documented Conventions
 - Typed accessors `get`/`get_mut` take `EntityId` by value; CRUD methods (`add_component`, `remove_component`, `has_component`, `get_component`) take `&EntityId`. Prefer by-value for new APIs.
@@ -70,7 +71,7 @@ components like any other type, but the physics crate owns their definitions.
 - serde_json for inspector, RON for scene files — both must work
 
 ## Testing
-- 208 passing (incl. 10 doc tests), 0 ignored — `cargo test -p ecs`
+- 211 passing (incl. 10 doc tests), 0 ignored — `cargo test -p ecs`
 - Integration tests in `tests/world.rs`, unit tests inline in source
 - Naming: `test_<behavior_description>`
 

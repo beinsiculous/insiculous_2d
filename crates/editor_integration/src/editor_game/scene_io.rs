@@ -29,11 +29,6 @@ impl<G: Game> EditorGame<G> {
         assets: &engine_core::assets::AssetManager,
         path: PathBuf,
     ) -> Result<(), String> {
-        let scene_name = path.file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("Untitled")
-            .to_string();
-
         let texture_path_fn = |handle: u32| -> String {
             assets.texture_path(handle)
                 .map(|s| s.to_string())
@@ -41,9 +36,34 @@ impl<G: Game> EditorGame<G> {
                     if handle == 0 { "#white".to_string() } else { format!("#texture_{}", handle) }
                 })
         };
+        self.save_scene_with(world, &texture_path_fn, path)
+    }
+
+    /// Serialize the world and write the scene file — the MANDATORY save
+    /// choke point: every save path (menu, shortcuts, future command API)
+    /// must route through here; never call `world_to_scene_data` /
+    /// `save_scene_to_file` directly from new code.
+    ///
+    /// Refuses while a play session is active (Playing or Paused): the world
+    /// is mid-simulation, and saving it would overwrite the authored scene
+    /// with runtime state.
+    pub(super) fn save_scene_with(
+        &mut self,
+        world: &World,
+        texture_path_fn: &dyn Fn(u32) -> String,
+        path: PathBuf,
+    ) -> Result<(), String> {
+        if self.editor.in_play_session() {
+            return Err("scene is mid-simulation — stop Play before saving".to_string());
+        }
+
+        let scene_name = path.file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Untitled")
+            .to_string();
 
         let scene_data = engine_core::scene_serializer::world_to_scene_data(
-            world, &scene_name, self.physics_settings.clone(), &texture_path_fn,
+            world, &scene_name, self.physics_settings.clone(), texture_path_fn,
         );
 
         // Ensure parent directory exists
@@ -70,6 +90,10 @@ impl<G: Game> EditorGame<G> {
         assets: &mut engine_core::assets::AssetManager,
         path: &Path,
     ) -> Result<(), String> {
+        if let Some(msg) = self.scene_replace_refusal() {
+            return Err(msg.to_string());
+        }
+
         if self.editor.is_dirty() {
             log::warn!("Current scene has unsaved changes. Save first to avoid losing work.");
         }
@@ -98,6 +122,16 @@ impl<G: Game> EditorGame<G> {
         Ok(())
     }
 
+    /// Guard shared by every scene-replacing operation (New Scene, Open
+    /// Scene): `Some(message)` while a play session is active (Playing or
+    /// Paused). Replacing the world under a pending play snapshot would make
+    /// the next Stop resurrect the old scene's entities into the new one.
+    pub(super) fn scene_replace_refusal(&self) -> Option<&'static str> {
+        self.editor
+            .in_play_session()
+            .then_some("scene is mid-simulation — stop Play first")
+    }
+
     /// Load a scene and surface any failure on the status bar.
     pub(super) fn load_scene_with_feedback(
         &mut self,
@@ -112,7 +146,17 @@ impl<G: Game> EditorGame<G> {
     }
 
     /// Create a new empty scene, clearing the world.
+    ///
+    /// Refused during a play session (Playing or Paused): clearing the world
+    /// under a pending play snapshot would make the next Stop resurrect the
+    /// old scene's entities into the new one.
     pub(super) fn new_scene(&mut self, world: &mut World) {
+        if let Some(msg) = self.scene_replace_refusal() {
+            self.editor.status_bar.show_error(msg);
+            log::warn!("{}", msg);
+            return;
+        }
+
         if self.editor.is_dirty() {
             log::warn!("Current scene has unsaved changes. Save first to avoid losing work.");
         }

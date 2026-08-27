@@ -162,23 +162,21 @@ fn test_new_scene_resets_editor_state() {
     assert!(editor.physics_settings.is_none());
 }
 
+/// Texture path stand-in for tests — `AssetManager` needs a GPU device, but
+/// `save_scene_with` (the mandatory save choke point) only needs this closure.
+fn test_texture_path_fn(handle: u32) -> String {
+    if handle == 0 { "#white".to_string() } else { format!("#texture_{}", handle) }
+}
+
 #[test]
 fn test_save_creates_file() {
-    let _editor = EditorGame::new(DummyGame);
+    let mut editor = EditorGame::new(DummyGame);
     let world = ecs::World::new();
 
     let temp_dir = std::env::temp_dir();
     let path = temp_dir.join("test_save_scene.ron");
 
-    // Use a simple texture path function since we don't have AssetManager in tests
-    let scene_name = "test";
-    let texture_path_fn = |handle: u32| -> String {
-        if handle == 0 { "#white".to_string() } else { format!("#texture_{}", handle) }
-    };
-    let scene_data = engine_core::scene_serializer::world_to_scene_data(
-        &world, scene_name, None, &texture_path_fn,
-    );
-    let result = engine_core::scene_serializer::save_scene_to_file(&scene_data, &path);
+    let result = editor.save_scene_with(&world, &test_texture_path_fn, path.clone());
     assert!(result.is_ok());
     assert!(path.exists());
 
@@ -196,20 +194,11 @@ fn test_save_clears_dirty_flag() {
     let temp_dir = std::env::temp_dir();
     let path = temp_dir.join("test_save_dirty.ron");
 
-    // We can't use save_scene_as directly without AssetManager,
-    // so test the flag behavior with set_dirty
-    let texture_path_fn = |handle: u32| -> String {
-        if handle == 0 { "#white".to_string() } else { format!("#texture_{}", handle) }
-    };
-    let scene_data = engine_core::scene_serializer::world_to_scene_data(
-        &world, "test", None, &texture_path_fn,
-    );
-    engine_core::scene_serializer::save_scene_to_file(&scene_data, &path).unwrap();
-    editor.editor.set_scene_path(Some(path.clone()));
-    editor.editor.set_dirty(false);
+    editor.save_scene_with(&world, &test_texture_path_fn, path.clone()).unwrap();
 
     assert!(!editor.editor.is_dirty());
     assert_eq!(editor.editor.scene_path(), Some(path.as_path()));
+    assert_eq!(editor.editor.status_bar.message(), Some("Scene saved"));
 
     let _ = std::fs::remove_file(&path);
 }
@@ -229,7 +218,7 @@ fn test_new_scene_warns_if_dirty() {
 
 #[test]
 fn test_save_scene_roundtrip() {
-    let _editor = EditorGame::new(DummyGame);
+    let mut editor = EditorGame::new(DummyGame);
     let mut world = ecs::World::new();
 
     // Create entities with components
@@ -243,18 +232,11 @@ fn test_save_scene_roundtrip() {
     let temp_dir = std::env::temp_dir();
     let path = temp_dir.join("test_roundtrip.ron");
 
-    // Serialize
-    let texture_path_fn = |handle: u32| -> String {
-        if handle == 0 { "#white".to_string() } else { format!("#texture_{}", handle) }
-    };
-    let scene_data = engine_core::scene_serializer::world_to_scene_data(
-        &world, "Roundtrip", None, &texture_path_fn,
-    );
-    engine_core::scene_serializer::save_scene_to_file(&scene_data, &path).unwrap();
+    editor.save_scene_with(&world, &test_texture_path_fn, path.clone()).unwrap();
 
     // Verify the file is valid RON by parsing it with SceneLoader
     let parsed = engine_core::scene_loader::SceneLoader::load_from_file(&path).unwrap();
-    assert_eq!(parsed.name, "Roundtrip");
+    assert_eq!(parsed.name, "test_roundtrip");
     assert_eq!(parsed.entities.len(), 2);
 
     let _ = std::fs::remove_file(&path);

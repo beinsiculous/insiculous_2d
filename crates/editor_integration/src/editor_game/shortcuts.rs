@@ -44,8 +44,14 @@ impl<G: Game> EditorGame<G> {
                 if self.editor.is_editing() {
                     // Cancel any in-progress gizmo drag
                     self.gizmo_drag_start = None;
-                    // Starting a new play session — capture snapshot
-                    self.world_snapshot = Some(WorldSnapshot::capture(world));
+                    // Starting a new play session — capture snapshot.
+                    // (Resume-from-pause takes the branch below and must
+                    // never re-capture: the paused world is mid-simulation.)
+                    let snapshot = WorldSnapshot::capture(world);
+                    if let Some(warning) = snapshot.loss_warning() {
+                        self.editor.status_bar.show_message(warning);
+                    }
+                    self.world_snapshot = Some(snapshot);
                     // Save the editing pan/zoom; play renders at zoom 1.0
                     // (parity with the game's own camera, which has no zoom
                     // source), position driven by the main-camera entity.
@@ -79,12 +85,22 @@ impl<G: Game> EditorGame<G> {
                 if self.editor.in_play_session() {
                     // Restore world from snapshot
                     if let Some(snapshot) = self.world_snapshot.take() {
+                        // The loss happens HERE, so report it here too — the
+                        // Play-time warning is easy to miss.
+                        let drop_report = snapshot.drop_report();
+                        let dropped_full_paths = snapshot.uncaptured_types().join(", ");
                         snapshot.restore(world);
                         // The world was wholesale-replaced: drop the transform
                         // system's propagation baselines so no stale cache
                         // entry survives the restore.
                         self.transform_system.reset();
                         log::info!("Stop: world restored from snapshot");
+                        if let Some(report) = drop_report {
+                            // Status bar gets display names; the log keeps the
+                            // full type paths (matching the capture-time log).
+                            log::warn!("Stop: dropped unregistered component type(s): {}", dropped_full_paths);
+                            self.editor.status_bar.show_message(report);
+                        }
                     }
                     // Restore the pan/zoom the user had while editing
                     if let Some((position, zoom)) = self.editing_camera.take() {

@@ -95,6 +95,16 @@ impl ComponentStore {
     pub fn remove_all(&mut self, entity_id: &EntityId) {
         self.components.remove(entity_id);
     }
+
+    /// Get the type name of this store's component for an entity, if present
+    pub fn stored_type_name(&self, entity_id: &EntityId) -> Option<&'static str> {
+        // Use .as_ref() to get &dyn Component before calling type_name(),
+        // otherwise the blanket impl on Box<dyn Component> would report the
+        // Box's own type name instead of the concrete component's.
+        self.components
+            .get(entity_id)
+            .map(|c| c.as_ref().type_name())
+    }
 }
 
 /// A registry for all component types
@@ -165,6 +175,23 @@ impl ComponentRegistry {
         for storage in self.storages.values_mut() {
             storage.remove_all(entity_id);
         }
+    }
+
+    /// Get the `(TypeId, type name)` of every component currently attached
+    /// to an entity, in unspecified order.
+    ///
+    /// This is the only type-erased view of an entity's components; callers
+    /// that clone or serialize components (snapshots, duplication) use it to
+    /// detect types they don't know how to handle.
+    pub fn component_types(&self, entity_id: &EntityId) -> Vec<(TypeId, &'static str)> {
+        self.storages
+            .iter()
+            .filter_map(|(type_id, storage)| {
+                storage
+                    .stored_type_name(entity_id)
+                    .map(|name| (*type_id, name))
+            })
+            .collect()
     }
 
     /// Initialize the component registry

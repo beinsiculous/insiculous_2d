@@ -395,4 +395,6 @@ mod tests;
 #[cfg(test)]
 mod picking_tests;
 #[cfg(test)]
+mod play_guard_tests;
+#[cfg(test)]
 mod time_freeze_tests;
