@@ -245,6 +245,7 @@ for wasm with unchanged Cargo.toml. Forced H2 API change: `load_sound` /
 | H7 ◐ | Audio backend | ☑ DECIDED (H1 spike): stay on rodio. Shipped Aug 19: wasm `new_or_disabled()` always starts `disabled()` + rodio `wasm-bindgen` feature (compile). Remaining: gesture-gated upgrade to a real `OutputStream` (`try_default()` Ok does NOT prove the context is running — don't use as a health check) |
 | H8 | Incremental wasm CI guard | `cargo check --target wasm32-unknown-unknown` starting on `common`/`ecs`, expanding crate-by-crate. Note: wasm clippy of `renderer` has 3 pre-existing `arc_with_non_send_sync` warnings (`Arc<wgpu::Device>` — Device is !Send on web); decide allow-lint vs restructure when H8 lands |
 | H9 ☑ | Port all 6 games — **ALL 6 DONE Aug 19 2026** | `scripts/build_wasm.sh <game_dir> <slug> [--serve]` (generic: CLI-version assert with remediation, manifest gen, guarded local test page); `[profile.wasm-release]` opt-level="s" + lto in the game's Cargo.toml; pong split into lib.rs + thin main.rs + `web_entry.rs` (`#[wasm_bindgen(start)]` → preload → `run_game`). All six ported same-day via 5 parallel agents on the pong recipe: pong 2.5, snake 1.4, frogger 1.4 (720x768, localized), breakout 3.0 (scene RON levels load through the VFS — verified by designed-layout bricks in-browser), invaders 2.1, asteroids 2.1 MiB. Every game browser-verified on WebGPU. Breakout threads `ctx.assets.base_path()` into `level_scene_path` (owned copy before the mutable assets borrow) |
+| H10 | Web editor — **the north-star stretch goal ("super-ultra-win")** | The editor runs on wasm32 like the games (audit §8, adopted Aug 27 2026): scene authoring, component/param tuning, script attachment, and play/pause all work in-browser; scenes via OPFS / import-export `.ron`; "Open in IDE" and Build & Reload stay **native-only by design** (no local FS / cargo on web — remote build service explicitly deferred). The §9 command layer is designed transport-ready (stdin/stdout now, WebSocket later) so the web editor's remote-control channel falls out for free. Standing constraint on all editor work: stay wasm32-compatible |
 
 WebGPU-only at launch; WebGL2 fallback revisited at the post-I2 launch review.
 gilrs needed NO gating (H1 finding confirmed — compiles unchanged). Lessons
@@ -359,23 +360,83 @@ Resumes after Phase G with Deion styling from day one.
 
 Done when they unblock a specific game or pivot phase, not on a fixed schedule.
 
-### Editor Polish (Backlog)
-- [ ] Toolbar redesign (cleaner play controls, tool selection)
-- [ ] Scene tree enhancements (icons, search, drag-and-drop reparenting)
-- [ ] Inspector polish (collapsible sections, color picker, enum dropdowns)
-- [ ] Copy/Paste entities (Ctrl+C / Ctrl+V)
-- [ ] Multi-entity editing (shared properties, multi-gizmo)
-- [ ] Prefab system (save entity as reusable template)
-- [ ] Console panel (log output, filter, search)
-- [ ] Tilemap editor tab (tile palette, brush, fill tools)
-- [ ] Animation timeline tab (deferred from Phase E8)
-- [ ] Physics debugger overlay (collider wireframes, velocity vectors)
+### Editor — UX Audit & Work Order (Aug 27 2026)
 
-**Reference:** `crates/editor/IdealEditor.png` for target mockup
+**Two north stars (Jesse, Aug 27 2026) — weigh every editor decision against
+these:**
+1. **AI-first.** An AI agent must be able to author games through the editor's
+   **command layer** (audit §9: query API → write commands → headless `--api`,
+   designed transport-ready from day one). Per audit §8.3 this is the stronger
+   answer to "AI friendly" than any GUI work — driving a UI by screenshots and
+   pixel coordinates is the worst interface an agent can have.
+2. **The editor running in the browser is the super-ultra-win.** The engine
+   already runs on wasm32 (Pong slice shipped Aug 19 2026), so the editor
+   staying lightweight and **wasm32-compatible is a standing constraint** on
+   every editor decision — it is why dylib scripting is dropped (wasm32 has no
+   `dlopen`). Concretely: no *architectural* choice may foreclose the web port;
+   inherently native-only subsystems (file dialogs/`std::fs` scans, process
+   spawn, `cargo` builds, "Open in IDE") are fine but get designed as
+   cfg-gated native features with the web replacement named up front (OPFS /
+   VFS fetch / deferred remote build — the audit §8.2 capability split). See
+   the Phase H web-editor row.
 
-### Scripting (after Game 10)
-Hot-reloadable Rust script components via `dylib` + a `Script` trait. Unblocks
-faster game iteration for Games 11+. Spec preserved in git history.
+The full file:line-anchored audit lives at `docs/EDITOR_UX_AUDIT.md`
+(2026-08-27): P0 = broken or built-but-never-wired (§1, §2), P1 =
+inspector/visual/interaction quality (§3–§5), end state = authoring games in
+the editor via the ScriptRef seam (§6) plus the AI command layer (§9). The
+audit's §7 work order is adopted as five sprints; **the live items are issues
+on the org Studio Board (Phase = Editor)** — the board is the SSOT for open
+items, this section carries only the why.
+
+| Sprint | Theme | Audit sections | Priority |
+|--------|-------|----------------|----------|
+| 1 | "the editor works" | §1.1, §4.4, §2.2, §2.3, §1.3+§1.2, §4.11 | P0 |
+| 2 | "the editor is honest" | §1.4 (+§9.3a), §9 Stage A, §5.1→§5.2+§5.3, §5.6, §3.3, §5.4 | P1 |
+| 3 | "the inspector is a tool" | §3.5, §3.1/§3.2, §4.10, §9 Stage B, §3.6, §3.4 | P1 |
+| 4 | "direct manipulation" | §2.1, §4.6, §4.5, §4.7, §4.9 | P2 |
+| 5 | "architecture" | §4.2, §4.3, §6.7, §6.5 Stage 1, §9 Stage C | P2 |
+
+The old "Phase 2 (Ideal Editor UI)" lettering (2A–2G) is superseded by this
+sprint order; its history lives in `log_archive.md`.
+
+**Reference:** `crates/editor/IdealEditor.png` for the target mockup — but the
+Design System Reference palette (bottom of this file) is **pending the audit
+§5.1 gamma verification**: screenshot colors measure ~2× brighter than the
+declared tokens (suspected linear→sRGB double-encode); settle the sRGB
+question before deriving or re-picking any colors.
+
+### Scripting — the ScriptRef seam
+
+Adopted from audit §6.3/§6.5/§6.6(4), Aug 27 2026. The seam is a stable,
+serializable identity for a chunk of game logic: `ScriptRef { script_id,
+source_path, params }` plus `Scripts(Vec<ScriptRef>)` — one component holding
+N scripts, string-keyed, because every closed enum (`Behavior`,
+`ComponentData`, `ComponentKind`, `EntitySnapshot`) lives upstream of the game
+crates and cannot be extended downstream.
+
+- **Stage 1 first, and it is the load-bearing stage:** `Scripts` as inert,
+  editor-editable data — attach a named script with tunable params, edit,
+  save, reload, undo, duplicate, and it executes nothing. The scene file then
+  carries game-logic bindings; everything after is decoration or execution.
+  **Hard prerequisite:** the `WorldSnapshot` completeness fix (audit §1.2,
+  Sprint 1) — today Play→Stop destroys any component outside its hardcoded
+  18-type list, which would silently delete `Scripts` bindings; add `Scripts`
+  to the snapshot the same day the component lands.
+- Crate placement (audit §6.4): the data types (`ScriptRef`/`ScriptValue`/
+  `Scripts`/`ParamSpec`) live in `ecs` — the editor depends on ecs, never on
+  engine_core; the runtime registry/runner live in `engine_core`, and the
+  script catalog reaches the editor through `InspectorExtras` (the existing
+  `texture_display` precedent).
+- Execution later via a runtime `ScriptRegistry` + `ScriptBehavior` trait
+  (`Game::register_scripts`, defaulted so no existing game breaks).
+- **The editor owns build-and-relaunch** (audit §6.5 Stage 5): edit Rust in a
+  real IDE → Build & Reload → editor rebuilds, respawns, restores the same
+  scene in ~seconds.
+- **dylib hot-reload is dropped** — `TypeId` is not stable across dylib
+  reloads (the ECS is TypeId-keyed), panics unwinding across FFI are UB, and
+  wasm32 has no `dlopen`, so Phase H forecloses it. True hot reload is
+  deferred indefinitely; revisit only if build-and-relaunch proves to be the
+  actual bottleneck.
 
 ---
 
@@ -387,14 +448,14 @@ are tracked in `crates/*/TECH_DEBT.md`. Resolved items live in `log_archive.md`.
 ### Medium Priority
 
 **engine_core (1 item):**
-- [ ] **ARCH-006: Behaviors hardcoded in scene serialization** — `scene_data.rs`/`scene_loader.rs`/`scene_serializer.rs` match on Behavior variants instead of going through `ComponentRegistry`. Route through a registry/`Custom` variant; pairs with the scripting-phase migration of `ecs/src/behavior.rs`.
+- [ ] **ARCH-006: Closed-world component registries block game-defined components** (widened Aug 27 2026 per audit §6.2/§6.7) — not just scene serialization: **four** parallel closed lists exist for one concept — editor `ComponentKind`/`StoredComponent`, `ComponentData` (`scene_data.rs`/`scene_loader.rs`/`scene_serializer.rs`), `Behavior`, and `EntitySnapshot`. A new type must be added to all four across three crates, and none can be extended by a downstream game crate — which is why a game component cannot appear in Add Component and why `WorldSnapshot` destroys unknown components on Stop. Route through a registry/`Custom` wire variant and collapse the four lists **before** the scripting phase, not paired with it. Note: `ecs/src/component_registry.rs` (dynamic, name-keyed) and `#[derive(ComponentMeta)]` already exist — the editor currently uses neither.
 
 **common (2 items):**
 - [ ] **ARCH-001: `CameraUniform` duplicated in renderer crate** — Use `common::CameraUniform` everywhere, remove renderer copy.
 - [ ] **DRY-002: Volume clamping duplicated cross-crate** (`audio`, `ecs`) — add `clamp_volume()` utility in common.
 
 **ecs_macros (1 item):**
-- [ ] **KISS-001: Over-specified `syn` features** — `["full", "parsing"]` where `["derive"]` suffices; compile-time win.
+- [ ] **KISS-001: Over-specified `syn` features** — `["full", "parsing"]` where `["derive"]` suffices; compile-time win. **Re-decide with audit §6.6(2):** a future `#[derive(Script)]` attribute parser would need `syn` "full" — close or reclassify this item before the scripting phase's Stage 3.
 
 **renderer (1 item):**
 - [ ] Alpha-blended sprites vs `depth_write_enabled: true` can punch holes across batches — becomes visible with real alpha-edged art; Phase E7 (alpha-cutoff) closes it.
@@ -458,6 +519,12 @@ cd ../games/pong && cargo run
 ## Design System Reference
 
 Derived from `crates/editor/IdealEditor.png`.
+
+> **Pending the audit §5.1 gamma verification (Aug 27 2026):** on-screen editor
+> colors measure ~2× brighter than these declared tokens (suspected
+> linear→sRGB double-encode — verify the swapchain format and whether
+> `Color::from_hex` linearizes). Until that is settled, do not derive or
+> re-pick colors from this palette.
 
 ### Color Palette
 | Token | Hex | Usage |

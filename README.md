@@ -463,7 +463,7 @@ or window required.
 
 ## Project Status
 
-**Current State:** Functional editor (Phase 1 complete), Phase 2 (Ideal Editor UI) in progress
+**Current State:** Functional editor (Phase 1 complete); work follows the UX-audit sprint order — see `PROJECT_ROADMAP.md` § "Editor — UX Audit & Work Order" and `docs/EDITOR_UX_AUDIT.md`
 
 - **Test Status:** 955/955 passing, 0 ignored, 0 failures
 - **Lint Status:** `cargo clippy --workspace --all-targets` clean
