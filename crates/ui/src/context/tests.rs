@@ -301,6 +301,36 @@ fn test_wants_keyboard_follows_float_input_focus() {
     assert!(ui.wants_keyboard(), "focused float input must claim the keyboard");
 }
 
+#[test]
+fn test_wants_mouse_follows_button_press_through_release() {
+    use input::prelude::MouseButton;
+
+    let mut ui = UIContext::new();
+    let bounds = Rect::new(10.0, 10.0, 80.0, 20.0);
+    let mut input = input::InputHandler::new();
+
+    // Frame 1: press on the button claims the mouse gesture
+    input.mouse_mut().update_position(50.0, 20.0);
+    input.mouse_mut().handle_button_press(MouseButton::Left);
+    ui.begin_frame(&input, Vec2::new(800.0, 600.0));
+    ui.button("chrome_button", "Chrome", bounds);
+    assert!(ui.wants_mouse(), "widget press must claim the mouse");
+    ui.end_frame();
+
+    // Frame 2: release — the frame a raw-input click consumer would act on
+    input.update();
+    input.mouse_mut().handle_button_release(MouseButton::Left);
+    ui.begin_frame(&input, Vec2::new(800.0, 600.0));
+    ui.button("chrome_button", "Chrome", bounds);
+    assert!(ui.wants_mouse(), "gesture stays widget-owned on the release frame");
+    ui.end_frame();
+
+    // Frame 3: gesture over
+    input.update();
+    ui.begin_frame(&input, Vec2::new(800.0, 600.0));
+    assert!(!ui.wants_mouse());
+}
+
 // === text-input editing behavior (cursor/selection model) ===
 
 /// Click a float input (press frame + release frame) so it gains focus.

@@ -35,9 +35,9 @@ impl<G: Game> EditorGame<G> {
             return;
         }
 
-        // An open overlay (menu dropdown) swallows mouse input — skip
-        // picking/pan/zoom so clicks don't pass through it into the scene.
-        if ctx.ui.is_input_blocked_at(ctx.ui.mouse_pos()) {
+        // Editor chrome owns the mouse — skip picking/pan/zoom so clicks
+        // don't pass through it into the scene.
+        if chrome_owns_mouse(ctx.ui) {
             return;
         }
 
@@ -270,6 +270,15 @@ pub(super) fn scale_collider(collider: &mut physics::components::Collider, facto
             *radius *= factor.y;
         }
     }
+}
+
+/// Whether editor chrome owns the mouse this frame: an open overlay (menu
+/// dropdown) swallows input at the cursor, or a widget press (toolbar, play
+/// controls, panels) holds the gesture from press through the release frame.
+/// Viewport picking must not act while this is true — a click on chrome would
+/// otherwise fall through and silently reselect whatever sprite lies beneath.
+pub(super) fn chrome_owns_mouse(ui: &ui::UIContext) -> bool {
+    ui.is_input_blocked_at(ui.mouse_pos()) || ui.wants_mouse()
 }
 
 /// Build the list of pickable entities from the world.

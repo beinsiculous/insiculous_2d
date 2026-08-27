@@ -120,6 +120,15 @@ impl Toolbar {
         Rect::new(self.position.x, self.position.y, width, self.button_size)
     }
 
+    /// Full chrome footprint: the background panel plus the shortcut-hint row
+    /// below the buttons. Everything inside consumes mouse gestures so clicks
+    /// on toolbar chrome never fall through to viewport picking.
+    pub fn chrome_bounds(&self) -> Rect {
+        let bg = self.bounds().expand(4.0);
+        // Hint baselines sit 12px below the buttons; 16px covers descenders.
+        Rect::new(bg.x, bg.y, bg.width, bg.height + 16.0)
+    }
+
     /// Render the toolbar and handle tool selection.
     ///
     /// Returns the newly selected tool if changed.
@@ -166,6 +175,12 @@ impl Toolbar {
             );
             ui.label_centered_styled(tool.shortcut(), hint_pos, theme.shortcut_hint, theme.fonts.small);
         }
+
+        // Consume-only: a press on the background/border/hint chrome (not on
+        // a button) must still claim the mouse gesture, or viewport picking
+        // underneath treats the click as its own. Registered AFTER the
+        // buttons so they win the active-widget slot.
+        ui.interact("toolbar_chrome", self.chrome_bounds(), true);
 
         new_tool
     }
@@ -248,6 +263,65 @@ mod tests {
         let mut toolbar = Toolbar::new();
         toolbar.set_tool(EditorTool::Move);
         assert_eq!(toolbar.current_tool(), EditorTool::Move);
+    }
+
+    #[test]
+    fn test_toolbar_chrome_bounds_cover_background_and_hint_row() {
+        let toolbar = Toolbar::new();
+        let chrome = toolbar.chrome_bounds();
+        let bg = toolbar.bounds().expand(4.0);
+        assert!(chrome.contains(Vec2::new(bg.x, bg.y)), "background top-left is chrome");
+        // Shortcut hint baseline sits 12px below the buttons
+        assert!(
+            chrome.contains(Vec2::new(38.0, 10.0 + 56.0 + 12.0)),
+            "hint row below the buttons is chrome"
+        );
+    }
+
+    #[test]
+    fn test_toolbar_background_press_claims_mouse_gesture() {
+        use input::prelude::MouseButton;
+        let mut toolbar = Toolbar::new();
+        let theme = crate::EditorTheme::default();
+        let mut ui = UIContext::new();
+        let mut input = input::InputHandler::new();
+
+        // Press in the 6px gap between the first two buttons — visually
+        // toolbar chrome, but no button contains the point.
+        input.mouse_mut().update_position(68.0, 30.0);
+        input.mouse_mut().handle_button_press(MouseButton::Left);
+        ui.begin_frame(&input, Vec2::new(1280.0, 720.0));
+        assert!(toolbar.render(&mut ui, &theme).is_none());
+        assert!(
+            ui.wants_mouse(),
+            "a press on toolbar chrome must not fall through to viewport picking"
+        );
+        ui.end_frame();
+    }
+
+    #[test]
+    fn test_toolbar_button_click_survives_chrome_interact() {
+        use input::prelude::MouseButton;
+        let mut toolbar = Toolbar::new();
+        let theme = crate::EditorTheme::default();
+        let mut ui = UIContext::new();
+        let mut input = input::InputHandler::new();
+
+        // Press on the Move button (second button, center x = 72 + 28)
+        input.mouse_mut().update_position(100.0, 38.0);
+        input.mouse_mut().handle_button_press(MouseButton::Left);
+        ui.begin_frame(&input, Vec2::new(1280.0, 720.0));
+        assert!(toolbar.render(&mut ui, &theme).is_none(), "clicks fire on release");
+        assert!(ui.wants_mouse());
+        ui.end_frame();
+
+        // Release: the button must still win the click over the chrome rect
+        input.update();
+        input.mouse_mut().handle_button_release(MouseButton::Left);
+        ui.begin_frame(&input, Vec2::new(1280.0, 720.0));
+        assert_eq!(toolbar.render(&mut ui, &theme), Some(EditorTool::Move));
+        assert!(ui.wants_mouse(), "release frame stays widget-owned");
+        ui.end_frame();
     }
 
     #[test]

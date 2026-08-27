@@ -384,4 +384,6 @@ pub fn run_game_with_editor<G: Game>(game: G, config: GameConfig) -> Result<(), 
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod picking_tests;
+#[cfg(test)]
 mod time_freeze_tests;

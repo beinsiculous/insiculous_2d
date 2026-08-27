@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use ecs::{GlobalTransform2D, World};
+use ecs::World;
 use editor::PlayControlAction;
 use glam::Vec2;
 
@@ -10,7 +10,6 @@ use engine_core::Game;
 use engine_core::GameConfig;
 
 use crate::constants::clamp_editor_window_size;
-use super::viewport_interaction::build_pickable_entities;
 use super::EditorGame;
 
 struct DummyGame;
@@ -123,123 +122,6 @@ fn test_stop_resets_transform_propagation_cache() {
     let global = world.get::<ecs::GlobalTransform2D>(entity).unwrap();
     assert_eq!(global.position, glam::Vec2::new(10.0, 20.0));
 }
-
-#[test]
-fn test_build_pickable_entities_with_both_components() {
-    let mut world = ecs::World::new();
-    let entity = world.create_entity();
-    world.add_component(&entity, GlobalTransform2D {
-        position: Vec2::new(100.0, 200.0),
-        scale: Vec2::new(2.0, 2.0),
-        ..Default::default()
-    }).ok();
-    let mut sprite = ecs::sprite_components::Sprite::new(0);
-    sprite.scale = Vec2::new(0.5, 0.5);
-    sprite.depth = 5.0;
-    world.add_component(&entity, sprite).ok();
-
-    let pickables = build_pickable_entities(&world);
-    assert_eq!(pickables.len(), 1);
-    assert_eq!(pickables[0].entity_id, entity);
-    assert_eq!(pickables[0].position, Vec2::new(100.0, 200.0));
-    // Size matches the render path: sprite.scale * transform.scale *
-    // RENDER_UNIT = (0.5, 0.5) * (2, 2) * 80 = (80, 80) pixels
-    assert_eq!(pickables[0].size, Vec2::new(80.0, 80.0));
-    assert_eq!(pickables[0].depth, 5.0);
-}
-
-#[test]
-fn test_pick_hits_sprite_at_rendered_size_with_offset_panel() {
-    // Regression for two shipped bugs at once:
-    // 1. pick size ignored RENDER_UNIT (AABBs 80x smaller than sprites)
-    // 2. picking must work with a NONZERO panel origin (dock chrome)
-    let mut world = ecs::World::new();
-    let entity = world.create_entity();
-    world.add_component(&entity, GlobalTransform2D {
-        position: Vec2::new(100.0, 50.0),
-        ..Default::default()
-    }).ok();
-    // Unit transform + unit sprite scale renders as an 80x80px sprite.
-    world.add_component(&entity, ecs::sprite_components::Sprite::new(0)).ok();
-
-    let mut viewport = editor::SceneViewport::new();
-    viewport.set_viewport_bounds(common::Rect::new(300.0, 100.0, 800.0, 600.0));
-
-    let pickables = build_pickable_entities(&world);
-    let mut picker = editor::EntityPicker::new();
-
-    // Click 30px off-center — inside the rendered 80x80 sprite, but a miss
-    // with the old 1x1 pick AABB.
-    let click = viewport.world_to_screen(Vec2::new(100.0, 50.0)) + Vec2::new(30.0, 30.0);
-    let result = picker.pick_at_screen_pos(&viewport, click, &pickables);
-    assert_eq!(result.topmost(), Some(entity));
-
-    // A click well outside the sprite still misses.
-    let miss = viewport.world_to_screen(Vec2::new(100.0, 50.0)) + Vec2::new(90.0, 0.0);
-    let result = picker.pick_at_screen_pos(&viewport, miss, &pickables);
-    assert_eq!(result.topmost(), None);
-}
-
-#[test]
-fn test_build_pickable_entities_skips_without_sprite() {
-    let mut world = ecs::World::new();
-    let entity = world.create_entity();
-    // Only GlobalTransform2D, no Sprite
-    world.add_component(&entity, GlobalTransform2D::default()).ok();
-
-    let pickables = build_pickable_entities(&world);
-    assert!(pickables.is_empty());
-}
-
-#[test]
-fn test_build_pickable_entities_skips_without_global_transform() {
-    let mut world = ecs::World::new();
-    let entity = world.create_entity();
-    // Only Sprite, no GlobalTransform2D
-    world.add_component(&entity, ecs::sprite_components::Sprite::new(0)).ok();
-
-    let pickables = build_pickable_entities(&world);
-    assert!(pickables.is_empty());
-}
-
-#[test]
-fn test_build_pickable_entities_multiple() {
-    let mut world = ecs::World::new();
-
-    // Entity 1
-    let e1 = world.create_entity();
-    world.add_component(&e1, GlobalTransform2D {
-        position: Vec2::new(10.0, 20.0),
-        ..Default::default()
-    }).ok();
-    let mut sprite1 = ecs::sprite_components::Sprite::new(0);
-    sprite1.depth = 1.0;
-    world.add_component(&e1, sprite1).ok();
-
-    // Entity 2
-    let e2 = world.create_entity();
-    world.add_component(&e2, GlobalTransform2D {
-        position: Vec2::new(50.0, 60.0),
-        ..Default::default()
-    }).ok();
-    let mut sprite2 = ecs::sprite_components::Sprite::new(1);
-    sprite2.depth = 3.0;
-    world.add_component(&e2, sprite2).ok();
-
-    // Entity 3 — no sprite, should be excluded
-    let e3 = world.create_entity();
-    world.add_component(&e3, GlobalTransform2D::default()).ok();
-
-    let pickables = build_pickable_entities(&world);
-    assert_eq!(pickables.len(), 2);
-
-    let ids: Vec<_> = pickables.iter().map(|p| p.entity_id).collect();
-    assert!(ids.contains(&e1));
-    assert!(ids.contains(&e2));
-    assert!(!ids.contains(&e3));
-}
-
-// ================== Scene Save/Load Tests ==================
 
 #[test]
 fn test_editor_game_initial_scene_state() {

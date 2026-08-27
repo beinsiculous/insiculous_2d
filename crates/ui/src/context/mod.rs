@@ -216,6 +216,14 @@ impl UIContext {
         self.interaction.has_focus()
     }
 
+    /// Whether a widget owns the current mouse gesture — true from the press
+    /// that landed on a widget through the release frame. Raw-input consumers
+    /// (e.g. viewport picking) should not act on mouse clicks while this
+    /// returns `true`, or a click on chrome falls through to what's beneath.
+    pub fn wants_mouse(&self) -> bool {
+        self.interaction.wants_mouse()
+    }
+
     // ================== Overlays ==================
 
     /// Begin an overlay (dropdown menu, popup) over `blocking_rect`.

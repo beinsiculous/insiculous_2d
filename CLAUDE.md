@@ -60,9 +60,12 @@ encode lessons already learned here — following them is cheaper than re-learni
 - **UI text y = baseline** in `label_styled`. For text inside a box use
   `label_in_bounds_styled` (vertically centers via font metrics) or glyphs straddle
   the box border.
-- **Editor keyboard shortcuts must gate on `ctx.ui.wants_keyboard()`** and raw-input
-  consumers on `ctx.ui.is_input_blocked_at(mouse)` — otherwise typing in an inspector
-  field triggers Delete-entity/tool shortcuts, and clicks pass through open dropdowns.
+- **Editor keyboard shortcuts must gate on `ctx.ui.wants_keyboard()`**, and raw mouse
+  consumers (viewport picking) on `ctx.ui.is_input_blocked_at(mouse)` AND
+  `ctx.ui.wants_mouse()` (a widget owns the gesture press→release — note the release
+  frame, when click handlers fire, is NOT `WidgetState::Active`) — otherwise typing in
+  an inspector field triggers Delete-entity/tool shortcuts, clicks pass through open
+  dropdowns, and toolbar clicks silently reselect the sprite underneath.
 - **Same-frame spawns:** `PhysicsSystem::set_velocity` and `reset_body` are buffered
   and apply once the body syncs — use them, don't reach for rapier directly.
 - **Collision events:** drain once per frame with `physics.take_collision_events()`
