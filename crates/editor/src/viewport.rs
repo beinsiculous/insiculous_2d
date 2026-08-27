@@ -157,9 +157,12 @@ impl SceneViewport {
     }
 
     /// Update camera interpolation. Call each frame.
-    pub fn update(&mut self, _delta_time: f32) {
-        // Simple lerp interpolation
-        let t = self.interpolation_speed;
+    pub fn update(&mut self, delta_time: f32) {
+        // Exponential decay toward the target: `interpolation_speed` is the
+        // per-frame factor AT 60 FPS, converted so any frame rate covers the
+        // same distance over the same wall-clock time (two 1/120s steps
+        // compose to exactly one 1/60s step).
+        let t = 1.0 - (1.0 - self.interpolation_speed).powf(delta_time * 60.0);
         self.camera_position = self.camera_position.lerp(self.target_camera_position, t);
         self.camera_zoom = self.camera_zoom + (self.target_camera_zoom - self.camera_zoom) * t;
     }
@@ -414,6 +417,49 @@ mod tests {
 
         viewport.set_camera_zoom(100.0);
         assert_eq!(viewport.camera_zoom(), 10.0); // Clamped to max
+    }
+
+    #[test]
+    fn test_update_converges_camera_on_targets() {
+        // The audit's dead wire: zoom_at/pan/reset_camera write target_*
+        // only — update() is what moves the live camera toward them.
+        let mut viewport = SceneViewport::new();
+        viewport.set_target_camera_position(Vec2::new(100.0, -40.0));
+        viewport.set_target_zoom(2.0);
+
+        for _ in 0..120 {
+            viewport.update(1.0 / 60.0);
+        }
+        assert!((viewport.camera_position() - Vec2::new(100.0, -40.0)).length() < 0.01);
+        assert!((viewport.camera_zoom() - 2.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_update_is_frame_rate_independent() {
+        // Same wall-clock time must cover the same distance regardless of
+        // step size: two 1/120s steps compose to exactly one 1/60s step.
+        let mut coarse = SceneViewport::new();
+        let mut fine = SceneViewport::new();
+        for v in [&mut coarse, &mut fine] {
+            v.set_target_camera_position(Vec2::new(100.0, 0.0));
+            v.set_target_zoom(3.0);
+        }
+
+        coarse.update(1.0 / 60.0);
+        fine.update(1.0 / 120.0);
+        fine.update(1.0 / 120.0);
+
+        assert!((coarse.camera_position() - fine.camera_position()).length() < 0.001);
+        assert!((coarse.camera_zoom() - fine.camera_zoom()).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_update_with_zero_delta_leaves_camera_unchanged() {
+        let mut viewport = SceneViewport::new();
+        viewport.set_target_camera_position(Vec2::new(100.0, 0.0));
+
+        viewport.update(0.0);
+        assert_eq!(viewport.camera_position(), Vec2::ZERO, "no time passed, no movement");
     }
 
     #[test]

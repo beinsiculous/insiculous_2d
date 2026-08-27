@@ -293,6 +293,13 @@ impl<G: Game> Game for EditorGame<G> {
             ctx.ui.set_default_font(editor_font);
         }
 
+        // 0c. Interpolate the viewport camera toward its targets — this is
+        // what makes scroll zoom, pan, Home, and focus_on actually move the
+        // view (every setter writes target_* only). Runs before the play-mode
+        // camera sync, which sets camera and target together, so while
+        // Playing this is a no-op and the game camera stays authoritative.
+        self.editor.update_viewport(ctx.delta_time);
+
         // 1. Run transform hierarchy system
         self.transform_system.update(ctx.world, ctx.delta_time);
 
