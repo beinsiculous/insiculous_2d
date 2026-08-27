@@ -79,6 +79,34 @@ fn render_scene_view(editor: &EditorContext, ctx: &mut GameContext, bounds: comm
         );
     }
 
+    // Selection + hover outlines — an editing affordance, so hidden while
+    // Playing (picking and gizmos are disabled then too). Built from the
+    // same pickable list picking uses, so the outline always matches what a
+    // click selects; hover reads the same input-frame mouse state picking
+    // will read one step later, so hint and click agree.
+    if !editor.is_playing() {
+        let pickables = crate::editor_game::build_pickable_entities(ctx.world);
+        let mouse = ctx.ui.mouse_pos();
+        let hover_allowed = editor.viewport.contains_screen_point(mouse)
+            && !crate::editor_game::chrome_owns_mouse(ctx.ui)
+            && !editor.drag_drop.suppresses_click()
+            && !editor.gizmo_has_priority();
+        let hovered = if hover_allowed {
+            editor::hover_entity_at(mouse, &editor.viewport, &pickables)
+        } else {
+            None
+        };
+        editor::render_selection_outline(
+            ctx.ui,
+            &editor.viewport,
+            &editor.selection,
+            hovered,
+            &pickables,
+            &editor.theme.selection_outline_colors(),
+            ui::Rect::new(bounds.x, bounds.y, bounds.width, bounds.height),
+        );
+    }
+
     // Play-state border tint
     let border_color = theme.play_state_border(editor.play_state());
     let w = if editor.in_play_session() { 3.0 } else { 1.0 };

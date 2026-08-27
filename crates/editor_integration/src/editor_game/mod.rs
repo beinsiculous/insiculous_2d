@@ -30,6 +30,8 @@ mod scene_io;
 mod shortcuts;
 mod viewport_interaction;
 
+pub(crate) use viewport_interaction::{build_pickable_entities, chrome_owns_mouse};
+
 /// Wraps a user's `Game` with the full editor UI overlay.
 struct EditorGame<G: Game> {
     inner: G,

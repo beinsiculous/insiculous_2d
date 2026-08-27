@@ -170,6 +170,11 @@ pub struct EditorTheme {
     /// Collider outline on selected entities
     pub collider_selected: Color,
 
+    // ── Selection outline ───────────────────────────────────────
+    /// Viewport outline of selected entities (primary; secondary and hover
+    /// derive from it in `selection_outline_colors()`)
+    pub selection_outline: Color,
+
     // ── Typography ──────────────────────────────────────────────
     /// Font-size tokens — all editor text sizes come from here
     pub fonts: crate::typography::FontSizes,
@@ -272,6 +277,10 @@ impl Default for EditorTheme {
             collider_outline: Color::new(0.2, 1.0, 0.4, 0.9),
             collider_sensor: Color::new(0.2, 0.85, 1.0, 0.9),
             collider_selected: Color::new(1.0, 0.85, 0.2, 1.0),
+
+            // Selection outline — orange: distinct from the collider overlay's
+            // yellow/green and the grid's cyan
+            selection_outline: Color::new(1.0, 0.55, 0.15, 1.0),
         }
     }
 }
@@ -389,6 +398,19 @@ impl EditorTheme {
         }
     }
 
+    /// Colors for the viewport selection/hover outlines. Derivation contract:
+    /// secondary is the primary dimmed (alpha preserved), hovered is the
+    /// primary at 40% of its own alpha (multiplied, so translucent themes
+    /// stay proportionally translucent).
+    pub fn selection_outline_colors(&self) -> crate::SelectionOutlineColors {
+        let primary = self.selection_outline;
+        crate::SelectionOutlineColors {
+            primary,
+            secondary: primary.darken(0.7),
+            hovered: primary.with_alpha(primary.a * 0.4),
+        }
+    }
+
     /// Get the viewport border color for a given play state.
     pub fn play_state_border(&self, state: crate::EditorPlayState) -> Color {
         match state {
@@ -463,5 +485,23 @@ mod tests {
         assert_ne!(theme.collider_outline, theme.collider_sensor);
         assert_ne!(theme.collider_outline, theme.collider_selected);
         assert_ne!(theme.collider_sensor, theme.collider_selected);
+    }
+
+    #[test]
+    fn test_selection_outline_derivation_contract() {
+        let theme = EditorTheme::default();
+        let c = theme.selection_outline_colors();
+        // Each role must be visually distinguishable
+        assert_ne!(c.primary, c.secondary);
+        assert_ne!(c.primary, c.hovered);
+        assert_ne!(c.secondary, c.hovered);
+        // Secondary dims the primary but preserves its alpha; hovered
+        // multiplies the primary's own alpha (translucent themes stay
+        // proportionally translucent) — see selection_outline_colors().
+        assert_eq!(c.secondary.a, c.primary.a);
+        assert!((c.hovered.a - c.primary.a * 0.4).abs() < 1e-6);
+        // Distinct from the collider overlay's selected color so both
+        // overlays can be read at once
+        assert_ne!(theme.selection_outline, theme.collider_selected);
     }
 }

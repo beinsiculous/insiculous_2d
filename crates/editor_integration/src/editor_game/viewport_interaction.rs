@@ -277,7 +277,7 @@ pub(super) fn scale_collider(collider: &mut physics::components::Collider, facto
 /// controls, panels) holds the gesture from press through the release frame.
 /// Viewport picking must not act while this is true — a click on chrome would
 /// otherwise fall through and silently reselect whatever sprite lies beneath.
-pub(super) fn chrome_owns_mouse(ui: &ui::UIContext) -> bool {
+pub(crate) fn chrome_owns_mouse(ui: &ui::UIContext) -> bool {
     ui.is_input_blocked_at(ui.mouse_pos()) || ui.wants_mouse()
 }
 
@@ -285,7 +285,7 @@ pub(super) fn chrome_owns_mouse(ui: &ui::UIContext) -> bool {
 ///
 /// Queries for entities that have both `GlobalTransform2D` and `Sprite` components,
 /// which are required for viewport picking (position + visual size).
-pub(super) fn build_pickable_entities(world: &World) -> Vec<PickableEntity> {
+pub(crate) fn build_pickable_entities(world: &World) -> Vec<PickableEntity> {
     let entities = world.query_entities::<Pair<GlobalTransform2D, ecs::sprite_components::Sprite>>();
     entities
         .into_iter()

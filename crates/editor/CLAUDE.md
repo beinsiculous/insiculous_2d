@@ -50,7 +50,8 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, com
 - `selection.rs` — Selection set (primary + multi-select)
 - `hierarchy.rs` — Hierarchy panel tree view
 - `viewport.rs`, `viewport_input.rs` — Scene viewport with camera pan/zoom
-- `picking.rs` — EntityPicker, PickableEntity, SelectionRect, screen_to_world()
+- `picking/` — EntityPicker, PickableEntity (AABB from absolute size — flip scales stay clickable), SelectionRect, screen_to_world()
+- `selection_outline.rs` — viewport selection/hover outlines (consumes the picking `PickableEntity` list; pure `hover_entity_at` hit test; colors via `theme.selection_outline_colors()`)
 - `gizmo.rs` — Transform gizmos (translate, rotate, scale handles)
 - `grid.rs` — Background grid rendering
 - `collider_overlay.rs` — Collider outline overlay for the scene view (mirrors rapier placement: offset is body-local, Transform2D.scale ignored); toggled via `EditorContext::toggle_colliders()` / C key
@@ -70,7 +71,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, com
 - Theme is on `EditorContext.theme` (public field); call `theme.gizmo_palette()`, `inspector_style()`, `editable_field_style()`, `grid_colors()`, `collider_overlay_colors()` instead of hardcoding colors. Menu/Toolbar/Hierarchy `render()` take `&EditorTheme`
 
 ## Testing
-- 285 passing (incl. 3 doc tests), 0 ignored — `cargo test -p editor`
+- 297 passing (incl. 3 doc tests), 0 ignored — `cargo test -p editor`
 
 ## Godot Oracle — When Stuck
 Use `WebFetch` to read from `https://github.com/godotengine/godot/blob/master/`

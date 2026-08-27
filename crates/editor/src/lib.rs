@@ -50,6 +50,7 @@ mod picking;
 mod play_controls;
 mod play_state;
 mod selection;
+mod selection_outline;
 pub mod status_bar;
 pub mod stored_component;
 mod text_field;
@@ -96,6 +97,9 @@ pub use picking::{EntityPicker, PickResult, PickableEntity, SelectionRect, AABB}
 pub use play_controls::{PlayControlAction, PlayControls};
 pub use play_state::EditorPlayState;
 pub use selection::Selection;
+pub use selection_outline::{
+    hover_entity_at, outline_segments, render_selection_outline, SelectionOutlineColors,
+};
 pub use status_bar::{StatusBar, StatusBarStats, STATUS_BAR_HEIGHT};
 pub use stored_component::{
     available_components, capture_all_components, categorized_components,
