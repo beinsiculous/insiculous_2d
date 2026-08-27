@@ -320,3 +320,105 @@ fn test_collider_overlay_visible_by_default_and_toggles() {
     ctx.set_colliders_visible(false);
     assert!(!ctx.is_colliders_visible());
 }
+
+// ---- Frame selected / frame all (issue #21) ----
+
+fn pickable(id: u64, pos: Vec2, size: Vec2) -> crate::PickableEntity {
+    crate::PickableEntity::new(ecs::EntityId::with_generation(id, 1), pos, size, 0.0)
+}
+
+fn framing_ctx() -> EditorContext {
+    let mut ctx = EditorContext::new();
+    ctx.viewport
+        .set_viewport_bounds(common::Rect::new(0.0, 0.0, 800.0, 600.0));
+    ctx
+}
+
+#[test]
+fn test_frame_selected_centers_on_selected_entities_only() {
+    let mut ctx = framing_ctx();
+    let pickables = vec![
+        pickable(1, Vec2::new(200.0, 100.0), Vec2::splat(80.0)),
+        pickable(2, Vec2::new(-900.0, -700.0), Vec2::splat(80.0)),
+    ];
+    ctx.selection.select(pickables[0].entity_id);
+
+    assert!(ctx.frame_selected(&pickables));
+
+    // Only the selected entity's bounds count — the far-away one is ignored.
+    assert_eq!(
+        ctx.viewport.target_camera_position(),
+        Vec2::new(200.0, 100.0)
+    );
+}
+
+#[test]
+fn test_frame_selected_zooms_to_fit_single_entity_extents() {
+    let mut ctx = framing_ctx();
+    let pickables = vec![pickable(1, Vec2::ZERO, Vec2::splat(80.0))];
+    ctx.selection.select(pickables[0].entity_id);
+
+    ctx.frame_selected(&pickables);
+
+    // Corners at ±40 give a 80×80 bounds, so zoom-to-fit engages:
+    // min(800/(80+100), 600/(80+100)) = 600/180, clamped to ≤10.
+    assert!((ctx.viewport.target_camera_zoom() - 600.0 / 180.0).abs() < 0.001);
+}
+
+#[test]
+fn test_frame_selected_with_empty_selection_frames_all() {
+    let mut ctx = framing_ctx();
+    let pickables = vec![
+        pickable(1, Vec2::new(-100.0, 0.0), Vec2::splat(80.0)),
+        pickable(2, Vec2::new(300.0, 200.0), Vec2::splat(80.0)),
+    ];
+
+    assert!(ctx.frame_selected(&pickables));
+
+    assert_eq!(
+        ctx.viewport.target_camera_position(),
+        Vec2::new(100.0, 100.0)
+    );
+}
+
+#[test]
+fn test_frame_all_covers_every_entity_regardless_of_selection() {
+    let mut ctx = framing_ctx();
+    let pickables = vec![
+        pickable(1, Vec2::new(-200.0, -100.0), Vec2::splat(80.0)),
+        pickable(2, Vec2::new(400.0, 300.0), Vec2::splat(80.0)),
+    ];
+    ctx.selection.select(pickables[0].entity_id);
+
+    assert!(ctx.frame_all(&pickables));
+
+    assert_eq!(
+        ctx.viewport.target_camera_position(),
+        Vec2::new(100.0, 100.0)
+    );
+}
+
+#[test]
+fn test_framing_empty_scene_leaves_camera_targets_unchanged() {
+    let mut ctx = framing_ctx();
+    ctx.viewport.set_target_camera_position(Vec2::new(5.0, 6.0));
+
+    assert!(!ctx.frame_selected(&[]));
+    assert!(!ctx.frame_all(&[]));
+
+    assert_eq!(ctx.viewport.target_camera_position(), Vec2::new(5.0, 6.0));
+    assert_eq!(ctx.viewport.target_camera_zoom(), 1.0);
+}
+
+#[test]
+fn test_framing_flipped_scale_entity_uses_absolute_extents() {
+    let mut ctx = framing_ctx();
+    let pickables = vec![pickable(1, Vec2::ZERO, Vec2::new(-80.0, 80.0))];
+    ctx.selection.select(pickables[0].entity_id);
+
+    ctx.frame_selected(&pickables);
+
+    // A negative (flipped) scale must not produce inverted bounds.
+    assert_eq!(ctx.viewport.target_camera_position(), Vec2::ZERO);
+    assert!((ctx.viewport.target_camera_zoom() - 600.0 / 180.0).abs() < 0.001);
+}

@@ -90,6 +90,16 @@ impl SceneViewport {
         self.target_camera_position = position;
     }
 
+    /// Camera position the viewport is interpolating toward.
+    pub fn target_camera_position(&self) -> Vec2 {
+        self.target_camera_position
+    }
+
+    /// Camera zoom the viewport is interpolating toward.
+    pub fn target_camera_zoom(&self) -> f32 {
+        self.target_camera_zoom
+    }
+
     /// Pan the camera by a delta amount (in world space).
     pub fn pan(&mut self, delta: Vec2) {
         self.target_camera_position += delta;
@@ -562,18 +572,28 @@ mod tests {
     }
 
     #[test]
-    fn test_viewport_focus_on_bounds() {
+    fn test_focus_on_bounds_targets_center_and_zooms_to_fit() {
         let mut viewport = SceneViewport::new();
         viewport.set_viewport_bounds(Rect::new(0.0, 0.0, 800.0, 600.0));
 
-        let positions = vec![
-            Vec2::new(-100.0, -50.0),
-            Vec2::new(100.0, 50.0),
-        ];
+        let positions = vec![Vec2::new(-90.0, -40.0), Vec2::new(110.0, 60.0)];
         viewport.focus_on_bounds(&positions);
 
-        // Target should be center of bounds
-        viewport.update(0.016);
-        // Camera should be moving toward (0, 0) - center of bounds
+        // Targets are what focus writes; the camera itself interpolates later.
+        assert_eq!(viewport.target_camera_position(), Vec2::new(10.0, 10.0));
+        // Zoom-to-fit: min(800/(200+100), 600/(100+100)) = min(2.667, 3.0)
+        assert!((viewport.target_camera_zoom() - 800.0 / 300.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_focus_on_bounds_with_no_positions_leaves_targets_unchanged() {
+        let mut viewport = SceneViewport::new();
+        viewport.set_viewport_bounds(Rect::new(0.0, 0.0, 800.0, 600.0));
+        viewport.set_target_camera_position(Vec2::new(42.0, 7.0));
+
+        viewport.focus_on_bounds(&[]);
+
+        assert_eq!(viewport.target_camera_position(), Vec2::new(42.0, 7.0));
+        assert_eq!(viewport.target_camera_zoom(), 1.0);
     }
 }

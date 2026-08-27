@@ -495,17 +495,44 @@ impl EditorContext {
         self.gizmo.is_active()
     }
 
-    /// Focus the viewport camera on the current selection.
-    pub fn focus_on_selection(&mut self, entity_positions: &[(ecs::EntityId, Vec2)]) {
-        let selected_positions: Vec<Vec2> = entity_positions
+    /// Frame the current selection in the viewport (the F shortcut).
+    ///
+    /// Feeds both AABB corners of every selected pickable into
+    /// [`SceneViewport::focus_on_bounds`], so zoom-to-fit accounts for
+    /// entity extents — a single selected entity still gets a sensible
+    /// zoom instead of a zero-size bounds. With nothing selected this
+    /// falls back to framing everything: F is the "I'm lost, take me
+    /// back to my entities" key. Returns whether the camera moved.
+    pub fn frame_selected(&mut self, pickables: &[crate::PickableEntity]) -> bool {
+        let selected: Vec<&crate::PickableEntity> = pickables
             .iter()
-            .filter(|(id, _)| self.selection.contains(*id))
-            .map(|(_, pos)| *pos)
+            .filter(|p| self.selection.contains(p.entity_id))
             .collect();
-
-        if !selected_positions.is_empty() {
-            self.viewport.focus_on_bounds(&selected_positions);
+        if selected.is_empty() {
+            return self.frame_all(pickables);
         }
+        self.frame_pickables(&selected)
+    }
+
+    /// Frame every pickable entity in the viewport (the Shift+F shortcut).
+    /// Returns whether the camera moved (false for an empty scene).
+    pub fn frame_all(&mut self, pickables: &[crate::PickableEntity]) -> bool {
+        self.frame_pickables(&pickables.iter().collect::<Vec<_>>())
+    }
+
+    fn frame_pickables(&mut self, pickables: &[&crate::PickableEntity]) -> bool {
+        let corners: Vec<Vec2> = pickables
+            .iter()
+            .flat_map(|p| {
+                let aabb = p.aabb();
+                [aabb.min, aabb.max]
+            })
+            .collect();
+        if corners.is_empty() {
+            return false;
+        }
+        self.viewport.focus_on_bounds(&corners);
+        true
     }
 }
 

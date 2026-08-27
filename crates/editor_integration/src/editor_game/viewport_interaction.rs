@@ -51,6 +51,34 @@ impl<G: Game> EditorGame<G> {
             return;
         }
 
+        // Camera shortcuts (F / Shift+F / Home) are requests, consumed here —
+        // after the gizmo-priority return (reframing mid-drag would slide the
+        // handle under the cursor and corrupt the drag) and only while no
+        // text field owns the keyboard (the wants_keyboard footgun). Framing
+        // is edit-mode-only by design: while Playing the viewport mirrors the
+        // game camera and reframing would fight that sync.
+        if !ctx.ui.wants_keyboard() {
+            // Reset first so a same-frame F + Home resolves to the more
+            // specific intent: framing overwrites the reset targets.
+            if input_result.reset_requested {
+                self.editor.viewport.reset_camera();
+            }
+            if input_result.focus_requested || input_result.frame_all_requested {
+                let pickables = build_pickable_entities(ctx.world);
+                if input_result.frame_all_requested {
+                    self.editor.frame_all(&pickables);
+                } else if self.editor.selection.is_empty() {
+                    if self.editor.frame_selected(&pickables) {
+                        self.editor
+                            .status_bar
+                            .show_message("No selection — framed all entities");
+                    }
+                } else {
+                    self.editor.frame_selected(&pickables);
+                }
+            }
+        }
+
         if input_result.clicked {
             self.editor.close_add_component_popup();
             let pickables = build_pickable_entities(ctx.world);

@@ -70,9 +70,11 @@ pub struct ViewportInputResult {
     pub selection_start: Vec2,
     /// Selection rectangle end position (screen coords)
     pub selection_end: Vec2,
-    /// Whether focus on selection was requested
+    /// Whether focus on selection was requested (F)
     pub focus_requested: bool,
-    /// Whether camera reset was requested
+    /// Whether framing every entity was requested (Shift+F)
+    pub frame_all_requested: bool,
+    /// Whether camera reset was requested (Home)
     pub reset_requested: bool,
 }
 
@@ -148,16 +150,20 @@ impl ViewportInputHandler {
 
         let mouse_pos = input_state.mouse_position;
 
-        // Handle keyboard shortcuts (actions)
+        // Keyboard shortcuts only REQUEST camera moves here — the caller
+        // consumes them (it holds the ui-focus and gizmo context this
+        // handler cannot see), so they deliberately do not set `consumed`.
+        // Shift+F = frame all, F = frame selection.
         if input_mapping.is_action_just_pressed(EditorAction::FocusSelection, input_handler) {
-            result.focus_requested = true;
-            result.consumed = true;
+            if input_state.add_modifier {
+                result.frame_all_requested = true;
+            } else {
+                result.focus_requested = true;
+            }
         }
 
         if input_mapping.is_action_just_pressed(EditorAction::ResetCamera, input_handler) {
-            viewport.reset_camera();
             result.reset_requested = true;
-            result.consumed = true;
         }
 
         // Handle pan input
@@ -358,5 +364,77 @@ mod tests {
         assert!(!config.invert_zoom);
         assert_eq!(config.min_zoom, 0.1);
         assert_eq!(config.max_zoom, 10.0);
+    }
+
+    // ---- Camera shortcut requests (issue #21) ----
+
+    /// A viewport with bounds, mouse hovering its center, and a raw input
+    /// handler with the given key just pressed.
+    fn shortcut_rig(
+        key: winit::keyboard::KeyCode,
+    ) -> (SceneViewport, EditorInputState, EditorInputMapping, input::InputHandler) {
+        let mut viewport = SceneViewport::new();
+        viewport.set_viewport_bounds(common::Rect::new(0.0, 0.0, 800.0, 600.0));
+        let state = EditorInputState {
+            mouse_position: Vec2::new(400.0, 300.0),
+            ..Default::default()
+        };
+        let mut input = input::InputHandler::new();
+        input.keyboard_mut().handle_key_press(key);
+        (viewport, state, EditorInputMapping::new(), input)
+    }
+
+    #[test]
+    fn test_f_requests_focus_on_selection() {
+        let (mut viewport, state, mapping, input) =
+            shortcut_rig(winit::keyboard::KeyCode::KeyF);
+        let mut handler = ViewportInputHandler::new();
+
+        let result = handler.handle_input(&mut viewport, &state, &mapping, &input, true);
+
+        assert!(result.focus_requested);
+        assert!(!result.frame_all_requested);
+        // Requests don't claim the input — the caller decides whether to act.
+        assert!(!result.consumed);
+    }
+
+    #[test]
+    fn test_shift_f_requests_frame_all_not_focus() {
+        let (mut viewport, mut state, mapping, input) =
+            shortcut_rig(winit::keyboard::KeyCode::KeyF);
+        state.add_modifier = true; // Shift held
+        let mut handler = ViewportInputHandler::new();
+
+        let result = handler.handle_input(&mut viewport, &state, &mapping, &input, true);
+
+        assert!(result.frame_all_requested);
+        assert!(!result.focus_requested);
+    }
+
+    #[test]
+    fn test_home_requests_reset_and_leaves_the_camera_to_the_caller() {
+        let (mut viewport, state, mapping, input) =
+            shortcut_rig(winit::keyboard::KeyCode::Home);
+        viewport.set_target_camera_position(Vec2::new(50.0, 60.0));
+        let mut handler = ViewportInputHandler::new();
+
+        let result = handler.handle_input(&mut viewport, &state, &mapping, &input, true);
+
+        // The handler only reports the request — the caller consumes it
+        // (it knows whether a text field owns the keyboard).
+        assert!(result.reset_requested);
+        assert_eq!(viewport.target_camera_position(), Vec2::new(50.0, 60.0));
+    }
+
+    #[test]
+    fn test_shortcuts_ignored_while_mouse_outside_viewport() {
+        let (mut viewport, state, mapping, input) =
+            shortcut_rig(winit::keyboard::KeyCode::KeyF);
+        let mut handler = ViewportInputHandler::new();
+
+        let result = handler.handle_input(&mut viewport, &state, &mapping, &input, false);
+
+        assert!(!result.focus_requested);
+        assert!(!result.frame_all_requested);
     }
 }
