@@ -201,8 +201,9 @@ impl EntityPicker {
             .map(|e| (e.entity_id, e.depth))
             .collect();
 
-        // Sort by depth (higher depth = in front)
-        hits.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        // Sort by depth (higher depth = in front); ids break equal-depth ties
+        // so downstream selection order (and thus the primary) is deterministic.
+        hits.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.value().cmp(&b.0.value())));
 
         // Handle cycling for overlapping entities
         if is_same_position && hits.len() > 1 {
@@ -261,8 +262,9 @@ impl EntityPicker {
             .map(|e| (e.entity_id, e.depth))
             .collect();
 
-        // Sort by depth (higher depth = in front)
-        hits.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        // Sort by depth (higher depth = in front); ids break equal-depth ties
+        // so downstream selection order (and thus the primary) is deterministic.
+        hits.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.value().cmp(&b.0.value())));
 
         PickResult {
             hits: hits.into_iter().map(|(id, _)| id).collect(),

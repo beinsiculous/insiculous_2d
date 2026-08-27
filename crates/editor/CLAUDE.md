@@ -47,7 +47,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, com
 - `behavior_editor.rs` — `edit_behavior()`: variant cycle selector + per-variant fields (String fields read-only until the ui crate grows text input)
 
 ### Scene + selection
-- `selection.rs` — Selection set (primary + multi-select)
+- `selection.rs` — Selection set (primary + multi-select; insertion-ordered IndexSet, deterministic primary fallback)
 - `hierarchy.rs` — Hierarchy panel tree view
 - `viewport.rs`, `viewport_input.rs` — Scene viewport with camera pan/zoom
 - `picking/` — EntityPicker, PickableEntity (AABB from absolute size — flip scales stay clickable), SelectionRect, screen_to_world()
@@ -71,7 +71,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, com
 - Theme is on `EditorContext.theme` (public field); call `theme.gizmo_palette()`, `inspector_style()`, `editable_field_style()`, `grid_colors()`, `collider_overlay_colors()` instead of hardcoding colors. Menu/Toolbar/Hierarchy `render()` take `&EditorTheme`
 
 ## Testing
-- 317 passing (incl. 3 doc tests), 0 ignored — `cargo test -p editor`
+- 324 passing (incl. 3 doc tests), 0 ignored — `cargo test -p editor`
 
 ## Godot Oracle — When Stuck
 Use `WebFetch` to read from `https://github.com/godotengine/godot/blob/master/`

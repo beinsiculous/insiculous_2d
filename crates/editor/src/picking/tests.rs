@@ -121,6 +121,29 @@ fn test_pick_depth_sorting() {
 }
 
 #[test]
+fn test_equal_depth_hits_order_by_id_deterministically() {
+    // Equal depths must not leave the order to the unstable sort: the first
+    // hit becomes the selection's primary, so ids break the tie — in the
+    // marquee AND the click path (whose cycling rotates from that order).
+    let picker = EntityPicker::new();
+    let mut viewport = SceneViewport::new();
+    viewport.set_viewport_bounds(common::Rect::new(0.0, 0.0, 800.0, 600.0));
+
+    let entities = vec![
+        PickableEntity::new(EntityId::with_generation(9, 1), Vec2::ZERO, Vec2::new(50.0, 50.0), 5.0),
+        PickableEntity::new(EntityId::with_generation(2, 1), Vec2::ZERO, Vec2::new(50.0, 50.0), 5.0),
+        PickableEntity::new(EntityId::with_generation(4, 1), Vec2::ZERO, Vec2::new(50.0, 50.0), 5.0),
+    ];
+
+    let rect = AABB::new(Vec2::new(-100.0, -100.0), Vec2::new(100.0, 100.0));
+    let result = picker.pick_in_world_rect(rect, &entities);
+
+    assert_eq!(result.hits[0], EntityId::with_generation(2, 1));
+    assert_eq!(result.hits[1], EntityId::with_generation(4, 1));
+    assert_eq!(result.hits[2], EntityId::with_generation(9, 1));
+}
+
+#[test]
 fn test_pick_in_rect() {
     let picker = EntityPicker::new();
     let mut viewport = SceneViewport::new();

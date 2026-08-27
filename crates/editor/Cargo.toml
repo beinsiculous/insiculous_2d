@@ -16,6 +16,7 @@ physics = { path = "../physics" }
 
 # External dependencies
 glam = { workspace = true }
+indexmap = { workspace = true }
 log = { workspace = true }
 winit = { workspace = true }
 serde = { workspace = true }

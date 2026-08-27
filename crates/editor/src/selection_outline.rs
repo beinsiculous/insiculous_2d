@@ -99,8 +99,8 @@ pub fn render_selection_outline(
         .iter()
         .filter(|p| selection.contains(p.entity_id))
         .collect();
-    // Selection iterates a HashSet — sort so overlapping outlines always
-    // layer the same way (front-most drawn last, ids break depth ties).
+    // Sort by depth so overlapping outlines layer correctly regardless of
+    // selection order (front-most drawn last, ids break depth ties).
     selected.sort_by(|a, b| depth_then_id(a, b));
 
     for pickable in selected {

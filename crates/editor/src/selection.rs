@@ -2,9 +2,14 @@
 //!
 //! The Selection struct tracks which entities are currently selected in the
 //! editor and provides methods for manipulating the selection.
+//!
+//! Ordering contract: the selection is insertion-ordered (`IndexSet`), so
+//! `selected()` always iterates in the order entities were selected and the
+//! primary falls back deterministically — the inspector, gizmo pivot, and
+//! undo child ordering must never depend on run-to-run hash order.
 
-use std::collections::HashSet;
 use ecs::EntityId;
+use indexmap::IndexSet;
 
 /// Manages the current entity selection in the editor.
 ///
@@ -12,8 +17,10 @@ use ecs::EntityId;
 /// common selection operations like toggle, add, remove, and clear.
 #[derive(Debug, Clone, Default)]
 pub struct Selection {
-    /// Currently selected entities
-    selected: HashSet<EntityId>,
+    /// Currently selected entities, in the order they were selected.
+    /// CAUTION: bare `IndexSet::remove` is `swap_remove` and breaks insertion
+    /// order — always use `shift_remove` here.
+    selected: IndexSet<EntityId>,
     /// Primary selection (the "focus" entity for property editing)
     primary: Option<EntityId>,
 }
@@ -22,7 +29,7 @@ impl Selection {
     /// Create a new empty selection.
     pub fn new() -> Self {
         Self {
-            selected: HashSet::new(),
+            selected: IndexSet::new(),
             primary: None,
         }
     }
@@ -47,7 +54,7 @@ impl Selection {
         self.primary
     }
 
-    /// Get all selected entities.
+    /// Get all selected entities, in the order they were selected.
     pub fn selected(&self) -> impl Iterator<Item = EntityId> + '_ {
         self.selected.iter().copied()
     }
@@ -60,6 +67,8 @@ impl Selection {
     }
 
     /// Add an entity to the current selection (multi-select).
+    ///
+    /// Re-adding an already-selected entity keeps its original position.
     pub fn add(&mut self, entity: EntityId) {
         self.selected.insert(entity);
         if self.primary.is_none() {
@@ -67,11 +76,12 @@ impl Selection {
         }
     }
 
-    /// Remove an entity from the selection.
+    /// Remove an entity from the selection. If it was the primary, the
+    /// earliest remaining selected entity becomes the new primary.
     pub fn remove(&mut self, entity: EntityId) {
-        self.selected.remove(&entity);
+        self.selected.shift_remove(&entity);
         if self.primary == Some(entity) {
-            self.primary = self.selected.iter().next().copied();
+            self.primary = self.selected.first().copied();
         }
     }
 
@@ -91,10 +101,13 @@ impl Selection {
     }
 
     /// Select multiple entities, clearing any previous selection.
+    ///
+    /// Order is preserved (duplicates keep their first position) and the
+    /// first given entity becomes the primary; empty input clears everything.
     pub fn select_multiple(&mut self, entities: impl IntoIterator<Item = EntityId>) {
         self.selected.clear();
         self.selected.extend(entities);
-        self.primary = self.selected.iter().next().copied();
+        self.primary = self.selected.first().copied();
     }
 
     /// Set the primary selection (must be in the current selection).
@@ -260,6 +273,88 @@ mod tests {
         selection.set_primary(e2); // e2 is not selected
 
         // Primary should remain e1
+        assert_eq!(selection.primary(), Some(e1));
+    }
+
+    #[test]
+    fn test_selected_iterates_in_insertion_order() {
+        let mut selection = Selection::new();
+        let (e3, e1, e2) = (entity(3), entity(1), entity(2));
+
+        selection.add(e3);
+        selection.add(e1);
+        selection.add(e2);
+
+        let selected: Vec<_> = selection.selected().collect();
+        assert_eq!(selected, vec![e3, e1, e2]);
+    }
+
+    #[test]
+    fn test_add_already_selected_keeps_position_and_len() {
+        let mut selection = Selection::new();
+        let e1 = entity(1);
+        let e2 = entity(2);
+
+        selection.add(e1);
+        selection.add(e2);
+        selection.add(e1); // re-add must not duplicate or move e1
+
+        assert_eq!(selection.len(), 2);
+        let selected: Vec<_> = selection.selected().collect();
+        assert_eq!(selected, vec![e1, e2]);
+        assert_eq!(selection.primary(), Some(e1));
+    }
+
+    #[test]
+    fn test_remove_primary_falls_back_to_earliest_remaining() {
+        let mut selection = Selection::new();
+        let (e1, e2, e3) = (entity(1), entity(2), entity(3));
+
+        selection.add(e1);
+        selection.add(e2);
+        selection.add(e3);
+        assert_eq!(selection.primary(), Some(e1));
+
+        selection.remove(e1);
+        // Deterministic: the earliest remaining selected entity, not an
+        // arbitrary hash-order survivor.
+        assert_eq!(selection.primary(), Some(e2));
+    }
+
+    #[test]
+    fn test_select_multiple_primary_is_first_given() {
+        let mut selection = Selection::new();
+        let (e5, e2, e9) = (entity(5), entity(2), entity(9));
+
+        selection.select_multiple([e5, e2, e9]);
+
+        assert_eq!(selection.primary(), Some(e5));
+        let selected: Vec<_> = selection.selected().collect();
+        assert_eq!(selected, vec![e5, e2, e9]);
+    }
+
+    #[test]
+    fn test_select_multiple_empty_clears_primary() {
+        let mut selection = Selection::new();
+        selection.select(entity(1));
+
+        selection.select_multiple(std::iter::empty());
+
+        assert!(selection.is_empty());
+        assert_eq!(selection.primary(), None);
+    }
+
+    #[test]
+    fn test_select_multiple_dedupes_keeping_first_position() {
+        let mut selection = Selection::new();
+        let e1 = entity(1);
+        let e2 = entity(2);
+
+        selection.select_multiple([e1, e2, e1]);
+
+        assert_eq!(selection.len(), 2);
+        let selected: Vec<_> = selection.selected().collect();
+        assert_eq!(selected, vec![e1, e2]);
         assert_eq!(selection.primary(), Some(e1));
     }
 

@@ -837,6 +837,7 @@ dependencies = [
  "ecs",
  "env_logger",
  "glam",
+ "indexmap",
  "input",
  "log",
  "physics",

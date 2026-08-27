@@ -197,11 +197,11 @@ Use `WebFetch` on `https://github.com/godotengine/godot/blob/master/<path>`
 - **Input**: Event-based, 75 tests, generic action mapping (`InputMapping<A>`) + player-aware `InputSettings` layer (P1/P2 device routing, axis-as-button, serde bindings) + gilrs hardware backend in engine_core (GAP-001 closed Jul 2026)
 - **Audio**: Rodio backend, 19 tests (spatial audio components exist in ecs but have no runtime system yet)
 - **Engine Core**: Game API, managers, scene serializer, generic pickups, shared arcade scaffolding (`MenuInput`, `spawn_background`, `default_playfield_grid`, `RENDER_UNIT`), tilemap render pass, main-camera sync, input-settings JSON persistence, gilrs gamepad backend, PauseMenu + MenuPanel chrome (localizable via `PauseMenuLabels`), localization (`Strings`, RON locale files, per-locale fonts), data-driven UI element pass (`UiButtonPressed` events), input-driven camera look-ahead (`CameraFollow`), texture-filter config knob, sprite-sheet pipeline (`load_sprite_sheet`, `.sheet.ron` sidecar schema in `sheet_file.rs`, sidecar-as-SSOT scene reload, sidecar-declared filter on scene texture refs, E5 tex_region/visible/#solid:RRGGBB scene round-trip), 356 tests
-- **Editor**: Dockable panels (hide/collapse/resize, View-menu toggles with check marks, persisted layout), viewport, inspector (incl. string fields + UI components), hierarchy, asset browser + drag-drop state, typography/theme tokens, 317 tests
+- **Editor**: Dockable panels (hide/collapse/resize, View-menu toggles with check marks, persisted layout), viewport, inspector (incl. string fields + UI components), hierarchy, asset browser + drag-drop state, typography/theme tokens, 324 tests
 - **Editor Integration**: `run_game_with_editor()` wrapper + inspector writeback + play/pause/stop + scene save/load + viewport↔render camera sync + asset browser panel + editor prefs persistence + editor-font scoping (locale fonts apply to the game view only) + engine-time freeze outside Play (particles/animations hold still while Editing) + play-session data-loss guards (save/new/open refused mid-simulation, snapshot loss warnings on Play and Stop), 88 tests
 
 ### Key Metrics
-- **Total Tests**: 1339/1339 passing (100% success rate), 0 ignored
+- **Total Tests**: 1346/1346 passing (100% success rate), 0 ignored
 - **Code Quality**: every doc example compiles and runs (window/GPU-bound ones are compile-only `no_run`); 1 tracked TODO in production code (`scene_loader.rs` — the ARCH-006/GPP-06 dynamic-component gap, deliberate)
 - Games (in `../games/`): breakout 47 tests, pong 11, space_invaders 36, snake 38, asteroids 42, frogger 43 — all clippy-clean, all 2-player; Pong and Frogger are fully localized (en + pirate, locale-driven font); Frogger is the first Tilemap consumer (Jul 2026)
 
@@ -294,7 +294,7 @@ Notes: Escape is NOT a hard-coded exit — it flows to `Game::on_key_pressed()`.
 **Commands:**
 ```bash
 cargo check --workspace              # Fast compile check (no tests)
-cargo test --workspace               # Run all 1339 tests
+cargo test --workspace               # Run all 1346 tests
 cargo test -p editor                 # Run editor tests only
 cargo test -p editor_integration     # Run editor integration tests
 cargo test -p ecs                    # Run ECS tests only
@@ -318,7 +318,7 @@ cargo run --bin editor --features editor -- ../games/pong  # Standalone editor o
 **Test Status:**
 ```
 $ cargo test --workspace
-passed: 1339/1339 (100%)
+passed: 1346/1346 (100%)
 ignored: 0
 failed: 0
 ```
