@@ -405,6 +405,30 @@ Design System Reference palette (bottom of this file) is **pending the audit
 declared tokens (suspected linear→sRGB double-encode); settle the sRGB
 question before deriving or re-picking any colors.
 
+### Web Playground — the learn-to-code front (Aug 27 2026)
+
+Adopted Aug 27 2026 (Jesse): the open-source goal is that people **learn to
+code and build their own games with this engine**, so beinsiculous.com gets a
+playground where visitors use the real editor in the browser and keep their
+work. This is north star #2 (browser editor) given a shipping destination, and
+the AI-dev-studio premise made touchable. Live items are Studio Board issues;
+this section carries the shape:
+
+1. **Editor-on-wasm milestone** (beinsiculous/insiculous_2d#48) — the engine
+   already runs on wasm32/WebGPU and the editor is wasm-constrained by
+   standing rule, so this is a port: wasm32 check spike folded into the H8 CI
+   guard, the audit §8.2 capability split (fs scans → VFS fetch, prefs/scene
+   IO → KvStore #6/OPFS), boot on a bundled sample scene, embed on the site
+   behind the existing WebGPU gate. Sequenced after the H9 game ports.
+2. **Export/import + template repo** (beinsiculous/insiculous_2d#49) — the
+   zero-backend save path: client-side project zip export, an Import button
+   that round-trips it, and an org `game-template` repo ("Use this template")
+   matching the export layout so a browser experiment graduates to real local
+   development.
+3. **Deferred until the playground proves engagement:** GitHub App/OAuth
+   committing to the user's own repo + an Actions template that deploys their
+   game. Deliberately not designed yet.
+
 ### Scripting — the ScriptRef seam
 
 Adopted from audit §6.3/§6.5/§6.6(4), Aug 27 2026. The seam is a stable,
