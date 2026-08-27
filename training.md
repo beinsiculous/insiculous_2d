@@ -705,7 +705,7 @@ here — this file documents APIs and patterns, not status.
 ### File Structure
 ```
 /home/jedi/RustroverProjects/insiculous_2d/
-├── AGENTS.md                   # Main project documentation
+├── CLAUDE.md                   # Main agent ruleset (AGENTS.md is a symlink to it)
 ├── training.md                 # This file - AI pair programming guide
 ├── PROJECT_ROADMAP.md          # LIVE: tasks, priorities, engine gaps
 ├── TECH_DEBT.md                # LIVE: workspace debt rollup (per-crate detail in crates/*/TECH_DEBT.md)
@@ -751,7 +751,7 @@ cargo test -- --nocapture
 ### Test Status Summary
 Do not trust hardcoded test counts in docs — run `cargo test --workspace` for the
 truth. The invariant that matters: **0 failed, 0 ignored** (GPU/window-bound doc
-examples are `no_run`, never `ignore`). Current count lives in `AGENTS.md`.
+examples are `no_run`, never `ignore`). Current count lives in `CLAUDE.md`.
 
 For more game programming patterns, refer to the [Game Programming Patterns](https://gameprogrammingpatterns.com/) book.
 
