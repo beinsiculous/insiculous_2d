@@ -343,15 +343,18 @@ impl RenderManager {
         &mut self.camera
     }
 
-    /// Copy the main camera entity's position onto the render camera.
+    /// Copy the main camera entity's position and zoom onto the render camera.
     ///
-    /// Only `position` is synced — zoom, rotation, and viewport_size stay
-    /// render-managed (viewport_size tracks window resizes). Worlds without
-    /// a main-camera entity are untouched, and games can still override
+    /// Rotation and viewport_size stay render-managed (viewport_size tracks
+    /// window resizes; the editor viewport's world↔screen math has no
+    /// rotation term, so syncing rotation would break its overlay/GPU
+    /// agreement — issue #42's documented limitation). Worlds without a
+    /// main-camera entity are untouched, and games can still override
     /// `ctx.camera` in `render()` afterwards.
     pub fn sync_main_camera(&mut self, world: &World) {
-        if let Some(position) = main_camera_position(world) {
+        if let Some((position, zoom)) = main_camera_pose(world) {
             self.camera.position = position;
+            self.camera.zoom = zoom;
         }
     }
 
@@ -410,6 +413,17 @@ impl RenderManager {
 /// Public so the editor integration can mirror the game's camera onto the
 /// editor viewport while a play session runs.
 pub fn main_camera_position(world: &World) -> Option<Vec2> {
+    main_camera_pose(world).map(|(position, _)| position)
+}
+
+/// Position AND zoom of the main-camera entity (the full pose the render
+/// path honors — rotation is deliberately excluded, see
+/// [`RenderManager::sync_main_camera`]).
+///
+/// A non-finite or non-positive authored zoom is replaced with `1.0` rather
+/// than propagated — a `zoom: 0.0` in a scene file must never divide the
+/// projection (or the editor viewport) by zero.
+pub fn main_camera_pose(world: &World) -> Option<(Vec2, f32)> {
     world
         .entities()
         .into_iter()
@@ -420,7 +434,15 @@ pub fn main_camera_position(world: &World) -> Option<Vec2> {
                 .unwrap_or(false)
                 && world.get::<Transform2D>(*e).is_some()
         })
-        .and_then(|e| world.get::<Transform2D>(e).map(|t| t.position))
+        .and_then(|e| {
+            let position = world.get::<Transform2D>(e).map(|t| t.position)?;
+            let zoom = world
+                .get::<Camera>(e)
+                .map(|c| c.zoom)
+                .filter(|z| z.is_finite() && *z > 0.0)
+                .unwrap_or(1.0);
+            Some((position, zoom))
+        })
 }
 
 #[cfg(test)]

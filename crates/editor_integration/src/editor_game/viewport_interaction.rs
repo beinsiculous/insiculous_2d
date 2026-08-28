@@ -16,6 +16,11 @@ impl<G: Game> EditorGame<G> {
     /// Handle viewport input: pan/zoom plus click and rectangle selection.
     pub(super) fn handle_viewport_picking(&mut self, ctx: &mut GameContext) {
         if self.editor.is_playing() {
+            // While Playing only the CAMERA is live (issue #42): pan/zoom to
+            // inspect anywhere, which breaks the game-camera follow. The
+            // explicit return is load-bearing — picking, marquee, asset
+            // drops, and framing must never run against a live simulation.
+            self.handle_play_mode_camera(ctx);
             return;
         }
 
@@ -35,6 +40,41 @@ impl<G: Game> EditorGame<G> {
             return;
         }
 
+        self.handle_shared_viewport_input(ctx);
+    }
+
+    /// Play-mode viewport input (issue #42): pan/zoom ONLY — no picking, no
+    /// marquee, no framing, no asset drops. Any camera input the viewport
+    /// consumes breaks the game-camera follow so the user can inspect
+    /// anywhere while the simulation runs.
+    fn handle_play_mode_camera(&mut self, ctx: &mut GameContext) {
+        if chrome_owns_mouse(ctx.ui) {
+            return;
+        }
+        let input_result = self.editor.viewport_input.handle_input_simple(
+            &mut self.editor.viewport,
+            &self.editor.input_mapping,
+            ctx.input,
+        );
+        if input_result.consumed {
+            self.break_camera_follow();
+        }
+    }
+
+    /// Break the play-session camera follow (manual camera input wins),
+    /// announcing it once on the status bar.
+    fn break_camera_follow(&mut self) {
+        if self.editor.is_camera_following() {
+            self.editor.set_camera_follow(false);
+            self.editor
+                .status_bar
+                .show_message("Free camera — Ctrl+Shift+F or Follow to re-follow");
+        }
+    }
+
+    /// Editing/Paused viewport input: pan/zoom, framing, picking, marquee.
+    fn handle_shared_viewport_input(&mut self, ctx: &mut GameContext) {
+
         // Editor chrome owns the mouse — skip picking/pan/zoom so clicks
         // don't pass through it into the scene.
         if chrome_owns_mouse(ctx.ui) {
@@ -46,6 +86,12 @@ impl<G: Game> EditorGame<G> {
             &self.editor.input_mapping,
             ctx.input,
         );
+        // A manual pan/zoom while Paused breaks the camera follow, exactly
+        // like one while Playing — otherwise Resume snaps the view back to
+        // the game camera and discards where the user just looked (#42).
+        if input_result.consumed && self.editor.in_play_session() {
+            self.break_camera_follow();
+        }
 
         if self.editor.gizmo_has_priority() {
             return;
@@ -56,8 +102,12 @@ impl<G: Game> EditorGame<G> {
         // handle under the cursor and corrupt the drag) and only while no
         // text field owns the keyboard (the wants_keyboard footgun). Framing
         // is edit-mode-only by design: while Playing the viewport mirrors the
-        // game camera and reframing would fight that sync.
-        if !ctx.ui.wants_keyboard() {
+        // game camera and reframing would fight that sync. Ctrl held skips
+        // the framing poll — Ctrl+Shift+F is the follow toggle chord, and
+        // the KeyAnyMods(F) poll must not also fire a frame request.
+        let ctrl_held = ctx.input.keyboard().is_key_pressed(winit::keyboard::KeyCode::ControlLeft)
+            || ctx.input.keyboard().is_key_pressed(winit::keyboard::KeyCode::ControlRight);
+        if !ctx.ui.wants_keyboard() && !ctrl_held {
             // Reset first so a same-frame F + Home resolves to the more
             // specific intent: framing overwrites the reset targets.
             if input_result.reset_requested {

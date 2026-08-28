@@ -55,7 +55,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 ### Scene + selection
 - `selection.rs` — Selection set (primary + multi-select; insertion-ordered IndexSet, deterministic primary fallback)
 - `hierarchy.rs` — Hierarchy panel tree view + F2 inline rename (`begin_rename`/`rename_widget_id`/`HierarchyResponse`, `normalized_rename` guard); tests in `hierarchy_tests.rs`
-- `viewport.rs`, `viewport_input.rs` — Scene viewport with camera pan/zoom
+- `viewport/{mod,tests}.rs`, `viewport_input.rs` — Scene viewport with camera pan/zoom; `to_window_render_camera`/`world_to_screen` overlay↔GPU equivalence locked by `assert_overlay_matches_render_camera` tests (incl. the #42 play-follow pose); `EditorContext.camera_follow` (default true) is the play-session follow flag
 - `picking/` — EntityPicker, PickableEntity (AABB from absolute size — flip scales stay clickable), screen_to_world() (SelectionRect deleted in #39 — the live marquee is ViewportInputHandler state + the caller's screen-space rect draw)
 - `selection_outline.rs` — viewport selection/hover outlines (consumes the picking `PickableEntity` list; pure `hover_entity_at` hit test; colors via `theme.selection_outline_colors()`)
 - `gizmo/` — Transform gizmos (`mod.rs` + `tests.rs`): annulus rotate ring (dead-center clicks fall through to picking), cumulative interaction (`translation`/`scale_factor` from drag start, `released` flag), ratio-based multiplicative scale, `cancel()` + polled suppress-until-release latch, `render(ui, screen_pos, interactive)` clip/gating, mode-switch-mid-drag handle release

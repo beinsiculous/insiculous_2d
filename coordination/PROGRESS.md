@@ -108,3 +108,22 @@ the panel is hidden = no game world). All existing overlay `push_clip_rect` site
 (grid, collider, selection outline, marquee, play-mode game UI) now actually scissor
 — kimi R1-F7 verified: every overlay draws via ui.*, none reach the line channel.
 Tests 1565 → 1590, clippy clean, wasm gate clean. fixes #41.
+
+## 2026-08-28 — #42 Camera split: editor vs game (Sprint 5)
+The one-camera limitation is gone. `main_camera_pose` (engine_core) exposes position
+AND zoom (zoom sanitized: non-finite/≤0 → 1.0); `sync_main_camera` copies both, so
+camera-zoom gameplay renders correctly in and out of the editor (no game used camera
+zoom yet — verified — so shipped behavior is unchanged). Editor: `camera_follow`
+flag on EditorContext (default true), follow-aware `sync_viewport_from_main_camera`
+(Playing + following only; Paused still never syncs), Play transition adopts the
+game pose instead of forcing zoom 1.0 (no-main-camera worlds keep the 1.0 parity),
+Stop restores the editing view and re-arms follow — pause→resume preserves a broken
+follow (kimi R2-F8). Pan/zoom is LIVE during Play via `handle_play_mode_camera`
+(pan/zoom only — the early return before picking/marquee/drops is the kimi R2-F3
+guarantee); any consumed camera input breaks the follow with a status-bar notice;
+the Follow toolbar button (accent when armed) and Ctrl+Shift+F (exact chord beats
+the KeyAnyMods F focus binding; Ctrl held skips the framing poll) re-arm it.
+Overlay/GPU equivalence extended with a play-follow-pose test; rotation stays
+unsynced (documented limitation — viewport math has no rotation term).
+viewport.rs split into viewport/{mod,tests}.rs (600-line rule). Tests 1590 → 1600,
+clippy clean, wasm gate clean. fixes #42.

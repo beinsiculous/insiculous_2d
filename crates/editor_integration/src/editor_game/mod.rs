@@ -133,16 +133,21 @@ impl<G: Game> EditorGame<G> {
         0.0
     }
 
-    /// While Playing, mirror the game's main-camera entity onto the editor
-    /// viewport so the rendered view (derived from the viewport in `render`)
-    /// follows the game camera. Paused keeps the frozen view — the user may
-    /// pan/zoom while paused and picking stays truthful.
+    /// While Playing WITH camera-follow armed, mirror the game's main-camera
+    /// entity — position AND zoom (issue #42) — onto the editor viewport so
+    /// the rendered view (derived from the viewport in `render`) follows the
+    /// game camera. Free camera (follow broken by a manual pan/zoom) and
+    /// Paused keep the user's view — picking stays truthful either way,
+    /// because render always derives from the same viewport.
     pub(super) fn sync_viewport_from_main_camera(&mut self, world: &ecs::World) {
-        if !self.editor.is_playing() {
+        if !self.editor.is_playing() || !self.editor.is_camera_following() {
             return;
         }
-        if let Some(pos) = engine_core::main_camera_position(world) {
+        if let Some((pos, zoom)) = engine_core::main_camera_pose(world) {
             self.editor.viewport.set_camera_position(pos);
+            // adopt_ skips the interactive zoom clamp: parity with the
+            // shipped game even at extreme authored zooms (kimi F2).
+            self.editor.viewport.adopt_camera_zoom(zoom);
         }
     }
 
@@ -165,8 +170,11 @@ impl<G: Game> EditorGame<G> {
             toolbar_bounds.y,
         );
         let play_state = self.editor.play_state();
+        let camera_follow = self.editor.is_camera_following();
         let theme = &self.editor.theme;
-        if let Some(action) = self.editor.play_controls.render(ctx.ui, play_state, theme) {
+        if let Some(action) =
+            self.editor.play_controls.render(ctx.ui, play_state, camera_follow, theme)
+        {
             if self.handle_play_action(action, ctx.world) {
                 self.inner.on_play_stopped(ctx);
             }
@@ -489,6 +497,8 @@ pub fn run_game_with_editor_api<G: Game>(
 mod tests;
 #[cfg(test)]
 mod api_write_tests;
+#[cfg(test)]
+mod camera_follow_tests;
 #[cfg(test)]
 mod gizmo_drag_tests;
 #[cfg(test)]

@@ -18,6 +18,8 @@ pub enum PlayControlAction {
     Pause,
     /// Stop the game and restore the pre-play snapshot.
     Stop,
+    /// Toggle whether the viewport follows the game camera (issue #42).
+    ToggleCameraFollow,
 }
 
 /// Play control widget rendered to the right of the tool toolbar.
@@ -67,12 +69,22 @@ impl PlayControls {
         self.position.x + self.first_button_width(state) + self.spacing
     }
 
+    /// X of the camera-follow toggle (play sessions only, after Stop).
+    fn follow_x(&self, state: EditorPlayState) -> f32 {
+        self.stop_x(state) + self.button_size + self.spacing
+    }
+
+    /// Width of the camera-follow toggle ("Follow" needs the wide label).
+    fn follow_width(&self) -> f32 {
+        self.button_size + 14.0
+    }
+
     /// Full chrome footprint for the given state: from the separator line to
     /// the rightmost button. Everything inside consumes mouse gestures so
     /// clicks on control chrome never fall through to viewport picking.
     pub fn chrome_bounds(&self, state: EditorPlayState) -> Rect {
         let right = if Self::has_stop_button(state) {
-            self.stop_x(state) + self.button_size
+            self.follow_x(state) + self.follow_width()
         } else {
             self.position.x + self.first_button_width(state)
         };
@@ -84,12 +96,16 @@ impl PlayControls {
     ///
     /// Button layout varies by state:
     /// - **Editing:** `[Play]`
-    /// - **Playing:** `[Pause] [Stop]`
-    /// - **Paused:**  `[Resume] [Stop]`
+    /// - **Playing:** `[Pause] [Stop] [Follow]`
+    /// - **Paused:**  `[Resume] [Stop] [Follow]`
+    ///
+    /// `camera_follow` renders the Follow toggle highlighted (accent
+    /// background) when the viewport is mirroring the game camera.
     pub fn render(
         &self,
         ui: &mut UIContext,
         state: EditorPlayState,
+        camera_follow: bool,
         theme: &EditorTheme,
     ) -> Option<PlayControlAction> {
         let mut action = None;
@@ -140,6 +156,19 @@ impl PlayControls {
             }
         }
 
+        // Camera-follow toggle, play sessions only (issue #42): highlighted
+        // while the viewport mirrors the game camera; plain while free.
+        if Self::has_stop_button(state) {
+            let follow_btn =
+                Rect::new(self.follow_x(state), y, self.follow_width(), self.button_size);
+            if camera_follow {
+                ui.rect_rounded(follow_btn, theme.play_button_bg, 4.0);
+            }
+            if ui.button("play_ctrl_follow", "Follow", follow_btn) {
+                action = Some(PlayControlAction::ToggleCameraFollow);
+            }
+        }
+
         // Consume-only: presses on the separator/gaps between buttons claim
         // the mouse gesture too. Registered AFTER the buttons so they win
         // the active-widget slot.
@@ -173,7 +202,7 @@ mod tests {
         input.mouse_mut().update_position(292.0, 40.0);
         input.mouse_mut().handle_button_press(MouseButton::Left);
         ui.begin_frame(&input, Vec2::new(1280.0, 720.0));
-        let action = controls.render(&mut ui, EditorPlayState::Editing, &theme);
+        let action = controls.render(&mut ui, EditorPlayState::Editing, true, &theme);
         assert!(action.is_none());
         assert!(
             ui.wants_mouse(),
@@ -192,9 +221,47 @@ mod tests {
         assert!(editing.contains(Vec2::new(339.0, 40.0)), "Play button is chrome");
         assert!(!editing.contains(Vec2::new(360.0, 40.0)), "viewport right of Play stays pickable");
 
-        // Paused is the widest layout: Resume (+10) + spacing + Stop
+        // Paused is the widest layout: Resume (+10) + spacing + Stop + Follow
         let paused = controls.chrome_bounds(EditorPlayState::Paused);
         assert!(paused.contains(Vec2::new(300.0 + 40.0 + 10.0 + 4.0 + 39.0, 40.0)), "Stop is chrome");
+        // Follow toggle sits after Stop (issue #42) and is chrome too.
+        assert!(
+            paused.contains(Vec2::new(300.0 + 50.0 + 4.0 + 40.0 + 4.0 + 50.0, 40.0)),
+            "Follow toggle is chrome"
+        );
+    }
+
+    #[test]
+    fn test_follow_toggle_shows_only_during_play_session() {
+        let mut controls = PlayControls::new();
+        controls.position = Vec2::new(300.0, 20.0);
+        let theme = EditorTheme::default();
+        let mut input = input::InputHandler::new();
+
+        // Editing: chrome ends at the Play button — no Follow toggle.
+        let editing = controls.chrome_bounds(EditorPlayState::Editing);
+        let playing = controls.chrome_bounds(EditorPlayState::Playing);
+        assert!(playing.width > editing.width + controls.follow_width() - 1.0);
+
+        // Clicking the Follow button while Playing returns the toggle action.
+        let follow_center = Vec2::new(
+            controls.follow_x(EditorPlayState::Playing) + controls.follow_width() * 0.5,
+            20.0 + controls.button_size * 0.5,
+        );
+        use input::prelude::MouseButton;
+        let mut ui = UIContext::new();
+        // Frame 1: press.
+        input.mouse_mut().update_position(follow_center.x, follow_center.y);
+        input.mouse_mut().handle_button_press(MouseButton::Left);
+        ui.begin_frame(&input, Vec2::new(1280.0, 720.0));
+        controls.render(&mut ui, EditorPlayState::Playing, true, &theme);
+        ui.end_frame();
+        // Frame 2: release → click fires.
+        input.mouse_mut().handle_button_release(MouseButton::Left);
+        ui.begin_frame(&input, Vec2::new(1280.0, 720.0));
+        let action = controls.render(&mut ui, EditorPlayState::Playing, true, &theme);
+        ui.end_frame();
+        assert_eq!(action, Some(PlayControlAction::ToggleCameraFollow));
     }
 
     #[test]

@@ -104,7 +104,7 @@ macro_rules! game_root {
     };
 }
 pub use scene_serializer::{save_scene_to_file, serialize_to_ron, world_to_scene_data};
-pub use render_manager::{main_camera_position, RenderManager};
+pub use render_manager::{main_camera_pose, main_camera_position, RenderManager};
 pub use window_manager::{WindowConfig, WindowManager};
 pub use game_loop_manager::{GameLoopManager, MAX_DELTA_TIME};
 pub use ui_manager::UIManager;

@@ -108,6 +108,9 @@ pub enum EditorAction {
     TogglePlayPause,
     /// Stop the play session
     StopPlay,
+    /// Toggle the play-session camera follow (viewport mirrors the game
+    /// camera vs. free pan/zoom — issue #42)
+    ToggleCameraFollow,
 }
 
 /// One input binding in the editor's chord model.
@@ -269,6 +272,9 @@ impl EditorInputMapping {
         self.bind(PlayResume, B::key(KeyCode::F5));
         self.bind(TogglePlayPause, B::ctrl(KeyCode::KeyP));
         self.bind(StopPlay, B::ctrl_shift(KeyCode::KeyP));
+        // Exact chord wins over the KeyAnyMods(F) focus binding on the
+        // event path — F alone still frames the selection.
+        self.bind(ToggleCameraFollow, B::ctrl_shift(KeyCode::KeyF));
     }
 
     /// Bind an input to an action. Rebinding EVICTS only the exact same

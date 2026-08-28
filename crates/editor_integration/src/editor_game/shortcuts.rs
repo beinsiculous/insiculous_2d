@@ -21,6 +21,13 @@ impl<G: Game> EditorGame<G> {
     /// Returns `true` if a Stop was performed (world restored from snapshot),
     /// so the caller can notify the inner game via `on_play_stopped`.
     pub(super) fn handle_play_action(&mut self, action: PlayControlAction, world: &mut ecs::World) -> bool {
+        // Any play-state transition kills an in-flight viewport gesture:
+        // handle_input runs in BOTH play and edit modes since #42, so a
+        // button held across a transition could otherwise complete a
+        // phantom click/marquee in the new state (kimi #42 F5).
+        if !matches!(action, PlayControlAction::ToggleCameraFollow) {
+            self.editor.viewport_input.cancel_marquee();
+        }
         match action {
             PlayControlAction::Play => {
                 if self.editor.is_editing() {
@@ -49,14 +56,24 @@ impl<G: Game> EditorGame<G> {
                         self.editor.status_bar.show_message(warning);
                     }
                     self.world_snapshot = Some(snapshot);
-                    // Save the editing pan/zoom; play renders at zoom 1.0
-                    // (parity with the game's own camera, which has no zoom
-                    // source), position driven by the main-camera entity.
+                    // Save the editing pan/zoom and adopt the game camera's
+                    // pose — position AND zoom (the ecs Camera carries zoom;
+                    // issue #42 stopped dropping it). No main-camera entity:
+                    // zoom 1.0, parity with how such a game renders outside
+                    // the editor. Follow re-arms at every SESSION START only
+                    // (kimi R2-F8: pause→resume preserves a user's toggle).
                     self.editing_camera = Some((
                         self.editor.viewport.camera_position(),
                         self.editor.viewport.camera_zoom(),
                     ));
-                    self.editor.viewport.set_camera_zoom(1.0);
+                    self.editor.set_camera_follow(true);
+                    match engine_core::main_camera_pose(world) {
+                        Some((pos, zoom)) => {
+                            self.editor.viewport.set_camera_position(pos);
+                            self.editor.viewport.adopt_camera_zoom(zoom);
+                        }
+                        None => self.editor.viewport.set_camera_zoom(1.0),
+                    }
                     self.editor.set_play_state(EditorPlayState::Playing);
                     self.editor.close_add_component_popup();
                     // Scene-authored UI (UiLabel/UiPanel/UiButton) draws only
@@ -111,11 +128,13 @@ impl<G: Game> EditorGame<G> {
                             self.editor.status_bar.show_message(report);
                         }
                     }
-                    // Restore the pan/zoom the user had while editing
+                    // Restore the pan/zoom the user had while editing, and
+                    // re-arm the camera follow for the next session.
                     if let Some((position, zoom)) = self.editing_camera.take() {
                         self.editor.viewport.set_camera_position(position);
                         self.editor.viewport.set_camera_zoom(zoom);
                     }
+                    self.editor.set_camera_follow(true);
                     // Re-hide scene-authored UI (the marker was removed when
                     // Play started; resources survive the snapshot restore).
                     world.insert_resource(engine_core::UiElementsHidden);
@@ -124,6 +143,18 @@ impl<G: Game> EditorGame<G> {
                 } else {
                     false
                 }
+            }
+            PlayControlAction::ToggleCameraFollow => {
+                if self.editor.in_play_session() {
+                    self.editor.toggle_camera_follow();
+                    let message = if self.editor.is_camera_following() {
+                        "Following game camera"
+                    } else {
+                        "Free camera — Ctrl+Shift+F or Follow to re-follow"
+                    };
+                    self.editor.status_bar.show_message(message);
+                }
+                false
             }
         }
     }
@@ -160,6 +191,14 @@ impl<G: Game> EditorGame<G> {
                     self.handle_play_action(PlayControlAction::Pause, ctx.world);
                 } else {
                     self.handle_play_action(PlayControlAction::Play, ctx.world);
+                }
+                return;
+            }
+            // Always intercepted (Ctrl+Shift+F must work while Playing);
+            // a no-op outside a play session.
+            Some(EditorAction::ToggleCameraFollow) => {
+                if self.editor.in_play_session() {
+                    self.handle_play_action(PlayControlAction::ToggleCameraFollow, ctx.world);
                 }
                 return;
             }
@@ -310,7 +349,7 @@ impl<G: Game> EditorGame<G> {
             | A::AddToSelection
             | A::ToggleSelection => {}
             // Peeled off by the caller before dispatch.
-            A::TogglePlayPause | A::StopPlay => {}
+            A::TogglePlayPause | A::StopPlay | A::ToggleCameraFollow => {}
         }
     }
 

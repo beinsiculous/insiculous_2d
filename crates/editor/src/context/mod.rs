@@ -51,6 +51,12 @@ pub struct EditorContext {
     show_colliders: bool,
     /// Current play state (Editing / Playing / Paused)
     play_state: EditorPlayState,
+    /// Whether the viewport follows the game's main camera during a play
+    /// session (issue #42). Manual pan/zoom during Play/Paused breaks the
+    /// follow; the toolbar button / Ctrl+Shift+F re-arms it. Reset to true
+    /// at session start (Editing→Playing) and on Stop — pause→resume
+    /// preserves the user's choice.
+    camera_follow: bool,
     /// Play / Pause / Stop controls widget
     pub play_controls: PlayControls,
     /// Whether the add-component popup is open in the inspector.
@@ -135,6 +141,7 @@ impl EditorContext {
             snap_to_grid: false,
             show_colliders: true,
             play_state: EditorPlayState::default(),
+            camera_follow: true,
             play_controls: PlayControls::new(),
             add_component_popup_open: false,
             is_dirty: false,
@@ -318,6 +325,21 @@ impl EditorContext {
     /// Set the play state.
     pub fn set_play_state(&mut self, state: EditorPlayState) {
         self.play_state = state;
+    }
+
+    /// Whether the viewport follows the game camera during a play session.
+    pub fn is_camera_following(&self) -> bool {
+        self.camera_follow
+    }
+
+    /// Arm or break the play-session camera follow (issue #42).
+    pub fn set_camera_follow(&mut self, follow: bool) {
+        self.camera_follow = follow;
+    }
+
+    /// Toggle the play-session camera follow.
+    pub fn toggle_camera_follow(&mut self) {
+        self.camera_follow = !self.camera_follow;
     }
 
     /// Whether the editor is in normal editing mode.
