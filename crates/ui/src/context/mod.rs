@@ -16,6 +16,8 @@ mod widgets;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod overlay_tests;
 
 use glam::Vec2;
 use input::InputHandler;
