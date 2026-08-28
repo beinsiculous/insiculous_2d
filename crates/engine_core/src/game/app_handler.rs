@@ -137,6 +137,12 @@ impl<G: Game> ApplicationHandler<()> for GameRunner<G> {
         // Forward to input handler
         self.input.handle_window_event(&event);
 
+        // H7: the first activation gesture upgrades web audio. Must run
+        // inside this synchronous DOM dispatch — and before on_key_pressed,
+        // so audio is live for a handler that plays a sound (see game/web.rs).
+        #[cfg(target_arch = "wasm32")]
+        self.upgrade_audio_on_gesture(&event);
+
         match event {
             WindowEvent::CloseRequested => {
                 self.shutdown(event_loop);

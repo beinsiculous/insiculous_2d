@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 use std::io::Cursor;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
@@ -46,6 +46,17 @@ struct ActiveSound {
     base_volume: f32,
 }
 
+/// Music requested while no output device was connected (web pre-gesture),
+/// replayed by [`AudioManager::enable_output`]. Stores the path, not the
+/// bytes: the VFS re-read is cheap (an in-memory map on the web) and
+/// `Decoder::new` only parses headers, so no full decode happens at replay
+/// time.
+struct PendingMusic {
+    path: PathBuf,
+    volume: f32,
+    looping: bool,
+}
+
 /// Live connection to an audio output device.
 struct AudioOutput {
     /// Audio output stream (must be kept alive).
@@ -77,6 +88,8 @@ pub struct AudioManager {
     active_sounds: Vec<ActiveSound>,
     /// Current background music sink.
     music_sink: Option<Sink>,
+    /// Music requested while disabled, started when a device connects.
+    pending_music: Option<PendingMusic>,
     /// Per-track volume of the current music, kept so bus volume changes can
     /// re-derive the music sink volume.
     music_base_volume: f32,
@@ -93,15 +106,9 @@ impl AudioManager {
     ///
     /// This initializes the audio device and output stream.
     pub fn new() -> AudioResult<Self> {
-        let (stream, stream_handle) = OutputStream::try_default()
-            .map_err(|e| AudioError::DeviceInitError(e.to_string()))?;
-
-        log::debug!("Audio system initialized");
-
-        Ok(Self::with_output(Some(AudioOutput {
-            _stream: stream,
-            handle: stream_handle,
-        })))
+        let mut manager = Self::disabled();
+        manager.enable_output()?;
+        Ok(manager)
     }
 
     /// Create a disabled audio manager that has no output device.
@@ -118,11 +125,12 @@ impl AudioManager {
     /// On the web this always starts disabled: browsers refuse (or silently
     /// suspend) an `AudioContext` created outside a user gesture, and a
     /// successful `try_default()` does NOT prove the context is running.
-    /// Gesture-gated upgrade to a real device is the deferred H7 work.
+    /// The engine upgrades to a real device on the first user gesture via
+    /// [`AudioManager::enable_output`].
     pub fn new_or_disabled() -> Self {
         #[cfg(target_arch = "wasm32")]
         {
-            log::info!("Web audio starts disabled until gesture-gated init (H7)");
+            log::info!("Web audio starts disabled; first user gesture upgrades it");
             Self::disabled()
         }
         #[cfg(not(target_arch = "wasm32"))]
@@ -141,6 +149,38 @@ impl AudioManager {
         self.output.is_some()
     }
 
+    /// Connect a disabled manager to a real output device.
+    ///
+    /// No-op `Ok` when already enabled. On success every sound loaded while
+    /// disabled stays playable (handles, ids, and bus volumes are untouched)
+    /// and music requested while disabled starts playing. On `Err` the
+    /// manager is unchanged: still disabled, still fully functional as a
+    /// no-op, and any pending music request is retained for a later attempt.
+    ///
+    /// This is the web (H7) upgrade path: browsers refuse an `AudioContext`
+    /// created outside a user gesture, so the engine calls this from the
+    /// first activation gesture. A successful `OutputStream::try_default()`
+    /// at startup does NOT prove the context is running — only construction
+    /// inside a gesture handler does.
+    pub fn enable_output(&mut self) -> AudioResult<()> {
+        if self.output.is_some() {
+            return Ok(());
+        }
+
+        let (stream, stream_handle) = OutputStream::try_default()
+            .map_err(|e| AudioError::DeviceInitError(e.to_string()))?;
+
+        self.output = Some(AudioOutput {
+            _stream: stream,
+            handle: stream_handle,
+        });
+        log::debug!("Audio output enabled");
+
+        self.start_pending_music();
+
+        Ok(())
+    }
+
     fn with_output(output: Option<AudioOutput>) -> Self {
         Self {
             output,
@@ -148,6 +188,7 @@ impl AudioManager {
             next_sound_id: 1,
             active_sounds: Vec::new(),
             music_sink: None,
+            pending_music: None,
             music_base_volume: 1.0,
             master_volume: 1.0,
             sfx_volume: 1.0,

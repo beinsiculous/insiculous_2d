@@ -11,13 +11,65 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use renderer::{Renderer, RendererError};
+use winit::event::{ElementState, TouchPhase, WindowEvent};
 
 use super::{Game, GameRunner};
 
 /// Shared slot the spawned init task fills and the frame loop drains.
 pub(super) type PendingRenderer = Rc<RefCell<Option<Result<Renderer, RendererError>>>>;
 
+/// H7: failed audio-upgrade attempts before giving up. Retrying on later
+/// gestures covers a transient in-gesture failure without unbounded
+/// AudioContext churn on a permanently broken setup (adversarial review F1).
+const MAX_AUDIO_GESTURE_ATTEMPTS: u8 = 5;
+
+/// True for events that grant browser user activation (keydown / mousedown /
+/// touchstart) — the only moments an `AudioContext` may start. Key
+/// auto-repeat is excluded: it is not a fresh activation, and a held key
+/// would otherwise retry at repeat rate. `CursorMoved`/`MouseWheel` grant no
+/// activation and fire far too often to probe from.
+fn is_activation_gesture(event: &WindowEvent) -> bool {
+    match event {
+        WindowEvent::KeyboardInput { event, .. } => {
+            event.state == ElementState::Pressed && !event.repeat
+        }
+        WindowEvent::MouseInput { state: ElementState::Pressed, .. } => true,
+        WindowEvent::Touch(touch) => touch.phase == TouchPhase::Started,
+        _ => false,
+    }
+}
+
 impl<G: Game> GameRunner<G> {
+    /// H7: upgrade the disabled web audio manager to a real `OutputStream`
+    /// on a user activation gesture. Runs synchronously inside winit's DOM
+    /// event dispatch, which is what satisfies the browser autoplay policy
+    /// (see coordination/H1_SPIKE.md — a startup `try_default()` succeeding
+    /// proves nothing). Failures retry on later gestures up to the cap; the
+    /// manager stays fully functional in disabled mode either way, and games
+    /// can still call `ctx.audio.enable_output()` themselves.
+    pub(super) fn upgrade_audio_on_gesture(&mut self, event: &WindowEvent) {
+        if self.audio_manager.is_enabled()
+            || self.audio_gesture_attempts >= MAX_AUDIO_GESTURE_ATTEMPTS
+            || !is_activation_gesture(event)
+        {
+            return;
+        }
+        match self.audio_manager.enable_output() {
+            Ok(()) => log::info!("Web audio enabled after user gesture"),
+            Err(e) => {
+                self.audio_gesture_attempts += 1;
+                // Log the first failure and the give-up, not the retries.
+                if self.audio_gesture_attempts == 1 {
+                    log::warn!("Web audio init failed on first gesture: {e}. Retrying on later gestures.");
+                } else if self.audio_gesture_attempts == MAX_AUDIO_GESTURE_ATTEMPTS {
+                    log::warn!(
+                        "Web audio init failed {MAX_AUDIO_GESTURE_ATTEMPTS} times; giving up. Audio stays disabled."
+                    );
+                }
+            }
+        }
+    }
+
     /// Kick off async renderer creation as a browser task. Called from
     /// `resumed()`; re-fire is prevented by its window-created guard.
     pub(super) fn spawn_renderer_init(&mut self) {

@@ -214,6 +214,10 @@ struct GameRunner<G: Game> {
     /// drained by the frame driver once the task completes.
     #[cfg(target_arch = "wasm32")]
     pending_renderer: web::PendingRenderer,
+    /// H7 gesture-gated audio: failed upgrade attempts so far. Stops
+    /// retrying at the cap in `game/web.rs`; never counts successes.
+    #[cfg(target_arch = "wasm32")]
+    audio_gesture_attempts: u8,
     /// Engine time multiplier mirrored onto `GameContext.time_scale`
     /// (read-write, persisted like chaos_mode). Scales particle stepping.
     time_scale: f32,
@@ -305,6 +309,8 @@ impl<G: Game> GameRunner<G> {
             glyph_textures: GlyphTextureCache::new(),
             #[cfg(target_arch = "wasm32")]
             pending_renderer: web::PendingRenderer::default(),
+            #[cfg(target_arch = "wasm32")]
+            audio_gesture_attempts: 0,
             time_scale: 1.0,
             exit_requested: false,
             scene: Scene::new("main"),

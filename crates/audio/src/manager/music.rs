@@ -10,7 +10,7 @@ use rodio::{Decoder, Sink, Source};
 
 use crate::error::{AudioError, AudioResult};
 
-use super::{clamp_volume, AudioManager};
+use super::{clamp_volume, AudioManager, PendingMusic};
 
 impl AudioManager {
     /// Play background music from a file, looping forever.
@@ -49,7 +49,9 @@ impl AudioManager {
     /// playback is a no-op: the call returns `Ok` while
     /// [`AudioManager::is_music_playing`] keeps reporting `false`. This keeps
     /// load errors observable on headless machines without pretending audio
-    /// is audible.
+    /// is audible. The request is remembered so
+    /// [`AudioManager::enable_output`] can start it once a device connects
+    /// (web: the first user gesture); the last request wins.
     fn start_music(&mut self, path: &Path, volume: f32, looping: bool) -> AudioResult<()> {
         // Stop current music if any
         self.stop_music();
@@ -63,7 +65,14 @@ impl AudioManager {
             .map_err(|e| AudioError::DecodeError(format!("{}: {}", path.display(), e)))?;
 
         // Disabled mode: file was validated above, playback is a no-op.
+        // Record the request AFTER validation so missing/corrupt files still
+        // error and never leave a doomed pending entry behind.
         let Some(output) = &self.output else {
+            self.pending_music = Some(PendingMusic {
+                path: path.to_path_buf(),
+                volume,
+                looping,
+            });
             return Ok(());
         };
 
@@ -87,9 +96,26 @@ impl AudioManager {
     }
 
     /// Stop the current background music.
+    ///
+    /// Also clears any music request pending from disabled mode, so a
+    /// stopped track cannot resurrect when a device connects later.
     pub fn stop_music(&mut self) {
+        self.pending_music = None;
         if let Some(sink) = self.music_sink.take() {
             sink.stop();
+        }
+    }
+
+    /// Start music recorded while disabled. Failures (e.g. the file vanished
+    /// since the request) are logged, not returned: the device upgrade
+    /// itself succeeded, and an `Err` from [`AudioManager::enable_output`]
+    /// must mean "still disabled".
+    pub(super) fn start_pending_music(&mut self) {
+        let Some(pending) = self.pending_music.take() else {
+            return;
+        };
+        if let Err(e) = self.start_music(&pending.path, pending.volume, pending.looping) {
+            log::warn!("Pending music failed to start: {e}");
         }
     }
 
@@ -110,7 +136,8 @@ impl AudioManager {
     /// Check if music is currently playing.
     ///
     /// Always `false` in disabled mode, even after a successful
-    /// [`AudioManager::play_music`] call (playback is a no-op there).
+    /// [`AudioManager::play_music`] call (playback is a no-op there; the
+    /// request is pending until [`AudioManager::enable_output`] succeeds).
     #[must_use]
     pub fn is_music_playing(&self) -> bool {
         self.music_sink.as_ref().is_some_and(|s| !s.is_paused() && !s.empty())
