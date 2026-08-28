@@ -4,6 +4,16 @@
 
 ---
 
+## GPP-L7 — gizmo drags vs. commands (RESOLVED Aug 28 2026, editor Sprint 4)
+The last open GPP audit low. The documented hazard — mid-drag world mutations
+live outside the command system, so Ctrl+Z during a drag could undo against
+half-applied state — is now structurally prevented: `dispatch_editor_action`
+suppresses Undo/Redo (and every transform/existence-mutating action) while a
+gizmo drag is live, drags apply idempotently from captured start state
+(`GizmoDragState`), commit as ONE command on release, and Escape rolls the
+whole gesture back without touching history. Live-feedback mutation between
+commands remains by design; it just can't interleave with history anymore.
+
 ## Game Programming Patterns Audit (July 13, 2026) — CLOSED
 A full-codebase audit against Robert Nystrom's *Game Programming Patterns* catalog ran on Jul 13 2026 (originally `PATTERNS_AUDIT.md`, retired the same day once its open items were re-homed in the live TECH_DEBT docs). Final score: **15 of 17 numbered findings resolved same-day** (GPP-01 behavior FSM, GPP-04 dirty-flag transforms, GPP-07 runtime prefabs, GPP-08/09/10 physics event+edit APIs, GPP-13 registry inspector, GPP-14 stable undo ids, GPP-15 upload gating, GPP-17 + 7 of 12 lows, GPP-03 part 1 promotions) — per-crate resolutions below. Still open, tracked in live docs: GPP-02 (data-locality decision of record + revisit trigger — ecs), GPP-03 part 2 / GPP-11 / GPP-12 (games), GPP-06/GPP-16 (behavior/registry extensibility — parked with Phase 4 scripting, engine_core ARCH-006 + ecs), GPP-05/L2/L7/L10/L12 (lows, per-crate). Standing verdict: Command/Event Queue/Component/Object Pool/Flyweight/Service Locator were textbook already; Spatial Partition correctly delegated to rapier.
 

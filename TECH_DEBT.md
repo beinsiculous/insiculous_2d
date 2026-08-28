@@ -18,7 +18,7 @@ items worth scheduling. High + Medium items are mirrored in `PROJECT_ROADMAP.md`
 | `common` | Feb 2026 | 0 / 2 / 3 | `CameraUniform` duplicated in renderer; cross-crate volume clamping |
 | `ecs` | Jul 2026 | 0 / 1 / 5 | GPP-16 registry extensibility; GPP-02 is a decision-of-record |
 | `ecs_macros` | Feb 2026 | 0 / 1 / 2 | Over-specified `syn` features |
-| `editor` | Jul 2026 | 0 / 0 / 1 | Clean of Mediums (GPP-L7 doc note remains) |
+| `editor` | Aug 2026 | 0 / 0 / 0 | Fully clean (GPP-L7 resolved by Sprint 4 drag-state rework) |
 | `editor_integration` | Jul 2026 | 0 / 0 / 2 | Clean of Mediums (file picker, menu-label strings remain) |
 | `engine_core` | Jul 2026 | 0 / 1 / 7 | ARCH-006 behavior registry |
 | `input` | Jul 2026 | 0 / 1 / 3 | GAP-001 gamepad backend |
