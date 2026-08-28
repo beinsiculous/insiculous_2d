@@ -243,9 +243,11 @@ impl Default for EditorTheme {
             text_secondary: Color::from_hex(0xcccccc),
             text_muted: Color::from_hex(0x888888),
 
-            // Gizmos
-            gizmo_x: Color::new(0.0, 1.0, 0.0, 1.0),
-            gizmo_y: Color::new(1.0, 0.0, 0.0, 1.0),
+            // Gizmos — X red / Y green, the universal DCC convention (the
+            // grid origin axes and the gizmo's own defaults agree; these
+            // were swapped for a while, caught by the sprint-4 visual pass)
+            gizmo_x: Color::new(1.0, 0.0, 0.0, 1.0),
+            gizmo_y: Color::new(0.0, 1.0, 0.0, 1.0),
             gizmo_center: Color::new(0.9, 0.9, 0.2, 1.0),
             gizmo_x_hover: Color::new(1.0, 0.4, 0.4, 1.0),
             gizmo_y_hover: Color::new(0.4, 1.0, 0.4, 1.0),
