@@ -1,18 +1,24 @@
 #!/usr/bin/env bash
 # Build a game's web (wasm) bundle in the site's drop-in layout.
 #
-# Usage: scripts/build_wasm.sh <game_dir> <slug> [--serve] [--sync <site_public_dir>]
-#   game_dir  path to the game crate (e.g. ../games/pong)
-#   slug      the site slug — output lands in dist/games/<slug>/v1/
-#   --serve   serve dist/ on http://127.0.0.1:8080 after building
-#   --sync    also copy the bundle into <site_public_dir>/games/<slug>/v1
-#             (e.g. ../insiculous_web/public). Refuses nothing — remember
-#             the site rule: a version dir is immutable once DEPLOYED; only
-#             sync over v1 before its first live deploy, bump to v2 after.
+# Usage: scripts/build_wasm.sh <game_dir> <slug> [--version vN] [--serve] [--sync <site_public_dir>]
+#   game_dir   path to the game crate (e.g. ../games/pong)
+#   slug       the site slug — output lands in dist/games/<slug>/<version>/
+#   --version  bundle version dir, default v1. The version is a FOUR-place
+#              contract (game src/web_entry.rs ASSET_BASE, this script's
+#              output dir, the site's <slug>.md wasm: path, the deployed
+#              public/games/<slug>/<version>/ dir); this script hard-fails
+#              if the game's ASSET_BASE disagrees, so drift is loud.
+#   --serve    serve dist/ on http://127.0.0.1:8080 after building
+#   --sync     also copy the bundle into <site_public_dir>/games/<slug>/<version>
+#              (e.g. ../insiculous_web/public). Refuses nothing — remember
+#              the site rule: a version dir is immutable once DEPLOYED; only
+#              sync over a version before its first live deploy, bump to the
+#              next version after.
 #
 # Output (mirrors production URLs so the hardcoded asset base works both
 # locally and deployed):
-#   <game_dir>/dist/games/<slug>/v1/{game.js, game_bg.wasm, assets/...}
+#   <game_dir>/dist/games/<slug>/<version>/{game.js, game_bg.wasm, assets/...}
 #   <game_dir>/dist/games/<slug>/index.html   (local test page — NOT deployed)
 set -euo pipefail
 
@@ -26,13 +32,30 @@ SLUG="$2"
 shift 2
 SERVE=""
 SYNC_DIR=""
+VERSION="v1"
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --serve) SERVE="--serve"; shift ;;
-        --sync)  SYNC_DIR="${2:?--sync needs a site public dir}"; shift 2 ;;
+        --serve)   SERVE="--serve"; shift ;;
+        --sync)    SYNC_DIR="${2:?--sync needs a site public dir}"; shift 2 ;;
+        --version) VERSION="${2:?--version needs a version dir like v2}"; shift 2 ;;
         *) echo "unknown arg: $1" >&2; exit 2 ;;
     esac
 done
+
+# --- ASSET_BASE must agree with the version we are building ----------------
+# The base URL is compiled INTO the wasm (web_entry.rs); a bundle built for
+# one version dir but fetching assets from another 404s (or silently serves
+# stale assets). Hard fail with the exact remediation.
+WEB_ENTRY="$GAME_DIR/src/web_entry.rs"
+if [[ -f "$WEB_ENTRY" ]]; then
+    EXPECTED_BASE="/games/$SLUG/$VERSION/assets"
+    if ! grep -q "\"$EXPECTED_BASE\"" "$WEB_ENTRY"; then
+        ACTUAL=$(grep -o '"/games/[^"]*"' "$WEB_ENTRY" | head -1 || true)
+        echo "ERROR: $WEB_ENTRY ASSET_BASE ($ACTUAL) != \"$EXPECTED_BASE\"." >&2
+        echo "Fix:   set ASSET_BASE to \"$EXPECTED_BASE\" (the version is a 4-place contract)." >&2
+        exit 1
+    fi
+fi
 
 # --- wasm-bindgen CLI must match the crate version EXACTLY -----------------
 # A mismatched CLI produces silently broken output, which is worse than a
@@ -58,7 +81,7 @@ if ! grep -q '^\[profile\.wasm-release\]' "$GAME_DIR/Cargo.toml"; then
 fi
 CRATE_NAME="$(awk -F'"' '/^name = /{print $2; exit}' "$GAME_DIR/Cargo.toml")"
 WASM_FILE="$GAME_DIR/target/wasm32-unknown-unknown/wasm-release/${CRATE_NAME}.wasm"
-OUT_DIR="$GAME_DIR/dist/games/$SLUG/v1"
+OUT_DIR="$GAME_DIR/dist/games/$SLUG/$VERSION"
 
 (cd "$GAME_DIR" && cargo build --lib --target wasm32-unknown-unknown --profile wasm-release)
 
@@ -113,7 +136,7 @@ cat > "$GAME_DIR/dist/games/$SLUG/index.html" <<EOF
   } else {
     status.textContent = 'Loading game…';
     try {
-      const init = (await import('/games/$SLUG/v1/game.js')).default;
+      const init = (await import('/games/$SLUG/$VERSION/game.js')).default;
       await init();
       document.getElementById('game-canvas').focus();
     } catch (e) {
@@ -137,7 +160,7 @@ if (( SIZE_BYTES > 20 * 1048576 )); then
 fi
 
 if [[ -n "$SYNC_DIR" ]]; then
-    SYNC_TARGET="$SYNC_DIR/games/$SLUG/v1"
+    SYNC_TARGET="$SYNC_DIR/games/$SLUG/$VERSION"
     rm -rf "$SYNC_TARGET"
     mkdir -p "$(dirname "$SYNC_TARGET")"
     cp -r "$OUT_DIR" "$SYNC_TARGET"
