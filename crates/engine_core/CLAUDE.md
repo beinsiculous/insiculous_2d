@@ -78,7 +78,7 @@ Core engine: Game trait, run_game(), managers, scene loading/saving, asset manag
 - `game_config.rs` — GameConfig struct (incl. `input_settings_path`)
 - `game_loop_manager.rs` — Frame timing and delta
 - `ui_manager.rs` — UI lifecycle and draw commands
-- `render_manager.rs` — Renderer lifecycle; `sync_main_camera(world)` copies the main-camera entity's Transform2D position onto the render camera each frame (position only; no-op without a `Camera { is_main_camera: true }` entity)
+- `render_manager.rs` — Renderer lifecycle; `sync_main_camera(world)` copies the main-camera entity's Transform2D position onto the render camera each frame (position only; no-op without a `Camera { is_main_camera: true }` entity). Device-loss fail-stop: `note_render_error` state machine (surface-error streak, `MAX_SURFACE_ERROR_STREAK = 10` → fatal; `DeviceLost` → fatal immediately), `is_fatal()` makes `render()` refuse GPU work; `GameRunner.render_fatal` + `app_handler::handle_render_fatal` stop the frame loop (web: "reload the page" boot status, rAF simply not re-armed, key dispatch gated; native: clean shutdown) — never submit to a dead queue (the Firefox parent-process WebGPU crash, Aug 2026)
 - `tilemap_render.rs` — expands `Tilemap` + `Transform2D` entities into the game sprite batcher (called at the top of the default `Game::render`; one batch per tileset)
 - `window_manager.rs` — Window creation
 - `scene.rs` — Scene lifecycle / world coordination
@@ -145,7 +145,7 @@ OS window in the frame tail (`WindowManager::set_title`, headless no-op, title
 stored pre-creation).
 
 ## Testing
-- 372 passing (incl. doc tests; GPU/window-bound ones compile-only `no_run`), 0 ignored — `cargo test -p engine_core`
+- 381 passing (incl. doc tests; GPU/window-bound ones compile-only `no_run`), 0 ignored — `cargo test -p engine_core`
 
 ## Godot Oracle
 - Game loop: `main/main.cpp` — `iteration()` method

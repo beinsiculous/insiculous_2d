@@ -224,6 +224,10 @@ struct GameRunner<G: Game> {
     /// Set when the game writes `GameContext.exit_requested` — triggers the
     /// clean shutdown path at the end of the frame.
     exit_requested: bool,
+    /// Latched when rendering fails fatally (GPU device lost). The frame
+    /// driver stops the loop instead of submitting to a dead queue — the
+    /// failure mode that crashed Firefox's parent-process WebGPU.
+    render_fatal: bool,
     /// Title requested via `GameContext.window_title`, applied to the OS
     /// window in the frame tail (window-system round-trips happen at most
     /// once per frame, and only when a title was actually requested).
@@ -317,6 +321,7 @@ impl<G: Game> GameRunner<G> {
             audio_gesture_attempts: 0,
             time_scale: 1.0,
             exit_requested: false,
+            render_fatal: false,
             pending_window_title: None,
             scene: Scene::new("main"),
             achievements,

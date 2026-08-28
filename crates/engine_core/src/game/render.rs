@@ -104,7 +104,15 @@ impl<G: Game> GameRunner<G> {
         if let Some(asset_manager) = &self.asset_manager {
             let textures = asset_manager.textures();
             if let Err(e) = self.render_manager.render(&batch_refs, &ui_batch_refs, textures) {
-                log::error!("Render error: {}", e);
+                if matches!(e, renderer::RendererError::DeviceLost) {
+                    // Fail-stop: the frame driver halts the loop instead of
+                    // submitting to a dead queue every rAF (which is what
+                    // crashed Firefox's in-process WebGPU).
+                    self.render_fatal = true;
+                    log::error!("Fatal: graphics device lost — stopping the frame loop");
+                } else {
+                    log::error!("Render error: {}", e);
+                }
             }
         }
     }

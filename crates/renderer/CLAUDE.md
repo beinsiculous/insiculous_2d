@@ -23,7 +23,15 @@ Renderer (WGPU device, queue, surface, RendererConfig{vsync})
 3. Camera uniforms uploaded once per pipeline per frame
 
 ## File Map
-- `renderer.rs` — WGPU device/queue/surface lifecycle, `RendererConfig`, frame orchestration
+- `renderer.rs` — WGPU device/queue/surface lifecycle, `RendererConfig`, frame orchestration.
+  Registers wgpu's device-lost + uncaptured-error callbacks at creation; every render-path
+  entry (`acquire_frame`, `render_with_sprites`, `set_lines`, `resize`, `recreate_surface`)
+  guards on the loss latch. `resize` dedups same-size reconfigures and arms a forced
+  reconfigure after a skipped zero-size request (hidden web canvas round trip).
+  At 596 lines — the next addition splits (extract `create_white_texture_resource` first)
+- `device_status.rs` — `DeviceLossLatch` (one-way Arc<AtomicBool> set by the lost callback,
+  polled before all queue/surface work) + pure `resize_action` guard. Fail-stop by design:
+  no auto-recovery (the device/queue Arcs fan out into every pipeline)
 - `sprite.rs` — `Sprite` data type; parent of the sprite submodules
 - `sprite/batch.rs` — `SpriteBatch`, `SpriteBatcher` (CPU-side grouping by texture)
 - `sprite/pipeline.rs` — `SpritePipeline` (GPU pipeline, bind group caches, draw)
@@ -57,7 +65,7 @@ Renderer (WGPU device, queue, surface, RendererConfig{vsync})
 See `TECH_DEBT.md` — 2 open issues, both Low (shared camera binding, cross-batch transparency vs depth writes).
 
 ## Testing
-- 74 tests (72 unit + 2 doc), run with `cargo test -p renderer`
+- 73 tests (71 unit + 2 doc), run with `cargo test -p renderer`
 
 ## Godot Oracle — When Stuck
 Use `WebFetch` to read from `https://github.com/godotengine/godot/blob/master/`

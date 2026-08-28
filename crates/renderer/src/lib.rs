@@ -6,6 +6,7 @@ use std::sync::Arc;
 use winit::window::Window;
 
 pub mod bloom;
+pub mod device_status;
 mod error;
 pub mod line_pipeline;
 pub mod render_targets;
@@ -22,6 +23,7 @@ pub mod prelude;
 pub use wgpu;
 
 // Re-export for convenience
+pub use device_status::DeviceLossLatch;
 pub use error::*;
 pub use renderer::*;
 pub use sprite_data::*;

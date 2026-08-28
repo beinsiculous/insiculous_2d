@@ -70,6 +70,15 @@ pub struct Renderer {
     /// Number of line vertices uploaded by the most recent `set_lines` call.
     /// Reset to 0 when no lines are drawn this frame.
     line_vertex_count: u32,
+    /// One-way flag set by wgpu's device-lost callback. Every queue/surface
+    /// touchpoint checks it first — submitting to a dead queue is what
+    /// crashed Firefox's parent-process WebGPU (its wgpu-core panics on the
+    /// reclaimed queue id).
+    device_lost: crate::device_status::DeviceLossLatch,
+    /// Set when a zero-size resize request was skipped: the next non-zero
+    /// resize must reconfigure even at an unchanged size (hidden-canvas
+    /// round trip on the web).
+    pending_reconfigure: bool,
 }
 
 impl Renderer {
@@ -119,6 +128,33 @@ impl Renderer {
             )
             .await
             .map_err(|e| RendererError::DeviceCreationError(e.to_string()))?;
+
+        // Device-loss fail-stop: the callback (real on both the native
+        // wgpu-core and browser webgpu backends — on the web it hooks the JS
+        // `device.lost` promise) sets a one-way latch that every render-path
+        // entry point checks before touching the queue or surface. Paths
+        // outside the render loop (glyph-cache uploads, asset loads) stay
+        // unguarded on purpose: the frame loop halts one frame after the
+        // latch sets, so they can run at most once against a dead device —
+        // accepted (review F3) over threading the latch through AssetManager.
+        let device_lost = crate::device_status::DeviceLossLatch::new();
+        let loss_latch = device_lost.clone();
+        device.set_device_lost_callback(move |reason, message| {
+            log::error!("GPU device lost ({reason:?}): {message}");
+            loss_latch.mark_lost();
+        });
+        // Log uncaptured errors instead of wgpu's native panic-by-default: a
+        // dying device emits a storm of errors between loss and fail-stop,
+        // and panicking on the first would preempt the clean shutdown path.
+        // Validation errors are NOT device loss — never set the latch here.
+        // Debug native builds keep the fail-fast signal for real bugs.
+        device.on_uncaptured_error(std::sync::Arc::new(|e: wgpu::Error| {
+            log::error!("Uncaptured wgpu error: {e}");
+            #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
+            if matches!(e, wgpu::Error::Validation { .. }) {
+                panic!("wgpu validation error (debug build): {e}");
+            }
+        }));
 
         // Configure surface. The bloom composite pass writes the final tonemapped
         // color and relies on the GPU's automatic linear -> sRGB conversion when
@@ -217,6 +253,8 @@ impl Renderer {
             bloom_config,
             line_pipeline,
             line_vertex_count: 0,
+            device_lost,
+            pending_reconfigure: false,
         })
     }
 
@@ -237,6 +275,10 @@ impl Renderer {
     /// Call every frame — vertices are not retained across frames; an empty
     /// slice (or no call at all) means no lines render this frame.
     pub fn set_lines(&mut self, vertices: &[LineVertex]) {
+        if self.device_lost.is_lost() {
+            self.line_vertex_count = 0;
+            return;
+        }
         self.line_vertex_count = vertices.len() as u32;
         self.line_pipeline.upload_vertices(&self.queue, vertices);
     }
@@ -253,6 +295,9 @@ impl Renderer {
     /// - `Ok(None)` - Transient error, skip this frame
     /// - `Err(_)` - Fatal or recoverable error that needs handling
     fn acquire_frame(&self) -> Result<Option<wgpu::SurfaceTexture>, RendererError> {
+        if self.device_lost.is_lost() {
+            return Err(RendererError::DeviceLost);
+        }
         match self.surface.get_current_texture() {
             Ok(frame) => Ok(Some(frame)),
             Err(wgpu::SurfaceError::Lost) => {
@@ -281,6 +326,13 @@ impl Renderer {
         sprite_batches: &[&crate::sprite::SpriteBatch],
         ui_batches: &[&crate::sprite::SpriteBatch],
     ) -> Result<(), RendererError> {
+        // A lost device must fail before prepare_sprites' write_buffer calls
+        // — those are exactly the queue traffic that panics Firefox's
+        // parent-process wgpu once its queue id is reclaimed.
+        if self.device_lost.is_lost() {
+            return Err(RendererError::DeviceLost);
+        }
+
         // Make sure the built-in white texture (for flat-colored sprites) has
         // a cached bind group. Cheap no-op after the first frame — no need to
         // clone the caller's texture map just to splice it in.
@@ -443,21 +495,52 @@ impl Renderer {
     }
 
     /// Resize the surface and recreate the offscreen HDR / depth / bloom targets.
+    ///
+    /// Same-size requests are skipped — `surface.configure` tears down and
+    /// recreates the swapchain, and on the web ResizeObserver echoes arrive
+    /// every frame. Zero-size requests are skipped too (wgpu validation
+    /// error) but arm a forced reconfigure for the next non-zero size, so a
+    /// hidden canvas coming back at its old size still gets a fresh surface.
     pub fn resize(&mut self, width: u32, height: u32) {
-        if width > 0 && height > 0 {
-            self.config.width = width;
-            self.config.height = height;
-            self.surface.configure(&self.device, &self.config);
-            self.render_targets.resize(&self.device, width, height);
+        if self.device_lost.is_lost() {
+            return;
         }
+        if width == 0 || height == 0 {
+            self.pending_reconfigure = true;
+            return;
+        }
+        let current = (self.config.width, self.config.height);
+        let Some((w, h)) = crate::device_status::resize_action(
+            current,
+            (width, height),
+            self.pending_reconfigure,
+        ) else {
+            return;
+        };
+        self.pending_reconfigure = false;
+        self.config.width = w;
+        self.config.height = h;
+        self.surface.configure(&self.device, &self.config);
+        self.render_targets.resize(&self.device, w, h);
     }
 
     /// Handle surface lost error by recreating the surface
     pub fn recreate_surface(&mut self) -> Result<(), RendererError> {
+        // A lost device turns "recreate" into an immediate fatal error —
+        // reconfiguring a dead device is more traffic at a dead queue.
+        if self.device_lost.is_lost() {
+            return Err(RendererError::DeviceLost);
+        }
         // Reconfigure the surface
         self.surface.configure(&self.device, &self.config);
         log::debug!("Surface recreated after loss");
         Ok(())
+    }
+
+    /// Has wgpu reported the GPU device lost? Once true, every render-path
+    /// method fails fast and the frame loop should stop.
+    pub fn is_device_lost(&self) -> bool {
+        self.device_lost.is_lost()
     }
 
     /// Create a white texture resource for colored sprites

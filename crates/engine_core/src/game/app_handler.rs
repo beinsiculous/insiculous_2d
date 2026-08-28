@@ -22,16 +22,46 @@ impl<G: Game> GameRunner<G> {
     /// and re-arm the next redraw. Called from `about_to_wait` natively and
     /// from `RedrawRequested` on the web.
     fn drive_frame(&mut self, event_loop: &ActiveEventLoop) {
+        // Fatal render failure (GPU device lost): stop the loop before it
+        // touches the dead device again. Checked before AND after the frame
+        // so at most one partial frame runs past the loss.
+        if self.render_fatal {
+            self.handle_render_fatal(event_loop);
+            return;
+        }
         self.update_and_render();
         self.save_input_settings_if_dirty();
         if self.exit_requested {
             self.shutdown(event_loop);
             return;
         }
+        if self.render_fatal {
+            self.handle_render_fatal(event_loop);
+            return;
+        }
         // Enforce GameConfig::target_fps by sleeping out the frame budget
         // (no-op on wasm — requestAnimationFrame paces the loop).
         self.game_loop_manager.throttle();
         self.window_manager.request_redraw();
+    }
+
+    /// The render path reported the GPU device lost. On the web, NOT
+    /// re-arming `request_redraw` is what ends the rAF loop — the tab stays
+    /// up with a reload message. Natively there is nothing left to show, so
+    /// take the clean shutdown path (game notify, input persistence, exit).
+    fn handle_render_fatal(&mut self, event_loop: &ActiveEventLoop) {
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = event_loop;
+            crate::web::set_boot_status(
+                "Graphics device lost — reload the page to continue",
+            );
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            log::error!("Graphics device lost — shutting down");
+            self.shutdown(event_loop);
+        }
     }
 
     /// Persist input bindings when a mutation happened this frame
@@ -160,6 +190,12 @@ impl<G: Game> ApplicationHandler<()> for GameRunner<G> {
                 log::info!("Scale factor changed to: {}", scale_factor);
             }
             WindowEvent::KeyboardInput { event, .. } => {
+                // After a fatal device loss the game no longer updates or
+                // renders; don't run key handlers either — one could reach
+                // the dead GPU via ctx.assets (review F6).
+                if self.render_fatal {
+                    return;
+                }
                 if let PhysicalKey::Code(key) = event.physical_key {
                     // Create context and call handlers
                     let window_size = self.window_size();

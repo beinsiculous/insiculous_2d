@@ -39,6 +39,49 @@ pub struct RenderManager {
     ui_pipeline: Option<SpritePipeline>,
     /// The 2D camera for orthographic projection
     camera: Camera,
+    /// Consecutive frames that ended in a surface error. Reset on any
+    /// successful render; at [`MAX_SURFACE_ERROR_STREAK`] the manager goes
+    /// fatal instead of reconfiguring a possibly-dead device forever.
+    surface_error_streak: u32,
+    /// Latched on device loss (or a surface-error streak). Once set, render
+    /// calls fail fast with `DeviceLost` and never touch the GPU again.
+    fatal: bool,
+}
+
+/// Consecutive surface-error frames tolerated before escalating to fatal.
+///
+/// This is the backstop for the case where the device died but wgpu's
+/// device-lost callback never fired (a browser-bug scenario — the exact one
+/// that crashed Firefox). Healthy transients never get here: `Outdated` and
+/// `Timeout` skip the frame without erroring, so only `SurfaceError::Lost`
+/// feeds the streak, and one successful frame resets it. Ten straight lost
+/// frames (~160ms at 60fps) means reconfiguring is not helping.
+const MAX_SURFACE_ERROR_STREAK: u32 = 10;
+
+/// What to do about a render error, given how many consecutive
+/// surface-error frames preceded it.
+#[derive(Debug, PartialEq, Eq)]
+enum RenderErrorAction {
+    /// Transient surface loss: reconfigure and keep going.
+    RecreateSurface,
+    /// The device is gone (or reconfiguring stopped helping): stop rendering
+    /// for good.
+    Fatal,
+    /// Not a surface problem — hand the error to the caller unchanged.
+    Propagate,
+}
+
+/// Classify a render error against the current surface-error streak.
+/// `streak` counts the errors BEFORE this one.
+fn classify_render_error(error: &RendererError, streak: u32) -> RenderErrorAction {
+    match error {
+        RendererError::DeviceLost => RenderErrorAction::Fatal,
+        RendererError::SurfaceError(_) if streak + 1 >= MAX_SURFACE_ERROR_STREAK => {
+            RenderErrorAction::Fatal
+        }
+        RendererError::SurfaceError(_) => RenderErrorAction::RecreateSurface,
+        _ => RenderErrorAction::Propagate,
+    }
 }
 
 impl Default for RenderManager {
@@ -55,6 +98,8 @@ impl RenderManager {
             sprite_pipeline: None,
             ui_pipeline: None,
             camera: Camera::default(),
+            surface_error_streak: 0,
+            fatal: false,
         }
     }
 
@@ -134,22 +179,36 @@ impl RenderManager {
         }
     }
 
-    /// Handle a render error, attempting surface recreation on surface loss.
-    fn handle_render_error(renderer: &mut Renderer, error: RendererError) -> Result<(), RendererError> {
-        match error {
-            RendererError::SurfaceError(_) => {
-                if let Err(e) = renderer.recreate_surface() {
-                    log::error!("Failed to recreate surface: {}", e);
-                    return Err(e);
-                }
-                log::debug!("Surface recreated after loss");
-                Ok(())
-            }
-            e => {
-                log::error!("Render error: {}", e);
-                Err(e)
-            }
+    /// Has rendering failed fatally (device lost, or surface errors that
+    /// reconfiguring could not fix)? Once true, [`Self::render`] refuses to
+    /// touch the GPU and the frame loop should stop.
+    pub fn is_fatal(&self) -> bool {
+        self.fatal
+            || self
+                .renderer
+                .as_ref()
+                .is_some_and(|r| r.is_device_lost())
+    }
+
+    /// A frame rendered: surface errors are no longer consecutive.
+    fn note_render_success(&mut self) {
+        self.surface_error_streak = 0;
+    }
+
+    /// Record a render error: advance the surface-error streak, classify,
+    /// and latch fatal when warranted. Returns the action the caller must
+    /// perform (the actual `recreate_surface` call stays at the call site so
+    /// this state machine tests headless).
+    fn note_render_error(&mut self, error: &RendererError) -> RenderErrorAction {
+        let action = classify_render_error(error, self.surface_error_streak);
+        if matches!(error, RendererError::SurfaceError(_)) {
+            self.surface_error_streak += 1;
         }
+        if action == RenderErrorAction::Fatal {
+            self.fatal = true;
+            log::error!("Fatal render failure ({error}) — rendering stopped");
+        }
+        action
     }
 
     /// Render sprites using the provided batcher and textures.
@@ -167,6 +226,9 @@ impl RenderManager {
         ui_batches: &[&SpriteBatch],
         textures: &HashMap<TextureHandle, TextureResource>,
     ) -> Result<(), RendererError> {
+        if self.is_fatal() {
+            return Err(RendererError::DeviceLost);
+        }
         let renderer = self.renderer.as_mut().ok_or_else(|| {
             RendererError::WindowCreationError("Renderer not initialized".to_string())
         })?;
@@ -185,8 +247,43 @@ impl RenderManager {
             batches,
             ui_batches,
         ) {
-            Ok(_) => Ok(()),
-            Err(e) => Self::handle_render_error(renderer, e),
+            Ok(_) => {
+                self.note_render_success();
+                Ok(())
+            }
+            Err(e) => match self.note_render_error(&e) {
+                RenderErrorAction::RecreateSurface => {
+                    // recreate_surface itself fails with DeviceLost on a dead
+                    // device; note that too so fatal latches without waiting
+                    // for the streak.
+                    let recreate = self
+                        .renderer
+                        .as_mut()
+                        .map(|r| r.recreate_surface())
+                        .unwrap_or(Ok(()));
+                    match recreate {
+                        Ok(()) => {
+                            log::debug!("Surface recreated after loss");
+                            Ok(())
+                        }
+                        Err(recreate_err) => {
+                            log::error!("Failed to recreate surface: {recreate_err}");
+                            if self.note_render_error(&recreate_err)
+                                == RenderErrorAction::Fatal
+                            {
+                                Err(RendererError::DeviceLost)
+                            } else {
+                                Err(recreate_err)
+                            }
+                        }
+                    }
+                }
+                RenderErrorAction::Fatal => Err(RendererError::DeviceLost),
+                RenderErrorAction::Propagate => {
+                    log::error!("Render error: {e}");
+                    Err(e)
+                }
+            },
         }
     }
 
@@ -325,6 +422,78 @@ mod tests {
         assert!(!manager.is_initialized());
         assert!(manager.device().is_none());
         assert!(manager.queue().is_none());
+        assert!(!manager.is_fatal());
+    }
+
+    #[test]
+    fn classify_recreates_surface_on_first_surface_error() {
+        let err = RendererError::SurfaceError("lost".to_string());
+        assert_eq!(classify_render_error(&err, 0), RenderErrorAction::RecreateSurface);
+    }
+
+    #[test]
+    fn classify_escalates_to_fatal_after_max_consecutive_surface_errors() {
+        let err = RendererError::SurfaceError("lost".to_string());
+        assert_eq!(
+            classify_render_error(&err, MAX_SURFACE_ERROR_STREAK - 1),
+            RenderErrorAction::Fatal
+        );
+    }
+
+    #[test]
+    fn classify_device_lost_is_fatal_immediately_regardless_of_streak() {
+        assert_eq!(classify_render_error(&RendererError::DeviceLost, 0), RenderErrorAction::Fatal);
+    }
+
+    #[test]
+    fn classify_propagates_non_surface_errors() {
+        let err = RendererError::RenderingError("oom".to_string());
+        assert_eq!(classify_render_error(&err, 0), RenderErrorAction::Propagate);
+    }
+
+    #[test]
+    fn device_lost_error_latches_fatal() {
+        let mut manager = RenderManager::new();
+        assert_eq!(
+            manager.note_render_error(&RendererError::DeviceLost),
+            RenderErrorAction::Fatal
+        );
+        assert!(manager.is_fatal());
+    }
+
+    #[test]
+    fn fatal_render_manager_refuses_to_render() {
+        let mut manager = RenderManager::new();
+        manager.note_render_error(&RendererError::DeviceLost);
+        let result = manager.render(&[], &[], &HashMap::new());
+        assert!(matches!(result, Err(RendererError::DeviceLost)));
+    }
+
+    #[test]
+    fn surface_error_streak_latches_fatal_without_device_lost_callback() {
+        // The browser-bug backstop: the device died but wgpu's lost callback
+        // never fired — repeated surface errors alone must stop rendering.
+        let mut manager = RenderManager::new();
+        let err = RendererError::SurfaceError("lost".to_string());
+        for _ in 0..MAX_SURFACE_ERROR_STREAK - 1 {
+            assert_eq!(manager.note_render_error(&err), RenderErrorAction::RecreateSurface);
+            assert!(!manager.is_fatal());
+        }
+        assert_eq!(manager.note_render_error(&err), RenderErrorAction::Fatal);
+        assert!(manager.is_fatal());
+    }
+
+    #[test]
+    fn surface_error_streak_resets_on_successful_frame() {
+        let mut manager = RenderManager::new();
+        let err = RendererError::SurfaceError("lost".to_string());
+        for _ in 0..MAX_SURFACE_ERROR_STREAK - 1 {
+            manager.note_render_error(&err);
+        }
+        manager.note_render_success();
+        // The next error starts a fresh streak — recreate, not fatal.
+        assert_eq!(manager.note_render_error(&err), RenderErrorAction::RecreateSurface);
+        assert!(!manager.is_fatal());
     }
 
     #[test]

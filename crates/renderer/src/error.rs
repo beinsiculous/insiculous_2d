@@ -23,6 +23,12 @@ pub enum RendererError {
     #[error("Surface error: {0}")]
     SurfaceError(String),
 
+    /// The GPU device was reported lost (driver reset, browser reclaim).
+    /// Fatal: the render path refuses all further queue/surface work — the
+    /// loss reason and message are logged at the callback site.
+    #[error("Graphics device lost")]
+    DeviceLost,
+
     #[error("Texture error: {0}")]
     TextureError(#[from] TextureError),
 }
