@@ -8,7 +8,9 @@ audio system is future work).
 
 ## Files
 - `lib.rs` — crate docs + re-exports (`AudioManager`, `SoundHandle`, `SoundSettings`, `AudioError`, `AudioResult`)
-- `manager.rs` — `AudioManager`: load/cache, SFX playback, music playback, volume buses, stop-by-handle
+- `manager/mod.rs` — `AudioManager` struct + device/output lifecycle, load/cache, SFX playback, stop-by-handle
+- `manager/music.rs` — music playback (play/stop/pause/resume) + the volume buses (`update_all_volumes`)
+- `manager/tests.rs` — headless tests for both seams (shared WAV fixtures)
 - `sound.rs` — `SoundHandle` (Copy id), `SoundSettings` (builder: volume/speed/looping)
 - `error.rs` — `AudioError` (thiserror) + `AudioResult<T>` alias
 
@@ -43,7 +45,7 @@ audio system is future work).
 - See `TECH_DEBT.md` for the full list
 
 ## Testing
-- 21 headless tests (20 unit + 1 doc; disabled mode + bytes/temp-file APIs), run with
+- 19 headless tests (18 unit + 1 doc; disabled mode + bytes/temp-file APIs), run with
   `cargo test -p audio`. No audio device needed.
 
 ## Godot Oracle

@@ -414,6 +414,13 @@ Closed as part of the universal controller/2-player feature:
 
 ## audio — Resolved Debt (June 11, 2026 remediation)
 
+### August 27, 2026 — manager.rs 600-line guardrail (issue #12)
+- `manager.rs` (689 lines; ~674 pre-VFS + ~15 wasm-port routing) split into
+  `manager/{mod,music,tests}.rs` along the documented seams: mod.rs =
+  device/output + SFX playback, music.rs = music + volume buses, tests.rs =
+  headless tests (shared WAV fixtures serve both seams). Pure move, no API
+  or behavior change; all files under 600 lines.
+
 ### July 13, 2026 — GPP-L3 (Singleton)
 - `SoundHandle::new()`'s process-global `static NEXT_ID: AtomicU32` replaced with an instance-local `next_sound_id: u32` on `AudioManager` (allocated in `load_sound_from_bytes` after decode validation, so failed loads consume no id); `SoundHandle::new()` → `pub(crate) from_id(u32)`. Ids are now manager-local and deterministic (fresh managers start at 1). Regression test: `test_sound_ids_are_manager_local_and_deterministic`.
 

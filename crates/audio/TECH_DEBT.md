@@ -8,10 +8,7 @@ No open items (GPP-L3 resolved Jul 13 2026 — see `log_archive.md`).
 
 ## Open Items
 
-1. **`manager.rs` over the 600-line guardrail (689 lines, Aug 19 2026)** —
-   was already ~674 before the wasm-port VFS routing added ~15. Split along
-   the natural seams (device/output + SFX playback vs music + volume buses)
-   in its own reviewed change; do not grow it further.
+None.
 
 ## Known Limitations (By Design — current constraints, not open work)
 
@@ -35,7 +32,7 @@ No open items (GPP-L3 resolved Jul 13 2026 — see `log_archive.md`).
 
 | Metric | Value |
 |--------|-------|
-| Test count | 21 (all headless) |
+| Test count | 19 (18 unit + 1 doc, all headless) |
 | High priority open | 0 |
 | Medium priority open | 0 |
 | Low priority open | 0 |
