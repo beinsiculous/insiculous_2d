@@ -328,12 +328,20 @@ etc.) is unrelated engine vocabulary that predates this product name — leave i
 
 ## Phase K — Conductor: adaptive MIDI music (parallel engine track, Aug 28 2026)
 
-Jesse's founding audio wish: the Banjo-Kazooie / Wii Shop pause-chime effect,
-generalized — music ships as a MIDI file synthesized at runtime, designated
-tracks are **action-triggered** so every triggered note stays in key/time with
-the song ("playing the game is playing the song"). Opt-in per game; standard
-ogg/wav music + SFX stay the untouched default. Runs parallel to Editor
-Sprint 5 and F/G — the K1 spike goes first and **gates K2–K5**.
+Jesse's founding audio wish, sharpened (Aug 28): music ships as a MIDI file
+synthesized at runtime, and trigger notes **replace sound effects** — every
+player/enemy/world action fires its own instrument track from the song's
+score, so the player's playstyle IS the arrangement: music unique to each run
+that always fits, because every producible sound was authored into the score.
+The level song is the band that never stops; the world's actors are the
+soloists, playing only when they act. Pause mutes the soloists for free
+(frozen world = no events) while the menu cursor picks up an instrument of
+its own — the Banjo-Kazooie / Wii Shop pause-jam, over the still-playing
+song. Second north star: **NecroDancer-style movement-to-the-beat** — the
+beat-query API (`beat_crossed`, `music_position`) drives the reverse
+direction (song rhythm → world visuals/input-timing judgment). Opt-in per
+game; standard ogg/wav music + SFX stay the untouched default. Runs parallel
+to Editor Sprint 5 and F/G — the K1 spike goes first and **gates K2–K6**.
 
 **Libraries (settled, FOSS-clean, pure Rust, wasm-friendly):** `midly` (MIT,
 MIDI parsing, load-time only) + `rustysynth` (MIT, zero deps, SoundFont synth
@@ -357,15 +365,28 @@ seam; games reach it all through `ctx.audio`, zero engine_core dep changes.
 Issues (Studio Board): **#60 K1** spike (.mid→rustysynth→rodio native+wasm;
 verifies rustysynth `Send`/ctor FIRST, documents a wasm fallback, picks the
 small CC0 SoundFont — never a 30 MB GM bank) → **#61 K2** `music_midi` core
-(sidecar SSOT, tempo map, sequencer, edge-case validation: 120 BPM/4-4
-defaults, SMPTE rejected, duplicate track names rejected) → **#62 K3**
-trigger tracks (chord units, quantize + one-block late tolerance, loop-wrap
-all-notes-off + cursor reset, commands drained before advancing) → **#63 K4**
-audio integration (pending/gesture parity with `play_music`, one music slot,
-paused = triggers dropped not queued, dead-audio-thread detection,
-integer-math `beat_crossed`) → **#64 K5** demo (pong pause-menu jam), wasm
-listen test, `training.md` pattern. v2 ideas on record in K5: harmony-aware
-triggers, intensity layers, editor integration.
+(sidecar SSOT incl. per-track `mode: Sequence|Loop`, tempo map, sequencer,
+edge-case validation: 120 BPM/4-4 defaults, SMPTE rejected, duplicate track
+names rejected) → **#62 K3** trigger tracks (chord units, quantize +
+one-block late tolerance, loop-wrap all-notes-off + cursor reset, commands
+drained before advancing; `Loop` mode wraps a track's cursor so an
+SFX-replacement instrument NEVER goes silent — default, since silence =
+broken feedback when the note IS the sound effect; `Sequence` = the chime
+feel) → **#63 K4** audio integration (pending/gesture parity with
+`play_music`, one music slot, paused = triggers dropped not queued,
+dead-audio-thread detection, integer-math `beat_crossed`) → **#64 K5** demo
+(pong: paddle hits + scoring AS instruments, pause-menu jam, beat-pulsed
+visual), wasm listen test, `training.md` pattern → **#65 K6** the
+**all-games wave** (like 2-player/pause/localization before it): a composed
+song per game with per-game instrument casting (breakout brick-breaks,
+snake's rising eat-melody, frogger hops — the NecroDancer-est fit), pause
+jam everywhere, browser-verified; songs are a new authored-asset type
+parallel to the F art track (**SETTLED, Jesse, Aug 28: music follows the
+same tiered AI rules as pixel art** — DEION_STYLE.md §6 amended: AI-assisted
+compositions may ship free-tier, never paid; `ai/` + `ai_` quarantine and
+the purge script apply to audio files as-is). v2 ideas on record in K5: harmony-aware
+position-keyed triggers, intensity layers, song position save/restore for
+dedicated pause songs, editor integration.
 
 ---
 
