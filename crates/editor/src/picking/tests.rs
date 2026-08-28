@@ -185,27 +185,7 @@ fn test_pick_in_rect() {
     assert!(!result.hits.contains(&EntityId::with_generation(3, 1)));
 }
 
-#[test]
-fn test_selection_rect_normalized() {
-    let mut rect = SelectionRect::new();
-    rect.begin(Vec2::new(100.0, 200.0));
-    rect.update(Vec2::new(50.0, 150.0)); // End is before start
-
-    let (min, max) = rect.normalized();
-    assert_eq!(min, Vec2::new(50.0, 150.0));
-    assert_eq!(max, Vec2::new(100.0, 200.0));
-}
-
-#[test]
-fn test_selection_rect_is_drag() {
-    let mut rect = SelectionRect::new();
-    rect.begin(Vec2::new(100.0, 100.0));
-
-    // Small movement - not a drag
-    rect.update(Vec2::new(102.0, 102.0));
-    assert!(!rect.is_drag(5.0));
-
-    // Large movement - is a drag
-    rect.update(Vec2::new(150.0, 150.0));
-    assert!(rect.is_drag(5.0));
-}
+// SelectionRect was deleted with issue #39: it was never instantiated in
+// production (the live marquee path is ViewportInputHandler + the caller's
+// screen-space rect draw), and keeping two representations is how the old
+// Vec2::ZERO sentinel bug happened.

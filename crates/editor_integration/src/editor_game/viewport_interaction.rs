@@ -101,22 +101,87 @@ impl<G: Game> EditorGame<G> {
             }
         }
 
-        // Rectangle selection (drag just completed)
-        if !input_result.selection_drag_active
-            && input_result.selection_start != Vec2::ZERO
-            && !input_result.clicked
-        {
-            let pickables = build_pickable_entities(ctx.world);
-            let pick_result = self.editor.picker.pick_in_screen_rect(
-                &self.editor.viewport,
-                input_result.selection_start,
-                input_result.selection_end,
-                &pickables,
-            );
+        // Rubber-band rect, visible while the drag is live (same frame's
+        // input — drawn here, not in render_scene_view, so it is never a
+        // frame stale)
+        if let Some((start, current)) = input_result.marquee_active {
+            self.draw_marquee(ctx.ui, start, current);
+        }
 
-            if !input_result.shift_held {
-                self.editor.selection.clear();
+        // Rectangle selection (drag just completed)
+        if let Some((start, end)) = input_result.marquee_released {
+            self.apply_marquee_selection(
+                ctx.world,
+                start,
+                end,
+                input_result.shift_held,
+                input_result.ctrl_held,
+            );
+        }
+    }
+
+    /// Draw the live marquee rect: theme selection fill (faded — the row
+    /// token's alpha is too heavy over the scene) + outline border, clipped
+    /// to the scene panel.
+    ///
+    /// Layer precondition: must be called on the default `Content` layer
+    /// (phase 6 of the update loop, outside any overlay scope) — panel
+    /// chrome flushes after Content and stays above the rect.
+    pub(super) fn draw_marquee(&self, ui: &mut ui::UIContext, start: Vec2, current: Vec2) {
+        let Some(bounds) = self.editor.scene_view_bounds() else {
+            return;
+        };
+        // Drags go all four directions — normalize to min/max corners. Skip
+        // non-finite coordinates entirely (never feed them to the draw list).
+        let min = start.min(current);
+        let max = start.max(current);
+        if !min.is_finite() || !max.is_finite() {
+            return;
+        }
+        let rect = ui::Rect::new(min.x, min.y, max.x - min.x, max.y - min.y);
+        let clip = ui::Rect::new(bounds.x, bounds.y, bounds.width, bounds.height);
+
+        let mut fill = self.editor.theme.selection_fill;
+        fill.a *= 0.6;
+        ui.push_clip_rect(clip);
+        ui.rect(rect, fill);
+        ui.rect_border(rect, self.editor.theme.selection_outline, 1.0, 0.0);
+        ui.pop_clip_rect();
+    }
+
+    /// Apply a completed marquee: Ctrl toggles each hit, Shift adds, and a
+    /// plain drag replaces — parity with single-click selection.
+    pub(super) fn apply_marquee_selection(
+        &mut self,
+        world: &World,
+        start: Vec2,
+        end: Vec2,
+        shift_held: bool,
+        ctrl_held: bool,
+    ) {
+        // Same guard as the draw path: a corrupted input frame must not
+        // feed non-finite corners into the pick rect.
+        if !start.is_finite() || !end.is_finite() {
+            return;
+        }
+        let pickables = build_pickable_entities(world);
+        let pick_result = self.editor.picker.pick_in_screen_rect(
+            &self.editor.viewport,
+            start,
+            end,
+            &pickables,
+        );
+
+        if ctrl_held {
+            for &entity_id in &pick_result.hits {
+                self.editor.selection.toggle(entity_id);
             }
+        } else if shift_held {
+            for &entity_id in &pick_result.hits {
+                self.editor.selection.add(entity_id);
+            }
+        } else {
+            self.editor.selection.clear();
             for &entity_id in &pick_result.hits {
                 self.editor.selection.add(entity_id);
             }

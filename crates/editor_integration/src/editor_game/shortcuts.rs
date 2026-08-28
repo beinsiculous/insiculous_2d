@@ -255,11 +255,15 @@ impl<G: Game> EditorGame<G> {
                 self.handle_play_action(PlayControlAction::Play, ctx.world);
             }
             KeyCode::Escape => {
-                // Escape aborts an in-flight gizmo drag; the fuller cancel
-                // cascade (marquee, deselect) lands with the shortcut
-                // unification (#40).
+                // Escape cancels the most specific live gesture: a gizmo
+                // drag first, else a marquee. (Deselect joins the cascade
+                // with the shortcut unification, #40.)
                 if !self.cancel_gizmo_drag(ctx.world) {
-                    self.inner.on_key_pressed(key, ctx);
+                    if self.editor.viewport_input.is_selecting() {
+                        self.editor.viewport_input.cancel_marquee();
+                    } else {
+                        self.inner.on_key_pressed(key, ctx);
+                    }
                 }
             }
             _ => self.inner.on_key_pressed(key, ctx),

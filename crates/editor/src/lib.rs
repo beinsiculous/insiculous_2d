@@ -106,7 +106,7 @@ pub use hierarchy::{normalized_rename, HierarchyPanel, HierarchyResponse, NameRe
 pub use grid::{render_grid_overlay, GridColors, GridConfig, GridLineKind, GridRenderer, GridSegment};
 pub use inspector::{component_value, inspect_component, InspectorStyle};
 pub use menu::{Menu, MenuBar, MenuItem};
-pub use picking::{EntityPicker, PickResult, PickableEntity, SelectionRect, AABB};
+pub use picking::{EntityPicker, PickResult, PickableEntity, AABB};
 pub use play_controls::{PlayControlAction, PlayControls};
 pub use play_state::EditorPlayState;
 pub use scroll::ScrollState;
@@ -141,7 +141,7 @@ pub mod prelude {
         HierarchyPanel, InspectorStyle, Menu, MenuBar, MenuItem, PanelId, PickResult,
         PickableEntity, StatusBar, StatusBarStats, STATUS_BAR_HEIGHT,
         PlayControlAction, PlayControls, SceneViewport, Selection,
-        SelectionRect, Toolbar, ViewportInputConfig,
+        Toolbar, ViewportInputConfig,
         ViewportInputHandler, ViewportInputResult, AABB,
     };
 }

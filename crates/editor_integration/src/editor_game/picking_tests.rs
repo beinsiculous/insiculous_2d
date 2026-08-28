@@ -170,3 +170,124 @@ fn test_build_pickable_entities_multiple() {
     assert!(!ids.contains(&e3));
 }
 
+
+// ---- Marquee selection semantics (issue #39) ----
+
+mod marquee {
+    use super::*;
+    use engine_core::contexts::GameContext;
+    use engine_core::Game;
+
+    struct DummyGame;
+    impl Game for DummyGame {
+        fn update(&mut self, _ctx: &mut GameContext) {}
+    }
+
+    /// An EditorGame with a laid-out viewport and one pickable sprite at
+    /// world origin (screen center (400, 300), 80px square).
+    fn rig() -> (crate::editor_game::EditorGame<DummyGame>, ecs::World, ecs::EntityId) {
+        let mut game = crate::editor_game::EditorGame::new(DummyGame);
+        game.editor
+            .viewport
+            .set_viewport_bounds(ui::Rect::new(0.0, 0.0, 800.0, 600.0));
+        let mut world = ecs::World::new();
+        let entity = world.create_entity();
+        world
+            .add_component(&entity, GlobalTransform2D::default())
+            .ok();
+        world
+            .add_component(&entity, ecs::sprite_components::Sprite::new(0))
+            .ok();
+        (game, world, entity)
+    }
+
+    const HIT_START: Vec2 = Vec2::new(350.0, 250.0);
+    const HIT_END: Vec2 = Vec2::new(450.0, 350.0);
+
+    #[test]
+    fn test_plain_marquee_replaces_the_selection() {
+        let (mut game, world, entity) = rig();
+        // Nothing pre-selected; a marquee over the sprite selects it
+        game.apply_marquee_selection(&world, HIT_START, HIT_END, false, false);
+        assert!(game.editor.selection.contains(entity));
+
+        // A marquee over empty space with no modifier clears
+        game.apply_marquee_selection(
+            &world,
+            Vec2::new(700.0, 500.0),
+            Vec2::new(780.0, 580.0),
+            false,
+            false,
+        );
+        assert!(game.editor.selection.is_empty());
+    }
+
+    #[test]
+    fn test_ctrl_marquee_toggles_instead_of_replacing() {
+        let (mut game, world, entity) = rig();
+        game.editor.selection.add(entity);
+
+        // Ctrl+drag over an already-selected entity DESELECTS it (toggle),
+        // and never destructively clears the rest
+        game.apply_marquee_selection(&world, HIT_START, HIT_END, false, true);
+        assert!(!game.editor.selection.contains(entity));
+
+        // Ctrl+drag again re-selects it
+        game.apply_marquee_selection(&world, HIT_START, HIT_END, false, true);
+        assert!(game.editor.selection.contains(entity));
+    }
+
+    #[test]
+    fn test_shift_marquee_adds_without_clearing() {
+        let (mut game, mut world, entity) = rig();
+        // A second entity far away, pre-selected
+        let other = world.create_entity();
+        world
+            .add_component(
+                &other,
+                GlobalTransform2D { position: Vec2::new(1000.0, 0.0), ..Default::default() },
+            )
+            .ok();
+        world
+            .add_component(&other, ecs::sprite_components::Sprite::new(0))
+            .ok();
+        game.editor.selection.add(other);
+
+        game.apply_marquee_selection(&world, HIT_START, HIT_END, true, false);
+        assert!(game.editor.selection.contains(entity), "shift adds the hits");
+        assert!(game.editor.selection.contains(other), "shift keeps the rest");
+    }
+
+    #[test]
+    fn test_live_marquee_draws_a_clipped_fill_and_border() {
+        let (mut game, _world, _entity) = rig();
+        // Lay out the dock so scene_view_bounds() exists
+        game.editor.update_layout(Vec2::new(1280.0, 720.0));
+        assert!(game.editor.scene_view_bounds().is_some());
+
+        let mut ui = ui::UIContext::new();
+        // Drag up-and-left: the emitted rect must normalize to min/max
+        game.draw_marquee(&mut ui, Vec2::new(300.0, 300.0), Vec2::new(250.0, 200.0));
+
+        let commands = ui.draw_list().commands();
+        let expected = (250.0, 200.0, 50.0, 100.0);
+        let fill = commands.iter().find_map(|c| match c {
+            ui::DrawCommand::Rect { bounds, .. } => Some(*bounds),
+            _ => None,
+        });
+        let border = commands.iter().find_map(|c| match c {
+            ui::DrawCommand::RectBorder { bounds, .. } => Some(*bounds),
+            _ => None,
+        });
+        let fill = fill.expect("the rubber-band fill must render");
+        let border = border.expect("the rubber-band border must render");
+        assert_eq!(
+            (fill.x, fill.y, fill.width, fill.height),
+            expected,
+            "corners normalize whichever direction the drag went"
+        );
+        assert_eq!((border.x, border.y, border.width, border.height), expected);
+        assert!(commands.iter().any(|c| matches!(c, ui::DrawCommand::PushClipRect { .. })));
+        assert!(commands.iter().any(|c| matches!(c, ui::DrawCommand::PopClipRect)));
+    }
+}

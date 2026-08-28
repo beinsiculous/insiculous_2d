@@ -49,6 +49,9 @@ struct ViewportInputInternalState {
     selection_start: Option<Vec2>,
     /// Whether selection rectangle is active (dragged past threshold)
     selection_active: bool,
+    /// Set by `cancel_marquee` (Escape): ignore the rest of the current
+    /// mouse gesture so the cancelled rect can't re-arm at the cursor.
+    suppressed_until_release: bool,
 }
 
 /// Result of viewport input handling.
@@ -64,12 +67,13 @@ pub struct ViewportInputResult {
     pub shift_held: bool,
     /// Whether toggle-selection modifier is held (Ctrl)
     pub ctrl_held: bool,
-    /// Whether a selection rectangle drag is active
-    pub selection_drag_active: bool,
-    /// Selection rectangle start position (screen coords)
-    pub selection_start: Vec2,
-    /// Selection rectangle end position (screen coords)
-    pub selection_end: Vec2,
+    /// A marquee drag live THIS frame: `(start, current)` screen coords.
+    /// The caller renders the rubber-band rect from this.
+    pub marquee_active: Option<(Vec2, Vec2)>,
+    /// A marquee drag that completed THIS frame: `(start, end)` screen
+    /// coords. The caller applies the rectangle selection. Options, not a
+    /// `Vec2::ZERO` sentinel — a drag starting exactly at (0,0) is real.
+    pub marquee_released: Option<(Vec2, Vec2)>,
     /// Whether focus on selection was requested (F)
     pub focus_requested: bool,
     /// Whether framing every entity was requested (Shift+F)
@@ -145,6 +149,9 @@ impl ViewportInputHandler {
                 self.state.selection_active = false;
                 self.state.selection_start = None;
             }
+            if self.state.suppressed_until_release && !input_state.primary_button.pressed {
+                self.state.suppressed_until_release = false;
+            }
             return result;
         }
 
@@ -211,6 +218,16 @@ impl ViewportInputHandler {
         }
 
         // Handle selection rectangle (primary button drag without pan modifier)
+        if self.state.suppressed_until_release {
+            // A cancelled gesture stays dead until the button comes up —
+            // cleared from POLLED state so a release missed while unfocused
+            // can't wedge the marquee.
+            if !input_state.primary_button.pressed {
+                self.state.suppressed_until_release = false;
+            }
+            return result;
+        }
+
         let can_select = input_state.primary_button.pressed && !input_state.pan_modifier && !self.state.panning;
 
         if can_select {
@@ -227,19 +244,16 @@ impl ViewportInputHandler {
             }
 
             if self.state.selection_active {
-                result.selection_drag_active = true;
-                result.selection_start = self.state.selection_start.unwrap_or(mouse_pos);
-                result.selection_end = mouse_pos;
+                if let Some(start) = self.state.selection_start {
+                    result.marquee_active = Some((start, mouse_pos));
+                }
             }
         } else {
             // Primary button released or pan started
             if let Some(start) = self.state.selection_start {
                 if self.state.selection_active {
-                    // Complete selection rectangle
-                    result.selection_drag_active = false;
-                    result.selection_start = start;
-                    result.selection_end = mouse_pos;
-                    // The caller will handle the actual selection
+                    // Complete selection rectangle — the caller applies it
+                    result.marquee_released = Some((start, mouse_pos));
                 } else {
                     // Was a click, not a drag
                     result.clicked = true;
@@ -251,6 +265,17 @@ impl ViewportInputHandler {
         }
 
         result
+    }
+
+    /// Cancel a marquee in progress (Escape): the rect disappears, nothing
+    /// is selected on release, and the rest of the mouse gesture is ignored
+    /// so a fresh rect can't re-arm at the cursor.
+    pub fn cancel_marquee(&mut self) {
+        if self.state.selection_start.is_some() {
+            self.state.suppressed_until_release = true;
+        }
+        self.state.selection_start = None;
+        self.state.selection_active = false;
     }
 
     /// Simplified input handling that creates the input state internally.
@@ -280,6 +305,13 @@ impl ViewportInputHandler {
     /// Check if selection rectangle is active.
     pub fn is_selecting(&self) -> bool {
         self.state.selection_active
+    }
+
+    /// Whether ANY marquee gesture is in flight — an active rect OR a
+    /// pressed-but-under-threshold press. Escape uses this: cancelling a
+    /// pending press must suppress the click it would otherwise become.
+    pub fn has_pending_marquee(&self) -> bool {
+        self.state.selection_start.is_some()
     }
 
     /// Reset all input state.
@@ -364,6 +396,98 @@ mod tests {
         assert!(!config.invert_zoom);
         assert_eq!(config.min_zoom, 0.1);
         assert_eq!(config.max_zoom, 10.0);
+    }
+
+    // ---- Marquee state machine (issue #39) ----
+
+    use crate::editor_input::ButtonState;
+
+    /// Input state with the primary button held (or not) at `pos`.
+    fn mouse_state(pos: Vec2, pressed: bool) -> EditorInputState {
+        EditorInputState {
+            mouse_position: pos,
+            primary_button: ButtonState { pressed, ..Default::default() },
+            ..Default::default()
+        }
+    }
+
+    fn marquee_rig() -> (SceneViewport, EditorInputMapping, input::InputHandler, ViewportInputHandler) {
+        let mut viewport = SceneViewport::new();
+        viewport.set_viewport_bounds(common::Rect::new(0.0, 0.0, 800.0, 600.0));
+        (viewport, EditorInputMapping::new(), input::InputHandler::new(), ViewportInputHandler::new())
+    }
+
+    #[test]
+    fn test_marquee_starting_at_screen_origin_is_reported() {
+        let (mut viewport, mapping, input, mut handler) = marquee_rig();
+
+        // Press exactly at (0,0) — the old Vec2::ZERO sentinel silently
+        // dropped this drag on release.
+        handler.handle_input(&mut viewport, &mouse_state(Vec2::ZERO, true), &mapping, &input, true);
+        let live = handler.handle_input(
+            &mut viewport, &mouse_state(Vec2::new(100.0, 80.0), true), &mapping, &input, true,
+        );
+        assert_eq!(live.marquee_active, Some((Vec2::ZERO, Vec2::new(100.0, 80.0))));
+        assert!(handler.is_selecting());
+
+        let released = handler.handle_input(
+            &mut viewport, &mouse_state(Vec2::new(100.0, 80.0), false), &mapping, &input, true,
+        );
+        assert_eq!(released.marquee_released, Some((Vec2::ZERO, Vec2::new(100.0, 80.0))));
+        assert!(!released.clicked);
+    }
+
+    #[test]
+    fn test_sub_threshold_press_release_is_a_click_not_a_marquee() {
+        let (mut viewport, mapping, input, mut handler) = marquee_rig();
+
+        handler.handle_input(&mut viewport, &mouse_state(Vec2::new(50.0, 50.0), true), &mapping, &input, true);
+        // 2px of jitter — under the 5px drag threshold
+        let jitter = handler.handle_input(
+            &mut viewport, &mouse_state(Vec2::new(52.0, 51.0), true), &mapping, &input, true,
+        );
+        assert!(jitter.marquee_active.is_none(), "jitter must not start a marquee");
+
+        let released = handler.handle_input(
+            &mut viewport, &mouse_state(Vec2::new(52.0, 51.0), false), &mapping, &input, true,
+        );
+        assert!(released.clicked, "a sub-threshold gesture stays a click");
+        assert_eq!(released.click_position, Vec2::new(50.0, 50.0));
+        assert!(released.marquee_released.is_none());
+    }
+
+    #[test]
+    fn test_cancel_marquee_kills_the_gesture_until_release() {
+        let (mut viewport, mapping, input, mut handler) = marquee_rig();
+
+        handler.handle_input(&mut viewport, &mouse_state(Vec2::ZERO, true), &mapping, &input, true);
+        handler.handle_input(&mut viewport, &mouse_state(Vec2::new(100.0, 100.0), true), &mapping, &input, true);
+        assert!(handler.is_selecting());
+
+        // Escape
+        handler.cancel_marquee();
+        assert!(!handler.is_selecting());
+
+        // Still holding: the cancelled gesture must not re-arm a fresh rect
+        let held = handler.handle_input(
+            &mut viewport, &mouse_state(Vec2::new(150.0, 150.0), true), &mapping, &input, true,
+        );
+        assert!(held.marquee_active.is_none());
+        assert!(!handler.is_selecting());
+
+        // Release: nothing selected, nothing clicked
+        let released = handler.handle_input(
+            &mut viewport, &mouse_state(Vec2::new(150.0, 150.0), false), &mapping, &input, true,
+        );
+        assert!(released.marquee_released.is_none());
+        assert!(!released.clicked);
+
+        // A fresh press afterwards drags normally again
+        handler.handle_input(&mut viewport, &mouse_state(Vec2::new(10.0, 10.0), true), &mapping, &input, true);
+        let fresh = handler.handle_input(
+            &mut viewport, &mouse_state(Vec2::new(60.0, 60.0), true), &mapping, &input, true,
+        );
+        assert!(fresh.marquee_active.is_some(), "latch must clear on release");
     }
 
     // ---- Camera shortcut requests (issue #21) ----
