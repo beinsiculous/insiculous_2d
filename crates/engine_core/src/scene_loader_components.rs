@@ -295,34 +295,30 @@ impl SceneLoader {
             }
 
             ComponentData::Dynamic { component_type, data } => {
-                // Use the component registry to create the component
-                let registry = ecs::component_registry::global_registry();
-
-                if !registry.is_registered(component_type) {
-                    return Err(SceneLoadError::ComponentError(format!(
-                        "Unknown component type '{}' - not registered in ComponentRegistry",
-                        component_type
-                    )));
-                }
-
-                // Create the component via factory
-                match registry.create_component(component_type, data.clone()) {
-                    Ok(_boxed_component) => {
-                        // TODO: World needs type-erased component addition to fully support this.
-                        // For now, we validate the component can be created but log a warning.
-                        log::warn!(
-                            "Dynamic component '{}' created but World lacks type-erased storage. \
-                             Use explicit ComponentData variants for now.",
-                            component_type
-                        );
-                    }
-                    Err(e) => {
+                // The dynamic tier (issue #43): deserialize + attach through
+                // the global registry. An UNREGISTERED name is a hard load
+                // error — fail loud, never silently drop authored data.
+                // Game-specific components require the game's own binary
+                // (which registered them in main()); the standalone editor
+                // refuses such scenes instead of corrupting them on resave.
+                ecs::with_global_registry(|registry| {
+                    if !registry.is_registered(component_type) {
                         return Err(SceneLoadError::ComponentError(format!(
-                            "Failed to create component '{}': {}",
-                            component_type, e
+                            "Unknown dynamic component '{}' — not registered. Game components \
+                             are only editable from the game's own binary (which registers \
+                             them at startup).",
+                            component_type
                         )));
                     }
-                }
+                    registry
+                        .insert_component(world, entity_id, component_type, data.clone())
+                        .map_err(|e| {
+                            SceneLoadError::ComponentError(format!(
+                                "Failed to load dynamic component '{}': {}",
+                                component_type, e
+                            ))
+                        })
+                })?;
             }
         }
 

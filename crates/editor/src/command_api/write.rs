@@ -65,6 +65,26 @@ fn reject_non_finite(value: &Value) -> Result<(), ApiError> {
     }
 }
 
+/// Build the follow-up `set` for `add <component> {patch}`: capture the
+/// just-attached default as `old`, merge the patch over it, validate and
+/// sanitize. Pure with respect to the world — the caller executes (or, on
+/// error, rolls back the add).
+fn build_add_patch_set(
+    world: &World,
+    entity: ecs::EntityId,
+    component: &str,
+    patch: &Value,
+) -> Result<SetComponentValueCommand, ApiError> {
+    let old = capture_component_by_name(world, entity, component)
+        .map_err(ApiError::Invalid)?
+        .ok_or_else(|| ApiError::Invalid("add failed".to_string()))?;
+    let current = current_value(world, entity, component);
+    let merged = merge_patch(current, patch.clone(), component)?;
+    let new = stored_component_from_json(component, merged).map_err(ApiError::Invalid)?;
+    let new = sanitize(new);
+    Ok(SetComponentValueCommand::new(entity, old, new))
+}
+
 /// The component's current serde value (the same generic read `describe`
 /// uses), `Null` when absent or unserializable.
 fn current_value(world: &World, entity: ecs::EntityId, component: &str) -> Value {
@@ -201,40 +221,62 @@ pub fn run(write: &PureWrite, ctx: &mut WriteCtx<'_>) -> Result<Value, ApiError>
             let kind = ComponentKind::ALL
                 .iter()
                 .copied()
-                .find(|k| k.display_name() == component)
-                .ok_or_else(|| {
-                    ApiError::Invalid(format!(
-                        "\"{component}\" is not an addable component — known: {}",
-                        ComponentKind::ALL
-                            .iter()
-                            .map(|k| k.display_name())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ))
-                })?;
-            if kind.is_present(ctx.world, entity) {
+                .find(|k| k.display_name() == component);
+            // Typed miss falls through to the dynamic tier (issue #43):
+            // game-registered components are addable by name too.
+            let dynamic = kind.is_none();
+            if dynamic && !crate::stored_component::dynamic::is_dynamic_component(component) {
+                let mut known: Vec<String> = ComponentKind::ALL
+                    .iter()
+                    .map(|k| k.display_name().to_string())
+                    .collect();
+                known.extend(crate::stored_component::dynamic::dynamic_component_names());
+                return Err(ApiError::Invalid(format!(
+                    "\"{component}\" is not an addable component — known: {}",
+                    known.join(", ")
+                )));
+            }
+            let present = match kind {
+                Some(kind) => kind.is_present(ctx.world, entity),
+                None => crate::stored_component::dynamic::has_dynamic(ctx.world, entity, component),
+            };
+            if present {
                 return Err(ApiError::Invalid(format!(
                     "entity already has {component} — use `set`"
                 )));
             }
-            let mut add = crate::commands::AddComponentCommand::new(entity, kind);
-            add.execute(ctx.world);
-            let mut recorded: Box<dyn EditorCommand> = Box::new(add);
+            let mut recorded: Box<dyn EditorCommand> = match kind {
+                Some(kind) => {
+                    let mut add = crate::commands::AddComponentCommand::new(entity, kind);
+                    add.execute(ctx.world);
+                    Box::new(add)
+                }
+                None => {
+                    let mut add = crate::commands::AddDynamicComponentCommand::new(
+                        entity,
+                        component.to_string(),
+                    );
+                    add.execute(ctx.world);
+                    Box::new(add)
+                }
+            };
             if let Some(patch) = value {
-                let old = capture_component_by_name(ctx.world, entity, component)
-                    .map_err(ApiError::Invalid)?
-                    .ok_or_else(|| ApiError::Invalid("add failed".to_string()))?;
-                let current = current_value(ctx.world, entity, component);
-                let merged = merge_patch(current, patch.clone(), component)?;
-                let new =
-                    stored_component_from_json(component, merged).map_err(ApiError::Invalid)?;
-                let new = sanitize(new);
-                let mut set = SetComponentValueCommand::new(entity, old, new);
-                set.execute(ctx.world);
-                recorded = Box::new(MacroCommand::new(
-                    format!("Add {component} (API)"),
-                    vec![recorded, Box::new(set)],
-                ));
+                // An error after the attach must not leave an unrecorded
+                // component behind — roll the add back so the world matches
+                // the error response exactly (kimi #43 F2).
+                match build_add_patch_set(ctx.world, entity, component, patch) {
+                    Ok(mut set) => {
+                        set.execute(ctx.world);
+                        recorded = Box::new(MacroCommand::new(
+                            format!("Add {component} (API)"),
+                            vec![recorded, Box::new(set)],
+                        ));
+                    }
+                    Err(e) => {
+                        recorded.undo(ctx.world);
+                        return Err(e);
+                    }
+                }
             }
             ctx.record(recorded);
             Ok(serde_json::json!({
@@ -247,16 +289,38 @@ pub fn run(write: &PureWrite, ctx: &mut WriteCtx<'_>) -> Result<Value, ApiError>
             let kind = ComponentKind::ALL
                 .iter()
                 .copied()
-                .find(|k| k.display_name() == component)
-                .ok_or_else(|| {
-                    ApiError::Invalid(format!("\"{component}\" is not a removable component"))
-                })?;
-            if !kind.is_present(ctx.world, entity) {
-                return Err(ApiError::Invalid(format!("entity has no {component}")));
+                .find(|k| k.display_name() == component);
+            // Typed miss falls through to the dynamic tier (issue #43).
+            if kind.is_none()
+                && !crate::stored_component::dynamic::is_dynamic_component(component)
+            {
+                return Err(ApiError::Invalid(format!(
+                    "\"{component}\" is not a removable component"
+                )));
             }
-            let mut cmd = RemoveComponentCommand::new(entity, kind);
-            cmd.execute(ctx.world);
-            ctx.record(Box::new(cmd));
+            let recorded: Box<dyn EditorCommand> = match kind {
+                Some(kind) => {
+                    if !kind.is_present(ctx.world, entity) {
+                        return Err(ApiError::Invalid(format!("entity has no {component}")));
+                    }
+                    let mut cmd = RemoveComponentCommand::new(entity, kind);
+                    cmd.execute(ctx.world);
+                    Box::new(cmd)
+                }
+                None => {
+                    if !crate::stored_component::dynamic::has_dynamic(ctx.world, entity, component)
+                    {
+                        return Err(ApiError::Invalid(format!("entity has no {component}")));
+                    }
+                    let mut cmd = crate::commands::RemoveDynamicComponentCommand::new(
+                        entity,
+                        component.to_string(),
+                    );
+                    cmd.execute(ctx.world);
+                    Box::new(cmd)
+                }
+            };
+            ctx.record(recorded);
             Ok(serde_json::json!({
                 "command": format!("remove {component}"),
                 "entity": entity_record(ctx.world, entity),

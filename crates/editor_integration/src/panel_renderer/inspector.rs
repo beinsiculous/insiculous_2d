@@ -180,14 +180,19 @@ fn render_inspector_editable(
     // --- Add Component Popup ---
     if editor.is_add_component_popup_open() {
         let available = available_components(ctx.world, entity_id);
-        if available.is_empty() {
+        // Dynamic-tier (game-registered) components get their own popup
+        // section (issue #43).
+        let available_dynamic =
+            editor::stored_component::available_dynamic_components(ctx.world, entity_id);
+        if available.is_empty() && available_dynamic.is_empty() {
             ctx.ui.label("(all components added)", Vec2::new(content_x + 8.0, y));
             y += line_height;
         } else {
             // Height first, then anchor against the WINDOW (the popup lives
             // on the Floating layer, free of the panel clip): open below
             // the button, flip up when it would overflow the window bottom.
-            let popup_height = categorized_popup_height(&available);
+            let popup_height =
+                categorized_popup_height(&available) + dynamic_section_height(&available_dynamic);
             let popup_y0 = popup_anchor_y(y, 28.0, popup_height, ctx.window_size.y);
             let popup_bounds = ui::Rect::new(content_x, popup_y0, 180.0, popup_height);
             // Floating layer + input blocking: escapes the inspector clip
@@ -233,12 +238,47 @@ fn render_inspector_editable(
                     popup_btn_idx += 1;
                 }
             }
+
+            // "Game" section: dynamic-tier components (issue #43).
+            if !available_dynamic.is_empty() {
+                ctx.ui.label_styled(
+                    "Game",
+                    Vec2::new(content_x + 8.0, popup_y),
+                    editor.theme.text_muted,
+                    editor.theme.fonts.small,
+                );
+                popup_y += 18.0;
+                for name in &available_dynamic {
+                    let btn_bounds = ui::Rect::new(content_x + 16.0, popup_y, 148.0, 22.0);
+                    let btn_id = FieldId::new(component_index + 60 + popup_btn_idx, 0, 0);
+                    if ctx.ui.button(btn_id, name, btn_bounds) {
+                        let cmd = editor::commands::AddDynamicComponentCommand::new(
+                            entity_id,
+                            name.clone(),
+                        );
+                        command_history.execute(Box::new(cmd), ctx.world);
+                        editor.close_add_component_popup();
+                        log::info!("Added dynamic component: {}", name);
+                    }
+                    popup_y += 24.0;
+                    popup_btn_idx += 1;
+                }
+            }
             ctx.ui.end_overlay();
         }
     }
 
     let _ = component_index;
     y
+}
+
+/// Height of the popup's dynamic-tier "Game" section (0 when empty).
+fn dynamic_section_height(available_dynamic: &[String]) -> f32 {
+    if available_dynamic.is_empty() {
+        0.0
+    } else {
+        18.0 + available_dynamic.len() as f32 * 24.0
+    }
 }
 
 /// Calculate the height needed for the categorized popup.

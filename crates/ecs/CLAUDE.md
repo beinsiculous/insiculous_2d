@@ -40,7 +40,7 @@ components like any other type, but the physics crate owns their definitions.
 - `hierarchy_system.rs` — Dirty-flagged transform propagation (value-compare cache; clean frames recompute nothing; `reset()` after wholesale world replacement)
 - `lifetime.rs` — `Lifetime` component + `LifetimeSystem` (auto-despawn after N seconds; bullets/effects)
 - `tilemap.rs` — `Tilemap` component + `TileInstance` (top-left-tile anchor, row 0 on top, tile 0 = empty, depth default -1.0)
-- `component_registry.rs` — Global component type registry
+- `component_registry/{mod,tests}.rs` — THE dynamic component tier (#43): name-keyed `ComponentEntry` fn-pointer table (create/insert/extract/remove/has/default, monomorphized at `register::<T>()`); global = `OnceLock<RwLock<..>>` with `register_components(f)` (late registration OK, name collision = panic, poison recovered, re-entrancy = clear panic) + `with_global_registry(f)`; `register_transient` = editable-never-persisted (PlaySoundEffect). Dynamic components must NOT store raw EntityId
 - `sprite_components.rs` — Built-in component definitions (incl. `AnimationClip` + `SpriteAnimation`)
 - `sprite_system.rs` — `SpriteAnimationSystem`: advances each clip, then writes `current_uv()` into `Sprite.tex_region`. Scheduled by engine_core's `game/frame_tail.rs` with the time-scaled delta (so pausing freezes animation); nothing in ecs drives it
 - `ui_components.rs` — UiAnchor + resolve_anchored_pos + UiLabel/UiPanel/UiButton
@@ -56,7 +56,7 @@ components like any other type, but the physics crate owns their definitions.
   }
   ```
 - **Type-erased enumeration**: `world.component_types(entity)` -> `Vec<(TypeId, &'static str)>` — the only way to see components you don't know the type of (snapshot loss detection); names come from the concrete component via `.as_ref().type_name()`
-- **New components**: derive `DeriveComponentMeta`, register in global registry, add one line to `editor_component_registry!` (editor crate) — the play/stop `WorldSnapshot` captures registry types automatically
+- **New components**: derive `DeriveComponentMeta` + `ecs::register_components(|r| r.register::<T>())` (engine types go in the builtin list; game types register in main()) — scene save/load, WorldSnapshot, clipboard, and the command API then cover T automatically. A typed editor line in `editor_component_registry!` is OPTIONAL (buys rich field editors; otherwise the inspector shows a read-only serde view)
 
 ## Documented Conventions
 - Typed accessors `get`/`get_mut` take `EntityId` by value; CRUD methods (`add_component`, `remove_component`, `has_component`, `get_component`) take `&EntityId`. Prefer by-value for new APIs.

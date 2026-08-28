@@ -115,6 +115,104 @@ impl EditorCommand for RemoveComponentCommand {
 }
 
 // ---------------------------------------------------------------------------
+// Dynamic-tier add/remove (issue #43) — string-keyed mirrors of the pair
+// above for components with no ComponentKind variant (game-registered types).
+// No cascade logic: physics types are typed-tier.
+// ---------------------------------------------------------------------------
+
+/// Add a default-constructed dynamic component to an entity.
+pub struct AddDynamicComponentCommand {
+    entity: EntityId,
+    name: String,
+    display: String,
+    /// Captured on undo so redo restores modifications made in between.
+    captured: Option<StoredComponent>,
+}
+
+impl AddDynamicComponentCommand {
+    pub fn new(entity: EntityId, name: String) -> Self {
+        let display = format!("Add {}", name);
+        Self {
+            entity,
+            name,
+            display,
+            captured: None,
+        }
+    }
+}
+
+impl EditorCommand for AddDynamicComponentCommand {
+    fn execute(&mut self, world: &mut World) {
+        if let Some(ref stored) = self.captured {
+            stored.apply_to(world, self.entity);
+        } else if let Err(e) =
+            crate::stored_component::dynamic::add_dynamic_default(world, self.entity, &self.name)
+        {
+            log::error!("add dynamic component '{}' failed: {e}", self.name);
+        }
+    }
+
+    fn undo(&mut self, world: &mut World) {
+        self.captured =
+            crate::stored_component::dynamic::capture_dynamic_by_name(world, self.entity, &self.name)
+                .ok()
+                .flatten();
+        crate::stored_component::dynamic::remove_dynamic(world, self.entity, &self.name);
+    }
+
+    fn display_name(&self) -> &str {
+        &self.display
+    }
+
+    fn as_any(&self) -> &dyn Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn Any { self }
+}
+
+/// Remove a dynamic component from an entity (undo restores the captured
+/// value).
+pub struct RemoveDynamicComponentCommand {
+    entity: EntityId,
+    name: String,
+    display: String,
+    stored: Option<StoredComponent>,
+}
+
+impl RemoveDynamicComponentCommand {
+    pub fn new(entity: EntityId, name: String) -> Self {
+        let display = format!("Remove {}", name);
+        Self {
+            entity,
+            name,
+            display,
+            stored: None,
+        }
+    }
+}
+
+impl EditorCommand for RemoveDynamicComponentCommand {
+    fn execute(&mut self, world: &mut World) {
+        self.stored =
+            crate::stored_component::dynamic::capture_dynamic_by_name(world, self.entity, &self.name)
+                .ok()
+                .flatten();
+        crate::stored_component::dynamic::remove_dynamic(world, self.entity, &self.name);
+    }
+
+    fn undo(&mut self, world: &mut World) {
+        if let Some(ref stored) = self.stored {
+            stored.apply_to(world, self.entity);
+        }
+    }
+
+    fn display_name(&self) -> &str {
+        &self.display
+    }
+
+    fn as_any(&self) -> &dyn Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn Any { self }
+}
+
+// ---------------------------------------------------------------------------
 // SetComponentValueCommand
 // ---------------------------------------------------------------------------
 

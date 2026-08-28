@@ -495,3 +495,35 @@ Closed as part of the universal controller/2-player feature:
 - **Duplicated Delete/Duplicate logic**: single `delete_selected_entities()`/`duplicate_selected_entities()` called from menu and shortcuts.
 - **Magic numbers**: `src/constants.rs` holds `DEFAULT_SCENE_PATH` (was hardcoded 5×), `MIN_EDITOR_WINDOW_WIDTH/HEIGHT`, `MIN_ENTITY_SCALE`, `DUPLICATE_OFFSET`.
 - **Open Scene failures only logged**: `load_scene_with_feedback()` surfaces load errors on the status bar.
+
+## Sprint 5 #43 — Registry collapse: ARCH-006 (widened) + ecs GPP-16 CLOSED (Aug 28 2026)
+
+- **ecs GPP-16**: `global_registry()` is now `OnceLock<RwLock<ComponentRegistry>>` with
+  `ecs::register_components(f)` callable at any time (games in `main()`, physics via
+  `engine_core::component_registration::register_engine_components()` from `run_game`
+  AND `SceneLoader::instantiate`). Same-name/different-TypeId registration is a hard
+  panic (silent scene corruption otherwise); identical re-registration is a no-op;
+  lock poisoning recovers via `into_inner`; a thread-local guard panics loudly on
+  re-entrant access instead of deadlocking.
+- **ARCH-006 (widened per the Aug 27 roadmap note)**: the registry entries carry
+  monomorphized fn pointers (create/insert/extract/remove/has/default) — **no
+  `World::add_boxed` was needed** (Component is blanket-impl'd over Any+Send+Sync, so
+  registration-time generics close over the ordinary typed World API).
+  `ComponentData::Dynamic { type, data }` (flatten dropped — plain JSON map through
+  RON, spike-tested) now actually LOADS (the tracked TODO in scene_loader is gone;
+  unknown names are a hard load error — fail loud, never drop authored data) and
+  `extract_components` emits every registry-persisted non-concrete type as Dynamic,
+  name-sorted — **which ended the AudioSource/AudioListener silent drop on save**
+  (they were editable but never persisted; no shipped scene contained them, so zero
+  compat exposure). Transient types (`PlaySoundEffect`, now `register_transient`) are
+  editable but never persisted. The editor gained `StoredComponent::Dynamic` +
+  `stored_component/dynamic.rs`: snapshot/clipboard/undo, the add-component popup's
+  "Game" section, read-only inspection, and command-API `set`/`add`/`remove`/`describe`
+  all reach game-registered components by name (`Add/RemoveDynamicComponentCommand`;
+  name-bearing APIs relaxed to `Cow<'static, str>`).
+- Deliberately NOT registry-ized: Sprite/SpriteAnimation/RigidBody/Collider/Tilemap
+  wire arms (load-time resolve logic — texture refs, sidecars, shape enums) and
+  `Behavior` (frozen at 8 variants per audit §6.7(5); new logic goes through the
+  Scripts seam). Dynamic components must not store raw `EntityId`s (documented).
+- The standalone editor binary cannot see game-registered types; such scenes refuse
+  to load there with a clear error (edit from the game's binary instead).

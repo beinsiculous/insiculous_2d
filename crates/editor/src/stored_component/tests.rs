@@ -256,9 +256,11 @@ fn test_registered_type_ids_match_world_enumeration() {
         .collect();
     assert!(unknown.is_empty(), "registry misses component types: {:?}", unknown);
 
-    // And the captured set covers the same count, Tilemap included.
+    // And the captured set covers the same count, Tilemap included. (The
+    // TYPED count — registered_component_type_ids also unions the dynamic
+    // tier, whose global contents vary across tests in this process.)
     let captured = capture_all_components(&world, entity);
-    assert_eq!(captured.len(), registered_component_type_ids().len());
+    assert_eq!(captured.len(), registered_typed_component_type_ids().len());
     assert_eq!(captured.len(), 17);
 
     // The command API's value capture walks the same registry, minus the
@@ -310,22 +312,27 @@ fn test_stored_component_from_json_round_trips_all_settable_types() {
 
     let values = capture_all_values(&world, entity);
     for name in settable_component_names() {
-        let (_, value) = values
-            .iter()
-            .find(|(n, _)| n == &name)
-            .unwrap_or_else(|| panic!("settable {name} missing from capture_all_values"));
-        let stored = stored_component_from_json(name, value.clone())
+        // Dynamic-tier names (e.g. PlaySoundEffect) are settable but not on
+        // this entity — the typed set is what this test attaches above.
+        let Some((_, value)) = values.iter().find(|(n, _)| *n == name) else {
+            assert!(
+                crate::stored_component::dynamic::is_dynamic_component(&name),
+                "typed settable {name} missing from capture_all_values"
+            );
+            continue;
+        };
+        let stored = stored_component_from_json(&name, value.clone())
             .unwrap_or_else(|e| panic!("{name} round-trip failed: {e}"));
         assert_eq!(stored.type_name(), name);
         assert!(
-            capture_component_by_name(&world, entity, name)
+            capture_component_by_name(&world, entity, &name)
                 .expect("known name")
                 .is_some(),
             "{name} capturable by name"
         );
     }
     assert!(
-        !settable_component_names().contains(&"Name"),
+        !settable_component_names().iter().any(|n| n == "Name"),
         "Name is set through `rename`, never `set`"
     );
     assert!(stored_component_from_json("Bogus", serde_json::Value::Null).is_err());

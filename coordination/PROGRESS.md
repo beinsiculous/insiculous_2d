@@ -127,3 +127,32 @@ Overlay/GPU equivalence extended with a play-follow-pose test; rotation stays
 unsynced (documented limitation — viewport math has no rotation term).
 viewport.rs split into viewport/{mod,tests}.rs (600-line rule). Tests 1590 → 1600,
 clippy clean, wasm gate clean. fixes #42.
+
+## 2026-08-28 — #43 Registry collapse: widened ARCH-006 + ecs GPP-16 (Sprint 5)
+A downstream game crate can now register a component in main() and get scene
+save/load, Play→Stop snapshot survival, clipboard/duplicate, Add Component ("Game"
+popup section, read-only serde inspection, undoable add/remove), and command-API
+set/add/remove/describe — zero edits to closed enums. Key simplification vs the
+audit's sketch: NO World::add_boxed — the ecs registry's ComponentEntry captures
+monomorphized fn pointers (create/insert/extract/remove/has/default) at
+register::<T>() over the ordinary typed World API. Global registry is now
+OnceLock<RwLock<..>> (`ecs::register_components` callable anytime; name collision =
+hard panic per kimi R2-F3; poison recovered per R2-F1; thread-local re-entrancy
+guard panics instead of deadlocking per R2-F9 — and immediately caught a real
+nested-lock bug in my own dynamic.rs during development). ComponentData::Dynamic is
+REAL: flatten dropped (plain JSON map through RON — spike test passed first try),
+loader attaches via insert_component (the workspace's last tracked TODO deleted),
+unknown names are a HARD load error (R2-F2 fail-loud; dry-run guard turns it into a
+clean refusal), serializer emits registry-persisted non-concrete types name-sorted —
+**AudioSource/AudioListener finally survive save** (silently dropped before; zero
+compat exposure since they never reached a file). PlaySoundEffect = register_transient
+(editable, never persisted, +Default). physics::register wires Collider/RigidBody
+via engine_core::component_registration (run_game + SceneLoader::instantiate,
+idempotent). Editor: StoredComponent::Dynamic + stored_component/dynamic.rs;
+capture_all_components/registered_component_type_ids union the dynamic tier
+(snapshot loss warnings now fire only for truly unregisterable game generics);
+settable_component_names/capture_all_values → Cow<'static,str> (R1-F2);
+Add/RemoveDynamicComponentCommand; API add/remove dynamic fallback (R1-F1).
+Behavior stays frozen at 8 variants; resolve-logic types keep concrete wire arms.
+ARCH-006 + GPP-16 moved to log_archive; CLAUDE.md SSOT table + training.md updated.
+Tests 1602 → 1622, clippy clean, wasm gate clean. fixes #43.

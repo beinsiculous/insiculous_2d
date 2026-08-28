@@ -6,7 +6,6 @@ Resolved history: root `log_archive.md` § ecs.
 ## Game Programming Patterns Audit (July 2026 — closed; history in `log_archive.md`)
 (GPP-04 + SRP-003 resolved Jul 13 2026 — dirty-flagged transform propagation, see `log_archive.md`.)
 - [ ] **GPP-02 (Decision of record, Data Locality):** `ComponentStore` = `HashMap<EntityId, Box<dyn Component>>` is the accepted simplicity tradeoff. Future path: dense `Vec<T>` columns / archetype storage + bitset queries (see Future Enhancements below). **Trigger to revisit:** profiling shows component access dominating a frame, or games routinely exceed ~a few thousand live entities.
-- [ ] **GPP-16 (Medium, Singleton):** `global_registry()` registration list is hardcoded (`component_registry.rs:92-107`) — games can't register components; add a one-shot init extension point (root of engine_core ARCH-006).
 - [ ] **GPP-L1 (Low):** `world.entities()` allocates a `Vec<EntityId>` per call in hot paths — prefer `entity_ids()` iterator.
 - [ ] **GPP-L12 (Low):** `EventBus` single-frame lifetime — document the emit-before-read contract.
 
@@ -40,5 +39,5 @@ Resolved history: root `log_archive.md` § ecs.
 | Test coverage | 187 tests (100% pass rate) |
 | `#[allow(dead_code)]` | 0 |
 | High priority open | 0 |
-| Medium priority open | 1 (GPP-16) |
+| Medium priority open | 0 |
 | Low priority open | 5 |

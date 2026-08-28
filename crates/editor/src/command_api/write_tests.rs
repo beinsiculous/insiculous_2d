@@ -422,3 +422,55 @@ fn test_undo_redo_refused_inside_open_batch() {
     let out = rig.run("undo").unwrap();
     assert_eq!(out["undid"], Value::Null, "after abort the stack is empty again");
 }
+
+ecs::define_component! {
+    /// Stand-in game component for the dynamic-tier API tests (#43).
+    pub struct ApiDynTestBuff {
+        pub strength: f32 = 1.0,
+        pub active: bool = true,
+    }
+}
+
+#[test]
+fn test_add_set_remove_work_on_dynamic_components() {
+    // kimi R1-F1: the #45 ship point needs `add`/`set`/`remove` to reach
+    // game-registered components, not just ComponentKind variants.
+    ecs::register_components(|r| r.register::<ApiDynTestBuff>());
+    let mut rig = Rig::new();
+    let entity = rig.spawn_player();
+
+    // add (with an inline patch) — one undoable entry.
+    rig.run(r#"add Player ApiDynTestBuff {"strength": 4.0}"#).unwrap();
+    assert_eq!(
+        rig.world.get::<ApiDynTestBuff>(entity).map(|b| b.strength),
+        Some(4.0)
+    );
+
+    // set (shallow merge over the current value).
+    rig.run(r#"set Player ApiDynTestBuff {"active": false}"#).unwrap();
+    let buff = rig.world.get::<ApiDynTestBuff>(entity).expect("still present");
+    assert!(!buff.active);
+    assert_eq!(buff.strength, 4.0, "merge keeps unpatched fields");
+
+    // remove — and the whole chain unwinds through CommandHistory.
+    rig.run("remove Player ApiDynTestBuff").unwrap();
+    assert!(rig.world.get::<ApiDynTestBuff>(entity).is_none());
+    rig.run("undo").unwrap(); // remove
+    assert!(rig.world.get::<ApiDynTestBuff>(entity).is_some());
+    rig.run("undo").unwrap(); // set
+    assert!(rig.world.get::<ApiDynTestBuff>(entity).map(|b| b.active).unwrap_or(false));
+    rig.run("undo").unwrap(); // add
+    assert!(rig.world.get::<ApiDynTestBuff>(entity).is_none());
+}
+
+#[test]
+fn test_add_unknown_component_error_lists_dynamic_names() {
+    ecs::register_components(|r| r.register::<ApiDynTestBuff>());
+    let mut rig = Rig::new();
+    rig.spawn_player();
+    let err = rig.run(r#"add Player NoSuchComponent"#).unwrap_err();
+    let ApiError::Invalid(msg) = err else {
+        panic!("expected Invalid");
+    };
+    assert!(msg.contains("ApiDynTestBuff"), "dynamic names listed: {msg}");
+}

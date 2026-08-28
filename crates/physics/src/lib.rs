@@ -39,6 +39,7 @@
 
 pub mod components;
 pub mod presets;
+pub mod register;
 pub mod physics_system;
 pub mod physics_world;
 

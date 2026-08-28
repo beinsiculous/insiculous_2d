@@ -37,9 +37,12 @@ pub mod behavior_data;
 pub mod scene_data;
 #[cfg(test)]
 mod scene_data_tests;
+pub mod component_registration;
 pub mod scene_loader;
 mod scene_loader_components;
 pub mod scene_serializer;
+#[cfg(test)]
+mod scene_dynamic_tests;
 #[cfg(test)]
 mod scene_serializer_roundtrip_tests;
 #[cfg(test)]

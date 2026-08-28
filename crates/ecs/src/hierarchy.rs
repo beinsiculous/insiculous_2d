@@ -109,6 +109,16 @@ pub struct GlobalTransform2D {
     pub scale: Vec2,
 }
 
+impl crate::component_registry::ComponentMeta for GlobalTransform2D {
+    fn type_name() -> &'static str {
+        "GlobalTransform2D"
+    }
+
+    fn field_names() -> &'static [&'static str] {
+        &["position", "rotation", "scale"]
+    }
+}
+
 impl Default for GlobalTransform2D {
     fn default() -> Self {
         Self {

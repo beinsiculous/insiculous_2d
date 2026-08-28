@@ -308,19 +308,24 @@ pub enum ComponentData {
         #[serde(default = "default_player_tag")]
         tag: String,
     },
-    /// Dynamic component loaded via component registry
+    /// Dynamic component: any type registered in the ecs `ComponentRegistry`
+    /// that has no concrete variant above (issue #43). This is how
+    /// game-defined components and the audio components reach scene files.
     ///
-    /// This variant allows loading components by type name without hardcoded
-    /// handling. The component must be registered in the global ComponentRegistry.
+    /// Concrete variants remain reserved for types with load-time resolve
+    /// logic (texture references, `.sheet.ron` sidecars, physics shape
+    /// enums) — a pure serde path cannot express that resolution.
     ///
-    /// Note: Full support requires type-erased component storage in World.
-    /// Currently logs a warning when encountered.
+    /// Loading a `Dynamic` whose name is not registered is a HARD error —
+    /// authored data is never silently dropped. The payload is plain JSON
+    /// (serde_json::Value round-trips through RON as a map; deliberately
+    /// NOT `#[serde(flatten)]`, which is fragile through RON's enum
+    /// representation).
     Dynamic {
         /// Component type name (must match registry)
         #[serde(rename = "type")]
         component_type: String,
         /// Component data as JSON
-        #[serde(flatten)]
         data: serde_json::Value,
     },
 }

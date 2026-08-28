@@ -50,7 +50,11 @@ pub use audio_components::*;
 pub use behavior::*;
 pub use lifetime::{Lifetime, LifetimeSystem};
 pub use component::*;
-pub use component_registry::{global_registry, ComponentMeta};
+// NOTE: `component_registry::ComponentRegistry` (the dynamic name-keyed
+// tier) is deliberately NOT re-exported at the crate root — the glob above
+// already exports `component::ComponentRegistry` (the per-type storage map).
+// Reach the dynamic registry via `ecs::component_registry::ComponentRegistry`.
+pub use component_registry::{register_components, with_global_registry, ComponentMeta};
 pub use ecs_macros::ComponentMeta as DeriveComponentMeta;
 pub use entity::*;
 pub use entity_builder::*;

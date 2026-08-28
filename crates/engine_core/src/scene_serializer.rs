@@ -66,9 +66,12 @@ fn entity_to_entity_data(
 
 /// Extract all serializable components from an entity as ComponentData variants.
 ///
-/// Skips computed/internal components (GlobalTransform2D, Parent, Children)
-/// and audio components (not yet in ComponentData enum). The `Name` component
-/// is handled separately as `EntityData.name`.
+/// Skips computed/internal components (GlobalTransform2D, Parent, Children).
+/// The `Name` component is handled separately as `EntityData.name`. After
+/// the concrete variants, every OTHER registry-persisted type present on the
+/// entity (audio components, game-registered types) is emitted as
+/// `ComponentData::Dynamic` — name-sorted for stable scene diffs (issue #43;
+/// this ended the AudioSource/AudioListener silent drop).
 fn extract_components(
     world: &World,
     entity: EntityId,
@@ -238,7 +241,55 @@ fn extract_components(
         components.push(ComponentData::EntityTag { tag: t.0.clone() });
     }
 
+    append_dynamic_components(world, entity, &mut components);
+
     components
+}
+
+/// Emit every registry-persisted component on `entity` that has no concrete
+/// `ComponentData` variant, as `Dynamic { type, data }` — sorted by name so
+/// repeated saves diff cleanly. Serialization failures skip the component
+/// with a loud log (should not happen for serde-derived types).
+fn append_dynamic_components(
+    world: &World,
+    entity: EntityId,
+    components: &mut Vec<ComponentData>,
+) {
+    // Names already covered by concrete variants (or deliberately excluded:
+    // Name → EntityData.name; GlobalTransform2D/hierarchy are computed).
+    const CONCRETE_OR_EXCLUDED: &[&str] = &[
+        "Transform2D",
+        "Sprite",
+        "Camera",
+        "SpriteAnimation",
+        "Tilemap",
+        "RigidBody",
+        "Collider",
+        "UiLabel",
+        "UiPanel",
+        "UiButton",
+        "Behavior",
+        "EntityTag",
+        "Name",
+        "GlobalTransform2D",
+    ];
+    ecs::with_global_registry(|registry| {
+        for name in registry.persistent_names() {
+            if CONCRETE_OR_EXCLUDED.contains(&name) {
+                continue;
+            }
+            match registry.extract_component(world, entity, name) {
+                Ok(Some(data)) => components.push(ComponentData::Dynamic {
+                    component_type: name.to_string(),
+                    data,
+                }),
+                Ok(None) => {}
+                Err(e) => {
+                    log::error!("skipping dynamic component '{name}' on save: {e}");
+                }
+            }
+        }
+    });
 }
 
 /// Serialize SceneData to a pretty-printed RON string.

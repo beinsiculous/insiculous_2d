@@ -151,6 +151,9 @@ pub trait Game: Sized + 'static {
 /// }
 /// ```
 pub fn run_game<G: Game>(game: G, config: GameConfig) -> Result<(), Box<dyn std::error::Error>> {
+    // Engine components reach the dynamic registry before any scene loads
+    // or editor capture runs (idempotent — issue #43).
+    crate::component_registration::register_engine_components();
     let event_loop = EventLoop::new()?;
     let runner = GameRunner::new(game, config);
 

@@ -100,6 +100,10 @@ impl SceneLoader {
         world: &mut World,
         assets: &mut impl TextureResolver,
     ) -> Result<SceneInstance, SceneLoadError> {
+        // Engine components (physics) must be in the dynamic registry before
+        // any ComponentData::Dynamic loads — idempotent, covers headless
+        // scene tests that never call run_game (issue #43).
+        crate::component_registration::register_engine_components();
         // Sidecar reads are cached for the duration of a load; start each one
         // from disk so an artist's `.sheet.ron` edit — including fixing a file
         // that was malformed a moment ago — takes effect on reload.

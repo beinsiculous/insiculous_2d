@@ -338,6 +338,27 @@ impl Default for BehaviorState {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct EntityTag(pub String);
 
+impl crate::component_registry::ComponentMeta for Behavior {
+    fn type_name() -> &'static str {
+        "Behavior"
+    }
+
+    fn field_names() -> &'static [&'static str] {
+        // Enum — per-variant fields; the editor's behavior_editor owns display.
+        &[]
+    }
+}
+
+impl crate::component_registry::ComponentMeta for EntityTag {
+    fn type_name() -> &'static str {
+        "EntityTag"
+    }
+
+    fn field_names() -> &'static [&'static str] {
+        &["0"]
+    }
+}
+
 impl EntityTag {
     /// Create a new entity tag
     pub fn new(tag: impl Into<String>) -> Self {

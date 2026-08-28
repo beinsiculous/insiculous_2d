@@ -16,11 +16,11 @@ items worth scheduling. High + Medium items are mirrored in `PROJECT_ROADMAP.md`
 |-------|--------------|--------------------------|-------|
 | `audio` | Aug 2026 | 0 / 0 / 0 | Clean (manager.rs split resolved Aug 27 2026 — see `log_archive.md`) |
 | `common` | Feb 2026 | 0 / 2 / 3 | `CameraUniform` duplicated in renderer; cross-crate volume clamping |
-| `ecs` | Jul 2026 | 0 / 1 / 5 | GPP-16 registry extensibility; GPP-02 is a decision-of-record |
+| `ecs` | Aug 2026 | 0 / 0 / 5 | Clean of Mediums (GPP-16 closed by Sprint 5 #43); GPP-02 is a decision-of-record |
 | `ecs_macros` | Feb 2026 | 0 / 1 / 2 | Over-specified `syn` features |
 | `editor` | Aug 2026 | 0 / 0 / 0 | Fully clean (GPP-L7 resolved by Sprint 4 drag-state rework) |
 | `editor_integration` | Jul 2026 | 0 / 0 / 2 | Clean of Mediums (file picker, menu-label strings remain) |
-| `engine_core` | Jul 2026 | 0 / 1 / 7 | ARCH-006 behavior registry |
+| `engine_core` | Aug 2026 | 0 / 0 / 7 | Clean of Mediums (ARCH-006 closed by Sprint 5 #43) |
 | `input` | Jul 2026 | 0 / 1 / 3 | GAP-001 gamepad backend |
 | `physics` | Jul 2026 | 0 / 0 / 6 | Clean of Mediums; Lows incl. EDIT-001 (RigidBody config edits need rebuild) |
 | `renderer` | Jul 2026 | 0 / 0 / 2 | Clean of Mediums (DRY-006, ARCH-006 remain) |
@@ -39,11 +39,7 @@ None. (GPP-01 resolved Jul 13 2026 — see `log_archive.md`.)
 
 ## Open Medium-Priority Items
 
-### engine_core (1)
-- **[ARCH-006]** Behaviors hardcoded in scene serialization, bypassing `ComponentRegistry` — route through a registry/`Custom` variant; pairs with Phase 4 scripting and ecs GPP-16 (Large)
-
-### ecs (1)
-- **[GPP-16]** `global_registry()` not extensible by games — one-shot init extension point
+(none in engine crates — ARCH-006 + ecs GPP-16 closed Aug 28 2026 by Sprint 5 #43; see `log_archive.md`)
 
 ### games (2)
 - **[GPP-11]** Breakout shadow `Vec<Brick>` → `BrickState` component

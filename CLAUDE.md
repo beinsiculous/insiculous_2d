@@ -31,7 +31,7 @@ encode lessons already learned here — following them is cheaper than re-learni
 | Concern | The one place |
 |---------|---------------|
 | Editor-visible components | `crates/editor/src/stored_component.rs` — one line in `editor_component_registry!` |
-| Dynamic component creation by name | `crates/ecs/src/component_registry.rs` — `registry.register::<T>()` in the global-registry fn |
+| Dynamic component tier (create/insert/extract/remove by name) | `crates/ecs/src/component_registry/` — builtins in the global-init closure; downstream crates call `ecs::register_components(\|r\| r.register::<T>())` at startup (physics via `engine_core::component_registration`, games in `main()`); the editor's `editor_component_registry!` is a TYPED WIDGET OVERLAY on top, its `stored_component/dynamic.rs` bridges the rest by name |
 | Scene RON schema (load) | `crates/engine_core/src/scene_data.rs` — `ComponentData` enum + `scene_loader.rs` |
 | `.sheet.ron` sidecar schema | `crates/engine_core/src/sheet_file.rs` — `SheetFile` + `parse_sheet_file` + `into_parts` (validation lives here too) |
 | Animation clip wire format | `ClipData` in `scene_data.rs` — ONE DTO shared by scene RON and `.sheet.ron` |
@@ -202,7 +202,7 @@ Use `WebFetch` on `https://github.com/godotengine/godot/blob/master/<path>`
 
 ### Key Metrics
 - **Total Tests**: 1565/1565 passing (100% success rate), 0 ignored
-- **Code Quality**: every doc example compiles and runs (window/GPU-bound ones are compile-only `no_run`); 1 tracked TODO in production code (`scene_loader.rs` — the ARCH-006/GPP-06 dynamic-component gap, deliberate)
+- **Code Quality**: every doc example compiles and runs (window/GPU-bound ones are compile-only `no_run`); 0 tracked TODOs in production code (the ARCH-006/GPP-06 dynamic-component gap closed in Sprint 5 #43)
 - Games (in `../games/`): breakout 47 tests, pong 11, space_invaders 36, snake 38, asteroids 42, frogger 45 — all clippy-clean, all 2-player; Pong and Frogger are fully localized (en + pirate, locale-driven font); Frogger is the first Tilemap consumer (Jul 2026)
 
 ### Current Priority

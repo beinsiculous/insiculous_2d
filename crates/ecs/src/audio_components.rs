@@ -202,6 +202,12 @@ pub struct PlaySoundEffect {
     pub spatial: bool,
 }
 
+impl Default for PlaySoundEffect {
+    fn default() -> Self {
+        Self::new(0)
+    }
+}
+
 impl PlaySoundEffect {
     /// Create a new sound effect request.
     pub fn new(sound_id: u32) -> Self {

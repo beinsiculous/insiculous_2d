@@ -672,14 +672,25 @@ define_component! {
 assert_eq!(Health::type_name(), "Health");
 assert_eq!(Health::field_names(), &["value", "max"]);
 
-// Global registry for type lookup by name (built-ins registered at startup)
-let registry = global_registry();
-assert!(registry.is_registered("Transform2D"));
-assert!(registry.is_registered("Sprite"));
+// Global registry (built-ins registered at first access). GAMES REGISTER
+// THEIR OWN COMPONENTS in main(), before run_game — one line buys scene
+// save/load, editor snapshot/clipboard survival, the Add Component popup's
+// "Game" section, and command-API set/add/remove/describe (issue #43):
+ecs::register_components(|r| r.register::<Health>());
+// (register_transient::<T>() = editable but never written to scene files.
+// Rules: T needs ComponentMeta + Serialize + Deserialize + Default; never
+// store raw EntityId fields — ids aren't stable across save/load; and the
+// standalone editor binary can't see game types — edit game scenes from the
+// game's own binary via run_game_with_editor.)
 
-// Create components dynamically from JSON
+ecs::with_global_registry(|registry| {
+    assert!(registry.is_registered("Transform2D"));
+    assert!(registry.is_registered("Health"));
+});
+
+// Create/attach components dynamically by name from JSON
 let json = serde_json::json!({"value": 50.0, "max": 100.0});
-let component = registry.create_component("Health", json)?;
+ecs::with_global_registry(|r| r.insert_component(&mut world, entity, "Health", json))?;
 ```
 
 **Built-in Components with ComponentMeta:**
