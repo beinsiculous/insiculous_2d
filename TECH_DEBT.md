@@ -14,7 +14,7 @@ items worth scheduling. High + Medium items are mirrored in `PROJECT_ROADMAP.md`
 
 | Crate | Last Audited | Open (High / Med / Low) | Notes |
 |-------|--------------|--------------------------|-------|
-| `audio` | Jul 2026 | 0 / 0 / 0 | Clean |
+| `audio` | Aug 2026 | 0 / 0 / 0 | Clean (manager.rs split resolved Aug 27 2026 — see `log_archive.md`) |
 | `common` | Feb 2026 | 0 / 2 / 3 | `CameraUniform` duplicated in renderer; cross-crate volume clamping |
 | `ecs` | Jul 2026 | 0 / 1 / 5 | GPP-16 registry extensibility; GPP-02 is a decision-of-record |
 | `ecs_macros` | Feb 2026 | 0 / 1 / 2 | Over-specified `syn` features |

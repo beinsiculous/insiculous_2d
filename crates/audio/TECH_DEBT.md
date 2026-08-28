@@ -16,8 +16,9 @@ None.
 2. **No spatial audio in this crate** — `AudioSource`/`AudioListener`/`PlaySoundEffect` live in `crates/ecs/src/audio_components.rs`, editor-inspectable data only
 3. **No audio effects** — no reverb, echo, or other DSP
 4. **Single music track** at a time
-5. **Disabled mode reports `is_music_playing() == false`** even after a successful `play_music` call — documented choice
+5. **Disabled mode reports `is_music_playing() == false`** even after a successful `play_music` call — documented choice. The request is remembered (`pending_music`, last one wins) and starts when `enable_output()` connects a device — the web H7 path
 6. **`IoError` carries no file path** — `#[from] io::Error` loses path context (decode errors include the path)
+7. **No AudioContext resume after tab-switch suspension (web)** — a browser may suspend the context in a background tab; rodio/cpal expose no resume hook, so audio can stay silent until reload. Accepted #8 scope cut (adversarial review F5)
 
 ## Future Enhancements (Not Technical Debt)
 
@@ -32,7 +33,7 @@ None.
 
 | Metric | Value |
 |--------|-------|
-| Test count | 19 (18 unit + 1 doc, all headless) |
+| Test count | 27 (26 unit + 1 doc, all headless) |
 | High priority open | 0 |
 | Medium priority open | 0 |
 | Low priority open | 0 |

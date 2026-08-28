@@ -27,7 +27,11 @@ Core engine: Game trait, run_game(), managers, scene loading/saving, asset manag
 - `game/web.rs` (wasm-only) — async renderer bring-up: `spawn_renderer_init`
   (spawn_local fills `pending_renderer`), `drain_pending_renderer` (adopts via
   `complete_init` + `finish_renderer_setup`, pushes the canvas's pixel size
-  through resize — the adopted surface starts 1×1)
+  through resize — the adopted surface starts 1×1). Also H7 gesture-gated
+  audio: `upgrade_audio_on_gesture` calls `AudioManager::enable_output` on
+  the first activation gesture (keydown/mousedown/touchstart, auto-repeat
+  excluded), retries capped at 5 failures; hooked pre-match in
+  `app_handler::window_event` so audio is live before `on_key_pressed`
 - `web/mod.rs` (wasm-only, `engine_core::web`) — the web boot phase:
   `preload_assets(base)` fetches `{base}/manifest.json` + every entry into
   `common::vfs` under `{base}/{entry}` keys BEFORE `run_game`;

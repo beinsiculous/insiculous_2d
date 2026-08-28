@@ -19,7 +19,15 @@ audio system is future work).
   device) still loads/validates sounds, playback no-ops. In disabled mode
   `play_music*` returns `Ok` but `is_music_playing()` stays `false` (documented).
   On wasm32 it ALWAYS starts disabled (browsers gate audio behind a user
-  gesture; the upgrade path is the open H7 work).
+  gesture).
+- `enable_output()` (H7, Aug 2026) — upgrades a disabled manager to a real
+  `OutputStream`; no-op `Ok` when already enabled, `Err` leaves it disabled
+  and fully functional. Sounds loaded while disabled keep their handles/ids;
+  bus volumes carry over; a `play_music` issued while disabled is remembered
+  (`pending_music`, last request wins, cleared by `stop_music`) and starts on
+  a successful enable. The engine calls this from the first user activation
+  gesture on the web (`engine_core/src/game/web.rs`); `new()` is now
+  `disabled()` + `enable_output()?` — one construction path.
 - Path-based loads (`load_sound`, music) read through `common::vfs` (Aug 2026)
   — std::fs natively, the prefetched in-memory map on the web — so the same
   path API works on both targets. Music decodes from an in-memory `Cursor`
@@ -45,8 +53,10 @@ audio system is future work).
 - See `TECH_DEBT.md` for the full list
 
 ## Testing
-- 19 headless tests (18 unit + 1 doc; disabled mode + bytes/temp-file APIs), run with
-  `cargo test -p audio`. No audio device needed.
+- 27 headless tests (26 unit + 1 doc; disabled mode + bytes/temp-file APIs +
+  enable_output/pending-music), run with `cargo test -p audio`. No audio
+  device needed — enable_output tests match on the result and assert the
+  invariants of whichever branch ran.
 
 ## Godot Oracle
 - Audio architecture: `servers/audio_server.cpp`, `scene/audio/audio_stream_player.cpp`
