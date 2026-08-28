@@ -84,10 +84,18 @@ impl<G: Game> EditorGame<G> {
     }
 
     /// Load a scene from disk, replacing the current world.
+    ///
+    /// The current world is only touched once the file is known-good: the
+    /// scene is parsed first, then instantiated into a scratch world as a
+    /// dry run (issue #50 — a corrupt file, unknown prefab, or missing
+    /// texture must not cost the user's unsaved scene). The price is
+    /// instantiating twice; `AssetManager` deduplicates texture loads by
+    /// (path, filter), so the dry run warms the cache and the real
+    /// instantiate uploads nothing twice.
     pub(super) fn load_scene(
         &mut self,
         world: &mut World,
-        assets: &mut engine_core::assets::AssetManager,
+        assets: &mut impl engine_core::TextureResolver,
         path: &Path,
     ) -> Result<(), String> {
         if let Some(msg) = self.scene_replace_refusal() {
@@ -98,13 +106,18 @@ impl<G: Game> EditorGame<G> {
             log::warn!("Current scene has unsaved changes. Save first to avoid losing work.");
         }
 
-        // Clear existing world
+        // Parse and dry-run BEFORE touching the world.
+        let data = engine_core::scene_loader::SceneLoader::load_from_file(path)
+            .map_err(|e| format!("Failed to load scene: {}", e))?;
+        let mut scratch = World::new();
+        engine_core::scene_loader::SceneLoader::instantiate(&data, &mut scratch, assets)
+            .map_err(|e| format!("Failed to load scene: {}", e))?;
+
+        // Known-good: replace the live world.
         for entity in world.entities() {
             world.remove_entity(&entity).ok();
         }
-
-        // Load and instantiate scene
-        let scene_instance = engine_core::scene_loader::SceneLoader::load_and_instantiate(path, world, assets)
+        let scene_instance = engine_core::scene_loader::SceneLoader::instantiate(&data, world, assets)
             .map_err(|e| format!("Failed to load scene: {}", e))?;
 
         // Store physics settings from loaded scene
@@ -136,7 +149,7 @@ impl<G: Game> EditorGame<G> {
     pub(super) fn load_scene_with_feedback(
         &mut self,
         world: &mut World,
-        assets: &mut engine_core::assets::AssetManager,
+        assets: &mut impl engine_core::TextureResolver,
         path: &Path,
     ) {
         if let Err(e) = self.load_scene(world, assets, path) {

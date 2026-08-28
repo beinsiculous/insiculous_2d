@@ -397,4 +397,6 @@ mod picking_tests;
 #[cfg(test)]
 mod play_guard_tests;
 #[cfg(test)]
+mod scene_io_tests;
+#[cfg(test)]
 mod time_freeze_tests;

@@ -121,6 +121,10 @@ pub struct AssetManager {
     config: AssetConfig,
     /// Maps texture handle IDs back to their original path strings for serialization.
     handle_to_path: HashMap<u32, String>,
+    /// Deduplicates file loads: a texture file is decoded and uploaded once
+    /// per (path, filter); repeat loads (scene reloads, dry-run validation)
+    /// reuse the existing GPU texture instead of allocating another copy.
+    loaded_by_path: HashMap<(String, TextureFilter), TextureHandle>,
     /// `.sheet.ron` reads, cached per texture path for the duration of a
     /// scene load (see [`sprite_sheet::SidecarCache`]).
     sidecar_cache: sprite_sheet::SidecarCache,
@@ -136,6 +140,7 @@ impl AssetManager {
             texture_manager: TextureManager::new(device, queue),
             config: AssetConfig::default(),
             handle_to_path,
+            loaded_by_path: HashMap::new(),
             sidecar_cache: sprite_sheet::SidecarCache::default(),
         }
     }
@@ -149,6 +154,7 @@ impl AssetManager {
             texture_manager: TextureManager::new(device, queue),
             config,
             handle_to_path,
+            loaded_by_path: HashMap::new(),
             sidecar_cache: sprite_sheet::SidecarCache::default(),
         }
     }
@@ -200,6 +206,13 @@ impl AssetManager {
         let path = path.as_ref();
         let original_path_string = path.to_string_lossy().to_string();
 
+        // Same file + same filter = same GPU texture. Without this, every
+        // scene reload re-decoded and re-uploaded its whole texture set.
+        let cache_key = (original_path_string.clone(), filter);
+        if let Some(&handle) = self.loaded_by_path.get(&cache_key) {
+            return Ok(handle);
+        }
+
         // Resolve path against base path if relative
         let full_path = if path.is_relative() {
             Path::new(&self.config.base_path).join(path)
@@ -217,6 +230,7 @@ impl AssetManager {
         };
         let handle = self.texture_manager.load_texture(&full_path, config)?;
         self.handle_to_path.insert(handle.id, original_path_string);
+        self.loaded_by_path.insert(cache_key, handle);
 
         Ok(handle)
     }
@@ -379,6 +393,7 @@ impl AssetManager {
 
     /// Unload a texture, freeing GPU resources
     pub fn unload_texture(&mut self, handle: TextureHandle) -> bool {
+        self.loaded_by_path.retain(|_, &mut h| h != handle);
         self.texture_manager.remove_texture(handle).is_some()
     }
 
@@ -399,9 +414,13 @@ impl AssetManager {
         self.texture_manager.textures()
     }
 
-    /// Set the base path for asset loading
+    /// Set the base path for asset loading.
+    ///
+    /// Also drops the path-deduplication cache: relative paths recorded
+    /// under the old base must not resolve to the old base's textures.
     pub fn set_base_path(&mut self, path: impl Into<String>) {
         self.config.base_path = path.into();
+        self.loaded_by_path.clear();
     }
 
     /// Get the current base path

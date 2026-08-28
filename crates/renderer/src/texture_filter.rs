@@ -20,7 +20,7 @@ use crate::texture::SamplerConfig;
 /// let config: SamplerConfig = TextureFilter::Nearest.into();
 /// assert_eq!(config.mag_filter, renderer::wgpu::FilterMode::Nearest);
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum TextureFilter {
     /// Smooth blending between texels (default).
     #[default]
