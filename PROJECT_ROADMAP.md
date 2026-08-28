@@ -326,6 +326,47 @@ new scope), input/UX for storefront cert requirements, pricing.
 Note: "arcade scaffolding" in engine_core docs (`MenuInput`, `spawn_background`,
 etc.) is unrelated engine vocabulary that predates this product name — leave it.
 
+## Phase K — Conductor: adaptive MIDI music (parallel engine track, Aug 28 2026)
+
+Jesse's founding audio wish: the Banjo-Kazooie / Wii Shop pause-chime effect,
+generalized — music ships as a MIDI file synthesized at runtime, designated
+tracks are **action-triggered** so every triggered note stays in key/time with
+the song ("playing the game is playing the song"). Opt-in per game; standard
+ogg/wav music + SFX stay the untouched default. Runs parallel to Editor
+Sprint 5 and F/G — the K1 spike goes first and **gates K2–K5**.
+
+**Libraries (settled, FOSS-clean, pure Rust, wasm-friendly):** `midly` (MIT,
+MIDI parsing, load-time only) + `rustysynth` (MIT, zero deps, SoundFont synth
+with real-time `note_on`/`render`). rustysynth's bundled sequencer *consumes*
+the synth, so we write our own — which is exactly what enables live triggering.
+
+**Architecture (kimi-reviewed plan: `review/plan-conductor.md`, round 1
+adjudicated):** new crate `crates/music_midi` (no rodio, no I/O — bytes in,
+samples out, fully headless); `audio → music_midi` keeps rodio contained both
+directions. `.mid` + `.mid.ron` sidecar (schema SSOT mirrors `sheet_file.rs`;
+declares SoundFont path, looping, trigger tracks + quantize). `Conductor`
+(pure `SequencerCore` + Synthesizer) moves into a custom rodio
+`Source<Item=f32>` — no Mutex: `std::sync::mpsc` commands in, atomic
+position mirror out, 64-frame blocks. Song position advances by samples
+rendered (audio thread), never frame delta — so `ctx.time_scale = 0` freezes
+the world while music and triggers keep going: **pause-menu jamming works by
+construction**. `AudioManager` gains `play_midi_music`, `midi_trigger(id)`,
+`music_position()`, `beat_crossed(subdivision)` via a new `manager/midi.rs`
+seam; games reach it all through `ctx.audio`, zero engine_core dep changes.
+
+Issues (Studio Board): **#60 K1** spike (.mid→rustysynth→rodio native+wasm;
+verifies rustysynth `Send`/ctor FIRST, documents a wasm fallback, picks the
+small CC0 SoundFont — never a 30 MB GM bank) → **#61 K2** `music_midi` core
+(sidecar SSOT, tempo map, sequencer, edge-case validation: 120 BPM/4-4
+defaults, SMPTE rejected, duplicate track names rejected) → **#62 K3**
+trigger tracks (chord units, quantize + one-block late tolerance, loop-wrap
+all-notes-off + cursor reset, commands drained before advancing) → **#63 K4**
+audio integration (pending/gesture parity with `play_music`, one music slot,
+paused = triggers dropped not queued, dead-audio-thread detection,
+integer-math `beat_crossed`) → **#64 K5** demo (pong pause-menu jam), wasm
+listen test, `training.md` pattern. v2 ideas on record in K5: harmony-aware
+triggers, intensity layers, editor integration.
+
 ---
 
 ## Phase C (paused): Games 7–15 — Classic + Action
