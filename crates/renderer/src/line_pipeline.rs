@@ -201,15 +201,30 @@ impl LinePipeline {
     /// `load_color = false` clears the HDR color before drawing; `true`
     /// preserves whatever the sprite pipeline drew (typical case — lines
     /// composite on top of the sprite frame).
+    ///
+    /// `viewport_scissor` bounds the pass (lines are game geometry — the
+    /// editor clips them to the scene panel, issue #41); an empty effective
+    /// scissor skips the pass entirely (both attachments are `Load`, so
+    /// skipping changes nothing).
     pub fn draw(
         &self,
         encoder: &mut CommandEncoder,
         targets: &RenderTargets,
         vertex_count: u32,
+        viewport_scissor: Option<[u32; 4]>,
     ) {
         if vertex_count == 0 {
             return;
         }
+        let surface = (targets.width(), targets.height());
+        let scissor = match viewport_scissor {
+            None => None,
+            Some(rect) => match crate::scissor::clamp_scissor(rect, surface.0, surface.1) {
+                Some(clamped) => Some(clamped),
+                // Empty scissor: nothing visible, skip the whole pass.
+                None => return,
+            },
+        };
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Line Render Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -235,6 +250,9 @@ impl LinePipeline {
             multiview_mask: None,
         });
 
+        if let Some((x, y, w, h)) = scissor {
+            pass.set_scissor_rect(x, y, w, h);
+        }
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.camera_bind_group, &[]);
         pass.set_vertex_buffer(0, self.vertex_buffer.slice());

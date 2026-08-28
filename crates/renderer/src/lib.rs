@@ -11,10 +11,12 @@ mod error;
 pub mod line_pipeline;
 pub mod render_targets;
 mod renderer;
+pub mod scissor;
 pub mod sprite;
 pub mod sprite_data;
 pub mod texture;
 pub mod texture_filter;
+mod white_texture;
 mod window;
 
 pub mod prelude;

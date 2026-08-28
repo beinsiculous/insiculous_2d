@@ -15,6 +15,11 @@ pub struct SpriteBatch {
     pub instances: Vec<SpriteInstance>,
     /// Whether this batch is sorted by depth
     pub sorted: bool,
+    /// GPU scissor rect (`[x, y, w, h]` in physical surface pixels) applied
+    /// when drawing this batch, or `None` for the pass default. Set by the
+    /// UI batcher from `PushClipRect`/`PopClipRect` (issue #41); game
+    /// batches never carry a clip.
+    pub clip: Option<[u32; 4]>,
 }
 
 impl SpriteBatch {
@@ -24,6 +29,7 @@ impl SpriteBatch {
             texture_handle,
             instances: Vec::new(),
             sorted: false,
+            clip: None,
         }
     }
 
@@ -67,10 +73,18 @@ impl SpriteBatch {
     }
 }
 
-/// Sprite batcher for efficient rendering
+/// Sprite batcher for efficient rendering.
+///
+/// Batches are keyed by `(texture, clip)`: sprites sharing a texture AND
+/// the active clip rect merge into one draw. Game rendering never sets a
+/// clip, so its batching is identical to the old by-texture map; the UI
+/// integration drives [`set_clip`](Self::set_clip) from its clip-rect
+/// stack so clipped UI regions scissor on the GPU (issue #41).
 #[derive(Default)]
 pub struct SpriteBatcher {
-    batches: HashMap<TextureHandle, SpriteBatch>,
+    batches: HashMap<(TextureHandle, Option<[u32; 4]>), SpriteBatch>,
+    /// Clip applied to sprites added from now on (a cursor, not a filter).
+    current_clip: Option<[u32; 4]>,
 }
 
 impl SpriteBatcher {
@@ -79,11 +93,22 @@ impl SpriteBatcher {
         Self::default()
     }
 
+    /// Set the clip rect (physical surface pixels) applied to every sprite
+    /// added after this call. `None` = unclipped (the default).
+    pub fn set_clip(&mut self, clip: Option<[u32; 4]>) {
+        self.current_clip = clip;
+    }
+
     /// Add a sprite to the batcher
     pub fn add_sprite(&mut self, sprite: &Sprite) {
+        let clip = self.current_clip;
         let batch = self.batches
-            .entry(sprite.texture_handle)
-            .or_insert_with(|| SpriteBatch::new(sprite.texture_handle));
+            .entry((sprite.texture_handle, clip))
+            .or_insert_with(|| {
+                let mut batch = SpriteBatch::new(sprite.texture_handle);
+                batch.clip = clip;
+                batch
+            });
 
         batch.add_instance(sprite.to_instance());
     }
@@ -103,20 +128,28 @@ impl SpriteBatcher {
     }
 
     /// Get all batches
-    pub fn batches(&self) -> &HashMap<TextureHandle, SpriteBatch> {
+    pub fn batches(&self) -> &HashMap<(TextureHandle, Option<[u32; 4]>), SpriteBatch> {
         &self.batches
     }
 
     /// Get mutable batches
-    pub fn batches_mut(&mut self) -> &mut HashMap<TextureHandle, SpriteBatch> {
+    pub fn batches_mut(&mut self) -> &mut HashMap<(TextureHandle, Option<[u32; 4]>), SpriteBatch> {
         &mut self.batches
     }
 
-    /// Clear all batches
+    /// The unclipped batch for a texture, if any — the common case for game
+    /// rendering, where no clip is ever set.
+    pub fn batch_for(&self, texture: TextureHandle) -> Option<&SpriteBatch> {
+        self.batches.get(&(texture, None))
+    }
+
+    /// Clear all batches. Also resets the clip cursor, so an unbalanced
+    /// push/pop in one frame can never leak a clip into the next.
     pub fn clear(&mut self) {
         for batch in self.batches.values_mut() {
             batch.clear();
         }
+        self.current_clip = None;
     }
 
     /// Get total sprite count
@@ -299,9 +332,59 @@ mod tests {
         let batches = batcher.batches();
         assert_eq!(batches.len(), 3); // 3 different textures
 
-        assert_eq!(batches.get(&TextureHandle::new(1)).unwrap().len(), 2);
-        assert_eq!(batches.get(&TextureHandle::new(2)).unwrap().len(), 2);
-        assert_eq!(batches.get(&TextureHandle::new(3)).unwrap().len(), 1);
+        assert_eq!(batcher.batch_for(TextureHandle::new(1)).unwrap().len(), 2);
+        assert_eq!(batcher.batch_for(TextureHandle::new(2)).unwrap().len(), 2);
+        assert_eq!(batcher.batch_for(TextureHandle::new(3)).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_sprite_batcher_splits_same_texture_by_clip() {
+        let mut batcher = SpriteBatcher::new();
+
+        batcher.add_sprite(&Sprite::new(TextureHandle::new(1)));
+        batcher.set_clip(Some([10, 20, 100, 50]));
+        batcher.add_sprite(&Sprite::new(TextureHandle::new(1)));
+        batcher.add_sprite(&Sprite::new(TextureHandle::new(1)));
+        batcher.set_clip(None);
+        batcher.add_sprite(&Sprite::new(TextureHandle::new(1)));
+
+        // Same texture, two clip states -> two batches.
+        assert_eq!(batcher.batches().len(), 2);
+        let unclipped = batcher.batch_for(TextureHandle::new(1)).unwrap();
+        assert_eq!(unclipped.len(), 2);
+        assert_eq!(unclipped.clip, None);
+
+        let clipped = batcher
+            .batches()
+            .get(&(TextureHandle::new(1), Some([10, 20, 100, 50])))
+            .unwrap();
+        assert_eq!(clipped.len(), 2);
+        assert_eq!(clipped.clip, Some([10, 20, 100, 50]));
+    }
+
+    #[test]
+    fn test_sprite_batcher_no_clip_batches_identically_to_before() {
+        let mut batcher = SpriteBatcher::new();
+        batcher.add_sprite(&Sprite::new(TextureHandle::new(1)));
+        batcher.add_sprite(&Sprite::new(TextureHandle::new(1)));
+
+        // Never touching set_clip yields exactly one batch per texture,
+        // carrying no clip — the game path is unchanged.
+        assert_eq!(batcher.batches().len(), 1);
+        assert_eq!(batcher.batch_for(TextureHandle::new(1)).unwrap().clip, None);
+    }
+
+    #[test]
+    fn test_sprite_batcher_clear_resets_clip_cursor() {
+        let mut batcher = SpriteBatcher::new();
+        batcher.set_clip(Some([0, 0, 10, 10]));
+        batcher.add_sprite(&Sprite::new(TextureHandle::new(1)));
+
+        // Unbalanced push (no set_clip(None)) must not leak across frames.
+        batcher.clear();
+        batcher.add_sprite(&Sprite::new(TextureHandle::new(1)));
+        assert!(batcher.batch_for(TextureHandle::new(1)).is_some());
+        assert_eq!(batcher.batch_for(TextureHandle::new(1)).unwrap().len(), 1);
     }
 
     #[test]
@@ -330,12 +413,12 @@ mod tests {
 
         batcher.sort_all_batches();
 
-        let batch1 = batcher.batches().get(&TextureHandle::new(1)).unwrap();
+        let batch1 = batcher.batch_for(TextureHandle::new(1)).unwrap();
         assert!(batch1.sorted);
         assert_eq!(batch1.instances[0].depth, 1.0);
         assert_eq!(batch1.instances[1].depth, 3.0);
 
-        let batch2 = batcher.batches().get(&TextureHandle::new(2)).unwrap();
+        let batch2 = batcher.batch_for(TextureHandle::new(2)).unwrap();
         assert!(batch2.sorted);
         assert_eq!(batch2.instances[0].depth, 2.0);
         assert_eq!(batch2.instances[1].depth, 5.0);
@@ -365,7 +448,7 @@ mod tests {
 
         // Verify we can get mutable access
         let batches = batcher.batches_mut();
-        if let Some(batch) = batches.get_mut(&TextureHandle::new(1)) {
+        if let Some(batch) = batches.get_mut(&(TextureHandle::new(1), None)) {
             batch.clear();
         }
 

@@ -66,7 +66,7 @@ mod tests {
 
         let batches = batcher.batches();
         assert_eq!(batches.len(), 1, "whole map should share one batch");
-        let batch = batches.get(&TextureHandle { id: 7 }).unwrap();
+        let batch = batcher.batch_for(TextureHandle { id: 7 }).unwrap();
         assert_eq!(batch.instances.len(), 2);
 
         // Tile (0,0): at the anchor, tileset cell 0.

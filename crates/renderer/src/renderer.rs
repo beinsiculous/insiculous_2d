@@ -70,6 +70,13 @@ pub struct Renderer {
     /// Number of line vertices uploaded by the most recent `set_lines` call.
     /// Reset to 0 when no lines are drawn this frame.
     line_vertex_count: u32,
+    /// Per-frame scissor bounding the game-world passes (sprites, lines,
+    /// bloom composite) in physical surface pixels. `None` = full surface
+    /// (the default; shipped games never set it). A zero-size rect draws no
+    /// game world at all (the editor's "scene panel hidden" case). Set every
+    /// frame via [`set_viewport_scissor`](Self::set_viewport_scissor);
+    /// the UI pass is never affected (issue #41).
+    viewport_scissor: Option<[u32; 4]>,
     /// One-way flag set by wgpu's device-lost callback. Every queue/surface
     /// touchpoint checks it first — submitting to a dead queue is what
     /// crashed Firefox's parent-process WebGPU (its wgpu-core panics on the
@@ -225,7 +232,7 @@ impl Renderer {
         let queue = Arc::new(queue);
 
         // Create white texture for colored sprites
-        let white_texture = Self::create_white_texture_resource(&device, &queue);
+        let white_texture = crate::white_texture::create_white_texture_resource(&device, &queue);
 
         // Build offscreen targets + post-processing pipelines sized to the initial window.
         let render_targets = RenderTargets::new(&device, size.width, size.height);
@@ -253,6 +260,7 @@ impl Renderer {
             bloom_config,
             line_pipeline,
             line_vertex_count: 0,
+            viewport_scissor: None,
             device_lost,
             pending_reconfigure: false,
         })
@@ -286,6 +294,14 @@ impl Renderer {
     /// Set the clear color
     pub fn set_clear_color(&mut self, r: f64, g: f64, b: f64, a: f64) {
         self.clear_color = wgpu::Color { r, g, b, a };
+    }
+
+    /// Bound the game-world passes (sprites, lines, bloom composite) to a
+    /// scissor rect in physical surface pixels. `None` restores full-surface
+    /// rendering; a zero-size rect draws no game world. Call every frame —
+    /// like [`set_lines`](Self::set_lines), the value is per-frame state.
+    pub fn set_viewport_scissor(&mut self, scissor: Option<[u32; 4]>) {
+        self.viewport_scissor = scissor;
     }
 
     /// Acquire the current surface texture for rendering.
@@ -390,6 +406,11 @@ impl Renderer {
         ui_pipeline.update_camera(&self.queue, camera);
         self.line_pipeline.update_camera(&self.queue, camera);
 
+        // Viewport scissor bounds every game-world pass; the UI pass is
+        // exempt (its chrome must fill the window) but honors per-batch
+        // clip rects (issue #41).
+        let viewport_scissor = self.viewport_scissor;
+
         // Pass 1: sprites -> HDR color (+ depth).
         sprite_pipeline.draw(
             &mut encoder,
@@ -397,11 +418,17 @@ impl Renderer {
             sprite_batches,
             &self.render_targets,
             self.clear_color,
+            viewport_scissor,
         );
 
         // Pass 2: lines (e.g. the spring-mass grid) on top of sprites in HDR.
         // No-op when `set_lines` wasn't called this frame.
-        self.line_pipeline.draw(&mut encoder, &self.render_targets, self.line_vertex_count);
+        self.line_pipeline.draw(
+            &mut encoder,
+            &self.render_targets,
+            self.line_vertex_count,
+            viewport_scissor,
+        );
 
         // Pass 3..N: bloom (extract -> blur -> composite to swapchain).
         self.bloom_pipeline.run(
@@ -412,6 +439,7 @@ impl Renderer {
             crate::bloom::SwapchainTarget {
                 view: &swapchain_view,
                 is_srgb: self.config.format.is_srgb(),
+                composite_scissor: viewport_scissor,
             },
             &self.bloom_config,
         );
@@ -424,6 +452,7 @@ impl Renderer {
             ui_batches,
             &swapchain_view,
             &self.render_targets.depth_view,
+            (self.config.width, self.config.height),
         );
 
         self.queue.submit(std::iter::once(encoder.finish()));
@@ -541,53 +570,6 @@ impl Renderer {
     /// method fails fast and the frame loop should stop.
     pub fn is_device_lost(&self) -> bool {
         self.device_lost.is_lost()
-    }
-
-    /// Create a white texture resource for colored sprites
-    fn create_white_texture_resource(device: &Device, queue: &Queue) -> crate::sprite_data::TextureResource {
-        use crate::sprite_data::TextureResource;
-        use std::sync::Arc;
-        
-        log::info!("Creating white texture resource for colored sprites");
-        
-        // Create a 1x1 white texture
-        let texture = Arc::new(device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("White Texture"),
-            size: wgpu::Extent3d {
-                width: 1,
-                height: 1,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        }));
-
-        // Create white pixel data (1, 1, 1, 1) - RGBA all 255 for white
-        let white_pixel: [u8; 4] = [255, 255, 255, 255];
-        
-        // Write the white pixel data to the texture using the queue
-        queue.write_texture(
-            texture.as_image_copy(),
-            &white_pixel,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(4),
-                rows_per_image: Some(1),
-            },
-            wgpu::Extent3d {
-                width: 1,
-                height: 1,
-                depth_or_array_layers: 1,
-            },
-        );
-
-        log::info!("White texture created successfully with pixel data (255,255,255,255)");
-
-        TextureResource::new(device, texture)
     }
 
     /// Get the white texture resource for colored sprites

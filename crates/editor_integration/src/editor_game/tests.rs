@@ -352,6 +352,8 @@ fn test_render_overrides_camera_from_viewport() {
     // The GPU camera must be derived from the editor viewport every frame so
     // sprites land where the overlay (gizmo/picking/grid) expects them.
     let mut editor_game = EditorGame::new(DummyGame);
+    // Lay out the dock (normally done in update, which precedes render).
+    editor_game.editor.update_layout(Vec2::new(1600.0, 900.0));
     editor_game.editor.viewport.set_viewport_bounds(common::Rect::new(300.0, 100.0, 800.0, 600.0));
     editor_game.editor.viewport.set_camera_position(Vec2::new(120.0, -40.0));
     editor_game.editor.viewport.set_camera_zoom(2.0);
@@ -361,6 +363,7 @@ fn test_render_overrides_camera_from_viewport() {
     let mut camera = common::Camera::default();
     let glyph_textures = std::collections::HashMap::new();
     let window_size = Vec2::new(1600.0, 900.0);
+    let mut viewport_scissor = None;
     let mut ctx = engine_core::contexts::RenderContext {
         world: &world,
         sprites: &mut sprites,
@@ -368,6 +371,7 @@ fn test_render_overrides_camera_from_viewport() {
         window_size,
         ui_commands: &[],
         glyph_textures: &glyph_textures,
+        viewport_scissor: &mut viewport_scissor,
     };
 
     engine_core::Game::render(&mut editor_game, &mut ctx);
@@ -376,6 +380,46 @@ fn test_render_overrides_camera_from_viewport() {
     assert_eq!(camera, expected);
     assert_eq!(camera.zoom, 2.0);
     assert_eq!(camera.viewport_size, window_size);
+    // Issue #41: the editor bounds the game-world passes to the scene panel
+    // (the DOCK layout's content bounds — not the viewport bounds above).
+    let expected_scissor = editor_game
+        .editor
+        .scene_view_bounds()
+        .expect("scene view visible by default");
+    assert!(expected_scissor.width > 0.0 && expected_scissor.height > 0.0);
+    assert_eq!(
+        viewport_scissor,
+        Some(expected_scissor),
+        "editor render writes the scene-view bounds as the viewport scissor"
+    );
+}
+
+#[test]
+fn test_render_writes_zero_scissor_when_scene_panel_hidden() {
+    // A hidden/collapsed scene panel means NO game world should draw —
+    // a zero-size scissor, never None (which would mean full-window).
+    let mut editor_game = EditorGame::new(DummyGame);
+    editor_game.editor.dock_area.set_panel_visible(editor::PanelId::SCENE_VIEW, false);
+
+    let world = World::new();
+    let mut sprites = renderer::sprite::SpriteBatcher::new();
+    let mut camera = common::Camera::default();
+    let glyph_textures = std::collections::HashMap::new();
+    let mut viewport_scissor = None;
+    let mut ctx = engine_core::contexts::RenderContext {
+        world: &world,
+        sprites: &mut sprites,
+        camera: &mut camera,
+        window_size: Vec2::new(1600.0, 900.0),
+        ui_commands: &[],
+        glyph_textures: &glyph_textures,
+        viewport_scissor: &mut viewport_scissor,
+    };
+
+    engine_core::Game::render(&mut editor_game, &mut ctx);
+
+    let rect = viewport_scissor.expect("editor always writes a scissor");
+    assert_eq!((rect.width, rect.height), (0.0, 0.0));
 }
 
 #[test]

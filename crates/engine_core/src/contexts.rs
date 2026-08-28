@@ -129,4 +129,12 @@ pub struct RenderContext<'a> {
     pub ui_commands: &'a [ui::DrawCommand],
     /// Cached glyph textures for text rendering
     pub glyph_textures: &'a HashMap<GlyphCacheKey, TextureHandle>,
+    /// Writeback: bound the game-world passes (sprites, lines, bloom) to
+    /// this rect in **physical surface pixels** (the same space as
+    /// `window_size`). `None` (the default) renders full-window — shipped
+    /// games never touch this. The editor writes its scene-panel bounds so
+    /// the game stops painting over editor chrome (issue #41); a zero-size
+    /// rect draws no game world at all (hidden scene panel). The UI pass is
+    /// unaffected.
+    pub viewport_scissor: &'a mut Option<common::Rect>,
 }

@@ -341,6 +341,7 @@ impl SpritePipeline {
         batches: &[&SpriteBatch],
         targets: &RenderTargets,
         clear_color: wgpu::Color,
+        viewport_scissor: Option<[u32; 4]>,
     ) {
         log::debug!("SPRITE DRAW: batches={}, clear_color={:?}", batches.len(), clear_color);
 
@@ -386,7 +387,15 @@ impl SpritePipeline {
             multiview_mask: None,
         });
 
-        self.record_batches(&mut render_pass, batches);
+        // Note: LoadOp::Clear ignores the scissor — the whole HDR target
+        // still clears, which is exactly what we want (stale pixels outside
+        // the viewport would otherwise survive).
+        self.record_batches(
+            &mut render_pass,
+            batches,
+            viewport_scissor,
+            (targets.width(), targets.height()),
+        );
     }
 
     /// Draw UI batches straight to the swapchain view (post-tonemap UI
@@ -403,6 +412,7 @@ impl SpritePipeline {
         batches: &[&SpriteBatch],
         color_view: &wgpu::TextureView,
         depth_view: &wgpu::TextureView,
+        surface_size: (u32, u32),
     ) {
         if batches.iter().all(|b| b.is_empty()) {
             return;
@@ -433,12 +443,26 @@ impl SpritePipeline {
             multiview_mask: None,
         });
 
-        self.record_batches(&mut render_pass, batches);
+        // No pass default: chrome must fill the window; only batches
+        // carrying a clip rect get scissored (issue #41).
+        self.record_batches(&mut render_pass, batches, None, surface_size);
     }
 
     /// Bind buffers + camera and draw every batch — shared by the HDR
     /// sprite pass and the UI pass.
-    fn record_batches(&self, render_pass: &mut wgpu::RenderPass<'_>, batches: &[&SpriteBatch]) {
+    ///
+    /// `default_scissor` bounds batches that carry no clip of their own
+    /// (the viewport scissor on the sprite pass; `None` on the UI pass);
+    /// a batch's `clip` intersects with it. A batch whose effective scissor
+    /// is empty is skipped entirely. Instance offsets still advance for
+    /// skipped batches — the instance buffer was flattened over ALL batches.
+    fn record_batches(
+        &self,
+        render_pass: &mut wgpu::RenderPass<'_>,
+        batches: &[&SpriteBatch],
+        default_scissor: Option<[u32; 4]>,
+        surface_size: (u32, u32),
+    ) {
         // Set pipeline
         render_pass.set_pipeline(&self.pipeline);
 
@@ -449,12 +473,17 @@ impl SpritePipeline {
         // Use cached camera bind group (set 0)
         render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
 
+        // A fresh render pass starts with a full-attachment scissor; only
+        // emit set_scissor_rect when the effective rect changes.
+        let mut current_scissor = (0, 0, surface_size.0, surface_size.1);
+
         // Draw each batch
         let mut instance_offset = 0u32;
         for batch in batches {
             if batch.is_empty() {
                 continue;
             }
+            let instance_count = batch.len() as u32;
 
             // Get cached texture bind group or skip the batch
             let texture_bind_group = if let Some(cached) = self.texture_bind_group_cache.get(&batch.texture_handle) {
@@ -462,14 +491,24 @@ impl SpritePipeline {
             } else {
                 // This should not happen since we called cache_texture_bind_groups above
                 log::warn!("No cached bind group for texture handle {:?}, sprite may not render correctly", batch.texture_handle);
+                instance_offset += instance_count;
                 continue;
             };
 
+            // Empty effective scissor (hidden scene panel, clip outside the
+            // surface) = nothing of this batch is visible.
+            let Some(scissor) = crate::scissor::batch_scissor(batch.clip, default_scissor, surface_size)
+            else {
+                instance_offset += instance_count;
+                continue;
+            };
+            if scissor != current_scissor {
+                render_pass.set_scissor_rect(scissor.0, scissor.1, scissor.2, scissor.3);
+                current_scissor = scissor;
+            }
+
             // Set texture bind group (set 1)
             render_pass.set_bind_group(1, texture_bind_group, &[]);
-
-            // Draw the instances for this batch
-            let instance_count = batch.len() as u32;
 
             // Draw indexed triangles with instancing
             // 6 indices per quad (2 triangles), draw instances from instance_offset to instance_offset + instance_count

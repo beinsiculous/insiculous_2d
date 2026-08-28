@@ -417,6 +417,15 @@ impl<G: Game> Game for EditorGame<G> {
         // are overridden here — the supported path inside the editor is a
         // main-camera entity (mirrored onto the viewport while Playing).
         *ctx.camera = self.editor.viewport.to_window_render_camera(ctx.window_size);
+        // Bound the game-world passes to the scene panel (issue #41): the
+        // game stops painting over editor chrome and the GPU stops shading
+        // the whole window. A hidden/collapsed panel yields a zero-size
+        // rect — no game world at all — never None (full window).
+        *ctx.viewport_scissor = Some(
+            self.editor
+                .scene_view_bounds()
+                .unwrap_or(common::Rect::new(0.0, 0.0, 0.0, 0.0)),
+        );
     }
 
     fn on_key_pressed(&mut self, key: KeyCode, ctx: &mut GameContext) {

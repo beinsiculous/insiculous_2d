@@ -311,6 +311,8 @@ impl RenderManager {
             min_depth(a)
                 .total_cmp(&min_depth(b))
                 .then_with(|| a.texture_handle.id.cmp(&b.texture_handle.id))
+                // Same-texture batches can differ only by clip (issue #41).
+                .then_with(|| a.clip.cmp(&b.clip))
         });
         self.render(&batch_refs, &[], textures)
     }
@@ -389,6 +391,15 @@ impl RenderManager {
     pub fn set_lines(&mut self, vertices: &[LineVertex]) {
         if let Some(renderer) = &mut self.renderer {
             renderer.set_lines(vertices);
+        }
+    }
+
+    /// Bound the game-world passes to a scissor rect in physical surface
+    /// pixels (`None` = full window). Per-frame state, forwarded to the
+    /// renderer like `set_lines` (issue #41).
+    pub fn set_viewport_scissor(&mut self, scissor: Option<[u32; 4]>) {
+        if let Some(renderer) = &mut self.renderer {
+            renderer.set_viewport_scissor(scissor);
         }
     }
 }

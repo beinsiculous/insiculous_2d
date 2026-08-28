@@ -97,7 +97,7 @@ Core engine: Game trait, run_game(), managers, scene loading/saving, asset manag
   incl. input-driven look-ahead)
 - `lifecycle.rs` — FSM for scene lifecycle
 - `timing.rs` — Timer utilities
-- `contexts.rs` — GameContext, RenderContext
+- `contexts.rs` — GameContext, RenderContext (incl. `viewport_scissor` writeback: an editor-style host bounds the game-world passes to a sub-rect in physical pixels; plain games leave it `None`)
 - `chaos_mode.rs` — `ChaosMode` enum + helpers (`ALL`, `is_insane`, `is_ridiculous`, `label`)
 - `chaos_theme.rs` — `ChaosTheme` per-mode presentation tokens (bg/structure/accent/grid colors, banner, particle mult); engine owns structure + default palette, games override via struct-update syntax
 - `pause.rs` — `PauseMenu`/`PauseAction`/`PauseMenuLabels`: shared pause mechanism (Menu/Esc/Start
@@ -125,7 +125,7 @@ Core engine: Game trait, run_game(), managers, scene loading/saving, asset manag
   title/select screens
 - `spawn_helpers.rs` — shared entity recipes (`spawn_background` full-window backdrop); `RENDER_UNIT = 80.0` (pixels per world unit) lives at the crate root and is used by the render path in `game.rs`
 - `pickups.rs` — generic pickup/collectible tracking (`Pickups<K>` keyed by a game-defined kind, `EffectTimer` for timed effects); collection = started-collision events vs a collector set, once per pickup. Used by BOTH Pong (floating power-ups, balls collect) and Breakout (falling drops, paddle collects) — engine owns the mechanism, games own the meaning
-- `ui_integration.rs` — UI-to-renderer bridge. **Camera-relative**: UI sprites are positioned/scaled against the render camera so UI stays at fixed screen pixels when the camera moves/zooms (camera-follow games, editor). Emits SDF shapes: rounded rects, single-sprite borders, true circles, and `DrawCommand::Image` textured quads
+- `ui_integration/{mod,tests}.rs` — UI-to-renderer bridge. **Camera-relative**: UI sprites are positioned/scaled against the render camera so UI stays at fixed screen pixels when the camera moves/zooms (camera-follow games, editor). Emits SDF shapes: rounded rects, single-sprite borders, true circles, and `DrawCommand::Image` textured quads. Clip rects are real since #41: `PushClipRect`/`PopClipRect` drive `SpriteBatcher::set_clip`, so clipped commands land in clip-tagged batches the GPU scissors (the CPU fully-outside cull stays as a perf win). UI coords are already physical pixels — never DPI-convert a clip rect
 - `prelude.rs` — Re-exports for `use engine_core::prelude::*`
 
 ## Save/Load Pipeline

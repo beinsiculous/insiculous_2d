@@ -65,10 +65,13 @@ struct BloomParams {
 
 /// The composite pass's destination: the swapchain view plus whether its
 /// format is sRGB (non-sRGB targets — WebGPU canvases — get gamma-encoded
-/// in the shader instead of by the hardware).
+/// in the shader instead of by the hardware), plus an optional scissor
+/// bounding the composite draw (issue #41 — the tonemapped game image and
+/// its glow stay inside the editor's scene panel; `None` = fullscreen).
 pub struct SwapchainTarget<'a> {
     pub view: &'a TextureView,
     pub is_srgb: bool,
+    pub composite_scissor: Option<[u32; 4]>,
 }
 
 /// GPU layout for the blur uniform buffer.
@@ -205,6 +208,13 @@ impl BloomPipeline {
     ///
     /// `targets` holds the HDR + bloom ping-pong textures.
     /// `swapchain` is the destination view (sRGB).
+    ///
+    /// `swapchain.composite_scissor` bounds the composite draw only
+    /// (extract/blur are offscreen and untouched): the tonemapped game image
+    /// and its glow stay inside the editor's scene panel (issue #41). The
+    /// composite pass itself always runs — its `LoadOp::Clear` blanks the
+    /// whole swapchain, which is what keeps regions outside the scissor
+    /// defined.
     pub fn run(
         &mut self,
         device: &Device,
@@ -263,14 +273,51 @@ impl BloomPipeline {
             self.run_fullscreen_pass(encoder, &self.blur_pipeline, &cached.blur_v, &targets.bloom_ping_view, "Bloom Blur V");
         }
 
-        // 5. Composite HDR + bloom -> swapchain.
-        self.run_fullscreen_pass(
-            encoder,
-            &self.composite_pipeline,
-            &cached.composite,
-            swapchain.view,
-            "Bloom Composite",
-        );
+        // 5. Composite HDR + bloom -> swapchain. The render targets are
+        // surface-sized, so their size is the clamp bound. An empty
+        // effective scissor still runs the pass (the Clear must blank the
+        // swapchain) but skips the fullscreen draw.
+        let composite_scissor = swapchain.composite_scissor.map(|rect| {
+            crate::scissor::clamp_scissor(rect, targets.width(), targets.height())
+        });
+        self.run_composite_pass(encoder, &cached.composite, swapchain.view, composite_scissor);
+    }
+
+    /// The composite pass with optional scissoring. `scissor` semantics:
+    /// `None` = fullscreen draw; `Some(Some(rect))` = draw under that
+    /// scissor; `Some(None)` = empty scissor — clear the target, draw
+    /// nothing.
+    fn run_composite_pass(
+        &self,
+        encoder: &mut CommandEncoder,
+        bind_group: &BindGroup,
+        target: &TextureView,
+        scissor: Option<Option<(u32, u32, u32, u32)>>,
+    ) {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Bloom Composite"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: target,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        match scissor {
+            Some(None) => return, // empty scissor: clear only, no draw
+            Some(Some((x, y, w, h))) => pass.set_scissor_rect(x, y, w, h),
+            None => {}
+        }
+        pass.set_pipeline(&self.composite_pipeline);
+        pass.set_bind_group(0, bind_group, &[]);
+        pass.draw(0..3, 0..1);
     }
 
     /// Build the bind groups for the current render targets and write the

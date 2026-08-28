@@ -116,6 +116,19 @@ impl WindowManager {
                 #[cfg(target_arch = "wasm32")]
                 renderer::insert_canvas_into_dom(&window);
                 self.scale_factor = window.scale_factor();
+                // Track the PHYSICAL size from frame 0: the requested size
+                // above is logical, and on HiDPI the surface (configured
+                // from inner_size) is scale× larger. Without this, every
+                // window_size consumer — UI layout, the render camera, the
+                // #41 viewport scissor — runs one frame (or more) at the
+                // wrong scale until the first Resized event (kimi #41 F1).
+                // Skip a 0×0 report (web canvas before its first layout —
+                // the real size arrives via resize()).
+                let physical = window.inner_size();
+                if physical.width > 0 && physical.height > 0 {
+                    self.config.width = physical.width;
+                    self.config.height = physical.height;
+                }
                 self.window = Some(window.clone());
                 log::info!("Window created: {} (scale: {})", self.config.title, self.scale_factor);
                 Ok(window)

@@ -28,12 +28,20 @@ Renderer (WGPU device, queue, surface, RendererConfig{vsync})
   entry (`acquire_frame`, `render_with_sprites`, `set_lines`, `resize`, `recreate_surface`)
   guards on the loss latch. `resize` dedups same-size reconfigures and arms a forced
   reconfigure after a skipped zero-size request (hidden web canvas round trip).
-  At 596 lines — the next addition splits (extract `create_white_texture_resource` first)
+  `set_viewport_scissor(Option<[u32;4]>)` (per-frame, like `set_lines`) bounds the
+  game-world passes — sprites, lines, bloom composite — to a rect; the UI pass is exempt
+- `scissor.rs` — pure scissor math (issue #41): `quantize_rect` (outward rounding,
+  NaN-safe), `clamp_scissor` (`None` = empty ⇒ skip draw), `intersect_scissor`,
+  `batch_scissor` (per-batch decision: clip ∩ pass default, clamped). All headless-tested
+- `white_texture.rs` — the built-in 1x1 white texture resource (extracted from renderer.rs)
 - `device_status.rs` — `DeviceLossLatch` (one-way Arc<AtomicBool> set by the lost callback,
   polled before all queue/surface work) + pure `resize_action` guard. Fail-stop by design:
   no auto-recovery (the device/queue Arcs fan out into every pipeline)
 - `sprite.rs` — `Sprite` data type; parent of the sprite submodules
-- `sprite/batch.rs` — `SpriteBatch`, `SpriteBatcher` (CPU-side grouping by texture)
+- `sprite/batch.rs` — `SpriteBatch` (carries `clip: Option<[u32;4]>`), `SpriteBatcher`
+  (CPU-side grouping keyed by `(texture, clip)`; `set_clip` cursor drives per-batch GPU
+  scissoring for clipped UI — game paths never set a clip and batch exactly as before;
+  `batch_for(texture)` = the unclipped batch)
 - `sprite/pipeline.rs` — `SpritePipeline` (GPU pipeline, bind group caches, draw)
 - `sprite_data.rs` — GPU data structures (`SpriteVertex`, `SpriteInstance` incl. `shape: [f32;4]` SDF params [kind, corner_radius, border_width, _] — kind 0=quad/1=rounded rect/2=circle, 76-byte stride, attr @10; fragment masks with sdRoundedBox + 1.5px AA), `DynamicBuffer`
 - `texture.rs` — `TextureManager`, `TextureHandle` (incl. `WHITE`), `SamplerConfig`

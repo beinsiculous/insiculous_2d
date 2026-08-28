@@ -56,6 +56,7 @@ impl<G: Game> GameRunner<G> {
         // A main-camera entity (Camera { is_main_camera } + Transform2D)
         // drives the render camera; games can still override ctx.camera below.
         self.render_manager.sync_main_camera(&self.scene.world);
+        let mut viewport_scissor: Option<common::Rect> = None;
         {
             let empty_commands: &[DrawCommand] = &[];
             let mut ctx = RenderContext {
@@ -65,9 +66,16 @@ impl<G: Game> GameRunner<G> {
                 window_size,
                 ui_commands: empty_commands,
                 glyph_textures: self.glyph_textures.textures(),
+                viewport_scissor: &mut viewport_scissor,
             };
             self.game.render(&mut ctx);
         }
+        // Editor-style hosts bound the game-world passes to a sub-rect of
+        // the window; plain games leave it None (full window). Forwarded
+        // every frame — per-frame state, like set_lines.
+        self.render_manager.set_viewport_scissor(viewport_scissor.map(|r| {
+            renderer::scissor::quantize_rect(r.x, r.y, r.width, r.height)
+        }));
 
         // Append particle sprites into the game batcher. Particles render
         // after gameplay sprites so they appear on top of static objects
@@ -129,6 +137,9 @@ impl<G: Game> GameRunner<G> {
                     a_max.total_cmp(&b_max)
                 })
                 .then_with(|| a.texture_handle.id.cmp(&b.texture_handle.id))
+                // Two same-texture batches can differ only by clip rect
+                // (issue #41) — tie-break on it for deterministic order.
+                .then_with(|| a.clip.cmp(&b.clip))
         });
     }
 }

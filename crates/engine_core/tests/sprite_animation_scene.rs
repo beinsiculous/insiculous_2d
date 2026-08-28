@@ -433,6 +433,7 @@ fn render_instances(world: &World) -> Vec<renderer::SpriteInstance> {
     let mut sprites = renderer::SpriteBatcher::new();
     let mut camera = common::Camera::new(Vec2::ZERO, Vec2::new(800.0, 600.0));
     let glyph_textures = HashMap::new();
+    let mut viewport_scissor = None;
     let mut ctx = RenderContext {
         world,
         sprites: &mut sprites,
@@ -440,6 +441,7 @@ fn render_instances(world: &World) -> Vec<renderer::SpriteInstance> {
         window_size: Vec2::new(800.0, 600.0),
         ui_commands: &[],
         glyph_textures: &glyph_textures,
+        viewport_scissor: &mut viewport_scissor,
     };
     RenderProbe.render(&mut ctx);
 
