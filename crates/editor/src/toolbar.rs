@@ -10,9 +10,10 @@ use ui::{Rect, UIContext};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum EditorTool {
     /// Select and click entities
-    #[default]
     Select,
-    /// Move/translate entities
+    /// Move/translate entities — the default, so a fresh editor shows a
+    /// gizmo the moment something is selected (audit §4.5)
+    #[default]
     Move,
     /// Rotate entities
     Rotate,
@@ -77,7 +78,7 @@ impl Toolbar {
     /// Create a new toolbar with default settings.
     pub fn new() -> Self {
         Self {
-            current_tool: EditorTool::Select,
+            current_tool: EditorTool::default(),
             position: Vec2::new(10.0, 10.0),
             // Wide enough for the longest label ("Rotate"/"Select") at the
             // body font size — 40px caused the labels to overflow each other
@@ -215,9 +216,9 @@ mod tests {
     }
 
     #[test]
-    fn test_editor_tool_default() {
+    fn test_editor_tool_default_is_move_so_a_gizmo_shows() {
         let tool = EditorTool::default();
-        assert_eq!(tool, EditorTool::Select);
+        assert_eq!(tool, EditorTool::Move);
     }
 
     #[test]
@@ -249,7 +250,7 @@ mod tests {
     #[test]
     fn test_toolbar_new() {
         let toolbar = Toolbar::new();
-        assert_eq!(toolbar.current_tool(), EditorTool::Select);
+        assert_eq!(toolbar.current_tool(), EditorTool::Move);
     }
 
     #[test]

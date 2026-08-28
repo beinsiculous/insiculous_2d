@@ -26,6 +26,7 @@ use crate::constants::{clamp_editor_window_size, EDITOR_PREFS_PATH};
 use crate::panel_renderer;
 
 mod api;
+mod gizmo_drag;
 mod menu_actions;
 mod scene_io;
 mod shortcuts;
@@ -45,11 +46,10 @@ struct EditorGame<G: Game> {
     entity_counter: u32,
     /// Undo/redo command history for editor actions.
     command_history: editor::CommandHistory,
-    /// Initial transform captured when gizmo drag starts.
-    gizmo_drag_start: Option<common::Transform2D>,
-    /// Initial collider captured when gizmo drag starts (scale tool resizes
-    /// colliders alongside the transform — physics ignores Transform2D.scale).
-    gizmo_drag_start_collider: Option<physics::components::Collider>,
+    /// Live gizmo drag: start transforms/colliders for every selection root,
+    /// captured when the drag begins (applied idempotently, committed as one
+    /// undo entry on release, restored verbatim on Escape).
+    gizmo_drag: Option<gizmo_drag::GizmoDragState>,
     /// Physics settings for scene serialization.
     physics_settings: Option<PhysicsSettings>,
     /// Editing pan/zoom saved while a play session runs (restored on Stop).
@@ -86,8 +86,7 @@ impl<G: Game> EditorGame<G> {
             world_snapshot: None,
             entity_counter: 0,
             command_history: editor::CommandHistory::new(),
-            gizmo_drag_start: None,
-            gizmo_drag_start_collider: None,
+            gizmo_drag: None,
             physics_settings: None,
             editing_camera: None,
             editor_font: None,
@@ -468,6 +467,8 @@ pub fn run_game_with_editor_api<G: Game>(
 mod tests;
 #[cfg(test)]
 mod api_write_tests;
+#[cfg(test)]
+mod gizmo_drag_tests;
 #[cfg(test)]
 mod picking_tests;
 #[cfg(test)]

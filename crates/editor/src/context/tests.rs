@@ -4,7 +4,7 @@ use super::*;
 fn test_editor_context_new() {
     let ctx = EditorContext::new();
     assert!(ctx.selection.is_empty());
-    assert_eq!(ctx.current_tool(), EditorTool::Select);
+    assert_eq!(ctx.current_tool(), EditorTool::Move);
     assert_eq!(ctx.camera_offset(), Vec2::ZERO);
     assert_eq!(ctx.camera_zoom(), 1.0);
     assert!(ctx.is_grid_visible());
@@ -211,11 +211,12 @@ fn test_gizmo_has_priority() {
 
 #[test]
 fn test_new_context_tool_and_gizmo_consistent() {
-    // Startup regression: the toolbar defaults to Select but the gizmo used
-    // to default to Translate — a gizmo rendered with no tool selected.
+    // Startup invariant: the current tool and the gizmo mode always agree.
+    // Default is Move/Translate (audit §4.5) — a fresh editor shows a gizmo
+    // as soon as something is selected.
     let ctx = EditorContext::new();
-    assert_eq!(ctx.current_tool(), EditorTool::Select);
-    assert_eq!(ctx.gizmo.mode(), GizmoMode::None);
+    assert_eq!(ctx.current_tool(), EditorTool::Move);
+    assert_eq!(ctx.gizmo.mode(), GizmoMode::Translate);
 }
 
 #[test]

@@ -201,62 +201,9 @@ fn test_writeback_missing_component_is_safe() {
     assert!(result.is_none());
 }
 
-/// Verify rotation gizmo writeback applies rotation delta.
-#[test]
-fn test_rotation_gizmo_writeback() {
-    let mut world = World::new();
-    let entity = world.create_entity();
-    world.add_component(&entity, common::Transform2D::new(Vec2::ZERO)).ok();
-
-    let rotation_delta = 0.5; // radians
-
-    if let Some(transform) = world.get_mut::<common::Transform2D>(entity) {
-        transform.rotation += rotation_delta;
-    }
-
-    let t = world.get::<common::Transform2D>(entity).unwrap();
-    assert_eq!(t.rotation, 0.5);
-    assert_eq!(t.position, Vec2::ZERO); // unchanged
-    assert_eq!(t.scale, Vec2::ONE); // unchanged
-}
-
-/// Verify scale gizmo writeback applies scale delta with clamping.
-#[test]
-fn test_scale_gizmo_writeback() {
-    let mut world = World::new();
-    let entity = world.create_entity();
-    world.add_component(&entity, common::Transform2D::new(Vec2::ZERO)).ok();
-
-    let scale_delta = Vec2::new(0.5, 0.3);
-
-    if let Some(transform) = world.get_mut::<common::Transform2D>(entity) {
-        transform.scale += scale_delta;
-        transform.scale = transform.scale.max(Vec2::splat(0.01));
-    }
-
-    let t = world.get::<common::Transform2D>(entity).unwrap();
-    assert_eq!(t.scale, Vec2::new(1.5, 1.3));
-    assert_eq!(t.position, Vec2::ZERO); // unchanged
-}
-
-/// Verify scale gizmo writeback clamps to minimum (prevents zero/negative scale).
-#[test]
-fn test_scale_gizmo_writeback_clamps_minimum() {
-    let mut world = World::new();
-    let entity = world.create_entity();
-    world.add_component(&entity, common::Transform2D::new(Vec2::ZERO)).ok();
-
-    // Apply a large negative delta that would make scale negative
-    let scale_delta = Vec2::new(-5.0, -5.0);
-
-    if let Some(transform) = world.get_mut::<common::Transform2D>(entity) {
-        transform.scale += scale_delta;
-        transform.scale = transform.scale.max(Vec2::splat(0.01));
-    }
-
-    let t = world.get::<common::Transform2D>(entity).unwrap();
-    assert_eq!(t.scale, Vec2::new(0.01, 0.01)); // clamped to minimum
-}
+// Gizmo drag application/commit/cancel behavior is covered by
+// editor_game/gizmo_drag_tests.rs (against the real drag state), and the
+// interaction math by the editor crate's gizmo tests.
 
 // ==================== Command-based writeback tests ====================
 

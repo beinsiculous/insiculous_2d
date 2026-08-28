@@ -135,7 +135,8 @@ impl<G: Game> EditorGame<G> {
         // world — drop it with the history.
         self.api_batch = None;
         self.editor.selection.clear();
-        self.gizmo_drag_start = None;
+        self.gizmo_drag = None;
+        self.editor.gizmo.cancel();
         self.editor.status_bar.show_message("Scene loaded");
 
         Ok(())
@@ -194,7 +195,8 @@ impl<G: Game> EditorGame<G> {
         self.editor.selection.clear();
         self.entity_counter = 0;
         self.physics_settings = None;
-        self.gizmo_drag_start = None;
+        self.gizmo_drag = None;
+        self.editor.gizmo.cancel();
         log::info!("New scene created");
     }
 }

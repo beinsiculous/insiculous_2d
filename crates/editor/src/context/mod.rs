@@ -147,9 +147,8 @@ impl EditorContext {
             drag_drop: crate::DragDropState::new(),
             asset_browser: crate::AssetBrowserState::default(),
         };
-        // The toolbar's default tool and the gizmo's default mode disagree
-        // (Select vs Translate) — run the tool→gizmo mapping once so startup
-        // state is consistent.
+        // Run the tool→gizmo mapping once so startup state is consistent
+        // whatever the defaults are (today both are Move/Translate).
         editor.set_tool(editor.current_tool());
         editor
     }

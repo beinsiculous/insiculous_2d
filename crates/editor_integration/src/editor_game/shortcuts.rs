@@ -42,8 +42,11 @@ impl<G: Game> EditorGame<G> {
         match action {
             PlayControlAction::Play => {
                 if self.editor.is_editing() {
-                    // Cancel any in-progress gizmo drag
-                    self.gizmo_drag_start = None;
+                    // Cancel any in-progress gizmo drag (state only — the
+                    // world already holds the dragged values; Play snapshots
+                    // them and Stop restores)
+                    self.gizmo_drag = None;
+                    self.editor.gizmo.cancel();
                     // An open command-API batch commits NOW: its commands
                     // are already applied to the world the snapshot is
                     // about to capture, and a macro pushed after Stop's
@@ -249,6 +252,14 @@ impl<G: Game> EditorGame<G> {
             KeyCode::F5 => {
                 // F5 → Start/Resume play (only from Editing or Paused)
                 self.handle_play_action(PlayControlAction::Play, ctx.world);
+            }
+            KeyCode::Escape => {
+                // Escape aborts an in-flight gizmo drag; the fuller cancel
+                // cascade (marquee, deselect) lands with the shortcut
+                // unification (#40).
+                if !self.cancel_gizmo_drag(ctx.world) {
+                    self.inner.on_key_pressed(key, ctx);
+                }
             }
             _ => self.inner.on_key_pressed(key, ctx),
         }

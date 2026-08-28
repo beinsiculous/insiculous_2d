@@ -246,6 +246,39 @@ pub fn delete_selected_entities(world: &mut World, selection: &mut Selection) {
     selection.clear();
 }
 
+/// Selected entities with no selected ancestor — the set a multi-entity
+/// drag or nudge operates on. Moving a parent already moves its children
+/// through hierarchy propagation, so operating on a selected child of a
+/// selected parent would double-move it.
+///
+/// Ordering contract: the current primary comes FIRST when it is a root
+/// (it anchors grid snapping, so the anchor must be deterministic); the
+/// remaining roots keep selection insertion order.
+pub fn selection_roots(world: &World, selection: &Selection) -> Vec<EntityId> {
+    let has_selected_ancestor = |entity: EntityId| {
+        let mut current = world.get_parent(entity);
+        while let Some(parent) = current {
+            if selection.contains(parent) {
+                return true;
+            }
+            current = world.get_parent(parent);
+        }
+        false
+    };
+
+    let mut roots: Vec<EntityId> = selection
+        .selected()
+        .filter(|&entity| !has_selected_ancestor(entity))
+        .collect();
+    if let Some(primary) = selection.primary() {
+        if let Some(index) = roots.iter().position(|&e| e == primary) {
+            let primary = roots.remove(index);
+            roots.insert(0, primary);
+        }
+    }
+    roots
+}
+
 /// Duplicate the primary selected entity (and its descendants).
 ///
 /// The duplicate is offset by `(20, -20)` and gets " (Copy)" appended to its name.

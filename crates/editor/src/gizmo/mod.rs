@@ -1,12 +1,24 @@
 //! Transform gizmos for the editor.
 //!
 //! Gizmos are visual handles that allow manipulating entity transforms
-//! (position, rotation, scale) directly in the scene view.
+//! (position, rotation, scale) directly in the scene view. Interaction is
+//! reported cumulatively where possible — translation and scale are measured
+//! from the drag start, so the caller applies `start + delta` idempotently
+//! instead of accumulating per-frame deltas (which is what made snapping eat
+//! drag residuals).
 
 use glam::Vec2;
 use ui::{Color, Rect, UIContext};
 
 use crate::theme::EditorTheme;
+
+#[cfg(test)]
+mod tests;
+
+/// Half-width of the rotate ring's interactive band, in screen pixels.
+/// Clicks outside the band (including the ring's dead center) claim no
+/// widget, so they fall through to picking.
+const RING_BAND: f32 = 12.0;
 
 /// The type of gizmo operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -30,6 +42,20 @@ impl GizmoMode {
             GizmoMode::Translate => "Translate",
             GizmoMode::Rotate => "Rotate",
             GizmoMode::Scale => "Scale",
+        }
+    }
+
+    /// Whether `handle` is one this mode's renderer manages (and can
+    /// therefore release at the end of a drag).
+    fn owns_handle(&self, handle: GizmoHandle) -> bool {
+        match self {
+            GizmoMode::None => false,
+            GizmoMode::Translate => matches!(
+                handle,
+                GizmoHandle::AxisX | GizmoHandle::AxisY | GizmoHandle::Center
+            ),
+            GizmoMode::Rotate => matches!(handle, GizmoHandle::Ring),
+            GizmoMode::Scale => matches!(handle, GizmoHandle::ScaleCorner(_)),
         }
     }
 }
@@ -61,23 +87,27 @@ pub enum Corner {
 /// Result of gizmo interaction.
 #[derive(Debug, Clone, Copy)]
 pub struct GizmoInteraction {
-    /// Which handle is being dragged
+    /// Which handle is being dragged (None on the release frame)
     pub handle: Option<GizmoHandle>,
-    /// Delta movement since last frame
-    pub delta: Vec2,
-    /// Rotation delta in radians (for rotation gizmo)
+    /// Cumulative screen-space translation since drag start (axis-projected)
+    pub translation: Vec2,
+    /// Rotation delta in radians since last frame (the caller accumulates —
+    /// a cumulative angle would wrap at ±π)
     pub rotation_delta: f32,
-    /// Scale delta (for scale gizmo)
-    pub scale_delta: Vec2,
+    /// Cumulative scale factor since drag start (`Vec2::ONE` = unchanged)
+    pub scale_factor: Vec2,
+    /// True on the frame an active drag released — the caller commits then
+    pub released: bool,
 }
 
 impl Default for GizmoInteraction {
     fn default() -> Self {
         Self {
             handle: None,
-            delta: Vec2::ZERO,
+            translation: Vec2::ZERO,
             rotation_delta: 0.0,
-            scale_delta: Vec2::ZERO,
+            scale_factor: Vec2::ONE,
+            released: false,
         }
     }
 }
@@ -147,8 +177,14 @@ pub struct Gizmo {
     axis_length: f32,
     /// Active handle being dragged
     active_handle: Option<GizmoHandle>,
-    /// Last mouse position for delta calculation
+    /// Last mouse position for per-frame deltas (rotation)
     last_mouse_pos: Vec2,
+    /// Mouse position when the active drag began (translation/scale reference)
+    drag_start_mouse: Vec2,
+    /// Set by `cancel()`: ignore the rest of the current mouse gesture.
+    /// Cleared by POLLED mouse-up state, never by a release event — a
+    /// release delivered while the window is unfocused must not wedge us.
+    suppressed_until_release: bool,
     /// Colors for every gizmo element
     palette: GizmoPalette,
 }
@@ -171,6 +207,8 @@ impl Gizmo {
             axis_length: 80.0,
             active_handle: None,
             last_mouse_pos: Vec2::ZERO,
+            drag_start_mouse: Vec2::ZERO,
+            suppressed_until_release: false,
             palette: GizmoPalette::default(),
         }
     }
@@ -230,6 +268,14 @@ impl Gizmo {
         self.active_handle
     }
 
+    /// Cancel any active gizmo operation and ignore the rest of the current
+    /// mouse gesture (Escape mid-drag). The caller restores the dragged
+    /// transforms; the gizmo just stops reporting the gesture.
+    pub fn cancel(&mut self) {
+        self.active_handle = None;
+        self.suppressed_until_release = true;
+    }
+
     /// Create a square rect centered at the given position, sized to handle_size.
     fn centered_handle_rect(&self, center: Vec2) -> Rect {
         Rect::new(
@@ -269,7 +315,15 @@ impl Gizmo {
         if dragging && self.active_handle.is_none() {
             self.active_handle = Some(handle);
             self.last_mouse_pos = mouse_pos;
+            self.drag_start_mouse = mouse_pos;
         }
+    }
+
+    /// End the active drag and mark the interaction released.
+    fn end_drag(&mut self, interaction: &mut GizmoInteraction) {
+        self.active_handle = None;
+        interaction.handle = None;
+        interaction.released = true;
     }
 
     /// Render the gizmo and handle interactions.
@@ -277,19 +331,47 @@ impl Gizmo {
     /// # Arguments
     /// * `ui` - UI context for rendering
     /// * `screen_pos` - Screen position of the gizmo center
+    /// * `interactive` - Whether NEW drags may start (mouse inside the scene
+    ///   panel). A drag already in flight stays live even when the cursor
+    ///   leaves the panel.
     ///
     /// Returns the gizmo interaction result.
-    pub fn render(&mut self, ui: &mut UIContext, screen_pos: Vec2) -> GizmoInteraction {
+    pub fn render(
+        &mut self,
+        ui: &mut UIContext,
+        screen_pos: Vec2,
+        interactive: bool,
+    ) -> GizmoInteraction {
+        // Cancel latch: cleared by polled mouse state so a release missed
+        // while unfocused can't wedge the gizmo.
+        if self.suppressed_until_release && !ui.mouse_down() {
+            self.suppressed_until_release = false;
+        }
+        // A tool switch mid-drag (W→E while holding the mouse) leaves a
+        // handle from another mode; release it so the caller commits the
+        // drag instead of the gizmo wedging active forever.
+        if let Some(handle) = self.active_handle {
+            if !self.mode.owns_handle(handle) {
+                self.active_handle = None;
+            }
+        }
+        let hit_enabled = !self.suppressed_until_release && (interactive || self.is_active());
+
         match self.mode {
             GizmoMode::None => GizmoInteraction::default(),
-            GizmoMode::Translate => self.render_translate(ui, screen_pos),
-            GizmoMode::Rotate => self.render_rotate(ui, screen_pos),
-            GizmoMode::Scale => self.render_scale(ui, screen_pos),
+            GizmoMode::Translate => self.render_translate(ui, screen_pos, hit_enabled),
+            GizmoMode::Rotate => self.render_rotate(ui, screen_pos, hit_enabled),
+            GizmoMode::Scale => self.render_scale(ui, screen_pos, hit_enabled),
         }
     }
 
     /// Render and handle translation gizmo.
-    fn render_translate(&mut self, ui: &mut UIContext, screen_pos: Vec2) -> GizmoInteraction {
+    fn render_translate(
+        &mut self,
+        ui: &mut UIContext,
+        screen_pos: Vec2,
+        hit_enabled: bool,
+    ) -> GizmoInteraction {
         let mut interaction = GizmoInteraction::default();
         let mouse_pos = ui.mouse_pos();
 
@@ -314,31 +396,32 @@ impl Gizmo {
         ui.rect(center_bounds, center_color);
 
         // Handle interaction
-        let result_x = ui.interact("gizmo_x", x_arrow_bounds, true);
-        let result_y = ui.interact("gizmo_y", y_arrow_bounds, true);
-        let result_center = ui.interact("gizmo_center", center_bounds, true);
+        let result_x = ui.interact("gizmo_x", x_arrow_bounds, hit_enabled);
+        let result_y = ui.interact("gizmo_y", y_arrow_bounds, hit_enabled);
+        let result_center = ui.interact("gizmo_center", center_bounds, hit_enabled);
 
         // Start dragging (first dragging handle wins; later calls no-op)
         self.begin_drag_if(result_x.dragging, GizmoHandle::AxisX, mouse_pos);
         self.begin_drag_if(result_y.dragging, GizmoHandle::AxisY, mouse_pos);
         self.begin_drag_if(result_center.dragging, GizmoHandle::Center, mouse_pos);
 
-        // Continue dragging
+        // Continue dragging — translation is cumulative from the drag start,
+        // projected onto the grabbed axis
         if let Some(handle) = self.active_handle {
-            let delta = mouse_pos - self.last_mouse_pos;
+            let total = mouse_pos - self.drag_start_mouse;
             self.last_mouse_pos = mouse_pos;
 
             interaction.handle = Some(handle);
-            interaction.delta = match handle {
-                GizmoHandle::AxisX => Vec2::new(delta.x, 0.0),
-                GizmoHandle::AxisY => Vec2::new(0.0, delta.y),
-                GizmoHandle::Center => delta,
+            interaction.translation = match handle {
+                GizmoHandle::AxisX => Vec2::new(total.x, 0.0),
+                GizmoHandle::AxisY => Vec2::new(0.0, total.y),
+                GizmoHandle::Center => total,
                 _ => Vec2::ZERO,
             };
 
             // Stop dragging when mouse released
             if !result_x.dragging && !result_y.dragging && !result_center.dragging {
-                self.active_handle = None;
+                self.end_drag(&mut interaction);
             }
         }
 
@@ -346,7 +429,12 @@ impl Gizmo {
     }
 
     /// Render and handle rotation gizmo.
-    fn render_rotate(&mut self, ui: &mut UIContext, screen_pos: Vec2) -> GizmoInteraction {
+    fn render_rotate(
+        &mut self,
+        ui: &mut UIContext,
+        screen_pos: Vec2,
+        hit_enabled: bool,
+    ) -> GizmoInteraction {
         let mut interaction = GizmoInteraction::default();
         let mouse_pos = ui.mouse_pos();
 
@@ -371,32 +459,47 @@ impl Gizmo {
         );
         ui.line(screen_pos, indicator_end, self.palette.rotation_indicator, 3.0);
 
-        // Ring interaction (simplified - uses a rectangular area for now)
-        let ring_bounds = Rect::new(
-            screen_pos.x - ring_radius - 10.0,
-            screen_pos.y - ring_radius - 10.0,
-            ring_radius * 2.0 + 20.0,
-            ring_radius * 2.0 + 20.0,
-        );
+        // The ring hit-tests as an annulus band, not the filled square: the
+        // widget is only registered while the mouse is on the band (or a
+        // ring drag is live), so a click in the dead center claims nothing
+        // and falls through to entity picking.
+        let dist = (mouse_pos - screen_pos).length();
+        let in_band = (dist - ring_radius).abs() <= RING_BAND;
+        let ring_active = self.active_handle == Some(GizmoHandle::Ring);
+        if in_band || ring_active {
+            let ring_bounds = Rect::new(
+                screen_pos.x - ring_radius - RING_BAND,
+                screen_pos.y - ring_radius - RING_BAND,
+                (ring_radius + RING_BAND) * 2.0,
+                (ring_radius + RING_BAND) * 2.0,
+            );
+            let result = ui.interact("gizmo_ring", ring_bounds, hit_enabled);
 
-        let result = ui.interact("gizmo_ring", ring_bounds, true);
+            if result.dragging {
+                self.begin_drag_if(true, GizmoHandle::Ring, mouse_pos);
 
-        if result.dragging {
-            self.begin_drag_if(true, GizmoHandle::Ring, mouse_pos);
-
-            interaction.handle = Some(GizmoHandle::Ring);
-            interaction.rotation_delta =
-                crate::gizmo_math::world_rotation_delta(screen_pos, self.last_mouse_pos, mouse_pos);
-            self.last_mouse_pos = mouse_pos;
-        } else {
-            self.active_handle = None;
+                interaction.handle = Some(GizmoHandle::Ring);
+                interaction.rotation_delta = crate::gizmo_math::world_rotation_delta(
+                    screen_pos,
+                    self.last_mouse_pos,
+                    mouse_pos,
+                );
+                self.last_mouse_pos = mouse_pos;
+            } else if ring_active {
+                self.end_drag(&mut interaction);
+            }
         }
 
         interaction
     }
 
     /// Render and handle scale gizmo.
-    fn render_scale(&mut self, ui: &mut UIContext, screen_pos: Vec2) -> GizmoInteraction {
+    fn render_scale(
+        &mut self,
+        ui: &mut UIContext,
+        screen_pos: Vec2,
+        hit_enabled: bool,
+    ) -> GizmoInteraction {
         let mut interaction = GizmoInteraction::default();
         let mouse_pos = ui.mouse_pos();
 
@@ -410,40 +513,27 @@ impl Gizmo {
             box_size,
         );
 
-        // Draw box outline
-        ui.line(
+        let box_corners = [
             Vec2::new(box_bounds.x, box_bounds.y),
             Vec2::new(box_bounds.x + box_bounds.width, box_bounds.y),
-            self.palette.scale_outline,
-            1.0,
-        );
-        ui.line(
-            Vec2::new(box_bounds.x + box_bounds.width, box_bounds.y),
-            Vec2::new(box_bounds.x + box_bounds.width, box_bounds.y + box_bounds.height),
-            self.palette.scale_outline,
-            1.0,
-        );
-        ui.line(
             Vec2::new(box_bounds.x + box_bounds.width, box_bounds.y + box_bounds.height),
             Vec2::new(box_bounds.x, box_bounds.y + box_bounds.height),
-            self.palette.scale_outline,
-            1.0,
-        );
-        ui.line(
-            Vec2::new(box_bounds.x, box_bounds.y + box_bounds.height),
-            Vec2::new(box_bounds.x, box_bounds.y),
-            self.palette.scale_outline,
-            1.0,
-        );
+        ];
+        for i in 0..4 {
+            ui.line(box_corners[i], box_corners[(i + 1) % 4], self.palette.scale_outline, 1.0);
+        }
 
-        // Draw corner handles
+        // Draw corner handles and interact ONCE per corner per frame —
+        // a second interact with the same id desyncs the gesture (the old
+        // still_dragging check did exactly that, with the wrong rect).
         let corners = [
-            (Corner::TopLeft, Vec2::new(box_bounds.x, box_bounds.y)),
-            (Corner::TopRight, Vec2::new(box_bounds.x + box_bounds.width, box_bounds.y)),
-            (Corner::BottomLeft, Vec2::new(box_bounds.x, box_bounds.y + box_bounds.height)),
-            (Corner::BottomRight, Vec2::new(box_bounds.x + box_bounds.width, box_bounds.y + box_bounds.height)),
+            (Corner::TopLeft, box_corners[0]),
+            (Corner::TopRight, box_corners[1]),
+            (Corner::BottomRight, box_corners[2]),
+            (Corner::BottomLeft, box_corners[3]),
         ];
 
+        let mut any_dragging = false;
         for (corner, pos) in corners {
             let handle_bounds = self.centered_handle_rect(pos);
 
@@ -457,110 +547,32 @@ impl Gizmo {
             ui.rect(handle_bounds, color);
 
             let id = format!("gizmo_scale_{:?}", corner);
-            let result = ui.interact(id.as_str(), handle_bounds, true);
+            let result = ui.interact(id.as_str(), handle_bounds, hit_enabled);
+            any_dragging |= result.dragging;
 
             self.begin_drag_if(result.dragging, GizmoHandle::ScaleCorner(corner), mouse_pos);
         }
 
-        // Process active scale drag
+        // Process active scale drag — the factor is the per-axis ratio of
+        // the mouse's current offset from the gizmo center to its offset at
+        // drag start: multiplicative, zoom-independent (both offsets live in
+        // the same screen space), and sign-free via abs(). The .max(1.0) on
+        // the reference is a degenerate-zero epsilon only — drags can only
+        // start on a corner handle, so the real reference is the corner's
+        // distance from center.
         if let Some(GizmoHandle::ScaleCorner(corner)) = self.active_handle {
-            let delta = mouse_pos - self.last_mouse_pos;
+            let start_offset = (self.drag_start_mouse - screen_pos).abs().max(Vec2::splat(1.0));
+            let current_offset = (mouse_pos - screen_pos).abs();
+            interaction.scale_factor =
+                (current_offset / start_offset).max(Vec2::splat(0.01));
+            interaction.handle = Some(GizmoHandle::ScaleCorner(corner));
             self.last_mouse_pos = mouse_pos;
 
-            // Scale delta based on corner position
-            let scale_delta = match corner {
-                Corner::TopLeft => Vec2::new(-delta.x, delta.y),
-                Corner::TopRight => Vec2::new(delta.x, delta.y),
-                Corner::BottomLeft => Vec2::new(-delta.x, -delta.y),
-                Corner::BottomRight => Vec2::new(delta.x, -delta.y),
-            } * 0.01; // Scale sensitivity
-
-            interaction.handle = Some(GizmoHandle::ScaleCorner(corner));
-            interaction.scale_delta = scale_delta;
-
-            // Check if any handle is still being dragged
-            let still_dragging = corners.iter().any(|(c, _)| {
-                let id = format!("gizmo_scale_{:?}", c);
-                let bounds = self.centered_handle_rect(screen_pos);
-                ui.interact(id.as_str(), bounds, true).dragging
-            });
-
-            if !still_dragging {
-                self.active_handle = None;
+            if !any_dragging {
+                self.end_drag(&mut interaction);
             }
         }
 
         interaction
-    }
-
-    /// Cancel any active gizmo operation.
-    pub fn cancel(&mut self) {
-        self.active_handle = None;
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_gizmo_mode_default() {
-        assert_eq!(GizmoMode::default(), GizmoMode::Translate);
-    }
-
-    #[test]
-    fn test_gizmo_mode_names() {
-        assert_eq!(GizmoMode::None.name(), "None");
-        assert_eq!(GizmoMode::Translate.name(), "Translate");
-        assert_eq!(GizmoMode::Rotate.name(), "Rotate");
-        assert_eq!(GizmoMode::Scale.name(), "Scale");
-    }
-
-    #[test]
-    fn test_gizmo_new() {
-        let gizmo = Gizmo::new();
-        assert_eq!(gizmo.mode(), GizmoMode::Translate);
-        assert_eq!(gizmo.position(), Vec2::ZERO);
-        assert!(!gizmo.is_active());
-    }
-
-    #[test]
-    fn test_gizmo_set_mode() {
-        let mut gizmo = Gizmo::new();
-        gizmo.set_mode(GizmoMode::Rotate);
-        assert_eq!(gizmo.mode(), GizmoMode::Rotate);
-    }
-
-    #[test]
-    fn test_gizmo_set_position() {
-        let mut gizmo = Gizmo::new();
-        gizmo.set_position(Vec2::new(100.0, 200.0));
-        assert_eq!(gizmo.position(), Vec2::new(100.0, 200.0));
-    }
-
-    #[test]
-    fn test_gizmo_cancel() {
-        let mut gizmo = Gizmo::new();
-        gizmo.active_handle = Some(GizmoHandle::AxisX);
-        assert!(gizmo.is_active());
-
-        gizmo.cancel();
-        assert!(!gizmo.is_active());
-    }
-
-    #[test]
-    fn test_gizmo_interaction_default() {
-        let interaction = GizmoInteraction::default();
-        assert!(interaction.handle.is_none());
-        assert_eq!(interaction.delta, Vec2::ZERO);
-        assert_eq!(interaction.rotation_delta, 0.0);
-        assert_eq!(interaction.scale_delta, Vec2::ZERO);
-    }
-
-    #[test]
-    fn test_corner_enum() {
-        // Test that corners can be compared
-        assert_eq!(Corner::TopLeft, Corner::TopLeft);
-        assert_ne!(Corner::TopLeft, Corner::BottomRight);
     }
 }
