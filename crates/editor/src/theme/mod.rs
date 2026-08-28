@@ -151,15 +151,15 @@ pub struct EditorTheme {
     /// Thin separator lines between toolbar sections
     pub separator: Color,
 
-    // ── Grid (Vec4 for renderer sprite pipeline) ────────────────
+    // ── Grid ────────────────────────────────────────────────────
     /// Primary grid line color
-    pub grid_primary: Vec4,
+    pub grid_primary: Color,
     /// Secondary (subdivision) grid line color
-    pub grid_secondary: Vec4,
+    pub grid_secondary: Color,
     /// Grid X-axis color (red)
-    pub grid_axis_x: Vec4,
+    pub grid_axis_x: Color,
     /// Grid Y-axis color (green)
-    pub grid_axis_y: Vec4,
+    pub grid_axis_y: Color,
 
     // ── Status bar ──────────────────────────────────────────────
     /// Status bar background (slightly darker than panels)
@@ -292,11 +292,11 @@ impl Default for EditorTheme {
             // Separator
             separator: Color::new(0.4, 0.4, 0.4, 0.6),
 
-            // Grid (Vec4 for sprite renderer)
-            grid_primary: Vec4::new(0.3, 0.3, 0.3, 0.5),
-            grid_secondary: Vec4::new(0.25, 0.25, 0.25, 0.3),
-            grid_axis_x: Vec4::new(0.8, 0.2, 0.2, 0.8),
-            grid_axis_y: Vec4::new(0.2, 0.8, 0.2, 0.8),
+            // Grid
+            grid_primary: Color::new(0.3, 0.3, 0.3, 0.5),
+            grid_secondary: Color::new(0.25, 0.25, 0.25, 0.3),
+            grid_axis_x: Color::new(0.8, 0.2, 0.2, 0.8),
+            grid_axis_y: Color::new(0.2, 0.8, 0.2, 0.8),
 
             // Status bar
             status_bar_bg: surface_2,

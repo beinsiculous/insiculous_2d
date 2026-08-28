@@ -40,7 +40,17 @@ fn render_scene_view(editor: &EditorContext, ctx: &mut GameContext, bounds: comm
     let content_x = bounds.x + padding;
     let y = bounds.y + padding;
 
+    // Authoring grid — a square, zoom-adaptive ruler drawn under everything
+    // else in the panel. The size label comes after so lines never strike
+    // through the text.
     if editor.is_grid_visible() {
+        editor::render_grid_overlay(
+            ctx.ui,
+            &editor.grid,
+            &editor.viewport,
+            &editor.theme.grid_colors(),
+            ui::Rect::new(bounds.x, bounds.y, bounds.width, bounds.height),
+        );
         ctx.ui.label_styled(
             &format!("Grid: {}px", editor.grid_size()),
             Vec2::new(content_x, y),

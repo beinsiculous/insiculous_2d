@@ -34,9 +34,17 @@ pub struct EditorPreferences {
     pub snap_to_grid: bool,
     /// Grid cell size
     pub grid_size: f32,
+    /// Whether the authoring grid overlay was visible (absent in prefs
+    /// files from older versions, which predate the drawn grid)
+    #[serde(default = "default_grid_visible")]
+    pub grid_visible: bool,
     /// Per-panel layout state (absent in prefs files from older versions)
     #[serde(default)]
     pub panels: Vec<PanelPrefs>,
+}
+
+fn default_grid_visible() -> bool {
+    true
 }
 
 impl Default for EditorPreferences {
@@ -47,6 +55,7 @@ impl Default for EditorPreferences {
             last_scene_path: None,
             snap_to_grid: false,
             grid_size: 32.0,
+            grid_visible: true,
             panels: Vec::new(),
         }
     }
@@ -132,6 +141,7 @@ mod tests {
             last_scene_path: Some("scenes/test.ron".to_string()),
             snap_to_grid: true,
             grid_size: 64.0,
+            grid_visible: false,
             panels: vec![PanelPrefs { id: 1, visible: false, collapsed: true, size: 320.0 }],
         };
 
@@ -146,6 +156,7 @@ mod tests {
         assert_eq!(loaded.last_scene_path, Some("scenes/test.ron".to_string()));
         assert!(loaded.snap_to_grid);
         assert_eq!(loaded.grid_size, 64.0);
+        assert!(!loaded.grid_visible);
         assert_eq!(loaded.panels.len(), 1);
         assert_eq!(loaded.panels[0].id, 1);
         assert!(!loaded.panels[0].visible);
@@ -174,6 +185,8 @@ mod tests {
         let prefs: EditorPreferences = serde_json::from_str(legacy).expect("legacy JSON parses");
         assert_eq!(prefs.camera_position, (10.0, 20.0));
         assert!(prefs.panels.is_empty());
+        // Prefs files predating the drawn grid default to visible.
+        assert!(prefs.grid_visible);
     }
 
     /// Dock area with the editor's default panel set (minus theme concerns).

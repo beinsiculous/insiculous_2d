@@ -1,32 +1,48 @@
-//! Grid overlay rendering for the scene viewport.
+//! Authoring grid overlay for the scene viewport.
 //!
-//! Renders a configurable grid with origin axes to help with entity placement
-//! and scene navigation. Uses sprites (thin rectangles) for efficient rendering.
+//! Produces world-space line segments (pure, headless-testable) that the
+//! scene view draws as screen-space `ui.line` calls clipped to the panel —
+//! the same pattern as the collider overlay. The authoring grid is a square,
+//! axis-aligned, zoom-adaptive ruler with distinguished origin axes; it is
+//! deliberately separate from the game's deforming spring-grid effect.
 
-use glam::{Vec2, Vec4};
-use renderer::sprite::{Sprite, SpriteBatcher};
-use renderer::texture::TextureHandle;
+use glam::Vec2;
+use ui::{Color, Rect, UIContext};
+
+use crate::viewport::SceneViewport;
 
 /// Colors for grid rendering.
 #[derive(Debug, Clone)]
 pub struct GridColors {
     /// Primary grid line color
-    pub primary: Vec4,
+    pub primary: Color,
     /// Secondary (subdivision) grid line color
-    pub secondary: Vec4,
+    pub secondary: Color,
     /// X axis color (typically red)
-    pub axis_x: Vec4,
+    pub axis_x: Color,
     /// Y axis color (typically green)
-    pub axis_y: Vec4,
+    pub axis_y: Color,
 }
 
 impl Default for GridColors {
     fn default() -> Self {
         Self {
-            primary: Vec4::new(0.3, 0.3, 0.3, 0.5),
-            secondary: Vec4::new(0.25, 0.25, 0.25, 0.3),
-            axis_x: Vec4::new(0.8, 0.2, 0.2, 0.8),
-            axis_y: Vec4::new(0.2, 0.8, 0.2, 0.8),
+            primary: Color::new(0.3, 0.3, 0.3, 0.5),
+            secondary: Color::new(0.25, 0.25, 0.25, 0.3),
+            axis_x: Color::new(0.8, 0.2, 0.2, 0.8),
+            axis_y: Color::new(0.2, 0.8, 0.2, 0.8),
+        }
+    }
+}
+
+impl GridColors {
+    /// The color for a grid line of the given kind.
+    pub fn color_for(&self, kind: GridLineKind) -> Color {
+        match kind {
+            GridLineKind::Primary => self.primary,
+            GridLineKind::Secondary => self.secondary,
+            GridLineKind::AxisX => self.axis_x,
+            GridLineKind::AxisY => self.axis_y,
         }
     }
 }
@@ -61,10 +77,44 @@ impl Default for GridConfig {
     }
 }
 
-/// Renders a grid overlay in the scene viewport.
+impl GridConfig {
+    /// The screen-pixel line width for a grid line of the given kind.
+    pub fn width_for(&self, kind: GridLineKind) -> f32 {
+        match kind {
+            GridLineKind::Primary | GridLineKind::Secondary => self.line_thickness,
+            GridLineKind::AxisX | GridLineKind::AxisY => self.axis_thickness,
+        }
+    }
+}
+
+/// Which visual tier a grid segment belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GridLineKind {
+    /// Primary grid line (every LOD-adjusted cell)
+    Primary,
+    /// Subdivision line between primary lines
+    Secondary,
+    /// The world X axis (y = 0)
+    AxisX,
+    /// The world Y axis (x = 0)
+    AxisY,
+}
+
+/// One world-space grid line spanning the visible bounds.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GridSegment {
+    /// World-space start point
+    pub start: Vec2,
+    /// World-space end point
+    pub end: Vec2,
+    /// Visual tier of this line
+    pub kind: GridLineKind,
+}
+
+/// Computes the authoring grid for the scene viewport.
 ///
 /// The grid consists of:
-/// - Primary grid lines at regular intervals
+/// - Primary grid lines at regular intervals (LOD-merged when zoomed out)
 /// - Secondary subdivision lines (visible at higher zoom)
 /// - X and Y axis lines through the origin
 #[derive(Debug, Clone)]
@@ -126,141 +176,82 @@ impl GridRenderer {
         self.config.primary_size
     }
 
-    /// Generate grid sprites for the visible area.
+    /// World-space grid segments for the visible bounds. Empty when hidden.
     ///
-    /// Takes the visible world bounds and camera zoom, generates thin rectangle
-    /// sprites for grid lines.
-    ///
-    /// Returns sprites to be added to a batcher.
-    pub fn generate_grid_sprites(
+    /// `visible_bounds` is `(min_x, min_y, max_x, max_y)` in world units
+    /// (`SceneViewport::visible_world_bounds`). Primary/subdivision lines
+    /// respect the `max_lines` LOD cap; origin axes are always included
+    /// while `axes_visible`.
+    pub fn grid_segments(
         &self,
-        visible_bounds: (f32, f32, f32, f32), // (min_x, min_y, max_x, max_y)
+        visible_bounds: (f32, f32, f32, f32),
         camera_zoom: f32,
-        white_texture: TextureHandle,
-    ) -> Vec<Sprite> {
+    ) -> Vec<GridSegment> {
         if !self.visible {
             return Vec::new();
         }
 
-        let mut sprites = Vec::new();
+        let mut segments = Vec::new();
         let (min_x, min_y, max_x, max_y) = visible_bounds;
 
         // Calculate effective grid size based on zoom (LOD)
         let effective_grid_size = self.calculate_lod_grid_size(camera_zoom);
 
-        // Calculate line thickness in world units
-        let line_thickness_world = self.config.line_thickness / camera_zoom;
-        let axis_thickness_world = self.config.axis_thickness / camera_zoom;
-
-        // Generate primary grid lines
-        let (h_lines, v_lines) = self.calculate_grid_lines(
-            min_x, min_y, max_x, max_y,
-            effective_grid_size,
-        );
+        let (h_lines, v_lines) =
+            self.calculate_grid_lines(min_x, min_y, max_x, max_y, effective_grid_size);
 
         // Check LOD limit
         let total_lines = h_lines.len() + v_lines.len();
         if total_lines <= self.config.max_lines {
-            // Generate subdivision lines if zoom is high enough
+            // Subdivision lines when zoomed in far enough
             if camera_zoom >= self.config.subdivision_min_zoom && self.config.subdivisions > 0 {
                 let sub_size = effective_grid_size / self.config.subdivisions as f32;
-                let (h_sub, v_sub) = self.calculate_grid_lines(
-                    min_x, min_y, max_x, max_y,
-                    sub_size,
-                );
+                let (h_sub, v_sub) =
+                    self.calculate_grid_lines(min_x, min_y, max_x, max_y, sub_size);
 
-                // Add subdivision lines (skip if they coincide with primary)
+                // Skip subdivision lines that coincide with primary lines
                 for y in h_sub {
                     if !is_on_grid(y, effective_grid_size) {
-                        sprites.push(self.create_horizontal_line(
-                            (min_x, max_x), y,
-                            line_thickness_world * 0.5,
-                            self.colors.secondary,
-                            white_texture,
-                            -0.2, // Behind primary grid
+                        segments.push(horizontal_segment(
+                            (min_x, max_x),
+                            y,
+                            GridLineKind::Secondary,
                         ));
                     }
                 }
-
                 for x in v_sub {
                     if !is_on_grid(x, effective_grid_size) {
-                        sprites.push(self.create_vertical_line(
-                            (min_y, max_y), x,
-                            line_thickness_world * 0.5,
-                            self.colors.secondary,
-                            white_texture,
-                            -0.2,
+                        segments.push(vertical_segment(
+                            (min_y, max_y),
+                            x,
+                            GridLineKind::Secondary,
                         ));
                     }
                 }
             }
 
-            // Add primary grid lines
+            // Primary grid lines (the axes are drawn separately below)
             for y in h_lines {
-                // Skip axis line (will be drawn separately)
                 if y.abs() < 0.001 {
                     continue;
                 }
-                sprites.push(self.create_horizontal_line(
-                    (min_x, max_x), y,
-                    line_thickness_world,
-                    self.colors.primary,
-                    white_texture,
-                    -0.1, // Above subdivisions
-                ));
+                segments.push(horizontal_segment((min_x, max_x), y, GridLineKind::Primary));
             }
-
             for x in v_lines {
-                // Skip axis line
                 if x.abs() < 0.001 {
                     continue;
                 }
-                sprites.push(self.create_vertical_line(
-                    (min_y, max_y), x,
-                    line_thickness_world,
-                    self.colors.primary,
-                    white_texture,
-                    -0.1,
-                ));
+                segments.push(vertical_segment((min_y, max_y), x, GridLineKind::Primary));
             }
         }
 
         // Always render axes if visible
         if self.axes_visible {
-            // X axis (horizontal line at y=0, red)
-            sprites.push(self.create_horizontal_line(
-                (min_x, max_x), 0.0,
-                axis_thickness_world,
-                self.colors.axis_x,
-                white_texture,
-                0.0, // On top of grid
-            ));
-
-            // Y axis (vertical line at x=0, green)
-            sprites.push(self.create_vertical_line(
-                (min_y, max_y), 0.0,
-                axis_thickness_world,
-                self.colors.axis_y,
-                white_texture,
-                0.0,
-            ));
+            segments.push(horizontal_segment((min_x, max_x), 0.0, GridLineKind::AxisX));
+            segments.push(vertical_segment((min_y, max_y), 0.0, GridLineKind::AxisY));
         }
 
-        sprites
-    }
-
-    /// Add grid sprites to a batcher.
-    pub fn render_to_batcher(
-        &self,
-        batcher: &mut SpriteBatcher,
-        visible_bounds: (f32, f32, f32, f32),
-        camera_zoom: f32,
-        white_texture: TextureHandle,
-    ) {
-        let sprites = self.generate_grid_sprites(visible_bounds, camera_zoom, white_texture);
-        for sprite in &sprites {
-            batcher.add_sprite(sprite);
-        }
+        segments
     }
 
     /// Calculate grid size with LOD (level of detail) based on zoom.
@@ -282,7 +273,10 @@ impl GridRenderer {
     /// Calculate grid line positions for the given bounds.
     fn calculate_grid_lines(
         &self,
-        min_x: f32, min_y: f32, max_x: f32, max_y: f32,
+        min_x: f32,
+        min_y: f32,
+        max_x: f32,
+        max_y: f32,
         grid_size: f32,
     ) -> (Vec<f32>, Vec<f32>) {
         // Horizontal lines (varying Y)
@@ -303,47 +297,23 @@ impl GridRenderer {
 
         (h_lines, v_lines)
     }
+}
 
-    /// Create a horizontal line sprite spanning `(min_x, max_x)`.
-    fn create_horizontal_line(
-        &self,
-        span_x: (f32, f32),
-        y: f32,
-        thickness: f32,
-        color: Vec4,
-        texture: TextureHandle,
-        depth: f32,
-    ) -> Sprite {
-        let (min_x, max_x) = span_x;
-        let length = max_x - min_x;
-        let center_x = (min_x + max_x) * 0.5;
-
-        Sprite::new(texture)
-            .with_position(Vec2::new(center_x, y))
-            .with_scale(Vec2::new(length, thickness))
-            .with_color(color)
-            .with_depth(depth)
+/// A horizontal grid line at `y` spanning `(min_x, max_x)`.
+fn horizontal_segment(span_x: (f32, f32), y: f32, kind: GridLineKind) -> GridSegment {
+    GridSegment {
+        start: Vec2::new(span_x.0, y),
+        end: Vec2::new(span_x.1, y),
+        kind,
     }
+}
 
-    /// Create a vertical line sprite spanning `(min_y, max_y)`.
-    fn create_vertical_line(
-        &self,
-        span_y: (f32, f32),
-        x: f32,
-        thickness: f32,
-        color: Vec4,
-        texture: TextureHandle,
-        depth: f32,
-    ) -> Sprite {
-        let (min_y, max_y) = span_y;
-        let length = max_y - min_y;
-        let center_y = (min_y + max_y) * 0.5;
-
-        Sprite::new(texture)
-            .with_position(Vec2::new(x, center_y))
-            .with_scale(Vec2::new(thickness, length))
-            .with_color(color)
-            .with_depth(depth)
+/// A vertical grid line at `x` spanning `(min_y, max_y)`.
+fn vertical_segment(span_y: (f32, f32), x: f32, kind: GridLineKind) -> GridSegment {
+    GridSegment {
+        start: Vec2::new(x, span_y.0),
+        end: Vec2::new(x, span_y.1),
+        kind,
     }
 }
 
@@ -353,9 +323,46 @@ fn is_on_grid(value: f32, grid_size: f32) -> bool {
     !(0.001..=0.999).contains(&remainder)
 }
 
+/// Draw the authoring grid for the current view, clipped to the scene-view
+/// `bounds`. World geometry comes from `grid_segments`; this maps it through
+/// `viewport.world_to_screen` like the collider overlay does.
+pub fn render_grid_overlay(
+    ui: &mut UIContext,
+    grid: &GridRenderer,
+    viewport: &SceneViewport,
+    colors: &GridColors,
+    bounds: Rect,
+) {
+    if !grid.is_visible() {
+        return;
+    }
+    ui.push_clip_rect(bounds);
+    let visible_bounds = viewport.visible_world_bounds();
+    for segment in grid.grid_segments(visible_bounds, viewport.camera_zoom()) {
+        let start = viewport.world_to_screen(segment.start);
+        let end = viewport.world_to_screen(segment.end);
+        // An extreme camera state can produce non-finite screen coordinates;
+        // never feed those into the draw list.
+        if !start.is_finite() || !end.is_finite() {
+            continue;
+        }
+        ui.line(
+            start,
+            end,
+            colors.color_for(segment.kind),
+            grid.config.width_for(segment.kind),
+        );
+    }
+    ui.pop_clip_rect();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn bounds_200() -> (f32, f32, f32, f32) {
+        (-100.0, -100.0, 100.0, 100.0)
+    }
 
     #[test]
     fn test_grid_renderer_new() {
@@ -388,51 +395,117 @@ mod tests {
     }
 
     #[test]
-    fn test_generate_grid_sprites_when_hidden() {
+    fn test_hidden_grid_produces_no_segments() {
         let mut grid = GridRenderer::new();
         grid.set_visible(false);
-
-        let sprites = grid.generate_grid_sprites(
-            (-100.0, -100.0, 100.0, 100.0),
-            1.0,
-            TextureHandle::default(),
-        );
-
-        assert!(sprites.is_empty());
+        assert!(grid.grid_segments(bounds_200(), 1.0).is_empty());
     }
 
     #[test]
-    fn test_generate_grid_sprites_includes_axes() {
+    fn test_segments_include_axes_spanning_the_bounds() {
+        let grid = GridRenderer::new();
+        let segments = grid.grid_segments(bounds_200(), 1.0);
+
+        let x_axis = segments
+            .iter()
+            .find(|s| s.kind == GridLineKind::AxisX)
+            .expect("X axis rendered");
+        assert_eq!(x_axis.start, Vec2::new(-100.0, 0.0));
+        assert_eq!(x_axis.end, Vec2::new(100.0, 0.0));
+
+        let y_axis = segments
+            .iter()
+            .find(|s| s.kind == GridLineKind::AxisY)
+            .expect("Y axis rendered");
+        assert_eq!(y_axis.start, Vec2::new(0.0, -100.0));
+        assert_eq!(y_axis.end, Vec2::new(0.0, 100.0));
+    }
+
+    #[test]
+    fn test_primary_lines_land_on_grid_size_multiples() {
+        let grid = GridRenderer::new();
+        let segments = grid.grid_segments(bounds_200(), 1.0);
+
+        let primaries: Vec<_> = segments
+            .iter()
+            .filter(|s| s.kind == GridLineKind::Primary)
+            .collect();
+        assert!(!primaries.is_empty());
+        for segment in primaries {
+            // A primary line is axis-aligned; its constant coordinate sits
+            // on a multiple of the grid size and never on the origin axes
+            // (those are drawn as axis segments).
+            let coord = if segment.start.y == segment.end.y {
+                segment.start.y
+            } else {
+                segment.start.x
+            };
+            assert!(is_on_grid(coord, 32.0), "line at {coord} off-grid");
+            assert!(coord.abs() > 0.001, "axis line duplicated as primary");
+        }
+    }
+
+    #[test]
+    fn test_lod_grid_size() {
         let grid = GridRenderer::new();
 
-        let sprites = grid.generate_grid_sprites(
-            (-100.0, -100.0, 100.0, 100.0),
-            1.0,
-            TextureHandle::default(),
+        // At zoom 1.0, should use base size
+        assert_eq!(grid.calculate_lod_grid_size(1.0), 32.0);
+        // At zoom 0.5, should double
+        assert_eq!(grid.calculate_lod_grid_size(0.5), 64.0);
+        // At zoom 2.0, should use base size (no reduction)
+        assert_eq!(grid.calculate_lod_grid_size(2.0), 32.0);
+    }
+
+    #[test]
+    fn test_lod_doubles_primary_spacing_when_zoomed_out() {
+        let grid = GridRenderer::new();
+        let segments = grid.grid_segments(bounds_200(), 0.5);
+        for segment in segments.iter().filter(|s| s.kind == GridLineKind::Primary) {
+            let coord = if segment.start.y == segment.end.y {
+                segment.start.y
+            } else {
+                segment.start.x
+            };
+            assert!(is_on_grid(coord, 64.0), "line at {coord} off the LOD grid");
+        }
+    }
+
+    #[test]
+    fn test_subdivisions_gated_by_zoom_and_never_on_primary_lines() {
+        let grid = GridRenderer::new();
+
+        // Below subdivision_min_zoom (0.5): no secondary lines.
+        let zoomed_out = grid.grid_segments(bounds_200(), 0.4);
+        assert!(
+            !zoomed_out.iter().any(|s| s.kind == GridLineKind::Secondary),
+            "subdivisions must hide below the zoom threshold"
         );
 
-        // Should have grid lines plus axes
-        assert!(!sprites.is_empty());
-
-        // Check that axis colors are present
-        let has_x_axis = sprites.iter().any(|s| {
-            s.color.x > 0.7 && s.color.y < 0.3 // Red-ish
-        });
-        let has_y_axis = sprites.iter().any(|s| {
-            s.color.y > 0.7 && s.color.x < 0.3 // Green-ish
-        });
-
-        assert!(has_x_axis, "X axis should be rendered");
-        assert!(has_y_axis, "Y axis should be rendered");
+        // At zoom 1.0: secondary lines exist between primaries, never on them.
+        let zoomed_in = grid.grid_segments(bounds_200(), 1.0);
+        let secondaries: Vec<_> = zoomed_in
+            .iter()
+            .filter(|s| s.kind == GridLineKind::Secondary)
+            .collect();
+        assert!(!secondaries.is_empty());
+        for segment in secondaries {
+            let coord = if segment.start.y == segment.end.y {
+                segment.start.y
+            } else {
+                segment.start.x
+            };
+            assert!(
+                !is_on_grid(coord, 32.0),
+                "subdivision at {coord} coincides with a primary line"
+            );
+        }
     }
 
     #[test]
     fn test_calculate_grid_lines() {
         let grid = GridRenderer::new();
-        let (h_lines, v_lines) = grid.calculate_grid_lines(
-            -64.0, -64.0, 64.0, 64.0,
-            32.0,
-        );
+        let (h_lines, v_lines) = grid.calculate_grid_lines(-64.0, -64.0, 64.0, 64.0, 32.0);
 
         // Should have lines at -64, -32, 0, 32, 64
         assert!(h_lines.len() >= 5);
@@ -441,23 +514,6 @@ mod tests {
         // Check that 0 is included
         assert!(h_lines.iter().any(|&y| y.abs() < 0.001));
         assert!(v_lines.iter().any(|&x| x.abs() < 0.001));
-    }
-
-    #[test]
-    fn test_lod_grid_size() {
-        let grid = GridRenderer::new();
-
-        // At zoom 1.0, should use base size
-        let size_1x = grid.calculate_lod_grid_size(1.0);
-        assert_eq!(size_1x, 32.0);
-
-        // At zoom 0.5, should double
-        let size_05x = grid.calculate_lod_grid_size(0.5);
-        assert_eq!(size_05x, 64.0);
-
-        // At zoom 2.0, should use base size (no reduction)
-        let size_2x = grid.calculate_lod_grid_size(2.0);
-        assert_eq!(size_2x, 32.0);
     }
 
     #[test]
@@ -472,18 +528,60 @@ mod tests {
     }
 
     #[test]
-    fn test_grid_respects_max_lines() {
+    fn test_max_lines_exceeded_leaves_only_axes() {
         let mut grid = GridRenderer::new();
         grid.config.max_lines = 10;
 
-        // Large visible area would generate many lines
-        let sprites = grid.generate_grid_sprites(
-            (-1000.0, -1000.0, 1000.0, 1000.0),
-            1.0,
-            TextureHandle::default(),
+        let segments = grid.grid_segments((-10000.0, -10000.0, 10000.0, 10000.0), 4.0);
+        assert_eq!(segments.len(), 2);
+        assert!(segments.iter().any(|s| s.kind == GridLineKind::AxisX));
+        assert!(segments.iter().any(|s| s.kind == GridLineKind::AxisY));
+    }
+
+    #[test]
+    fn test_render_overlay_hidden_grid_draws_nothing() {
+        let mut grid = GridRenderer::new();
+        grid.set_visible(false);
+        let mut ui = UIContext::new();
+        let viewport = SceneViewport::new();
+
+        render_grid_overlay(
+            &mut ui,
+            &grid,
+            &viewport,
+            &GridColors::default(),
+            Rect::new(0.0, 0.0, 800.0, 600.0),
         );
 
-        // LOD should kick in and axes should still be visible
-        assert!(!sprites.is_empty());
+        assert!(ui.draw_list().commands().is_empty());
+    }
+
+    #[test]
+    fn test_render_overlay_emits_clipped_lines() {
+        let grid = GridRenderer::new();
+        let mut ui = UIContext::new();
+        let mut viewport = SceneViewport::new();
+        viewport.set_viewport_bounds(Rect::new(0.0, 0.0, 800.0, 600.0));
+
+        render_grid_overlay(
+            &mut ui,
+            &grid,
+            &viewport,
+            &GridColors::default(),
+            Rect::new(0.0, 0.0, 800.0, 600.0),
+        );
+
+        let commands = ui.draw_list().commands();
+        let lines = commands
+            .iter()
+            .filter(|c| matches!(c, ui::DrawCommand::Line { .. }))
+            .count();
+        assert!(lines > 2, "grid plus axes expected, got {lines} lines");
+        assert!(commands
+            .iter()
+            .any(|c| matches!(c, ui::DrawCommand::PushClipRect { .. })));
+        assert!(commands
+            .iter()
+            .any(|c| matches!(c, ui::DrawCommand::PopClipRect)));
     }
 }

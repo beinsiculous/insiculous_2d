@@ -224,6 +224,7 @@ impl<G: Game> EditorGame<G> {
         self.editor.set_camera_zoom(prefs.camera_zoom);
         self.editor.set_snap_to_grid(prefs.snap_to_grid);
         self.editor.set_grid_size(prefs.grid_size);
+        self.editor.set_grid_visible(prefs.grid_visible);
         prefs.apply_panels(&mut self.editor.dock_area);
     }
 
@@ -239,6 +240,7 @@ impl<G: Game> EditorGame<G> {
                 .map(|s| s.to_string()),
             snap_to_grid: self.editor.is_snap_to_grid(),
             grid_size: self.editor.grid_size(),
+            grid_visible: self.editor.is_grid_visible(),
             panels: Vec::new(),
         };
         prefs.capture_panels(&self.editor.dock_area);
