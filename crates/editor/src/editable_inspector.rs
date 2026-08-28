@@ -360,6 +360,25 @@ impl<'a> EditableInspector<'a> {
         self.current_y += self.style.row_height;
     }
 
+    /// A compact action button in the control column (e.g. "+ Add Script",
+    /// "− Remove param" in the scripts editor). Returns whether it was
+    /// clicked this frame.
+    pub fn action_button(&mut self, label: &str) -> bool {
+        let id = FieldId::new(self.component_index, self.field_index, 0);
+        let layout = self.row();
+        let height = self.style.row_height - 4.0;
+        let rect = Rect::new(
+            layout.control_x,
+            layout.pos.y + 2.0,
+            (layout.right - layout.control_x).max(60.0),
+            height,
+        );
+        let clicked = self.ui.button(id, label, rect);
+        self.field_index += 1;
+        self.current_y += self.style.row_height;
+        clicked
+    }
+
     /// Add an editable string field (free-form text input; commits on
     /// Enter/Tab/click-away, cancels on Escape).
     pub fn string_edit(&mut self, label: &str, value: &str) -> EditResult<String> {

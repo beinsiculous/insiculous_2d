@@ -148,6 +148,9 @@ impl_set_component_command!(
     /// Command for an inspector property edit on an EntityTag.
     SetEntityTagCommand, EntityTag, "Set EntityTag");
 impl_set_component_command!(
+    /// Command for an inspector property edit on the Scripts component (#44).
+    SetScriptsCommand, ecs::script::Scripts, "Set Scripts");
+impl_set_component_command!(
     /// Command for an inspector property edit on a Name. Like every
     /// macro-generated Set command it writes through `get_mut`, so it
     /// requires the component to already exist (a silent no-op otherwise —

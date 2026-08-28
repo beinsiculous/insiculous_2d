@@ -21,7 +21,7 @@ pub use component_commands::{
 pub use entity_commands::{CreateEntityCommand, DeleteEntityCommand, MacroCommand};
 pub use set_commands::{
     NudgeCommand, RenameEntityCommand, SetAudioSourceCommand, SetBehaviorCommand, SetColliderCommand,
-    SetEntityTagCommand, SetNameCommand, SetRigidBodyCommand, SetSpriteCommand,
+    SetEntityTagCommand, SetNameCommand, SetRigidBodyCommand, SetScriptsCommand, SetSpriteCommand,
     SetTransformCommand, SetUiButtonCommand, SetUiLabelCommand, SetUiPanelCommand,
     TransformGizmoCommand,
 };

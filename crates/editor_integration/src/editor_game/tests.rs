@@ -171,12 +171,12 @@ fn test_texture_path_fn(handle: u32) -> String {
 #[test]
 fn test_save_creates_file() {
     let mut editor = EditorGame::new(DummyGame);
-    let world = ecs::World::new();
+    let mut world = ecs::World::new();
 
     let temp_dir = std::env::temp_dir();
     let path = temp_dir.join("test_save_scene.ron");
 
-    let result = editor.save_scene_with(&world, &test_texture_path_fn, path.clone());
+    let result = editor.save_scene_with(&mut world, &test_texture_path_fn, path.clone());
     assert!(result.is_ok());
     assert!(path.exists());
 
@@ -186,7 +186,7 @@ fn test_save_creates_file() {
 #[test]
 fn test_save_clears_dirty_flag() {
     let mut editor = EditorGame::new(DummyGame);
-    let world = World::new();
+    let mut world = World::new();
 
     editor.editor.set_dirty(true);
     assert!(editor.editor.is_dirty());
@@ -194,7 +194,7 @@ fn test_save_clears_dirty_flag() {
     let temp_dir = std::env::temp_dir();
     let path = temp_dir.join("test_save_dirty.ron");
 
-    editor.save_scene_with(&world, &test_texture_path_fn, path.clone()).unwrap();
+    editor.save_scene_with(&mut world, &test_texture_path_fn, path.clone()).unwrap();
 
     assert!(!editor.editor.is_dirty());
     assert_eq!(editor.editor.scene_path(), Some(path.as_path()));
@@ -232,7 +232,7 @@ fn test_save_scene_roundtrip() {
     let temp_dir = std::env::temp_dir();
     let path = temp_dir.join("test_roundtrip.ron");
 
-    editor.save_scene_with(&world, &test_texture_path_fn, path.clone()).unwrap();
+    editor.save_scene_with(&mut world, &test_texture_path_fn, path.clone()).unwrap();
 
     // Verify the file is valid RON by parsing it with SceneLoader
     let parsed = engine_core::scene_loader::SceneLoader::load_from_file(&path).unwrap();

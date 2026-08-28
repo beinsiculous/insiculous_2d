@@ -50,6 +50,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 - `ui_component_editors.rs` — `edit_ui_label/panel/button` (UiLabel/UiPanel/UiButton field editors; anchor via cycle selector)
 - `field_style.rs` — `FieldId` (widget-ID mapping), `EditableFieldStyle` (layout dims + colors; `label_width` 120), `EditResult<T>`
 - `component_editors.rs` — Per-component editors: `edit_transform2d()`, `edit_sprite()`, etc. Return `Option<ComponentEdit<T>>`; field ranges in `mod ranges`; RigidBody Type + Collider Shape are cycle rows (shape cycling carries dimensions, early-return on variant change; headless-locked in `inspector_edit_tests.rs` incl. the commit-before-cycle ordering)
+- `script_editor.rs` — `edit_scripts()` (#44 Stage 1): widgets inferred from `ScriptValue` variants (param rename = key move, type cycle resets to variant default, Entity read-only until a picker exists), add/remove script + param via `EditableInspector::action_button`; one registry line + `SetScriptsCommand` buys the rest
 - `behavior_editor.rs` — `edit_behavior()`: variant cycle selector + per-variant fields (tag/target strings editable via `string_edit`; `CameraFollow.dead_zone` stays read-only — it's an `Option<(f32,f32)>` awaiting an Option widget)
 
 ### Scene + selection

@@ -30,6 +30,10 @@ pub struct SceneInstance {
     /// The scene's prefab table, retained for runtime spawning via
     /// [`spawn_prefab`](Self::spawn_prefab).
     pub prefabs: HashMap<String, PrefabData>,
+    /// Non-fatal load diagnostics worth showing the user (e.g. a script
+    /// Entity param naming a missing entity — kimi #44 F5). Empty on a
+    /// clean load.
+    pub load_warnings: Vec<String>,
 }
 
 impl SceneInstance {
@@ -158,6 +162,11 @@ impl SceneLoader {
             }
         }
 
+        // Script Entity params were deferred until every entity existed —
+        // resolve them against the finished name table (issue #44).
+        let load_warnings =
+            crate::script_data::resolve_pending_script_targets(world, &named_entities);
+
         let entity_count = entities.len();
 
         Ok(SceneInstance {
@@ -167,6 +176,7 @@ impl SceneLoader {
             entities,
             entity_count,
             prefabs: data.prefabs.clone(),
+            load_warnings,
         })
     }
 

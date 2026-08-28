@@ -349,6 +349,10 @@ fn global() -> &'static RwLock<ComponentRegistry> {
         registry.register::<crate::behavior::Behavior>();
         registry.register::<crate::behavior::EntityTag>();
         registry.register_transient::<crate::hierarchy::GlobalTransform2D>();
+        // The scripting seam Stage 1 (#44): inert data, persisted through
+        // its concrete ComponentData::Scripts wire arm (name-mapped Entity
+        // params), so the serializer's skip list covers it like Behavior.
+        registry.register::<crate::script::Scripts>();
 
         RwLock::new(registry)
     })

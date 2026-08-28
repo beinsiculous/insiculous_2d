@@ -31,6 +31,7 @@ impl SceneLoader {
             ComponentData::UiPanel { .. } => "UiPanel",
             ComponentData::UiButton { .. } => "UiButton",
             ComponentData::Behavior(_) => "Behavior",
+            ComponentData::Scripts(_) => "Scripts",
             ComponentData::EntityTag { .. } => "EntityTag",
             ComponentData::Dynamic { component_type, .. } => component_type.as_str(),
         }
@@ -292,6 +293,28 @@ impl SceneLoader {
 
             ComponentData::EntityTag { tag } => {
                 Self::add_component_logged(world, entity_id, ecs::behavior::EntityTag::new(tag.clone()));
+            }
+
+            ComponentData::Scripts(refs) => {
+                // Entity params defer to a post-instantiate pass — the
+                // target may not exist yet (issue #44). The pending list
+                // rides a scene-load-scoped World resource that
+                // `resolve_pending_script_targets` drains.
+                let mut pending = world
+                    .remove_resource::<crate::script_data::PendingScriptTargets>()
+                    .unwrap_or_default();
+                let scripts = ecs::Scripts(
+                    refs.iter()
+                        .enumerate()
+                        .map(|(index, data)| {
+                            crate::script_data::script_ref_from_data(
+                                data, entity_id, index, &mut pending,
+                            )
+                        })
+                        .collect(),
+                );
+                world.insert_resource(pending);
+                Self::add_component_logged(world, entity_id, scripts);
             }
 
             ComponentData::Dynamic { component_type, data } => {

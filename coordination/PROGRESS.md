@@ -156,3 +156,36 @@ Add/RemoveDynamicComponentCommand; API add/remove dynamic fallback (R1-F1).
 Behavior stays frozen at 8 variants; resolve-logic types keep concrete wire arms.
 ARCH-006 + GPP-16 moved to log_archive; CLAUDE.md SSOT table + training.md updated.
 Tests 1602 → 1622, clippy clean, wasm gate clean. fixes #43.
+
+## 2026-08-28 — #44 Scripts as inert data — ScriptRef Stage 1 (Sprint 5)
+The scripting seam's load-bearing stage: `ecs::script::Scripts(Vec<ScriptRef>)`
+(ScriptRef { script_id, source_path, params: BTreeMap<String, ScriptValue> };
+ScriptValue = F32/I32/Bool/Str/Vec2/Entity/Color) ships as pure data — attach, edit,
+save, reload, undo, duplicate, and it executes NOTHING. Scene files now carry
+game-logic bindings. Wire = concrete `ComponentData::Scripts(Vec<ScriptRefData>)`
+(NOT the #43 Dynamic path, deliberately): Entity params persist by NAME — save maps
+id→Name with the editor save choke point auto-naming referenced unnamed targets
+(`ensure_script_target_names`, "script_target_N", surfaced on the status bar; the
+save path takes &mut World now); load defers resolution to a post-instantiate pass
+(`PendingScriptTargets` world resource), so forward references to later-in-file
+entities resolve, and unresolvable names warn + drop (never a dangling id). Editor:
+ONE registry line + `impl_set_component_command!(SetScriptsCommand)` bought
+snapshot/clipboard/Add Component/API `set`; new `script_editor.rs` infers widgets
+from ScriptValue variants (param rename = key move with collision guard, type cycle
+resets to the variant default, I32 = rounding f32 wrapper, Entity read-only in
+Stage 1), plus a new generic `EditableInspector::action_button` for the add/remove
+rows. Registered in the ecs global registry (persist; the serializer's skip list
+covers it like Behavior). Stage-1 limits documented: no entity picker; duplicate
+keeps stale Entity(id) params; structural clicks merge like behavior variant
+cycling. Tests 1622 → 1634 (+ecs serde/ordering, engine_core 5 round-trip/remap/
+auto-name tests, editor 4 headless widget tests), clippy clean, wasm gate clean.
+fixes #44.
+(#44 review round: kimi found 2 criticals + 3 majors — all fixed: auto-naming now
+executes as ONE undoable MacroCommand of RenameEntityCommands through
+CommandHistory (F1/F2, regression test asserts undo removes the names); the
+Entity-param default is an unset sentinel (u64::MAX) that can never alias entity 0
+(F3, shown as "Entity (unset)", silently dropped on save); world_to_scene_data
+documents the ensure_script_target_names prerequisite for raw callers (F4);
+unresolvable Entity names now surface as SceneInstance.load_warnings on the status
+bar, not just a log line (F5); the new public ComponentData variant is documented
+(F6, no exhaustive matches exist downstream). Final: 1635 tests.)

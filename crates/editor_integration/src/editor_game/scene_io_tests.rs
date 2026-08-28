@@ -136,3 +136,45 @@ fn test_load_valid_scene_replaces_world() {
     assert!(!editor.editor.is_dirty(), "a freshly loaded scene is clean");
     assert_eq!(editor.editor.scene_path(), Some(scene.0.as_path()));
 }
+
+#[test]
+fn test_save_auto_names_script_targets_through_command_history() {
+    // kimi #44 code F1/F2: the save-time auto-naming must be an UNDOABLE
+    // CommandHistory entry, never a silent world mutation.
+    use ecs::script::{ScriptRef, ScriptValue, Scripts};
+    fn test_texture_path_fn(handle: u32) -> String {
+        if handle == 0 { "#white".to_string() } else { format!("#texture_{handle}") }
+    }
+    let mut editor = EditorGame::new(DummyGame);
+    let mut world = ecs::World::new();
+    let target = world.create_entity(); // unnamed
+    let owner = world.create_entity();
+    world.add_component(&owner, ecs::Name::new("runner")).ok();
+    let mut script = ScriptRef::new("chase");
+    script
+        .params
+        .insert("target".to_string(), ScriptValue::Entity(target));
+    world.add_component(&owner, Scripts(vec![script])).ok();
+
+    let path = std::env::temp_dir().join("test_autoname_script_targets.ron");
+    editor
+        .save_scene_with(&mut world, &test_texture_path_fn, path.clone())
+        .unwrap();
+
+    let assigned = world
+        .get::<ecs::Name>(target)
+        .map(|n| n.0.clone())
+        .expect("referenced target auto-named on save");
+    assert!(assigned.starts_with("script_target_"));
+    let saved = std::fs::read_to_string(&path).unwrap();
+    assert!(saved.contains(&assigned), "the binding reached the file by name");
+
+    // The naming is one undoable entry.
+    assert!(editor.command_history.can_undo());
+    editor.command_history.undo(&mut world);
+    assert!(
+        world.get::<ecs::Name>(target).is_none(),
+        "undo removes the auto-assigned name"
+    );
+    let _ = std::fs::remove_file(&path);
+}

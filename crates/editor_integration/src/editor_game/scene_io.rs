@@ -13,7 +13,7 @@ impl<G: Game> EditorGame<G> {
     /// Save the current scene to the existing scene path (or default if none set).
     pub(super) fn save_scene(
         &mut self,
-        world: &World,
+        world: &mut World,
         assets: &engine_core::assets::AssetManager,
     ) -> Result<(), String> {
         let path = self.editor.scene_path()
@@ -25,7 +25,7 @@ impl<G: Game> EditorGame<G> {
     /// Save the current scene to a specific path.
     pub(super) fn save_scene_as(
         &mut self,
-        world: &World,
+        world: &mut World,
         assets: &engine_core::assets::AssetManager,
         path: PathBuf,
     ) -> Result<(), String> {
@@ -49,12 +49,40 @@ impl<G: Game> EditorGame<G> {
     /// with runtime state.
     pub(super) fn save_scene_with(
         &mut self,
-        world: &World,
+        world: &mut World,
         texture_path_fn: &dyn Fn(u32) -> String,
         path: PathBuf,
     ) -> Result<(), String> {
         if self.editor.in_play_session() {
             return Err("scene is mid-simulation — stop Play before saving".to_string());
+        }
+
+        // Scripts persist Entity params by NAME: give referenced unnamed
+        // targets one now (auto-name, kimi #44 plan F4) instead of silently
+        // dropping the binding on save. Executed THROUGH CommandHistory so
+        // the naming is undoable and dirty-tracked like every other editor
+        // mutation, and a failed write leaves an undoable entry rather than
+        // a silent one (kimi #44 code F1/F2).
+        let planned = engine_core::script_data::plan_script_target_names(world);
+        if !planned.is_empty() {
+            use editor::commands::{EditorCommand, MacroCommand, RenameEntityCommand};
+            let commands: Vec<Box<dyn EditorCommand>> = planned
+                .iter()
+                .map(|(entity, name)| {
+                    Box::new(RenameEntityCommand::new(world, *entity, ecs::Name::new(name.clone())))
+                        as Box<dyn EditorCommand>
+                })
+                .collect();
+            self.command_history.execute(
+                Box::new(MacroCommand::new("Name script targets".to_string(), commands)),
+                world,
+            );
+            let names: Vec<String> = planned.iter().map(|(_, n)| n.clone()).collect();
+            self.editor.status_bar.show_message(format!(
+                "Named {} script target(s): {} (undoable)",
+                names.len(),
+                names.join(", ")
+            ));
         }
 
         let scene_name = path.file_stem()
@@ -137,7 +165,17 @@ impl<G: Game> EditorGame<G> {
         self.editor.selection.clear();
         self.gizmo_drag = None;
         self.editor.gizmo.cancel();
-        self.editor.status_bar.show_message("Scene loaded");
+        if let Some(first) = scene_instance.load_warnings.first() {
+            // Non-fatal load diagnostics reach the user, not just the log
+            // (kimi #44 F5).
+            self.editor.status_bar.show_error(format!(
+                "Loaded with {} warning(s): {}",
+                scene_instance.load_warnings.len(),
+                first
+            ));
+        } else {
+            self.editor.status_bar.show_message("Scene loaded");
+        }
 
         Ok(())
     }

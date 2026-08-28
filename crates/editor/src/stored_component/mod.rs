@@ -20,13 +20,14 @@ use crate::behavior_editor::edit_behavior;
 use crate::commands::{
     CommandHistory, RemoveComponentCommand, SetAudioSourceCommand, SetBehaviorCommand,
     SetColliderCommand, SetEntityTagCommand, SetNameCommand, SetRigidBodyCommand,
-    SetSpriteCommand, SetTransformCommand, SetUiButtonCommand, SetUiLabelCommand,
-    SetUiPanelCommand,
+    SetScriptsCommand, SetSpriteCommand, SetTransformCommand, SetUiButtonCommand,
+    SetUiLabelCommand, SetUiPanelCommand,
 };
 use crate::component_editors::{
     edit_audio_source, edit_collider, edit_entity_tag, edit_name, edit_rigid_body, edit_sprite,
     edit_transform2d,
 };
+use crate::script_editor::edit_scripts;
 use crate::ui_component_editors::{edit_ui_button, edit_ui_label, edit_ui_panel};
 use crate::inspector::{inspect_component, InspectorStyle};
 use crate::{EditableFieldStyle, EditableInspector};
@@ -489,6 +490,7 @@ editor_component_registry! {
         AudioSource     => AudioSource : Audio { edit edit_audio_source => SetAudioSourceCommand },
         AudioListener   => AudioListener : Audio { readonly },
         Behavior        => Behavior : Gameplay { edit edit_behavior => SetBehaviorCommand },
+        Scripts         => ecs::script::Scripts : Gameplay { edit edit_scripts => SetScriptsCommand },
         EntityTag       => EntityTag : Gameplay { edit edit_entity_tag => SetEntityTagCommand },
         UiLabel         => UiLabel : Ui { edit edit_ui_label => SetUiLabelCommand },
         UiPanel         => UiPanel : Ui { edit edit_ui_panel => SetUiPanelCommand },

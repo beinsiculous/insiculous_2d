@@ -32,6 +32,7 @@
 mod asset_browser;
 pub mod command_api;
 mod behavior_editor;
+mod script_editor;
 mod collider_overlay;
 mod drag_drop;
 pub mod commands;

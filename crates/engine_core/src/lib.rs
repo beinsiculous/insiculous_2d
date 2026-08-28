@@ -34,6 +34,7 @@ pub mod lifecycle;
 pub mod assets;
 pub mod chaos_theme;
 pub mod behavior_data;
+pub mod script_data;
 pub mod scene_data;
 #[cfg(test)]
 mod scene_data_tests;
@@ -43,6 +44,8 @@ mod scene_loader_components;
 pub mod scene_serializer;
 #[cfg(test)]
 mod scene_dynamic_tests;
+#[cfg(test)]
+mod scene_scripts_tests;
 #[cfg(test)]
 mod scene_serializer_roundtrip_tests;
 #[cfg(test)]

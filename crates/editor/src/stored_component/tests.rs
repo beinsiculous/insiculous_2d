@@ -96,9 +96,10 @@ fn test_capture_includes_all_component_types() {
     world.add_component(&entity, UiLabel::default()).ok();
     world.add_component(&entity, UiPanel::default()).ok();
     world.add_component(&entity, UiButton::default()).ok();
+    world.add_component(&entity, ecs::script::Scripts::default()).ok();
 
     let captured = capture_all_components(&world, entity);
-    assert_eq!(captured.len(), 16);
+    assert_eq!(captured.len(), 17);
 }
 
 #[test]
@@ -241,6 +242,7 @@ fn test_registered_type_ids_match_world_enumeration() {
     world.add_component(&entity, UiLabel::default()).ok();
     world.add_component(&entity, UiPanel::default()).ok();
     world.add_component(&entity, UiButton::default()).ok();
+    world.add_component(&entity, ecs::script::Scripts::default()).ok();
 
     // The world's type-erased view and the registry's known set must agree:
     // an entity carrying one of every registry type diffs to nothing, so the
@@ -261,7 +263,7 @@ fn test_registered_type_ids_match_world_enumeration() {
     // tier, whose global contents vary across tests in this process.)
     let captured = capture_all_components(&world, entity);
     assert_eq!(captured.len(), registered_typed_component_type_ids().len());
-    assert_eq!(captured.len(), 17);
+    assert_eq!(captured.len(), 18);
 
     // The command API's value capture walks the same registry, minus the
     // 2 hidden entries (GlobalTransform2D, BehaviorState) — a new registry
@@ -309,6 +311,7 @@ fn test_stored_component_from_json_round_trips_all_settable_types() {
     world.add_component(&entity, UiLabel::default()).ok();
     world.add_component(&entity, UiPanel::default()).ok();
     world.add_component(&entity, UiButton::default()).ok();
+    world.add_component(&entity, ecs::script::Scripts::default()).ok();
 
     let values = capture_all_values(&world, entity);
     for name in settable_component_names() {

@@ -12,6 +12,10 @@ use serde::{Deserialize, Serialize};
 // BehaviorData (+ its Behavior conversions) lives in `behavior_data.rs` for
 // file-size reasons; re-exported here so the scene schema stays one import.
 pub use crate::behavior_data::BehaviorData;
+// ScriptRefData/ScriptValueData (+ their Scripts conversions) live in
+// `script_data.rs` (issue #44); re-exported so `scene_data::ScriptRefData`
+// stays the canonical import path, mirroring BehaviorData.
+pub use crate::script_data::{ScriptRefData, ScriptValueData};
 
 /// Editor-specific settings persisted with the scene
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -303,6 +307,9 @@ pub enum ComponentData {
     },
     /// Behavior component - defines how an entity responds to input/events
     Behavior(BehaviorData),
+    /// The scripting seam Stage 1 (issue #44): inert, editor-editable
+    /// script bindings. Entity params persist by NAME (`ScriptValueData`).
+    Scripts(Vec<ScriptRefData>),
     /// Tag component for entity identification (targeted by behaviors)
     EntityTag {
         #[serde(default = "default_player_tag")]

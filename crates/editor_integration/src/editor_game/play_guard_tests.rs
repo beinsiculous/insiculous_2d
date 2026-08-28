@@ -33,7 +33,7 @@ fn test_save_refused_while_playing() {
     editor.handle_play_action(PlayControlAction::Play, &mut world);
 
     let path = std::env::temp_dir().join("test_save_refused_playing.ron");
-    let result = editor.save_scene_with(&world, &test_texture_path_fn, path.clone());
+    let result = editor.save_scene_with(&mut world, &test_texture_path_fn, path.clone());
 
     let err = result.expect_err("saving mid-simulation must be refused");
     assert!(err.contains("stop Play"), "error must tell the user how to proceed: {err}");
@@ -56,7 +56,7 @@ fn test_save_refused_while_paused() {
     assert!(editor.editor.is_paused());
 
     let path = std::env::temp_dir().join("test_save_refused_paused.ron");
-    let result = editor.save_scene_with(&world, &test_texture_path_fn, path.clone());
+    let result = editor.save_scene_with(&mut world, &test_texture_path_fn, path.clone());
 
     assert!(result.is_err(), "saving while Paused must be refused");
     assert!(!path.exists());
@@ -74,7 +74,7 @@ fn test_save_succeeds_after_stop() {
     editor.handle_play_action(PlayControlAction::Stop, &mut world);
 
     let path = std::env::temp_dir().join("test_save_after_stop.ron");
-    let result = editor.save_scene_with(&world, &test_texture_path_fn, path.clone());
+    let result = editor.save_scene_with(&mut world, &test_texture_path_fn, path.clone());
 
     assert!(result.is_ok(), "saving after Stop must work again: {result:?}");
     assert!(path.exists());

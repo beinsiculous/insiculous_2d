@@ -17,6 +17,11 @@ use crate::scene_data::*;
 /// original path strings (e.g., `"#white"`, `"player.png"`). Callers with
 /// access to an `AssetManager` can use `assets.texture_path(handle)`;
 /// tests can provide a simple default.
+/// NOTE (#44): `Scripts` Entity params persist by target NAME — a caller
+/// whose world may hold scripts referencing UNNAMED entities should run
+/// `script_data::ensure_script_target_names(world)` first, or those params
+/// are dropped with a warning (the editor's save choke point does this,
+/// undoably, for you).
 pub fn world_to_scene_data(
     world: &World,
     scene_name: &str,
@@ -241,6 +246,14 @@ fn extract_components(
         components.push(ComponentData::EntityTag { tag: t.0.clone() });
     }
 
+    // Scripts — Entity params persist by target Name (issue #44); the
+    // editor's save choke point auto-names referenced unnamed targets first.
+    if let Some(s) = world.get::<ecs::Scripts>(entity) {
+        components.push(ComponentData::Scripts(crate::script_data::scripts_to_data(
+            world, s,
+        )));
+    }
+
     append_dynamic_components(world, entity, &mut components);
 
     components
@@ -269,6 +282,7 @@ fn append_dynamic_components(
         "UiPanel",
         "UiButton",
         "Behavior",
+        "Scripts",
         "EntityTag",
         "Name",
         "GlobalTransform2D",
