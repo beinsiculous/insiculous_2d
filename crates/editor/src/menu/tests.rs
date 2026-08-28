@@ -272,24 +272,25 @@ fn test_open_dropdown_renders_in_overlay_band_and_blocks_input() {
     ui.begin_frame(&input::InputHandler::new(), Vec2::new(1280.0, 720.0));
     bar.render(&mut ui, 1280.0, &crate::theme::EditorTheme::default());
 
-    // Dropdown draws above the base UI band (950+)
+    // Mouse input under the dropdown is swallowed for later widgets
+    let dropdown = MenuBar::dropdown_bounds(&bar.menus[0], bar.menus[0].bounds);
+    assert!(ui.is_input_blocked_at(dropdown.center()));
+
+    // Overlay mode was properly closed: subsequent draws are content band
+    assert_eq!(ui.draw_list().current_layer(), ui::UiLayer::Content);
+
+    // Dropdown draws above the content band (Floating layer)
+    ui.end_frame();
     let max_depth = ui
         .draw_list()
         .commands()
         .iter()
         .map(|c| c.depth())
         .fold(f32::MIN, f32::max);
-    assert!(max_depth >= 950.0, "dropdown must render in the overlay band, got {max_depth}");
-
-    // Mouse input under the dropdown is swallowed for later widgets
-    let dropdown = MenuBar::dropdown_bounds(&bar.menus[0], bar.menus[0].bounds);
-    assert!(ui.is_input_blocked_at(dropdown.center()));
-
-    // Overlay mode was properly closed: subsequent draws are base band
-    let before = ui.draw_list().len();
-    ui.rect(Rect::new(0.0, 0.0, 10.0, 10.0), ui::Color::WHITE);
-    assert!(ui.draw_list().commands()[before].depth() < 950.0);
-    ui.end_frame();
+    assert!(
+        max_depth >= ui::UiLayer::Floating.depth_base(),
+        "dropdown must render in the Floating band, got {max_depth}"
+    );
 }
 
 #[test]

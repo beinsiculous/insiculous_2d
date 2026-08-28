@@ -34,7 +34,7 @@ pub enum TextAlign {
 
 use crate::{
     Color, DrawList, FontError, FontHandle, FontManager, InteractionManager, InteractionResult,
-    Rect, Theme, WidgetId,
+    Rect, Theme, UiLayer, WidgetId,
 };
 
 /// The main UI context for immediate-mode UI rendering.
@@ -161,6 +161,9 @@ impl UIContext {
 
     /// End the frame. Call this after all UI elements have been created.
     pub fn end_frame(&mut self) {
+        // Elevated layers (popups, modals, drag ghosts) flush after the
+        // content stream so they physically escape any panel clip pairs.
+        self.draw_list.flush_layers();
         self.interaction.end_frame();
     }
 
@@ -235,7 +238,20 @@ impl UIContext {
     ///   become inert whenever the mouse is inside `blocking_rect` (for the
     ///   rest of the frame), so clicks don't pass through the overlay.
     pub fn begin_overlay(&mut self, blocking_rect: Rect) {
-        self.draw_list.begin_overlay();
+        self.begin_overlay_in(UiLayer::Floating, blocking_rect);
+    }
+
+    /// [`begin_overlay`](Self::begin_overlay) into an explicit [`UiLayer`]
+    /// band — a drag ghost belongs in [`UiLayer::DragGhost`] so it rides
+    /// above an open dropdown, a modal in [`UiLayer::Modal`].
+    ///
+    /// Do not NEST overlay scopes: blocking rects accumulate for the
+    /// whole frame (never popped, by design) and the interaction scope is
+    /// a flag, not a stack — an inner `end_overlay` would already mark
+    /// widgets between the scopes as outside-the-overlay. Draw sequential
+    /// overlays back-to-back instead.
+    pub fn begin_overlay_in(&mut self, layer: UiLayer, blocking_rect: Rect) {
+        self.draw_list.push_layer(layer);
         self.interaction.push_blocking_rect(blocking_rect);
         self.interaction.set_overlay_scope(true);
     }
@@ -243,7 +259,7 @@ impl UIContext {
     /// End the current overlay, returning to the base depth band and
     /// re-enabling input blocking for subsequent widgets.
     pub fn end_overlay(&mut self) {
-        self.draw_list.end_overlay();
+        self.draw_list.pop_layer();
         self.interaction.set_overlay_scope(false);
     }
 

@@ -48,7 +48,7 @@ mod text_edit;
 
 // Re-export main types
 pub use context::{TextAlign, UIContext};
-pub use draw::{DrawCommand, DrawList, TextDrawData, GlyphDrawData};
+pub use draw::{DrawCommand, DrawList, GlyphDrawData, TextDrawData, UiLayer};
 pub use font::{FontError, FontHandle, FontManager, FontMetrics, GlyphInfo, LayoutGlyph, RasterizedGlyph, TextLayout};
 pub use input_state::{InputState, KeyRepeat, REPEAT_DELAY, REPEAT_INTERVAL};
 pub use interaction::{

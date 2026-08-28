@@ -210,7 +210,8 @@ pub(crate) fn render_drag_ghost(editor: &mut EditorContext, ctx: &mut GameContex
     let handle = *handle;
     let mouse = ctx.ui.mouse_pos();
     let ghost = ui::Rect::new(mouse.x - 24.0, mouse.y - 24.0, 48.0, 48.0);
-    ctx.ui.begin_overlay(ghost);
+    // DragGhost band: the ghost rides above even an open dropdown.
+    ctx.ui.begin_overlay_in(ui::UiLayer::DragGhost, ghost);
     ctx.ui.image(ghost, handle, ui::Color::new(1.0, 1.0, 1.0, 0.8));
     ctx.ui.end_overlay();
 }
