@@ -9,7 +9,7 @@
 use std::path::PathBuf;
 
 use engine_core::prelude::*;
-use editor_integration::run_game_with_editor;
+use editor_integration::run_game_with_editor_api;
 
 /// Standalone editor application — a minimal `Game` that provides physics
 /// preview during play mode. All real editing is handled by `EditorGame`
@@ -120,11 +120,39 @@ impl Game for EditorApp {
     }
 }
 
+/// Spawn the stdin reader feeding the command API (audit §9 Stage A).
+/// The thread only moves bytes; dispatch happens on the frame thread.
+/// Ends on stdin EOF/error or when the editor side drops the receiver.
+fn spawn_api_stdin_reader() -> std::sync::mpsc::Receiver<String> {
+    use std::io::BufRead as _;
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let stdin = std::io::stdin();
+        for line in stdin.lock().lines() {
+            let Ok(line) = line else { break };
+            if tx.send(line).is_err() {
+                break;
+            }
+        }
+        log::info!("command API: stdin closed, reader stopped");
+    });
+    rx
+}
+
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    let project_path: PathBuf = std::env::args()
-        .nth(1)
+    // Args: [project-path] [--api]. `--api` answers line-oriented queries
+    // from stdin with JSON on stdout (docs/EDITOR_COMMAND_API.md).
+    // Only the known flag is treated as one — any other argument is a
+    // positional path, even one starting with `--`.
+    let (flags, paths): (Vec<String>, Vec<String>) =
+        std::env::args().skip(1).partition(|a| a == "--api");
+    let api_rx = (!flags.is_empty()).then(spawn_api_stdin_reader);
+
+    let project_path: PathBuf = paths
+        .into_iter()
+        .next()
         .unwrap_or_else(|| ".".into())
         .into();
 
@@ -139,7 +167,7 @@ fn main() {
         .with_size(1280, 720)
         .with_clear_color(0.1, 0.1, 0.15, 1.0);
 
-    if let Err(e) = run_game_with_editor(EditorApp::new(project_path), config) {
+    if let Err(e) = run_game_with_editor_api(EditorApp::new(project_path), config, api_rx) {
         log::error!("Editor error: {}", e);
         std::process::exit(1);
     }

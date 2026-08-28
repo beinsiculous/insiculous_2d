@@ -30,6 +30,7 @@
 //! ```
 
 mod asset_browser;
+pub mod command_api;
 mod behavior_editor;
 mod collider_overlay;
 mod drag_drop;
@@ -89,9 +90,9 @@ pub use text_field::{display_string, display_u32, edit_string};
 pub use ui_component_editors::{edit_ui_button, edit_ui_label, edit_ui_panel};
 pub use editor_input::{EditorAction, EditorInputMapping, EditorInputState};
 pub use gizmo::{Gizmo, GizmoMode, GizmoPalette};
-pub use hierarchy::HierarchyPanel;
+pub use hierarchy::{HierarchyPanel, NameResolution};
 pub use grid::{GridColors, GridConfig, GridRenderer};
-pub use inspector::{inspect_component, InspectorStyle};
+pub use inspector::{component_value, inspect_component, InspectorStyle};
 pub use menu::{Menu, MenuBar, MenuItem};
 pub use picking::{EntityPicker, PickResult, PickableEntity, SelectionRect, AABB};
 pub use play_controls::{PlayControlAction, PlayControls};

@@ -25,6 +25,7 @@ use engine_core::GameConfig;
 use crate::constants::{clamp_editor_window_size, EDITOR_PREFS_PATH};
 use crate::panel_renderer;
 
+mod api;
 mod menu_actions;
 mod scene_io;
 mod shortcuts;
@@ -65,6 +66,10 @@ struct EditorGame<G: Game> {
     /// Last OS-window title published via `ctx.window_title`, so the
     /// title (a window-system round-trip) is only re-sent on change.
     last_window_title: Option<String>,
+    /// Command-API request lines (audit §9 Stage A), fed by the transport
+    /// (the `--api` stdin thread in the editor binary). Drained once per
+    /// frame in `update()`; `None` = API not enabled.
+    api_rx: Option<std::sync::mpsc::Receiver<String>>,
 }
 
 impl<G: Game> EditorGame<G> {
@@ -85,6 +90,7 @@ impl<G: Game> EditorGame<G> {
             game_base_font: None,
             frozen_time_scale: None,
             last_window_title: None,
+            api_rx: None,
         }
     }
 
@@ -346,6 +352,11 @@ impl<G: Game> Game for EditorGame<G> {
         // 4. Toolbar + play controls
         self.render_toolbar_and_play_controls(ctx);
 
+        // 4b. Command-API requests (audit §9 Stage A): answered here, with
+        // pre-panel state settled and before any per-frame widget mutation;
+        // skipped (left queued) while a gizmo drag is live.
+        self.drain_api_requests(ctx);
+
         // 5. Dock panels + content
         let content_areas = self.render_panels(ctx);
 
@@ -424,8 +435,21 @@ impl<G: Game> Game for EditorGame<G> {
 /// The editor needs at least 1024x720 to be usable. If the provided config
 /// specifies a smaller size, it will be enlarged.
 pub fn run_game_with_editor<G: Game>(game: G, config: GameConfig) -> Result<(), Box<dyn std::error::Error>> {
+    run_game_with_editor_api(game, config, None)
+}
+
+/// [`run_game_with_editor`] plus a command-API request channel (audit §9
+/// Stage A). Each received line is answered on stdout as one line of JSON;
+/// the transport (stdin thread, later a WebSocket) lives with the caller —
+/// this crate only drains the channel inside the frame.
+pub fn run_game_with_editor_api<G: Game>(
+    game: G,
+    config: GameConfig,
+    api_rx: Option<std::sync::mpsc::Receiver<String>>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let config = clamp_editor_window_size(config);
-    let editor_game = EditorGame::new(game);
+    let mut editor_game = EditorGame::new(game);
+    editor_game.api_rx = api_rx;
     engine_core::run_game(editor_game, config)
 }
 

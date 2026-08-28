@@ -38,6 +38,13 @@ impl Default for InspectorStyle {
     }
 }
 
+/// Read a component's state as a serde value — the read half of the
+/// inspector, split from rendering (audit §9.2): the command API's
+/// `describe` query and the pixel inspector consume the same data.
+pub fn component_value<T: Serialize>(component: &T) -> Result<Value, serde_json::Error> {
+    serde_json::to_value(component)
+}
+
 /// Renders a component's fields using serde serialization.
 ///
 /// Returns the Y position after rendering (for layout chaining).
@@ -76,7 +83,7 @@ pub fn inspect_component<T: Serialize>(
     current_y += style.line_height;
 
     // Serialize to JSON value for field extraction
-    let value = match serde_json::to_value(component) {
+    let value = match component_value(component) {
         Ok(v) => v,
         Err(e) => {
             ui.label(

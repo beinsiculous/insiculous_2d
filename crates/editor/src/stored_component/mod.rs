@@ -320,6 +320,34 @@ macro_rules! editor_component_registry {
             } )+
             y
         }
+
+        /// Capture every present inspectable component (builtin + removable,
+        /// registry order) as `(type_name, serde value)` pairs — the data
+        /// half of `inspect_all_components`, consumed by the command API's
+        /// `describe` query. A component that fails to serialize contributes
+        /// an error string so the result stays total. Hidden registry
+        /// entries (Name, GlobalTransform2D, BehaviorState) are internal
+        /// and not emitted; `Name` is surfaced by the API as a top-level
+        /// entity field instead.
+        pub fn capture_all_values(
+            world: &World,
+            entity: EntityId,
+        ) -> Vec<(&'static str, serde_json::Value)> {
+            let mut values = Vec::new();
+            $( if let Some(c) = world.get::<$b_ty>(entity) {
+                values.push((stringify!($b), match crate::inspector::component_value(c) {
+                    Ok(v) => v,
+                    Err(e) => serde_json::Value::String(format!("!serialize error: {e}")),
+                }));
+            } )+
+            $( if let Some(c) = world.get::<$r_ty>(entity) {
+                values.push((stringify!($r), match crate::inspector::component_value(c) {
+                    Ok(v) => v,
+                    Err(e) => serde_json::Value::String(format!("!serialize error: {e}")),
+                }));
+            } )+
+            values
+        }
     };
 }
 

@@ -25,6 +25,17 @@ const INDENT_PER_DEPTH: f32 = 16.0;
 /// Width of the expand/collapse arrow.
 const ARROW_WIDTH: f32 = 16.0;
 
+/// Result of resolving an entity by its `Name` component.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NameResolution {
+    /// No entity carries this name.
+    None,
+    /// Exactly one match.
+    One(EntityId),
+    /// Multiple entities share the name — callers report, never pick one.
+    Ambiguous(Vec<EntityId>),
+}
+
 /// Hierarchy panel for displaying entity tree structure.
 #[derive(Debug, Default)]
 pub struct HierarchyPanel {
@@ -99,6 +110,32 @@ impl HierarchyPanel {
 
         // Fallback
         format!("Entity {}", entity.value())
+    }
+
+    /// Inverse of [`entity_display_name`], for name-first entity addressing
+    /// (audit §9.3b): exact match on the `Name` component only — synthesized
+    /// display names ("Sprite (Entity 5)") are addressable by id instead.
+    /// Nothing enforces name uniqueness, so ambiguity is reported, never
+    /// silently resolved to the first match.
+    ///
+    /// [`entity_display_name`]: HierarchyPanel::entity_display_name
+    pub fn resolve_by_name(world: &World, name: &str) -> NameResolution {
+        let mut matches = world
+            .entities()
+            .into_iter()
+            .filter(|e| world.get::<Name>(*e).is_some_and(|n| n.as_str() == name));
+        match (matches.next(), matches.next()) {
+            (None, _) => NameResolution::None,
+            (Some(only), None) => NameResolution::One(only),
+            (Some(first), Some(second)) => {
+                let mut all = vec![first, second];
+                all.extend(matches);
+                // World iteration order is hash-based; a deterministic id
+                // order keeps ambiguity reports stable across sessions.
+                all.sort_by_key(|e| e.value());
+                NameResolution::Ambiguous(all)
+            }
+        }
     }
 
     /// Render the hierarchy panel.
@@ -236,6 +273,35 @@ mod tests {
 
     fn entity(id: u64) -> EntityId {
         EntityId::with_generation(id, 1)
+    }
+
+    // ==================== Name resolution ====================
+
+    #[test]
+    fn test_resolve_by_name_inverse_of_display_name() {
+        use ecs::sprite_components::Name;
+        let mut world = World::new();
+        let named = world.create_entity();
+        world.add_component(&named, Name::new("Player")).ok();
+        let other = world.create_entity();
+        world.add_component(&other, Name::new("Player")).ok();
+        let unnamed = world.create_entity();
+
+        // A unique name round-trips: display -> resolve.
+        world.remove_component::<Name>(&other).ok();
+        let display = HierarchyPanel::entity_display_name(&world, named);
+        assert_eq!(HierarchyPanel::resolve_by_name(&world, &display), NameResolution::One(named));
+
+        // Synthesized display names are NOT addresses.
+        let synthesized = HierarchyPanel::entity_display_name(&world, unnamed);
+        assert_eq!(HierarchyPanel::resolve_by_name(&world, &synthesized), NameResolution::None);
+
+        // Duplicates report ambiguity instead of first-match.
+        world.add_component(&other, Name::new("Player")).ok();
+        match HierarchyPanel::resolve_by_name(&world, "Player") {
+            NameResolution::Ambiguous(matches) => assert_eq!(matches.len(), 2),
+            other => panic!("expected Ambiguous, got {other:?}"),
+        }
     }
 
     // ==================== Expand/Collapse State Tests ====================
