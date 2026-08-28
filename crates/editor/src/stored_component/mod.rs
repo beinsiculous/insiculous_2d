@@ -37,13 +37,14 @@ use crate::{EditableFieldStyle, EditableInspector};
 macro_rules! registry_edit_block {
     // Editable, NOT removable (builtin): the editor fn renders its own header.
     (@fixed $name:ident, $ty:ty, (edit $edit_fn:ident => $cmd:ident),
-     $ui:ident, $world:ident, $entity:ident, $history:ident, $x:ident, $y:ident,
+     $ui:ident, $world:ident, $entity:ident, $history:ident, $x:ident, $width:ident, $y:ident,
      $inspect_style:ident, $field_style:ident, $gap:ident, $idx:ident, $removals:ident,
      $extras:ident) => {
         if let Some(value) = $world.get::<$ty>($entity).cloned() {
             $y += $gap;
             let mut inspector = EditableInspector::new($ui, $x, $y)
                 .with_component_index($idx)
+                .with_width($width)
                 .with_style($field_style.clone());
             let edit = $edit_fn(&mut inspector, &value, &mut *$extras);
             $y = inspector.y();
@@ -55,7 +56,7 @@ macro_rules! registry_edit_block {
     };
     // Editable + removable: overlay the [X] at the header the editor fn drew.
     (@removable $name:ident, $ty:ty, (edit $edit_fn:ident => $cmd:ident),
-     $ui:ident, $world:ident, $entity:ident, $history:ident, $x:ident, $y:ident,
+     $ui:ident, $world:ident, $entity:ident, $history:ident, $x:ident, $width:ident, $y:ident,
      $inspect_style:ident, $field_style:ident, $gap:ident, $idx:ident, $removals:ident,
      $extras:ident) => {
         if let Some(value) = $world.get::<$ty>($entity).cloned() {
@@ -63,10 +64,11 @@ macro_rules! registry_edit_block {
             let header_y = $y;
             let mut inspector = EditableInspector::new($ui, $x, $y)
                 .with_component_index($idx)
+                .with_width($width)
                 .with_style($field_style.clone());
             let edit = $edit_fn(&mut inspector, &value, &mut *$extras);
             $y = inspector.y();
-            if crate::component_editors::remove_button($ui, $idx, $x, header_y, $field_style) {
+            if crate::component_editors::remove_button($ui, $idx, $x, header_y, $width) {
                 $removals.push(ComponentKind::$name);
             }
             crate::component_editors::apply_component_edit($world, $entity, &value, edit, $history, |e, old, new, hint| {
@@ -78,13 +80,14 @@ macro_rules! registry_edit_block {
     // Read-only + removable: registry header with [X] + serde inspection
     // (components without a field editor yet).
     (@removable $name:ident, $ty:ty, (readonly),
-     $ui:ident, $world:ident, $entity:ident, $history:ident, $x:ident, $y:ident,
+     $ui:ident, $world:ident, $entity:ident, $history:ident, $x:ident, $width:ident, $y:ident,
      $inspect_style:ident, $field_style:ident, $gap:ident, $idx:ident, $removals:ident,
      $extras:ident) => {
         if $world.get::<$ty>($entity).is_some() {
             $y += $gap;
             let mut inspector = EditableInspector::new($ui, $x, $y)
                 .with_component_index($idx)
+                .with_width($width)
                 .with_style($field_style.clone());
             if inspector.header_with_remove(stringify!($name), true) {
                 $removals.push(ComponentKind::$name);
@@ -274,6 +277,7 @@ macro_rules! editor_component_registry {
             entity: EntityId,
             history: &mut CommandHistory,
             x: f32,
+            width: f32,
             mut y: f32,
             inspect_style: &InspectorStyle,
             field_style: &EditableFieldStyle,
@@ -284,10 +288,10 @@ macro_rules! editor_component_registry {
             let mut removals: Vec<ComponentKind> = Vec::new();
 
             $( registry_edit_block!(@fixed $b, $b_ty, ($($b_edit)+),
-                ui, world, entity, history, x, y,
+                ui, world, entity, history, x, width, y,
                 inspect_style, field_style, section_gap, component_index, removals, extras); )+
             $( registry_edit_block!(@removable $r, $r_ty, ($($r_edit)+),
-                ui, world, entity, history, x, y,
+                ui, world, entity, history, x, width, y,
                 inspect_style, field_style, section_gap, component_index, removals, extras); )+
 
             for kind in &removals {

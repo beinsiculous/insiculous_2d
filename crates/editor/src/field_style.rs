@@ -51,8 +51,6 @@ pub struct EditableFieldStyle {
     pub label_width: f32,
     /// Padding between elements
     pub padding: f32,
-    /// Slider height
-    pub slider_height: f32,
     /// Checkbox size
     pub checkbox_size: f32,
     /// Color preview size
@@ -61,18 +59,15 @@ pub struct EditableFieldStyle {
     pub indent: f32,
     /// Width of a single-value text input (f32 fields)
     pub input_width: f32,
-    /// Width of each text input in a Vec2 pair
+    /// Maximum width of each text input in a Vec2 pair (pairs shrink to fit
+    /// the panel; this caps how wide they grow)
     pub vec2_input_width: f32,
-    /// Horizontal gap between an axis/channel label and its input
-    pub axis_label_gap: f32,
     /// Horizontal gap between adjacent inputs in a multi-input row
     pub input_gap: f32,
-    /// Width of each RGBA channel text input
+    /// Maximum width of each RGBA channel text input (channels shrink to fit)
     pub color_input_width: f32,
     /// Height of each RGBA channel text input
     pub color_input_height: f32,
-    /// Horizontal gap between an RGBA channel label and its input
-    pub channel_label_gap: f32,
     /// Horizontal gap between adjacent RGBA channel inputs
     pub color_input_gap: f32,
     /// Label color
@@ -105,19 +100,16 @@ impl Default for EditableFieldStyle {
     fn default() -> Self {
         Self {
             row_height: 24.0,
-            label_width: 100.0,
+            label_width: 120.0,
             padding: 8.0,
-            slider_height: 16.0,
             checkbox_size: 16.0,
             color_preview_size: 20.0,
             indent: 16.0,
             input_width: 100.0,
             vec2_input_width: 70.0,
-            axis_label_gap: 14.0,
             input_gap: 8.0,
             color_input_width: 48.0,
             color_input_height: 16.0,
-            channel_label_gap: 12.0,
             color_input_gap: 4.0,
             label_color: Color::new(0.7, 0.7, 0.7, 1.0),
             value_color: Color::new(1.0, 1.0, 1.0, 1.0),

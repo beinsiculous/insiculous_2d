@@ -23,7 +23,7 @@ fn test_edit_all_components_covers_present_components_and_advances_y() {
     let mut extras = crate::InspectorExtras { drag_drop: &mut drag_drop, texture_display: None };
     let (y, count) = edit_all_components(
         &mut ui, &mut world, entity, &mut history,
-        10.0, start_y, &inspect_style, &field_style, 10.0, &mut extras,
+        10.0, 400.0, start_y, &inspect_style, &field_style, 10.0, &mut extras,
     );
 
     assert_eq!(count, 3, "one block per present registry component");
@@ -37,7 +37,7 @@ fn test_edit_all_components_covers_present_components_and_advances_y() {
     let bare = world.create_entity();
     let (_, none_count) = edit_all_components(
         &mut ui, &mut world, bare, &mut history,
-        10.0, start_y, &inspect_style, &field_style, 10.0, &mut extras,
+        10.0, 400.0, start_y, &inspect_style, &field_style, 10.0, &mut extras,
     );
     assert_eq!(none_count, 0, "an entity with no components renders no blocks");
 }

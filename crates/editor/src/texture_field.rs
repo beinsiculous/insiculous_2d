@@ -1,11 +1,12 @@
 //! Inspector texture field: shows the sprite's texture by name and accepts
 //! drag-and-drop assignment from the asset browser.
 
-use glam::Vec2;
 use ui::UIContext;
 
 use crate::drag_drop::{DragDropState, DragPayload};
+use crate::editable_inspector::draw_field_label;
 use crate::field_style::{EditResult, EditableFieldStyle, FieldId};
+use crate::row_layout::RowLayout;
 
 /// Context the integration layer threads into the editable inspector for
 /// fields that reach beyond one component's data: the drag-drop coordinator
@@ -31,20 +32,15 @@ pub fn edit_texture_field(
     handle: u32,
     drag_drop: &mut DragDropState,
     display: Option<&str>,
-    pos: Vec2,
+    layout: RowLayout,
     style: &EditableFieldStyle,
 ) -> EditResult<u32> {
-    ui.label_styled(
-        label,
-        Vec2::new(pos.x, pos.y + 4.0),
-        style.label_color,
-        style.label_font,
-    );
+    draw_field_label(ui, label, &layout, style);
 
     let slot_bounds = ui::Rect::new(
-        pos.x + style.label_width,
-        pos.y + 2.0,
-        style.input_width + 40.0,
+        layout.control_x,
+        layout.pos.y + 2.0,
+        layout.clamp_width(style.input_width + 40.0),
         style.row_height - 4.0,
     );
 
@@ -86,6 +82,8 @@ pub fn edit_texture_field(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::row_layout::field_row;
+    use glam::Vec2;
 
     fn drop_texture_at(drag_drop: &mut DragDropState, handle: u32, pos: Vec2) {
         drag_drop.arm(
@@ -108,9 +106,10 @@ mod tests {
         let slot_center = Vec2::new(10.0 + style.label_width + 20.0, 12.0 + 8.0);
         drop_texture_at(&mut drag_drop, 7, slot_center);
 
+        let layout = field_row(pos, pos.x, 400.0, &style);
         let result = edit_texture_field(
             &mut ui, FieldId::new(0, 0, 0), "Texture", 1,
-            &mut drag_drop, Some("old.png"), pos, &style,
+            &mut drag_drop, Some("old.png"), layout, &style,
         );
         assert_eq!(result, EditResult::Changed(7));
     }
@@ -124,9 +123,10 @@ mod tests {
 
         drop_texture_at(&mut drag_drop, 7, Vec2::new(700.0, 500.0));
 
+        let layout = field_row(Vec2::new(10.0, 10.0), 10.0, 400.0, &style);
         let result = edit_texture_field(
             &mut ui, FieldId::new(0, 0, 0), "Texture", 1,
-            &mut drag_drop, None, Vec2::new(10.0, 10.0), &style,
+            &mut drag_drop, None, layout, &style,
         );
         assert_eq!(result, EditResult::Unchanged);
     }
@@ -141,9 +141,10 @@ mod tests {
 
         drop_texture_at(&mut drag_drop, 1, slot_center);
 
+        let layout = field_row(Vec2::new(10.0, 10.0), 10.0, 400.0, &style);
         let result = edit_texture_field(
             &mut ui, FieldId::new(0, 0, 0), "Texture", 1,
-            &mut drag_drop, None, Vec2::new(10.0, 10.0), &style,
+            &mut drag_drop, None, layout, &style,
         );
         assert_eq!(result, EditResult::Unchanged, "no-op drop must not dirty the scene");
     }

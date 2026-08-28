@@ -360,10 +360,10 @@ pub(crate) fn remove_button(
     component_index: usize,
     x: f32,
     header_y: f32,
-    style: &crate::EditableFieldStyle,
+    width: f32,
 ) -> bool {
     let btn_size = 18.0;
-    let btn_x = x + style.label_width + 90.0;
+    let btn_x = crate::row_layout::remove_button_x(x, width, btn_size);
     let btn_bounds = ui::Rect::new(btn_x, header_y, btn_size, btn_size);
     let btn_id = crate::FieldId::new(component_index, 99, 0);
     ui.button(btn_id, "X", btn_bounds)

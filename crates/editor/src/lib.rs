@@ -36,10 +36,12 @@ mod collider_overlay;
 mod drag_drop;
 pub mod commands;
 mod component_editors;
+mod composite_rows;
 mod context;
 mod dock;
 mod editable_inspector;
 mod field_style;
+mod row_layout;
 pub mod fonts;
 mod editor_input;
 mod gizmo;
@@ -87,6 +89,9 @@ pub use dock::{panel_id_for_menu_label, DockArea, DockPanel, DockPosition, Panel
 pub use editable_inspector::{
     component_header, cycle_step, edit_bool, edit_color, edit_f32,
     edit_normalized_f32, edit_vec2, EditableFieldStyle, EditableInspector, EditResult, FieldId,
+};
+pub use row_layout::{
+    color_block_height, ellipsize, field_row, pair_slots, remove_button_x, PairSlot, RowLayout,
 };
 pub use text_field::{display_string, display_u32, edit_string};
 pub use ui_component_editors::{edit_ui_button, edit_ui_label, edit_ui_panel};

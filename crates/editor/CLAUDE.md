@@ -43,10 +43,12 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 
 ### Inspector / components
 - `inspector.rs` — Generic `inspect_component()` (read-only, serde-based)
-- `editable_inspector.rs` — Editable field widgets (sliders, Vec2, checkboxes, color, `string_edit` text input, `cycle()` variant selector)
+- `editable_inspector.rs` — Editable field widgets (f32/bool/`string_edit` text input, `cycle()` variant selector); `EditableInspector` is width-aware (`with_width`) — labels ellipsize at the control column, controls clamp to the panel's right edge, the [X] right-aligns
+- `row_layout.rs` — pure row-layout math (`field_row`/`remove_button_x`/`pair_slots`/`color_block_height`/`ellipsize`, measurement injected — headless-tested; ALL inspector horizontal placement goes through here, never hardcode offsets)
+- `composite_rows.rs` — `edit_vec2` (X/Y composite row) + `edit_color` (RGBA 2×2 grid with aligned columns), measured axis/channel badges
 - `text_field.rs` — `edit_string` free fn + read-only `display_string`/`display_u32`
 - `ui_component_editors.rs` — `edit_ui_label/panel/button` (UiLabel/UiPanel/UiButton field editors; anchor via cycle selector)
-- `field_style.rs` — `FieldId` (widget-ID mapping), `EditableFieldStyle` (layout dims + colors), `EditResult<T>`
+- `field_style.rs` — `FieldId` (widget-ID mapping), `EditableFieldStyle` (layout dims + colors; `label_width` 120), `EditResult<T>`
 - `component_editors.rs` — Per-component editors: `edit_transform2d()`, `edit_sprite()`, etc. Return `Option<ComponentEdit<T>>`; field ranges in `mod ranges`
 - `behavior_editor.rs` — `edit_behavior()`: variant cycle selector + per-variant fields (String fields read-only until the ui crate grows text input)
 
@@ -75,7 +77,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 - Theme is on `EditorContext.theme` (public field); call `theme.gizmo_palette()`, `inspector_style()`, `editable_field_style()`, `grid_colors()`, `collider_overlay_colors()` instead of hardcoding colors. Menu/Toolbar/Hierarchy `render()` take `&EditorTheme`
 
 ## Testing
-- 362 passing (incl. 3 doc tests), 0 ignored — `cargo test -p editor`
+- 372 passing (incl. 3 doc tests), 0 ignored — `cargo test -p editor`
 
 ## Godot Oracle — When Stuck
 Use `WebFetch` to read from `https://github.com/godotengine/godot/blob/master/`

@@ -71,10 +71,13 @@ pub(super) fn render_inspector(
     }
     y += line_height;
 
+    let content_width = bounds.width - 2.0 * padding;
     let final_y = if editor.is_playing() {
         render_inspector_readonly(ctx, entity_id, content_x, y, &editor.theme.inspector_style())
     } else {
-        render_inspector_editable(editor, ctx, entity_id, content_x, y, command_history)
+        render_inspector_editable(
+            editor, ctx, entity_id, content_x, content_width, y, command_history,
+        )
     };
     editor
         .inspector_scroll
@@ -103,6 +106,7 @@ fn render_inspector_editable(
     ctx: &mut GameContext,
     entity_id: ecs::EntityId,
     content_x: f32,
+    content_width: f32,
     mut y: f32,
     command_history: &mut CommandHistory,
 ) -> f32 {
@@ -132,6 +136,7 @@ fn render_inspector_editable(
         entity_id,
         command_history,
         content_x,
+        content_width,
         y,
         &inspect_style,
         &field_style,

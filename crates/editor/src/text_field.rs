@@ -5,7 +5,9 @@
 use glam::Vec2;
 use ui::{Rect, UIContext};
 
+use crate::editable_inspector::draw_field_label;
 use crate::field_style::{EditResult, EditableFieldStyle, FieldId};
+use crate::row_layout::RowLayout;
 
 /// Render an editable string field (label + free-form text input).
 ///
@@ -17,19 +19,17 @@ pub fn edit_string(
     id: FieldId,
     label: &str,
     value: &str,
-    pos: Vec2,
+    layout: RowLayout,
     style: &EditableFieldStyle,
 ) -> EditResult<String> {
-    // Draw label
-    ui.label_styled(label, Vec2::new(pos.x, pos.y + 4.0), style.label_color, style.label_font);
+    draw_field_label(ui, label, &layout, style);
 
     // Text input bounds — wider than numeric inputs; strings are longer.
-    let input_x = pos.x + style.label_width;
     let input_height = style.row_height - 4.0;
     let input_bounds = Rect::new(
-        input_x,
-        pos.y + (style.row_height - input_height) / 2.0,
-        style.input_width * 1.6,
+        layout.control_x,
+        layout.pos.y + (style.row_height - input_height) / 2.0,
+        layout.clamp_width(style.input_width * 1.6),
         input_height,
     );
 
@@ -44,32 +44,29 @@ pub fn display_u32(
     ui: &mut UIContext,
     label: &str,
     value: u32,
-    pos: Vec2,
+    layout: RowLayout,
     style: &EditableFieldStyle,
 ) {
-    ui.label_styled(label, Vec2::new(pos.x, pos.y + 4.0), style.label_color, style.label_font);
-
-    let value_text = format!("{}", value);
-    ui.label_styled(
-        &value_text,
-        Vec2::new(pos.x + style.label_width, pos.y + 4.0),
-        style.value_color,
-        style.label_font,
-    );
+    display_string(ui, label, &format!("{}", value), layout, style);
 }
 
-/// Render a read-only string value (for tags, target names, etc.).
+/// Render a read-only string value (for tags, target names, etc.), the value
+/// ellipsized at the panel's right edge.
 pub fn display_string(
     ui: &mut UIContext,
     label: &str,
     value: &str,
-    pos: Vec2,
+    layout: RowLayout,
     style: &EditableFieldStyle,
 ) {
-    ui.label_styled(label, Vec2::new(pos.x, pos.y + 4.0), style.label_color, style.label_font);
+    draw_field_label(ui, label, &layout, style);
+    let value_budget = layout.available();
+    let shown = crate::row_layout::ellipsize(value, value_budget, |s| {
+        ui.measure_text_styled(s, style.label_font).x
+    });
     ui.label_styled(
-        value,
-        Vec2::new(pos.x + style.label_width, pos.y + 4.0),
+        &shown,
+        Vec2::new(layout.control_x, layout.pos.y + 4.0),
         style.value_color,
         style.label_font,
     );
@@ -83,13 +80,15 @@ mod tests {
     fn test_edit_string_without_interaction_is_unchanged() {
         let mut ui = UIContext::new();
         ui.begin_frame(&input::InputHandler::new(), Vec2::new(800.0, 600.0));
+        let style = EditableFieldStyle::default();
+        let layout = crate::row_layout::field_row(Vec2::new(10.0, 10.0), 10.0, 400.0, &style);
         let result = edit_string(
             &mut ui,
             FieldId::new(0, 0, 0),
             "Text",
             "hello",
-            Vec2::new(10.0, 10.0),
-            &EditableFieldStyle::default(),
+            layout,
+            &style,
         );
         ui.end_frame();
         assert!(!result.is_changed());
