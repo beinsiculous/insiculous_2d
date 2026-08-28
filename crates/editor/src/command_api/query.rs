@@ -65,6 +65,12 @@ fn describe(world: &World, entity_ref: &EntityRef) -> Result<Value, ApiError> {
     let entity = entity_ref.resolve(world)?;
     let mut components = serde_json::Map::new();
     for (type_name, value) in capture_all_values(world, entity) {
+        // Name is already the record's top-level `name` field (it is the
+        // API's entity address); repeating it as a component would be
+        // duplicate, diverging state.
+        if type_name == "Name" {
+            continue;
+        }
         components.insert(type_name.to_string(), value);
     }
     let mut record = entity_record(world, entity);

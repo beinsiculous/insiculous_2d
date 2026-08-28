@@ -17,9 +17,9 @@ mod set_commands;
 pub use component_commands::{AddComponentCommand, RemoveComponentCommand};
 pub use entity_commands::{CreateEntityCommand, DeleteEntityCommand, MacroCommand};
 pub use set_commands::{
-    SetAudioSourceCommand, SetBehaviorCommand, SetColliderCommand, SetRigidBodyCommand,
-    SetSpriteCommand, SetTransformCommand, SetUiButtonCommand, SetUiLabelCommand,
-    SetUiPanelCommand, TransformGizmoCommand,
+    RenameEntityCommand, SetAudioSourceCommand, SetBehaviorCommand, SetColliderCommand,
+    SetNameCommand, SetRigidBodyCommand, SetSpriteCommand, SetTransformCommand,
+    SetUiButtonCommand, SetUiLabelCommand, SetUiPanelCommand, TransformGizmoCommand,
 };
 
 // The registry-generated ComponentKind is re-exported here so existing
@@ -244,5 +244,7 @@ impl Default for CommandHistory {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod name_tests;
 #[cfg(test)]
 mod dirty_tests;

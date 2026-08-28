@@ -18,6 +18,8 @@ mod widgets;
 mod tests;
 #[cfg(test)]
 mod overlay_tests;
+#[cfg(test)]
+mod focus_tests;
 
 use glam::Vec2;
 use input::InputHandler;
@@ -227,6 +229,22 @@ impl UIContext {
     /// returns `true`, or a click on chrome falls through to what's beneath.
     pub fn wants_mouse(&self) -> bool {
         self.interaction.wants_mouse()
+    }
+
+    /// Whether the given widget currently has keyboard focus.
+    pub fn is_focused(&self, id: impl Into<WidgetId>) -> bool {
+        self.interaction.is_focused(id.into())
+    }
+
+    /// Programmatically focus a text input before it is next rendered,
+    /// seeding its edit buffer with `initial` fully selected — typing
+    /// replaces it, exactly as if the user had clicked the field. Lets hosts
+    /// open an inline edit from a shortcut (e.g. F2 rename) instead of
+    /// requiring a click.
+    pub fn focus_text_input(&mut self, id: impl Into<WidgetId>, initial: &str) {
+        let id = id.into();
+        self.interaction.set_focus(id);
+        self.interaction.get_state(id).edit.set_text_select_all(initial);
     }
 
     // ================== Overlays ==================

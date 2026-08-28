@@ -67,6 +67,29 @@ pub struct ComponentEdit<T> {
     pub field_hint: &'static str,
 }
 
+/// Edit the Name component (the entity's durable address for scene files
+/// and the command API).
+///
+/// Returns `Some(ComponentEdit)` when a new non-empty name is committed —
+/// an empty commit is ignored so the inspector can't strand an entity with
+/// a blank name (delete the component to unname an entity).
+pub fn edit_name(
+    inspector: &mut EditableInspector<'_>,
+    name: &ecs::Name,
+    _extras: &mut crate::InspectorExtras<'_>,
+) -> Option<ComponentEdit<ecs::Name>> {
+    inspector.header("Name");
+    if let EditResult::Changed(v) = inspector.string_edit("Name", name.as_str()) {
+        if let Some(new_name) = crate::hierarchy::normalized_rename(Some(name.as_str()), &v) {
+            return Some(ComponentEdit {
+                new_value: ecs::Name::new(new_name),
+                field_hint: "name",
+            });
+        }
+    }
+    None
+}
+
 /// Edit a Transform2D component.
 ///
 /// Returns `Some(ComponentEdit)` if any field changed this frame.

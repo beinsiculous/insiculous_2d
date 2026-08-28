@@ -204,6 +204,24 @@ impl<G: Game> EditorGame<G> {
             KeyCode::Equal => self.editor.zoom_camera(1.1),
             KeyCode::Minus => self.editor.zoom_camera(0.9),
             KeyCode::Digit0 => self.editor.reset_camera(),
+            KeyCode::F2 => {
+                // F2 → inline-rename the primary selection in the hierarchy.
+                // The field opens pre-focused with the current name selected;
+                // an entity without a Name opens empty and only materializes
+                // one on a non-empty commit (Escape stays a true no-op).
+                if let Some(entity) = self.editor.selection.primary() {
+                    let initial = ctx
+                        .world
+                        .get::<ecs::Name>(entity)
+                        .map(|n| n.as_str().to_string())
+                        .unwrap_or_default();
+                    self.editor.hierarchy.begin_rename(entity);
+                    ctx.ui.focus_text_input(
+                        editor::HierarchyPanel::rename_widget_id(entity).as_str(),
+                        &initial,
+                    );
+                }
+            }
             KeyCode::F5 => {
                 // F5 → Start/Resume play (only from Editing or Paused)
                 self.handle_play_action(PlayControlAction::Play, ctx.world);

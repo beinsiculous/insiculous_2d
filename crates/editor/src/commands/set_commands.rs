@@ -4,7 +4,7 @@ use std::any::Any;
 
 use ecs::audio_components::AudioSource;
 use ecs::behavior::Behavior;
-use ecs::sprite_components::Sprite;
+use ecs::sprite_components::{Name, Sprite};
 use ecs::ui_components::{UiButton, UiLabel, UiPanel};
 use ecs::{EntityId, World};
 use physics::components::{Collider, RigidBody};
@@ -144,4 +144,61 @@ impl_set_component_command!(
 impl_set_component_command!(
     /// Command for an inspector property edit on a UiButton.
     SetUiButtonCommand, UiButton, "Set UiButton");
+impl_set_component_command!(
+    /// Command for an inspector property edit on a Name. Like every
+    /// macro-generated Set command it writes through `get_mut`, so it
+    /// requires the component to already exist (a silent no-op otherwise —
+    /// the inspector only renders `edit_name` for entities that have one).
+    /// To assign a Name to an entity WITHOUT one, use
+    /// [`RenameEntityCommand`], which also undoes back to "no Name".
+    SetNameCommand, Name, "Set Name");
+
+// ---------------------------------------------------------------------------
+// RenameEntityCommand
+// ---------------------------------------------------------------------------
+
+/// Rename an entity from the hierarchy (F2): assigns or replaces its `Name`,
+/// including entities that have none yet. Undo restores the prior state —
+/// the old name, or no `Name` component at all.
+pub struct RenameEntityCommand {
+    entity: EntityId,
+    old: Option<Name>,
+    new: Name,
+}
+
+impl RenameEntityCommand {
+    /// Capture the entity's current `Name` (if any) and the replacement.
+    pub fn new(world: &World, entity: EntityId, new: Name) -> Self {
+        Self { entity, old: world.get::<Name>(entity).cloned(), new }
+    }
+}
+
+impl EditorCommand for RenameEntityCommand {
+    fn execute(&mut self, world: &mut World) {
+        world.add_component(&self.entity, self.new.clone()).ok();
+    }
+
+    fn undo(&mut self, world: &mut World) {
+        match &self.old {
+            Some(name) => {
+                world.add_component(&self.entity, name.clone()).ok();
+            }
+            None => {
+                world.remove_component::<Name>(&self.entity).ok();
+            }
+        }
+    }
+
+    fn display_name(&self) -> &str {
+        "Rename Entity"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
 

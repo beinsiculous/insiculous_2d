@@ -262,17 +262,24 @@ fn test_registered_type_ids_match_world_enumeration() {
     assert_eq!(captured.len(), 17);
 
     // The command API's value capture walks the same registry, minus the
-    // 3 hidden entries (Name, GlobalTransform2D, BehaviorState) — a new
-    // registry line is covered automatically or this count breaks.
+    // 2 hidden entries (GlobalTransform2D, BehaviorState) — a new registry
+    // line is covered automatically or this count breaks.
     let values = capture_all_values(&world, entity);
-    assert_eq!(values.len(), captured.len() - 3);
+    assert_eq!(values.len(), captured.len() - 2);
     let transform = values
         .iter()
         .find(|(name, _)| *name == "Transform2D")
         .expect("builtin Transform2D captured as a value");
     assert!(transform.1.get("position").is_some(), "serde fields come through");
+    // Name is a registry component since #32 (editable), so it IS captured
+    // here; the describe query filters it because the API surfaces the name
+    // as the record's top-level field (covered in command_api tests).
     assert!(
-        !values.iter().any(|(name, _)| *name == "Name"),
+        values.iter().any(|(name, _)| *name == "Name"),
+        "editable Name is captured as a value"
+    );
+    assert!(
+        !values.iter().any(|(name, _)| *name == "GlobalTransform2D"),
         "hidden entries are not emitted as components"
     );
 }

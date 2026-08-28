@@ -87,10 +87,13 @@ component (builtin + removable, registry order), each as its serde value:
                "Sprite":{...}}}
 ```
 
-Hidden registry entries (`Name`, `GlobalTransform2D`, `BehaviorState`) are
-internal and not listed in `components` — `Name` is the top-level `name`
-field. A component that fails to serialize contributes the string
-`"!serialize error: <e>"` for its key so the map stays total.
+Hidden registry entries (`GlobalTransform2D`, `BehaviorState`) are internal
+and not listed in `components`. `Name` is an editable registry component
+since #32, but `describe` still filters it out of `components` — the name is
+surfaced exactly once, as the top-level `name` field (it is the API's entity
+address; a duplicate component entry could diverge from it). A component
+that fails to serialize contributes the string `"!serialize error: <e>"` for
+its key so the map stays total.
 
 ### `selection`
 

@@ -250,3 +250,23 @@ fn test_ambiguous_name_error_carries_matches() {
     assert_eq!(error["kind"], "ambiguous_name");
     assert_eq!(error["matches"].as_array().expect("matches").len(), 2);
 }
+
+// ==================== Name filtering (#32) ====================
+
+#[test]
+fn test_describe_omits_name_component_but_keeps_top_level_name() {
+    // Name became an editable registry component in #32, so
+    // capture_all_values now emits it — but describe must keep surfacing the
+    // name ONLY as the record's top-level field (the API's entity address),
+    // never as a duplicate component entry.
+    let mut world = World::new();
+    named_entity(&mut world, "Player");
+    let selection = Selection::new();
+    let ctx = ctx(&world, &selection);
+
+    let data = dispatch_data("describe Player", &ctx);
+    assert_eq!(data["name"], Value::String("Player".into()));
+    let components = data["components"].as_object().expect("components object");
+    assert!(!components.contains_key("Name"), "Name must not appear as a component");
+    assert!(components.contains_key("Transform2D"), "real components still listed");
+}

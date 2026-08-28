@@ -126,6 +126,14 @@ fn render_inspector_editable(
         texture_display,
     };
 
+    // A Name edit landing this frame must trigger the same ambiguity
+    // warning as a hierarchy F2 rename (kimi batch-2 F1) — snapshot before,
+    // compare after.
+    let name_before = ctx
+        .world
+        .get::<ecs::Name>(entity_id)
+        .map(|n| n.as_str().to_string());
+
     // Every per-component block (field editors, undo-recorded writeback,
     // remove buttons, read-only fallbacks) is generated from the editor's
     // component registry — adding a component to the registry is all it
@@ -144,6 +152,14 @@ fn render_inspector_editable(
         &mut extras,
     );
     y = next_y;
+
+    let name_after = ctx
+        .world
+        .get::<ecs::Name>(entity_id)
+        .map(|n| n.as_str().to_string());
+    if let Some(new_name) = name_after.filter(|after| Some(after) != name_before.as_ref()) {
+        super::warn_if_name_ambiguous(editor, ctx.world, &new_name);
+    }
 
     // --- [+ Add Component] button ---
     y += line_height;

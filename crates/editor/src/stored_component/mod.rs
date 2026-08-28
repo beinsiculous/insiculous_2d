@@ -19,11 +19,11 @@ use ui::UIContext;
 use crate::behavior_editor::edit_behavior;
 use crate::commands::{
     CommandHistory, RemoveComponentCommand, SetAudioSourceCommand, SetBehaviorCommand,
-    SetColliderCommand, SetRigidBodyCommand, SetSpriteCommand, SetTransformCommand,
-    SetUiButtonCommand, SetUiLabelCommand, SetUiPanelCommand,
+    SetColliderCommand, SetNameCommand, SetRigidBodyCommand, SetSpriteCommand,
+    SetTransformCommand, SetUiButtonCommand, SetUiLabelCommand, SetUiPanelCommand,
 };
 use crate::component_editors::{
-    edit_audio_source, edit_collider, edit_rigid_body, edit_sprite, edit_transform2d,
+    edit_audio_source, edit_collider, edit_name, edit_rigid_body, edit_sprite, edit_transform2d,
 };
 use crate::ui_component_editors::{edit_ui_button, edit_ui_label, edit_ui_panel};
 use crate::inspector::{inspect_component, InspectorStyle};
@@ -140,7 +140,7 @@ impl ComponentCategory {
 ///
 /// Sections:
 /// - `hidden`: captured for undo/redo only (always present on entities,
-///   never inspected or removable) — e.g. `GlobalTransform2D`, `Name`.
+///   never inspected or removable) — e.g. `GlobalTransform2D`.
 /// - `builtin`: captured AND inspected, but never addable/removable —
 ///   e.g. `Transform2D`.
 /// - `removable`: full lifecycle (capture, inspect, add, remove), each
@@ -330,9 +330,10 @@ macro_rules! editor_component_registry {
         /// half of `inspect_all_components`, consumed by the command API's
         /// `describe` query. A component that fails to serialize contributes
         /// an error string so the result stays total. Hidden registry
-        /// entries (Name, GlobalTransform2D, BehaviorState) are internal
-        /// and not emitted; `Name` is surfaced by the API as a top-level
-        /// entity field instead.
+        /// entries (GlobalTransform2D, BehaviorState) are internal and not
+        /// emitted. `Name` IS a registry component (editable since #32) and
+        /// appears here; the `describe` query filters it out because the API
+        /// surfaces the name as a top-level entity field instead.
         pub fn capture_all_values(
             world: &World,
             entity: EntityId,
@@ -358,10 +359,10 @@ macro_rules! editor_component_registry {
 editor_component_registry! {
     hidden: [
         GlobalTransform2D => GlobalTransform2D,
-        Name              => Name,
         BehaviorState     => BehaviorState,
     ],
     builtin: [
+        Name        => Name { edit edit_name => SetNameCommand },
         Transform2D => common::Transform2D { edit edit_transform2d => SetTransformCommand },
     ],
     removable: [

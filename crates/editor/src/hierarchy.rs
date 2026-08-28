@@ -36,6 +36,18 @@ pub enum NameResolution {
     Ambiguous(Vec<EntityId>),
 }
 
+/// Normalize a rename commit: whitespace-trimmed, with empty and unchanged
+/// results rejected — an entity can never be stranded with a blank `Name`,
+/// and a no-op commit records no undo entry (kimi F6).
+pub fn normalized_rename(current: Option<&str>, raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || Some(trimmed) == current {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
 /// Hierarchy panel for displaying entity tree structure.
 #[derive(Debug, Default)]
 pub struct HierarchyPanel {
@@ -43,6 +55,19 @@ pub struct HierarchyPanel {
     collapsed: HashSet<EntityId>,
     /// Vertical scroll for long entity lists (audit §3.3).
     pub scroll: crate::ScrollState,
+    /// Row currently in inline-rename mode (F2), if any.
+    renaming: Option<EntityId>,
+}
+
+/// What one hierarchy render pass reported back to the host.
+#[derive(Debug, Default)]
+pub struct HierarchyResponse {
+    /// Entities clicked for selection this frame.
+    pub clicked: Vec<EntityId>,
+    /// An inline rename committed this frame (entity, new text). The text is
+    /// raw — the host trims it, ignores empty commits, and records the undo
+    /// command.
+    pub rename_committed: Option<(EntityId, String)>,
 }
 
 /// Shared state for one hierarchy render pass, threaded through the node recursion.
@@ -53,6 +78,7 @@ struct NodeRenderCtx<'a> {
     theme: &'a EditorTheme,
     bounds: common::Rect,
     clicked_entities: &'a mut Vec<EntityId>,
+    rename_committed: &'a mut Option<(EntityId, String)>,
 }
 
 impl HierarchyPanel {
@@ -61,6 +87,7 @@ impl HierarchyPanel {
         Self {
             collapsed: HashSet::new(),
             scroll: crate::ScrollState::default(),
+            renaming: None,
         }
     }
 
@@ -141,9 +168,27 @@ impl HierarchyPanel {
         }
     }
 
+    /// Widget id of an entity's inline rename field — shared by the panel's
+    /// render pass and the host's `focus_text_input` call so F2 lands in an
+    /// already-focused field.
+    pub fn rename_widget_id(entity: EntityId) -> String {
+        format!("hierarchy_rename_{}", entity.value())
+    }
+
+    /// Enter inline-rename mode for `entity` (the host focuses the field via
+    /// `UIContext::focus_text_input` with the same widget id).
+    pub fn begin_rename(&mut self, entity: EntityId) {
+        self.renaming = Some(entity);
+    }
+
+    /// Row currently in inline-rename mode, if any.
+    pub fn renaming(&self) -> Option<EntityId> {
+        self.renaming
+    }
+
     /// Render the hierarchy panel.
     ///
-    /// Returns the list of entities that were clicked for selection.
+    /// Returns the clicks and any committed inline rename.
     pub fn render(
         &mut self,
         ui: &mut ui::UIContext,
@@ -151,8 +196,18 @@ impl HierarchyPanel {
         selection: &mut Selection,
         bounds: common::Rect,
         theme: &EditorTheme,
-    ) -> Vec<EntityId> {
+    ) -> HierarchyResponse {
         let mut clicked_entities = Vec::new();
+        let mut rename_committed = None;
+
+        // A renamed entity that no longer exists (deleted mid-rename, or a
+        // scene swap) must not leave the panel armed — a recycled id could
+        // otherwise open a brand-new entity in rename mode (kimi F2).
+        if let Some(renaming) = self.renaming {
+            if world.get_entity(&renaming).is_err() {
+                self.renaming = None;
+            }
+        }
 
         // Get root entities (no parent) and sort by ID for consistent ordering
         let mut roots = world.get_root_entities();
@@ -165,6 +220,7 @@ impl HierarchyPanel {
             theme,
             bounds,
             clicked_entities: &mut clicked_entities,
+            rename_committed: &mut rename_committed,
         };
 
         // Render each root and its descendants with top padding, offset by
@@ -183,7 +239,7 @@ impl HierarchyPanel {
         }
         self.scroll.end_frame(y - top + BASE_PADDING, bounds.height);
 
-        clicked_entities
+        HierarchyResponse { clicked: clicked_entities, rename_committed }
     }
 
     /// Render a single node and its children recursively.
@@ -224,16 +280,20 @@ impl HierarchyPanel {
             ctx.ui.rect(row_rect, ctx.theme.selection_fill);
         }
 
-        // Check arrow interaction FIRST for entities with children
+        // Check arrow interaction FIRST for entities with children. The
+        // arrow goes inert while this row is being renamed — collapsing the
+        // tree under an active text field would reflow it mid-edit (kimi F3).
         let mut arrow_clicked = false;
         if has_children {
-            let arrow_rect = common::Rect::new(x, y, ARROW_WIDTH, ROW_HEIGHT);
-            let arrow_id = format!("hierarchy_arrow_{}", entity.value());
-            let arrow_interaction = ctx.ui.interact(arrow_id.as_str(), arrow_rect, true);
+            if self.renaming != Some(entity) {
+                let arrow_rect = common::Rect::new(x, y, ARROW_WIDTH, ROW_HEIGHT);
+                let arrow_id = format!("hierarchy_arrow_{}", entity.value());
+                let arrow_interaction = ctx.ui.interact(arrow_id.as_str(), arrow_rect, true);
 
-            if arrow_interaction.clicked {
-                self.toggle_expanded(entity);
-                arrow_clicked = true;
+                if arrow_interaction.clicked {
+                    self.toggle_expanded(entity);
+                    arrow_clicked = true;
+                }
             }
 
             // Draw arrow (baseline near bottom of row)
@@ -241,27 +301,53 @@ impl HierarchyPanel {
             ctx.ui.label(arrow, Vec2::new(x, y + ROW_HEIGHT - 4.0));
         }
 
-        // Row interaction - use area after arrow for entities with children
-        let row_interact_x = if has_children { x + ARROW_WIDTH } else { bounds.x };
-        let row_interact_width = bounds.x + bounds.width - row_interact_x;
-        let row_interact_rect = common::Rect::new(row_interact_x, y, row_interact_width, ROW_HEIGHT);
-
-        let row_id = format!("hierarchy_row_{}", entity.value());
-        let row_interaction = ctx.ui.interact(row_id.as_str(), row_interact_rect, true);
-
-        if row_interaction.clicked && !arrow_clicked {
-            ctx.clicked_entities.push(entity);
-        }
-
-        // Hover highlight (full row width for visual consistency)
-        if row_interaction.state == ui::WidgetState::Hovered && !is_selected {
-            ctx.ui.rect(row_rect, ctx.theme.hover_fill);
-        }
-
-        // Entity name (baseline near bottom of row)
-        let name = Self::entity_display_name(ctx.world, entity);
         let name_x = x + if has_children { ARROW_WIDTH } else { 0.0 };
-        ctx.ui.label(&name, Vec2::new(name_x, y + ROW_HEIGHT - 4.0));
+
+        if self.renaming == Some(entity) {
+            // Inline rename replaces the label AND the row's click handling —
+            // the text field owns the row while it is open.
+            let rename_id = Self::rename_widget_id(entity);
+            let field_rect = ui::Rect::new(
+                name_x,
+                y + 1.0,
+                (bounds.x + bounds.width - name_x - BASE_PADDING).max(60.0),
+                ROW_HEIGHT - 2.0,
+            );
+            let current = ctx
+                .world
+                .get::<Name>(entity)
+                .map(|n| n.as_str().to_string())
+                .unwrap_or_default();
+            if let Some(committed) = ctx.ui.text_input(rename_id.as_str(), &current, field_rect) {
+                self.renaming = None;
+                *ctx.rename_committed = Some((entity, committed));
+            } else if !ctx.ui.is_focused(rename_id.as_str()) {
+                // Escape (or focus lost without a commit) — plain cancel.
+                self.renaming = None;
+            }
+        } else {
+            // Row interaction - use area after arrow for entities with children
+            let row_interact_x = if has_children { x + ARROW_WIDTH } else { bounds.x };
+            let row_interact_width = bounds.x + bounds.width - row_interact_x;
+            let row_interact_rect =
+                common::Rect::new(row_interact_x, y, row_interact_width, ROW_HEIGHT);
+
+            let row_id = format!("hierarchy_row_{}", entity.value());
+            let row_interaction = ctx.ui.interact(row_id.as_str(), row_interact_rect, true);
+
+            if row_interaction.clicked && !arrow_clicked {
+                ctx.clicked_entities.push(entity);
+            }
+
+            // Hover highlight (full row width for visual consistency)
+            if row_interaction.state == ui::WidgetState::Hovered && !is_selected {
+                ctx.ui.rect(row_rect, ctx.theme.hover_fill);
+            }
+
+            // Entity name (baseline near bottom of row)
+            let name = Self::entity_display_name(ctx.world, entity);
+            ctx.ui.label(&name, Vec2::new(name_x, y + ROW_HEIGHT - 4.0));
+        }
 
         // Render children if expanded
         let mut next_y = y + ROW_HEIGHT;
@@ -279,261 +365,3 @@ impl HierarchyPanel {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use ecs::World;
-
-    fn entity(id: u64) -> EntityId {
-        EntityId::with_generation(id, 1)
-    }
-
-    // ==================== Name resolution ====================
-
-    #[test]
-    fn test_resolve_by_name_inverse_of_display_name() {
-        use ecs::sprite_components::Name;
-        let mut world = World::new();
-        let named = world.create_entity();
-        world.add_component(&named, Name::new("Player")).ok();
-        let other = world.create_entity();
-        world.add_component(&other, Name::new("Player")).ok();
-        let unnamed = world.create_entity();
-
-        // A unique name round-trips: display -> resolve.
-        world.remove_component::<Name>(&other).ok();
-        let display = HierarchyPanel::entity_display_name(&world, named);
-        assert_eq!(HierarchyPanel::resolve_by_name(&world, &display), NameResolution::One(named));
-
-        // Synthesized display names are NOT addresses.
-        let synthesized = HierarchyPanel::entity_display_name(&world, unnamed);
-        assert_eq!(HierarchyPanel::resolve_by_name(&world, &synthesized), NameResolution::None);
-
-        // Duplicates report ambiguity instead of first-match.
-        world.add_component(&other, Name::new("Player")).ok();
-        match HierarchyPanel::resolve_by_name(&world, "Player") {
-            NameResolution::Ambiguous(matches) => assert_eq!(matches.len(), 2),
-            other => panic!("expected Ambiguous, got {other:?}"),
-        }
-    }
-
-    // ==================== Scrolling ====================
-
-    #[test]
-    fn test_hierarchy_scrolls_rows_with_wheel_in_bounds() {
-        // Audit §3.3: past ~30 entities rows were invisible AND the panel
-        // ignored the wheel. Wheel input inside the panel bounds must move
-        // the scroll offset so later rows lay out inside the panel.
-        use input::InputEvent;
-
-        let mut world = World::new();
-        for _ in 0..40 {
-            world.create_entity();
-        }
-        let mut panel = HierarchyPanel::new();
-        let mut selection = Selection::new();
-        let bounds = common::Rect::new(0.0, 0.0, 200.0, 100.0);
-        let theme = crate::theme::EditorTheme::default();
-
-        // Frame 1 measures content height (no wheel yet). NOTE the input
-        // lifecycle: process events at frame START, end_frame (which clears
-        // the per-frame wheel delta) after the UI consumed it.
-        let mut input = input::InputHandler::new();
-        input.queue_event(InputEvent::MouseMoved(50.0, 50.0));
-        input.process_queued_events();
-        let mut ui = ui::UIContext::new();
-        ui.begin_frame(&input, glam::Vec2::new(800.0, 600.0));
-        panel.render(&mut ui, &world, &mut selection, bounds, &theme);
-        ui.end_frame();
-        input.end_frame();
-        assert_eq!(panel.scroll.offset(), 0.0);
-
-        // Frame 2: wheel down inside the bounds scrolls.
-        input.queue_event(InputEvent::MouseWheelScrolled(-2.0));
-        input.process_queued_events();
-        ui.begin_frame(&input, glam::Vec2::new(800.0, 600.0));
-        panel.render(&mut ui, &world, &mut selection, bounds, &theme);
-        ui.end_frame();
-        input.end_frame();
-        assert!(panel.scroll.offset() > 0.0, "wheel in bounds must scroll the panel");
-
-        // Frame 3: wheel outside the bounds is ignored.
-        let before = panel.scroll.offset();
-        input.queue_event(InputEvent::MouseMoved(500.0, 500.0));
-        input.queue_event(InputEvent::MouseWheelScrolled(-2.0));
-        input.process_queued_events();
-        ui.begin_frame(&input, glam::Vec2::new(800.0, 600.0));
-        panel.render(&mut ui, &world, &mut selection, bounds, &theme);
-        ui.end_frame();
-        input.end_frame();
-        assert_eq!(panel.scroll.offset(), before, "wheel outside the panel is not ours");
-    }
-
-    // ==================== Expand/Collapse State Tests ====================
-
-    #[test]
-    fn test_default_expanded() {
-        let panel = HierarchyPanel::new();
-        let e1 = entity(1);
-
-        // Entities are expanded by default
-        assert!(panel.is_expanded(e1));
-    }
-
-    #[test]
-    fn test_toggle_collapse() {
-        let mut panel = HierarchyPanel::new();
-        let e1 = entity(1);
-
-        // Initially expanded
-        assert!(panel.is_expanded(e1));
-
-        // Toggle to collapse
-        panel.toggle_expanded(e1);
-        assert!(!panel.is_expanded(e1));
-
-        // Toggle to expand again
-        panel.toggle_expanded(e1);
-        assert!(panel.is_expanded(e1));
-    }
-
-    #[test]
-    fn test_collapse_persists() {
-        let mut panel = HierarchyPanel::new();
-        let e1 = entity(1);
-        let e2 = entity(2);
-
-        // Collapse e1
-        panel.collapse(e1);
-        assert!(!panel.is_expanded(e1));
-        assert!(panel.is_expanded(e2)); // e2 still expanded
-
-        // Expand e1
-        panel.expand(e1);
-        assert!(panel.is_expanded(e1));
-    }
-
-    #[test]
-    fn test_multiple_entities_independent_state() {
-        let mut panel = HierarchyPanel::new();
-        let e1 = entity(1);
-        let e2 = entity(2);
-        let e3 = entity(3);
-
-        panel.collapse(e1);
-        panel.collapse(e3);
-
-        assert!(!panel.is_expanded(e1));
-        assert!(panel.is_expanded(e2));
-        assert!(!panel.is_expanded(e3));
-    }
-
-    // ==================== Name Resolution Tests ====================
-
-    #[test]
-    fn test_name_from_name_component() {
-        let mut world = World::new();
-        let e = world.create_entity();
-        world.add_component(&e, Name::new("Player")).ok();
-        world.add_component(&e, Sprite::default()).ok(); // Also has sprite
-
-        // Name component takes priority
-        let name = HierarchyPanel::entity_display_name(&world, e);
-        assert_eq!(name, "Player");
-    }
-
-    #[test]
-    fn test_name_fallback_sprite() {
-        let mut world = World::new();
-        let e = world.create_entity();
-        world.add_component(&e, Sprite::default()).ok();
-
-        let name = HierarchyPanel::entity_display_name(&world, e);
-        assert!(name.starts_with("Sprite (Entity"));
-    }
-
-    #[test]
-    fn test_name_fallback_rigidbody() {
-        let mut world = World::new();
-        let e = world.create_entity();
-        world.add_component(&e, RigidBody::default()).ok();
-
-        let name = HierarchyPanel::entity_display_name(&world, e);
-        assert!(name.starts_with("RigidBody (Entity"));
-    }
-
-    #[test]
-    fn test_name_fallback_entity_id() {
-        let mut world = World::new();
-        let e = world.create_entity();
-
-        let name = HierarchyPanel::entity_display_name(&world, e);
-        assert!(name.starts_with("Entity"));
-    }
-
-    // ==================== Tree Structure Tests ====================
-
-    #[test]
-    fn test_hierarchy_panel_new() {
-        let panel = HierarchyPanel::new();
-        assert!(panel.collapsed.is_empty());
-    }
-
-    #[test]
-    fn test_root_entities_rendering_order() {
-        // This test verifies the logic without actual UI rendering
-        let mut world = World::new();
-        let root1 = world.create_entity();
-        let root2 = world.create_entity();
-        let child = world.create_entity();
-
-        world.set_parent(child, root1).unwrap();
-
-        let roots = world.get_root_entities();
-
-        // Should have 2 root entities
-        assert_eq!(roots.len(), 2);
-        assert!(roots.contains(&root1));
-        assert!(roots.contains(&root2));
-        assert!(!roots.contains(&child));
-    }
-
-    #[test]
-    fn test_collapsed_hides_children() {
-        let mut panel = HierarchyPanel::new();
-        let mut world = World::new();
-
-        let parent = world.create_entity();
-        let child = world.create_entity();
-        world.set_parent(child, parent).unwrap();
-
-        // When parent is expanded, children are visible (is_expanded returns true)
-        assert!(panel.is_expanded(parent));
-
-        // When parent is collapsed, children are hidden
-        panel.collapse(parent);
-        assert!(!panel.is_expanded(parent));
-    }
-
-    #[test]
-    fn test_deep_hierarchy_structure() {
-        let mut world = World::new();
-
-        let grandparent = world.create_entity();
-        let parent = world.create_entity();
-        let child = world.create_entity();
-
-        world.set_parent(parent, grandparent).unwrap();
-        world.set_parent(child, parent).unwrap();
-
-        // Verify hierarchy structure
-        let roots = world.get_root_entities();
-        assert_eq!(roots.len(), 1);
-        assert!(roots.contains(&grandparent));
-
-        let descendants = world.get_descendants(grandparent);
-        assert_eq!(descendants.len(), 2);
-        assert!(descendants.contains(&parent));
-        assert!(descendants.contains(&child));
-    }
-}

@@ -22,7 +22,7 @@ pub fn render_panel_content(
 
     match panel_id {
         PanelId::SCENE_VIEW => render_scene_view(editor, ctx, bounds),
-        PanelId::HIERARCHY => render_hierarchy(editor, ctx, bounds),
+        PanelId::HIERARCHY => render_hierarchy(editor, ctx, bounds, command_history),
         PanelId::INSPECTOR => render_inspector(editor, ctx, bounds, command_history),
         PanelId::ASSET_BROWSER => {
             asset_browser::render_asset_browser(editor, ctx, bounds, command_history)
@@ -137,9 +137,15 @@ fn render_scene_view(editor: &EditorContext, ctx: &mut GameContext, bounds: comm
     );
 }
 
-/// Hierarchy — tree view with click-to-select and Ctrl toggle.
-fn render_hierarchy(editor: &mut EditorContext, ctx: &mut GameContext, bounds: common::Rect) {
-    let clicked = editor.hierarchy.render(
+/// Hierarchy — tree view with click-to-select, Ctrl toggle, and F2 inline
+/// rename (committed renames are undo-recorded here).
+fn render_hierarchy(
+    editor: &mut EditorContext,
+    ctx: &mut GameContext,
+    bounds: common::Rect,
+    command_history: &mut CommandHistory,
+) {
+    let response = editor.hierarchy.render(
         ctx.ui,
         ctx.world,
         &mut editor.selection,
@@ -147,6 +153,11 @@ fn render_hierarchy(editor: &mut EditorContext, ctx: &mut GameContext, bounds: c
         &editor.theme,
     );
 
+    if let Some((entity, raw)) = response.rename_committed {
+        apply_hierarchy_rename(editor, ctx, command_history, entity, &raw);
+    }
+
+    let clicked = response.clicked;
     if !clicked.is_empty() {
         editor.close_add_component_popup();
     }
@@ -164,6 +175,53 @@ fn render_hierarchy(editor: &mut EditorContext, ctx: &mut GameContext, bounds: c
     }
 }
 
+
+/// Apply a committed inline rename as one undoable command. An empty or
+/// unchanged commit is a no-op (an entity is never stranded with a blank
+/// Name — kimi F6); a name now shared by several entities gets a status-bar
+/// warning because it stops being a usable command-API address.
+fn apply_hierarchy_rename(
+    editor: &mut EditorContext,
+    ctx: &mut GameContext,
+    command_history: &mut CommandHistory,
+    entity: ecs::EntityId,
+    raw: &str,
+) {
+    let current = ctx
+        .world
+        .get::<ecs::Name>(entity)
+        .map(|n| n.as_str().to_string());
+    let Some(new_name) = editor::normalized_rename(current.as_deref(), raw) else {
+        return;
+    };
+    let cmd = editor::commands::RenameEntityCommand::new(
+        ctx.world,
+        entity,
+        ecs::Name::new(new_name.clone()),
+    );
+    command_history.execute(Box::new(cmd), ctx.world);
+    warn_if_name_ambiguous(editor, ctx.world, &new_name);
+}
+
+/// Status-bar warning when a just-committed name is shared by several
+/// entities — it stops being a usable command-API address. Called from BOTH
+/// rename paths: the hierarchy F2 commit and the inspector Name field
+/// (kimi batch-2 F1).
+pub(super) fn warn_if_name_ambiguous(
+    editor: &mut EditorContext,
+    world: &ecs::World,
+    name: &str,
+) {
+    if let editor::NameResolution::Ambiguous(matches) =
+        HierarchyPanel::resolve_by_name(world, name)
+    {
+        editor.status_bar.show_message(format!(
+            "Warning: {} entities are now named \"{}\" — the name is ambiguous for API addressing",
+            matches.len(),
+            name
+        ));
+    }
+}
 
 /// Fallback for unknown panels.
 fn render_default(ctx: &mut GameContext, content_x: f32, y: f32) {

@@ -54,7 +54,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 
 ### Scene + selection
 - `selection.rs` — Selection set (primary + multi-select; insertion-ordered IndexSet, deterministic primary fallback)
-- `hierarchy.rs` — Hierarchy panel tree view
+- `hierarchy.rs` — Hierarchy panel tree view + F2 inline rename (`begin_rename`/`rename_widget_id`/`HierarchyResponse`, `normalized_rename` guard); tests in `hierarchy_tests.rs`
 - `viewport.rs`, `viewport_input.rs` — Scene viewport with camera pan/zoom
 - `picking/` — EntityPicker, PickableEntity (AABB from absolute size — flip scales stay clickable), SelectionRect, screen_to_world()
 - `selection_outline.rs` — viewport selection/hover outlines (consumes the picking `PickableEntity` list; pure `hover_entity_at` hit test; colors via `theme.selection_outline_colors()`)
@@ -63,7 +63,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 - `collider_overlay.rs` — Collider outline overlay for the scene view (mirrors rapier placement: offset is body-local, Transform2D.scale ignored); toggled via `EditorContext::toggle_colliders()` / C key
 
 ### Persistence + commands
-- `commands/` — EditorCommand trait + CommandHistory (`mod.rs`; **dirty source of truth**: id-of-top watermark, `is_dirty()`/`mark_saved()`, merges reassign the top a fresh id AND clear redo; dirty_tests.rs is the contract), entity commands, component commands, `impl_set_component_command!` macro for the 5 Set*Commands (`set_commands.rs`); `push_already_executed`, `try_merge_or_push`
+- `commands/` — EditorCommand trait + CommandHistory (`mod.rs`; **dirty source of truth**: id-of-top watermark, `is_dirty()`/`mark_saved()`, merges reassign the top a fresh id AND clear redo; dirty_tests.rs is the contract), entity commands, component commands, `impl_set_component_command!` macro for the Set*Commands incl. SetNameCommand (`set_commands.rs`, + `RenameEntityCommand` for entities without a Name; name_tests.rs); `push_already_executed`, `try_merge_or_push`
 - `stored_component/` — **Component registry macro (single source of truth). ADD NEW EDITOR-VISIBLE COMPONENTS HERE** — one line in `editor_component_registry!` generates StoredComponent, ComponentKind (add/capture/remove/is_present/display_name/category), capture_all_components, registered_component_type_ids, inspect_all_components, AND edit_all_components (the editable inspector — entries carry `{ edit edit_x => SetXCommand }` or `{ readonly }`)
 - `world_snapshot.rs` — WorldSnapshot save/restore (used by play/stop): registry-driven capture (auto-includes new registry types) + explicit Parent/Children; unregistered component types are detected (`uncaptured_types`/`loss_warning`/`drop_report`) and lost on restore
 - Scene save/load file I/O lives in `editor_integration` (via `engine_core::scene_serializer`), not in this crate

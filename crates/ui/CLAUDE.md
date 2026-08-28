@@ -13,7 +13,7 @@ ui.end_frame(); // collects draw commands
 ```
 
 ## File Map
-- `context/` — UIContext: `mod.rs` (struct, lifecycle incl. `begin_frame_dt`, fonts, primitives incl. `image`/`rect_border`), `text.rs` (label/measure), `widgets.rs` (button, slider, checkbox), `text_input.rs` (float_input + free-form text_input: select-all-on-focus, cursor, selection, arrows/Home/End, key repeat; commits on Enter/Tab/click-away, Escape cancels), `tests.rs`
+- `context/` — UIContext: `mod.rs` (struct, lifecycle incl. `begin_frame_dt`, fonts, primitives incl. `image`/`rect_border`), `text.rs` (label/measure), `widgets.rs` (button, slider, checkbox), `text_input.rs` (float_input + free-form text_input: select-all-on-focus, cursor, selection, arrows/Home/End, key repeat; commits on Enter/Tab/click-away, Escape cancels), `tests.rs` (+ `focus_text_input`/`is_focused` programmatic focus for F2-style inline renames; focus_tests.rs)
 - `font/` — `mod.rs` (FontManager facade: loading/storage), `glyph_cache.rs` (GlyphCache; bitmaps shared via `Arc<[u8]>`), `layout.rs` (text layout/measurement)
 - `draw/` — Draw commands (`command.rs`) + `DrawList` with **UiLayer z-bands** (`mod.rs`: Content/PanelChrome/Floating/Modal/Tooltip/DragGhost, 900+index*15 depth bands; elevated layers flush after Content at `end_frame`, so a Floating popup physically escapes a panel clip pair; pre-flush `commands()` = Content only — lifecycle doc on the accessors; `begin_overlay` = Floating sugar, `begin_overlay_in` picks the band)
 - `interaction/` — Widget state, mouse hit detection, focus, per-widget persistent state (`edit: TextEditState`); `wants_mouse()` = a widget owns the current press→release gesture (tests in `interaction/tests.rs`)

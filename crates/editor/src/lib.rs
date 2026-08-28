@@ -48,6 +48,8 @@ mod gizmo;
 mod gizmo_math;
 mod grid;
 mod hierarchy;
+#[cfg(test)]
+mod hierarchy_tests;
 mod inspector;
 mod menu;
 mod picking;
@@ -97,7 +99,7 @@ pub use text_field::{display_string, display_u32, edit_string};
 pub use ui_component_editors::{edit_ui_button, edit_ui_label, edit_ui_panel};
 pub use editor_input::{EditorAction, EditorInputMapping, EditorInputState};
 pub use gizmo::{Gizmo, GizmoMode, GizmoPalette};
-pub use hierarchy::{HierarchyPanel, NameResolution};
+pub use hierarchy::{normalized_rename, HierarchyPanel, HierarchyResponse, NameResolution};
 pub use grid::{GridColors, GridConfig, GridRenderer};
 pub use inspector::{component_value, inspect_component, InspectorStyle};
 pub use menu::{Menu, MenuBar, MenuItem};
