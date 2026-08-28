@@ -1,7 +1,6 @@
 //! GPU sprite pipeline: instanced quad rendering into the HDR target.
 
 use std::collections::HashMap;
-use std::sync::Arc;
 use wgpu::{Device, Queue, RenderPipeline, BindGroupLayout, Buffer, CommandEncoder};
 use wgpu::util::DeviceExt;
 
@@ -33,8 +32,12 @@ pub struct SpritePipeline {
     /// Change detector + staging buffer: skips the instance upload when
     /// nothing on screen changed (GPP-15)
     instance_cache: super::InstanceCache,
-    /// Device reference for creating bind groups and growing buffers
-    device: Arc<Device>,
+    /// Device reference for creating bind groups and growing buffers.
+    /// A plain clone — wgpu's `Device` is internally reference-counted, so
+    /// wrapping it in an `Arc` was a redundant refcount (and `Arc<Device>`
+    /// trips clippy's `arc_with_non_send_sync` on wasm, where `Device` is
+    /// not `Send`).
+    device: Device,
 }
 
 impl SpritePipeline {
@@ -43,7 +46,6 @@ impl SpritePipeline {
     /// `initial_sprite_capacity` sizes the instance buffer; it grows
     /// automatically if more sprites are submitted in a frame.
     pub fn new(device: &Device, initial_sprite_capacity: usize) -> Self {
-        let device_arc = Arc::new(device.clone());
 
         // Create texture bind group layout
         let texture_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -218,7 +220,7 @@ impl SpritePipeline {
             camera_bind_group,
             texture_bind_group_cache: HashMap::new(),
             instance_cache: super::InstanceCache::new(),
-            device: device_arc,
+            device: device.clone(),
         }
     }
 

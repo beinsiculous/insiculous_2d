@@ -9,7 +9,6 @@
 //! camera is uploaded once per pipeline per frame. Extracting a shared
 //! `CameraBinding` is tracked in TECH_DEBT.md.
 
-use std::sync::Arc;
 
 use wgpu::{
     util::DeviceExt, BindGroup, Buffer, CommandEncoder, Device, Queue, RenderPipeline,
@@ -70,7 +69,11 @@ pub struct LinePipeline {
     camera_buffer: Buffer,
     camera_bind_group: BindGroup,
     /// Used to grow the vertex buffer when an upload exceeds its capacity.
-    device: Arc<Device>,
+    /// A plain clone — wgpu's `Device` is internally reference-counted, so
+    /// wrapping it in an `Arc` was a redundant refcount (and `Arc<Device>`
+    /// trips clippy's `arc_with_non_send_sync` on wasm, where `Device` is
+    /// not `Send`).
+    device: Device,
 }
 
 impl LinePipeline {
@@ -80,7 +83,6 @@ impl LinePipeline {
     pub const DEFAULT_CAPACITY: usize = 16_384;
 
     pub fn new(device: &Device, capacity: usize) -> Self {
-        let device_arc = Arc::new(device.clone());
 
         let camera_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Line Camera Bind Group Layout"),
@@ -174,7 +176,7 @@ impl LinePipeline {
             vertex_buffer,
             camera_buffer,
             camera_bind_group,
-            device: device_arc,
+            device: device.clone(),
         }
     }
 

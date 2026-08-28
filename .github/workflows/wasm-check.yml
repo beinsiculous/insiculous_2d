@@ -1,0 +1,44 @@
+# The wasm build guard (roadmap H8, issue #7): keeps the engine compiling —
+# and clippy-clean — for wasm32-unknown-unknown so a native-only change can't
+# silently break the live web target (the six deployed games on
+# beinsiculous.com).
+#
+# The gate is scripts/check_wasm.sh, run verbatim, so this workflow and the
+# local command cannot drift. The script deliberately skips --all-targets
+# (dev-deps don't build on wasm); its header explains why.
+#
+# No browser smoke test here on purpose: headless-shell composites nothing
+# and headless Firefox has no navigator.gpu — real WebGPU verification needs
+# a headed browser (see PROJECT_ROADMAP.md Phase H notes).
+name: wasm check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: wasm-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  wasm-check:
+    runs-on: ubuntu-latest
+    # A cold cargo build of the workspace for one target fits comfortably;
+    # the cache makes warm runs much faster.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      # No rust-toolchain file exists in this repo, so the target must be
+      # requested explicitly here.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: wasm gate (check + clippy)
+        run: scripts/check_wasm.sh

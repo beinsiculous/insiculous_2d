@@ -178,7 +178,13 @@ impl Renderer {
         // 2. The window outlives the renderer
         // 3. We control the renderer's lifetime through the game runner
         
-        // Wrap device and queue in Arc for sharing
+        // Wrap device and queue in Arc for sharing. On wasm `Device` is not
+        // `Send`, which trips `arc_with_non_send_sync` — but these Arcs are
+        // public API (`device()`/`queue()` feed engine_core's RenderManager
+        // and AssetManager across 4+ signatures), the web build is
+        // single-threaded, and unwinding the Arc there isn't worth one
+        // wasm-only lint. Decided with H8 (issue #7).
+        #[allow(clippy::arc_with_non_send_sync)]
         let device = Arc::new(device);
         let queue = Arc::new(queue);
 
