@@ -50,6 +50,9 @@ struct EditorGame<G: Game> {
     /// captured when the drag begins (applied idempotently, committed as one
     /// undo entry on release, restored verbatim on Escape).
     gizmo_drag: Option<gizmo_drag::GizmoDragState>,
+    /// Entity clipboard (Ctrl+C/X/V): captured selection-root subtrees.
+    /// Survives scene changes harmlessly — paste just recreates components.
+    clipboard: Vec<editor::ClipboardEntity>,
     /// Physics settings for scene serialization.
     physics_settings: Option<PhysicsSettings>,
     /// Editing pan/zoom saved while a play session runs (restored on Stop).
@@ -87,6 +90,7 @@ impl<G: Game> EditorGame<G> {
             entity_counter: 0,
             command_history: editor::CommandHistory::new(),
             gizmo_drag: None,
+            clipboard: Vec::new(),
             physics_settings: None,
             editing_camera: None,
             editor_font: None,
@@ -376,10 +380,8 @@ impl<G: Game> Game for EditorGame<G> {
         // 7. Gizmo interaction for the selected entity
         self.handle_gizmo(ctx, &content_areas);
 
-        // 8. Tool keyboard shortcuts (skip during play)
-        if !self.editor.is_playing() {
-            self.handle_tool_shortcuts(ctx);
-        }
+        // (Q/W/E/R tool switching moved to the event path — one shortcut
+        // system, resolved through EditorInputMapping in handle_editor_key.)
 
         // 9. Delegate to inner game (only when Playing)
         self.update_inner_game(ctx);
@@ -422,6 +424,17 @@ impl<G: Game> Game for EditorGame<G> {
     }
 
     fn on_key_released(&mut self, key: KeyCode, ctx: &mut GameContext) {
+        // Seal the arrow-nudge merge window: consecutive repeats of a held
+        // arrow merged into one NudgeCommand; releasing the key closes that
+        // entry so the next hold starts a fresh undo step.
+        if !self.editor.is_playing()
+            && matches!(
+                key,
+                KeyCode::ArrowLeft | KeyCode::ArrowRight | KeyCode::ArrowUp | KeyCode::ArrowDown
+            )
+        {
+            self.command_history.break_merge();
+        }
         self.inner.on_key_released(key, ctx);
     }
 
@@ -469,6 +482,8 @@ mod tests;
 mod api_write_tests;
 #[cfg(test)]
 mod gizmo_drag_tests;
+#[cfg(test)]
+mod shortcuts_tests;
 #[cfg(test)]
 mod picking_tests;
 #[cfg(test)]

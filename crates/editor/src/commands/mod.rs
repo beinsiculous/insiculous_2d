@@ -17,7 +17,7 @@ mod set_commands;
 pub use component_commands::{AddComponentCommand, RemoveComponentCommand, SetComponentValueCommand};
 pub use entity_commands::{CreateEntityCommand, DeleteEntityCommand, MacroCommand};
 pub use set_commands::{
-    RenameEntityCommand, SetAudioSourceCommand, SetBehaviorCommand, SetColliderCommand,
+    NudgeCommand, RenameEntityCommand, SetAudioSourceCommand, SetBehaviorCommand, SetColliderCommand,
     SetEntityTagCommand, SetNameCommand, SetRigidBodyCommand, SetSpriteCommand,
     SetTransformCommand, SetUiButtonCommand, SetUiLabelCommand, SetUiPanelCommand,
     TransformGizmoCommand,

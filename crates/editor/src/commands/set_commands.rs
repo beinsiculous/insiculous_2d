@@ -205,3 +205,73 @@ impl EditorCommand for RenameEntityCommand {
     }
 }
 
+
+// ---------------------------------------------------------------------------
+// NudgeCommand
+// ---------------------------------------------------------------------------
+
+/// One arrow-key nudge of the selection roots.
+///
+/// OS key-repeat machine-guns `on_key_pressed`, so consecutive nudges over
+/// the SAME entity set merge into one history entry (each keeps the first
+/// `old` and adopts the latest `new`); the caller seals the entry with
+/// `CommandHistory::break_merge()` on key release, giving one undo step per
+/// key hold. Being a distinct type, it can never merge into a preceding
+/// gizmo-drag entry.
+pub struct NudgeCommand {
+    /// Per entity: `(id, old_position, new_position)`
+    moves: Vec<(EntityId, glam::Vec2, glam::Vec2)>,
+}
+
+impl NudgeCommand {
+    pub fn new(moves: Vec<(EntityId, glam::Vec2, glam::Vec2)>) -> Self {
+        Self { moves }
+    }
+}
+
+impl EditorCommand for NudgeCommand {
+    fn execute(&mut self, world: &mut World) {
+        for (entity, _, new_pos) in &self.moves {
+            if let Some(t) = world.get_mut::<common::Transform2D>(*entity) {
+                t.position = *new_pos;
+            }
+        }
+    }
+
+    fn undo(&mut self, world: &mut World) {
+        for (entity, old_pos, _) in &self.moves {
+            if let Some(t) = world.get_mut::<common::Transform2D>(*entity) {
+                t.position = *old_pos;
+            }
+        }
+    }
+
+    fn display_name(&self) -> &str {
+        "Nudge"
+    }
+
+    fn try_merge(&mut self, other: &dyn EditorCommand) -> bool {
+        if let Some(other) = other.as_any().downcast_ref::<NudgeCommand>() {
+            let same_set = self.moves.len() == other.moves.len()
+                && self
+                    .moves
+                    .iter()
+                    .zip(&other.moves)
+                    .all(|(a, b)| a.0 == b.0);
+            if same_set {
+                for (mine, theirs) in self.moves.iter_mut().zip(&other.moves) {
+                    mine.2 = theirs.2;
+                }
+                return true;
+            }
+        }
+        false
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}

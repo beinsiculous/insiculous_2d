@@ -62,6 +62,9 @@ impl<G: Game> EditorGame<G> {
                     self.command_history.push_already_executed(Box::new(cmd));
                 }
             }
+            "Cut" if !self.editor.is_playing() => self.cut_selection(ctx),
+            "Copy" if !self.editor.is_playing() => self.copy_selection(ctx),
+            "Paste" if !self.editor.is_playing() => self.paste_clipboard(ctx),
             "Delete" if !self.editor.is_playing() => {
                 self.delete_selected_entities(ctx);
             }
@@ -156,21 +159,125 @@ impl<G: Game> EditorGame<G> {
         self.editor.selection.clear();
     }
 
-    /// Duplicate the primary selected entity (and its subtree), recording undo.
+    /// Duplicate the primary selected entity (and its subtree), recording
+    /// undo via `SpawnTreeCommand` — its undo removes the WHOLE duplicated
+    /// subtree (the old per-root `CreateEntityCommand` orphaned children).
     pub(super) fn duplicate_selected_entities(&mut self, ctx: &mut GameContext) {
+        use ecs::WorldHierarchyExt;
         let Some(primary) = self.editor.selection.primary() else {
             return;
         };
-        entity_ops::duplicate_selected_entities(
-            ctx.world,
-            &mut self.editor.selection,
-            &mut self.entity_counter,
-        );
-        if let Some(new_entity) = self.editor.selection.primary() {
-            if new_entity != primary {
-                let cmd = editor::commands::CreateEntityCommand::already_created(ctx.world, new_entity);
-                self.command_history.push_already_executed(Box::new(cmd));
+        let parent = ctx.world.get_parent(primary);
+        let tree = editor::capture_entity_tree(ctx.world, primary);
+        let mut cmd =
+            editor::SpawnTreeCommand::duplicate(tree, parent, crate::constants::DUPLICATE_OFFSET);
+        editor::EditorCommand::execute(&mut cmd, ctx.world);
+        if let Some(root) = cmd.spawned_root() {
+            self.editor.selection.select(root);
+        }
+        self.command_history.push_already_executed(Box::new(cmd));
+    }
+
+    /// Copy the selection roots to the entity clipboard (no world change).
+    /// Unregistered component types can't be captured — warn, never block.
+    pub(super) fn copy_selection(&mut self, ctx: &mut GameContext) {
+        let roots = entity_ops::selection_roots(ctx.world, &self.editor.selection);
+        if roots.is_empty() {
+            return;
+        }
+        let mut lost: Vec<&'static str> = Vec::new();
+        self.clipboard = roots
+            .iter()
+            .map(|&root| {
+                for name in editor::uncaptured_component_names(ctx.world, root) {
+                    if !lost.contains(&name) {
+                        lost.push(name);
+                    }
+                }
+                editor::capture_entity_tree(ctx.world, root)
+            })
+            .collect();
+        if lost.is_empty() {
+            self.editor
+                .status_bar
+                .show_message(format!("Copied {} entities", self.clipboard.len()));
+        } else {
+            self.editor.status_bar.show_message(format!(
+                "Copied {} entities — unregistered component(s) NOT captured: {}",
+                self.clipboard.len(),
+                lost.join(", ")
+            ));
+        }
+    }
+
+    /// Paste the entity clipboard as new root entities (one undo entry),
+    /// offset like a duplicate, and select the pasted roots.
+    pub(super) fn paste_clipboard(&mut self, ctx: &mut GameContext) {
+        if self.clipboard.is_empty() {
+            return;
+        }
+        let mut commands: Vec<Box<dyn editor::EditorCommand>> = Vec::new();
+        let mut new_roots: Vec<ecs::EntityId> = Vec::new();
+        for tree in self.clipboard.clone() {
+            let mut cmd =
+                editor::SpawnTreeCommand::paste(tree, None, crate::constants::DUPLICATE_OFFSET);
+            editor::EditorCommand::execute(&mut cmd, ctx.world);
+            if let Some(root) = cmd.spawned_root() {
+                new_roots.push(root);
+            }
+            commands.push(Box::new(cmd));
+        }
+        let count = commands.len();
+        match commands.len() {
+            1 => {
+                if let Some(cmd) = commands.pop() {
+                    self.command_history.push_already_executed(cmd);
+                }
+            }
+            _ => {
+                self.command_history.push_already_executed(Box::new(
+                    editor::commands::MacroCommand::new("Paste", commands),
+                ));
             }
         }
+        self.editor.selection.select_multiple(new_roots);
+        self.editor
+            .status_bar
+            .show_message(format!("Pasted {count} entities"));
+    }
+
+    /// Cut = copy + undoable WHOLE-subtree removal per selection root.
+    /// Delete's reparent-the-children semantics would be wrong here — the
+    /// clipboard holds the full subtree, so leaving promoted children
+    /// behind would duplicate them on paste.
+    pub(super) fn cut_selection(&mut self, ctx: &mut GameContext) {
+        let roots = entity_ops::selection_roots(ctx.world, &self.editor.selection);
+        if roots.is_empty() {
+            return;
+        }
+        self.copy_selection(ctx);
+        let mut commands: Vec<Box<dyn editor::EditorCommand>> = Vec::new();
+        for &root in &roots {
+            let mut cmd = editor::DeleteTreeCommand::new(ctx.world, root);
+            editor::EditorCommand::execute(&mut cmd, ctx.world);
+            commands.push(Box::new(cmd));
+        }
+        let count = commands.len();
+        match commands.len() {
+            1 => {
+                if let Some(cmd) = commands.pop() {
+                    self.command_history.push_already_executed(cmd);
+                }
+            }
+            _ => {
+                self.command_history.push_already_executed(Box::new(
+                    editor::commands::MacroCommand::new("Cut", commands),
+                ));
+            }
+        }
+        self.editor.selection.clear();
+        self.editor
+            .status_bar
+            .show_message(format!("Cut {count} entities"));
     }
 }

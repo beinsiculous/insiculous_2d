@@ -27,8 +27,10 @@ editor_integration ──→ editor, engine_core, ecs, ui, input, renderer, comm
   - `menu_actions.rs` — menu bar dispatch + shared delete/duplicate helpers
   - `scene_io.rs` — save/load/new scene (load parses + dry-runs into a scratch World BEFORE touching the live one — no failure mode costs the current scene; failures surface on status bar)
   - `api.rs` — command-API frame hook: `answer_api_lines` (headless-tested; routes queries/pure writes to editor::command_api, performs HostedWrite create — factories + viewport spawn pos — and save — through save_scene_with) + `drain_api_requests` (≤256 lines/frame, skipped during gizmo drags, stdout flushed per batch); `api_batch` on EditorGame (committed on Play, dropped on new/load scene); ship-point tests in `api_write_tests.rs`
-  - `shortcuts.rs` — keyboard shortcuts + play state transitions
-  - `viewport_interaction.rs` — picking, rectangle selection, gizmo drag
+  - `shortcuts.rs` — play state transitions + the unified key dispatch (#40): `handle_editor_key` resolves EVERY shortcut through `EditorInputMapping::resolve` and `dispatch_editor_action` executes it (play controls always intercepted; while Playing raw keys forward to the game unresolved; poll-only actions consume; gizmo-drag-live suppresses transform/existence mutations); Escape `cancel_cascade` (gizmo drag → marquee → deselect), arrow `nudge_selection` (merging NudgeCommand sealed by `break_merge` on key release = one undo per hold), Ctrl+A via `selectable_entities`
+  - `shortcuts_tests.rs` — nudge merge/seal, cancel cascade, select-all, resolve drift lock
+  - `gizmo_drag.rs` — `GizmoDragState`/`DragEntity`: per-root drag-start capture (apply/commit/cancel state); tests in `gizmo_drag_tests.rs` incl. the snap-residual regression
+  - `viewport_interaction.rs` — picking, marquee (live rect draw + Ctrl/Shift release semantics), gizmo drag apply/commit/cancel, Ctrl-hold-to-snap
 - `entity_ops.rs` — Pure entity CRUD (`&mut World` + `&mut Selection`, no UI). Component dispatch lives in `editor::ComponentKind` (registry macro). UI entities (`create_ui_label/panel/button`) get Name only — NO Transform2D (anchor+offset is their placement model)
 - `panel_renderer/` — Panel contents: `mod.rs` (dispatch, scene view, hierarchy), `inspector.rs` (thin shell: registry-generated `editor::edit_all_components()` for editing, `inspect_all_components` read-only during play, add-component popup)
 - `constants.rs` — `DEFAULT_SCENE_PATH`, `EDITOR_PREFS_PATH`, min window size, `MIN_ENTITY_SCALE`, `DUPLICATE_OFFSET`
@@ -63,7 +65,7 @@ retired.
 See `TECH_DEBT.md` (all files < 600 lines since June 2026; remaining: no file picker, menu-label string matching)
 
 ## Testing
-- 106 passing (incl. 1 compile-only doc test), 0 ignored — `cargo test -p editor_integration` (component-dispatch tests moved to the editor crate with the registry; `editor_game/time_freeze_tests.rs` locks the engine-time freeze; `editor_game/play_guard_tests.rs` locks the play-session save/new/open guards + snapshot loss warnings)
+- 123 passing (incl. 1 compile-only doc test), 0 ignored — `cargo test -p editor_integration` (component-dispatch tests moved to the editor crate with the registry; `editor_game/time_freeze_tests.rs` locks the engine-time freeze; `editor_game/play_guard_tests.rs` locks the play-session save/new/open guards + snapshot loss warnings)
 - `entity_ops` is fully headless-testable (no UI dependency)
 
 ## Godot Oracle — When Stuck

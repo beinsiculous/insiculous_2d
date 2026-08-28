@@ -46,6 +46,7 @@ pub mod fonts;
 mod editor_input;
 mod gizmo;
 mod gizmo_math;
+mod clipboard;
 mod grid;
 mod hierarchy;
 #[cfg(test)]
@@ -100,9 +101,13 @@ pub use row_layout::{
 };
 pub use text_field::{display_string, display_u32, edit_string};
 pub use ui_component_editors::{edit_ui_button, edit_ui_label, edit_ui_panel};
-pub use editor_input::{EditorAction, EditorInputMapping, EditorInputState};
+pub use editor_input::{EditorAction, EditorBinding, EditorInputMapping, EditorInputState};
 pub use gizmo::{Corner, Gizmo, GizmoHandle, GizmoInteraction, GizmoMode, GizmoPalette};
 pub use hierarchy::{normalized_rename, HierarchyPanel, HierarchyResponse, NameResolution};
+pub use clipboard::{
+    capture_entity_tree, spawn_entity_tree, uncaptured_component_names, ClipboardEntity,
+    DeleteTreeCommand, SpawnTreeCommand,
+};
 pub use grid::{render_grid_overlay, GridColors, GridConfig, GridLineKind, GridRenderer, GridSegment};
 pub use inspector::{component_value, inspect_component, InspectorStyle};
 pub use menu::{Menu, MenuBar, MenuItem};

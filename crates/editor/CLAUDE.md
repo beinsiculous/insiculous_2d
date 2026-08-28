@@ -38,7 +38,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 - `toolbar.rs` — Tool selection toolbar
 - `status_bar.rs` — Bottom status bar (22px); `show_message`/`show_error`/`clear_message`
 - `play_controls.rs`, `play_state.rs` — Play/Pause/Stop widget + state enum
-- `editor_input.rs` — Editor-only input (hotkeys, etc.)
+- `editor_input.rs` — THE editor shortcut table (#40): `EditorBinding` chord model (`Chord{key,ctrl,shift}`/`KeyAnyMods`/`Mouse` — editor-owned, engine `InputSource` untouched), `EditorInputMapping` with event-path `resolve(key,ctrl,shift)` (exact chord beats any-mods; eviction keyed by the full tuple) + poll-path `is_action_pressed/just_pressed`; every editor shortcut ships as a default binding here
 - `editor_preferences.rs` — Persisted editor prefs (camera, zoom, last scene, `PanelPrefs` panel layout via `capture_panels`/`apply_panels`)
 
 ### Inspector / components
@@ -56,10 +56,11 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 - `selection.rs` — Selection set (primary + multi-select; insertion-ordered IndexSet, deterministic primary fallback)
 - `hierarchy.rs` — Hierarchy panel tree view + F2 inline rename (`begin_rename`/`rename_widget_id`/`HierarchyResponse`, `normalized_rename` guard); tests in `hierarchy_tests.rs`
 - `viewport.rs`, `viewport_input.rs` — Scene viewport with camera pan/zoom
-- `picking/` — EntityPicker, PickableEntity (AABB from absolute size — flip scales stay clickable), SelectionRect, screen_to_world()
+- `picking/` — EntityPicker, PickableEntity (AABB from absolute size — flip scales stay clickable), screen_to_world() (SelectionRect deleted in #39 — the live marquee is ViewportInputHandler state + the caller's screen-space rect draw)
 - `selection_outline.rs` — viewport selection/hover outlines (consumes the picking `PickableEntity` list; pure `hover_entity_at` hit test; colors via `theme.selection_outline_colors()`)
-- `gizmo.rs` — Transform gizmos (translate, rotate, scale handles)
-- `grid.rs` — Background grid rendering
+- `gizmo/` — Transform gizmos (`mod.rs` + `tests.rs`): annulus rotate ring (dead-center clicks fall through to picking), cumulative interaction (`translation`/`scale_factor` from drag start, `released` flag), ratio-based multiplicative scale, `cancel()` + polled suppress-until-release latch, `render(ui, screen_pos, interactive)` clip/gating, mode-switch-mid-drag handle release
+- `grid.rs` — Authoring grid (#36): pure `grid_segments()` (LOD, subdivisions, max_lines, origin axes) + `render_grid_overlay()` drawing clipped `ui.line`s via the viewport — the collider-overlay pattern
+- `clipboard.rs` — Entity clipboard (#40): `ClipboardEntity` + `capture_entity_tree`/`spawn_entity_tree` (registry-driven, hierarchy rebuilt explicitly), `SpawnTreeCommand` (undo removes the WHOLE subtree; redo re-records the fresh root), `uncaptured_component_names` warning helper; Duplicate and Paste both flow through here
 - `collider_overlay.rs` — Collider outline overlay for the scene view (mirrors rapier placement: offset is body-local, Transform2D.scale ignored); toggled via `EditorContext::toggle_colliders()` / C key
 
 ### Persistence + commands
@@ -73,11 +74,11 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 - Component editors return `Option<ComponentEdit<T>>` (full new value + `field_hint` for undo merging) that the integration crate applies via `apply_component_edit()`
 - `EditorPlayState::Editing` → editable, `Playing` → read-only inspector, `Paused` → editable
 - Selection: `editor.selection.primary()` returns the main selected EntityId
-- Gizmo drag tracking: `gizmo_drag_start` field captures initial transform, then a single `TransformGizmo` command is pushed on release
+- Gizmo drag tracking: editor_integration's `GizmoDragState` captures start transform+collider for every selection root; frames apply `start + cumulative delta` (idempotent — what makes snapping residual-proof), ONE Macro/TransformGizmo command on release, Escape restores starts and pushes nothing
 - Theme is on `EditorContext.theme` (public field); call `theme.gizmo_palette()`, `inspector_style()`, `editable_field_style()`, `grid_colors()`, `collider_overlay_colors()` instead of hardcoding colors. Menu/Toolbar/Hierarchy `render()` take `&EditorTheme`
 
 ## Testing
-- 372 passing (incl. 3 doc tests), 0 ignored — `cargo test -p editor`
+- 438 passing (incl. 3 doc tests), 0 ignored — `cargo test -p editor`
 
 ## Godot Oracle — When Stuck
 Use `WebFetch` to read from `https://github.com/godotengine/godot/blob/master/`

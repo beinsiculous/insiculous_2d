@@ -7,10 +7,11 @@ use ecs::sprite_components::{Name, Sprite};
 use ecs::hierarchy::GlobalTransform2D;
 use ecs::ui_components::{UiButton, UiLabel, UiPanel};
 use ecs::{EntityId, World, WorldHierarchyExt};
-use editor::{capture_all_components, restore_components, Selection};
+use editor::Selection;
 use glam::Vec2;
 use physics::components::{Collider, RigidBody, RigidBodyType};
 
+#[cfg(test)]
 use crate::constants::DUPLICATE_OFFSET;
 
 // Component add/remove and the add-component popup are driven by
@@ -246,6 +247,13 @@ pub fn delete_selected_entities(world: &mut World, selection: &mut Selection) {
     selection.clear();
 }
 
+/// Every entity Ctrl+A selects — today all world entities, matching what
+/// the hierarchy shows. This helper is the single place a future
+/// editor-only-entity filter would go.
+pub fn selectable_entities(world: &World) -> Vec<EntityId> {
+    world.entities()
+}
+
 /// Selected entities with no selected ancestor — the set a multi-entity
 /// drag or nudge operates on. Moving a parent already moves its children
 /// through hierarchy propagation, so operating on a selected child of a
@@ -279,89 +287,25 @@ pub fn selection_roots(world: &World, selection: &Selection) -> Vec<EntityId> {
     roots
 }
 
-/// Duplicate the primary selected entity (and its descendants).
+/// Duplicate the primary selected entity (and its descendants) through the
+/// shared clipboard machinery: the duplicate is offset by `(20, -20)`,
+/// every copied `Name` gets " (Copy)" appended, hierarchy is preserved, and
+/// the new top-level entity is selected afterward.
 ///
-/// The duplicate is offset by `(20, -20)` and gets " (Copy)" appended to its name.
-/// Children are recursively duplicated with hierarchy preserved.
-/// The new top-level entity is selected afterward.
-pub fn duplicate_selected_entities(
-    world: &mut World,
-    selection: &mut Selection,
-    counter: &mut u32,
-) {
-    let primary = match selection.primary() {
-        Some(id) => id,
-        None => return,
+/// The undoable production path is `EditorGame::duplicate_selected_entities`
+/// (a `SpawnTreeCommand`, whose undo removes the whole subtree); this free
+/// function is the same spawn without the command wrapper — like
+/// `delete_selected_entities` above, it exists for the behavior tests.
+#[cfg(test)]
+pub fn duplicate_selected_entities(world: &mut World, selection: &mut Selection) {
+    let Some(primary) = selection.primary() else {
+        return;
     };
-
     let parent_id = world.get_parent(primary);
-    let new_entity = duplicate_entity_recursive(
-        world,
-        primary,
-        parent_id,
-        DUPLICATE_OFFSET,
-        counter,
-        true,
-    );
-
-    if let Some(entity) = new_entity {
-        selection.select(entity);
-    }
-}
-
-/// Recursively duplicate an entity and its children.
-///
-/// `offset` is applied only to the top-level entity (is_root=true).
-fn duplicate_entity_recursive(
-    world: &mut World,
-    source: EntityId,
-    new_parent: Option<EntityId>,
-    offset: Vec2,
-    counter: &mut u32,
-    is_root: bool,
-) -> Option<EntityId> {
-    *counter += 1;
-    let new_entity = world.create_entity();
-
-    // Clone all registry-known component types (hierarchy links excluded —
-    // hierarchy is rebuilt explicitly below).
-    let stored = capture_all_components(world, source);
-    restore_components(world, new_entity, &stored);
-
-    // Offset top-level duplicate's position
-    if is_root {
-        if let Some(t) = world.get_mut::<common::Transform2D>(new_entity) {
-            t.position += offset;
-        }
-    }
-
-    // Append " (Copy)" to name
-    if let Some(name) = world.get::<Name>(new_entity) {
-        let new_name = format!("{} (Copy)", name.as_str());
-        world.add_component(&new_entity, Name::new(new_name)).ok();
-    }
-
-    // Set parent for this duplicate
-    if let Some(parent) = new_parent {
-        world.set_parent(new_entity, parent).ok();
-    }
-
-    // Recurse for children
-    if let Some(children) = world.get_children(source) {
-        let child_ids: Vec<EntityId> = children.to_vec();
-        for child in child_ids {
-            duplicate_entity_recursive(
-                world,
-                child,
-                Some(new_entity),
-                Vec2::ZERO,
-                counter,
-                false,
-            );
-        }
-    }
-
-    Some(new_entity)
+    let tree = editor::capture_entity_tree(world, primary);
+    let new_entity =
+        editor::spawn_entity_tree(world, &tree, parent_id, DUPLICATE_OFFSET, Some(" (Copy)"));
+    selection.select(new_entity);
 }
 
 #[cfg(test)]

@@ -209,7 +209,7 @@ mod tests {
         let original = create_sprite_entity(&mut world, &mut sel, Vec2::new(10.0, 20.0), &mut counter);
 
         sel.select(original);
-        duplicate_selected_entities(&mut world, &mut sel, &mut counter);
+        duplicate_selected_entities(&mut world, &mut sel);
 
         let dup = sel.primary().unwrap();
         assert_ne!(dup, original);
@@ -225,7 +225,7 @@ mod tests {
         let original = create_empty_entity(&mut world, &mut sel, Vec2::new(100.0, 200.0), &mut counter);
 
         sel.select(original);
-        duplicate_selected_entities(&mut world, &mut sel, &mut counter);
+        duplicate_selected_entities(&mut world, &mut sel);
 
         let dup = sel.primary().unwrap();
         let t = world.get::<common::Transform2D>(dup).unwrap();
@@ -239,7 +239,7 @@ mod tests {
         let original = create_empty_entity(&mut world, &mut sel, Vec2::ZERO, &mut counter);
 
         sel.select(original);
-        duplicate_selected_entities(&mut world, &mut sel, &mut counter);
+        duplicate_selected_entities(&mut world, &mut sel);
 
         let dup = sel.primary().unwrap();
         assert_ne!(dup, original);
@@ -252,7 +252,7 @@ mod tests {
         let original = create_empty_entity(&mut world, &mut sel, Vec2::new(50.0, 50.0), &mut counter);
 
         sel.select(original);
-        duplicate_selected_entities(&mut world, &mut sel, &mut counter);
+        duplicate_selected_entities(&mut world, &mut sel);
 
         // Original should be untouched
         let t = world.get::<common::Transform2D>(original).unwrap();
@@ -269,7 +269,7 @@ mod tests {
 
         sel.select(parent);
         let count_before = world.entity_count();
-        duplicate_selected_entities(&mut world, &mut sel, &mut counter);
+        duplicate_selected_entities(&mut world, &mut sel);
 
         // Should have 2 new entities (parent dup + child dup)
         assert_eq!(world.entity_count(), count_before + 2);
@@ -284,7 +284,7 @@ mod tests {
         world.set_parent(_child, parent).unwrap();
 
         sel.select(parent);
-        duplicate_selected_entities(&mut world, &mut sel, &mut counter);
+        duplicate_selected_entities(&mut world, &mut sel);
 
         let dup_parent = sel.primary().unwrap();
         let dup_children = world.get_children(dup_parent);
@@ -303,7 +303,7 @@ mod tests {
         let original = create_empty_entity(&mut world, &mut sel, Vec2::ZERO, &mut counter);
 
         sel.select(original);
-        duplicate_selected_entities(&mut world, &mut sel, &mut counter);
+        duplicate_selected_entities(&mut world, &mut sel);
 
         let dup = sel.primary().unwrap();
         let name = world.get::<Name>(dup).unwrap();
@@ -318,7 +318,7 @@ mod tests {
         sel.clear();
 
         let count_before = world.entity_count();
-        duplicate_selected_entities(&mut world, &mut sel, &mut counter);
+        duplicate_selected_entities(&mut world, &mut sel);
         assert_eq!(world.entity_count(), count_before);
     }
 
