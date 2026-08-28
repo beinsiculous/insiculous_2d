@@ -213,6 +213,7 @@ impl<G: Game> EditorGame<G> {
                     log::error!("Failed to save: {}", e);
                 }
             }
+            KeyCode::KeyS => self.toggle_snap_with_feedback(),
             KeyCode::KeyN if ctrl => {
                 // Ctrl+N → New Scene
                 self.new_scene(ctx.world);

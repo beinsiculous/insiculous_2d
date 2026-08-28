@@ -217,6 +217,7 @@ impl MenuBar {
                 MenuItem::separator(),
                 MenuItem::action_with_shortcut("Toggle Grid", "G"),
                 MenuItem::action_with_shortcut("Toggle Colliders", "C"),
+                MenuItem::action_with_shortcut("Snap to Grid", "S"),
                 MenuItem::separator(),
                 MenuItem::action("Cycle Game Locale"),
                 MenuItem::action("Reset Layout"),

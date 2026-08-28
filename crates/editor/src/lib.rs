@@ -101,7 +101,7 @@ pub use row_layout::{
 pub use text_field::{display_string, display_u32, edit_string};
 pub use ui_component_editors::{edit_ui_button, edit_ui_label, edit_ui_panel};
 pub use editor_input::{EditorAction, EditorInputMapping, EditorInputState};
-pub use gizmo::{Gizmo, GizmoMode, GizmoPalette};
+pub use gizmo::{Corner, Gizmo, GizmoHandle, GizmoInteraction, GizmoMode, GizmoPalette};
 pub use hierarchy::{normalized_rename, HierarchyPanel, HierarchyResponse, NameResolution};
 pub use grid::{render_grid_overlay, GridColors, GridConfig, GridLineKind, GridRenderer, GridSegment};
 pub use inspector::{component_value, inspect_component, InspectorStyle};

@@ -29,6 +29,8 @@ impl<G: Game> EditorGame<G> {
         self.editor.menu_bar.set_checked("View", "Toggle Grid", grid);
         let colliders = self.editor.is_colliders_visible();
         self.editor.menu_bar.set_checked("View", "Toggle Colliders", colliders);
+        let snap = self.editor.is_snap_to_grid();
+        self.editor.menu_bar.set_checked("View", "Snap to Grid", snap);
     }
 
     /// Render the menu bar and dispatch any selected action.
@@ -102,6 +104,7 @@ impl<G: Game> EditorGame<G> {
             "Exit" => ctx.exit_requested = true,
             "Toggle Grid" => self.editor.toggle_grid(),
             "Toggle Colliders" => self.editor.toggle_colliders(),
+            "Snap to Grid" => self.toggle_snap_with_feedback(),
             "Inspector" | "Hierarchy" | "Asset Browser" => {
                 if let Some(id) = editor::panel_id_for_menu_label(&action) {
                     self.editor.dock_area.toggle_panel_visible(id);
@@ -120,6 +123,18 @@ impl<G: Game> EditorGame<G> {
             }
             _ => log::info!("Unhandled action: {}", action),
         }
+    }
+
+    /// Toggle snap-to-grid and report the new state on the status bar
+    /// (shared by the View-menu item and the bare `S` shortcut).
+    pub(super) fn toggle_snap_with_feedback(&mut self) {
+        self.editor.toggle_snap_to_grid();
+        let message = if self.editor.is_snap_to_grid() {
+            format!("Snap to grid: on ({}px)", self.editor.grid_size())
+        } else {
+            "Snap to grid: off".to_string()
+        };
+        self.editor.status_bar.show_message(message);
     }
 
     /// Delete all selected entities as a single undoable action.

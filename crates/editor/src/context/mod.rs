@@ -283,17 +283,29 @@ impl EditorContext {
         self.snap_to_grid = !self.snap_to_grid;
     }
 
-    /// Snap a position to the grid.
+    /// Snap a position to the grid when the snap flag is enabled.
     pub fn snap_position(&self, pos: Vec2) -> Vec2 {
         if self.snap_to_grid {
-            let grid_size = self.grid.grid_size();
-            Vec2::new(
-                (pos.x / grid_size).round() * grid_size,
-                (pos.y / grid_size).round() * grid_size,
-            )
+            self.snap_to_grid_position(pos)
         } else {
             pos
         }
+    }
+
+    /// Snap a position to the grid unconditionally (callers decide when —
+    /// e.g. the hold-Ctrl-to-snap gizmo drag). A non-positive grid size
+    /// returns the position unchanged: `GridRenderer.config` is a public
+    /// field, so the setter's ≥1 clamp is not a guarantee, and dividing by
+    /// zero here would write NaN into entity transforms.
+    pub fn snap_to_grid_position(&self, pos: Vec2) -> Vec2 {
+        let grid_size = self.grid.grid_size();
+        if grid_size <= 0.0 {
+            return pos;
+        }
+        Vec2::new(
+            (pos.x / grid_size).round() * grid_size,
+            (pos.y / grid_size).round() * grid_size,
+        )
     }
 
     // ================== Play State Methods ==================

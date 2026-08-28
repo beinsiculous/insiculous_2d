@@ -229,57 +229,75 @@ impl<G: Game> EditorGame<G> {
             }
         }
 
-        // Apply the live drag. The three channels apply uniformly — in any
-        // given mode the inactive ones are identity (translation ZERO,
-        // rotation delta 0, scale factor ONE).
+        // Apply the live drag (hold-Ctrl snaps even when the pref is off —
+        // the repo's Ctrl-snap convention, shared with scrub fields).
         if interaction.handle.is_some() {
-            if let Some(drag) = self.gizmo_drag.as_mut() {
-                let world_delta = self.editor.gizmo_delta_to_world(interaction.translation);
-                // Snap the PRIMARY's anchor and share the delta so relative
-                // offsets in a multi-selection survive a snapped drag.
-                let effective_delta = if self.editor.is_snap_to_grid() {
-                    let anchor = drag.entities[0].start.position;
-                    self.editor.snap_position(anchor + world_delta) - anchor
-                } else {
-                    world_delta
-                };
-                drag.accumulated_rotation += interaction.rotation_delta;
-
-                for entity in &drag.entities {
-                    let new_scale = (entity.start.scale * interaction.scale_factor)
-                        .max(Vec2::splat(MIN_ENTITY_SCALE));
-                    if let Some(transform) =
-                        ctx.world.get_mut::<ecs::sprite_components::Transform2D>(entity.id)
-                    {
-                        transform.position = entity.start.position + effective_delta;
-                        transform.rotation = entity.start.rotation + drag.accumulated_rotation;
-                        transform.scale = new_scale;
-                    }
-
-                    // Scale the collider alongside: physics colliders are
-                    // absolute-pixel sized (they ignore Transform2D.scale).
-                    // Rebuilt from the DRAG-START collider so per-frame
-                    // application never accumulates float drift.
-                    if interaction.scale_factor != Vec2::ONE {
-                        if let Some(start_collider) = &entity.start_collider {
-                            let applied =
-                                new_scale / entity.start.scale.max(Vec2::splat(f32::EPSILON));
-                            let mut rebuilt = start_collider.clone();
-                            scale_collider(&mut rebuilt, applied);
-                            if let Some(collider) =
-                                ctx.world.get_mut::<physics::components::Collider>(entity.id)
-                            {
-                                *collider = rebuilt;
-                            }
-                        }
-                    }
-                }
-            }
+            let ctrl_held = ctrl_held(ctx.input);
+            self.apply_gizmo_drag(ctx.world, &interaction, ctrl_held);
         }
 
         // Gizmo released — commit the whole drag as one undo entry.
         if !self.editor.gizmo.is_active() {
             self.commit_gizmo_drag(ctx.world);
+        }
+    }
+
+    /// Apply one frame of a live gizmo drag to every captured root. The
+    /// three channels apply uniformly — in any given mode the inactive ones
+    /// are identity (translation ZERO, rotation delta 0, scale factor ONE).
+    /// Everything derives from the captured drag-start values plus the
+    /// CUMULATIVE interaction, so re-applying is idempotent: with snapping
+    /// active, a slow drag accumulates in the delta (never quantized away)
+    /// and the position steps whole grid cells.
+    pub(super) fn apply_gizmo_drag(
+        &mut self,
+        world: &mut World,
+        interaction: &editor::GizmoInteraction,
+        ctrl_held: bool,
+    ) {
+        let Some(drag) = self.gizmo_drag.as_mut() else {
+            return;
+        };
+        let world_delta = self.editor.gizmo_delta_to_world(interaction.translation);
+        // Snap the PRIMARY's anchor and share the delta so relative
+        // offsets in a multi-selection survive a snapped drag.
+        let snap_active = self.editor.is_snap_to_grid() || ctrl_held;
+        let effective_delta = if snap_active {
+            let anchor = drag.entities[0].start.position;
+            self.editor.snap_to_grid_position(anchor + world_delta) - anchor
+        } else {
+            world_delta
+        };
+        drag.accumulated_rotation += interaction.rotation_delta;
+
+        for entity in &drag.entities {
+            let new_scale = (entity.start.scale * interaction.scale_factor)
+                .max(Vec2::splat(MIN_ENTITY_SCALE));
+            if let Some(transform) =
+                world.get_mut::<ecs::sprite_components::Transform2D>(entity.id)
+            {
+                transform.position = entity.start.position + effective_delta;
+                transform.rotation = entity.start.rotation + drag.accumulated_rotation;
+                transform.scale = new_scale;
+            }
+
+            // Scale the collider alongside: physics colliders are
+            // absolute-pixel sized (they ignore Transform2D.scale).
+            // Rebuilt from the DRAG-START collider so per-frame
+            // application never accumulates float drift.
+            if interaction.scale_factor != Vec2::ONE {
+                if let Some(start_collider) = &entity.start_collider {
+                    let applied =
+                        new_scale / entity.start.scale.max(Vec2::splat(f32::EPSILON));
+                    let mut rebuilt = start_collider.clone();
+                    scale_collider(&mut rebuilt, applied);
+                    if let Some(collider) =
+                        world.get_mut::<physics::components::Collider>(entity.id)
+                    {
+                        *collider = rebuilt;
+                    }
+                }
+            }
         }
     }
 
@@ -379,6 +397,14 @@ pub(super) fn scale_collider(collider: &mut physics::components::Collider, facto
             *radius *= factor.y;
         }
     }
+}
+
+/// Whether either Ctrl key is held — the hold-to-snap modifier for gizmo
+/// drags (the same Ctrl-snap convention scrub fields use).
+pub(super) fn ctrl_held(input: &input::InputHandler) -> bool {
+    use winit::keyboard::KeyCode;
+    input.keyboard().is_key_pressed(KeyCode::ControlLeft)
+        || input.keyboard().is_key_pressed(KeyCode::ControlRight)
 }
 
 /// Whether editor chrome owns the mouse this frame: an open overlay (menu
