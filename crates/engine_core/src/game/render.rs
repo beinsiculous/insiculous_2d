@@ -94,14 +94,16 @@ impl<G: Game> GameRunner<G> {
         let mut batch_refs: Vec<&SpriteBatch> =
             self.game_batcher.batches().values().filter(|b| !b.instances.is_empty()).collect();
         Self::sort_batch_refs(&mut batch_refs);
-        let game_batch_count = batch_refs.len();
-        batch_refs.extend(self.ui_batcher.batches().values().filter(|b| !b.instances.is_empty()));
-        Self::sort_batch_refs(&mut batch_refs[game_batch_count..]);
+        // UI batches stay separate: they draw in their own post-tonemap
+        // pass so authored UI colors display exactly (issue #26).
+        let mut ui_batch_refs: Vec<&SpriteBatch> =
+            self.ui_batcher.batches().values().filter(|b| !b.instances.is_empty()).collect();
+        Self::sort_batch_refs(&mut ui_batch_refs);
 
         // Get textures from asset manager (need to reborrow after RenderContext)
         if let Some(asset_manager) = &self.asset_manager {
             let textures = asset_manager.textures();
-            if let Err(e) = self.render_manager.render(&batch_refs, textures) {
+            if let Err(e) = self.render_manager.render(&batch_refs, &ui_batch_refs, textures) {
                 log::error!("Render error: {}", e);
             }
         }

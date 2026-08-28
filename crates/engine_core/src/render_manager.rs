@@ -34,6 +34,9 @@ pub struct RenderManager {
     renderer: Option<Renderer>,
     /// The sprite rendering pipeline
     sprite_pipeline: Option<SpritePipeline>,
+    /// Post-tonemap UI pipeline: targets the swapchain format directly so
+    /// authored UI colors display exactly (issue #26).
+    ui_pipeline: Option<SpritePipeline>,
     /// The 2D camera for orthographic projection
     camera: Camera,
 }
@@ -50,6 +53,7 @@ impl RenderManager {
         Self {
             renderer: None,
             sprite_pipeline: None,
+            ui_pipeline: None,
             camera: Camera::default(),
         }
     }
@@ -93,9 +97,13 @@ impl RenderManager {
 
         // Create sprite pipeline with max 1000 sprites per batch
         let sprite_pipeline = SpritePipeline::new(renderer.device_ref(), 1000);
+        // UI draws post-tonemap straight to the swapchain (issue #26).
+        let ui_pipeline =
+            SpritePipeline::new_ui(renderer.device_ref(), 1000, renderer.surface_format());
 
         self.renderer = Some(renderer);
         self.sprite_pipeline = Some(sprite_pipeline);
+        self.ui_pipeline = Some(ui_pipeline);
 
         log::info!("RenderManager initialized");
     }
@@ -156,6 +164,7 @@ impl RenderManager {
     pub fn render(
         &mut self,
         batches: &[&SpriteBatch],
+        ui_batches: &[&SpriteBatch],
         textures: &HashMap<TextureHandle, TextureResource>,
     ) -> Result<(), RendererError> {
         let renderer = self.renderer.as_mut().ok_or_else(|| {
@@ -164,8 +173,18 @@ impl RenderManager {
         let pipeline = self.sprite_pipeline.as_mut().ok_or_else(|| {
             RendererError::WindowCreationError("Sprite pipeline not initialized".to_string())
         })?;
+        let ui_pipeline = self.ui_pipeline.as_mut().ok_or_else(|| {
+            RendererError::WindowCreationError("UI pipeline not initialized".to_string())
+        })?;
 
-        match renderer.render_with_sprites(pipeline, &self.camera, textures, batches) {
+        match renderer.render_with_sprites(
+            pipeline,
+            ui_pipeline,
+            &self.camera,
+            textures,
+            batches,
+            ui_batches,
+        ) {
             Ok(_) => Ok(()),
             Err(e) => Self::handle_render_error(renderer, e),
         }
@@ -196,7 +215,7 @@ impl RenderManager {
                 .total_cmp(&min_depth(b))
                 .then_with(|| a.texture_handle.id.cmp(&b.texture_handle.id))
         });
-        self.render(&batch_refs, textures)
+        self.render(&batch_refs, &[], textures)
     }
 
 

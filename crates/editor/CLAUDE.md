@@ -5,7 +5,8 @@ This crate has NO dependency on engine_core. It depends on: ecs, ui, input, rend
 
 ## Architecture
 ```
-EditorContext (selection, tool state, play state, camera, theme, status_bar, command_history)
+EditorContext (selection, tool state, play state, camera, theme, status_bar, fonts, inspector_scroll)
+│   (CommandHistory itself lives on editor_integration's EditorGame and is threaded into panel renderers)
 ├── Panels: SceneView, Hierarchy, Inspector, AssetBrowser, Console
 ├── Dock layout: dock.rs (multi-panel docking)
 ├── Menu / Toolbar / StatusBar (top + bottom chrome)
@@ -20,9 +21,12 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, com
 
 ## File Map
 ### State + chrome
-- `context/` — EditorContext struct (selection, tools, state, theme, command_history); tests in `context/tests.rs`
+- `context/` — EditorContext struct (selection, tools, state, theme, fonts, inspector_scroll); tests in `context/tests.rs`
 - `lib.rs` — Public re-exports
-- `theme.rs` — EditorTheme (color tokens, `fonts: FontSizes` typography tokens, gizmo/grid/inspector style converters, `ui_theme()` → derives the ui crate Theme)
+- `theme/` — EditorTheme (`mod.rs` + `tests.rs`; WCAG surface ladder `surface_0..surface_4` + `popup_border` with luminance guard tests — the ≥1.35:1 adjacent / ≥3:1 border tests are the spec, tune hexes only with them green; color tokens, `fonts: FontSizes` typography tokens, gizmo/grid/inspector style converters, `ui_theme()` → derives the ui crate Theme)
+- `fonts.rs` — crate-shipped DejaVu faces (`EDITOR_FONT_REGULAR/BOLD/MONO` via include_bytes + `EditorFonts` handles; LICENSE ships in assets/fonts/)
+- `scroll.rs` — shared `ScrollState` (per-panel vertical scroll; two documented call orders)
+- `command_api/` — **Stage A query API** (`mod.rs` types + dispatch_line, `parse.rs`, `query.rs`): list/describe/selection/scene as single-line JSON; name-first `EntityRef` (`resolve_by_name` in hierarchy.rs, ambiguity = error), `#<u64>` id fallback; pure dispatch — no I/O/threads/cfg (transports live with callers; contract doc = `docs/EDITOR_COMMAND_API.md`)
 - `typography.rs` — `FontSizes` {small 12/body 14/heading 16} + `MIN_READABLE_FONT` guard
 - `drag_drop.rs` — `DragDropState`/`DragPayload` cross-panel drag state machine (Idle→Armed→Dragging→Dropped-1-frame)
 - `asset_browser.rs` — pure asset scan (`scan_assets`), `AssetBrowserState`, `fit_rect`
@@ -57,7 +61,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, com
 - `collider_overlay.rs` — Collider outline overlay for the scene view (mirrors rapier placement: offset is body-local, Transform2D.scale ignored); toggled via `EditorContext::toggle_colliders()` / C key
 
 ### Persistence + commands
-- `commands/` — EditorCommand trait + CommandHistory (`mod.rs`), entity commands, component commands, `impl_set_component_command!` macro for the 5 Set*Commands (`set_commands.rs`); `push_already_executed`, `try_merge_or_push`
+- `commands/` — EditorCommand trait + CommandHistory (`mod.rs`; **dirty source of truth**: id-of-top watermark, `is_dirty()`/`mark_saved()`, merges reassign the top a fresh id AND clear redo; dirty_tests.rs is the contract), entity commands, component commands, `impl_set_component_command!` macro for the 5 Set*Commands (`set_commands.rs`); `push_already_executed`, `try_merge_or_push`
 - `stored_component/` — **Component registry macro (single source of truth). ADD NEW EDITOR-VISIBLE COMPONENTS HERE** — one line in `editor_component_registry!` generates StoredComponent, ComponentKind (add/capture/remove/is_present/display_name/category), capture_all_components, registered_component_type_ids, inspect_all_components, AND edit_all_components (the editable inspector — entries carry `{ edit edit_x => SetXCommand }` or `{ readonly }`)
 - `world_snapshot.rs` — WorldSnapshot save/restore (used by play/stop): registry-driven capture (auto-includes new registry types) + explicit Parent/Children; unregistered component types are detected (`uncaptured_types`/`loss_warning`/`drop_report`) and lost on restore
 - Scene save/load file I/O lives in `editor_integration` (via `engine_core::scene_serializer`), not in this crate
@@ -71,7 +75,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, com
 - Theme is on `EditorContext.theme` (public field); call `theme.gizmo_palette()`, `inspector_style()`, `editable_field_style()`, `grid_colors()`, `collider_overlay_colors()` instead of hardcoding colors. Menu/Toolbar/Hierarchy `render()` take `&EditorTheme`
 
 ## Testing
-- 324 passing (incl. 3 doc tests), 0 ignored — `cargo test -p editor`
+- 362 passing (incl. 3 doc tests), 0 ignored — `cargo test -p editor`
 
 ## Godot Oracle — When Stuck
 Use `WebFetch` to read from `https://github.com/godotengine/godot/blob/master/`

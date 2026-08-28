@@ -32,12 +32,31 @@ use ui::Color;
 pub struct EditorTheme {
     // ── Backgrounds ─────────────────────────────────────────────
     /// Main panel backgrounds (`#1e1e1e`)
+    // ── Surface elevation ladder (audit §5.2) ──────────────────────
+    // surface_0 (lowest: viewport well) .. surface_4 (floating popups).
+    // Adjacent steps hold ≥1.35:1 WCAG contrast — the guard test in
+    // theme/tests.rs is the spec; tune values only with it green.
+    /// Elevation 0: the viewport well behind everything.
+    pub surface_0: Color,
+    /// Elevation 1: panel bodies.
+    pub surface_1: Color,
+    /// Elevation 2: panel headers, status bar.
+    pub surface_2: Color,
+    /// Elevation 3: input fields, wells.
+    pub surface_3: Color,
+    /// Elevation 4: floating surfaces (dropdowns, popups, future modals).
+    pub surface_4: Color,
+    /// Border for floating surfaces — ≥3:1 against surface_4 so popups
+    /// read as bounded objects (audit §5.3).
+    pub popup_border: Color,
+
     pub bg_primary: Color,
     /// Viewport / canvas area (`#000000`)
     pub bg_viewport: Color,
     /// Input fields, dropdowns (`#2d2d2d`)
     pub bg_input: Color,
-    /// Panel header background (darker than bg_primary)
+    /// Panel header background — LIGHTER than bg_primary (surface_2 over
+    /// surface_1; the old doc claimed darker and the old value was neither)
     pub bg_header: Color,
 
     // ── Accents ─────────────────────────────────────────────────
@@ -182,15 +201,34 @@ pub struct EditorTheme {
 
 impl Default for EditorTheme {
     fn default() -> Self {
+        // The elevation ladder (audit §5.2). WCAG contrast is dominated by
+        // the +0.05 flare term near black, so honest ≥1.35:1 steps need
+        // bigger jumps than classic editor themes use — that is the point:
+        // adjacent surfaces must actually be distinguishable.
+        let surface_0 = Color::from_hex(0x0a0a0a);
+        let surface_1 = Color::from_hex(0x2a2a2a);
+        let surface_2 = Color::from_hex(0x404040);
+        let surface_3 = Color::from_hex(0x545454);
+        let surface_4 = Color::from_hex(0x686868);
+
         Self {
             // Typography
             fonts: crate::typography::FontSizes::default(),
 
-            // Backgrounds
-            bg_primary: Color::from_hex(0x1e1e1e),
-            bg_viewport: Color::BLACK,
-            bg_input: Color::from_hex(0x2d2d2d),
-            bg_header: Color::new(0.12, 0.12, 0.12, 1.0),
+            // Surface elevation ladder
+            surface_0,
+            surface_1,
+            surface_2,
+            surface_3,
+            surface_4,
+            popup_border: Color::from_hex(0xc6c6c6),
+
+            // Backgrounds (aliases into the ladder — legacy names kept to
+            // avoid churning 30+ call sites this sprint)
+            bg_primary: surface_1,
+            bg_viewport: surface_0,
+            bg_input: surface_3,
+            bg_header: surface_2,
 
             // Accents
             accent_blue: Color::from_hex(0x0078d4),
@@ -261,7 +299,7 @@ impl Default for EditorTheme {
             grid_axis_y: Vec4::new(0.2, 0.8, 0.2, 0.8),
 
             // Status bar
-            status_bar_bg: Color::new(0.10, 0.10, 0.10, 1.0),
+            status_bar_bg: surface_2,
 
             // Inspector
             inspector_label: Color::from_hex(0xcccccc),
@@ -345,7 +383,9 @@ impl EditorTheme {
         theme.button.background = self.bg_input;
         theme.button.background_hovered = self.bg_input.lighten(0.12);
         theme.button.background_pressed = self.bg_input.darken(0.25);
-        theme.button.background_disabled = self.bg_input.darken(0.25);
+        // Distinct from pressed (audit §5.8): a disabled button must not
+        // look like a held one — flatten toward the panel body instead.
+        theme.button.background_disabled = self.bg_primary;
         theme.button.border = self.border_subtle;
         theme.button.text_color = self.text_primary;
         theme.button.text_color_disabled = self.text_muted;
@@ -422,86 +462,4 @@ impl EditorTheme {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_default_theme_colors_are_opaque() {
-        let theme = EditorTheme::default();
-        // Background colors should be fully opaque
-        assert_eq!(theme.bg_primary.a, 1.0);
-        assert_eq!(theme.bg_viewport.a, 1.0);
-        assert_eq!(theme.bg_input.a, 1.0);
-        // Text colors should be fully opaque
-        assert_eq!(theme.text_primary.a, 1.0);
-        assert_eq!(theme.text_secondary.a, 1.0);
-        assert_eq!(theme.text_muted.a, 1.0);
-    }
-
-    #[test]
-    fn test_accent_colors_are_distinct() {
-        let theme = EditorTheme::default();
-        // Blue (#0078d4) vs Cyan (#00d9ff) differ in green and blue channels
-        assert_ne!(theme.accent_blue.g, theme.accent_cyan.g);
-        assert_ne!(theme.accent_blue.b, theme.accent_cyan.b);
-    }
-
-    #[test]
-    fn test_play_state_borders_are_distinct() {
-        let theme = EditorTheme::default();
-        let editing = theme.border_editing;
-        let playing = theme.border_playing;
-        let paused = theme.border_paused;
-        // Each state has a unique dominant channel
-        assert!(editing.b > editing.r && editing.b > editing.g); // blue-ish
-        assert!(playing.g > playing.r && playing.g > playing.b); // green-ish
-        assert!(paused.r > paused.b); // warm/yellow-ish
-    }
-
-    #[test]
-    fn test_ui_theme_hover_and_type_are_usable() {
-        let theme = EditorTheme::default();
-        let ui_theme = theme.ui_theme();
-        assert!(ui_theme.text_input.font_size >= crate::typography::MIN_READABLE_FONT);
-        assert_ne!(
-            ui_theme.button.background_hovered, ui_theme.button.background,
-            "hover state must be visually distinct"
-        );
-    }
-
-    #[test]
-    fn test_hover_colors_differ_from_base() {
-        let theme = EditorTheme::default();
-        assert_ne!(theme.gizmo_x_hover, theme.gizmo_x);
-        assert_ne!(theme.gizmo_y_hover, theme.gizmo_y);
-        assert_ne!(theme.gizmo_scale_handle_hover, theme.gizmo_scale_handle);
-        assert_ne!(theme.selection_fill, theme.hover_fill);
-    }
-
-    #[test]
-    fn test_collider_overlay_colors_are_distinct() {
-        let theme = EditorTheme::default();
-        // Each state must be visually distinguishable
-        assert_ne!(theme.collider_outline, theme.collider_sensor);
-        assert_ne!(theme.collider_outline, theme.collider_selected);
-        assert_ne!(theme.collider_sensor, theme.collider_selected);
-    }
-
-    #[test]
-    fn test_selection_outline_derivation_contract() {
-        let theme = EditorTheme::default();
-        let c = theme.selection_outline_colors();
-        // Each role must be visually distinguishable
-        assert_ne!(c.primary, c.secondary);
-        assert_ne!(c.primary, c.hovered);
-        assert_ne!(c.secondary, c.hovered);
-        // Secondary dims the primary but preserves its alpha; hovered
-        // multiplies the primary's own alpha (translucent themes stay
-        // proportionally translucent) — see selection_outline_colors().
-        assert_eq!(c.secondary.a, c.primary.a);
-        assert!((c.hovered.a - c.primary.a * 0.4).abs() < 1e-6);
-        // Distinct from the collider overlay's selected color so both
-        // overlays can be read at once
-        assert_ne!(theme.selection_outline, theme.collider_selected);
-    }
-}
+mod tests;

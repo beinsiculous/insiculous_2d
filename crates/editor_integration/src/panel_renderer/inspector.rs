@@ -17,48 +17,87 @@ use engine_core::contexts::GameContext;
 pub(super) fn render_inspector(
     editor: &mut EditorContext,
     ctx: &mut GameContext,
-    content_x: f32,
-    mut y: f32,
+    bounds: common::Rect,
     command_history: &mut CommandHistory,
 ) {
     let line_height = 20.0;
+    let padding = 8.0;
+    let content_x = bounds.x + padding;
 
     let entity_id = match editor.selection.primary() {
         Some(id) => id,
         None => {
-            ctx.ui.label("No selection", Vec2::new(content_x, y));
+            ctx.ui.label("No selection", Vec2::new(content_x, bounds.y + padding));
             return;
         }
     };
 
-    ctx.ui.label(
-        &format!("Entity: {}", entity_id.value()),
-        Vec2::new(content_x, y),
+    // A different entity starts at the top — a leaked offset would open
+    // entity B scrolled to wherever entity A was (kimi round 6 F2).
+    if editor.inspector_scroll_entity != Some(entity_id) {
+        editor.inspector_scroll = Default::default();
+        editor.inspector_scroll_entity = Some(entity_id);
+    }
+
+    // Panel scroll (audit §3.3): offset the whole walk; content height is
+    // measured at the end (partial rows bleed one row past the panel edge
+    // until #41 lands GPU scissoring — clipping today is cull-only).
+    // While the add-component popup is open the wheel is NOT ours: the
+    // window-anchored popup would detach from its scrolling button
+    // (kimi round 7 F2).
+    let wheel = if editor.is_add_component_popup_open() {
+        0.0
+    } else {
+        ctx.ui.scroll_delta()
+    };
+    let offset = editor.inspector_scroll.begin_frame(
+        bounds,
+        ctx.ui.mouse_pos(),
+        wheel,
+        bounds.height,
     );
+    let top = bounds.y + padding - offset;
+    let mut y = top;
+
+    let heading = format!("Entity: {}", entity_id.value());
+    match editor.fonts.bold {
+        Some(bold) => ctx.ui.label_with_font(
+            &heading,
+            Vec2::new(content_x, y),
+            bold,
+            editor.theme.fonts.heading,
+        ),
+        None => ctx.ui.label(&heading, Vec2::new(content_x, y)),
+    }
     y += line_height;
 
-    if editor.is_playing() {
-        render_inspector_readonly(ctx, entity_id, content_x, y, &editor.theme.inspector_style());
+    let final_y = if editor.is_playing() {
+        render_inspector_readonly(ctx, entity_id, content_x, y, &editor.theme.inspector_style())
     } else {
-        render_inspector_editable(editor, ctx, entity_id, content_x, y, command_history);
-    }
+        render_inspector_editable(editor, ctx, entity_id, content_x, y, command_history)
+    };
+    editor
+        .inspector_scroll
+        .end_frame(final_y - top + padding, bounds.height);
 }
 
-/// Read-only inspector using the editor's component registry (used during Playing).
+/// Read-only inspector using the editor's component registry (used during
+/// Playing). Returns the next Y (for scroll content measurement).
 fn render_inspector_readonly(
     ctx: &mut GameContext,
     entity_id: ecs::EntityId,
     content_x: f32,
     y: f32,
     style: &InspectorStyle,
-) {
+) -> f32 {
     let line_height = 20.0;
     inspect_all_components(
         ctx.ui, ctx.world, entity_id, content_x, y, style, line_height * 0.5,
-    );
+    )
 }
 
 /// Editable inspector with live writeback (used during Editing/Paused).
+/// Returns the next Y (for scroll content measurement).
 fn render_inspector_editable(
     editor: &mut EditorContext,
     ctx: &mut GameContext,
@@ -66,7 +105,7 @@ fn render_inspector_editable(
     content_x: f32,
     mut y: f32,
     command_history: &mut CommandHistory,
-) {
+) -> f32 {
     let line_height = 20.0;
     let inspect_style = editor.theme.inspector_style();
     let field_style = editor.theme.editable_field_style();
@@ -115,12 +154,25 @@ fn render_inspector_editable(
         let available = available_components(ctx.world, entity_id);
         if available.is_empty() {
             ctx.ui.label("(all components added)", Vec2::new(content_x + 8.0, y));
+            y += line_height;
         } else {
+            // Height first, then anchor against the WINDOW (the popup lives
+            // on the Floating layer, free of the panel clip): open below
+            // the button, flip up when it would overflow the window bottom.
             let popup_height = categorized_popup_height(&available);
-            let popup_bounds = ui::Rect::new(content_x, y, 180.0, popup_height);
-            ctx.ui.panel(popup_bounds);
+            let popup_y0 = popup_anchor_y(y, 28.0, popup_height, ctx.window_size.y);
+            let popup_bounds = ui::Rect::new(content_x, popup_y0, 180.0, popup_height);
+            // Floating layer + input blocking: escapes the inspector clip
+            // rect and widgets underneath go inert while the mouse is on it.
+            ctx.ui.begin_overlay(popup_bounds);
+            ctx.ui.panel_styled(
+                popup_bounds,
+                editor.theme.surface_4,
+                editor.theme.popup_border,
+                1.0,
+            );
 
-            let mut popup_y = y + 4.0;
+            let mut popup_y = popup_y0 + 4.0;
             let mut popup_btn_idx: usize = 0;
 
             for (category, kinds) in categorized_components() {
@@ -153,10 +205,12 @@ fn render_inspector_editable(
                     popup_btn_idx += 1;
                 }
             }
+            ctx.ui.end_overlay();
         }
     }
 
     let _ = component_index;
+    y
 }
 
 /// Calculate the height needed for the categorized popup.
@@ -170,4 +224,31 @@ fn categorized_popup_height(available: &[ComponentKind]) -> f32 {
         }
     }
     height
+}
+
+/// Where the popup opens: below its anchor when it fits the window,
+/// flipped above (`anchor - button_height - popup`) otherwise, clamped to
+/// the window top. The popup is window-anchored (not panel-anchored)
+/// because the Floating layer frees it from the panel clip.
+fn popup_anchor_y(below_y: f32, button_height: f32, popup_height: f32, window_bottom: f32) -> f32 {
+    if below_y + popup_height <= window_bottom {
+        below_y
+    } else {
+        (below_y - button_height - popup_height).max(0.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::popup_anchor_y;
+
+    #[test]
+    fn test_popup_flips_up_when_it_would_overflow_window() {
+        // Fits below: opens at the anchor.
+        assert_eq!(popup_anchor_y(100.0, 28.0, 200.0, 720.0), 100.0);
+        // Would overflow the window bottom: flips above the button.
+        assert_eq!(popup_anchor_y(650.0, 28.0, 200.0, 720.0), 650.0 - 28.0 - 200.0);
+        // Taller than everything: clamps to the window top, never negative.
+        assert_eq!(popup_anchor_y(100.0, 28.0, 900.0, 720.0), 0.0);
+    }
 }

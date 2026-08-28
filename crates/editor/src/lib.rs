@@ -40,6 +40,7 @@ mod context;
 mod dock;
 mod editable_inspector;
 mod field_style;
+pub mod fonts;
 mod editor_input;
 mod gizmo;
 mod gizmo_math;
@@ -50,6 +51,7 @@ mod menu;
 mod picking;
 mod play_controls;
 mod play_state;
+mod scroll;
 mod selection;
 mod selection_outline;
 pub mod status_bar;
@@ -97,6 +99,7 @@ pub use menu::{Menu, MenuBar, MenuItem};
 pub use picking::{EntityPicker, PickResult, PickableEntity, SelectionRect, AABB};
 pub use play_controls::{PlayControlAction, PlayControls};
 pub use play_state::EditorPlayState;
+pub use scroll::ScrollState;
 pub use selection::Selection;
 pub use selection_outline::{
     hover_entity_at, outline_segments, render_selection_outline, SelectionOutlineColors,

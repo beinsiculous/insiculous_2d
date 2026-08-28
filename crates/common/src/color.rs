@@ -154,6 +154,24 @@ impl Color {
             (self.a * 255.0) as u8,
         ]
     }
+
+    /// WCAG relative luminance in `[0, 1]`: linearizes the sRGB-authored
+    /// channels (piecewise transfer, not `pow(2.2)`) and weights them.
+    /// Alpha is ignored.
+    pub fn luminance(self) -> f32 {
+        fn lin(c: f32) -> f32 {
+            if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+        }
+        0.2126 * lin(self.r) + 0.7152 * lin(self.g) + 0.0722 * lin(self.b)
+    }
+
+    /// WCAG contrast ratio between two colors, symmetric, in `[1, 21]`.
+    /// The theme's surface-ladder guard tests are built on this.
+    pub fn contrast_ratio(self, other: Color) -> f32 {
+        let (a, b) = (self.luminance(), other.luminance());
+        let (hi, lo) = if a >= b { (a, b) } else { (b, a) };
+        (hi + 0.05) / (lo + 0.05)
+    }
 }
 
 // Conversions to/from glam types
@@ -221,5 +239,31 @@ mod tests {
 
         let back: Color = arr.into();
         assert_eq!(back.r, 0.1);
+    }
+}
+
+#[cfg(test)]
+mod luminance_tests {
+    use super::*;
+
+    #[test]
+    fn test_white_black_contrast_is_21() {
+        let ratio = Color::WHITE.contrast_ratio(Color::BLACK);
+        assert!((ratio - 21.0).abs() < 0.01, "got {ratio}");
+    }
+
+    #[test]
+    fn test_contrast_is_symmetric_and_at_least_one() {
+        let a = Color::from_hex(0x1e1e1e);
+        let b = Color::from_hex(0x333333);
+        assert_eq!(a.contrast_ratio(b), b.contrast_ratio(a));
+        assert!(a.contrast_ratio(a) >= 1.0);
+    }
+
+    #[test]
+    fn test_known_srgb_luminance() {
+        // sRGB mid-gray #808080 has relative luminance ≈ 0.2159.
+        let lum = Color::from_hex(0x808080).luminance();
+        assert!((lum - 0.2159).abs() < 0.002, "got {lum}");
     }
 }

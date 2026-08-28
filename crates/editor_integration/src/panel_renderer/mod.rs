@@ -23,7 +23,7 @@ pub fn render_panel_content(
     match panel_id {
         PanelId::SCENE_VIEW => render_scene_view(editor, ctx, bounds),
         PanelId::HIERARCHY => render_hierarchy(editor, ctx, bounds),
-        PanelId::INSPECTOR => render_inspector(editor, ctx, content_x, y, command_history),
+        PanelId::INSPECTOR => render_inspector(editor, ctx, bounds, command_history),
         PanelId::ASSET_BROWSER => {
             asset_browser::render_asset_browser(editor, ctx, bounds, command_history)
         }

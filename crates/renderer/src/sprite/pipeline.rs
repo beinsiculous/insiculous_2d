@@ -41,11 +41,38 @@ pub struct SpritePipeline {
 }
 
 impl SpritePipeline {
-    /// Create a new sprite pipeline.
+    /// Create a new sprite pipeline targeting the HDR offscreen buffer
+    /// (game sprites; the bloom composite tonemaps + encodes afterwards).
     ///
     /// `initial_sprite_capacity` sizes the instance buffer; it grows
     /// automatically if more sprites are submitted in a frame.
     pub fn new(device: &Device, initial_sprite_capacity: usize) -> Self {
+        Self::new_with_target(device, initial_sprite_capacity, HDR_FORMAT, "fs_main")
+    }
+
+    /// Create a sprite pipeline for the post-tonemap UI pass (issue #26):
+    /// targets the swapchain format directly so authored UI colors display
+    /// exactly, choosing the fragment entry point by whether the surface
+    /// encodes sRGB in hardware.
+    pub fn new_ui(
+        device: &Device,
+        initial_sprite_capacity: usize,
+        surface_format: wgpu::TextureFormat,
+    ) -> Self {
+        let entry = if surface_format.is_srgb() {
+            "fs_ui_srgb_target"
+        } else {
+            "fs_ui_raw_target"
+        };
+        Self::new_with_target(device, initial_sprite_capacity, surface_format, entry)
+    }
+
+    fn new_with_target(
+        device: &Device,
+        initial_sprite_capacity: usize,
+        target_format: wgpu::TextureFormat,
+        fragment_entry: &str,
+    ) -> Self {
 
         // Create texture bind group layout
         let texture_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -172,11 +199,12 @@ impl SpritePipeline {
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: Some("fs_main"),
+                entry_point: Some(fragment_entry),
                 targets: &[Some(wgpu::ColorTargetState {
-                    // Sprites render to the HDR offscreen target. The bloom
-                    // composite is what writes the final sRGB swapchain.
-                    format: HDR_FORMAT,
+                    // HDR offscreen target for game sprites (the bloom
+                    // composite writes the swapchain), or the swapchain
+                    // format itself for the post-tonemap UI pass.
+                    format: target_format,
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
@@ -358,6 +386,59 @@ impl SpritePipeline {
             multiview_mask: None,
         });
 
+        self.record_batches(&mut render_pass, batches);
+    }
+
+    /// Draw UI batches straight to the swapchain view (post-tonemap UI
+    /// pass, issue #26). The color target is loaded (composite output
+    /// underneath survives); the depth buffer is cleared so UI depth
+    /// bands order among themselves, ignoring game depth leftovers.
+    ///
+    /// Only valid on a pipeline built with [`SpritePipeline::new_ui`] —
+    /// the target format must match the swapchain.
+    pub fn draw_ui(
+        &mut self,
+        encoder: &mut CommandEncoder,
+        texture_resources: &HashMap<TextureHandle, TextureResource>,
+        batches: &[&SpriteBatch],
+        color_view: &wgpu::TextureView,
+        depth_view: &wgpu::TextureView,
+    ) {
+        if batches.iter().all(|b| b.is_empty()) {
+            return;
+        }
+        self.cache_texture_bind_groups(texture_resources);
+
+        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("UI Render Pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: color_view,
+                resolve_target: None,
+                depth_slice: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: depth_view,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(1.0),
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: None,
+            }),
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+
+        self.record_batches(&mut render_pass, batches);
+    }
+
+    /// Bind buffers + camera and draw every batch — shared by the HDR
+    /// sprite pass and the UI pass.
+    fn record_batches(&self, render_pass: &mut wgpu::RenderPass<'_>, batches: &[&SpriteBatch]) {
         // Set pipeline
         render_pass.set_pipeline(&self.pipeline);
 

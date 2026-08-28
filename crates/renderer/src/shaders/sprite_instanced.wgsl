@@ -105,19 +105,12 @@ fn sd_rounded_box(p: vec2<f32>, b: vec2<f32>, r: f32) -> f32 {
     return length(max(q, vec2<f32>(0.0, 0.0))) + min(max(q.x, q.y), 0.0) - r;
 }
 
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let tex_color = textureSample(t_diffuse, s_diffuse, in.tex_coords);
-    let base_rgb = tex_color.rgb * in.color.rgb;
-    // emissive multiplies RGB so values exceed 1.0 and the bright-pass picks them up.
-    // 1.0 + 4.0*intensity scales linearly without a hard threshold.
-    let glow_factor = 1.0 + in.emissive * 4.0;
-    let out_rgb = base_rgb * glow_factor;
-    var alpha = tex_color.a * in.color.a;
-
-    // SDF shape mask: kind 0 = plain quad (no mask), 1 = rounded rect,
-    // 2 = circle. Distances are in local pixels, so the ~1.5px smoothstep
-    // anti-aliasing band is zoom-independent on screen-space UI.
+// SDF shape mask shared by every fragment entry point: kind 0 = plain
+// quad (no mask), 1 = rounded rect, 2 = circle. Distances are in local
+// pixels, so the ~1.5px smoothstep anti-aliasing band is zoom-independent
+// on screen-space UI.
+fn masked_alpha(in: VertexOutput, tex_alpha: f32) -> f32 {
+    var alpha = tex_alpha * in.color.a;
     let kind = in.shape.x;
     if (kind > 0.5) {
         let min_half = min(in.half_size.x, in.half_size.y);
@@ -133,6 +126,61 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         }
         alpha = alpha * (1.0 - smoothstep(-0.75, 0.75, d));
     }
+    return alpha;
+}
 
-    return vec4<f32>(out_rgb, alpha);
+// Piecewise sRGB transfer functions (the real curve, not pow(2.2)).
+fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
+    let lo = c / 12.92;
+    let hi = pow((c + vec3<f32>(0.055)) / 1.055, vec3<f32>(2.4));
+    return select(hi, lo, c <= vec3<f32>(0.04045));
+}
+
+fn linear_to_srgb(c: vec3<f32>) -> vec3<f32> {
+    let lo = c * 12.92;
+    let hi = 1.055 * pow(c, vec3<f32>(1.0 / 2.4)) - vec3<f32>(0.055);
+    return select(hi, lo, c <= vec3<f32>(0.0031308));
+}
+
+// HDR entry point: game sprites into the Rgba16Float target; the bloom
+// composite tonemaps and encodes afterwards.
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let tex_color = textureSample(t_diffuse, s_diffuse, in.tex_coords);
+    let base_rgb = tex_color.rgb * in.color.rgb;
+    // emissive multiplies RGB so values exceed 1.0 and the bright-pass picks them up.
+    // 1.0 + 4.0*intensity scales linearly without a hard threshold.
+    let glow_factor = 1.0 + in.emissive * 4.0;
+    let out_rgb = base_rgb * glow_factor;
+    return vec4<f32>(out_rgb, masked_alpha(in, tex_color.a));
+}
+
+// UI entry points (issue #26): UI draws AFTER the bloom composite,
+// straight to the swapchain, untonemapped — an authored color displays
+// as exactly that byte. No emissive/glow: UI does not bloom.
+//
+// sRGB swapchain (native): the hardware encodes on write, so output
+// LINEAR values — texture samples arrive linear (sRGB texture views) and
+// authored vertex colors are linearized here; the encode round-trips to
+// the authored value.
+@fragment
+fn fs_ui_srgb_target(in: VertexOutput) -> @location(0) vec4<f32> {
+    let tex_color = textureSample(t_diffuse, s_diffuse, in.tex_coords);
+    let out_rgb = tex_color.rgb * srgb_to_linear(in.color.rgb);
+    return vec4<f32>(out_rgb, masked_alpha(in, tex_color.a));
+}
+
+// Non-sRGB swapchain (the WebGPU canvas path): the buffer is displayed
+// as-is, so output sRGB-encoded values — re-encode the linear texture
+// sample and multiply by the authored color directly.
+//
+// ASSUMPTION: UI textures use sRGB views (the engine's texture default is
+// Rgba8UnormSrgb, so samples arrive linearized). A UI texture created with
+// a LINEAR format would be double-encoded here and render darker — thread
+// a color-space flag through the pipeline if one ever appears.
+@fragment
+fn fs_ui_raw_target(in: VertexOutput) -> @location(0) vec4<f32> {
+    let tex_color = textureSample(t_diffuse, s_diffuse, in.tex_coords);
+    let out_rgb = linear_to_srgb(tex_color.rgb) * in.color.rgb;
+    return vec4<f32>(out_rgb, masked_alpha(in, tex_color.a));
 }

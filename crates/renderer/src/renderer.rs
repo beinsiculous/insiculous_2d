@@ -275,21 +275,32 @@ impl Renderer {
     pub fn render_with_sprites(
         &mut self,
         sprite_pipeline: &mut crate::sprite::SpritePipeline,
+        ui_pipeline: &mut crate::sprite::SpritePipeline,
         camera: &crate::sprite_data::Camera,
         texture_resources: &std::collections::HashMap<crate::texture::TextureHandle, crate::sprite_data::TextureResource>,
-        sprite_batches: &[&crate::sprite::SpriteBatch]
+        sprite_batches: &[&crate::sprite::SpriteBatch],
+        ui_batches: &[&crate::sprite::SpriteBatch],
     ) -> Result<(), RendererError> {
         // Make sure the built-in white texture (for flat-colored sprites) has
         // a cached bind group. Cheap no-op after the first frame — no need to
         // clone the caller's texture map just to splice it in.
         if let Some(white_texture) = &self.white_texture {
             sprite_pipeline.cache_texture_bind_group(crate::texture::TextureHandle::WHITE, white_texture);
+            ui_pipeline.cache_texture_bind_group(crate::texture::TextureHandle::WHITE, white_texture);
         }
 
-        // Prepare sprites - update instance buffer with sprite data
+        // Prepare sprites - update instance buffers with sprite data
         sprite_pipeline.prepare_sprites(&self.queue, sprite_batches);
+        ui_pipeline.prepare_sprites(&self.queue, ui_batches);
 
-        self.render_with_sprites_internal(sprite_pipeline, camera, texture_resources, sprite_batches)
+        self.render_with_sprites_internal(
+            sprite_pipeline,
+            ui_pipeline,
+            camera,
+            texture_resources,
+            sprite_batches,
+            ui_batches,
+        )
     }
 
     /// Internal method to render sprites with the combined texture resources.
@@ -300,9 +311,11 @@ impl Renderer {
     fn render_with_sprites_internal(
         &mut self,
         sprite_pipeline: &mut crate::sprite::SpritePipeline,
+        ui_pipeline: &mut crate::sprite::SpritePipeline,
         camera: &crate::sprite_data::Camera,
         texture_resources: &std::collections::HashMap<crate::texture::TextureHandle, crate::sprite_data::TextureResource>,
-        sprite_batches: &[&crate::sprite::SpriteBatch]
+        sprite_batches: &[&crate::sprite::SpriteBatch],
+        ui_batches: &[&crate::sprite::SpriteBatch],
     ) -> Result<(), RendererError> {
         // Get a frame (returns None if we should skip this frame)
         let frame = match self.acquire_frame()? {
@@ -322,6 +335,7 @@ impl Renderer {
             });
 
         sprite_pipeline.update_camera(&self.queue, camera);
+        ui_pipeline.update_camera(&self.queue, camera);
         self.line_pipeline.update_camera(&self.queue, camera);
 
         // Pass 1: sprites -> HDR color (+ depth).
@@ -348,6 +362,16 @@ impl Renderer {
                 is_srgb: self.config.format.is_srgb(),
             },
             &self.bloom_config,
+        );
+
+        // Final pass: UI straight to the swapchain, after (and exempt from)
+        // the tonemap — authored UI colors display exactly (issue #26).
+        ui_pipeline.draw_ui(
+            &mut encoder,
+            texture_resources,
+            ui_batches,
+            &swapchain_view,
+            &self.render_targets.depth_view,
         );
 
         self.queue.submit(std::iter::once(encoder.finish()));

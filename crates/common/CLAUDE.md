@@ -17,7 +17,7 @@ straight from `glam`; there is no engine-owned math module.)
   tested on ALL targets so the browser's exact lookup semantics are covered by
   the native suite. `list_dir_files` is sorted + direct-children-only on both
   targets. H5 (Aug 2026)
-- `color.rs` — `Color` (the engine-wide color type)
+- `color.rs` — `Color` (the engine-wide color type; WCAG `luminance()` / `contrast_ratio()` back the editor theme's surface-ladder guard tests)
 - `rect.rs` — `Rect` (axis-aligned bounds: hit tests, intersection/union, UI layout)
 - `transform.rs` — `Transform2D` (position/rotation/scale + point transforms)
 - `camera.rs` — `Camera` (2D camera) and `CameraUniform` (view/projection data
@@ -38,4 +38,4 @@ Every type above is re-exported at the crate root; `Color`, `Transform2D`,
 `Camera`, `Rect`, `Time`, and `SheetGrid` are also in `common::prelude`.
 
 ## Testing
-- `cargo test -p common` — 36 tests (34 unit + 2 doc), 0 ignored
+- `cargo test -p common` — 44 tests (42 unit + 2 doc), 0 ignored

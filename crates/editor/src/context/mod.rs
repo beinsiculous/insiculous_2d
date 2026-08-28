@@ -67,6 +67,15 @@ pub struct EditorContext {
     pub drag_drop: crate::DragDropState,
     /// Asset browser panel state (scan results, scroll)
     pub asset_browser: crate::AssetBrowserState,
+    /// The editor's own UI faces (regular/bold/mono), loaded at init from
+    /// the crate-shipped bytes — never from the opened project's assets.
+    pub fonts: crate::fonts::EditorFonts,
+    /// Vertical scroll for the inspector panel (audit §3.3). Lives here
+    /// because the inspector has no panel struct of its own.
+    pub inspector_scroll: crate::ScrollState,
+    /// The entity the inspector scroll belongs to — a selection change
+    /// resets the scroll so each entity opens at the top.
+    pub inspector_scroll_entity: Option<ecs::EntityId>,
 }
 
 impl Default for EditorContext {
@@ -132,6 +141,9 @@ impl EditorContext {
             scene_path: None,
             theme,
             status_bar: StatusBar::new(),
+            fonts: crate::fonts::EditorFonts::default(),
+            inspector_scroll: crate::ScrollState::default(),
+            inspector_scroll_entity: None,
             drag_drop: crate::DragDropState::new(),
             asset_browser: crate::AssetBrowserState::default(),
         };

@@ -18,10 +18,6 @@ Resolved history: root `log_archive.md` § ui.
 - **File:** `draw.rs:26-43` — `text: String` + per-glyph `character` duplicate character info.
 - **Fix:** remove `text` (reconstruct from glyphs) or remove `character` from `GlyphDrawData`.
 
-### [JUN-T2] `scroll_delta` is captured but no widget consumes it — Low
-- **File:** `interaction.rs` — snapshotted every frame but there is no scroll-area widget.
-- **Fix:** add a `scroll_area` widget or drop the field until one exists.
-
 ### [JUN-T3] No layout helpers — Low (roadmap)
 - Every caller hand-places absolute `Rect`s; no row/column/anchor layout. Phase 2+ concern.
 
@@ -33,4 +29,4 @@ Resolved history: root `log_archive.md` § ui.
 | `#[allow(...)]` | 2 (documented clippy exceptions) |
 | High priority open | 0 |
 | Medium priority open | 0 |
-| Low priority open | 5 (JUN-T1b, ARCH-003, JUN-T2, JUN-T3, GPP-L8) |
+| Low priority open | 4 (JUN-T1b, ARCH-003, JUN-T3, GPP-L8) |

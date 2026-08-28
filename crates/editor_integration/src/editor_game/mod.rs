@@ -260,31 +260,6 @@ impl<G: Game> Game for EditorGame<G> {
         // derive the ui theme from the editor palette once at startup.
         ctx.ui.set_theme(self.editor.theme.ui_theme());
 
-        // Load font from common search paths
-        let font_paths = [
-            "assets/fonts/font.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/usr/share/fonts/TTF/DejaVuSans.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-            "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
-            "/System/Library/Fonts/Helvetica.ttc",
-            "C:\\Windows\\Fonts\\arial.ttf",
-        ];
-
-        for path in font_paths {
-            if let Ok(handle) = ctx.ui.load_font_file(path) {
-                self.font_loaded = true;
-                self.editor_font = Some(handle);
-                log::info!("Editor font loaded from: {}", path);
-                break;
-            }
-        }
-
-        if !self.font_loaded {
-            log::warn!("No font loaded. Text will render as placeholders.");
-            log::warn!("To enable font rendering, add a .ttf file to examples/assets/fonts/font.ttf");
-        }
-
         // Restore camera/grid/panel layout from the previous session
         self.load_preferences();
 
@@ -298,7 +273,36 @@ impl<G: Game> Game for EditorGame<G> {
 
         // Whatever font the game set up is the game view's baseline; locale
         // fonts layer on top of it during play (see update_inner_game).
+        // Captured BEFORE the editor faces load: the game's font is the
+        // first loaded and therefore the auto-claimed default — loading
+        // DejaVu first would poison this capture and reskin the game view
+        // (kimi round 6 F1).
         self.game_base_font = ctx.ui.default_font();
+
+        // The editor's chrome faces ship with the editor crate (audit §5.6)
+        // — the old search started at the GAME's assets/fonts/font.ttf, so
+        // an opened project's serif skinned the whole editor.
+        let load = |ui: &mut ui::UIContext, name: &str, bytes: &[u8]| match ui.load_font(bytes) {
+            Ok(handle) => Some(handle),
+            Err(e) => {
+                log::error!("editor {name} font failed to load: {e}");
+                None
+            }
+        };
+        self.editor.fonts = editor::fonts::EditorFonts {
+            regular: load(ctx.ui, "regular", editor::fonts::EDITOR_FONT_REGULAR),
+            bold: load(ctx.ui, "bold", editor::fonts::EDITOR_FONT_BOLD),
+            mono: load(ctx.ui, "mono", editor::fonts::EDITOR_FONT_MONO),
+        };
+        self.editor_font = self.editor.fonts.regular;
+        self.font_loaded = self.editor_font.is_some();
+        if let Some(regular) = self.editor_font {
+            // Explicit claim: load_font only auto-claims the FIRST font
+            // ever loaded, which is the game's when it loaded one.
+            ctx.ui.set_default_font(regular);
+        } else {
+            log::warn!("No editor font loaded. Text will render as placeholders.");
+        }
     }
 
     fn update(&mut self, ctx: &mut GameContext) {

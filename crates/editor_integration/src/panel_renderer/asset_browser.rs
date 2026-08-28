@@ -82,20 +82,21 @@ pub(super) fn render_asset_browser(
         }
     }
 
-    // ── Scroll ──────────────────────────────────────────────────────
+    // ── Scroll (shared ScrollState — audit §3.3) ────────────────────
     let grid_origin = Vec2::new(bounds.x + PADDING, bounds.y + HEADER_HEIGHT + PADDING);
     let columns = (((bounds.width - PADDING * 2.0) / (TILE_SIZE + TILE_GAP)) as usize).max(1);
     let rows = editor.asset_browser.entries.len().div_ceil(columns);
     let content_height = rows as f32 * (TILE_SIZE + TILE_LABEL_HEIGHT + TILE_GAP);
-    let max_scroll = (content_height - (bounds.height - HEADER_HEIGHT - PADDING)).max(0.0);
-    if bounds.contains(ctx.ui.mouse_pos()) {
-        let delta = ctx.ui.scroll_delta();
-        if delta != 0.0 {
-            editor.asset_browser.scroll_offset =
-                (editor.asset_browser.scroll_offset - delta * 30.0).clamp(0.0, max_scroll);
-        }
-    }
-    let scroll = editor.asset_browser.scroll_offset;
+    let viewport_height = bounds.height - HEADER_HEIGHT - PADDING;
+    // The grid's height is known up front (entry count), so record it
+    // BEFORE consuming the wheel — this panel clamps lag-free.
+    editor.asset_browser.scroll.end_frame(content_height, viewport_height);
+    let scroll = editor.asset_browser.scroll.begin_frame(
+        bounds,
+        ctx.ui.mouse_pos(),
+        ctx.ui.scroll_delta(),
+        viewport_height,
+    );
 
     // ── Tiles ───────────────────────────────────────────────────────
     let is_playing = editor.is_playing();

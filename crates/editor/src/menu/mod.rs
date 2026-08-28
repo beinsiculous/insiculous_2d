@@ -393,8 +393,9 @@ impl MenuBar {
 
     /// Render a dropdown menu (static method to avoid borrow issues).
     fn render_dropdown_static(ui: &mut UIContext, menu: &Menu, dropdown_bounds: Rect, theme: &EditorTheme) -> Option<String> {
-        // Draw dropdown background
-        ui.panel(dropdown_bounds);
+        // Floating surface + bounded border (audit §5.3): a dropdown must
+        // read as an object ABOVE the panel, not blend into it.
+        ui.panel_styled(dropdown_bounds, theme.surface_4, theme.popup_border, 1.0);
 
         // Draw items
         let mut y = dropdown_bounds.y + 4.0;

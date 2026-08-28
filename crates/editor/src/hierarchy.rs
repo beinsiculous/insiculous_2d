@@ -41,6 +41,8 @@ pub enum NameResolution {
 pub struct HierarchyPanel {
     /// Entities that are collapsed (all expanded by default).
     collapsed: HashSet<EntityId>,
+    /// Vertical scroll for long entity lists (audit §3.3).
+    pub scroll: crate::ScrollState,
 }
 
 /// Shared state for one hierarchy render pass, threaded through the node recursion.
@@ -58,6 +60,7 @@ impl HierarchyPanel {
     pub fn new() -> Self {
         Self {
             collapsed: HashSet::new(),
+            scroll: crate::ScrollState::default(),
         }
     }
 
@@ -164,11 +167,21 @@ impl HierarchyPanel {
             clicked_entities: &mut clicked_entities,
         };
 
-        // Render each root and its descendants with top padding
-        let mut y = bounds.y + BASE_PADDING;
+        // Render each root and its descendants with top padding, offset by
+        // the panel scroll (render_node culls off-panel rows but still
+        // advances y, so offset rows lay out for free).
+        let offset = self.scroll.begin_frame(
+            bounds,
+            ctx.ui.mouse_pos(),
+            ctx.ui.scroll_delta(),
+            bounds.height,
+        );
+        let top = bounds.y + BASE_PADDING - offset;
+        let mut y = top;
         for root in roots {
             y = self.render_node(&mut ctx, root, 0, y);
         }
+        self.scroll.end_frame(y - top + BASE_PADDING, bounds.height);
 
         clicked_entities
     }
@@ -302,6 +315,58 @@ mod tests {
             NameResolution::Ambiguous(matches) => assert_eq!(matches.len(), 2),
             other => panic!("expected Ambiguous, got {other:?}"),
         }
+    }
+
+    // ==================== Scrolling ====================
+
+    #[test]
+    fn test_hierarchy_scrolls_rows_with_wheel_in_bounds() {
+        // Audit §3.3: past ~30 entities rows were invisible AND the panel
+        // ignored the wheel. Wheel input inside the panel bounds must move
+        // the scroll offset so later rows lay out inside the panel.
+        use input::InputEvent;
+
+        let mut world = World::new();
+        for _ in 0..40 {
+            world.create_entity();
+        }
+        let mut panel = HierarchyPanel::new();
+        let mut selection = Selection::new();
+        let bounds = common::Rect::new(0.0, 0.0, 200.0, 100.0);
+        let theme = crate::theme::EditorTheme::default();
+
+        // Frame 1 measures content height (no wheel yet). NOTE the input
+        // lifecycle: process events at frame START, end_frame (which clears
+        // the per-frame wheel delta) after the UI consumed it.
+        let mut input = input::InputHandler::new();
+        input.queue_event(InputEvent::MouseMoved(50.0, 50.0));
+        input.process_queued_events();
+        let mut ui = ui::UIContext::new();
+        ui.begin_frame(&input, glam::Vec2::new(800.0, 600.0));
+        panel.render(&mut ui, &world, &mut selection, bounds, &theme);
+        ui.end_frame();
+        input.end_frame();
+        assert_eq!(panel.scroll.offset(), 0.0);
+
+        // Frame 2: wheel down inside the bounds scrolls.
+        input.queue_event(InputEvent::MouseWheelScrolled(-2.0));
+        input.process_queued_events();
+        ui.begin_frame(&input, glam::Vec2::new(800.0, 600.0));
+        panel.render(&mut ui, &world, &mut selection, bounds, &theme);
+        ui.end_frame();
+        input.end_frame();
+        assert!(panel.scroll.offset() > 0.0, "wheel in bounds must scroll the panel");
+
+        // Frame 3: wheel outside the bounds is ignored.
+        let before = panel.scroll.offset();
+        input.queue_event(InputEvent::MouseMoved(500.0, 500.0));
+        input.queue_event(InputEvent::MouseWheelScrolled(-2.0));
+        input.process_queued_events();
+        ui.begin_frame(&input, glam::Vec2::new(800.0, 600.0));
+        panel.render(&mut ui, &world, &mut selection, bounds, &theme);
+        ui.end_frame();
+        input.end_frame();
+        assert_eq!(panel.scroll.offset(), before, "wheel outside the panel is not ours");
     }
 
     // ==================== Expand/Collapse State Tests ====================

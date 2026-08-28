@@ -134,6 +134,16 @@ Core engine: Game trait, run_game(), managers, scene loading/saving, asset manag
 - Inverse path: `SceneLoader::load_and_instantiate(path, world, assets)` from `scene_loader.rs`
 - Loader attaches a `Name` component for named entities (in addition to `SceneInstance.named_entities`), so names survive an editor load→save round-trip
 
+## Rendering note (Aug 2026, issue #26)
+UI draws in its own **post-tonemap pass**: game sprites render into the HDR
+target and get Reinhard-tonemapped by the bloom composite; UI batches (always
+separate from game batches in `game/render.rs`) then draw straight to the
+swapchain via `RenderManager.ui_pipeline` — authored UI colors display as
+exactly that byte (white text = 255, not 188). `render()` takes game and UI
+batch refs separately. Also: `GameContext.window_title` writeback retitles the
+OS window in the frame tail (`WindowManager::set_title`, headless no-op, title
+stored pre-creation).
+
 ## Testing
 - 372 passing (incl. doc tests; GPU/window-bound ones compile-only `no_run`), 0 ignored — `cargo test -p engine_core`
 
