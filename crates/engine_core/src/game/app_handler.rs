@@ -22,6 +22,14 @@ impl<G: Game> GameRunner<G> {
     /// and re-arm the next redraw. Called from `about_to_wait` natively and
     /// from `RedrawRequested` on the web.
     fn drive_frame(&mut self, event_loop: &ActiveEventLoop) {
+        // The page has been left (navigation/bfcache — issue #58): the
+        // browser may have already dropped the WebGPU device behind us, and
+        // resuming would submit to a dead queue. Same fail-stop as device
+        // loss.
+        #[cfg(target_arch = "wasm32")]
+        if crate::web::page_exited() {
+            self.render_fatal = true;
+        }
         // Fatal render failure (GPU device lost): stop the loop before it
         // touches the dead device again. Checked before AND after the frame
         // so at most one partial frame runs past the loss.
@@ -53,9 +61,11 @@ impl<G: Game> GameRunner<G> {
         #[cfg(target_arch = "wasm32")]
         {
             let _ = event_loop;
-            crate::web::set_boot_status(
-                "Graphics device lost — reload the page to continue",
-            );
+            crate::web::set_boot_status(if crate::web::page_exited() {
+                crate::web::PAGE_EXIT_STATUS
+            } else {
+                "Graphics device lost — reload the page to continue"
+            });
         }
         #[cfg(not(target_arch = "wasm32"))]
         {

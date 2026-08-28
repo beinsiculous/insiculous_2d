@@ -165,6 +165,9 @@ pub fn run_game<G: Game>(game: G, config: GameConfig) -> Result<(), Box<dyn std:
     #[cfg(target_arch = "wasm32")]
     {
         use winit::platform::web::EventLoopExtWebSys;
+        // Stop-for-good on pagehide/bfcache restore (issue #58) — must be
+        // installed before the browser owns the loop.
+        crate::web::install_page_exit_guard();
         event_loop.spawn_app(runner);
     }
     Ok(())

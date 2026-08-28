@@ -13,8 +13,62 @@
 //! `asset_base_path = base_url` hits every fetched byte without any
 //! path translation.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
+
+/// One-way latch: this page has been left (navigation away, tab close, or a
+/// back/forward-cache freeze). The frame loop treats it as fatal — issue
+/// #58: Firefox's bfcache RESTORES a frozen game page and our rAF loop
+/// would resume against a WebGPU queue the (in-parent on Linux) wgpu may
+/// have dropped, and the first message to a dead queue id panics Firefox's
+/// MAIN process. Never resume a page the browser took away.
+static PAGE_EXITED: AtomicBool = AtomicBool::new(false);
+
+/// Message shown when the page-exit latch stops the loop.
+pub(crate) const PAGE_EXIT_STATUS: &str =
+    "Game stopped by navigation — reload the page to play again";
+
+/// Whether the page-exit latch has fired.
+pub fn page_exited() -> bool {
+    PAGE_EXITED.load(Ordering::Relaxed)
+}
+
+/// Install `pagehide`/`pageshow` listeners that stop the frame loop for
+/// good once the page is left. Called by `run_game`'s web path before the
+/// event loop is handed to the browser; idempotent enough (duplicate
+/// listeners just re-set the same latch).
+pub fn install_page_exit_guard() {
+    use wasm_bindgen::closure::Closure;
+    let Some(window) = web_sys::window() else { return };
+
+    let on_pagehide = Closure::<dyn FnMut(web_sys::Event)>::new(move |_event| {
+        PAGE_EXITED.store(true, Ordering::Relaxed);
+    });
+    let _ = window.add_event_listener_with_callback(
+        "pagehide",
+        on_pagehide.as_ref().unchecked_ref(),
+    );
+    on_pagehide.forget();
+
+    // A bfcache restore (`pageshow` with persisted=true) would otherwise
+    // resume the frozen loop; the latch is already set from the pagehide,
+    // so just make the outcome legible immediately (the fatal path repeats
+    // the same message when the next rAF tick lands).
+    let on_pageshow =
+        Closure::<dyn FnMut(web_sys::PageTransitionEvent)>::new(move |event: web_sys::PageTransitionEvent| {
+            if event.persisted() {
+                PAGE_EXITED.store(true, Ordering::Relaxed);
+                set_boot_status(PAGE_EXIT_STATUS);
+            }
+        });
+    let _ = window.add_event_listener_with_callback(
+        "pageshow",
+        on_pageshow.as_ref().unchecked_ref(),
+    );
+    on_pageshow.forget();
+}
 
 /// A failure during the web boot phase (fetch, HTTP, or manifest parse).
 #[derive(Debug, thiserror::Error)]
