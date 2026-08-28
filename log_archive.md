@@ -118,6 +118,12 @@ Rotating/thrusting ship in zero-g, rocks split on hit, everything wraps. Lives i
 
 ## PROJECT_ROADMAP — Resolved Technical-Debt Notes (moved from the roadmap)
 
+**Resolved Aug 27 2026 (editor UX-audit Sprint 2, issue #28):** ui JUN-T2
+(`scroll_delta` captured but unconsumed) — the shared `editor::ScrollState`
+now consumes it in three panels (inspector, hierarchy, asset browser) under
+the documented mouse-in-bounds ownership convention; a generic ui-crate
+`scroll_area` widget remains a future nicety alongside JUN-T3.
+
 **Resolved by the June 2026 audit passes** (previously listed in the roadmap's Technical Debt section):
 renderer SRP-001 (`sprite.rs` split into `sprite/{batch,pipeline}.rs`) and
 ARCH-003 (all `#[allow(dead_code)]` removed, ~700 lines dead code deleted);
