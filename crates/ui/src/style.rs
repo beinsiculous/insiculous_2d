@@ -142,6 +142,9 @@ pub struct TextInputStyle {
     pub border: Color,
     /// Border color when hovered or focused
     pub border_focused: Color,
+    /// Border color while the focused edit buffer fails to parse (numeric
+    /// inputs) — the "this text is not a number" affordance
+    pub border_invalid: Color,
     /// Border width in pixels
     pub border_width: f32,
     /// Corner radius in pixels
@@ -166,6 +169,7 @@ impl Default for TextInputStyle {
             background_focused: Color::new(0.2, 0.2, 0.25, 1.0),
             border: Color::new(0.3, 0.3, 0.35, 1.0),
             border_focused: Color::new(0.4, 0.6, 1.0, 1.0),
+            border_invalid: Color::new(1.0, 0.27, 0.27, 1.0),
             border_width: 1.0,
             corner_radius: 2.0,
             text_color: Color::WHITE,
@@ -263,6 +267,7 @@ impl Theme {
                 background_focused: Color::WHITE,
                 border: Color::from_hex(light::BORDER),
                 border_focused: Color::from_hex(light::ACCENT),
+                border_invalid: Color::new(0.85, 0.15, 0.15, 1.0),
                 border_width: 1.0,
                 corner_radius: 2.0,
                 text_color: Color::BLACK,

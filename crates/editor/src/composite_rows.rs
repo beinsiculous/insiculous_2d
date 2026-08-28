@@ -36,6 +36,8 @@ pub fn edit_vec2(
 
     let input_height = style.row_height - 4.0;
     let input_y = pos.y + (style.row_height - input_height) / 2.0;
+    let opts = ui::FloatFieldOpts::range(min, max)
+        .with_step(crate::row_layout::scrub_step(&(min..=max)));
 
     let mut new_value = value;
     for (axis, (slot, badge, color)) in [
@@ -51,14 +53,15 @@ pub fn edit_vec2(
         let edited = ui.float_input(
             FieldId::new(id.component_index, id.field_index, axis),
             axis_value,
-            min,
-            max,
+            opts,
             bounds,
         );
-        if axis == 0 {
-            new_value.x = edited;
-        } else {
-            new_value.y = edited;
+        if edited.changed {
+            if axis == 0 {
+                new_value.x = edited.value;
+            } else {
+                new_value.y = edited.value;
+            }
         }
     }
 
@@ -117,6 +120,10 @@ pub fn edit_color(
         ("A", value.w, 3, cols[1], row_ys[1]),
     ];
 
+    // Channels are a true 0..=1 invariant: typed commits clamp too, and a
+    // fine scrub step suits the range.
+    let channel_opts = ui::FloatFieldOpts::hard(0.0, 1.0).with_step(0.005);
+
     let mut new_value = value;
     let mut changed = false;
     for (badge, channel_value, subfield, slot, row_y) in channels {
@@ -130,16 +137,15 @@ pub fn edit_color(
         let edited = ui.float_input(
             FieldId::new(id.component_index, id.field_index, subfield),
             channel_value,
-            0.0,
-            1.0,
+            channel_opts,
             bounds,
         );
-        if (edited - channel_value).abs() > f32::EPSILON {
+        if edited.changed {
             match subfield {
-                0 => new_value.x = edited,
-                1 => new_value.y = edited,
-                2 => new_value.z = edited,
-                _ => new_value.w = edited,
+                0 => new_value.x = edited.value,
+                1 => new_value.y = edited.value,
+                2 => new_value.z = edited.value,
+                _ => new_value.w = edited.value,
             }
             changed = true;
         }

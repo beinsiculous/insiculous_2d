@@ -7,9 +7,81 @@
 //! input-state flags into edit calls and draws the box/selection/caret.
 
 use crate::input_state::InputState;
-use crate::{Rect, TextEditState, WidgetId, WidgetState};
+use crate::{Rect, ScrubState, TextEditState, WidgetId, WidgetState};
 
 use super::{TextAlign, UIContext};
+
+/// Pointer travel (pixels) that turns a press on an unfocused float input
+/// into a drag-scrub instead of a click-to-focus.
+const SCRUB_THRESHOLD_PX: f32 = 4.0;
+
+/// Options for a [`UIContext::float_input`].
+///
+/// `min..=max` is a SOFT range: it clamps drag-scrub and arrow-nudge output,
+/// but a typed commit may exceed it — the inspector shows the world's real
+/// value instead of silently clamping (set `hard_clamp` where the range is a
+/// true invariant, e.g. color channels).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FloatFieldOpts {
+    /// Soft lower bound (scrub/arrow floor).
+    pub min: f32,
+    /// Soft upper bound (scrub/arrow ceiling).
+    pub max: f32,
+    /// Also clamp typed commits to `min..=max`.
+    pub hard_clamp: bool,
+    /// Arrow-nudge increment AND scrub units per pixel. Shift makes arrows
+    /// coarser (×10) and scrubbing finer (×0.1).
+    pub step: f32,
+    /// Display-only suffix (e.g. `"°"`); never part of the edit buffer.
+    pub suffix: &'static str,
+}
+
+impl FloatFieldOpts {
+    /// Soft range with a 1.0 step and no suffix.
+    pub fn range(min: f32, max: f32) -> Self {
+        Self { min, max, hard_clamp: false, step: 1.0, suffix: "" }
+    }
+
+    /// Hard-clamped range (typed commits clamp too).
+    pub fn hard(min: f32, max: f32) -> Self {
+        Self { hard_clamp: true, ..Self::range(min, max) }
+    }
+
+    /// Set the arrow/scrub step.
+    pub fn with_step(mut self, step: f32) -> Self {
+        self.step = step;
+        self
+    }
+
+    /// Set the display suffix.
+    pub fn with_suffix(mut self, suffix: &'static str) -> Self {
+        self.suffix = suffix;
+        self
+    }
+}
+
+/// What a [`UIContext::float_input`] reported this frame.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct FloatInputResult {
+    /// The field's value after this frame (live during a scrub or arrow
+    /// nudge, the committed value on a commit frame, else the input value).
+    pub value: f32,
+    /// `value` differs from the input value this frame.
+    pub changed: bool,
+    /// An edit gesture ended this frame (typed commit or scrub release) —
+    /// hosts use it as an undo-merge boundary.
+    pub committed: bool,
+    /// The focused edit buffer currently fails to parse (red border shown).
+    pub invalid: bool,
+    /// A drag-scrub gesture is active.
+    pub scrubbing: bool,
+}
+
+impl FloatInputResult {
+    fn unchanged(value: f32) -> Self {
+        Self { value, ..Self::default() }
+    }
+}
 
 /// Apply one frame's navigation/deletion/typing to an edit state.
 /// Shared by every text-input widget.
@@ -45,20 +117,23 @@ impl UIContext {
     ///
     /// Click to focus: the whole value is selected so typing overwrites it.
     /// Click again to place the cursor; arrows/Home/End move it (shift
-    /// extends the selection), Backspace/Delete edit at the cursor, and
-    /// held keys repeat. Enter/Tab or clicking outside commits (clamped to
-    /// `min..=max`, parse failures fall back to the pre-edit value);
-    /// Escape cancels.
+    /// extends the selection), Up/Down nudge the value by `opts.step`
+    /// (Shift ×10), Backspace/Delete edit at the cursor, and held keys
+    /// repeat. Enter/Tab or clicking outside commits (a parse failure — red
+    /// border while focused — reverts to the pre-edit value; the soft range
+    /// only clamps unless `opts.hard_clamp`); Escape cancels.
     ///
-    /// Returns the current value (unchanged while editing, new value on commit).
+    /// Dragging horizontally on an unfocused field scrubs the value
+    /// (`opts.step` per pixel, Shift for fine ×0.1 control, clamped to the
+    /// soft range); a press that travels less than the threshold is a plain
+    /// click-to-focus. Escape mid-scrub restores the start value.
     pub fn float_input(
         &mut self,
         id: impl Into<WidgetId>,
         value: f32,
-        min: f32,
-        max: f32,
+        opts: FloatFieldOpts,
         bounds: Rect,
-    ) -> f32 {
+    ) -> FloatInputResult {
         let id = id.into();
         let result = self.interaction.interact(id, bounds, true);
         let was_focused = self.interaction.is_focused(id);
@@ -69,7 +144,24 @@ impl UIContext {
         let padding = self.theme.text_input.padding;
         let font_size = self.theme.text_input.font_size;
 
-        if result.clicked && !was_focused {
+        // ---- drag-scrub (unfocused only) ------------------------------
+        if !was_focused {
+            if let Some(out) = self.float_scrub(id, value, &opts, bounds, &input, mouse_in_bounds) {
+                return out;
+            }
+        }
+        // A press that never crossed the threshold falls through to the
+        // click-to-focus path below on its release frame.
+        let scrub_was_active = self
+            .interaction
+            .get_state_if_exists(id)
+            .and_then(|s| s.scrub)
+            .is_some_and(|s| s.active);
+        if input.mouse_just_released {
+            self.interaction.get_state(id).scrub = None;
+        }
+
+        if result.clicked && !was_focused && !scrub_was_active {
             // Enter edit mode with the whole value selected — typing replaces it
             self.interaction.set_focus(id);
             let text = format!("{:.2}", value);
@@ -86,25 +178,120 @@ impl UIContext {
             // Cancel on Escape
             if input.escape_pressed {
                 self.interaction.clear_focus();
-                return self.draw_float_value(bounds, value, false);
+                self.draw_float_value(bounds, value, opts.suffix, false);
+                return FloatInputResult::unchanged(value);
             }
 
             // Commit on Enter, Tab, or click outside
             if input.enter_pressed || input.tab_pressed || (input.mouse_just_pressed && !mouse_in_bounds) {
-                return self.commit_float_input(id, value, min, max, bounds);
+                return self.commit_float_input(id, value, &opts, bounds);
+            }
+
+            // Up/Down nudge the parsed buffer by the step (Shift ×10),
+            // clamped to the soft range; the world updates live.
+            if input.up_pressed || input.down_pressed {
+                if let Ok(current) = self.interaction.get_state(id).edit.text.parse::<f32>() {
+                    let step = opts.step * if input.shift_down { 10.0 } else { 1.0 };
+                    let dir = if input.up_pressed { 1.0 } else { -1.0 };
+                    let nudged = (current + dir * step).clamp(opts.min, opts.max);
+                    let text = format!("{:.2}", nudged);
+                    self.interaction.get_state(id).edit.set_text_select_all(&text);
+                    let edit = self.interaction.get_state(id).edit.clone();
+                    self.draw_text_input_editing_invalid(bounds, &edit, false);
+                    return FloatInputResult {
+                        value: nudged,
+                        changed: (nudged - value).abs() > f32::EPSILON,
+                        ..FloatInputResult::default()
+                    };
+                }
             }
 
             // Navigation, deletion, then typed characters — all cursor-aware
             apply_edit_keys(&mut self.interaction.get_state(id).edit, &input);
 
             let edit = self.interaction.get_state(id).edit.clone();
-            self.draw_text_input_editing(bounds, &edit);
-            return value; // Return original while editing
+            let invalid = edit.text.parse::<f32>().is_err();
+            self.draw_text_input_editing_invalid(bounds, &edit, invalid);
+            return FloatInputResult { invalid, ..FloatInputResult::unchanged(value) };
         }
 
         // Not focused — draw display value
         let hovered = result.state == WidgetState::Hovered;
-        self.draw_float_value(bounds, value, hovered)
+        self.draw_float_value(bounds, value, opts.suffix, hovered);
+        FloatInputResult::unchanged(value)
+    }
+
+    /// The scrub half of [`Self::float_input`]: arm on press, activate past
+    /// the threshold, emit per-frame values while dragging, commit on
+    /// release. Returns `None` when no scrub processing applies this frame.
+    fn float_scrub(
+        &mut self,
+        id: WidgetId,
+        value: f32,
+        opts: &FloatFieldOpts,
+        bounds: Rect,
+        input: &InputState,
+        mouse_in_bounds: bool,
+    ) -> Option<FloatInputResult> {
+        if input.mouse_just_pressed && mouse_in_bounds {
+            // Arm (re-seeding wipes any stale state from a prior gesture).
+            self.interaction.get_state(id).scrub =
+                Some(ScrubState { press_x: input.mouse_pos.x, start_value: value, active: false });
+            self.draw_float_value(bounds, value, opts.suffix, true);
+            return Some(FloatInputResult::unchanged(value));
+        }
+
+        let scrub = self.interaction.get_state_if_exists(id).and_then(|s| s.scrub)?;
+
+        // Escape mid-scrub: restore the start value and end the gesture.
+        if input.escape_pressed {
+            self.interaction.get_state(id).scrub = None;
+            self.draw_float_value(bounds, scrub.start_value, opts.suffix, false);
+            self.note_edit_commit();
+            return Some(FloatInputResult {
+                value: scrub.start_value,
+                changed: (scrub.start_value - value).abs() > f32::EPSILON,
+                committed: true,
+                ..FloatInputResult::default()
+            });
+        }
+
+        if input.mouse_down {
+            let dx = input.mouse_pos.x - scrub.press_x;
+            let mut scrub = scrub;
+            if !scrub.active && dx.abs() >= SCRUB_THRESHOLD_PX {
+                scrub.active = true;
+            }
+            self.interaction.get_state(id).scrub = Some(scrub);
+            if scrub.active {
+                let step = opts.step * if input.shift_down { 0.1 } else { 1.0 };
+                let scrubbed = (scrub.start_value + dx * step).clamp(opts.min, opts.max);
+                self.draw_float_value(bounds, scrubbed, opts.suffix, true);
+                return Some(FloatInputResult {
+                    value: scrubbed,
+                    changed: (scrubbed - value).abs() > f32::EPSILON,
+                    scrubbing: true,
+                    ..FloatInputResult::default()
+                });
+            }
+            // Armed but below threshold: still a potential click.
+            self.draw_float_value(bounds, value, opts.suffix, true);
+            return Some(FloatInputResult::unchanged(value));
+        }
+
+        if input.mouse_just_released && scrub.active {
+            // Scrub release: the last emitted value stands; seal the gesture.
+            self.interaction.get_state(id).scrub = None;
+            self.draw_float_value(bounds, value, opts.suffix, false);
+            self.note_edit_commit();
+            return Some(FloatInputResult {
+                value,
+                committed: true,
+                ..FloatInputResult::default()
+            });
+        }
+
+        None
     }
 
     /// Create a free-form text input field.
@@ -160,6 +347,7 @@ impl UIContext {
                 let new_text = self.interaction.get_state(id).edit.text.clone();
                 self.interaction.clear_focus();
                 self.draw_text_input_box(bounds, &new_text, false);
+                self.note_edit_commit();
                 return Some(new_text);
             }
 
@@ -176,22 +364,42 @@ impl UIContext {
         None
     }
 
-    /// Commit the edit buffer of a float input: parse (falling back to the
-    /// pre-edit value), clamp, unfocus, and draw the committed value.
-    fn commit_float_input(&mut self, id: WidgetId, fallback: f32, min: f32, max: f32, bounds: Rect) -> f32 {
-        let new_value = self.interaction.get_state(id).edit.text
-            .parse::<f32>()
-            .unwrap_or(fallback)
-            .clamp(min, max);
+    /// Commit the edit buffer of a float input: parse, clamp only under
+    /// `hard_clamp`, unfocus, and draw the committed value. A parse failure
+    /// reverts to the pre-edit value — never a silent half-result.
+    fn commit_float_input(
+        &mut self,
+        id: WidgetId,
+        fallback: f32,
+        opts: &FloatFieldOpts,
+        bounds: Rect,
+    ) -> FloatInputResult {
+        let parsed = self.interaction.get_state(id).edit.text.parse::<f32>();
+        let new_value = match parsed {
+            Ok(v) if v.is_finite() => {
+                if opts.hard_clamp {
+                    v.clamp(opts.min, opts.max)
+                } else {
+                    v
+                }
+            }
+            _ => fallback,
+        };
         self.interaction.clear_focus();
-        self.draw_float_value(bounds, new_value, false)
+        self.draw_float_value(bounds, new_value, opts.suffix, false);
+        self.note_edit_commit();
+        FloatInputResult {
+            value: new_value,
+            changed: (new_value - fallback).abs() > f32::EPSILON,
+            committed: true,
+            ..FloatInputResult::default()
+        }
     }
 
-    /// Draw a float input showing a numeric value; returns the value for
-    /// tail-call convenience.
-    fn draw_float_value(&mut self, bounds: Rect, value: f32, highlighted: bool) -> f32 {
-        self.draw_text_input_box(bounds, &format!("{:.2}", value), highlighted);
-        value
+    /// Draw a float input showing a numeric value (plus a display-only
+    /// suffix, e.g. `"°"`).
+    fn draw_float_value(&mut self, bounds: Rect, value: f32, suffix: &str, highlighted: bool) {
+        self.draw_text_input_box(bounds, &format!("{:.2}{}", value, suffix), highlighted);
     }
 
     /// Pixel widths of every prefix of `text` at `font_size`:
@@ -211,11 +419,18 @@ impl UIContext {
     /// Draw a focused text input: box, selection band, text, and caret,
     /// clipped to the bounds so long edits don't overflow.
     fn draw_text_input_editing(&mut self, bounds: Rect, edit: &TextEditState) {
+        self.draw_text_input_editing_invalid(bounds, edit, false);
+    }
+
+    /// [`Self::draw_text_input_editing`] with an invalid-buffer state: a
+    /// red border says "this text is not a number" while focused.
+    fn draw_text_input_editing_invalid(&mut self, bounds: Rect, edit: &TextEditState, invalid: bool) {
         let style = self.theme.text_input.clone();
+        let border = if invalid { style.border_invalid } else { style.border_focused };
 
         self.draw_list.rect_rounded(bounds, style.background_focused, style.corner_radius);
         self.draw_list
-            .rect_border_rounded(bounds, style.border_focused, style.border_width, style.corner_radius);
+            .rect_border_rounded(bounds, border, style.border_width, style.corner_radius);
 
         self.push_clip_rect(bounds);
 

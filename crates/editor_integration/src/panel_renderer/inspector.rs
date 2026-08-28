@@ -153,6 +153,13 @@ fn render_inspector_editable(
     );
     y = next_y;
 
+    // Gesture boundary: an edit committed this frame (typed commit or scrub
+    // release) seals the top undo entry, so the NEXT gesture on the same
+    // field becomes its own undo step instead of merging forever.
+    if ctx.ui.take_edit_commit() {
+        command_history.break_merge();
+    }
+
     let name_after = ctx
         .world
         .get::<ecs::Name>(entity_id)

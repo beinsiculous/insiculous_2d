@@ -108,6 +108,22 @@ pub struct WidgetPersistentState {
     pub seen_this_frame: bool,
     /// Text-editing state (buffer, cursor, selection) for input widgets
     pub edit: TextEditState,
+    /// In-flight drag-scrub gesture on a numeric input, if any
+    pub scrub: Option<ScrubState>,
+}
+
+/// A drag-scrub gesture on a numeric input: armed on press, activated once
+/// the pointer travels past the click threshold, cleared on release. Arming
+/// re-seeds `press_x`/`start_value`, so stale state can never leak into a
+/// later gesture (even across widgets that share an id).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ScrubState {
+    /// Pointer x at the press that armed the gesture.
+    pub press_x: f32,
+    /// Value at the press — scrub output is `start + dx * step`.
+    pub start_value: f32,
+    /// Whether the pointer has crossed the click/scrub threshold.
+    pub active: bool,
 }
 
 /// Tracks interaction state for all widgets in the UI.

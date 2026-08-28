@@ -14,12 +14,16 @@ mod text;
 mod text_input;
 mod widgets;
 
+pub use text_input::{FloatFieldOpts, FloatInputResult};
+
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod overlay_tests;
 #[cfg(test)]
 mod focus_tests;
+#[cfg(test)]
+mod scrub_tests;
 
 use glam::Vec2;
 use input::InputHandler;
@@ -75,6 +79,10 @@ pub struct UIContext {
     window_size: Vec2,
     /// Font manager for text rendering
     font_manager: FontManager,
+    /// Whether any text/float input committed an edit gesture this frame
+    /// (typed commit or scrub release) — hosts read it via
+    /// [`Self::take_edit_commit`] to place undo-merge boundaries.
+    edit_committed: bool,
 }
 
 impl Default for UIContext {
@@ -89,6 +97,7 @@ impl UIContext {
         Self {
             interaction: InteractionManager::new(),
             draw_list: DrawList::new(),
+            edit_committed: false,
             theme: Theme::default(),
             window_size: Vec2::new(800.0, 600.0),
             font_manager: FontManager::new(),
@@ -234,6 +243,20 @@ impl UIContext {
     /// Whether the given widget currently has keyboard focus.
     pub fn is_focused(&self, id: impl Into<WidgetId>) -> bool {
         self.interaction.is_focused(id.into())
+    }
+
+    /// Whether any text/float input committed an edit gesture this frame
+    /// (typed commit or scrub release), consuming the flag. Hosts call this
+    /// once at the end of their edit pass to place an undo-merge boundary,
+    /// so two separate edit gestures on the same field become two undo
+    /// entries instead of merging forever.
+    pub fn take_edit_commit(&mut self) -> bool {
+        std::mem::take(&mut self.edit_committed)
+    }
+
+    /// Mark that an input widget committed an edit gesture this frame.
+    pub(crate) fn note_edit_commit(&mut self) {
+        self.edit_committed = true;
     }
 
     /// Programmatically focus a text input before it is next rendered,

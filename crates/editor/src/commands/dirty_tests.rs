@@ -194,3 +194,32 @@ fn test_noop_undo_redo_on_empty_history_stay_clean() {
 
     assert!(!history.is_dirty(), "no-op undo/redo must not dirty a clean scene");
 }
+
+#[test]
+fn test_break_merge_prevents_merge_across_gestures() {
+    // Two scrub gestures on the SAME field must be two undo entries: the
+    // host seals the top entry at each gesture end (scrub release / typed
+    // commit). Without the seal, field_hint merging is unbounded in time.
+    let mut world = World::new();
+    let entity = setup_entity(&mut world);
+
+    // Control: without a boundary, three same-field frames merge into ONE.
+    let mut merged = CommandHistory::new();
+    merged.try_merge_or_push(move_cmd(entity, 10.0));
+    merged.try_merge_or_push(move_cmd(entity, 20.0));
+    merged.try_merge_or_push(move_cmd(entity, 30.0));
+    assert!(merged.undo(&mut world));
+    assert!(!merged.can_undo(), "unbroken frames collapse to one entry");
+
+    // With a boundary after gesture 1: two undo entries.
+    let mut history = CommandHistory::new();
+    history.try_merge_or_push(move_cmd(entity, 10.0));
+    history.try_merge_or_push(move_cmd(entity, 20.0));
+    history.break_merge();
+    history.try_merge_or_push(move_cmd(entity, 30.0));
+
+    assert!(history.undo(&mut world), "undo gesture 2");
+    assert!(history.can_undo(), "gesture 1 is its own entry");
+    assert!(history.undo(&mut world), "undo gesture 1");
+    assert!(!history.can_undo());
+}

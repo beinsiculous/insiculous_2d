@@ -81,6 +81,9 @@ pub struct CommandHistory {
     /// Id on top of the undo stack when the scene was last saved
     /// (0 = saved at empty history, the initial state).
     saved_id: u64,
+    /// The next mergeable command must start a fresh entry (gesture
+    /// boundary) — see [`Self::break_merge`].
+    merge_sealed: bool,
 }
 
 impl CommandHistory {
@@ -92,6 +95,7 @@ impl CommandHistory {
             max_history: 100,
             next_id: 1,
             saved_id: 0,
+            merge_sealed: false,
         }
     }
 
@@ -194,6 +198,10 @@ impl CommandHistory {
     /// Used for continuous edits like gizmo drags or slider scrubs to avoid
     /// flooding the undo history with one entry per frame.
     pub fn try_merge_or_execute(&mut self, cmd: Box<dyn EditorCommand>, world: &mut World) {
+        if std::mem::take(&mut self.merge_sealed) {
+            self.execute(cmd, world);
+            return;
+        }
         if let Some((id, last)) = self.undo_stack.back_mut() {
             if last.try_merge(cmd.as_ref()) {
                 // Merged into existing command — no new push, but the
@@ -217,6 +225,10 @@ impl CommandHistory {
     /// writeback for immediate visual feedback). The command is recorded for undo/redo
     /// but `execute()` is not called.
     pub fn try_merge_or_push(&mut self, cmd: Box<dyn EditorCommand>) {
+        if std::mem::take(&mut self.merge_sealed) {
+            self.push_already_executed(cmd);
+            return;
+        }
         if let Some((id, last)) = self.undo_stack.back_mut() {
             if last.try_merge(cmd.as_ref()) {
                 // See try_merge_or_execute: merged state = new id + no redo.
@@ -227,6 +239,15 @@ impl CommandHistory {
             }
         }
         self.push_already_executed(cmd);
+    }
+
+    /// Seal the top of the undo stack against further merging: the NEXT
+    /// mergeable command starts a fresh entry. Hosts call this at edit
+    /// gesture boundaries (scrub release, typed commit) so two separate
+    /// gestures on the same field become two undo entries — without it,
+    /// field_hint merging is unbounded in time.
+    pub fn break_merge(&mut self) {
+        self.merge_sealed = true;
     }
 
     fn enforce_limit(&mut self) {

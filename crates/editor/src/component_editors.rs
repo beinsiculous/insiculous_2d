@@ -26,11 +26,18 @@ mod ranges {
 
     /// Position covers most game worlds.
     pub const POSITION: RangeInclusive<f32> = -1000.0..=1000.0;
-    /// Rotation in radians.
-    pub const ROTATION: RangeInclusive<f32> =
-        -std::f32::consts::PI..=std::f32::consts::PI;
     /// Scale prevents negative/zero values.
     pub const SCALE: RangeInclusive<f32> = 0.01..=10.0;
+    /// Damping is genuinely unbounded in rapier; the soft range covers the
+    /// useful span (the old normalized widget LIED — a damping of 2.0
+    /// displayed as 1.00 and was uneditable).
+    pub const DAMPING: RangeInclusive<f32> = 0.0..=10.0;
+    /// Friction above 1.0 is legal in rapier (soft range).
+    pub const FRICTION: RangeInclusive<f32> = 0.0..=2.0;
+    /// Restitution is conventionally 0..=1 (soft range).
+    pub const RESTITUTION: RangeInclusive<f32> = 0.0..=1.0;
+    /// Volume is conventionally 0..=1 (soft range).
+    pub const VOLUME: RangeInclusive<f32> = 0.0..=1.0;
     /// Sprite/collider offsets relative to the entity.
     pub const OFFSET: RangeInclusive<f32> = -100.0..=100.0;
     /// Collider shape dimensions (half-extents, radii) in pixels.
@@ -126,12 +133,14 @@ pub fn edit_transform2d(
         new.position = v;
         hint = Some("position");
     }
-    if let EditResult::Changed(v) = inspector.f32("Rotation", transform.rotation, ranges::ROTATION) {
+    if let EditResult::Changed(v) = inspector.angle("Rotation", transform.rotation) {
         new.rotation = v;
         hint = Some("rotation");
     }
     if let EditResult::Changed(v) = inspector.vec2("Scale", transform.scale, ranges::SCALE) {
-        new.scale = v;
+        // Hard physical floor: soft ranges let typing exceed the range, but
+        // a zero/negative scale breaks rendering math.
+        new.scale = v.max(glam::Vec2::splat(0.01));
         hint = Some("scale");
     }
 
@@ -153,12 +162,12 @@ pub fn edit_sprite(
         new.offset = v;
         hint = Some("offset");
     }
-    if let EditResult::Changed(v) = inspector.f32("Rotation", sprite.rotation, ranges::ROTATION) {
+    if let EditResult::Changed(v) = inspector.angle("Rotation", sprite.rotation) {
         new.rotation = v;
         hint = Some("rotation");
     }
     if let EditResult::Changed(v) = inspector.vec2("Scale", sprite.scale, ranges::SCALE) {
-        new.scale = v;
+        new.scale = v.max(glam::Vec2::splat(0.01));
         hint = Some("scale");
     }
     if let EditResult::Changed(v) = inspector.color("Color", sprite.color) {
@@ -215,12 +224,12 @@ pub fn edit_rigid_body(
         new.gravity_scale = v;
         hint = Some("gravity_scale");
     }
-    if let EditResult::Changed(v) = inspector.normalized_f32("Linear Damping", body.linear_damping) {
-        new.linear_damping = v;
+    if let EditResult::Changed(v) = inspector.f32("Linear Damping", body.linear_damping, ranges::DAMPING) {
+        new.linear_damping = v.max(0.0);
         hint = Some("linear_damping");
     }
-    if let EditResult::Changed(v) = inspector.normalized_f32("Angular Damping", body.angular_damping) {
-        new.angular_damping = v;
+    if let EditResult::Changed(v) = inspector.f32("Angular Damping", body.angular_damping, ranges::DAMPING) {
+        new.angular_damping = v.max(0.0);
         hint = Some("angular_damping");
     }
     if let EditResult::Changed(v) = inspector.bool("Can Rotate", body.can_rotate) {
@@ -267,7 +276,8 @@ pub fn edit_collider(
             if let EditResult::Changed(v) =
                 inspector.vec2("Half Extents", *half_extents, ranges::COLLIDER_EXTENT)
             {
-                new.shape = ColliderShape::Box { half_extents: v };
+                // Hard floor: rapier cannot build a zero-extent collider.
+                new.shape = ColliderShape::Box { half_extents: v.max(glam::Vec2::splat(0.5)) };
                 hint = Some("half_extents");
             }
         }
@@ -275,7 +285,7 @@ pub fn edit_collider(
             if let EditResult::Changed(v) =
                 inspector.f32("Radius", *radius, ranges::COLLIDER_EXTENT)
             {
-                new.shape = ColliderShape::Circle { radius: v };
+                new.shape = ColliderShape::Circle { radius: v.max(0.5) };
                 hint = Some("radius");
             }
         }
@@ -283,13 +293,13 @@ pub fn edit_collider(
             if let EditResult::Changed(v) =
                 inspector.f32("Half Height", *half_height, ranges::COLLIDER_EXTENT)
             {
-                new.shape = ColliderShape::CapsuleY { half_height: v, radius: *radius };
+                new.shape = ColliderShape::CapsuleY { half_height: v.max(0.0), radius: *radius };
                 hint = Some("half_height");
             }
             if let EditResult::Changed(v) =
                 inspector.f32("Cap Radius", *radius, ranges::COLLIDER_EXTENT)
             {
-                new.shape = ColliderShape::CapsuleY { half_height: *half_height, radius: v };
+                new.shape = ColliderShape::CapsuleY { half_height: *half_height, radius: v.max(0.5) };
                 hint = Some("radius");
             }
         }
@@ -297,13 +307,13 @@ pub fn edit_collider(
             if let EditResult::Changed(v) =
                 inspector.f32("Half Width", *half_height, ranges::COLLIDER_EXTENT)
             {
-                new.shape = ColliderShape::CapsuleX { half_height: v, radius: *radius };
+                new.shape = ColliderShape::CapsuleX { half_height: v.max(0.0), radius: *radius };
                 hint = Some("half_height");
             }
             if let EditResult::Changed(v) =
                 inspector.f32("Cap Radius", *radius, ranges::COLLIDER_EXTENT)
             {
-                new.shape = ColliderShape::CapsuleX { half_height: *half_height, radius: v };
+                new.shape = ColliderShape::CapsuleX { half_height: *half_height, radius: v.max(0.5) };
                 hint = Some("radius");
             }
         }
@@ -317,12 +327,12 @@ pub fn edit_collider(
         new.is_sensor = v;
         hint = Some("is_sensor");
     }
-    if let EditResult::Changed(v) = inspector.normalized_f32("Friction", collider.friction) {
-        new.friction = v;
+    if let EditResult::Changed(v) = inspector.f32("Friction", collider.friction, ranges::FRICTION) {
+        new.friction = v.max(0.0);
         hint = Some("friction");
     }
-    if let EditResult::Changed(v) = inspector.normalized_f32("Restitution", collider.restitution) {
-        new.restitution = v;
+    if let EditResult::Changed(v) = inspector.f32("Restitution", collider.restitution, ranges::RESTITUTION) {
+        new.restitution = v.max(0.0);
         hint = Some("restitution");
     }
 
@@ -347,11 +357,14 @@ pub fn edit_audio_source(
     // Sound ID (read-only asset reference)
     inspector.u32("Sound ID", source.sound_id);
 
-    if let EditResult::Changed(v) = inspector.normalized_f32("Volume", source.volume) {
+    // Volume/pitch are HARD ranges: the audio runtime clamps playback to
+    // volume 0..=1 and speed >= 0.1, so an unclamped inspector value would
+    // display parameters that are not actually taking effect (kimi F1).
+    if let EditResult::Changed(v) = inspector.f32_hard("Volume", source.volume, ranges::VOLUME) {
         new.volume = v;
         hint = Some("volume");
     }
-    if let EditResult::Changed(v) = inspector.f32("Pitch", source.pitch, ranges::PITCH) {
+    if let EditResult::Changed(v) = inspector.f32_hard("Pitch", source.pitch, ranges::PITCH) {
         new.pitch = v;
         hint = Some("pitch");
     }
@@ -453,7 +466,8 @@ mod tests {
         assert!(ranges::POSITION.start() < ranges::POSITION.end());
         assert!(ranges::SCALE.start() > &0.0); // scale must stay positive
         assert!(ranges::PITCH.start() > &0.0); // pitch of zero is silence
-        assert!(ranges::ROTATION.contains(&0.0));
+        assert!(ranges::DAMPING.end() > &1.0, "damping is unbounded in rapier — the range must exceed 1");
+        assert!(ranges::FRICTION.end() > &1.0, "friction above 1.0 is legal in rapier");
         // Collider dimensions must stay positive (rapier rejects zero extents)
         assert!(ranges::COLLIDER_EXTENT.start() > &0.0);
     }

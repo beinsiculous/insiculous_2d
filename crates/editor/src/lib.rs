@@ -91,11 +91,12 @@ pub use context::EditorContext;
 pub use editor_preferences::{EditorPreferences, PanelPrefs};
 pub use dock::{panel_id_for_menu_label, DockArea, DockPanel, DockPosition, PanelId};
 pub use editable_inspector::{
-    component_header, cycle_step, edit_bool, edit_color, edit_f32,
-    edit_normalized_f32, edit_vec2, EditableFieldStyle, EditableInspector, EditResult, FieldId,
+    component_header, cycle_step, edit_bool, edit_color, edit_f32, edit_f32_opts, edit_vec2,
+    wrap_degrees, EditableFieldStyle, EditableInspector, EditResult, FieldId,
 };
 pub use row_layout::{
-    color_block_height, ellipsize, field_row, pair_slots, remove_button_x, PairSlot, RowLayout,
+    color_block_height, ellipsize, field_row, pair_slots, remove_button_x, scrub_step, PairSlot,
+    RowLayout,
 };
 pub use text_field::{display_string, display_u32, edit_string};
 pub use ui_component_editors::{edit_ui_button, edit_ui_label, edit_ui_panel};
@@ -132,7 +133,7 @@ pub mod prelude {
         inspect_all_components, restore_components, CommandHistory, ComponentCategory,
         ComponentEdit, ComponentKind, EditorCommand, StoredComponent,
         component_header, display_u32, edit_audio_source, edit_bool, edit_collider, edit_color,
-        edit_f32, edit_normalized_f32, edit_rigid_body, edit_sprite, edit_transform2d, edit_vec2,
+        edit_f32, edit_rigid_body, edit_sprite, edit_transform2d, edit_vec2,
         inspect_component, panel_id_for_menu_label, toolbar_position_for, DockArea, DockPanel,
         DockPosition, EditorAction, EditorContext, EditorInputMapping, EditorInputState,
         EditorPlayState, EditorPreferences, EditorTool, EditableFieldStyle, EditableInspector,

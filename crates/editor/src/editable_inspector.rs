@@ -15,7 +15,7 @@ use ui::{Rect, UIContext};
 
 pub use crate::composite_rows::{edit_color, edit_vec2};
 pub use crate::field_style::{EditResult, EditableFieldStyle, FieldId};
-use crate::row_layout::{color_block_height, field_row, remove_button_x, RowLayout};
+use crate::row_layout::{color_block_height, field_row, remove_button_x, scrub_step, RowLayout};
 
 /// Fallback content width for inspectors constructed without an explicit
 /// panel width (tests, standalone widget demos).
@@ -39,13 +39,29 @@ pub(crate) fn draw_field_label(
     ui.label_styled(&shown, Vec2::new(pos.x, pos.y + 4.0), style.label_color, style.label_font);
 }
 
-/// Render an editable f32 value with a text input box.
+/// Render an editable f32 value with a text input box (drag-scrub,
+/// Up/Down nudge, soft-range semantics — see [`ui::FloatFieldOpts`]).
 pub fn edit_f32(
     ui: &mut UIContext,
     id: FieldId,
     label: &str,
     value: f32,
     range: RangeInclusive<f32>,
+    layout: RowLayout,
+    style: &EditableFieldStyle,
+) -> EditResult<f32> {
+    let opts = ui::FloatFieldOpts::range(*range.start(), *range.end())
+        .with_step(scrub_step(&range));
+    edit_f32_opts(ui, id, label, value, opts, layout, style)
+}
+
+/// [`edit_f32`] with explicit float-field options (hard clamp, suffix).
+pub fn edit_f32_opts(
+    ui: &mut UIContext,
+    id: FieldId,
+    label: &str,
+    value: f32,
+    opts: ui::FloatFieldOpts,
     layout: RowLayout,
     style: &EditableFieldStyle,
 ) -> EditResult<f32> {
@@ -59,27 +75,18 @@ pub fn edit_f32(
         input_height,
     );
 
-    let new_value = ui.float_input(id, value, *range.start(), *range.end(), input_bounds);
+    let result = ui.float_input(id, value, opts, input_bounds);
 
-    if (new_value - value).abs() > f32::EPSILON {
-        EditResult::Changed(new_value)
+    if result.changed {
+        EditResult::Changed(result.value)
     } else {
         EditResult::Unchanged
     }
 }
 
-/// Render an editable f32 value clamped to a 0-1 range.
-/// Useful for normalized values like volume, friction, restitution.
-pub fn edit_normalized_f32(
-    ui: &mut UIContext,
-    id: FieldId,
-    label: &str,
-    value: f32,
-    layout: RowLayout,
-    style: &EditableFieldStyle,
-) -> EditResult<f32> {
-    let clamped = value.clamp(0.0, 1.0);
-    edit_f32(ui, id, label, clamped, 0.0..=1.0, layout, style)
+/// Wrap a degree value into `-180.0..180.0` (720° → 0°, 190° → −170°).
+pub fn wrap_degrees(deg: f32) -> f32 {
+    (deg + 180.0).rem_euclid(360.0) - 180.0
 }
 
 /// Render an editable boolean value with a checkbox.
@@ -263,7 +270,8 @@ impl<'a> EditableInspector<'a> {
         result
     }
 
-    /// Add an editable f32 field.
+    /// Add an editable f32 field (soft range: scrub/arrows clamp, typing
+    /// may exceed).
     pub fn f32(&mut self, label: &str, value: f32, range: RangeInclusive<f32>) -> EditResult<f32> {
         let id = FieldId::new(self.component_index, self.field_index, 0);
         let layout = self.row();
@@ -273,14 +281,47 @@ impl<'a> EditableInspector<'a> {
         result
     }
 
-    /// Add an editable normalized f32 field (0-1 range).
-    pub fn normalized_f32(&mut self, label: &str, value: f32) -> EditResult<f32> {
+    /// Add an editable f32 field with a HARD range: typed commits clamp
+    /// too. For values where the range is a runtime contract (audio volume
+    /// 0..=1, pitch floor), not a convenience.
+    pub fn f32_hard(&mut self, label: &str, value: f32, range: RangeInclusive<f32>) -> EditResult<f32> {
         let id = FieldId::new(self.component_index, self.field_index, 0);
         let layout = self.row();
-        let result = edit_normalized_f32(self.ui, id, label, value, layout, &self.style);
+        let opts = ui::FloatFieldOpts::hard(*range.start(), *range.end())
+            .with_step(scrub_step(&range));
+        let result = edit_f32_opts(self.ui, id, label, value, opts, layout, &self.style);
         self.field_index += 1;
         self.current_y += self.style.row_height;
         result
+    }
+
+    /// Add an editable angle field: stored in radians, displayed and edited
+    /// in degrees with a `°` suffix, wrapped to ±180° on commit — the field
+    /// can express any rotation (the old ±π hard clamp is gone).
+    pub fn angle(&mut self, label: &str, radians: f32) -> EditResult<f32> {
+        let id = FieldId::new(self.component_index, self.field_index, 0);
+        let layout = self.row();
+        let opts = ui::FloatFieldOpts::range(-180.0, 180.0)
+            .with_step(scrub_step(&(-180.0..=180.0)))
+            .with_suffix("°");
+        // Display wraps too, so the field always operates in the canonical
+        // ±180° space — a rotation stored as 270° shows (and scrubs) as
+        // −90° instead of sitting outside its own range (kimi F2).
+        let result = edit_f32_opts(
+            self.ui,
+            id,
+            label,
+            wrap_degrees(radians.to_degrees()),
+            opts,
+            layout,
+            &self.style,
+        );
+        self.field_index += 1;
+        self.current_y += self.style.row_height;
+        match result {
+            EditResult::Changed(deg) => EditResult::Changed(wrap_degrees(deg).to_radians()),
+            EditResult::Unchanged => EditResult::Unchanged,
+        }
     }
 
     /// Add an editable boolean field.
@@ -437,6 +478,26 @@ mod tests {
         assert_eq!(style.row_height, 24.0);
         assert_eq!(style.label_width, 120.0);
         assert_eq!(style.padding, 8.0);
+    }
+
+    #[test]
+    fn test_wrap_degrees_wraps_both_directions() {
+        assert_eq!(wrap_degrees(0.0), 0.0);
+        assert_eq!(wrap_degrees(190.0), -170.0);
+        assert_eq!(wrap_degrees(-190.0), 170.0);
+        assert_eq!(wrap_degrees(720.0), 0.0);
+        assert_eq!(wrap_degrees(270.0), -90.0);
+    }
+
+    #[test]
+    fn test_angle_degree_radian_round_trip() {
+        // The angle field's transform: degrees wrap then convert. A stored
+        // rotation survives display→edit→commit within float precision.
+        for deg in [-179.0_f32, -90.0, 0.0, 45.0, 179.0] {
+            let radians = deg.to_radians();
+            let round_tripped = wrap_degrees(radians.to_degrees()).to_radians();
+            assert!((round_tripped - radians).abs() < 1e-5, "{deg}° drifted");
+        }
     }
 
     #[test]

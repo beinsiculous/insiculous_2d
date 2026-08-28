@@ -404,6 +404,7 @@ impl EditorTheme {
         theme.text_input.background_focused = self.bg_input.lighten(0.08);
         theme.text_input.border = self.border_subtle;
         theme.text_input.border_focused = self.accent_blue;
+        theme.text_input.border_invalid = self.error_red;
         theme.text_input.text_color = self.text_primary;
         theme.text_input.font_size = self.fonts.body;
         theme.text_input.selection_color = self.accent_blue.with_alpha(0.35);

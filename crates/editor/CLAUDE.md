@@ -43,7 +43,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 
 ### Inspector / components
 - `inspector.rs` — Generic `inspect_component()` (read-only, serde-based)
-- `editable_inspector.rs` — Editable field widgets (f32/bool/`string_edit` text input, `cycle()` variant selector); `EditableInspector` is width-aware (`with_width`) — labels ellipsize at the control column, controls clamp to the panel's right edge, the [X] right-aligns
+- `editable_inspector.rs` — Editable field widgets (f32 with soft-range opts + `angle()` degree field w/ `wrap_degrees`, bool, `string_edit` text input, `cycle()` variant selector); `EditableInspector` is width-aware (`with_width`) — labels ellipsize at the control column, controls clamp to the panel's right edge, the [X] right-aligns
 - `row_layout.rs` — pure row-layout math (`field_row`/`remove_button_x`/`pair_slots`/`color_block_height`/`ellipsize`, measurement injected — headless-tested; ALL inspector horizontal placement goes through here, never hardcode offsets)
 - `composite_rows.rs` — `edit_vec2` (X/Y composite row) + `edit_color` (RGBA 2×2 grid with aligned columns), measured axis/channel badges
 - `text_field.rs` — `edit_string` free fn + read-only `display_string`/`display_u32`
@@ -63,7 +63,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 - `collider_overlay.rs` — Collider outline overlay for the scene view (mirrors rapier placement: offset is body-local, Transform2D.scale ignored); toggled via `EditorContext::toggle_colliders()` / C key
 
 ### Persistence + commands
-- `commands/` — EditorCommand trait + CommandHistory (`mod.rs`; **dirty source of truth**: id-of-top watermark, `is_dirty()`/`mark_saved()`, merges reassign the top a fresh id AND clear redo; dirty_tests.rs is the contract), entity commands, component commands, `impl_set_component_command!` macro for the Set*Commands incl. SetNameCommand (`set_commands.rs`, incl. SetEntityTagCommand; + `RenameEntityCommand` for entities without a Name; name_tests.rs); `push_already_executed`, `try_merge_or_push`
+- `commands/` — EditorCommand trait + CommandHistory (`mod.rs`; **dirty source of truth**: id-of-top watermark, `is_dirty()`/`mark_saved()`, merges reassign the top a fresh id AND clear redo; dirty_tests.rs is the contract), entity commands, component commands, `impl_set_component_command!` macro for the Set*Commands incl. SetNameCommand (`set_commands.rs`, incl. SetEntityTagCommand; + `RenameEntityCommand` for entities without a Name; name_tests.rs); `push_already_executed`, `try_merge_or_push`, `break_merge()` gesture boundary (scrub/typed-commit seals the top entry — dirty_tests.rs)
 - `stored_component/` — **Component registry macro (single source of truth). ADD NEW EDITOR-VISIBLE COMPONENTS HERE** — one line in `editor_component_registry!` generates StoredComponent, ComponentKind (add/capture/remove/is_present/display_name/category), capture_all_components, registered_component_type_ids, inspect_all_components, AND edit_all_components (the editable inspector — entries carry `{ edit edit_x => SetXCommand }` or `{ readonly }`)
 - `world_snapshot.rs` — WorldSnapshot save/restore (used by play/stop): registry-driven capture (auto-includes new registry types) + explicit Parent/Children; unregistered component types are detected (`uncaptured_types`/`loss_warning`/`drop_report`) and lost on restore
 - Scene save/load file I/O lives in `editor_integration` (via `engine_core::scene_serializer`), not in this crate

@@ -45,6 +45,10 @@ pub struct InputState {
     pub end_pressed: bool,
     /// Whether Delete was just pressed (or repeating)
     pub delete_pressed: bool,
+    /// Whether ArrowUp was just pressed (or repeating) — numeric nudge
+    pub up_pressed: bool,
+    /// Whether ArrowDown was just pressed (or repeating) — numeric nudge
+    pub down_pressed: bool,
     /// Whether either Shift key is held (extends selections)
     pub shift_down: bool,
 }
@@ -67,6 +71,8 @@ impl Default for InputState {
             home_pressed: false,
             end_pressed: false,
             delete_pressed: false,
+            up_pressed: false,
+            down_pressed: false,
             shift_down: false,
         }
     }
@@ -184,6 +190,8 @@ impl InputState {
         let right_pressed = repeating(RepeatKey::Right, KeyCode::ArrowRight);
         let backspace_pressed = repeating(RepeatKey::Backspace, KeyCode::Backspace);
         let delete_pressed = repeating(RepeatKey::Delete, KeyCode::Delete);
+        let up_pressed = repeating(RepeatKey::Up, KeyCode::ArrowUp);
+        let down_pressed = repeating(RepeatKey::Down, KeyCode::ArrowDown);
 
         Self {
             mouse_pos: Vec2::new(pos.x, pos.y),
@@ -202,6 +210,8 @@ impl InputState {
             home_pressed: kb.is_key_just_pressed(KeyCode::Home),
             end_pressed: kb.is_key_just_pressed(KeyCode::End),
             delete_pressed,
+            up_pressed,
+            down_pressed,
             shift_down: shift,
         }
     }
@@ -214,6 +224,8 @@ pub(crate) enum RepeatKey {
     Right = 1,
     Backspace = 2,
     Delete = 3,
+    Up = 4,
+    Down = 5,
 }
 
 /// Per-key hold timer: fires on the initial press, then after
@@ -261,7 +273,7 @@ impl RepeatTimer {
 /// Repeat timers for all navigation/deletion keys a text input uses.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct KeyRepeat {
-    timers: [RepeatTimer; 4],
+    timers: [RepeatTimer; 6],
 }
 
 impl KeyRepeat {
@@ -369,5 +381,27 @@ mod tests {
         // Press again: fires immediately (fresh press)
         assert!(t.tick(true, true, 0.016));
         assert!(!t.tick(true, false, 0.016), "delay applies again after re-press");
+    }
+
+    #[test]
+    fn test_up_down_arrows_repeat_after_delay() {
+        // Numeric nudge keys repeat while held, like the text-nav keys.
+        let mut input = InputHandler::new();
+        let mut repeat = KeyRepeat::default();
+
+        input.keyboard_mut().handle_key_press(KeyCode::ArrowUp);
+        let state = InputState::from_input_handler_with_repeat(&input, &mut repeat, 0.016);
+        assert!(state.up_pressed, "just-pressed fires immediately");
+        assert!(!state.down_pressed);
+
+        // Held but before the repeat delay: silent.
+        input.update();
+        let state = InputState::from_input_handler_with_repeat(&input, &mut repeat, 0.016);
+        assert!(!state.up_pressed);
+
+        // Past the delay: repeats.
+        let state =
+            InputState::from_input_handler_with_repeat(&input, &mut repeat, REPEAT_DELAY + 0.001);
+        assert!(state.up_pressed, "held key must repeat after the delay");
     }
 }

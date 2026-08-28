@@ -188,7 +188,7 @@ fn test_float_input_returns_original_without_interaction() {
     ui.begin_frame(&input::InputHandler::new(), Vec2::new(800.0, 600.0));
 
     let bounds = Rect::new(100.0, 100.0, 80.0, 20.0);
-    let result = ui.float_input("test_float", 2.75, 0.0, 10.0, bounds);
+    let result = ui.float_input("test_float", 2.75, crate::FloatFieldOpts::range(0.0, 10.0), bounds).value;
 
     // Without any interaction, should return the original value
     assert_eq!(result, 2.75);
@@ -202,7 +202,7 @@ fn test_float_input_draws_box() {
     ui.begin_frame(&input::InputHandler::new(), Vec2::new(800.0, 600.0));
 
     let bounds = Rect::new(50.0, 50.0, 100.0, 24.0);
-    ui.float_input("float_box", 42.0, 0.0, 100.0, bounds);
+    ui.float_input("float_box", 42.0, crate::FloatFieldOpts::range(0.0, 100.0), bounds);
 
     // Should have background rect, border rect, and text placeholder
     assert!(ui.draw_list().len() >= 3);
@@ -288,7 +288,7 @@ fn test_wants_keyboard_follows_float_input_focus() {
     input.mouse_mut().update_position(50.0, 20.0);
     input.mouse_mut().handle_button_press(MouseButton::Left);
     ui.begin_frame(&input, Vec2::new(800.0, 600.0));
-    ui.float_input("focus_field", 1.0, 0.0, 10.0, bounds);
+    ui.float_input("focus_field", 1.0, crate::FloatFieldOpts::range(0.0, 10.0), bounds);
     ui.end_frame();
     assert!(!ui.wants_keyboard());
 
@@ -296,7 +296,7 @@ fn test_wants_keyboard_follows_float_input_focus() {
     input.update(); // clear just-pressed edge from frame 1
     input.mouse_mut().handle_button_release(MouseButton::Left);
     ui.begin_frame(&input, Vec2::new(800.0, 600.0));
-    ui.float_input("focus_field", 1.0, 0.0, 10.0, bounds);
+    ui.float_input("focus_field", 1.0, crate::FloatFieldOpts::range(0.0, 10.0), bounds);
     ui.end_frame();
     assert!(ui.wants_keyboard(), "focused float input must claim the keyboard");
 }
@@ -334,19 +334,23 @@ fn test_wants_mouse_follows_button_press_through_release() {
 // === text-input editing behavior (cursor/selection model) ===
 
 /// Click a float input (press frame + release frame) so it gains focus.
+fn wide_opts() -> crate::FloatFieldOpts {
+    crate::FloatFieldOpts::range(-100000.0, 100000.0)
+}
+
 fn focus_float_input(ui: &mut UIContext, input: &mut input::InputHandler, id: &str, bounds: Rect, value: f32) {
     use input::prelude::MouseButton;
     let center = Vec2::new(bounds.x + bounds.width / 2.0, bounds.y + bounds.height / 2.0);
     input.mouse_mut().update_position(center.x, center.y);
     input.mouse_mut().handle_button_press(MouseButton::Left);
     ui.begin_frame(&*input, Vec2::new(800.0, 600.0));
-    ui.float_input(id, value, -100000.0, 100000.0, bounds);
+    ui.float_input(id, value, wide_opts(), bounds);
     ui.end_frame();
 
     input.update();
     input.mouse_mut().handle_button_release(MouseButton::Left);
     ui.begin_frame(&*input, Vec2::new(800.0, 600.0));
-    ui.float_input(id, value, -100000.0, 100000.0, bounds);
+    ui.float_input(id, value, wide_opts(), bounds);
     ui.end_frame();
     assert!(ui.wants_keyboard(), "field must be focused after a click");
 }
@@ -356,10 +360,10 @@ fn type_key(ui: &mut UIContext, input: &mut input::InputHandler, id: &str, bound
     input.update();
     input.keyboard_mut().handle_key_press(key);
     ui.begin_frame(&*input, Vec2::new(800.0, 600.0));
-    let out = ui.float_input(id, value, -100000.0, 100000.0, bounds);
+    let out = ui.float_input(id, value, wide_opts(), bounds);
     ui.end_frame();
     input.keyboard_mut().handle_key_release(key);
-    out
+    out.value
 }
 
 #[test]
@@ -424,43 +428,6 @@ fn test_float_input_escape_cancels_edit() {
     let after_escape = type_key(&mut ui, &mut input, "esc_cancel", bounds, 7.5, KeyCode::Escape);
     assert_eq!(after_escape, 7.5, "escape must discard the edit");
     assert!(!ui.wants_keyboard());
-}
-
-#[test]
-fn test_float_input_commit_clamps_to_range() {
-    use input::prelude::{KeyCode, MouseButton};
-    let mut ui = UIContext::new();
-    let mut input = input::InputHandler::new();
-    let bounds = Rect::new(10.0, 10.0, 80.0, 20.0);
-
-    // Focus (range 0..=10 this time, so use the raw two-frame click)
-    let center = Vec2::new(50.0, 20.0);
-    input.mouse_mut().update_position(center.x, center.y);
-    input.mouse_mut().handle_button_press(MouseButton::Left);
-    ui.begin_frame(&input, Vec2::new(800.0, 600.0));
-    ui.float_input("clamp", 5.0, 0.0, 10.0, bounds);
-    ui.end_frame();
-    input.update();
-    input.mouse_mut().handle_button_release(MouseButton::Left);
-    ui.begin_frame(&input, Vec2::new(800.0, 600.0));
-    ui.float_input("clamp", 5.0, 0.0, 10.0, bounds);
-    ui.end_frame();
-
-    // Type "99" (selection replaced by first digit), commit
-    for key in [KeyCode::Digit9, KeyCode::Digit9] {
-        input.update();
-        input.keyboard_mut().handle_key_press(key);
-        ui.begin_frame(&input, Vec2::new(800.0, 600.0));
-        ui.float_input("clamp", 5.0, 0.0, 10.0, bounds);
-        ui.end_frame();
-        input.keyboard_mut().handle_key_release(key);
-    }
-    input.update();
-    input.keyboard_mut().handle_key_press(KeyCode::Enter);
-    ui.begin_frame(&input, Vec2::new(800.0, 600.0));
-    let committed = ui.float_input("clamp", 5.0, 0.0, 10.0, bounds);
-    ui.end_frame();
-    assert_eq!(committed, 10.0, "99 must clamp to the max of 10");
 }
 
 // === free-form text input ===

@@ -105,6 +105,18 @@ pub fn color_block_height(style: &EditableFieldStyle) -> f32 {
     2.0 + style.color_input_height + 4.0 + style.color_input_height + 4.0
 }
 
+/// Derive a drag-scrub / arrow-nudge step from a field's soft range: about
+/// 200 pixels of drag traverses a bounded range, unbounded or huge ranges
+/// fall back to 1.0/px, and narrow ranges stay finely scrubable.
+pub fn scrub_step(range: &std::ops::RangeInclusive<f32>) -> f32 {
+    let span = range.end() - range.start();
+    if !span.is_finite() || span > 400.0 {
+        1.0
+    } else {
+        (span / 200.0).max(0.001)
+    }
+}
+
 /// Truncate `text` with a trailing ellipsis so it fits in `max_w` according
 /// to the injected measurement. Returns the text unchanged when it already
 /// fits; degrades to a bare ellipsis when nothing fits.
@@ -208,6 +220,17 @@ mod tests {
         assert_eq!(h, 42.0);
         // Content (top pad + both rows + inner gap) fits inside the block.
         assert!(2.0 + style.color_input_height * 2.0 + 4.0 <= h);
+    }
+
+    #[test]
+    fn test_scrub_step_narrow_and_unbounded_ranges() {
+        // A tight 0..=1 range scrubs finely; ~200px of drag spans it.
+        assert!((scrub_step(&(0.0..=1.0)) - 0.005).abs() < 1e-6);
+        // Bounded mid ranges scale with the span.
+        assert!((scrub_step(&(0.0..=10.0)) - 0.05).abs() < 1e-6);
+        // Huge/unbounded ranges fall back to 1 unit per pixel.
+        assert_eq!(scrub_step(&(-1000.0..=1000.0)), 1.0);
+        assert_eq!(scrub_step(&(f32::NEG_INFINITY..=f32::INFINITY)), 1.0);
     }
 
     #[test]
