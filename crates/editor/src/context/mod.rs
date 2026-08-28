@@ -361,13 +361,12 @@ impl EditorContext {
     }
 
     /// Set the dirty flag.
+    ///
+    /// This is a per-frame MIRROR of the source of truth,
+    /// `CommandHistory::is_dirty()` (synced by `EditorGame::update`) —
+    /// don't set it ad hoc from feature code; record a command instead.
     pub fn set_dirty(&mut self, dirty: bool) {
         self.is_dirty = dirty;
-    }
-
-    /// Convenience: mark the scene as having unsaved changes.
-    pub fn mark_dirty(&mut self) {
-        self.is_dirty = true;
     }
 
     /// Get the current scene file path, if any.

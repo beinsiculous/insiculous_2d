@@ -77,6 +77,9 @@ impl<G: Game> EditorGame<G> {
         engine_core::scene_serializer::save_scene_to_file(&scene_data, &path)?;
 
         self.editor.set_scene_path(Some(path.clone()));
+        // The history is the dirty source of truth; the mirror is set too so
+        // the same frame's title/status already read clean.
+        self.command_history.mark_saved();
         self.editor.set_dirty(false);
         self.editor.status_bar.show_message("Scene saved");
         log::info!("Scene saved to: {:?}", path);

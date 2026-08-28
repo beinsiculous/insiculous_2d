@@ -224,6 +224,10 @@ struct GameRunner<G: Game> {
     /// Set when the game writes `GameContext.exit_requested` — triggers the
     /// clean shutdown path at the end of the frame.
     exit_requested: bool,
+    /// Title requested via `GameContext.window_title`, applied to the OS
+    /// window in the frame tail (window-system round-trips happen at most
+    /// once per frame, and only when a title was actually requested).
+    pending_window_title: Option<String>,
     /// Main game scene containing ECS world
     scene: Scene,
     /// Achievement / trophy manager
@@ -313,6 +317,7 @@ impl<G: Game> GameRunner<G> {
             audio_gesture_attempts: 0,
             time_scale: 1.0,
             exit_requested: false,
+            pending_window_title: None,
             scene: Scene::new("main"),
             achievements,
             scores,
@@ -447,6 +452,7 @@ impl<G: Game> GameRunner<G> {
             chaos_mode: self.config.chaos_mode,
             time_scale: self.time_scale,
             exit_requested: false,
+            window_title: None,
             achievements: &mut self.achievements,
             scores: &mut self.scores,
             particles: &mut self.particles,
@@ -467,6 +473,9 @@ impl<G: Game> GameRunner<G> {
         self.config.chaos_mode = ctx.chaos_mode;
         self.time_scale = ctx.time_scale;
         self.exit_requested |= ctx.exit_requested;
+        if let Some(title) = ctx.window_title.take() {
+            self.pending_window_title = Some(title);
+        }
 
         // Engine-side frame tail: particles, lines, scene-defined UI,
         // toasts, locale fonts (game/frame_tail.rs).

@@ -193,6 +193,16 @@ impl WindowManager {
         &self.config.title
     }
 
+    /// Set the OS window title. Before the window exists the title is
+    /// stored on the config, so window creation picks it up; headless
+    /// (no window ever) this only updates the stored title — never panics.
+    pub fn set_title(&mut self, title: &str) {
+        self.config.title = title.to_string();
+        if let Some(window) = &self.window {
+            window.set_title(title);
+        }
+    }
+
     /// Request a redraw of the window.
     pub fn request_redraw(&self) {
         if let Some(window) = &self.window {
@@ -223,6 +233,17 @@ mod tests {
 
         manager.resize(1280, 720);
         assert_eq!(manager.size(), (1280, 720));
+    }
+
+    #[test]
+    fn test_set_title_without_window_updates_config_for_creation() {
+        // Headless (window never created) this must not panic, and a title
+        // set before the window exists must be the one creation uses.
+        let mut manager = WindowManager::new(WindowConfig::new("Initial"));
+
+        manager.set_title("Scene* - Insiculous Editor");
+
+        assert_eq!(manager.title(), "Scene* - Insiculous Editor");
     }
 
     #[test]

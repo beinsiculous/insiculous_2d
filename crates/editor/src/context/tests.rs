@@ -258,9 +258,9 @@ fn test_dirty_flag_default_false() {
 }
 
 #[test]
-fn test_mark_dirty_sets_flag() {
+fn test_set_dirty_flips_flag() {
     let mut ctx = EditorContext::new();
-    ctx.mark_dirty();
+    ctx.set_dirty(true);
     assert!(ctx.is_dirty());
     ctx.set_dirty(false);
     assert!(!ctx.is_dirty());
@@ -296,14 +296,14 @@ fn test_title_bar_text_clean() {
 fn test_title_bar_text_dirty() {
     let mut ctx = EditorContext::new();
     ctx.set_scene_path(Some(std::path::PathBuf::from("/scenes/test.ron")));
-    ctx.mark_dirty();
+    ctx.set_dirty(true);
     assert_eq!(ctx.title_bar_text(), "test.ron* - Insiculous Editor");
 }
 
 #[test]
 fn test_title_bar_text_untitled_dirty() {
     let mut ctx = EditorContext::new();
-    ctx.mark_dirty();
+    ctx.set_dirty(true);
     assert_eq!(ctx.title_bar_text(), "Untitled* - Insiculous Editor");
 }
 

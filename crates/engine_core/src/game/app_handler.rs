@@ -176,6 +176,7 @@ impl<G: Game> ApplicationHandler<()> for GameRunner<G> {
                             chaos_mode: self.config.chaos_mode,
                             time_scale: self.time_scale,
                             exit_requested: false,
+                            window_title: None,
                             achievements: &mut self.achievements,
                             scores: &mut self.scores,
                             particles: &mut self.particles,
@@ -197,6 +198,9 @@ impl<G: Game> ApplicationHandler<()> for GameRunner<G> {
                         self.config.chaos_mode = ctx.chaos_mode;
                         self.time_scale = ctx.time_scale;
                         self.exit_requested |= ctx.exit_requested;
+                        if let Some(title) = ctx.window_title.take() {
+                            self.pending_window_title = Some(title);
+                        }
                     }
                 }
             }

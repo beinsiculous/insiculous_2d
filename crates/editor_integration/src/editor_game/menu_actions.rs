@@ -58,7 +58,6 @@ impl<G: Game> EditorGame<G> {
                 ) {
                     let cmd = editor::commands::CreateEntityCommand::already_created(ctx.world, entity);
                     self.command_history.push_already_executed(Box::new(cmd));
-                    self.editor.mark_dirty();
                 }
             }
             "Delete" if !self.editor.is_playing() => {
@@ -71,17 +70,13 @@ impl<G: Game> EditorGame<G> {
                 if let Some(name) = self.command_history.undo_name() {
                     self.editor.status_bar.show_message(format!("Undo: {}", name));
                 }
-                if self.command_history.undo(ctx.world) {
-                    self.editor.mark_dirty();
-                }
+                self.command_history.undo(ctx.world);
             }
             "Redo" if !self.editor.is_playing() => {
                 if let Some(name) = self.command_history.redo_name() {
                     self.editor.status_bar.show_message(format!("Redo: {}", name));
                 }
-                if self.command_history.redo(ctx.world) {
-                    self.editor.mark_dirty();
-                }
+                self.command_history.redo(ctx.world);
             }
             "New Scene" if !self.editor.is_playing() => {
                 self.new_scene(ctx.world);
@@ -144,7 +139,6 @@ impl<G: Game> EditorGame<G> {
             self.command_history.execute(Box::new(cmd), ctx.world);
         }
         self.editor.selection.clear();
-        self.editor.mark_dirty();
     }
 
     /// Duplicate the primary selected entity (and its subtree), recording undo.
@@ -161,7 +155,6 @@ impl<G: Game> EditorGame<G> {
             if new_entity != primary {
                 let cmd = editor::commands::CreateEntityCommand::already_created(ctx.world, new_entity);
                 self.command_history.push_already_executed(Box::new(cmd));
-                self.editor.mark_dirty();
             }
         }
     }

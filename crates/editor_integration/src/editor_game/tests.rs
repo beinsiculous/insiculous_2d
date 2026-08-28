@@ -151,7 +151,7 @@ fn test_new_scene_resets_editor_state() {
     let mut world = ecs::World::new();
 
     // Simulate some state
-    editor.editor.mark_dirty();
+    editor.editor.set_dirty(true);
     editor.editor.set_scene_path(Some(PathBuf::from("test.ron")));
     editor.entity_counter = 5;
 
@@ -188,7 +188,7 @@ fn test_save_clears_dirty_flag() {
     let mut editor = EditorGame::new(DummyGame);
     let world = World::new();
 
-    editor.editor.mark_dirty();
+    editor.editor.set_dirty(true);
     assert!(editor.editor.is_dirty());
 
     let temp_dir = std::env::temp_dir();
@@ -209,7 +209,7 @@ fn test_new_scene_warns_if_dirty() {
     let mut world = ecs::World::new();
     world.create_entity();
 
-    editor.editor.mark_dirty();
+    editor.editor.set_dirty(true);
     // new_scene should still work even when dirty (just logs a warning)
     editor.new_scene(&mut world);
     assert_eq!(world.entities().len(), 0);
@@ -261,7 +261,7 @@ fn test_dirty_flag_set_on_entity_create() {
     assert!(!editor.editor.is_dirty());
 
     // Simulate entity creation marking dirty
-    editor.editor.mark_dirty();
+    editor.editor.set_dirty(true);
     assert!(editor.editor.is_dirty());
 }
 
@@ -299,22 +299,52 @@ fn test_scene_display_in_status() {
 #[test]
 fn test_undo_redo_on_empty_history_do_not_mark_dirty() {
     // GPP-L6: an Undo/Redo keypress on an empty history is a no-op and must
-    // not dirty a clean scene. The shortcut/menu handlers gate mark_dirty()
-    // on the bool returned by undo()/redo(), so mirror that gating here.
+    // not dirty a clean scene. The history is the dirty source of truth
+    // (issue #24); the mirror sync in update() is what the handlers rely on.
     let mut editor = EditorGame::new(DummyGame);
     let mut world = World::new();
     assert!(!editor.editor.is_dirty());
 
-    if editor.command_history.undo(&mut world) {
-        editor.editor.mark_dirty();
-    }
-    if editor.command_history.redo(&mut world) {
-        editor.editor.mark_dirty();
-    }
-
     assert!(!editor.command_history.undo(&mut world));
     assert!(!editor.command_history.redo(&mut world));
+
+    editor.editor.set_dirty(editor.command_history.is_dirty()); // the update() mirror sync
     assert!(!editor.editor.is_dirty());
+}
+
+#[test]
+fn test_pending_title_update_only_on_change() {
+    // set_title is a window-system round-trip — the editor must publish the
+    // title once per change, not once per frame.
+    let mut editor = EditorGame::new(DummyGame);
+
+    let first = editor.pending_title_update();
+    assert_eq!(first.as_deref(), Some("Untitled - Insiculous Editor"));
+    assert_eq!(editor.pending_title_update(), None, "unchanged title is not re-published");
+
+    editor.editor.set_dirty(true);
+    let dirty = editor.pending_title_update();
+    assert_eq!(dirty.as_deref(), Some("Untitled* - Insiculous Editor"));
+    assert_eq!(editor.pending_title_update(), None);
+}
+
+#[test]
+fn test_dirty_mirror_follows_history() {
+    // The EditorContext flag is a per-frame mirror of CommandHistory: a
+    // recorded command reads dirty, a save reads clean again.
+    let mut editor = EditorGame::new(DummyGame);
+    let mut world = World::new();
+    let entity = world.create_entity();
+    world.add_component(&entity, common::Transform2D::new(Vec2::ZERO)).ok();
+
+    let cmd = editor::commands::CreateEntityCommand::already_created(&world, entity);
+    editor.command_history.push_already_executed(Box::new(cmd));
+    editor.editor.set_dirty(editor.command_history.is_dirty());
+    assert!(editor.editor.is_dirty(), "a recorded command must dirty the scene");
+
+    editor.command_history.mark_saved();
+    editor.editor.set_dirty(editor.command_history.is_dirty());
+    assert!(!editor.editor.is_dirty(), "saving reads clean again");
 }
 
 #[test]

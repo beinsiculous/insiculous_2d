@@ -61,10 +61,25 @@ pub trait EditorCommand: Send {
 // ---------------------------------------------------------------------------
 
 /// Manages undo/redo stacks for editor commands.
+///
+/// Also the **source of truth for whether the scene is dirty** (issue #24):
+/// every recorded mutation carries a unique id, and [`is_dirty`] compares
+/// the id on top of the undo stack against the id captured at the last
+/// [`mark_saved`]. Undoing back to the saved command reads clean again;
+/// merging into a post-save command reassigns its id, so undo past a
+/// merged edit correctly stays dirty.
+///
+/// [`is_dirty`]: CommandHistory::is_dirty
+/// [`mark_saved`]: CommandHistory::mark_saved
 pub struct CommandHistory {
-    undo_stack: VecDeque<Box<dyn EditorCommand>>,
-    redo_stack: Vec<Box<dyn EditorCommand>>,
+    undo_stack: VecDeque<(u64, Box<dyn EditorCommand>)>,
+    redo_stack: Vec<(u64, Box<dyn EditorCommand>)>,
     max_history: usize,
+    /// Next command id; starts at 1 (0 is the empty-stack sentinel).
+    next_id: u64,
+    /// Id on top of the undo stack when the scene was last saved
+    /// (0 = saved at empty history, the initial state).
+    saved_id: u64,
 }
 
 impl CommandHistory {
@@ -74,22 +89,49 @@ impl CommandHistory {
             undo_stack: VecDeque::new(),
             redo_stack: Vec::new(),
             max_history: 100,
+            next_id: 1,
+            saved_id: 0,
         }
+    }
+
+    fn fresh_id(&mut self) -> u64 {
+        let id = self.next_id;
+        self.next_id += 1;
+        id
+    }
+
+    fn top_id(&self) -> u64 {
+        self.undo_stack.back().map(|(id, _)| *id).unwrap_or(0)
+    }
+
+    /// Whether the world has changed since the last [`mark_saved`]
+    /// (or since creation, for a never-saved history).
+    ///
+    /// [`mark_saved`]: CommandHistory::mark_saved
+    pub fn is_dirty(&self) -> bool {
+        self.top_id() != self.saved_id
+    }
+
+    /// Record that the world was just saved: the current history position
+    /// becomes the clean baseline.
+    pub fn mark_saved(&mut self) {
+        self.saved_id = self.top_id();
     }
 
     /// Execute a command and push it onto the undo stack. Clears the redo stack.
     pub fn execute(&mut self, mut cmd: Box<dyn EditorCommand>, world: &mut World) {
         cmd.execute(world);
-        self.undo_stack.push_back(cmd);
+        let id = self.fresh_id();
+        self.undo_stack.push_back((id, cmd));
         self.redo_stack.clear();
         self.enforce_limit();
     }
 
     /// Undo the most recent command. Returns `true` if a command was applied.
     pub fn undo(&mut self, world: &mut World) -> bool {
-        if let Some(mut cmd) = self.undo_stack.pop_back() {
+        if let Some((id, mut cmd)) = self.undo_stack.pop_back() {
             cmd.undo(world);
-            self.redo_stack.push(cmd);
+            self.redo_stack.push((id, cmd));
             true
         } else {
             false
@@ -98,9 +140,9 @@ impl CommandHistory {
 
     /// Redo the most recently undone command. Returns `true` if a command was applied.
     pub fn redo(&mut self, world: &mut World) -> bool {
-        if let Some(mut cmd) = self.redo_stack.pop() {
+        if let Some((id, mut cmd)) = self.redo_stack.pop() {
             cmd.execute(world);
-            self.undo_stack.push_back(cmd);
+            self.undo_stack.push_back((id, cmd));
             true
         } else {
             false
@@ -119,24 +161,29 @@ impl CommandHistory {
 
     /// Display name of the command that would be undone, if any.
     pub fn undo_name(&self) -> Option<&str> {
-        self.undo_stack.back().map(|c| c.display_name())
+        self.undo_stack.back().map(|(_, c)| c.display_name())
     }
 
     /// Display name of the command that would be redone, if any.
     pub fn redo_name(&self) -> Option<&str> {
-        self.redo_stack.last().map(|c| c.display_name())
+        self.redo_stack.last().map(|(_, c)| c.display_name())
     }
 
-    /// Clear both undo and redo stacks.
+    /// Clear both undo and redo stacks **and reset the saved watermark**:
+    /// a cleared history reads clean. Only call where the fresh world IS
+    /// the on-disk state (scene load, new scene) — clearing after edits
+    /// would silently discard the dirty flag along with the undo history.
     pub fn clear(&mut self) {
         self.undo_stack.clear();
         self.redo_stack.clear();
+        self.saved_id = 0;
     }
 
     /// Push a pre-executed command onto the undo stack without calling execute().
     /// Use when the action was already performed and you just need to record it for undo.
     pub fn push_already_executed(&mut self, cmd: Box<dyn EditorCommand>) {
-        self.undo_stack.push_back(cmd);
+        let id = self.fresh_id();
+        self.undo_stack.push_back((id, cmd));
         self.redo_stack.clear();
         self.enforce_limit();
     }
@@ -146,9 +193,17 @@ impl CommandHistory {
     /// Used for continuous edits like gizmo drags or slider scrubs to avoid
     /// flooding the undo history with one entry per frame.
     pub fn try_merge_or_execute(&mut self, cmd: Box<dyn EditorCommand>, world: &mut World) {
-        if let Some(last) = self.undo_stack.back_mut() {
+        if let Some((id, last)) = self.undo_stack.back_mut() {
             if last.try_merge(cmd.as_ref()) {
-                // Merged into existing command — no new push needed.
+                // Merged into existing command — no new push, but the
+                // command's resulting state changed, so it gets a fresh id
+                // (a post-save merge must read dirty even after undo) and,
+                // like any other new mutation, invalidates redo history
+                // (redoing an old command on top of the merged state could
+                // land on the saved id with a different world).
+                *id = self.next_id;
+                self.next_id += 1;
+                self.redo_stack.clear();
                 return;
             }
         }
@@ -161,8 +216,12 @@ impl CommandHistory {
     /// writeback for immediate visual feedback). The command is recorded for undo/redo
     /// but `execute()` is not called.
     pub fn try_merge_or_push(&mut self, cmd: Box<dyn EditorCommand>) {
-        if let Some(last) = self.undo_stack.back_mut() {
+        if let Some((id, last)) = self.undo_stack.back_mut() {
             if last.try_merge(cmd.as_ref()) {
+                // See try_merge_or_execute: merged state = new id + no redo.
+                *id = self.next_id;
+                self.next_id += 1;
+                self.redo_stack.clear();
                 return;
             }
         }
@@ -185,3 +244,5 @@ impl Default for CommandHistory {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod dirty_tests;

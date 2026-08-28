@@ -47,6 +47,13 @@ impl<G: Game> GameRunner<G> {
             .draw_toasts(self.ui_manager.ui_context(), window_size);
         self.achievements.tick(delta_time);
 
+        // Apply a window title requested via ctx.window_title this frame
+        // (editor dirty indicator, save-as renames). At most one
+        // window-system round-trip per frame, only when requested.
+        if let Some(title) = self.pending_window_title.take() {
+            self.window_manager.set_title(&title);
+        }
+
         // The font the game set up in init() is the one locale switches
         // restore to — capture it once, before any locale font applies.
         if first_frame {

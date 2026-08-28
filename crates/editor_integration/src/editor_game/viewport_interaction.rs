@@ -145,7 +145,6 @@ impl<G: Game> EditorGame<G> {
             Some(entity) => {
                 if entity_ops::assign_sprite_texture(ctx.world, entity, handle, &mut self.command_history) {
                     self.editor.selection.select(entity);
-                    self.editor.mark_dirty();
                     self.editor.status_bar.show_message(format!("Assigned {path}"));
                 }
             }
@@ -164,7 +163,6 @@ impl<G: Game> EditorGame<G> {
                     &mut self.entity_counter,
                     &mut self.command_history,
                 );
-                self.editor.mark_dirty();
                 self.editor.status_bar.show_message(format!("Created sprite from {path}"));
             }
         }
@@ -273,7 +271,6 @@ impl<G: Game> EditorGame<G> {
                             self.command_history.push_already_executed(Box::new(transform_cmd));
                         }
                     }
-                    self.editor.mark_dirty();
                 }
             }
         }

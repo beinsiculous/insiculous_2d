@@ -188,7 +188,6 @@ pub(super) fn render_asset_browser(
     if let Some((handle, path)) = assign {
         match editor.selection.primary() {
             Some(entity) if entity_ops::assign_sprite_texture(ctx.world, entity, handle, command_history) => {
-                editor.mark_dirty();
                 editor.status_bar.show_message(format!("Assigned {path}"));
             }
             Some(_) => {

@@ -62,6 +62,9 @@ struct EditorGame<G: Game> {
     /// The game's own `time_scale`, held while the editor freezes engine
     /// time outside Play mode. `None` means time is not currently frozen.
     frozen_time_scale: Option<f32>,
+    /// Last OS-window title published via `ctx.window_title`, so the
+    /// title (a window-system round-trip) is only re-sent on change.
+    last_window_title: Option<String>,
 }
 
 impl<G: Game> EditorGame<G> {
@@ -81,7 +84,20 @@ impl<G: Game> EditorGame<G> {
             editor_font: None,
             game_base_font: None,
             frozen_time_scale: None,
+            last_window_title: None,
         }
+    }
+
+    /// The window title to publish this frame, or `None` when unchanged.
+    /// Change-gated because `Window::set_title` is a window-system
+    /// round-trip that must not run every frame.
+    fn pending_title_update(&mut self) -> Option<String> {
+        let title = self.editor.title_bar_text();
+        if self.last_window_title.as_deref() == Some(title.as_str()) {
+            return None;
+        }
+        self.last_window_title = Some(title.clone());
+        Some(title)
     }
 
     /// The engine time multiplier to run this frame, given the one the game
@@ -300,6 +316,11 @@ impl<G: Game> Game for EditorGame<G> {
         // Playing this is a no-op and the game camera stays authoritative.
         self.editor.update_viewport(ctx.delta_time);
 
+        // 0d. Mirror the dirty flag from its source of truth: a command was
+        // recorded in the history ⇒ the scene changed (issue #24). Editor-
+        // crate renderers (title bar, status) read the EditorContext mirror.
+        self.editor.set_dirty(self.command_history.is_dirty());
+
         // 1. Run transform hierarchy system
         self.transform_system.update(ctx.world, ctx.delta_time);
 
@@ -342,8 +363,26 @@ impl<G: Game> Game for EditorGame<G> {
         // 9. Delegate to inner game (only when Playing)
         self.update_inner_game(ctx);
 
+        // 9b. Re-sync the dirty mirror: menu actions, panel edits, and gizmo
+        // releases above recorded commands AFTER the 0d sync — the status
+        // bar and title below must show this frame's state, not last frame's.
+        self.editor.set_dirty(self.command_history.is_dirty());
+
         // 10. Status bar
         self.render_status_bar(ctx, window_size);
+
+        // 11. Publish the scene name + dirty indicator as the OS window
+        // title (audit §1.4 — title_bar_text() finally has a caller).
+        // While Playing the running game owns the title (it may write
+        // ctx.window_title itself); forgetting ours makes Stop republish
+        // even if the game changed the OS title in the meantime.
+        if self.editor.is_playing() {
+            self.last_window_title = None;
+        } else if ctx.window_title.is_none() {
+            if let Some(title) = self.pending_title_update() {
+                ctx.window_title = Some(title);
+            }
+        }
     }
 
     fn render(&mut self, ctx: &mut RenderContext) {

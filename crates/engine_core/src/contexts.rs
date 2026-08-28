@@ -86,6 +86,11 @@ pub struct GameContext<'a> {
     /// closing the window: `Game::on_exit`, input-settings save, scene
     /// teardown, then the event loop exits at the end of the frame.
     pub exit_requested: bool,
+    /// Write `Some(title)` to retitle the OS window; the engine applies it
+    /// after `update()` (same writeback pattern as `exit_requested`).
+    /// `None` (the default every frame) leaves the title unchanged — only
+    /// write on change, since retitling is a window-system round-trip.
+    pub window_title: Option<String>,
     /// Achievement / trophy manager. Register achievements in `init()`, then
     /// call `ctx.achievements.unlock("id")` from gameplay code.
     pub achievements: &'a mut AchievementManager,

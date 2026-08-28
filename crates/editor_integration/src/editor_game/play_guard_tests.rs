@@ -28,7 +28,7 @@ fn test_save_refused_while_playing() {
     let mut editor = EditorGame::new(DummyGame);
     let mut world = ecs::World::new();
     world.create_entity();
-    editor.editor.mark_dirty();
+    editor.editor.set_dirty(true);
 
     editor.handle_play_action(PlayControlAction::Play, &mut world);
 
@@ -49,7 +49,7 @@ fn test_save_refused_while_paused() {
     let mut editor = EditorGame::new(DummyGame);
     let mut world = ecs::World::new();
     world.create_entity();
-    editor.editor.mark_dirty();
+    editor.editor.set_dirty(true);
 
     editor.handle_play_action(PlayControlAction::Play, &mut world);
     editor.handle_play_action(PlayControlAction::Pause, &mut world);
@@ -68,7 +68,7 @@ fn test_save_succeeds_after_stop() {
     let mut editor = EditorGame::new(DummyGame);
     let mut world = ecs::World::new();
     world.create_entity();
-    editor.editor.mark_dirty();
+    editor.editor.set_dirty(true);
 
     editor.handle_play_action(PlayControlAction::Play, &mut world);
     editor.handle_play_action(PlayControlAction::Stop, &mut world);
