@@ -49,8 +49,8 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 - `text_field.rs` — `edit_string` free fn + read-only `display_string`/`display_u32`
 - `ui_component_editors.rs` — `edit_ui_label/panel/button` (UiLabel/UiPanel/UiButton field editors; anchor via cycle selector)
 - `field_style.rs` — `FieldId` (widget-ID mapping), `EditableFieldStyle` (layout dims + colors; `label_width` 120), `EditResult<T>`
-- `component_editors.rs` — Per-component editors: `edit_transform2d()`, `edit_sprite()`, etc. Return `Option<ComponentEdit<T>>`; field ranges in `mod ranges`
-- `behavior_editor.rs` — `edit_behavior()`: variant cycle selector + per-variant fields (String fields read-only until the ui crate grows text input)
+- `component_editors.rs` — Per-component editors: `edit_transform2d()`, `edit_sprite()`, etc. Return `Option<ComponentEdit<T>>`; field ranges in `mod ranges`; RigidBody Type + Collider Shape are cycle rows (shape cycling carries dimensions, early-return on variant change; headless-locked in `inspector_edit_tests.rs` incl. the commit-before-cycle ordering)
+- `behavior_editor.rs` — `edit_behavior()`: variant cycle selector + per-variant fields (tag/target strings editable via `string_edit`; `CameraFollow.dead_zone` stays read-only — it's an `Option<(f32,f32)>` awaiting an Option widget)
 
 ### Scene + selection
 - `selection.rs` — Selection set (primary + multi-select; insertion-ordered IndexSet, deterministic primary fallback)
@@ -63,7 +63,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 - `collider_overlay.rs` — Collider outline overlay for the scene view (mirrors rapier placement: offset is body-local, Transform2D.scale ignored); toggled via `EditorContext::toggle_colliders()` / C key
 
 ### Persistence + commands
-- `commands/` — EditorCommand trait + CommandHistory (`mod.rs`; **dirty source of truth**: id-of-top watermark, `is_dirty()`/`mark_saved()`, merges reassign the top a fresh id AND clear redo; dirty_tests.rs is the contract), entity commands, component commands, `impl_set_component_command!` macro for the Set*Commands incl. SetNameCommand (`set_commands.rs`, + `RenameEntityCommand` for entities without a Name; name_tests.rs); `push_already_executed`, `try_merge_or_push`
+- `commands/` — EditorCommand trait + CommandHistory (`mod.rs`; **dirty source of truth**: id-of-top watermark, `is_dirty()`/`mark_saved()`, merges reassign the top a fresh id AND clear redo; dirty_tests.rs is the contract), entity commands, component commands, `impl_set_component_command!` macro for the Set*Commands incl. SetNameCommand (`set_commands.rs`, incl. SetEntityTagCommand; + `RenameEntityCommand` for entities without a Name; name_tests.rs); `push_already_executed`, `try_merge_or_push`
 - `stored_component/` — **Component registry macro (single source of truth). ADD NEW EDITOR-VISIBLE COMPONENTS HERE** — one line in `editor_component_registry!` generates StoredComponent, ComponentKind (add/capture/remove/is_present/display_name/category), capture_all_components, registered_component_type_ids, inspect_all_components, AND edit_all_components (the editable inspector — entries carry `{ edit edit_x => SetXCommand }` or `{ readonly }`)
 - `world_snapshot.rs` — WorldSnapshot save/restore (used by play/stop): registry-driven capture (auto-includes new registry types) + explicit Parent/Children; unregistered component types are detected (`uncaptured_types`/`loss_warning`/`drop_report`) and lost on restore
 - Scene save/load file I/O lives in `editor_integration` (via `engine_core::scene_serializer`), not in this crate

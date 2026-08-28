@@ -90,6 +90,25 @@ pub fn edit_name(
     None
 }
 
+/// Edit an EntityTag component (tag-based gameplay wiring:
+/// FollowTagged/ChaseTagged/CameraFollow targets, collectible collectors).
+pub fn edit_entity_tag(
+    inspector: &mut EditableInspector<'_>,
+    tag: &ecs::behavior::EntityTag,
+    _extras: &mut crate::InspectorExtras<'_>,
+) -> Option<ComponentEdit<ecs::behavior::EntityTag>> {
+    inspector.header("EntityTag");
+    if let EditResult::Changed(v) = inspector.string_edit("Tag", &tag.0) {
+        if v != tag.0 {
+            return Some(ComponentEdit {
+                new_value: ecs::behavior::EntityTag(v),
+                field_hint: "tag",
+            });
+        }
+    }
+    None
+}
+
 /// Edit a Transform2D component.
 ///
 /// Returns `Some(ComponentEdit)` if any field changed this frame.
@@ -171,13 +190,18 @@ pub fn edit_rigid_body(
 
     inspector.header("RigidBody");
 
-    // Body type (read-only for now - would need dropdown widget)
-    let type_str = match body.body_type {
-        RigidBodyType::Dynamic => "Dynamic",
-        RigidBodyType::Static => "Static",
-        RigidBodyType::Kinematic => "Kinematic",
-    };
-    inspector.header(&format!("  Type: {}", type_str));
+    // Body type cycles like any other enum. NOTE (engine footgun): a live
+    // body_type change still requires the rapier body to be recreated —
+    // same as damping/gravity_scale edits, it lands on the next body build.
+    if let EditResult::Changed(i) = inspector.cycle(
+        "Type",
+        body.body_type.label(),
+        body.body_type.index(),
+        RigidBodyType::ALL.len(),
+    ) {
+        new.body_type = RigidBodyType::ALL[i];
+        hint = Some("body_type");
+    }
 
     if let EditResult::Changed(v) = inspector.vec2("Velocity", body.velocity, ranges::VELOCITY) {
         new.velocity = v;
@@ -222,13 +246,24 @@ pub fn edit_collider(
 
     inspector.header("Collider");
 
-    // Shape kind is fixed (changing it would need a dropdown), but its
-    // dimensions are editable so colliders can be matched to sprites from
-    // the editor. Sizes are absolute pixels — physics ignores
+    // Shape variant cycles with best-effort dimension carry-across (a
+    // cycled collider keeps its footprint; each cycle is one undo entry).
+    // Early-return on change — rendering the OLD variant's fields against
+    // the new shape the same frame would show stale rows (Behavior
+    // variant-cycle precedent). Sizes are absolute pixels — physics ignores
     // Transform2D.scale.
+    if let EditResult::Changed(i) = inspector.cycle(
+        "Shape",
+        collider.shape.variant_name(),
+        collider.shape.variant_index(),
+        ColliderShape::VARIANT_NAMES.len(),
+    ) {
+        new.shape = collider.shape.variant_with_carried_dimensions(i);
+        return Some(ComponentEdit { new_value: new, field_hint: "shape" });
+    }
+
     match &collider.shape {
         ColliderShape::Box { half_extents } => {
-            inspector.header("  Shape: Box");
             if let EditResult::Changed(v) =
                 inspector.vec2("Half Extents", *half_extents, ranges::COLLIDER_EXTENT)
             {
@@ -237,7 +272,6 @@ pub fn edit_collider(
             }
         }
         ColliderShape::Circle { radius } => {
-            inspector.header("  Shape: Circle");
             if let EditResult::Changed(v) =
                 inspector.f32("Radius", *radius, ranges::COLLIDER_EXTENT)
             {
@@ -246,7 +280,6 @@ pub fn edit_collider(
             }
         }
         ColliderShape::CapsuleY { half_height, radius } => {
-            inspector.header("  Shape: CapsuleY");
             if let EditResult::Changed(v) =
                 inspector.f32("Half Height", *half_height, ranges::COLLIDER_EXTENT)
             {
@@ -261,7 +294,6 @@ pub fn edit_collider(
             }
         }
         ColliderShape::CapsuleX { half_height, radius } => {
-            inspector.header("  Shape: CapsuleX");
             if let EditResult::Changed(v) =
                 inspector.f32("Half Width", *half_height, ranges::COLLIDER_EXTENT)
             {

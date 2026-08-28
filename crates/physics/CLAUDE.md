@@ -65,7 +65,7 @@ Pinned by `test_parented_entity_with_rigid_body_is_treated_as_world_space`.
   - `sync.rs` — ECS↔rapier sync + orphan GC
   - `update.rs` — `System` impl (fixed-timestep loop)
   - `tests.rs`
-- `components.rs` — RigidBody, Collider ECS components, CollisionEvent/Data
+- `components.rs` — RigidBody, Collider ECS components, CollisionEvent/Data; editor-facing enum helpers (`RigidBodyType::ALL/label/index`, `ColliderShape::VARIANT_NAMES/variant_with_carried_dimensions` — clean round-trips are exact, capsule↔capsule is a pure axis swap)
 - `presets.rs` — Pre-configured physics: `RigidBody::player_platformer()`, `Collider::platform(w, h)`, etc.
 
 ## Key Patterns
@@ -86,7 +86,7 @@ rapier types), API-001 (timing getters), partial MISSING-001
 (gravity/collider-dim validation).
 
 ## Testing
-- 64 passing (55 lib + 6 integration + 3 doc), 0 ignored — `cargo test -p physics`
+- 66 passing (57 lib + 6 integration + 3 doc), 0 ignored — `cargo test -p physics`
 - Pure math/simulation — no GPU needed
 
 ## Godot Oracle — When Stuck

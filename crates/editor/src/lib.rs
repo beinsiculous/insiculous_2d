@@ -50,6 +50,8 @@ mod grid;
 mod hierarchy;
 #[cfg(test)]
 mod hierarchy_tests;
+#[cfg(test)]
+mod inspector_edit_tests;
 mod inspector;
 mod menu;
 mod picking;

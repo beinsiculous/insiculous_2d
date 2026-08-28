@@ -18,6 +18,30 @@ pub enum RigidBodyType {
     Kinematic,
 }
 
+impl RigidBodyType {
+    /// All body types in cycle order (drives the editor's variant selector).
+    pub const ALL: [RigidBodyType; 3] =
+        [RigidBodyType::Dynamic, RigidBodyType::Static, RigidBodyType::Kinematic];
+
+    /// Display label for menus and the inspector.
+    pub fn label(self) -> &'static str {
+        match self {
+            RigidBodyType::Dynamic => "Dynamic",
+            RigidBodyType::Static => "Static",
+            RigidBodyType::Kinematic => "Kinematic",
+        }
+    }
+
+    /// Index of this type within [`Self::ALL`].
+    pub fn index(self) -> usize {
+        match self {
+            RigidBodyType::Dynamic => 0,
+            RigidBodyType::Static => 1,
+            RigidBodyType::Kinematic => 2,
+        }
+    }
+}
+
 
 /// Rigid body component for physics simulation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -147,6 +171,69 @@ pub enum ColliderShape {
     CapsuleY { half_height: f32, radius: f32 },
     /// A capsule aligned along the X axis
     CapsuleX { half_height: f32, radius: f32 },
+}
+
+impl ColliderShape {
+    /// Variant names in cycle order (drives the editor's shape selector).
+    pub const VARIANT_NAMES: [&'static str; 4] = ["Box", "Circle", "CapsuleY", "CapsuleX"];
+
+    /// Index of this shape's variant within [`Self::VARIANT_NAMES`].
+    pub fn variant_index(&self) -> usize {
+        match self {
+            ColliderShape::Box { .. } => 0,
+            ColliderShape::Circle { .. } => 1,
+            ColliderShape::CapsuleY { .. } => 2,
+            ColliderShape::CapsuleX { .. } => 3,
+        }
+    }
+
+    /// Display name of this shape's variant.
+    pub fn variant_name(&self) -> &'static str {
+        Self::VARIANT_NAMES[self.variant_index()]
+    }
+
+    /// Build the shape for `variant_index`, carrying this shape's tuned
+    /// dimensions across where a sensible mapping exists (a cycled collider
+    /// should stay roughly the same size, not snap to defaults). The
+    /// mapping is lossy — e.g. a Box's two half-extents collapse into one
+    /// radius — which is acceptable because each cycle is a single undo
+    /// entry.
+    pub fn variant_with_carried_dimensions(&self, variant_index: usize) -> ColliderShape {
+        // Capsule ↔ capsule is a pure axis swap — going through the
+        // bounding-box reduction below would corrupt the half-height.
+        match (self, variant_index) {
+            (ColliderShape::CapsuleY { half_height, radius }, 3) => {
+                return ColliderShape::CapsuleX { half_height: *half_height, radius: *radius };
+            }
+            (ColliderShape::CapsuleX { half_height, radius }, 2) => {
+                return ColliderShape::CapsuleY { half_height: *half_height, radius: *radius };
+            }
+            _ => {}
+        }
+        // The current shape reduced to a bounding half-width/half-height.
+        let (hw, hh) = match *self {
+            ColliderShape::Box { half_extents } => (half_extents.x, half_extents.y),
+            ColliderShape::Circle { radius } => (radius, radius),
+            ColliderShape::CapsuleY { half_height, radius } => (radius, half_height + radius),
+            ColliderShape::CapsuleX { half_height, radius } => (half_height + radius, radius),
+        };
+        match variant_index {
+            0 => ColliderShape::Box { half_extents: Vec2::new(hw, hh) },
+            1 => ColliderShape::Circle { radius: hw.max(hh) },
+            // A zero cylinder section is a valid capsule (= a ball) and is
+            // what keeps Circle → Capsule → Circle exact instead of
+            // accumulating a floor's worth of drift per lap (kimi F2).
+            2 => ColliderShape::CapsuleY {
+                half_height: (hh - hw).max(0.0),
+                radius: hw,
+            },
+            3 => ColliderShape::CapsuleX {
+                half_height: (hw - hh).max(0.0),
+                radius: hh,
+            },
+            _ => self.clone(),
+        }
+    }
 }
 
 impl Default for ColliderShape {
@@ -422,5 +509,91 @@ mod tests {
         let c = ecs::EntityId::new();
         let event = CollisionEvent { entity_a: a, entity_b: b, started: true, stopped: false };
         assert_eq!(event.other(c), None);
+    }
+
+    #[test]
+    fn test_rigid_body_type_cycle_order_round_trips() {
+        for (i, ty) in RigidBodyType::ALL.iter().enumerate() {
+            assert_eq!(ty.index(), i, "{} out of order", ty.label());
+            assert_eq!(RigidBodyType::ALL[ty.index()], *ty);
+        }
+    }
+
+    #[test]
+    fn test_collider_shape_variant_names_round_trip() {
+        let shapes = [
+            ColliderShape::Box { half_extents: Vec2::new(1.0, 2.0) },
+            ColliderShape::Circle { radius: 3.0 },
+            ColliderShape::CapsuleY { half_height: 4.0, radius: 1.0 },
+            ColliderShape::CapsuleX { half_height: 5.0, radius: 2.0 },
+        ];
+        for (i, shape) in shapes.iter().enumerate() {
+            assert_eq!(shape.variant_index(), i);
+            assert_eq!(shape.variant_name(), ColliderShape::VARIANT_NAMES[i]);
+        }
+    }
+
+    #[test]
+    fn test_shape_cycle_carries_tuned_dimensions() {
+        // A wide box cycled to a circle keeps its footprint (max extent),
+        // not the default radius — level tuning survives a cycle + undo.
+        let box_shape = ColliderShape::Box { half_extents: Vec2::new(40.0, 20.0) };
+        assert_eq!(
+            box_shape.variant_with_carried_dimensions(1),
+            ColliderShape::Circle { radius: 40.0 }
+        );
+        // Box → CapsuleY: radius from the half-width, the rest of the
+        // height in the cylinder part (total height preserved; a wide box
+        // yields a zero cylinder = ball).
+        assert_eq!(
+            box_shape.variant_with_carried_dimensions(2),
+            ColliderShape::CapsuleY { half_height: 0.0, radius: 40.0 }
+        );
+        let tall = ColliderShape::Box { half_extents: Vec2::new(10.0, 50.0) };
+        assert_eq!(
+            tall.variant_with_carried_dimensions(2),
+            ColliderShape::CapsuleY { half_height: 40.0, radius: 10.0 }
+        );
+        // Circle → Box is exact both ways.
+        let circle = ColliderShape::Circle { radius: 7.0 };
+        assert_eq!(
+            circle.variant_with_carried_dimensions(0),
+            ColliderShape::Box { half_extents: Vec2::new(7.0, 7.0) }
+        );
+        // Capsule axes swap cleanly.
+        let cap_y = ColliderShape::CapsuleY { half_height: 30.0, radius: 10.0 };
+        assert_eq!(
+            cap_y.variant_with_carried_dimensions(3),
+            ColliderShape::CapsuleX { half_height: 30.0, radius: 10.0 }
+        );
+        // Out-of-range index is a no-op clone.
+        assert_eq!(box_shape.variant_with_carried_dimensions(9), box_shape);
+    }
+
+    #[test]
+    fn test_shape_cycle_round_trips_are_exact_where_the_mapping_is_clean() {
+        // Cycling AWAY from a shape and straight back must not change it —
+        // a designer previewing shapes gets their collider back (kimi F2:
+        // the old 0.5 capsule floor grew a Circle by 0.5 per lap).
+        let circle = ColliderShape::Circle { radius: 5.0 };
+        assert_eq!(
+            circle.variant_with_carried_dimensions(2).variant_with_carried_dimensions(1),
+            circle
+        );
+        assert_eq!(
+            circle.variant_with_carried_dimensions(0).variant_with_carried_dimensions(1),
+            circle
+        );
+        let tall = ColliderShape::Box { half_extents: Vec2::new(10.0, 50.0) };
+        assert_eq!(
+            tall.variant_with_carried_dimensions(2).variant_with_carried_dimensions(0),
+            tall
+        );
+        let cap = ColliderShape::CapsuleY { half_height: 30.0, radius: 10.0 };
+        assert_eq!(
+            cap.variant_with_carried_dimensions(3).variant_with_carried_dimensions(2),
+            cap
+        );
+        assert_eq!(cap.variant_with_carried_dimensions(0).variant_with_carried_dimensions(2), cap);
     }
 }

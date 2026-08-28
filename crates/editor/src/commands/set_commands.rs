@@ -3,7 +3,7 @@
 use std::any::Any;
 
 use ecs::audio_components::AudioSource;
-use ecs::behavior::Behavior;
+use ecs::behavior::{Behavior, EntityTag};
 use ecs::sprite_components::{Name, Sprite};
 use ecs::ui_components::{UiButton, UiLabel, UiPanel};
 use ecs::{EntityId, World};
@@ -144,6 +144,9 @@ impl_set_component_command!(
 impl_set_component_command!(
     /// Command for an inspector property edit on a UiButton.
     SetUiButtonCommand, UiButton, "Set UiButton");
+impl_set_component_command!(
+    /// Command for an inspector property edit on an EntityTag.
+    SetEntityTagCommand, EntityTag, "Set EntityTag");
 impl_set_component_command!(
     /// Command for an inspector property edit on a Name. Like every
     /// macro-generated Set command it writes through `get_mut`, so it

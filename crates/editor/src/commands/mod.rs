@@ -18,8 +18,9 @@ pub use component_commands::{AddComponentCommand, RemoveComponentCommand};
 pub use entity_commands::{CreateEntityCommand, DeleteEntityCommand, MacroCommand};
 pub use set_commands::{
     RenameEntityCommand, SetAudioSourceCommand, SetBehaviorCommand, SetColliderCommand,
-    SetNameCommand, SetRigidBodyCommand, SetSpriteCommand, SetTransformCommand,
-    SetUiButtonCommand, SetUiLabelCommand, SetUiPanelCommand, TransformGizmoCommand,
+    SetEntityTagCommand, SetNameCommand, SetRigidBodyCommand, SetSpriteCommand,
+    SetTransformCommand, SetUiButtonCommand, SetUiLabelCommand, SetUiPanelCommand,
+    TransformGizmoCommand,
 };
 
 // The registry-generated ComponentKind is re-exported here so existing

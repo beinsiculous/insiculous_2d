@@ -4,9 +4,9 @@
 //! (`< PlayerPlatformer >`) followed by the selected variant's fields.
 //! Switching variants replaces the behavior with that variant's defaults.
 //!
-//! String fields (tags, target names) are read-only for now — the ui crate
-//! has no general text-input widget yet (same precedent as RigidBody's
-//! read-only body type).
+//! String fields (tags, target names) are editable via `string_edit`
+//! (commits on Enter/Tab/click-away); distinct `field_hint`s keep edits to
+//! different fields from merging into one undo entry.
 
 use ecs::behavior::Behavior;
 
@@ -75,17 +75,26 @@ pub fn edit_behavior(
                 *jump_cooldown = v;
                 hint = Some("jump_cooldown");
             }
-            inspector.string("Tag", tag);
+            if let EditResult::Changed(v) = inspector.string_edit("Tag", tag) {
+                *tag = v;
+                hint = Some("tag");
+            }
         }
         Behavior::PlayerTopDown { move_speed, tag } => {
             if let EditResult::Changed(v) = inspector.f32("Move Speed", *move_speed, ranges::SPEED) {
                 *move_speed = v;
                 hint = Some("move_speed");
             }
-            inspector.string("Tag", tag);
+            if let EditResult::Changed(v) = inspector.string_edit("Tag", tag) {
+                *tag = v;
+                hint = Some("tag");
+            }
         }
         Behavior::FollowEntity { target_name, follow_distance, follow_speed } => {
-            inspector.string("Target Name", target_name);
+            if let EditResult::Changed(v) = inspector.string_edit("Target Name", target_name) {
+                *target_name = v;
+                hint = Some("target_name");
+            }
             if let EditResult::Changed(v) = inspector.f32("Distance", *follow_distance, ranges::DISTANCE) {
                 *follow_distance = v;
                 hint = Some("follow_distance");
@@ -96,7 +105,10 @@ pub fn edit_behavior(
             }
         }
         Behavior::FollowTagged { target_tag, follow_distance, follow_speed } => {
-            inspector.string("Target Tag", target_tag);
+            if let EditResult::Changed(v) = inspector.string_edit("Target Tag", target_tag) {
+                *target_tag = v;
+                hint = Some("target_tag");
+            }
             if let EditResult::Changed(v) = inspector.f32("Distance", *follow_distance, ranges::DISTANCE) {
                 *follow_distance = v;
                 hint = Some("follow_distance");
@@ -138,10 +150,16 @@ pub fn edit_behavior(
                 *despawn_on_collect = v;
                 hint = Some("despawn_on_collect");
             }
-            inspector.string("Collector Tag", collector_tag);
+            if let EditResult::Changed(v) = inspector.string_edit("Collector Tag", collector_tag) {
+                *collector_tag = v;
+                hint = Some("collector_tag");
+            }
         }
         Behavior::ChaseTagged { target_tag, detection_range, chase_speed, lose_interest_range } => {
-            inspector.string("Target Tag", target_tag);
+            if let EditResult::Changed(v) = inspector.string_edit("Target Tag", target_tag) {
+                *target_tag = v;
+                hint = Some("target_tag");
+            }
             if let EditResult::Changed(v) = inspector.f32("Detect Range", *detection_range, ranges::DISTANCE) {
                 *detection_range = v;
                 hint = Some("detection_range");
@@ -158,7 +176,10 @@ pub fn edit_behavior(
         Behavior::CameraFollow {
             target_tag, lerp_speed, offset, dead_zone, look_ahead, look_ahead_lerp,
         } => {
-            inspector.string("Target Tag", target_tag);
+            if let EditResult::Changed(v) = inspector.string_edit("Target Tag", target_tag) {
+                *target_tag = v;
+                hint = Some("target_tag");
+            }
             if let EditResult::Changed(v) = inspector.f32("Lerp Speed", *lerp_speed, ranges::FRACTION) {
                 *lerp_speed = v;
                 hint = Some("lerp_speed");
@@ -171,8 +192,9 @@ pub fn edit_behavior(
                 *offset = (v.x, v.y);
                 hint = Some("offset");
             }
-            // Read-only until the ui crate grows an Option/toggle widget
-            // (same precedent as the string fields above).
+            // Read-only until the ui crate grows an Option/toggle widget —
+            // this is an Option<(f32, f32)>, not a string (issue #34 scope
+            // note).
             let dead_zone_label = match dead_zone {
                 Some((w, h)) => format!("{w:.0} x {h:.0}"),
                 None => "None".to_string(),
