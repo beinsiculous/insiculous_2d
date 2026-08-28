@@ -283,3 +283,50 @@ fn test_registered_type_ids_match_world_enumeration() {
         "hidden entries are not emitted as components"
     );
 }
+
+#[test]
+fn test_stored_component_from_json_round_trips_all_settable_types() {
+    // The write path mirrors the read path for EVERY settable registry
+    // entry: capture a live default → serde value → from_json → same type
+    // name. A new registry line is covered automatically or this breaks.
+    use ecs::tilemap::Tilemap;
+
+    let mut world = World::new();
+    let entity = world.create_entity();
+    world.add_component(&entity, common::Transform2D::default()).ok();
+    world.add_component(&entity, common::Camera::default()).ok();
+    world.add_component(&entity, Sprite::default()).ok();
+    world.add_component(&entity, SpriteAnimation::default()).ok();
+    world.add_component(&entity, Tilemap::default()).ok();
+    world.add_component(&entity, RigidBody::default()).ok();
+    world.add_component(&entity, Collider::default()).ok();
+    world.add_component(&entity, AudioSource::default()).ok();
+    world.add_component(&entity, AudioListener::default()).ok();
+    world.add_component(&entity, Behavior::default()).ok();
+    world.add_component(&entity, EntityTag::default()).ok();
+    world.add_component(&entity, UiLabel::default()).ok();
+    world.add_component(&entity, UiPanel::default()).ok();
+    world.add_component(&entity, UiButton::default()).ok();
+
+    let values = capture_all_values(&world, entity);
+    for name in settable_component_names() {
+        let (_, value) = values
+            .iter()
+            .find(|(n, _)| n == &name)
+            .unwrap_or_else(|| panic!("settable {name} missing from capture_all_values"));
+        let stored = stored_component_from_json(name, value.clone())
+            .unwrap_or_else(|e| panic!("{name} round-trip failed: {e}"));
+        assert_eq!(stored.type_name(), name);
+        assert!(
+            capture_component_by_name(&world, entity, name)
+                .expect("known name")
+                .is_some(),
+            "{name} capturable by name"
+        );
+    }
+    assert!(
+        !settable_component_names().contains(&"Name"),
+        "Name is set through `rename`, never `set`"
+    );
+    assert!(stored_component_from_json("Bogus", serde_json::Value::Null).is_err());
+}

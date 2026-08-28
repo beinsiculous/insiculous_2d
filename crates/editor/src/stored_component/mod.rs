@@ -327,6 +327,71 @@ macro_rules! editor_component_registry {
             y
         }
 
+        /// Names of every component the command API may `set` (builtin +
+        /// removable, registry order) — hidden entries excluded, and `Name`
+        /// excluded too (it is set through the `rename` verb, which also
+        /// covers entities without one).
+        pub fn settable_component_names() -> Vec<&'static str> {
+            let mut names = Vec::new();
+            $( if stringify!($b) != "Name" { names.push(stringify!($b)); } )+
+            $( names.push(stringify!($r)); )+
+            names
+        }
+
+        /// Deserialize a `StoredComponent` from a JSON value by registry
+        /// type name — the write-path mirror of `capture_all_values`.
+        pub fn stored_component_from_json(
+            name: &str,
+            value: serde_json::Value,
+        ) -> Result<StoredComponent, String> {
+            match name {
+                $( stringify!($b) => serde_json::from_value::<$b_ty>(value)
+                    .map(StoredComponent::$b)
+                    .map_err(|e| format!("bad {} value: {e}", stringify!($b))), )+
+                $( stringify!($r) => serde_json::from_value::<$r_ty>(value)
+                    .map(StoredComponent::$r)
+                    .map_err(|e| format!("bad {} value: {e}", stringify!($r))), )+
+                other => Err(format!(
+                    "unknown component \"{other}\" — known: {}",
+                    settable_component_names().join(", ")
+                )),
+            }
+        }
+
+        /// Capture one present component by registry type name (builtin +
+        /// removable; `Ok(None)` = the entity doesn't carry it).
+        pub fn capture_component_by_name(
+            world: &World,
+            entity: EntityId,
+            name: &str,
+        ) -> Result<Option<StoredComponent>, String> {
+            match name {
+                $( stringify!($b) => Ok(world
+                    .get::<$b_ty>(entity)
+                    .cloned()
+                    .map(StoredComponent::$b)), )+
+                $( stringify!($r) => Ok(world
+                    .get::<$r_ty>(entity)
+                    .cloned()
+                    .map(StoredComponent::$r)), )+
+                other => Err(format!(
+                    "unknown component \"{other}\" — known: {}",
+                    settable_component_names().join(", ")
+                )),
+            }
+        }
+
+        impl StoredComponent {
+            /// The registry type name of this stored value.
+            pub fn type_name(&self) -> &'static str {
+                match self {
+                    $( Self::$h(_) => stringify!($h), )+
+                    $( Self::$b(_) => stringify!($b), )+
+                    $( Self::$r(_) => stringify!($r), )+
+                }
+            }
+        }
+
         /// Capture every present inspectable component (builtin + removable,
         /// registry order) as `(type_name, serde value)` pairs — the data
         /// half of `inspect_all_components`, consumed by the command API's

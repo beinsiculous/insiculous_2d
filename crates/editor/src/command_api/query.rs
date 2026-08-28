@@ -41,6 +41,7 @@ pub(super) fn run(query: &Query, ctx: &QueryCtx<'_>) -> Result<Value, ApiError> 
         Query::Describe { entity } => describe(ctx.world, entity),
         Query::Selection => Ok(selection(ctx)),
         Query::SceneInfo => Ok(scene_info(ctx)),
+        Query::ListCommands => Ok(super::specs::commands_response()),
     }
 }
 

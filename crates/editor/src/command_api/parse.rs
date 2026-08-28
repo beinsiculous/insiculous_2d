@@ -1,8 +1,25 @@
 //! Request-line parsing: whitespace-separated tokens, double quotes for
-//! tokens containing spaces (no escape sequences — Stage A keeps the
-//! protocol boring).
+//! tokens containing spaces (no escape sequences — the protocol stays
+//! boring). Stage B: `set`/`add` take the REST OF THE LINE after their
+//! fixed tokens as raw JSON, so JSON containing spaces or quotes never
+//! meets the tokenizer.
 
-use super::{ApiError, EntityRef, Query};
+use super::{ApiError, EntityRef, HostedWrite, PureWrite, Query, Request, WriteCmd};
+
+/// Spawnable archetypes for the `create` verb, 1:1 with the integration
+/// layer's entity factories (a drift test locks the mapping).
+pub const ARCHETYPES: [&str; 9] = [
+    "empty", "sprite", "camera", "static-body", "dynamic-body", "kinematic-body",
+    "ui-label", "ui-panel", "ui-button",
+];
+
+/// Every verb the parser accepts (queries + writes); `specs` mirrors this
+/// list for `commands` discovery — a drift test keeps them equal.
+pub(super) const VERBS: [&str; 16] = [
+    "list", "describe", "selection", "scene", "commands",
+    "set", "add", "remove", "rename", "create", "delete", "select",
+    "undo", "redo", "save", "batch",
+];
 
 /// Split a line into tokens; `"quoted strings"` become one token.
 fn tokens(line: &str) -> Result<Vec<String>, ApiError> {
@@ -37,6 +54,37 @@ fn tokens(line: &str) -> Result<Vec<String>, ApiError> {
     Ok(out)
 }
 
+/// Split off the first `n` whitespace tokens (quote-aware) and return them
+/// with the untouched remainder of the line — how `set`/`add` carry raw
+/// JSON that must never meet the tokenizer.
+fn split_fixed_tokens(line: &str, n: usize) -> Result<(Vec<String>, &str), ApiError> {
+    let mut out = Vec::new();
+    let mut rest = line;
+    for _ in 0..n {
+        rest = rest.trim_start();
+        if rest.is_empty() {
+            break;
+        }
+        if let Some(inner) = rest.strip_prefix('"') {
+            let close = inner
+                .find('"')
+                .ok_or_else(|| ApiError::Parse("unterminated quote".to_string()))?;
+            out.push(inner[..close].to_string());
+            rest = &inner[close + 1..];
+        } else {
+            let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+            out.push(rest[..end].to_string());
+            rest = &rest[end..];
+        }
+    }
+    Ok((out, rest.trim()))
+}
+
+fn parse_json_rest(rest: &str, verb: &str) -> Result<serde_json::Value, ApiError> {
+    serde_json::from_str(rest)
+        .map_err(|e| ApiError::Parse(format!("{verb} needs valid JSON after the component: {e}")))
+}
+
 fn entity_ref(token: &str) -> Result<EntityRef, ApiError> {
     if let Some(digits) = token.strip_prefix('#') {
         let id = digits
@@ -48,27 +96,153 @@ fn entity_ref(token: &str) -> Result<EntityRef, ApiError> {
     }
 }
 
-/// Parse one request line into a [`Query`].
-pub(super) fn parse_request(line: &str) -> Result<Query, ApiError> {
+/// Parse one request line into a [`Request`].
+pub fn parse_line(line: &str) -> Result<Request, ApiError> {
+    // `set`/`add` carry rest-of-line JSON: peel their fixed tokens without
+    // tokenizing the remainder.
+    let first = line.split_whitespace().next().unwrap_or("");
+    match first {
+        "set" => {
+            let (fixed, rest) = split_fixed_tokens(line, 3)?;
+            if fixed.len() < 3 || rest.is_empty() {
+                return Err(ApiError::Parse(
+                    "usage: set <entity> <Component> <json>".to_string(),
+                ));
+            }
+            return Ok(Request::Write(WriteCmd::Pure(PureWrite::Set {
+                entity: entity_ref(&fixed[1])?,
+                component: fixed[2].clone(),
+                patch: parse_json_rest(rest, "set")?,
+            })));
+        }
+        "add" => {
+            let (fixed, rest) = split_fixed_tokens(line, 3)?;
+            if fixed.len() < 3 {
+                return Err(ApiError::Parse(
+                    "usage: add <entity> <Component> [json]".to_string(),
+                ));
+            }
+            let value = if rest.is_empty() { None } else { Some(parse_json_rest(rest, "add")?) };
+            return Ok(Request::Write(WriteCmd::Pure(PureWrite::Add {
+                entity: entity_ref(&fixed[1])?,
+                component: fixed[2].clone(),
+                value,
+            })));
+        }
+        _ => {}
+    }
+
     let tokens = tokens(line)?;
     let mut tokens = tokens.into_iter();
     let verb = tokens
         .next()
         .ok_or_else(|| ApiError::Parse("empty request".to_string()))?;
 
-    let query = match verb.as_str() {
-        "list" => Query::ListEntities { filter: tokens.next() },
+    let request = match verb.as_str() {
+        "list" => Request::Query(Query::ListEntities { filter: tokens.next() }),
         "describe" => {
             let target = tokens
                 .next()
                 .ok_or_else(|| ApiError::Parse("describe needs an entity (name or #id)".to_string()))?;
-            Query::Describe { entity: entity_ref(&target)? }
+            Request::Query(Query::Describe { entity: entity_ref(&target)? })
         }
-        "selection" => Query::Selection,
-        "scene" => Query::SceneInfo,
+        "selection" => Request::Query(Query::Selection),
+        "scene" => Request::Query(Query::SceneInfo),
+        "commands" => Request::Query(Query::ListCommands),
+        "remove" => {
+            let (entity, component) = (tokens.next(), tokens.next());
+            let (Some(entity), Some(component)) = (entity, component) else {
+                return Err(ApiError::Parse("usage: remove <entity> <Component>".to_string()));
+            };
+            Request::Write(WriteCmd::Pure(PureWrite::Remove {
+                entity: entity_ref(&entity)?,
+                component,
+            }))
+        }
+        "rename" => {
+            let (entity, name) = (tokens.next(), tokens.next());
+            let (Some(entity), Some(name)) = (entity, name) else {
+                return Err(ApiError::Parse("usage: rename <entity> <name>".to_string()));
+            };
+            Request::Write(WriteCmd::Pure(PureWrite::Rename { entity: entity_ref(&entity)?, name }))
+        }
+        "create" => {
+            let archetype = tokens
+                .next()
+                .ok_or_else(|| ApiError::Parse("usage: create <archetype> [name] [x y]".to_string()))?;
+            if !ARCHETYPES.contains(&archetype.as_str()) {
+                return Err(ApiError::Invalid(format!(
+                    "unknown archetype \"{archetype}\" — known: {}",
+                    ARCHETYPES.join(", ")
+                )));
+            }
+            let mut remaining: Vec<String> = tokens.by_ref().collect();
+            // A trailing `x y` numeric pair is a position; anything before
+            // it (or a lone token) is the name.
+            let position = if remaining.len() >= 2 {
+                let maybe_y = remaining[remaining.len() - 1].parse::<f32>();
+                let maybe_x = remaining[remaining.len() - 2].parse::<f32>();
+                match (maybe_x, maybe_y) {
+                    (Ok(x), Ok(y)) if x.is_finite() && y.is_finite() => {
+                        remaining.truncate(remaining.len() - 2);
+                        Some((x, y))
+                    }
+                    _ => None,
+                }
+            } else {
+                None
+            };
+            let name = match remaining.len() {
+                0 => None,
+                1 => Some(remaining.remove(0)),
+                _ => {
+                    return Err(ApiError::Parse(
+                        "usage: create <archetype> [name] [x y] (quote a name with spaces)"
+                            .to_string(),
+                    ))
+                }
+            };
+            return Ok(Request::Write(WriteCmd::Hosted(HostedWrite::Create {
+                archetype,
+                name,
+                position,
+            })));
+        }
+        "delete" => {
+            let entity = tokens
+                .next()
+                .ok_or_else(|| ApiError::Parse("usage: delete <entity>".to_string()))?;
+            Request::Write(WriteCmd::Pure(PureWrite::Delete { entity: entity_ref(&entity)? }))
+        }
+        "select" => {
+            let target = tokens
+                .next()
+                .ok_or_else(|| ApiError::Parse("usage: select <entity>|none".to_string()))?;
+            let entity = if target == "none" { None } else { Some(entity_ref(&target)?) };
+            Request::Write(WriteCmd::Pure(PureWrite::Select { entity }))
+        }
+        "undo" => Request::Write(WriteCmd::Pure(PureWrite::Undo)),
+        "redo" => Request::Write(WriteCmd::Pure(PureWrite::Redo)),
+        "save" => Request::Write(WriteCmd::Hosted(HostedWrite::Save { path: tokens.next() })),
+        "batch" => {
+            let sub = tokens
+                .next()
+                .ok_or_else(|| ApiError::Parse("usage: batch begin [name] | end | abort".to_string()))?;
+            match sub.as_str() {
+                "begin" => Request::Write(WriteCmd::Pure(PureWrite::BatchBegin { name: tokens.next() })),
+                "end" => Request::Write(WriteCmd::Pure(PureWrite::BatchEnd)),
+                "abort" => Request::Write(WriteCmd::Pure(PureWrite::BatchAbort)),
+                other => {
+                    return Err(ApiError::Parse(format!(
+                        "unknown batch action \"{other}\" — expected begin, end, or abort"
+                    )))
+                }
+            }
+        }
         other => {
             return Err(ApiError::Parse(format!(
-                "unknown query \"{other}\" — expected list, describe, selection, or scene"
+                "unknown verb \"{other}\" — expected one of: {}",
+                VERBS.join(", ")
             )))
         }
     };
@@ -76,5 +250,5 @@ pub(super) fn parse_request(line: &str) -> Result<Query, ApiError> {
     if let Some(extra) = tokens.next() {
         return Err(ApiError::Parse(format!("unexpected trailing token \"{extra}\"")));
     }
-    Ok(query)
+    Ok(request)
 }

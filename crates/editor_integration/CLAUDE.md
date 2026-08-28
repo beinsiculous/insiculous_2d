@@ -26,7 +26,7 @@ editor_integration ──→ editor, engine_core, ecs, ui, input, renderer, comm
   - `mod.rs` — struct + slim `Game` impl (`update()` = ~30 lines of named phases) + `run_game_with_editor`
   - `menu_actions.rs` — menu bar dispatch + shared delete/duplicate helpers
   - `scene_io.rs` — save/load/new scene (load parses + dry-runs into a scratch World BEFORE touching the live one — no failure mode costs the current scene; failures surface on status bar)
-  - `api.rs` — command-API frame hook: `answer_api_lines` (pure, headless-tested) + `drain_api_requests` (≤256 lines/frame, skipped during gizmo drags, stdout flushed per batch)
+  - `api.rs` — command-API frame hook: `answer_api_lines` (headless-tested; routes queries/pure writes to editor::command_api, performs HostedWrite create — factories + viewport spawn pos — and save — through save_scene_with) + `drain_api_requests` (≤256 lines/frame, skipped during gizmo drags, stdout flushed per batch); `api_batch` on EditorGame (committed on Play, dropped on new/load scene); ship-point tests in `api_write_tests.rs`
   - `shortcuts.rs` — keyboard shortcuts + play state transitions
   - `viewport_interaction.rs` — picking, rectangle selection, gizmo drag
 - `entity_ops.rs` — Pure entity CRUD (`&mut World` + `&mut Selection`, no UI). Component dispatch lives in `editor::ComponentKind` (registry macro). UI entities (`create_ui_label/panel/button`) get Name only — NO Transform2D (anchor+offset is their placement model)
@@ -63,7 +63,7 @@ retired.
 See `TECH_DEBT.md` (all files < 600 lines since June 2026; remaining: no file picker, menu-label string matching)
 
 ## Testing
-- 97 passing (incl. 1 compile-only doc test), 0 ignored — `cargo test -p editor_integration` (component-dispatch tests moved to the editor crate with the registry; `editor_game/time_freeze_tests.rs` locks the engine-time freeze; `editor_game/play_guard_tests.rs` locks the play-session save/new/open guards + snapshot loss warnings)
+- 106 passing (incl. 1 compile-only doc test), 0 ignored — `cargo test -p editor_integration` (component-dispatch tests moved to the editor crate with the registry; `editor_game/time_freeze_tests.rs` locks the engine-time freeze; `editor_game/play_guard_tests.rs` locks the play-session save/new/open guards + snapshot loss warnings)
 - `entity_ops` is fully headless-testable (no UI dependency)
 
 ## Godot Oracle — When Stuck

@@ -14,7 +14,7 @@ mod component_commands;
 mod entity_commands;
 mod set_commands;
 
-pub use component_commands::{AddComponentCommand, RemoveComponentCommand};
+pub use component_commands::{AddComponentCommand, RemoveComponentCommand, SetComponentValueCommand};
 pub use entity_commands::{CreateEntityCommand, DeleteEntityCommand, MacroCommand};
 pub use set_commands::{
     RenameEntityCommand, SetAudioSourceCommand, SetBehaviorCommand, SetColliderCommand,

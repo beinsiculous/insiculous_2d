@@ -2,9 +2,9 @@
 
 The editor answers structured questions about the open scene over a
 line-oriented protocol: **text requests in, single-line JSON responses
-out**. This is Stage A of the audit §9 command layer — read-only queries.
-Write commands (Stage B) will route through `CommandHistory` so every API
-mutation is undoable in the GUI.
+out**. This covers Stages A and B of the audit §9 command layer: read-only
+queries plus write commands. Every write routes through `CommandHistory`,
+so every API mutation is undoable in the GUI exactly as if clicked.
 
 The dispatch is transport-agnostic (`editor::command_api::dispatch_line`);
 the shipped transport is the native editor binary's stdin/stdout:
@@ -32,6 +32,42 @@ parse errors.
 | `describe <entity>` | one entity with all registry component values |
 | `selection` | current selection (primary + all, insertion order) |
 | `scene` | scene path, dirty state, entity count, play state |
+| `commands` | self-description: every verb (usage/example/summary/writes/undoable) plus the LIVE `settable`, `addable`, and `archetypes` name lists |
+
+Write verbs (Stage B — one undo entry each unless noted):
+
+| Request | Effect |
+|---------|--------|
+| `set <entity> <Component> <json>` | shallow-patch the component with the REST OF THE LINE as raw JSON (never tokenized). Unknown fields are an `invalid` error listing the real ones; a non-object serialization (externally-tagged enums like `Behavior`) is a whole-value replace. Absent component → `invalid` ("add it first"). `set <entity> Name ...` is `invalid` — Name goes through `rename`. |
+| `add <entity> <Component> [json]` | add default-valued (optionally patched — still ONE undo entry) |
+| `remove <entity> <Component>` | remove (undo restores the VALUE, not a default) |
+| `rename <entity> <name>` | assign/replace `Name` — works on unnamed entities; undo restores no-Name; empty/unchanged names are `invalid` |
+| `create <archetype> [name] [x y]` | spawn an archetype (see `commands` for the list) at the viewport center or an explicit position; an empty name is `invalid` |
+| `delete <entity>` | delete (children reparent to the grandparent; undo resurrects; the selection drops it) |
+| `select <entity>` / `select none` | replace/clear the selection — never on the undo stack (GUI parity) |
+| `undo` / `redo` | `{"undid"/"redid": <command name>}`, `null` on an empty stack (not an error); `refused` while a batch is open |
+| `save [path]` | save through the editor's mandatory choke point |
+| `batch begin [name]` / `batch end` / `batch abort` | group writes into ONE undo entry / roll them back |
+
+Write semantics worth knowing:
+
+- **Guards**: all writes are `refused` while **Playing** (Paused edits are
+  allowed — inspector parity). `save` is additionally refused during any
+  play session (Paused included) and while a batch is open.
+- **Sanitation**: non-finite numbers anywhere in a JSON value are
+  `invalid`; the same hard physical floors the GUI enforces apply
+  (collider extents/radius, scale, audio volume/pitch).
+- **Batches are NOT transactions**: each command executes immediately; an
+  error mid-batch leaves earlier effects applied and the batch open —
+  `batch abort` reverse-undoes what was collected. Pressing Play commits
+  an open batch (its commands are in the world the snapshot captures);
+  Stop DISCARDS a batch opened while Paused (its commands reference the
+  runtime world the snapshot restore throws away). A
+  GUI edit interleaved with an open cross-frame batch lands on the history
+  BEFORE the batch's macro — known reordering limitation; keep batches
+  within one request burst.
+- Two consecutive `set` lines on the same field are two undo entries (API
+  writes never merge).
 
 `<entity>` is resolved **name-first**:
 
@@ -56,8 +92,11 @@ Exactly one line of JSON per non-blank request, in request order:
 {"ok":false,"error":{"kind":"<kind>","message":"<human text>"}}
 ```
 
-`kind` ∈ `parse` | `not_found` | `ambiguous_name`. An `ambiguous_name`
-error additionally carries `"matches":[<id>,...]`.
+`kind` ∈ `parse` | `not_found` | `ambiguous_name` | `invalid` | `refused`.
+An `ambiguous_name` error additionally carries `"matches":[<id>,...]`.
+`invalid` = the arguments are unusable (unknown component/field, bad JSON,
+non-finite number); `refused` = the editor's current state forbids the
+request (Playing, batch rules, a write over the read-only dispatch).
 
 Every entity appears as the same record shape:
 
@@ -115,8 +154,8 @@ its key so the map stays total.
 
 ## Stages (audit §9.6)
 
-- **Stage A (this document)** — query-only. Shipped.
-- **Stage B** — write commands over the existing `EditorCommand` set,
-  dispatched through `CommandHistory`; `ListCommands` self-description.
+- **Stage A** — query-only. Shipped.
+- **Stage B (this document)** — write commands through `CommandHistory`
+  (undoable in the GUI), `commands` self-description. Shipped.
 - **Stage C** — headless `--api` (no window).
 - **Stage D** — WebSocket transport for the web editor.

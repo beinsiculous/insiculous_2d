@@ -70,6 +70,10 @@ struct EditorGame<G: Game> {
     /// (the `--api` stdin thread in the editor binary). Drained once per
     /// frame in `update()`; `None` = API not enabled.
     api_rx: Option<std::sync::mpsc::Receiver<String>>,
+    /// Open command-API batch (Stage B): commands collected between `batch
+    /// begin` and `batch end`/`abort`; committed on Play so a stale macro
+    /// can't be pushed after a Stop restore.
+    pub(super) api_batch: Option<editor::command_api::write::ApiBatch>,
 }
 
 impl<G: Game> EditorGame<G> {
@@ -91,6 +95,7 @@ impl<G: Game> EditorGame<G> {
             frozen_time_scale: None,
             last_window_title: None,
             api_rx: None,
+            api_batch: None,
         }
     }
 
@@ -459,6 +464,8 @@ pub fn run_game_with_editor_api<G: Game>(
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod api_write_tests;
 #[cfg(test)]
 mod picking_tests;
 #[cfg(test)]

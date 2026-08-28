@@ -44,6 +44,18 @@ impl<G: Game> EditorGame<G> {
                 if self.editor.is_editing() {
                     // Cancel any in-progress gizmo drag
                     self.gizmo_drag_start = None;
+                    // An open command-API batch commits NOW: its commands
+                    // are already applied to the world the snapshot is
+                    // about to capture, and a macro pushed after Stop's
+                    // restore would undo against the wrong world.
+                    if let Some(batch) = self.api_batch.take() {
+                        if !batch.commands.is_empty() {
+                            self.command_history.push_already_executed(Box::new(
+                                editor::commands::MacroCommand::new(batch.name, batch.commands),
+                            ));
+                        }
+                        self.editor.status_bar.show_message("API batch committed by Play");
+                    }
                     // Starting a new play session — capture snapshot.
                     // (Resume-from-pause takes the branch below and must
                     // never re-capture: the paused world is mid-simulation.)
@@ -83,6 +95,18 @@ impl<G: Game> EditorGame<G> {
             }
             PlayControlAction::Stop => {
                 if self.editor.in_play_session() {
+                    // An API batch opened while Paused holds commands
+                    // referencing the mid-simulation world the restore below
+                    // discards — a later `batch end` would push a macro that
+                    // undoes against the wrong world. Drop it with the
+                    // runtime state (kimi F2).
+                    if let Some(batch) = self.api_batch.take() {
+                        if !batch.commands.is_empty() {
+                            self.editor
+                                .status_bar
+                                .show_message("Open API batch discarded by Stop");
+                        }
+                    }
                     // Restore world from snapshot
                     if let Some(snapshot) = self.world_snapshot.take() {
                         // The loss happens HERE, so report it here too — the

@@ -131,6 +131,9 @@ impl<G: Game> EditorGame<G> {
         self.editor.set_scene_path(Some(path.to_path_buf()));
         self.editor.set_dirty(false);
         self.command_history = editor::CommandHistory::new();
+        // A stale API batch would hold commands referencing the replaced
+        // world — drop it with the history.
+        self.api_batch = None;
         self.editor.selection.clear();
         self.gizmo_drag_start = None;
         self.editor.status_bar.show_message("Scene loaded");
@@ -185,6 +188,9 @@ impl<G: Game> EditorGame<G> {
         self.editor.set_scene_path(None);
         self.editor.set_dirty(false);
         self.command_history = editor::CommandHistory::new();
+        // A stale API batch would hold commands referencing the replaced
+        // world — drop it with the history.
+        self.api_batch = None;
         self.editor.selection.clear();
         self.entity_counter = 0;
         self.physics_settings = None;

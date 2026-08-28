@@ -114,3 +114,49 @@ impl EditorCommand for RemoveComponentCommand {
     fn as_any_mut(&mut self) -> &mut dyn Any { self }
 }
 
+// ---------------------------------------------------------------------------
+// SetComponentValueCommand
+// ---------------------------------------------------------------------------
+
+/// Generic whole-component write used by the command API's `set` verb: the
+/// old and new values are captured as [`StoredComponent`]s, so ANY registry
+/// component works — including the ones without a typed `Set*Command`
+/// (Camera, SpriteAnimation, Tilemap, AudioListener). Never merges: each
+/// API `set` line is one discrete undo entry.
+pub struct SetComponentValueCommand {
+    entity: EntityId,
+    old: StoredComponent,
+    new: StoredComponent,
+    name: String,
+}
+
+impl SetComponentValueCommand {
+    /// `old` and `new` must store the same component type.
+    pub fn new(entity: EntityId, old: StoredComponent, new: StoredComponent) -> Self {
+        debug_assert_eq!(old.type_name(), new.type_name());
+        let name = format!("Set {} (API)", new.type_name());
+        Self { entity, old, new, name }
+    }
+}
+
+impl EditorCommand for SetComponentValueCommand {
+    fn execute(&mut self, world: &mut World) {
+        self.new.apply_to(world, self.entity);
+    }
+
+    fn undo(&mut self, world: &mut World) {
+        self.old.apply_to(world, self.entity);
+    }
+
+    fn display_name(&self) -> &str {
+        &self.name
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}

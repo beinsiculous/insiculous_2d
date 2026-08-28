@@ -6,7 +6,7 @@ use ecs::World;
 use glam::Vec2;
 use serde_json::Value;
 
-use super::parse::parse_request;
+use super::parse::parse_line;
 use super::*;
 
 fn named_entity(world: &mut World, name: &str) -> ecs::EntityId {
@@ -44,35 +44,35 @@ fn dispatch_error(line: &str, ctx: &QueryCtx<'_>) -> Value {
 
 #[test]
 fn test_parse_list_bare_and_with_filter() {
-    assert_eq!(parse_request("list").unwrap(), Query::ListEntities { filter: None });
+    assert_eq!(parse_line("list").unwrap(), Request::Query(Query::ListEntities { filter: None }));
     assert_eq!(
-        parse_request("list paddle").unwrap(),
-        Query::ListEntities { filter: Some("paddle".to_string()) }
+        parse_line("list paddle").unwrap(),
+        Request::Query(Query::ListEntities { filter: Some("paddle".to_string()) })
     );
 }
 
 #[test]
 fn test_parse_describe_quoted_name_keeps_spaces() {
     assert_eq!(
-        parse_request("describe \"Left Paddle\"").unwrap(),
-        Query::Describe { entity: EntityRef::Name("Left Paddle".to_string()) }
+        parse_line("describe \"Left Paddle\"").unwrap(),
+        Request::Query(Query::Describe { entity: EntityRef::Name("Left Paddle".to_string()) })
     );
 }
 
 #[test]
 fn test_parse_describe_hash_id() {
     assert_eq!(
-        parse_request("describe #42").unwrap(),
-        Query::Describe { entity: EntityRef::Id(42) }
+        parse_line("describe #42").unwrap(),
+        Request::Query(Query::Describe { entity: EntityRef::Id(42) })
     );
-    assert!(matches!(parse_request("describe #nope"), Err(ApiError::Parse(_))));
+    assert!(matches!(parse_line("describe #nope"), Err(ApiError::Parse(_))));
 }
 
 #[test]
 fn test_parse_unknown_query_and_trailing_tokens_are_errors() {
-    assert!(matches!(parse_request("frobnicate"), Err(ApiError::Parse(_))));
-    assert!(matches!(parse_request("scene extra"), Err(ApiError::Parse(_))));
-    assert!(matches!(parse_request("describe \"unterminated"), Err(ApiError::Parse(_))));
+    assert!(matches!(parse_line("frobnicate"), Err(ApiError::Parse(_))));
+    assert!(matches!(parse_line("scene extra"), Err(ApiError::Parse(_))));
+    assert!(matches!(parse_line("describe \"unterminated"), Err(ApiError::Parse(_))));
 }
 
 #[test]
