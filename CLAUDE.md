@@ -94,7 +94,17 @@ expertise and Godot oracle references.
 
 **Task source of truth (Aug 19 2026): the org taskboard**
 https://github.com/orgs/beinsiculous/projects/1 — query it with
-`gh issue list -R beinsiculous/insiculous_2d` (games: their own repos).
+`gh issue list -R beinsiculous/insiculous_2d` (games: their own repos). Always pass `-R`:
+a bare `gh` command resolves against the session's working directory, which is often the
+working-set root, so it lists and files against the wrong repository.
+
+Open work is grouped into **sprint milestones**; each description records the batch's
+internal order and its gates (K1 gates all of Conductor; F3 gates E5). Take the next
+unblocked issue in a sprint, not an arbitrary one — `/continue` §1 walks the selection.
+A sprint can span repos: the milestone is its per-repo half, the board's `Sprint` field
+the half that crosses, and `scripts/check-sprint-sync.sh` in the working set holds the two
+together.
+
 Claim by assigning/commenting on the issue; close via "fixes …#N" commits.
 `coordination/TODO.md` is a pointer; `coordination/PROGRESS.md` stays the
 narrative log. Dispatch subagents by crate:
@@ -216,6 +226,10 @@ Use `WebFetch` on `https://github.com/godotengine/godot/blob/master/<path>`
   (`gh issue list -R beinsiculous/insiculous_2d --label tech-debt`; games debt
   on the game's own repo). The per-crate `TECH_DEBT.md` files are retired —
   never recreate one; file/update an issue instead.
+- **Unfinished work becomes an issue.** Anything you don't finish — work you deferred,
+  debt you created, a follow-up you spotted — is filed before you report done. Never
+  buried in a doc, never left as a bare `TODO:`, never dropped. The `file-issue` skill
+  carries the shape; `sprint-planning` groups issues into shippable batches.
 - `log_archive.md` — resolved/completed history (incl. the closed Jul 2026 Game Programming Patterns audit); close the issue and, if the resolution carries reusable lessons, append them there
 
 ## AI-Friendly Development Principles
