@@ -34,6 +34,13 @@ impl<G: Game> GameRunner<G> {
 
         // Draw scene-defined UI elements (labels/panels/buttons) over the
         // game's own UI; presses buffer until the next frame's event flush.
+        // An editor-style host clips these tail draws to its game view via
+        // ctx.game_ui_clip (plain games leave it None — unclipped).
+        if let Some(clip) = self.pending_game_ui_clip {
+            self.ui_manager
+                .ui_context()
+                .push_clip_rect(ui::Rect::new(clip.x, clip.y, clip.width, clip.height));
+        }
         let ui_presses = crate::ui_element_system::draw_ui_elements(
             &self.scene.world,
             self.ui_manager.ui_context(),
@@ -46,6 +53,9 @@ impl<G: Game> GameRunner<G> {
         self.achievements
             .draw_toasts(self.ui_manager.ui_context(), window_size);
         self.achievements.tick(delta_time);
+        if self.pending_game_ui_clip.take().is_some() {
+            self.ui_manager.ui_context().pop_clip_rect();
+        }
 
         // Apply a window title requested via ctx.window_title this frame
         // (editor dirty indicator, save-as renames). At most one

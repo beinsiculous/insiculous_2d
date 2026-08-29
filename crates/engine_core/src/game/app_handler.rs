@@ -223,6 +223,7 @@ impl<G: Game> ApplicationHandler<()> for GameRunner<G> {
                             time_scale: self.time_scale,
                             exit_requested: false,
                             window_title: None,
+                            game_ui_clip: None,
                             achievements: &mut self.achievements,
                             scores: &mut self.scores,
                             particles: &mut self.particles,
@@ -247,6 +248,7 @@ impl<G: Game> ApplicationHandler<()> for GameRunner<G> {
                         if let Some(title) = ctx.window_title.take() {
                             self.pending_window_title = Some(title);
                         }
+                        self.pending_game_ui_clip = ctx.game_ui_clip.take();
                     }
                 }
             }

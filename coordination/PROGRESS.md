@@ -299,3 +299,20 @@ review-scaffolding file unstaged + gitignored); F4 partial (Enter = Save via a
 queued choice consumed by the next render; Tab cycling documented mouse-first);
 F5 rebutted (editor chrome is uniformly English by design — localization is
 game-view-scoped). Final: 1660 tests.)
+
+## 2026-08-29 — Sprint 5 live visual pass (editor-visual-verification directive)
+Driven via XTest+ffmpeg on editor_demo. VERIFIED on screen: #41 world/UI clipped
+to the scene panel (no chrome bleed, Editing + Playing); #42 Follow button in the
+play controls, break-follow via scroll ("Free camera — Ctrl+Shift+F or Follow to
+re-follow"), live pan/zoom during Play, re-follow snap ("Following game camera"),
+Stop restore + drop report; #52 dialog raised on dirty New Scene (full-window dim
+scrim, Save/Discard/Cancel), Cancel exits cleanly. THE PASS CAUGHT A REAL BUG
+(third incarnation of the §4.1 bleed): the engine frame tail's scene-authored
+UiLabel pass + toasts run AFTER the editor's update and painted "HELLO WORLD"
+over the chrome — headless tests could not see it. First fix attempt (a trailing
+unpopped push_clip_rect) REGRESSED the File menu: UiLayer bands reorder at
+end_frame, so a Content-band trailing clip poisons every later-flushed band
+(Floating/Modal) — also caught on screen. Proper fix: `GameContext.game_ui_clip`
+writeback (ctx.lines/window_title precedent) — the ENGINE wraps only its own
+frame-tail draws (ui_element pass + toasts) in push/pop; plain games leave it
+None. The editor sets scene_view_bounds every frame.

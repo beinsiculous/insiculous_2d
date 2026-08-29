@@ -238,6 +238,8 @@ struct GameRunner<G: Game> {
     /// window in the frame tail (window-system round-trips happen at most
     /// once per frame, and only when a title was actually requested).
     pending_window_title: Option<String>,
+    /// Clip for the frame tail's UI draws, from `GameContext.game_ui_clip`.
+    pending_game_ui_clip: Option<common::Rect>,
     /// Main game scene containing ECS world
     scene: Scene,
     /// Achievement / trophy manager
@@ -329,6 +331,7 @@ impl<G: Game> GameRunner<G> {
             exit_requested: false,
             render_fatal: false,
             pending_window_title: None,
+            pending_game_ui_clip: None,
             scene: Scene::new("main"),
             achievements,
             scores,
@@ -464,6 +467,7 @@ impl<G: Game> GameRunner<G> {
             time_scale: self.time_scale,
             exit_requested: false,
             window_title: None,
+            game_ui_clip: None,
             achievements: &mut self.achievements,
             scores: &mut self.scores,
             particles: &mut self.particles,
@@ -487,6 +491,7 @@ impl<G: Game> GameRunner<G> {
         if let Some(title) = ctx.window_title.take() {
             self.pending_window_title = Some(title);
         }
+        self.pending_game_ui_clip = ctx.game_ui_clip.take();
 
         // Engine-side frame tail: particles, lines, scene-defined UI,
         // toasts, locale fonts (game/frame_tail.rs).

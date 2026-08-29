@@ -91,6 +91,12 @@ pub struct GameContext<'a> {
     /// `None` (the default every frame) leaves the title unchanged — only
     /// write on change, since retitling is a window-system round-trip.
     pub window_title: Option<String>,
+    /// Writeback: clip the ENGINE's post-update UI draws (the frame tail's
+    /// scene-authored UiLabel/UiPanel/UiButton pass and achievement toasts)
+    /// to this rect. `None` (the default) draws unclipped — shipped games
+    /// never touch this; the editor sets its scene-panel bounds so tail
+    /// draws stay inside the game view (issue #41/#52 screenshot pass).
+    pub game_ui_clip: Option<common::Rect>,
     /// Achievement / trophy manager. Register achievements in `init()`, then
     /// call `ctx.achievements.unlock("id")` from gameplay code.
     pub achievements: &'a mut AchievementManager,

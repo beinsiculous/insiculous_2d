@@ -448,6 +448,19 @@ impl<G: Game> Game for EditorGame<G> {
                 ctx.window_title = Some(title);
             }
         }
+
+        // 12. Clip the ENGINE's post-update draws (the frame tail's
+        // UiLabel/UiPanel/UiButton pass and toasts run AFTER this method
+        // returns and painted over editor chrome — the last incarnation of
+        // the §4.1 bleed, caught by the Sprint 5 screenshot pass). A plain
+        // trailing push_clip_rect would poison later-flushed UI layers
+        // (Floating menus, the Modal dialog — bands reorder at end_frame),
+        // so the engine wraps ONLY its own tail draws in this rect.
+        let bounds = self
+            .editor
+            .scene_view_bounds()
+            .unwrap_or(common::Rect::new(0.0, 0.0, 0.0, 0.0));
+        ctx.game_ui_clip = Some(bounds);
     }
 
     fn render(&mut self, ctx: &mut RenderContext) {
