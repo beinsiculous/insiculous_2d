@@ -80,10 +80,11 @@ Pinned by `test_parented_entity_with_rigid_body_is_treated_as_world_space`.
   `num_solver_iterations` / `num_additional_friction_iterations`
 
 ## Known Tech Debt
-See `TECH_DEBT.md` — remaining (all Low): RigidBody config edits on live
-bodies not pushed (rebuild required), SRP-001 (PhysicsWorld manages many
+Tracked on the Studio Board: issue #85 — all Low: RigidBody config edits on
+live bodies not pushed (rebuild required), SRP-001 (PhysicsWorld manages many
 rapier types), API-001 (timing getters), partial MISSING-001
-(gravity/collider-dim validation).
+(gravity/collider-dim validation), GPP-L10 (per-step contact Vec alloc),
+SRP-002 (collider clamping vs builder).
 
 ## Testing
 - 66 passing (57 lib + 6 integration + 3 doc), 0 ignored — `cargo test -p physics`

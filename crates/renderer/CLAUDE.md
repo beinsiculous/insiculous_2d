@@ -70,7 +70,12 @@ Renderer (WGPU device, queue, surface, RendererConfig{vsync})
 - All tests run headless (GPU-dependent doc examples are compile-only `no_run`)
 
 ## Known Tech Debt
-See `TECH_DEBT.md` — 2 open issues, both Low (shared camera binding, cross-batch transparency vs depth writes).
+Tracked on the Studio Board: issue #89 (shared camera binding DRY-006;
+cross-batch transparency vs depth writes ARCH-006 — still OPEN, will be
+closed by E7 alpha-cutoff #10 once it lands). Deferred **by design** (not debt): no mipmap generation (the old flag
+allocated a mip chain and never filled it — re-add only with real mip
+generation); `RendererConfig` stays vsync-only until a game needs more
+(power preference / MSAA / bloom downsample).
 
 ## Testing
 - 73 tests (71 unit + 2 doc), run with `cargo test -p renderer`

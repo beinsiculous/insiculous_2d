@@ -22,7 +22,7 @@ ui.end_frame(); // collects draw commands
 - `style.rs` — Theme definitions (`Color` re-exported from `common`), private palette consts
 
 ## Known Tech Debt
-- See `TECH_DEBT.md` — all Lows: US-layout-only key mapping (JUN-T1b; general text input itself shipped Jul 2026), TextDrawData redundancy (ARCH-003), no layout helpers (JUN-T3)
+- Tracked on the Studio Board: issue #88 — all Lows: US-layout-only key mapping (JUN-T1b; general text input itself shipped Jul 2026), TextDrawData redundancy (ARCH-003), no layout helpers (JUN-T3), GlyphInfo cache-key duplication (GPP-L8)
 
 ## Testing
 - 119 tests (incl. 2 doc), run with `cargo test -p ui`. `keycode_to_char` covers digits, A–Z (shift = uppercase), space, `.` `-` and Shift+Minus = `_`. `TextDrawData.font_id` marks which font glyphs came from — downstream glyph caches key on it

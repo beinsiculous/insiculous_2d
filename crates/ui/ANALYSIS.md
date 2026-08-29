@@ -5,7 +5,7 @@
 > is guarded by `test_font_rendering_retry_after_font_load()` in `context.rs`.
 > Kept the review summary (strengths, risks, architectural notes) and added a
 > brief historical callout so the fix's rationale stays discoverable via git.
-> See `TECH_DEBT.md` for the active issue list.
+> Active debt lives on the Studio Board (issue #88, `tech-debt` label).
 
 ## Review (January 2026, still current)
 
@@ -21,13 +21,13 @@
 - Immediate-mode API keeps usage lightweight and easy to integrate.
 - Draw command output keeps renderer-specific concerns out of the UI crate.
 - Style/theme types are re-exported for easy reuse in gameplay code.
-- `Rect` is re-exported from `common` rather than duplicated (see TECH_DEBT
-  ARCH-002, resolved).
+- `Rect` is re-exported from `common` rather than duplicated (ARCH-002,
+  resolved — history in `log_archive.md`).
 
 ### Risks & Follow-ups
 - `FontManager` bundles loading, rasterization, caching, and layout — fine at
   current scale but flagged for splitting if responsibilities grow
-  (TECH_DEBT SRP-001).
+  (SRP-001, since resolved — history in `log_archive.md`).
 - Document the engine_core bridge (`render_ui_commands` in
   `crates/engine_core/src/ui_integration.rs`) as the canonical integration
   point for anyone wiring a new host application.
@@ -70,8 +70,8 @@ investigation commits.
 
 ## Active Tech Debt
 
-See `crates/ui/TECH_DEBT.md` for the current issue list. As of the last audit,
-no high-priority issues remain; medium-priority items are DRY-004 (shared text
-rendering helper between `label_styled` and `label_with_font`) and SRP-001
-(FontManager split). Low-priority items include DRY-007 (theme color
-constants) and ARCH-003 (`TextDrawData` / `GlyphDrawData` field redundancy).
+Current list: Studio Board issue #88 (`tech-debt` label) — all Low as of
+Aug 28 2026 (GPP-L8 glyph cache-key duplication, JUN-T1b US-layout-only key
+mapping, ARCH-003 `TextDrawData`/`GlyphDrawData` field redundancy, JUN-T3 no
+layout helpers). The Mediums this section used to list (DRY-004, SRP-001)
+were resolved — history in `log_archive.md`.

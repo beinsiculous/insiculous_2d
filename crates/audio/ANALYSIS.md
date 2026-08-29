@@ -9,7 +9,7 @@
 - `play_music_once(path, volume)` added for one-shot music; `play_music*` keep looping semantics.
 - File-read failures now surface as `AudioError::IoError` (via `#[from] io::Error`).
 - `play`/`unload` take `SoundHandle` by value; `AudioResult` re-exported; `#[must_use]` on builders/getters.
-- See `TECH_DEBT.md` for the full remediation list. Sections below updated to match.
+- Full remediation history: `log_archive.md` § audio. Open debt (currently none for this crate) lives on the Studio Board (`tech-debt` label). Sections below updated to match.
 
 ## Audit (April 15, 2026)
 

@@ -27,8 +27,8 @@ Read `PROJECT_ROADMAP.md` and identify the next incomplete task using this prior
 
 ### 2.1 Read Existing Documentation
 - Crate's `ANALYSIS.md` (if exists) - previous analysis and plans
-- Crate's `TECH_DEBT.md` (if exists) - known issues in this crate
-- `PROJECT_ROADMAP.md` - related tasks and dependencies
+- Crate's open `tech-debt` issues (`gh issue list -R beinsiculous/insiculous_2d --label tech-debt`; for a game, `-R beinsiculous/<game>`) - known issues in this crate
+- `PROJECT_ROADMAP.md` - vision, settled decisions, phase context
 
 ### 2.2 Understand Current State
 - List the crate's source files (`ls crates/<name>/src/`)
@@ -99,15 +99,14 @@ For user-facing features:
 - Document any deviations from original plan
 - Note follow-up work identified
 
-### 6.2 Update TECH_DEBT.md (if relevant)
-- Mark resolved items with strikethrough: `~~[CODE-001]~~ ✅ RESOLVED`
-- Add new debt discovered during implementation
-- Include resolution notes for fixed items
+### 6.2 Update the board (if relevant)
+- Resolved debt: close its `tech-debt` issue ("fixes …#N"); append lessons to
+  `log_archive.md` if worth keeping
+- New debt discovered: file a `tech-debt` issue (or extend the crate's
+  low-priority backlog issue) — never recreate a `TECH_DEBT.md` file
 
-### 6.3 Update PROJECT_ROADMAP.md
-- Mark the task as complete: `- [x] Task name`
-- Update any affected metrics (test counts, line counts)
-- Add follow-up tasks if identified
+### 6.3 Update PROJECT_ROADMAP.md (only if a settled decision changed)
+- The roadmap carries vision + decisions, not tasks or metrics
 
 ### 6.4 Update AGENTS.md (if architecture changed)
 - Update system descriptions
@@ -120,8 +119,8 @@ For user-facing features:
 Before finishing:
 - [ ] All tests pass: `cargo test --workspace`
 - [ ] No compilation warnings: `cargo build --workspace`
-- [ ] Documentation updated (ANALYSIS.md, TECH_DEBT.md, PROJECT_ROADMAP.md)
-- [ ] Follow-up work documented in PROJECT_ROADMAP.md
+- [ ] Documentation updated (ANALYSIS.md as needed; board issues closed/filed)
+- [ ] Follow-up work filed as new issues on the board
 
 ---
 

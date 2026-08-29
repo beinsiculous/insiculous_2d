@@ -24,10 +24,10 @@ ls crates/
 
 ### 1.2 Read Existing Documentation
 
-Read these files in order:
+Read these sources in order:
 1. `crates/<crate_name>/ANALYSIS.md` - Previous analysis and plans
-2. `crates/<crate_name>/TECH_DEBT.md` - Known existing debt
-3. `PROJECT_ROADMAP.md` - Related roadmap items
+2. The crate's open `tech-debt` issues - `gh issue list -R beinsiculous/insiculous_2d --label tech-debt` (known existing debt)
+3. `PROJECT_ROADMAP.md` - Vision + settled decisions
 4. `AGENTS.md` - High-level project guidance
 5. `training.md` - Established patterns to check against
 
@@ -140,74 +140,31 @@ Verify:
 
 ---
 
-## Phase 4: Generate TECH_DEBT.md
+## Phase 4: File Findings as Issues
 
-### 4.1 Check for Existing File
+Debt lives on the Studio Board, not in files (the per-crate `TECH_DEBT.md`
+files were retired Aug 28 2026 — never recreate one).
 
-Read `crates/<crate_name>/TECH_DEBT.md` if it exists. Determine if you're:
-- **Creating new:** Use template below
-- **Updating:** Add new findings, mark resolved items with strikethrough
+### 4.1 Check for Existing Issues
 
-### 4.2 Template
+Search the board before filing: `gh issue list -R beinsiculous/insiculous_2d
+--label tech-debt` (games debt lives on the game's own repo). If a finding is
+already tracked, note the issue number instead of filing a duplicate; if an
+existing issue is resolved by current code, say so in the report (it gets
+closed, with lessons appended to `log_archive.md` if worth keeping).
 
-```markdown
-# Technical Debt: <crate_name>
+### 4.2 Filing Convention
 
-Last audited: [DATE]
-
-## Summary
-- DRY violations: X (Y resolved)
-- SRP violations: X (Y resolved)
-- KISS violations: X (Y resolved)
-- Architecture issues: X (Y resolved)
-- Critical/High priority: X
-
-## Recent Fixes
-- ✅ **[CODE-XXX]** Brief description of fix
-  - Resolution: What was done
-  - Resolved: [DATE]
-
----
-
-## DRY Violations
-
-### [DRY-001] Description
-- **File:** `path/to/file.rs`
-- **Lines:** X-Y (or pattern location)
-- **Issue:** What is duplicated
-- **Suggested fix:** How to resolve
-- **Priority:** High/Medium/Low
-- **Estimated effort:** Small/Medium/Large
-
-## SRP Violations
-
-### [SRP-001] Description
-- **File:** `path/to/file.rs`
-- **Lines:** X-Y
-- **Issue:** What responsibilities are mixed
-- **Suggested fix:** How to separate concerns
-- **Priority:** High/Medium/Low
-- **Estimated effort:** Small/Medium/Large
-
-## KISS Violations
-
-### [KISS-001] Description
-- **File:** `path/to/file.rs`
-- **Lines:** X-Y
-- **Issue:** What is over-complicated
-- **Suggested fix:** How to simplify
-- **Priority:** High/Medium/Low
-- **Estimated effort:** Small/Medium/Large
-
-## Architecture Issues
-
-### [ARCH-001] Description
-- **File:** `path/to/file.rs`
-- **Issue:** Misplaced or incorrectly scoped
-- **Suggested fix:** Where it should be / how to restructure
-- **Priority:** High/Medium/Low
-- **Estimated effort:** Small/Medium/Large
-```
+- **High/Medium findings:** one issue each, labeled `tech-debt`, titled
+  `[<crate>][tech-debt] <ID> — <short description>` with a `[CATEGORY-NNN]`
+  style id (DRY/SRP/KISS/ARCH/GAP/...). Body carries: file/line pointers, what
+  the issue is, the suggested fix, priority, and estimated effort
+  (Small/Medium/Large).
+- **Low findings:** append as checklist items to the crate's existing
+  `[<crate>][tech-debt] Low-priority backlog` issue (create it if the crate
+  has none), one line per item with its id and code pointer.
+- Add every new issue to the org project:
+  `gh project item-add 1 --owner beinsiculous --url <issue-url>`.
 
 ### 4.3 Prioritization Guidelines
 
@@ -229,19 +186,12 @@ Last audited: [DATE]
 
 ---
 
-## Phase 5: Cross-Reference and Update
+## Phase 5: Cross-Reference
 
-### 5.1 Compare with PROJECT_ROADMAP.md
-
-Read `PROJECT_ROADMAP.md` Technical Debt section:
-- Are your findings already tracked? → Note existing tracking numbers
-- Are your findings new? → Recommend adding to roadmap
-
-### 5.2 Update PROJECT_ROADMAP.md (if needed)
-
-If significant new debt was found (>3 medium+ priority items):
-- Add items to appropriate priority section
-- Update overall debt counts
+Cross-check findings against the board (`--label tech-debt`) and
+`log_archive.md` (previously resolved items — a finding that resurrects a
+resolved item deserves a note about the regression). `PROJECT_ROADMAP.md`
+carries no debt section; do not add one.
 
 ---
 
@@ -273,17 +223,17 @@ By priority:
 - Architectural improvements (medium effort, long-term benefit)
 - Items to monitor (not urgent but watch for growth)
 
-### Files Created/Updated
-- `crates/<crate_name>/TECH_DEBT.md` (created/updated)
-- `PROJECT_ROADMAP.md` (updated if new debt found)
+### Issues Filed/Updated
+- New `tech-debt` issues (one per High/Medium finding)
+- The crate's low-priority backlog issue (checklist items appended)
 
 ---
 
 ## Output Format
 
 When complete, provide:
-1. **Path to TECH_DEBT.md:** `crates/<crate_name>/TECH_DEBT.md`
+1. **Issue URLs filed/updated** (with their `[CATEGORY-NNN]` ids)
 2. **Summary statistics** (as shown above)
 3. **Top 3 priority issues** with brief context
 4. **Recommendations** for next steps
-5. **Items added to PROJECT_ROADMAP.md** (if any)
+5. **Existing issues found already-resolved** (candidates to close)

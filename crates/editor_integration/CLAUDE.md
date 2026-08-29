@@ -63,7 +63,7 @@ Board issues, Phase = Editor). The old "Phase 2 (Ideal Editor UI)" lettering is
 retired.
 
 ## Known Tech Debt
-See `TECH_DEBT.md` (all files < 600 lines since June 2026; remaining: no file picker, menu-label string matching)
+Tracked on the Studio Board: issue #90 (all files < 600 lines since June 2026; remaining: no file picker UX-001, menu-label string matching ARCH-101)
 
 ## Testing
 - 123 passing (incl. 1 compile-only doc test), 0 ignored — `cargo test -p editor_integration` (component-dispatch tests moved to the editor crate with the registry; `editor_game/time_freeze_tests.rs` locks the engine-time freeze; `editor_game/play_guard_tests.rs` locks the play-session save/new/open guards + snapshot loss warnings)

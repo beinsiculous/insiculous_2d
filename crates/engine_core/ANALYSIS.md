@@ -188,15 +188,15 @@ Result: ~85% fewer allocations per frame, verified by tests in
 
 Camera bind group is cached in the renderer; texture bind groups are cached per
 handle. The glyph texture cache still keys on `(glyph_id, color)`, which wastes
-memory when the same glyph is drawn in multiple colors — see the crate's
-`TECH_DEBT.md` for details.
+memory when the same glyph is drawn in multiple colors.
 
 ---
 
 ## Known Tech Debt / Future Work
 
-See `crates/engine_core/TECH_DEBT.md` for the live list. Headline items that
-may influence `engine_core` architecture:
+Open debt lives on the Studio Board (`tech-debt` label; engine_core's
+low-priority backlog is issue #84 — the TECH_DEBT.md files were retired
+Aug 28 2026). Headline items that may influence `engine_core` architecture:
 
 - **Dynamic component instantiation in `scene_loader`** — currently dispatches
   on built-in component names. A fully generic approach needs type-erased

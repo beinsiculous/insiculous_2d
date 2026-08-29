@@ -3,8 +3,8 @@
 > **Audit note (2026-04-15):** Reviewed against current source. No checked-off
 > TODOs to prune — the existing items are ongoing design guidelines rather
 > than discrete completed tasks. Added a Cross-Crate Duplication note to
-> surface the `CameraUniform` tech-debt flagged in this crate's `CLAUDE.md`
-> and `TECH_DEBT.md` (ARCH-001) so it lives in the analysis document too.
+> surface the `CameraUniform` tech-debt (ARCH-001) so it lives in the
+> analysis document too. (ARCH-001 has since been resolved — see below.)
 
 ## Review (January 19, 2026)
 
@@ -25,11 +25,10 @@
 - Confirm serialization expectations for shared types remain stable.
 - Consider adding tests for core math helpers if the module grows.
 
-### Cross-Crate Duplication (open)
-- `CameraUniform` currently exists in both `common::camera` and
-  `renderer::sprite_data`. The renderer should depend on the common
-  definition so there is a single GPU-facing layout. Tracked as ARCH-001 in
-  `TECH_DEBT.md` and flagged in `CLAUDE.md`.
+### Cross-Crate Duplication (RESOLVED)
+- ARCH-001 is resolved: `renderer::sprite_data` now re-exports
+  `common::{Camera, camera::CameraUniform}` — a single GPU-facing layout,
+  defined in this crate only (verified Aug 28 2026).
 - Historical `Camera2D` / `Camera` naming was unified (commit `947e359`
   renamed `Camera2D` to `Camera`); when adding new camera features,
   re-verify that renderer-side camera helpers converge on `common::Camera`

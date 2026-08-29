@@ -48,9 +48,21 @@ audio system is future work).
   undecodable data is `DecodeError`; `LoadError` reserved for non-IO load problems.
 - `unload` does not cut off already-playing instances (each holds its own Arc).
 
-## Known Tech Debt
-- All audio loaded eagerly into memory (no streaming for large music files)
-- See `TECH_DEBT.md` for the full list
+## Known Limitations (by design — current constraints, not open work)
+- **No streaming for large files** — all audio loaded eagerly into memory for
+  instant playback
+- **No audio effects** — no reverb, echo, or other DSP; **single music track**
+  at a time (no crossfade); fixed master/sfx/music buses
+- **`IoError` carries no file path** (`#[from] io::Error` loses it; decode
+  errors include the path)
+- **No AudioContext resume after tab-switch suspension (web)** — a browser may
+  suspend the context in a background tab; rodio/cpal expose no resume hook,
+  so audio can stay silent until reload. Accepted #8 scope cut.
+- Future-enhancement ideas (streaming, ECS spatial bridge, crossfade, DSP,
+  generic buses, occlusion) are roadmap material, not debt.
+
+Open debt lives on the Studio Board (`tech-debt` label); this crate currently
+has none.
 
 ## Testing
 - 27 headless tests (26 unit + 1 doc; disabled mode + bytes/temp-file APIs +

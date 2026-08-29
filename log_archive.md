@@ -1,8 +1,134 @@
 # Log Archive — Completed Work
 
-**Convention (July 2026):** `TECH_DEBT.md` files (root + per-crate) and `PROJECT_ROADMAP.md` are **live documents** — they carry only work that still needs doing. Everything completed or resolved moves here, organized by area, so history is never lost but never clutters the working docs. When you resolve a tracked item: delete it from the live doc, append it here with the resolution and date.
+**Convention (updated Aug 28 2026):** open work lives on the **org Studio Board**
+(https://github.com/orgs/beinsiculous/projects/1; technical debt = the
+`tech-debt` issue label). `PROJECT_ROADMAP.md` carries only vision + settled
+decisions, and the per-crate `TECH_DEBT.md` files are retired. Everything
+completed or resolved moves HERE, organized by area, so history is never lost
+but never clutters the working docs. When you resolve a tracked item: close its
+issue (commit message "fixes …#N"), and if the resolution carries reusable
+lessons, append them here with the date. (The pre-Aug-2026 convention — live
+TECH_DEBT/ROADMAP docs — is what the sections below refer to.)
 
 ---
+
+## Docs retirement — TECH_DEBT.md files + roadmap task tracking → issues (Aug 28 2026)
+
+All 13 `TECH_DEBT.md` files (root, `crates/*`, `../games`) were deleted and
+`PROJECT_ROADMAP.md` was slimmed to vision/decisions; every still-valid open
+item moved to the Studio Board:
+- **Roadmap tasks** → #67 (E8), #68–#71 (F2–F5), #72–#79 (G0–G7 re-skins),
+  #80 (I0 purge gate). Already tracked before the migration: #10 (E7), #11
+  (E5), #13, #15, #16, #46, #48, #49, #60–#65.
+- **Debt Mediums** → #81 (BUILD-001 my_platformer broken), #82 (DRY-002 volume
+  clamp), #83 (KISS-001 syn features), beinsiculous/breakout#2 (GPP-11 shadow
+  bricks).
+- **Debt Lows** → per-area rollups #84 (engine_core), #85 (physics), #86
+  (ecs), #87 (input), #88 (ui), #89 (renderer), #90 (editor_integration),
+  #91 (common), #92 (ecs_macros), #93 (games).
+- **Verified already-resolved during migration, dropped without issues:**
+  games GPP-12 (`BrickSpec` + `parse_brick_tag` shipped) and GPP-L11
+  (breakout `gameplay/` split done); engine_core DRY-010 (single
+  `merge_components` helper) and SIZE-001 (all named files under 600 lines);
+  common ARCH-001/ARCH-002 (renderer re-exports `common::CameraUniform` /
+  `Camera` — no duplicates) and the KISS-001 strikethrough leftover; input
+  GAP-001 (gilrs backend shipped Jul 2026); the roadmap's ARCH-006 copy
+  (registry collapse closed by Sprint 5 #43). `editor` and `audio` had zero
+  open items.
+- Non-task content moved to crate CLAUDE.mds (audio by-design limitations,
+  renderer deferred-by-design, ecs GPP-02 decision-of-record).
+
+## Roadmap slimmed Aug 28 2026 — archived completed-phase detail
+
+The following completed-work records moved here verbatim-ish from
+`PROJECT_ROADMAP.md` when it was slimmed. (Phases A/B/game-6 were already
+archived below.)
+
+### Phase E — asset pipeline (core ☑ Jul 30 2026, adversarially reviewed)
+- **E1** `TextureFilter` knob: config default (`GameConfig::with_texture_filter`
+  → `AssetConfig.default_filter`) + per-call `load_texture_filtered`; Linear
+  default for plain loads (back-compat).
+- **E2** `common::SheetGrid`: Tilemap delegates (behavior-identical,
+  test-locked); `uv_rect_checked` for E3/E4 consumers; `Deserialize` needs
+  explicit `cell_uv` on the wire.
+- **E3** `SpriteAnimation` rework (plan-v4, 3 adversarial rounds): named clips
+  over `SheetGrid` (`play`/`ensure_playing`/`resume`, fps/empty-clip guards);
+  `SpriteAnimationSystem` driven from `frame_tail.rs` on the time-scaled delta;
+  scene chain uses `GridData` + shared `ClipData` DTOs, `autoplay` written only
+  while playing; sidecar-as-SSOT on reload via `TextureResolver::sheet_for`;
+  editor freezes engine time outside Play.
+- **E4** `load_sprite_sheet()` + `.sheet.ron`: `SheetFile` v1 in
+  `sheet_file.rs` (pixel `cell`, filter defaults Nearest, looping defaults
+  true, fail-loud validation); validate-before-GPU ordering (no handle leak);
+  `SidecarCache`; scene texture refs take the sidecar's filter automatically.
+- **E5 (round-trip half)**: `create_solid_color` records canonical
+  `#solid:RRGGBB`; `tex_region` + `visible` on the Sprite wire with named serde
+  defaults. Remainder (the `#rgba` save-time error) = issue #11, gated on #69.
+- **E6** deleted `renderer/src/atlas.rs`; **E9** docs.
+- **Checkpoint: E2 + E4 merged = SCHEMA FREEZE, Jul 30 2026.**
+
+### Phase F provenance — pixellab lessons (paid for once, Aug 2 2026)
+37/40 trial generations used; full cast has restyled side-view baselines +
+8-frame walk sheets (deion_assets commit e2ea5be; quarantined `ai/`,
+`ai_<name>_64_side.png` — Deion, Cubert, Bananakin, Captham Michael, Master
+Pi, Aleister Prunely, Funguy, Dr. Maxwell).
+- pixellab `create_character` forces a humanoid/quadruped SKELETON — produced 5
+  little humans, all rejected. For geometric shape-with-a-face casts use
+  **`create_image_pixflux`** (freeform, `view: side`, `no_background`) —
+  on-style first try.
+- **img2img style transfer** (`init_image`, strength 160) re-renders a concept
+  into Jesse's flat hand-drawn style keeping identity (deion_assets 0820e4f →
+  09bd21d hold before/after); prompts went through the deion_assets prompt-mode
+  adversarial review.
+- **`animate_image` on hand-drawn PNGs** (loose PNG, no rig) preserves style —
+  but mid-sequence frames drift off-model; workflow is generate 8, curate 4–6,
+  hand-fix stragglers in Aseprite. `seed` allows re-rolls.
+(The open follow-ups — curation, sidecars, top-down variants — live in #70.)
+
+### Phase H — WASM port ☑ COMPLETE Aug 27 2026
+H1 spike PASSED Jul 30 2026 (`coordination/H1_SPIKE.md`): 14/14 deps compile
+for wasm32; **audio decision:
+STAY ON RODIO — FINAL** (listen test passed by Jesse). Shipped waves: **H2**
+`common::clock` (web-time) · **H3** cfg-split frame loop (native
+`about_to_wait` byte-identical; wasm rAF via `RedrawRequested` — never unify,
+occluded native windows stop redraws) · **H4** async renderer init
+(`spawn_local` + `pending_renderer`; 0×0 surface clamp) · **H5** `common::vfs`
++ `engine_core::web::preload_assets` manifest fetch (include_bytes bootstrap
+WON'T-DO, #9) · **H6** `save_store` seam + `Scores` (#6/#17,
+`docs/WEB_SAVES.md`) · **H7** gesture-gated audio `enable_output()` (#8) ·
+**H8** wasm CI guard `scripts/check_wasm.sh` + workflow (#7) · **H9** all 6
+games ported same-day via 5 parallel agents (pong 2.5 MiB … asteroids 2.1 MiB,
+every game browser-verified on WebGPU).
+Lessons paid for during the pong port:
+- **winit never inserts its canvas into the DOM** — detached canvas renders
+  silently into nothing. Fix lives in `renderer::insert_canvas_into_dom`
+  (called from `WindowManager::create`); `with_canvas` adoption was tried and
+  abandoned. Don't re-litigate.
+- WebGPU canvases expose **no sRGB surface formats**; the bloom composite
+  gamma-encodes (`inv_gamma`) when the swapchain isn't sRGB.
+- Never configure a surface at 0×0 (validation error) — clamp to 1×1, push the
+  real size after adoption.
+- Headless/swiftshader Chromium composites nothing visible — use Playwright's
+  **full Chromium, headed** for pixel verification; headless Firefox has no
+  `navigator.gpu`.
+- Pong's whole bundle is 2.5 MiB wasm — Cloudflare's 25 MiB budget is a
+  non-issue; `wasm-opt` uninstalled and unneeded.
+
+### Phase I — I1/I2 ☑ LIVE Aug 19 2026
+Pong live at beinsiculous.com/games/pong/ (v1 immutable-once-live convention;
+launch-window hotfix: 1×1-canvas resize-observer deadlock — one-time same-v1
+exception). Then all 6 games live same-day (`npm run verify` green, 43 pages;
+frogger 720×768 frontmatter pass-through added; first devlog post in the same
+deploy). Handoff: repo transferred to `milyramic`; deploys via GitHub Actions
+(`wrangler deploy`, dashboard Workers Builds deliberately disconnected);
+production URL beinsiculous.com. Remaining manual step (tracked in memory, not
+an issue): the beinsiculous.com zone must exist in the target Cloudflare
+account with the registrar pointing at Cloudflare's nameservers.
+
+### Deion Pivot provenance
+The pivot plan was adversarially reviewed Jul 28 2026 (kimi, 15 findings — 13
+accepted, 2 rebutted) and the capability-table status detail that used to open
+the roadmap is superseded by `CLAUDE.md`'s live status section.
 
 ## GPP-L7 — gizmo drags vs. commands (RESOLVED Aug 28 2026, editor Sprint 4)
 The last open GPP audit low. The documented hazard — mid-drag world mutations

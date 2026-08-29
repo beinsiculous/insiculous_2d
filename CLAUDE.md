@@ -211,9 +211,12 @@ Use `WebFetch` on `https://github.com/godotengine/godot/blob/master/<path>`
 **2-Player + universal input (Jul 16 2026)**: every game is now 2-player (Pong 2P human/AI, Breakout co-op top/bottom paddles + dedicated `*_2p` level scenes, Space Invaders & Asteroids co-op, Snake versus) on the engine's player-aware `InputSettings` layer (`ctx.players`, `GameContext`) with JSON-persisted bindings and gamepad-ready menus. Controller hardware works end-to-end via the gilrs backend (GAP-001 closed same day). Also same-day: universal pause (engine `PauseMenu` — Menu/Esc/Start toggles, Resume/Restart/Quit, world+particles freeze via `ctx.time_scale`) and menu window chrome (engine `MenuPanel`/`MenuStyle` — opaque themed panels, ▶-cursor rows) adopted by every game's menus, game-over screens, and pause overlay.
 **Panels + data-driven UI + localization (Jul 16 2026)**: editor panels hide/collapse/resize with the layout persisted to `editor_prefs.json` (View-menu toggles with check marks, Reset Layout, toolbar follows the scene view); localization is engine-native (`ctx.strings` — `assets/locales/*.ron` tables, `tr()` with en fallback, per-locale fonts, font-aware glyph caches; editor chrome keeps its own font while the game view localizes); game UI is data-driven via `UiLabel`/`UiPanel`/`UiButton` components (anchor+offset placement, `@key` localized text, `UiButtonPressed` events, full scene round-trip + inspector editing, hidden in the editor until Play). hello_world/editor_demo demo both (L key / View→Cycle Game Locale); Pong is the first fully localized game (en + Pirate with BlackSamsGold font, localized menus/HUD/pause/achievements with a Language title item).
 
-### Technical Debt (live docs — open work only)
-- Root `TECH_DEBT.md` — workspace rollup with per-crate open counts; detail in `crates/*/TECH_DEBT.md` and `../games/TECH_DEBT.md`
-- `log_archive.md` — resolved/completed history (incl. the closed Jul 2026 Game Programming Patterns audit); when you resolve an item, MOVE it there (never leave ✅/strikethrough entries in the live docs)
+### Technical Debt (on the board since Aug 28 2026)
+- Open debt = Studio Board issues with the `tech-debt` label
+  (`gh issue list -R beinsiculous/insiculous_2d --label tech-debt`; games debt
+  on the game's own repo). The per-crate `TECH_DEBT.md` files are retired —
+  never recreate one; file/update an issue instead.
+- `log_archive.md` — resolved/completed history (incl. the closed Jul 2026 Game Programming Patterns audit); close the issue and, if the resolution carries reusable lessons, append them there
 
 ## AI-Friendly Development Principles
 
@@ -241,9 +244,9 @@ This engine is designed to be developed collaboratively with AI agents. Follow t
 - **Never claim "tests pass" without actually running them.**
 
 ### Workflow for AI Agents
-1. **Read `PROJECT_ROADMAP.md`** for current priorities and task breakdown
+1. **Check the Studio Board** for current priorities (`gh issue list -R beinsiculous/insiculous_2d`); `PROJECT_ROADMAP.md` carries the vision + settled decisions
 2. **Read `training.md`** for API patterns and coding guidelines
-3. **Read the relevant `TECH_DEBT.md`** in the crate you're working on
+3. **Check the crate's `tech-debt` issues** (`--label tech-debt`) and its `CLAUDE.md` for known constraints
 4. **Write tests first** when implementing new features
 5. **Run `cargo test -p <crate>`** after each change to catch regressions fast
 6. **Run `cargo test --workspace`** before considering work complete
@@ -307,9 +310,9 @@ cargo run --bin editor --features editor -- ../games/pong  # Standalone editor o
 **Key Files:**
 - `CLAUDE.md` - This file: guardrails + status + architecture (`AGENTS.md` is a symlink to it)
 - `training.md` - Detailed API, patterns, examples
-- `PROJECT_ROADMAP.md` - LIVE: tasks, priorities, engine gaps
-- `TECH_DEBT.md` + `crates/*/TECH_DEBT.md` + `../games/TECH_DEBT.md` - LIVE: open debt only
-- `log_archive.md` - Resolved/completed history (move finished items here)
+- `PROJECT_ROADMAP.md` - Vision + settled decisions + phase map (open tasks live on the Studio Board)
+- Studio Board (https://github.com/orgs/beinsiculous/projects/1) - ALL open tasks incl. tech debt (`tech-debt` label)
+- `log_archive.md` - Resolved/completed history (append lessons when closing work)
 - `examples/hello_world.rs` - Working game demonstration
 - `examples/editor_demo.rs` - Editor demo (requires `--features editor`)
 - `src/bin/editor.rs` - Standalone editor binary

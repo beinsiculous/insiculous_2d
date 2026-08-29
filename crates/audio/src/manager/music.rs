@@ -57,7 +57,8 @@ impl AudioManager {
         self.stop_music();
 
         // Whole-file read through the VFS (works on web too; music files are
-        // loaded eagerly like all audio — see TECH_DEBT on streaming).
+        // loaded eagerly like all audio — no streaming, a by-design limit
+        // documented in this crate's CLAUDE.md).
         // I/O failures convert via `From<io::Error>`.
         let bytes = common::vfs::read(path)?;
 

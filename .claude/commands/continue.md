@@ -41,8 +41,8 @@ prefer:
 
 ### 2.1 Read Existing Documentation
 - Crate's `CLAUDE.md` (if exists) - domain expertise and Godot oracle references
-- Crate's `TECH_DEBT.md` (if exists) - known issues in this crate
-- `PROJECT_ROADMAP.md` - related phase context and dependencies
+- Crate's open `tech-debt` issues (`gh issue list -R beinsiculous/insiculous_2d --label tech-debt`; for a game, `-R beinsiculous/<game>`) - known issues in this crate
+- `PROJECT_ROADMAP.md` - vision, settled decisions, phase context
 - Linked/referenced issues on the board - related or blocking work
 
 ### 2.2 Understand Current State
@@ -109,16 +109,16 @@ For user-facing features:
 
 ## 6. Update Documentation
 
-Live docs carry **open work only**; resolved items MOVE to `log_archive.md`
-(never leave ✅/strikethrough entries behind).
+Open work lives on the Studio Board; history lives in `log_archive.md`.
 
-### 6.1 Update TECH_DEBT.md (if relevant)
-- Move resolved items to `log_archive.md` with resolution notes
-- Add new debt discovered during implementation
+### 6.1 Update the board (if relevant)
+- Resolved debt: close its `tech-debt` issue ("fixes …#N"); append lessons to
+  `log_archive.md` if worth keeping
+- New debt discovered: file a `tech-debt` issue (or extend the crate's
+  low-priority backlog issue) — never recreate a `TECH_DEBT.md` file
 
-### 6.2 Update PROJECT_ROADMAP.md (if the task appears there)
-- Move completed roadmap items to `log_archive.md`
-- Update affected metrics (test counts) and add follow-up context if needed
+### 6.2 Update PROJECT_ROADMAP.md (only if a settled decision changed)
+- The roadmap carries vision + decisions, not tasks or metrics
 
 ### 6.3 Update AGENTS.md (if architecture or metrics changed)
 - Update system descriptions
@@ -135,7 +135,7 @@ Before finishing:
 - [ ] `/finish-task` checklist passes (tests, clippy, file sizes, docs)
 - [ ] All tests pass: `cargo test --workspace` (0 failed, 0 ignored)
 - [ ] Clippy fully clean: `cargo clippy --workspace --all-targets`
-- [ ] Documentation updated (TECH_DEBT.md, PROJECT_ROADMAP.md, AGENTS.md as needed)
+- [ ] Documentation updated (AGENTS.md as needed; board issues closed/filed)
 - [ ] `coordination/PROGRESS.md` entry appended
 - [ ] Follow-up work filed as new issues on the board (not buried in docs)
 

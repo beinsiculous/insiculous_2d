@@ -42,10 +42,12 @@ you introduced must be fixed properly — `#[allow(...)]` is not a fix.
 
 ## Gate 4 — Docs & coordination
 
-- If behavior, counts, or architecture changed: update `AGENTS.md` /
-  `PROJECT_ROADMAP.md` / the crate's `TECH_DEBT.md` to match reality.
-- If you resolved or created tech debt, record it in the crate's
-  `TECH_DEBT.md`.
+- If behavior, counts, or architecture changed: update `AGENTS.md` (and
+  `PROJECT_ROADMAP.md` only if a settled decision changed) to match reality.
+- If you resolved tech debt, close its `tech-debt` issue (commit "fixes …#N";
+  append lessons to `log_archive.md` if worth keeping). If you created debt,
+  file a `tech-debt` issue (or extend the crate's low-priority backlog issue)
+  — the per-crate `TECH_DEBT.md` files are retired, never recreate one.
 - If working under the coordination protocol: append to
   `coordination/PROGRESS.md` and remove your lock file.
 

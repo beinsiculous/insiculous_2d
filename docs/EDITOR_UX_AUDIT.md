@@ -376,7 +376,7 @@ Undoable: create, delete, duplicate (top-level), add/remove component, inspector
 
 **Bypassing the command system:**
 - **Duplicate loses its children on undo.** `duplicate_entity_recursive` (`entity_ops.rs:282-332`) directly creates the whole subtree with no commands; the caller records **one** command for **one** entity (`menu_actions.rs:156-161`). Verify `CreateEntityCommand::already_created` walks descendants — if not, Ctrl+D then Ctrl+Z orphans every child into the world and into the saved scene.
-- **Ctrl+Z mid-gizmo-drag.** `handle_editor_key` (`shortcuts.rs:146`) doesn't check `gizmo_has_priority()`. Undo fires against the previous command while the drag keeps writing; the drag's release-command then captures post-undo state as its "final". Tracked as `GPP-L7 (Low, document-only)` in `crates/editor/TECH_DEBT.md` — it is not document-only.
+- **Ctrl+Z mid-gizmo-drag.** `handle_editor_key` (`shortcuts.rs:146`) doesn't check `gizmo_has_priority()`. Undo fires against the previous command while the drag keeps writing; the drag's release-command then captures post-undo state as its "final". Was tracked as `GPP-L7 (Low, document-only)` — it was not document-only; resolved Aug 28 2026 by the Sprint 4 drag-state rework (see `log_archive.md`).
 - `Name` mutation on duplicate (`entity_ops.rs:306-309`) outside any command.
 
 ### 4.13 Absent: multi-edit, component copy/paste, prefabs, reset-to-default

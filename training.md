@@ -703,11 +703,11 @@ ecs::with_global_registry(|r| r.insert_component(&mut world, entity, "Health", j
 
 ## Current Known Limitations
 
-Open technical debt lives in the **live docs**: root `TECH_DEBT.md` (workspace rollup),
-`crates/*/TECH_DEBT.md` (per-crate detail), `../games/TECH_DEBT.md`, and the
-`PROJECT_ROADMAP.md` Technical Debt section. Resolved history (incl. the closed
-Jul 2026 Game Programming Patterns audit): `log_archive.md`. Do not list debt
-here — this file documents APIs and patterns, not status.
+Open technical debt lives on the **Studio Board** as issues with the
+`tech-debt` label (`gh issue list -R beinsiculous/insiculous_2d --label
+tech-debt`; games debt on the game's own repo). Resolved history (incl. the
+closed Jul 2026 Game Programming Patterns audit): `log_archive.md`. Do not
+list debt here — this file documents APIs and patterns, not status.
 
 ---
 
@@ -718,8 +718,7 @@ here — this file documents APIs and patterns, not status.
 /home/jedi/RustroverProjects/insiculous_2d/
 ├── CLAUDE.md                   # Main agent ruleset (AGENTS.md is a symlink to it)
 ├── training.md                 # This file - AI pair programming guide
-├── PROJECT_ROADMAP.md          # LIVE: tasks, priorities, engine gaps
-├── TECH_DEBT.md                # LIVE: workspace debt rollup (per-crate detail in crates/*/TECH_DEBT.md)
+├── PROJECT_ROADMAP.md          # Vision + settled decisions (open tasks = Studio Board issues)
 ├── log_archive.md              # Completed/resolved work (history)
 ├── README.md                   # Project overview
 ├── crates/

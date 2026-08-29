@@ -59,6 +59,16 @@ components like any other type, but the physics crate owns their definitions.
 - **Type-erased enumeration**: `world.component_types(entity)` -> `Vec<(TypeId, &'static str)>` — the only way to see components you don't know the type of (snapshot loss detection); names come from the concrete component via `.as_ref().type_name()`
 - **New components**: derive `DeriveComponentMeta` + `ecs::register_components(|r| r.register::<T>())` (engine types go in the builtin list; game types register in main()) — scene save/load, WorldSnapshot, clipboard, and the command API then cover T automatically. A typed editor line in `editor_component_registry!` is OPTIONAL (buys rich field editors; otherwise the inspector shows a read-only serde view)
 
+## Storage — GPP-02 decision of record (Jul 13 2026)
+`ComponentStore` = `HashMap<EntityId, Box<dyn Component>>` is the accepted
+simplicity tradeoff. **Trigger to revisit:** profiling shows component access
+dominating a frame, or games routinely exceed ~a few thousand live entities.
+When it fires, evaluate a **sparse-set layout FIRST** (dense `Vec<T>` per type
++ entity→index map — cache contiguity without archetype migration; the editor
+adds/removes components constantly, a workload archetype migration punishes and
+HashMaps tolerate); full archetype storage only if sparse sets measurably
+aren't enough.
+
 ## Documented Conventions
 - Typed accessors `get`/`get_mut` take `EntityId` by value; CRUD methods (`add_component`, `remove_component`, `has_component`, `get_component`) take `&EntityId`. Prefer by-value for new APIs.
 - `Children` uses a `Vec<EntityId>` deliberately — child order is load-bearing for the editor hierarchy panel and scene serialization. Do not swap to `HashSet`.
