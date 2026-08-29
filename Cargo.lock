@@ -863,6 +863,7 @@ dependencies = [
  "log",
  "physics",
  "renderer",
+ "serde",
  "serde_json",
  "ui",
  "winit",

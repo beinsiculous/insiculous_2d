@@ -27,6 +27,7 @@ use crate::panel_renderer;
 
 mod api;
 mod gizmo_drag;
+pub mod headless;
 mod menu_actions;
 mod scene_io;
 mod shortcuts;

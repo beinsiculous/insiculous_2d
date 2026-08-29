@@ -208,3 +208,32 @@ Behavior decision (flagged): the unnamed-entity Name backfill is REMOVED — it
 mutated scenes on load; names baked into previously saved files still load fine,
 and unnamed entities are first-class since F2-rename. Tests 1635 → 1638, clippy
 clean, wasm gate clean. fixes #53.
+
+## 2026-08-28 — #45 Command API Stage C: headless --api (Sprint 5)
+The audit's "AI-first" north star lands: `--headless` runs the FULL authoring loop
+— query → create → set → add (dynamic components included) → save → reload →
+describe — with no window, GPU, or frame loop. New
+`editor_integration::run_headless_editor_api(scene, BufRead, Write)`:
+EditorGame::new(NullGame) + World + `HeadlessAssets` (a path-recording
+TextureResolver — refs dedupe to stable handles and write back VERBATIM, so saves
+round-trip byte-stably; permissive by design, nothing renders), scene opened
+through the REAL load path (#53's seam — dry-run guard, physics, path recorded),
+then a blocking line loop over `answer_api_lines`, one JSON line per request,
+flushed per line, EOF = clean exit; a bad startup scene fails the session fast.
+The spike's honest unknown resolved as expected: EditorGame was never bound to the
+frame loop — engine_core's runner was — so shape (a) (headless WITHOUT the engine)
+cost 143 lines. CI ship-point tests drive two sessions over in-memory buffers;
+live smoke verified against breakout (60 entities, path reported). No Play verb
+exists; limits documented in docs/EDITOR_COMMAND_API.md § Stage C. **Audit
+§6.6(5) decided and recorded there: the editor does NOT own the build** — the
+binary stays a generic data-only host; future rebuilds are "spawn cargo, relaunch
+self" (pairs with the settled relaunch-over-dylib). Stage D (WebSocket) reuses
+this dispatch unchanged. Tests 1638 → 1642, clippy clean, wasm gate clean.
+fixes #45.
+(#45 review round: kimi 2 majors + 2 minors — F1 fixed for real (HeadlessAssets now
+consults .sheet.ron sidecars via the public no-GPU SidecarCache against the
+project's asset base, so headless saves bake the CURRENT sidecar snapshot like the
+GUI; severity was overstated since sidecars stay SSOT at every load, but the fix
+was cheap); F4 fixed (empty-start info log); F2 rebutted as pre-existing both-mode
+behavior with loud failure → follow-up filed as #66 (set-verb texture_handle
+validation); F3 rebutted (--api carried the same flag reservation since Stage A).)

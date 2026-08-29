@@ -20,3 +20,8 @@ glam = { workspace = true }
 serde_json = { workspace = true }
 log = { workspace = true }
 winit = { workspace = true }
+
+[dev-dependencies]
+# Already a workspace dependency everywhere else; needed here only so tests
+# can `define_component!` game-style types for the dynamic-tier ship point.
+serde = { workspace = true }

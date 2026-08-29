@@ -157,5 +157,47 @@ its key so the map stays total.
 - **Stage A** — query-only. Shipped.
 - **Stage B (this document)** — write commands through `CommandHistory`
   (undoable in the GUI), `commands` self-description. Shipped.
-- **Stage C** — headless `--api` (no window).
+- **Stage C** — headless mode (below). Shipped.
 - **Stage D** — WebSocket transport for the web editor.
+
+## Stage C — headless mode (issue #45)
+
+```bash
+cargo run --bin editor --features editor -- /path/to/project --headless
+```
+
+No window, no GPU, no frame loop: the binary opens the project's first
+scene (sorted, `assets/scenes/*.ron`) through the SAME load path as the
+GUI, then answers the identical line protocol on stdin/stdout until EOF —
+one JSON line per request, flushed per line. Logging stays on stderr.
+`editor_integration::run_headless_editor_api(scene, input, output)` is the
+library entry (CI tests drive it with in-memory buffers).
+
+Semantics identical to the windowed `--api` mode, with these limits:
+
+- **No Play.** There is no play verb in the protocol; the session stays
+  `Editing` forever, so the writes-refused-while-Playing rule is
+  unreachable. Physics never steps.
+- **Textures are recorded, not loaded.** A path-recording resolver dedupes
+  every texture reference to a stable handle and writes the same reference
+  back on save — image files are never opened or validated, so a missing
+  texture cannot fail headless authoring.
+- **`.sheet.ron` sidecars ARE consulted** (pure file I/O against the
+  project's `assets/` directory), so a headless save bakes the current
+  sidecar snapshot exactly like the windowed editor. Sessions started
+  without an asset base (library use with `asset_base: None`) fall back to
+  the scene's baked animation values.
+- **Game-registered components** are visible only if the hosting process
+  registered them; the stock editor binary links no game crate, so a scene
+  containing game components refuses to load (fail-loud, #43). Author such
+  scenes from the game's own binary.
+
+### Decision of record — audit §6.6(5): the editor does not own the build
+
+Resolved with Stage C (they hinge on the same file, `src/bin/editor.rs`):
+the standalone binary stays a generic, data-only host wrapping `EditorApp`;
+games that want in-process editing embed via `run_game_with_editor`. The
+API edits DATA (scenes), never code. Combined with §6.6(4)'s
+relaunch-over-dylib decision, any future editor-triggered rebuild is
+"spawn cargo, relaunch self" — which this shape already permits. No build
+system work now (scripting Stage 5 revisits).

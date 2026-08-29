@@ -5,6 +5,8 @@
 //! Usage:
 //!   cargo run --bin editor --features editor -- /path/to/project
 //!   cargo run --bin editor --features editor              # defaults to "."
+//!   cargo run --bin editor --features editor -- /path/to/project --headless
+//!       # no window: line-oriented command API on stdin/stdout (Stage C)
 
 use std::path::PathBuf;
 
@@ -96,19 +98,41 @@ fn spawn_api_stdin_reader() -> std::sync::mpsc::Receiver<String> {
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    // Args: [project-path] [--api]. `--api` answers line-oriented queries
-    // from stdin with JSON on stdout (docs/EDITOR_COMMAND_API.md).
-    // Only the known flag is treated as one — any other argument is a
-    // positional path, even one starting with `--`.
+    // Args: [project-path] [--api] [--headless]. `--api` answers
+    // line-oriented queries from stdin with JSON on stdout alongside the
+    // window; `--headless` implies the API but never opens a window at all
+    // (docs/EDITOR_COMMAND_API.md — Stage C). Only the known flags are
+    // treated as flags — any other argument is a positional path, even one
+    // starting with `--`.
     let (flags, paths): (Vec<String>, Vec<String>) =
-        std::env::args().skip(1).partition(|a| a == "--api");
-    let api_rx = (!flags.is_empty()).then(spawn_api_stdin_reader);
+        std::env::args().skip(1).partition(|a| a == "--api" || a == "--headless");
+    let headless = flags.iter().any(|f| f == "--headless");
 
     let project_path: PathBuf = paths
         .into_iter()
         .next()
         .unwrap_or_else(|| ".".into())
         .into();
+
+    if headless {
+        // Logging stays on stderr (env_logger); stdout is protocol-clean.
+        let scene =
+            editor_integration::find_first_scene(&project_path.join("assets").join("scenes"));
+        let stdin = std::io::stdin();
+        let stdout = std::io::stdout();
+        if let Err(e) = editor_integration::run_headless_editor_api(
+            Some(project_path.join("assets")),
+            scene,
+            stdin.lock(),
+            stdout.lock(),
+        ) {
+            log::error!("Headless editor error: {}", e);
+            std::process::exit(1);
+        }
+        return;
+    }
+
+    let api_rx = (!flags.is_empty()).then(spawn_api_stdin_reader);
 
     let project_name = project_path
         .file_name()
