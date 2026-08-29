@@ -362,6 +362,11 @@ impl<G: Game> Game for EditorGame<G> {
         // recorded in the history ⇒ the scene changed (issue #24). Editor-
         // crate renderers (title bar, status) read the EditorContext mirror.
         self.editor.set_dirty(self.command_history.is_dirty());
+        // Note the selection BEFORE any handler this frame mutates it: every
+        // command recorded later this frame carries it as the before-image
+        // undo restores (#59). Delete/Cut clear the selection before
+        // pushing, which is exactly why the note happens here.
+        self.command_history.note_selection(&self.editor.selection);
 
         // 1. Run transform hierarchy system
         self.transform_system.update(ctx.world, ctx.delta_time);

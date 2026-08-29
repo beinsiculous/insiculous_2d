@@ -89,6 +89,12 @@ impl<G: Game> EditorGame<G> {
                 "writes are refused while Playing — pause or stop first".to_string(),
             ));
         }
+        // Hosted creates mutate the selection BEFORE their command is
+        // recorded — note the pre-action selection first (#59). Skipped
+        // while a batch is open (the macro keeps the pre-batch image).
+        if self.api_batch.is_none() {
+            self.command_history.note_selection(&self.editor.selection);
+        }
         match hosted {
             HostedWrite::Create { archetype, name, position } => {
                 let action = archetype_action(archetype).ok_or_else(|| {
@@ -198,6 +204,11 @@ impl<G: Game> EditorGame<G> {
                 })
         };
         let responses = self.answer_api_lines(&lines, ctx.world, &texture_path_fn);
+        // An API line may have changed the selection (`select`, `create`);
+        // GUI commands recorded LATER this frame must see the current
+        // selection as their before-image, not the frame-start note (#59
+        // kimi F3).
+        self.command_history.note_selection(&self.editor.selection);
         let stdout = std::io::stdout();
         let mut out = stdout.lock();
         for response in responses {

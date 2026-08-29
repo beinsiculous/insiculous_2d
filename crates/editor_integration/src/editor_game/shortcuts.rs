@@ -44,9 +44,15 @@ impl<G: Game> EditorGame<G> {
                     // restore would undo against the wrong world.
                     if let Some(batch) = self.api_batch.take() {
                         if !batch.commands.is_empty() {
-                            self.command_history.push_already_executed(Box::new(
-                                editor::commands::MacroCommand::new(batch.name, batch.commands),
-                            ));
+                            // The macro carries the batch's own pre-batch
+                            // selection snapshot (#59 kimi F1).
+                            self.command_history.push_already_executed_with_before(
+                                Box::new(editor::commands::MacroCommand::new(
+                                    batch.name,
+                                    batch.commands,
+                                )),
+                                batch.selection_before,
+                            );
                         }
                         self.editor.status_bar.show_message("API batch committed by Play");
                     }
@@ -161,6 +167,15 @@ impl<G: Game> EditorGame<G> {
         }
     }
 
+    /// Apply the selection undo/redo wants restored (#59): platform
+    /// convention is that undoing a Delete/Cut brings the selection back.
+    pub(super) fn apply_selection_restore(&mut self) {
+        if let Some(ids) = self.command_history.take_selection_restore() {
+            self.editor.selection.clear();
+            self.editor.selection.select_multiple(ids);
+        }
+    }
+
     /// Top-level key handler: every editor shortcut resolves through the
     /// ONE rebindable table (`EditorInputMapping::resolve` — audit §4.9).
     /// Play controls always work; while Playing the raw key forwards to the
@@ -244,13 +259,17 @@ impl<G: Game> EditorGame<G> {
                 if drag_guard(self) {
                     return;
                 }
-                self.command_history.undo(ctx.world);
+                if self.command_history.undo(ctx.world) {
+                    self.apply_selection_restore();
+                }
             }
             A::Redo => {
                 if drag_guard(self) {
                     return;
                 }
-                self.command_history.redo(ctx.world);
+                if self.command_history.redo(ctx.world) {
+                    self.apply_selection_restore();
+                }
             }
             A::Save => {
                 if let Err(e) = self.save_scene(ctx.world, ctx.assets) {

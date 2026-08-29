@@ -27,6 +27,10 @@ use super::{entity_record, ApiError, PureWrite};
 pub struct ApiBatch {
     pub name: String,
     pub commands: Vec<Box<dyn EditorCommand>>,
+    /// The selection when `batch begin` ran — the macro's before-image.
+    /// Frame-start notes overwrite the history's pending selection while a
+    /// batch spans frames, so the snapshot lives HERE (#59 kimi F1).
+    pub selection_before: Vec<ecs::EntityId>,
 }
 
 /// Everything a pure write may touch, borrowed for one request.
@@ -183,6 +187,12 @@ pub fn run(write: &PureWrite, ctx: &mut WriteCtx<'_>) -> Result<Value, ApiError>
         return Err(ApiError::Refused(
             "writes are refused while Playing — pause or stop first".to_string(),
         ));
+    }
+    // Per-line before-image for undo's selection restore (#59). While a
+    // batch is open the note is skipped: the eventual MacroCommand must
+    // carry the PRE-BATCH selection (noted at BatchBegin).
+    if ctx.batch.is_none() {
+        ctx.history.note_selection(ctx.selection);
     }
 
     match write {
@@ -378,6 +388,10 @@ pub fn run(write: &PureWrite, ctx: &mut WriteCtx<'_>) -> Result<Value, ApiError>
             }
             let name = ctx.history.undo_name().map(str::to_string);
             let undid = ctx.history.undo(ctx.world);
+            if let Some(ids) = ctx.history.take_selection_restore() {
+                ctx.selection.clear();
+                ctx.selection.select_multiple(ids);
+            }
             Ok(serde_json::json!({ "undid": if undid { name } else { None } }))
         }
         PureWrite::Redo => {
@@ -389,6 +403,10 @@ pub fn run(write: &PureWrite, ctx: &mut WriteCtx<'_>) -> Result<Value, ApiError>
             }
             let name = ctx.history.redo_name().map(str::to_string);
             let redid = ctx.history.redo(ctx.world);
+            if let Some(ids) = ctx.history.take_selection_restore() {
+                ctx.selection.clear();
+                ctx.selection.select_multiple(ids);
+            }
             Ok(serde_json::json!({ "redid": if redid { name } else { None } }))
         }
         PureWrite::BatchBegin { name } => {
@@ -398,7 +416,11 @@ pub fn run(write: &PureWrite, ctx: &mut WriteCtx<'_>) -> Result<Value, ApiError>
                 ));
             }
             let name = name.clone().unwrap_or_else(|| "API Batch".to_string());
-            *ctx.batch = Some(ApiBatch { name: name.clone(), commands: Vec::new() });
+            *ctx.batch = Some(ApiBatch {
+                name: name.clone(),
+                commands: Vec::new(),
+                selection_before: ctx.selection.selected().collect(),
+            });
             Ok(serde_json::json!({ "batch": name }))
         }
         PureWrite::BatchEnd => {
@@ -407,10 +429,10 @@ pub fn run(write: &PureWrite, ctx: &mut WriteCtx<'_>) -> Result<Value, ApiError>
             };
             let count = batch.commands.len();
             if count > 0 {
-                ctx.history.push_already_executed(Box::new(MacroCommand::new(
-                    batch.name,
-                    batch.commands,
-                )));
+                ctx.history.push_already_executed_with_before(
+                    Box::new(MacroCommand::new(batch.name, batch.commands)),
+                    batch.selection_before,
+                );
             }
             Ok(serde_json::json!({ "commands": count }))
         }

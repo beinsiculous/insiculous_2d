@@ -474,3 +474,43 @@ fn test_add_unknown_component_error_lists_dynamic_names() {
     };
     assert!(msg.contains("ApiDynTestBuff"), "dynamic names listed: {msg}");
 }
+
+#[test]
+fn test_api_undo_of_delete_restores_the_selection() {
+    // #59 through the API path: WriteCtx notes per line, undo restores.
+    let mut rig = Rig::new();
+    let entity = rig.spawn_player();
+    rig.selection.select(entity);
+
+    rig.run("delete Player").unwrap();
+    assert!(rig.selection.is_empty(), "delete drops the entity from selection");
+
+    rig.run("undo").unwrap();
+    assert!(
+        rig.selection.contains(entity),
+        "undoing the delete restores the pre-delete selection"
+    );
+}
+
+#[test]
+fn test_batch_macro_carries_the_pre_batch_selection() {
+    // #59 kimi F1: the macro's before-image is the selection at `batch
+    // begin`, even if notes (frame boundaries) land while it is open.
+    let mut rig = Rig::new();
+    let entity = rig.spawn_player();
+    rig.selection.select(entity);
+
+    rig.run("batch begin edits").unwrap();
+    rig.run(r#"set Player Transform2D {"rotation": 1.0}"#).unwrap();
+    // Simulate a frame boundary overwriting the pending note while the
+    // batch is open — the user deselected everything mid-batch.
+    rig.selection.clear();
+    rig.history.note_selection(&rig.selection);
+    rig.run("batch end").unwrap();
+
+    rig.run("undo").unwrap();
+    assert!(
+        rig.selection.contains(entity),
+        "undoing the batch restores the PRE-BATCH selection, not the frame note"
+    );
+}

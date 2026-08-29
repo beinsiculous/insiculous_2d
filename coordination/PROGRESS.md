@@ -248,3 +248,27 @@ fires in BOTH `commit_gizmo_drag` (including zero-delta commits — a click is s
 a gesture) and `cancel_gizmo_drag`, so mergeable commands (nudges, field-hint
 Set*Commands) on either side of a drag can no longer collapse into one undo entry
 across it. Tests 1642 → 1645, clippy clean, wasm gate clean. fixes #56.
+
+## 2026-08-28 — #59 Undo/redo restore the selection (Sprint 5 rider)
+Solved GENERALLY in CommandHistory, no per-command special-casing: every entry
+carries a `selection_before` stamped from the host's `note_selection` (called once
+per frame at editor-update 0d — BEFORE Delete/Cut clear the selection — and per
+line on the API write path, with open batches keeping the pre-batch image) and a
+`selection_after` captured at undo time (honoring whatever the user selected
+since). Ordering is load-bearing: undo stamps after→undoes→restores before; redo
+executes FIRST then restores after, so a redone create/duplicate/paste exists
+again before pruning and stays selected — and redo-of-delete re-clears for free.
+Restores prune to live entities (undo is id-exact per GPP-14; pruning defends
+cross-entry staleness) and hand back via `take_selection_restore()` — the public
+undo/redo signatures are unchanged, so 76 test call sites stayed untouched while
+the 3 host paths (shortcuts, menu, API WriteCtx) apply it. Merged gestures keep
+their FIRST before-image by construction (merges never touch it). Push-site audit
+(kimi plan R2-F5): every CommandHistory push is downstream of a note — frame 0d
+covers all GUI handlers, per-line covers the API, BatchBegin covers macros.
+Tests 1645 → 1651, clippy clean, wasm gate clean. fixes #59.
+(#59 review round: kimi 1 major + 2 minors, all fixed — ApiBatch snapshots the
+selection at `batch begin` and the macro is pushed via the new
+`push_already_executed_with_before` at batch end AND the Play auto-commit, so
+cross-frame batches restore the true pre-batch selection (F1, test added);
+`clear()` resets pending/restore state (F2); the API drain re-notes so same-frame
+GUI commands after an API `select` see the current selection (F3).)
