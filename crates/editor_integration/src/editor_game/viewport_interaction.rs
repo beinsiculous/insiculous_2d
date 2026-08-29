@@ -425,6 +425,11 @@ impl<G: Game> EditorGame<G> {
         let Some(drag) = self.gizmo_drag.take() else {
             return;
         };
+        // A drag ending is a gesture boundary regardless of whether it
+        // moved anything (#56): mergeable commands (nudges, field-hint
+        // Set*Commands) on either side of a drag must never collapse into
+        // one undo entry across it.
+        self.command_history.break_merge();
         let mut commands: Vec<Box<dyn editor::commands::EditorCommand>> = Vec::new();
         for entity in &drag.entities {
             let Some(final_transform) =
@@ -474,6 +479,8 @@ impl<G: Game> EditorGame<G> {
         let Some(drag) = self.gizmo_drag.take() else {
             return false;
         };
+        // An Escape-cancelled drag is still a gesture boundary (#56).
+        self.command_history.break_merge();
         for entity in &drag.entities {
             if let Some(transform) =
                 world.get_mut::<ecs::sprite_components::Transform2D>(entity.id)

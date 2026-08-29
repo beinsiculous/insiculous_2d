@@ -262,3 +262,52 @@ fn test_cancel_restores_starts_and_pushes_no_undo_entry() {
     game.commit_gizmo_drag(&world);
     assert!(!game.command_history.can_undo());
 }
+
+#[test]
+fn test_gizmo_drag_commit_and_cancel_seal_the_nudge_merge_window() {
+    // #56: mergeable commands on either side of a gizmo drag must never
+    // collapse into one undo entry across it — commit AND cancel are
+    // gesture boundaries.
+    let mut game = EditorGame::new(DummyGame);
+    let mut world = World::new();
+    let a = spawn_at(&mut world, Vec2::ZERO);
+    game.editor.selection.select(a);
+
+    // Nudge, then a zero-delta drag commit (still a gesture), then nudge.
+    game.nudge_selection(&mut world, Vec2::new(1.0, 0.0), false);
+    game.gizmo_drag = Some(GizmoDragState {
+        entities: vec![DragEntity {
+            id: a,
+            start: *world.get::<common::Transform2D>(a).unwrap(),
+            start_collider: None,
+        }],
+        accumulated_rotation: 0.0,
+    });
+    game.commit_gizmo_drag(&world);
+    game.nudge_selection(&mut world, Vec2::new(1.0, 0.0), false);
+
+    // A cancelled drag is a boundary too.
+    game.gizmo_drag = Some(GizmoDragState {
+        entities: vec![DragEntity {
+            id: a,
+            start: *world.get::<common::Transform2D>(a).unwrap(),
+            start_collider: None,
+        }],
+        accumulated_rotation: 0.0,
+    });
+    assert!(game.cancel_gizmo_drag(&mut world));
+    game.nudge_selection(&mut world, Vec2::new(1.0, 0.0), false);
+
+    // Three separate nudge entries — one per gesture window.
+    assert!(game.command_history.undo(&mut world));
+    assert!(game.command_history.undo(&mut world));
+    assert!(game.command_history.undo(&mut world));
+    assert!(
+        !game.command_history.can_undo(),
+        "each drag boundary sealed the previous nudge into its own entry"
+    );
+    assert_eq!(
+        world.get::<common::Transform2D>(a).unwrap().position,
+        Vec2::ZERO
+    );
+}

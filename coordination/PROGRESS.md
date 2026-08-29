@@ -237,3 +237,14 @@ GUI; severity was overstated since sidecars stay SSOT at every load, but the fix
 was cheap); F4 fixed (empty-start info log); F2 rebutted as pre-existing both-mode
 behavior with loud failure → follow-up filed as #66 (set-verb texture_handle
 validation); F3 rebutted (--api carried the same flag reservation since Stage A).)
+
+## 2026-08-28 — #56 Ctrl-snap scrubbing + gizmo-release merge boundary (Sprint 5 rider)
+(1) `ui::InputState.ctrl_down` (derived beside shift — zero engine plumbing) and
+`float_scrub` snaps to whole steps while Ctrl is held: snap applies to whatever
+value the modifiers produced (Shift ×0.1 fine mode included), snap first, clamp
+last; the viewport_interaction comment about "the repo's Ctrl-snap convention,
+shared with scrub fields" is finally true. (2) `CommandHistory::break_merge()` now
+fires in BOTH `commit_gizmo_drag` (including zero-delta commits — a click is still
+a gesture) and `cancel_gizmo_drag`, so mergeable commands (nudges, field-hint
+Set*Commands) on either side of a drag can no longer collapse into one undo entry
+across it. Tests 1642 → 1645, clippy clean, wasm gate clean. fixes #56.

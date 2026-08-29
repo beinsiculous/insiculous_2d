@@ -34,6 +34,10 @@ impl<G: Game> EditorGame<G> {
                     // them and Stop restores)
                     self.gizmo_drag = None;
                     self.editor.gizmo.cancel();
+                    // Dropping a live drag is a gesture boundary too (#56
+                    // kimi F1): pre-Play and post-Stop nudges must not merge
+                    // into one undo entry across the discarded drag.
+                    self.command_history.break_merge();
                     // An open command-API batch commits NOW: its commands
                     // are already applied to the world the snapshot is
                     // about to capture, and a macro pushed after Stop's

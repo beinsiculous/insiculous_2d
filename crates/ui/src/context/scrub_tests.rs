@@ -297,3 +297,38 @@ fn test_float_hard_clamp_clamps_typed_commit() {
     );
     assert_eq!(committed.value, 10.0, "99 must clamp to the max of 10");
 }
+
+#[test]
+fn test_ctrl_scrub_snaps_to_whole_steps() {
+    // #56: Ctrl-held scrubbing lands on exact multiples of the step.
+    let mut ui = UIContext::new();
+    let mut input = input::InputHandler::new();
+    input.keyboard_mut().handle_key_press(KeyCode::ControlLeft);
+
+    press(&mut ui, &mut input, 5.0);
+    // 4.3px past arm with step 1.0 → raw 9.3, snapped → 9.0.
+    let r = drag(&mut ui, &mut input, 5.0, 4.3);
+    assert!(r.scrubbing);
+    assert_eq!(r.value, 9.0, "ctrl snaps to whole steps");
+    assert_eq!(r.value % opts().step, 0.0);
+
+    // Releasing Ctrl mid-scrub resumes smooth values.
+    input.keyboard_mut().handle_key_release(KeyCode::ControlLeft);
+    let r = drag(&mut ui, &mut input, 9.0, 4.3);
+    assert!((r.value - 9.3).abs() < 1e-4, "smooth again without ctrl: {}", r.value);
+}
+
+#[test]
+fn test_ctrl_shift_scrub_snaps_the_fine_value() {
+    // Ctrl beats Shift's ×0.1 fine mode: snap applies to whatever value the
+    // modifiers produced (fine dx of 12.3px → +1.23 → snapped to +1.0).
+    let mut ui = UIContext::new();
+    let mut input = input::InputHandler::new();
+    input.keyboard_mut().handle_key_press(KeyCode::ControlRight); // either Ctrl
+    input.keyboard_mut().handle_key_press(KeyCode::ShiftLeft);
+
+    press(&mut ui, &mut input, 5.0);
+    let r = drag(&mut ui, &mut input, 5.0, 12.3);
+    assert!(r.scrubbing);
+    assert_eq!(r.value, 6.0, "ctrl+shift: fine value 6.23 snaps to 6.0");
+}

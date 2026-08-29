@@ -51,6 +51,9 @@ pub struct InputState {
     pub down_pressed: bool,
     /// Whether either Shift key is held (extends selections)
     pub shift_down: bool,
+    /// Whether either Ctrl key is held (snaps scrub gestures to whole
+    /// steps — issue #56)
+    pub ctrl_down: bool,
 }
 
 impl Default for InputState {
@@ -74,6 +77,7 @@ impl Default for InputState {
             up_pressed: false,
             down_pressed: false,
             shift_down: false,
+            ctrl_down: false,
         }
     }
 }
@@ -153,6 +157,8 @@ impl InputState {
 
         let shift = kb.is_key_pressed(KeyCode::ShiftLeft)
             || kb.is_key_pressed(KeyCode::ShiftRight);
+        let ctrl = kb.is_key_pressed(KeyCode::ControlLeft)
+            || kb.is_key_pressed(KeyCode::ControlRight);
 
         // Collect typed characters from just-pressed keys (no char repeat)
         let typed_keys = [
@@ -213,6 +219,7 @@ impl InputState {
             up_pressed,
             down_pressed,
             shift_down: shift,
+            ctrl_down: ctrl,
         }
     }
 }

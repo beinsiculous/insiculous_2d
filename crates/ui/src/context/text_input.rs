@@ -124,7 +124,9 @@ impl UIContext {
     /// only clamps unless `opts.hard_clamp`); Escape cancels.
     ///
     /// Dragging horizontally on an unfocused field scrubs the value
-    /// (`opts.step` per pixel, Shift for fine ×0.1 control, clamped to the
+    /// (`opts.step` per pixel, Shift for fine ×0.1 control, Ctrl snaps to
+    /// whole `opts.step` multiples — applied to the modifier-adjusted value,
+    /// snap first, clamp last; clamped to the
     /// soft range); a press that travels less than the threshold is a plain
     /// click-to-focus. Escape mid-scrub restores the start value.
     pub fn float_input(
@@ -265,7 +267,14 @@ impl UIContext {
             self.interaction.get_state(id).scrub = Some(scrub);
             if scrub.active {
                 let step = opts.step * if input.shift_down { 0.1 } else { 1.0 };
-                let scrubbed = (scrub.start_value + dx * step).clamp(opts.min, opts.max);
+                let mut scrubbed = scrub.start_value + dx * step;
+                // Ctrl snaps the scrub to whole steps (#56) — applied to
+                // whatever value the modifiers produced (Shift fine mode
+                // included), then clamped: snap first, clamp last.
+                if input.ctrl_down && opts.step != 0.0 {
+                    scrubbed = (scrubbed / opts.step).round() * opts.step;
+                }
+                let scrubbed = scrubbed.clamp(opts.min, opts.max);
                 self.draw_float_value(bounds, scrubbed, opts.suffix, true);
                 return Some(FloatInputResult {
                     value: scrubbed,
