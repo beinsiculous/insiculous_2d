@@ -86,11 +86,16 @@ impl<G: Game> EditorGame<G> {
                 }
             }
             "New Scene" if !self.editor.is_playing() => {
-                self.new_scene(ctx.world);
+                if self.request_scene_replace(super::scene_confirm::PendingSceneAction::NewScene) {
+                    self.new_scene(ctx.world);
+                }
             }
             "Open Scene..." if !self.editor.is_playing() => {
                 let path = self.default_scene_path();
-                self.load_scene_with_feedback(ctx.world, ctx.assets, &path);
+                let action = super::scene_confirm::PendingSceneAction::OpenScene(path);
+                if self.request_scene_replace(action.clone()) {
+                    self.perform_scene_action(ctx, action);
+                }
             }
             "Save" => {
                 if let Err(e) = self.save_scene(ctx.world, ctx.assets) {

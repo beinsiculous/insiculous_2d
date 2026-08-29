@@ -29,6 +29,7 @@ mod api;
 mod gizmo_drag;
 pub mod headless;
 mod menu_actions;
+mod scene_confirm;
 mod scene_io;
 mod shortcuts;
 mod viewport_interaction;
@@ -74,6 +75,12 @@ struct EditorGame<G: Game> {
     /// (the `--api` stdin thread in the editor binary). Drained once per
     /// frame in `update()`; `None` = API not enabled.
     api_rx: Option<std::sync::mpsc::Receiver<String>>,
+    /// A scene-replacing action (New/Open) awaiting the unsaved-changes
+    /// confirm dialog (#52). While set, a modal blocks the frame's input.
+    pending_scene_action: Option<scene_confirm::PendingSceneAction>,
+    /// Enter pressed while the confirm dialog is up — consumed by the next
+    /// dialog render as the primary (Save) action (#52 kimi F4).
+    pending_dialog_choice: Option<editor::ConfirmChoice>,
     /// Scene to open through the editor load path right after `init`
     /// (#53 — the standalone binary passes it via `EditorRunOptions` so
     /// scene_path/physics/dirty-state are recorded like any other load).
@@ -103,6 +110,8 @@ impl<G: Game> EditorGame<G> {
             frozen_time_scale: None,
             last_window_title: None,
             api_rx: None,
+            pending_scene_action: None,
+            pending_dialog_choice: None,
             initial_scene: None,
             api_batch: None,
         }
@@ -377,7 +386,13 @@ impl<G: Game> Game for EditorGame<G> {
         // 2. Editor layout
         self.editor.update_layout(window_size);
 
-        // 2b. Drag-and-drop state machine + ghost. Runs before panels so the
+        // 2b. Unsaved-changes confirm dialog (#52) — FIRST of the early
+        // overlays (kimi F2): its full-window scrim must be in place before
+        // the drag ghost (or anything else) evaluates, so no widget can arm
+        // a gesture under a modal.
+        self.render_scene_confirm_dialog(ctx);
+
+        // 2c. Drag-and-drop state machine + ghost. Runs before panels so the
         // ghost's overlay blocking rect makes widgets under the cursor inert
         // for the whole frame (the overlay depth band keeps it on top).
         self.editor.drag_drop.begin_frame(
@@ -538,6 +553,8 @@ mod tests;
 mod api_write_tests;
 #[cfg(test)]
 mod camera_follow_tests;
+#[cfg(test)]
+mod scene_confirm_tests;
 #[cfg(test)]
 mod gizmo_drag_tests;
 #[cfg(test)]

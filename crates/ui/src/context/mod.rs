@@ -259,6 +259,14 @@ impl UIContext {
         self.edit_committed = true;
     }
 
+    /// Drop keyboard focus from whatever text input holds it. A modal
+    /// dialog calls this while it is up: the focused field must neither
+    /// swallow the modal's keys nor keep receiving typed characters
+    /// underneath it (#52).
+    pub fn clear_text_focus(&mut self) {
+        self.interaction.clear_focus();
+    }
+
     /// Programmatically focus a text input before it is next rendered,
     /// seeding its edit buffer with `initial` fully selected — typing
     /// replaces it, exactly as if the user had clicked the field. Lets hosts

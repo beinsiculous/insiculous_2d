@@ -32,6 +32,7 @@
 mod asset_browser;
 pub mod command_api;
 mod behavior_editor;
+mod confirm_dialog;
 mod script_editor;
 mod collider_overlay;
 mod drag_drop;
@@ -79,6 +80,7 @@ pub mod world_snapshot;
 // Re-export main types
 pub use asset_browser::{fit_rect, scan_assets, AssetBrowserState, AssetEntry, AssetKind};
 pub use behavior_editor::edit_behavior;
+pub use confirm_dialog::{ConfirmChoice, ConfirmDialog};
 pub use drag_drop::{DragDropState, DragPayload, DRAG_THRESHOLD};
 pub use texture_field::{edit_texture_field, InspectorExtras};
 pub use collider_overlay::{

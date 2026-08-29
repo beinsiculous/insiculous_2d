@@ -34,6 +34,9 @@ impl<G: Game> EditorGame<G> {
                     // them and Stop restores)
                     self.gizmo_drag = None;
                     self.editor.gizmo.cancel();
+                    // Defensive: entering Play drops a pending confirm —
+                    // unreachable through the blocked UI, cheap insurance.
+                    self.pending_scene_action = None;
                     // Dropping a live drag is a gesture boundary too (#56
                     // kimi F1): pre-Play and post-Stop nudges must not merge
                     // into one undo entry across the discarded drag.
@@ -185,6 +188,13 @@ impl<G: Game> EditorGame<G> {
         // A focused text input (inspector value box) owns the keyboard:
         // Delete/Backspace edit the buffer, they must not delete the entity.
         // Enter/Tab/Escape are handled by the widget itself, which clears focus.
+        // A pending confirm dialog owns the keyboard — checked BEFORE the
+        // text-focus gate (#52 kimi F1: a focused field must not swallow
+        // the modal's keys): Escape cancels, Enter saves, everything else
+        // is swallowed.
+        if self.confirm_dialog_consumes_key(key) {
+            return;
+        }
         if ctx.ui.wants_keyboard() {
             return;
         }
@@ -284,10 +294,17 @@ impl<G: Game> EditorGame<G> {
                     log::error!("Failed to save: {}", e);
                 }
             }
-            A::NewScene => self.new_scene(ctx.world),
+            A::NewScene => {
+                if self.request_scene_replace(super::scene_confirm::PendingSceneAction::NewScene) {
+                    self.new_scene(ctx.world);
+                }
+            }
             A::OpenScene => {
                 let path = self.default_scene_path();
-                self.load_scene_with_feedback(ctx.world, ctx.assets, &path);
+                let action = super::scene_confirm::PendingSceneAction::OpenScene(path);
+                if self.request_scene_replace(action.clone()) {
+                    self.perform_scene_action(ctx, action);
+                }
             }
             A::Duplicate => {
                 if drag_guard(self) {

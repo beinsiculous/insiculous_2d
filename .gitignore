@@ -24,3 +24,4 @@ target/
 review/*.md
 review/*.diff
 !review/.gitkeep
+review/.request-prompt.*

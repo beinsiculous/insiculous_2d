@@ -272,3 +272,30 @@ selection at `batch begin` and the macro is pushed via the new
 cross-frame batches restore the true pre-batch selection (F1, test added);
 `clear()` resets pending/restore state (F2); the API drain re-notes so same-frame
 GUI commands after an API `select` see the current selection (F3).)
+
+## 2026-08-28 — #52 Unsaved-changes confirm dialog on the Modal layer (Sprint 5 rider)
+The dirty guard on New/Open graduates from a status-bar warning to a real modal.
+New REUSABLE `editor::ConfirmDialog` (audit §6.7(7) — scripting Stage 5's build
+prompts reuse it): UiLayer::Modal scrim (the full-window blocking rect IS the
+input blocker), surface_4 panel with popup_border, Save/Discard/Cancel; pure
+button geometry + headless hit tests. editor_integration `scene_confirm.rs` state
+machine: `request_scene_replace` proceeds on a clean world, parks the action on a
+dirty one (CommandHistory::is_dirty, the source of truth), and keeps the #22
+play-session refusal ahead of everything (the dialog is Editing-only, Save never
+needs hiding). Renders at frame step 2c (drag-ghost pattern — the scrim must land
+before the widgets it protects). Choice routing: Save → proceed on Ok, a FAILED
+save keeps the dialog open (the user keeps Discard/Cancel as outs); Discard →
+proceed; Cancel/Escape → drop (Escape ahead of the cancel cascade; every other
+editor key is swallowed under the modal). Play defensively clears a pending
+dialog. The log::warn defense-in-depth lines stay. Wired at both the menu and
+shortcut New/Open paths. Tests 1652 → 1659, clippy clean, wasm gate clean.
+fixes #52.
+(#52 review round: kimi 2 majors + 3 minors — F1 fixed (new ui
+`clear_text_focus()`; the dialog clears focus while pending AND its key check
+moved ahead of the wants_keyboard gate — the modal is keyboard-modal even with a
+focused field); F2 fixed (the dialog is the FIRST early overlay, before the drag
+ghost, so its scrim lands before anything can arm a gesture); F3 fixed (stray
+review-scaffolding file unstaged + gitignored); F4 partial (Enter = Save via a
+queued choice consumed by the next render; Tab cycling documented mouse-first);
+F5 rebutted (editor chrome is uniformly English by design — localization is
+game-view-scoped). Final: 1660 tests.)
