@@ -73,6 +73,10 @@ struct EditorGame<G: Game> {
     /// (the `--api` stdin thread in the editor binary). Drained once per
     /// frame in `update()`; `None` = API not enabled.
     api_rx: Option<std::sync::mpsc::Receiver<String>>,
+    /// Scene to open through the editor load path right after `init`
+    /// (#53 — the standalone binary passes it via `EditorRunOptions` so
+    /// scene_path/physics/dirty-state are recorded like any other load).
+    initial_scene: Option<std::path::PathBuf>,
     /// Open command-API batch (Stage B): commands collected between `batch
     /// begin` and `batch end`/`abort`; committed on Play so a stale macro
     /// can't be pushed after a Stop restore.
@@ -98,6 +102,7 @@ impl<G: Game> EditorGame<G> {
             frozen_time_scale: None,
             last_window_title: None,
             api_rx: None,
+            initial_scene: None,
             api_batch: None,
         }
     }
@@ -321,6 +326,14 @@ impl<G: Game> Game for EditorGame<G> {
         } else {
             log::warn!("No editor font loaded. Text will render as placeholders.");
         }
+
+        // Open the initial scene through the REAL editor load path (#53):
+        // dry-run guard, scene_path, physics settings + resource, history
+        // reset — the old EditorApp bypass load recorded none of those, so
+        // the title stayed "Untitled" and a save silently dropped physics.
+        if let Some(path) = self.initial_scene.take() {
+            self.load_scene_with_feedback(ctx.world, ctx.assets, &path);
+        }
     }
 
     fn update(&mut self, ctx: &mut GameContext) {
@@ -487,9 +500,29 @@ pub fn run_game_with_editor_api<G: Game>(
     config: GameConfig,
     api_rx: Option<std::sync::mpsc::Receiver<String>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    run_game_with_editor_opts(game, config, EditorRunOptions { api_rx, initial_scene: None })
+}
+
+/// Options for [`run_game_with_editor_opts`].
+#[derive(Default)]
+pub struct EditorRunOptions {
+    /// Command-API request channel (see [`run_game_with_editor_api`]).
+    pub api_rx: Option<std::sync::mpsc::Receiver<String>>,
+    /// A scene to open through the editor's load path right after init —
+    /// how the standalone binary hands over its project's first scene (#53).
+    pub initial_scene: Option<std::path::PathBuf>,
+}
+
+/// [`run_game_with_editor`] with the full option set.
+pub fn run_game_with_editor_opts<G: Game>(
+    game: G,
+    config: GameConfig,
+    opts: EditorRunOptions,
+) -> Result<(), Box<dyn std::error::Error>> {
     let config = clamp_editor_window_size(config);
     let mut editor_game = EditorGame::new(game);
-    editor_game.api_rx = api_rx;
+    editor_game.api_rx = opts.api_rx;
+    editor_game.initial_scene = opts.initial_scene;
     engine_core::run_game(editor_game, config)
 }
 

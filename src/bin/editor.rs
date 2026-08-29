@@ -9,11 +9,12 @@
 use std::path::PathBuf;
 
 use engine_core::prelude::*;
-use editor_integration::run_game_with_editor_api;
+use editor_integration::{find_first_scene, run_game_with_editor_opts, EditorRunOptions};
 
 /// Standalone editor application — a minimal `Game` that provides physics
-/// preview during play mode. All real editing is handled by `EditorGame`
-/// wrapping this.
+/// preview during play mode. All real editing (INCLUDING the initial scene
+/// load — #53) is handled by `EditorGame` wrapping this; scene loading here
+/// would bypass scene_path/physics/dirty tracking and silently break save.
 struct EditorApp {
     project_path: PathBuf,
     physics: Option<PhysicsSystem>,
@@ -32,80 +33,33 @@ impl EditorApp {
 
 impl Game for EditorApp {
     fn init(&mut self, ctx: &mut GameContext) {
+        // Project config only: the initial scene is opened by EditorGame
+        // through its real load path right after this returns.
         let assets_path = self.project_path.join("assets");
         ctx.assets.set_base_path(assets_path.to_string_lossy());
-
-        // Auto-load first scene found in assets/scenes/
-        let scenes_dir = assets_path.join("scenes");
-        if scenes_dir.is_dir() {
-            if let Ok(entries) = std::fs::read_dir(scenes_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.extension().and_then(|e| e.to_str()) == Some("ron") {
-                        log::info!("Loading scene: {}", path.display());
-                        match SceneLoader::load_and_instantiate(&path, ctx.world, ctx.assets) {
-                            Ok(instance) => {
-                                log::info!(
-                                    "Loaded scene '{}' with {} entities",
-                                    instance.name,
-                                    instance.entity_count
-                                );
-                                // Set up physics from scene settings
-                                let physics_config =
-                                    if let Some(settings) = &instance.physics {
-                                        PhysicsConfig::new(Vec2::new(
-                                            settings.gravity.0,
-                                            settings.gravity.1,
-                                        ))
-                                        .with_scale(settings.pixels_per_meter)
-                                    } else {
-                                        PhysicsConfig::platformer()
-                                    };
-                                self.physics =
-                                    Some(PhysicsSystem::with_config(physics_config));
-                            }
-                            Err(e) => {
-                                log::warn!("Failed to load scene {}: {}", path.display(), e);
-                            }
-                        }
-                        break; // load only the first scene
-                    }
-                }
-            }
-        }
-
-        // Initialize systems
-        if let Some(physics) = &mut self.physics {
-            physics.initialize(ctx.world).ok();
-        }
         self.transform_hierarchy.initialize(ctx.world).ok();
-
-        // Add Name + GlobalTransform2D for entities that lack them
-        use ecs::{GlobalTransform2D, Name};
-        for entity_id in ctx.world.entities() {
-            if ctx.world.get::<Name>(entity_id).is_none() {
-                ctx.world
-                    .add_component(&entity_id, Name::new(format!("{}", entity_id)))
-                    .ok();
-            }
-            if ctx.world.get::<Transform2D>(entity_id).is_some()
-                && ctx.world.get::<GlobalTransform2D>(entity_id).is_none()
-            {
-                ctx.world
-                    .add_component(&entity_id, GlobalTransform2D::default())
-                    .ok();
-            }
-        }
-
-        log::info!(
-            "Editor opened project: {}  ({} entities)",
-            self.project_path.display(),
-            ctx.world.entity_count()
-        );
+        log::info!("Editor opened project: {}", self.project_path.display());
     }
 
     fn update(&mut self, ctx: &mut GameContext) {
-        // Physics preview during play mode
+        // Physics preview during play mode. Built LAZILY from the loaded
+        // scene's settings — published as a world resource by the editor's
+        // load path (#53, kimi F4: read the resource FIRST; the platformer
+        // default applies only when the scene declares none). update() only
+        // runs while Playing, so the first Playing frame builds it.
+        if self.physics.is_none() {
+            let config = match ctx.world.resource::<engine_core::scene_data::PhysicsSettings>() {
+                Some(settings) => PhysicsConfig::new(Vec2::new(
+                    settings.gravity.0,
+                    settings.gravity.1,
+                ))
+                .with_scale(settings.pixels_per_meter),
+                None => PhysicsConfig::platformer(),
+            };
+            let mut physics = PhysicsSystem::with_config(config);
+            physics.initialize(ctx.world).ok();
+            self.physics = Some(physics);
+        }
         if let Some(physics) = &mut self.physics {
             physics.update(ctx.world, ctx.delta_time);
         }
@@ -113,10 +67,10 @@ impl Game for EditorApp {
     }
 
     fn on_play_stopped(&mut self, _ctx: &mut GameContext) {
-        // Clear rapier world so it re-syncs from restored ECS snapshot
-        if let Some(physics) = &mut self.physics {
-            physics.clear();
-        }
+        // Drop the physics system entirely: the next Play rebuilds it from
+        // the (possibly newly opened) scene's settings, and rapier re-syncs
+        // from the restored ECS snapshot.
+        self.physics = None;
     }
 }
 
@@ -167,7 +121,16 @@ fn main() {
         .with_size(1280, 720)
         .with_clear_color(0.1, 0.1, 0.15, 1.0);
 
-    if let Err(e) = run_game_with_editor_api(EditorApp::new(project_path), config, api_rx) {
+    // First scene in SORTED order (#53): opened by EditorGame through its
+    // real load path, so the title, physics block, and Ctrl+S target are
+    // right from frame one.
+    let initial_scene = find_first_scene(&project_path.join("assets").join("scenes"));
+    if initial_scene.is_none() {
+        log::info!("no scene found under assets/scenes — starting with an empty scene");
+    }
+
+    let opts = EditorRunOptions { api_rx, initial_scene };
+    if let Err(e) = run_game_with_editor_opts(EditorApp::new(project_path), config, opts) {
         log::error!("Editor error: {}", e);
         std::process::exit(1);
     }

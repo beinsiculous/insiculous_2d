@@ -24,4 +24,5 @@ mod editor_game;
 mod entity_ops;
 mod panel_renderer;
 
-pub use editor_game::{run_game_with_editor, run_game_with_editor_api};
+pub use constants::find_first_scene;
+pub use editor_game::{run_game_with_editor, run_game_with_editor_api, run_game_with_editor_opts, EditorRunOptions};

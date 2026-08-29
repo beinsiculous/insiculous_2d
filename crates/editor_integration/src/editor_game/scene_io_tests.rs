@@ -178,3 +178,81 @@ fn test_save_auto_names_script_targets_through_command_history() {
     );
     let _ = std::fs::remove_file(&path);
 }
+
+#[test]
+fn test_load_scene_publishes_physics_resource_and_save_keeps_the_block() {
+    // #53: the old EditorApp bypass load left physics_settings None, so a
+    // save silently DROPPED the scene's gravity/scale. Through the real
+    // load path the block round-trips, and the settings reach the world as
+    // a resource for the host game's lazy physics preview.
+    fn tex(handle: u32) -> String {
+        if handle == 0 { "#white".to_string() } else { format!("#texture_{handle}") }
+    }
+    let ron = r#"SceneData(
+        name: "PhysScene",
+        physics: Some(PhysicsSettings(gravity: (0.0, -420.0), pixels_per_meter: 64.0)),
+        entities: [ EntityData(name: Some("thing"), components: []) ],
+    )"#;
+    let dir = std::env::temp_dir();
+    let path = dir.join("test_53_phys_scene.ron");
+    std::fs::write(&path, ron).unwrap();
+
+    let mut editor = EditorGame::new(DummyGame);
+    let mut world = ecs::World::new();
+    editor.load_scene(&mut world, &mut StubResolver, &path).unwrap();
+
+    assert_eq!(editor.editor.scene_path(), Some(path.as_path()));
+    let settings = editor.physics_settings.clone().expect("physics recorded");
+    assert_eq!(settings.gravity, (0.0, -420.0));
+    let resource = world
+        .resource::<engine_core::scene_data::PhysicsSettings>()
+        .expect("physics published as a world resource");
+    assert_eq!(resource.pixels_per_meter, 64.0);
+
+    // Save after load: the physics block survives.
+    let out = dir.join("test_53_phys_scene_out.ron");
+    editor.save_scene_with(&mut world, &tex, out.clone()).unwrap();
+    let saved = std::fs::read_to_string(&out).unwrap();
+    assert!(saved.contains("-420"), "gravity persisted: {saved}");
+
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_file(&out);
+}
+
+#[test]
+fn test_new_scene_clears_the_physics_resource() {
+    let mut editor = EditorGame::new(DummyGame);
+    let mut world = ecs::World::new();
+    world.insert_resource(engine_core::scene_data::PhysicsSettings {
+        gravity: (0.0, -1.0),
+        pixels_per_meter: 10.0,
+        timestep: 1.0 / 60.0,
+    });
+    editor.new_scene(&mut world);
+    assert!(
+        world.resource::<engine_core::scene_data::PhysicsSettings>().is_none(),
+        "a new scene has no inherited physics settings"
+    );
+}
+
+#[test]
+fn test_find_first_scene_is_sorted_and_ron_only() {
+    let dir = std::env::temp_dir().join("test_53_find_first_scene");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("zeta.ron"), "x").unwrap();
+    std::fs::write(dir.join("alpha.ron"), "x").unwrap();
+    std::fs::write(dir.join("aaa.txt"), "x").unwrap();
+
+    let first = crate::find_first_scene(&dir).expect("found a scene");
+    assert_eq!(first.file_name().and_then(|n| n.to_str()), Some("alpha.ron"));
+
+    let empty = std::env::temp_dir().join("test_53_find_first_scene_empty");
+    let _ = std::fs::remove_dir_all(&empty);
+    std::fs::create_dir_all(&empty).unwrap();
+    assert!(crate::find_first_scene(&empty).is_none());
+    assert!(crate::find_first_scene(std::path::Path::new("/no/such/dir_53")).is_none());
+
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&empty);
+}

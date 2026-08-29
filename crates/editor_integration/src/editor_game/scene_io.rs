@@ -151,8 +151,20 @@ impl<G: Game> EditorGame<G> {
         let scene_instance = engine_core::scene_loader::SceneLoader::instantiate(&data, world, assets)
             .map_err(|e| format!("Failed to load scene: {}", e))?;
 
-        // Store physics settings from loaded scene
+        // Store physics settings from loaded scene, and publish them as a
+        // world resource so the host game (EditorApp's lazy physics preview,
+        // #53) can build its PhysicsSystem without reaching into EditorGame.
+        // Resources deliberately survive the play snapshot restore — so if
+        // physics settings ever become EDITABLE, route edits through
+        // `self.physics_settings` (reset on load/new), NOT this resource: a
+        // runtime write to it would outlive Stop and get saved (kimi #53 F2).
         self.physics_settings = scene_instance.physics.clone();
+        match scene_instance.physics.clone() {
+            Some(settings) => world.insert_resource(settings),
+            None => {
+                world.remove_resource::<engine_core::scene_data::PhysicsSettings>();
+            }
+        }
 
         log::info!("Scene loaded from: {:?} ({} entities)", path, scene_instance.entity_count);
 
@@ -208,6 +220,17 @@ impl<G: Game> EditorGame<G> {
     /// Refused during a play session (Playing or Paused): clearing the world
     /// under a pending play snapshot would make the next Stop resurrect the
     /// old scene's entities into the new one.
+    /// Where "Open Scene…"/"Save As…" default to: a `scene.ron` next to the
+    /// currently open scene, else the legacy cwd-relative default (#53 —
+    /// the old hardcoded default wrote into the WRONG directory after
+    /// opening a project elsewhere).
+    pub(super) fn default_scene_path(&self) -> PathBuf {
+        self.editor
+            .scene_path()
+            .and_then(|p| p.parent().map(|d| d.join("scene.ron")))
+            .unwrap_or_else(|| PathBuf::from(crate::constants::DEFAULT_SCENE_PATH))
+    }
+
     pub(super) fn new_scene(&mut self, world: &mut World) {
         if let Some(msg) = self.scene_replace_refusal() {
             self.editor.status_bar.show_error(msg);
@@ -233,6 +256,7 @@ impl<G: Game> EditorGame<G> {
         self.editor.selection.clear();
         self.entity_counter = 0;
         self.physics_settings = None;
+        world.remove_resource::<engine_core::scene_data::PhysicsSettings>();
         self.gizmo_drag = None;
         self.editor.gizmo.cancel();
         log::info!("New scene created");

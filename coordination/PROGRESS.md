@@ -189,3 +189,22 @@ documents the ensure_script_target_names prerequisite for raw callers (F4);
 unresolvable Entity names now surface as SceneInstance.load_warnings on the status
 bar, not just a log line (F5); the new public ComponentData variant is documented
 (F6, no exhaustive matches exist downstream). Final: 1635 tests.)
+
+## 2026-08-28 — #53 EditorApp scene loads through the real editor path (Sprint 5 rider)
+The standalone editor's bypass load is gone: `EditorRunOptions { api_rx,
+initial_scene }` + `run_game_with_editor_opts` let the binary hand its project's
+first scene (`find_first_scene` — SORTED, read_dir order was nondeterministic) to
+EditorGame, which opens it through `load_scene` right after init. Consequences
+fixed: the OS title shows the scene (was "Untitled"), the `scene` query reports the
+path, **a save no longer silently drops the scene's physics block**
+(physics_settings was never set on the bypass path), Ctrl+S targets the opened
+file's directory (`default_scene_path` — Open/Save-As default beside the current
+scene instead of cwd-relative scenes/scene.ron), and the #50 dry-run guard +
+history reset apply to the initial load. `load_scene` now publishes
+`PhysicsSettings` as a world resource; EditorApp builds its physics preview LAZILY
+on the first Playing frame from that resource (default only when absent — kimi
+plan F4) and drops it on Stop so a newly opened scene's settings take effect.
+Behavior decision (flagged): the unnamed-entity Name backfill is REMOVED — it
+mutated scenes on load; names baked into previously saved files still load fine,
+and unnamed entities are first-class since F2-rename. Tests 1635 → 1638, clippy
+clean, wasm gate clean. fixes #53.

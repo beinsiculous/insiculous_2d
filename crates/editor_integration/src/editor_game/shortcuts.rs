@@ -1,6 +1,5 @@
 //! Keyboard shortcuts and play state transitions.
 
-use std::path::PathBuf;
 
 use glam::Vec2;
 use winit::keyboard::KeyCode;
@@ -10,7 +9,6 @@ use editor::{EditorAction, EditorPlayState, EditorTool, PlayControlAction};
 use engine_core::contexts::GameContext;
 use engine_core::Game;
 
-use crate::constants::DEFAULT_SCENE_PATH;
 use crate::entity_ops;
 
 use super::EditorGame;
@@ -257,7 +255,7 @@ impl<G: Game> EditorGame<G> {
                 }
             }
             A::SaveAs => {
-                let path = PathBuf::from(DEFAULT_SCENE_PATH);
+                let path = self.default_scene_path();
                 if let Err(e) = self.save_scene_as(ctx.world, ctx.assets, path) {
                     self.editor.status_bar.show_error(format!("Save failed: {}", e));
                     log::error!("Failed to save: {}", e);
@@ -265,7 +263,7 @@ impl<G: Game> EditorGame<G> {
             }
             A::NewScene => self.new_scene(ctx.world),
             A::OpenScene => {
-                let path = PathBuf::from(DEFAULT_SCENE_PATH);
+                let path = self.default_scene_path();
                 self.load_scene_with_feedback(ctx.world, ctx.assets, &path);
             }
             A::Duplicate => {

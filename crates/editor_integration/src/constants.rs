@@ -32,3 +32,22 @@ pub(crate) const MIN_ENTITY_SCALE: f32 = 0.01;
 /// World-space offset applied to duplicated entities so the copy is visible
 /// next to the original.
 pub(crate) const DUPLICATE_OFFSET: Vec2 = Vec2::new(20.0, -20.0);
+
+/// First `.ron` scene in a directory, in SORTED order — `read_dir`'s order
+/// is platform-nondeterministic, and "which scene opens on launch" must not
+/// depend on it (#53). Byte-wise sort (Rust `str` order): deterministic on
+/// every platform, never locale-dependent.
+pub fn find_first_scene(scenes_dir: &std::path::Path) -> Option<std::path::PathBuf> {
+    let entries = std::fs::read_dir(scenes_dir).ok()?;
+    let mut scenes: Vec<std::path::PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| e.eq_ignore_ascii_case("ron"))
+        })
+        .collect();
+    scenes.sort();
+    scenes.into_iter().next()
+}

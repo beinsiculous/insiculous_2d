@@ -12,6 +12,7 @@ EditorGame<G: Game>  — transparent wrapper implementing Game trait
 └── Intercepts: init(), update(), on_key_pressed()
 
 run_game_with_editor(game, config) → wraps game in EditorGame, calls run_game()
+run_game_with_editor_opts(game, config, EditorRunOptions { api_rx, initial_scene }) → full option set (#53: the standalone binary hands its project's first scene here — find_first_scene, sorted — and EditorGame opens it through the REAL load path after init, so scene_path/physics/dirty are recorded; EditorApp never loads scenes itself, and load_scene publishes PhysicsSettings as a world resource for the host's lazy physics preview)
 ```
 
 ## Dependency Graph
