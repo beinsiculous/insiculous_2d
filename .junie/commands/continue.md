@@ -1,23 +1,39 @@
 # Continue Development Workflow
 
-Proceed with the next task from the project roadmap using this structured workflow.
+Proceed with the next task from the Studio Board using this structured workflow.
 
 ## Prerequisites
 
 Before starting, ensure you have read:
 - `AGENTS.md` - Project status, architecture, and high-level guidance
-- `PROJECT_ROADMAP.md` - Current priorities and incomplete tasks
+- `PROJECT_ROADMAP.md` - Phase context and priorities (background, NOT the task queue)
 - `training.md` - API patterns and established conventions
 
 ---
 
 ## 1. Identify the Next Task
 
-Read `PROJECT_ROADMAP.md` and identify the next incomplete task using this priority order:
-1. High priority technical debt (stability/architecture risks)
-2. Active roadmap phase milestones
-3. Medium priority improvements
-4. Documentation/testing gaps
+**Task source of truth: the org taskboard** — https://github.com/orgs/beinsiculous/projects/1
+
+Open work is grouped into **sprint milestones** (Aug 29 2026). Pick a sprint,
+then take its next unblocked issue — each milestone's description records the
+internal order and gates (e.g. K1 gates all of Conductor; F3 gates E5):
+
+```bash
+gh api repos/beinsiculous/insiculous_2d/milestones \
+  --jq '.[] | "\(.title) [\(.open_issues) open]: \(.description)"'   # the sprints + their gates
+gh issue list -R beinsiculous/insiculous_2d --milestone "<title>"    # one sprint's issues
+gh issue list -R beinsiculous/<game> --state open                    # game-specific tasks live in their own repos
+```
+
+Choosing between sprints: follow the board's Priority/Phase fields, an
+explicit steer from Jesse, or continue the sprint that's already partially
+done. Respect a milestone's stated gate before starting a gated sprint.
+Milestone-less issues (the `[tech-debt] Low-priority backlog` set, #84–#93)
+are opportunistic — work their checklists when already touching that crate,
+never as "the next task".
+
+**Claim it:** assign yourself and/or comment on the issue before starting.
 
 **Decision point:** If the task is large (>2 hours estimated), use `SetTodoList` to break it into subtasks before proceeding.
 

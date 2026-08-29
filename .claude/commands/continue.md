@@ -15,17 +15,23 @@ Before starting, ensure you have read:
 
 **Task source of truth: the org taskboard** — https://github.com/orgs/beinsiculous/projects/1
 
+Open work is grouped into **sprint milestones** (Aug 29 2026). Pick a sprint,
+then take its next unblocked issue — each milestone's description records the
+internal order and gates (e.g. K1 gates all of Conductor; F3 gates E5):
+
 ```bash
-gh issue list -R beinsiculous/insiculous_2d --state open   # engine + editor tasks
-gh issue list -R beinsiculous/<game> --state open          # game-specific tasks live in their own repos
+gh api repos/beinsiculous/insiculous_2d/milestones \
+  --jq '.[] | "\(.title) [\(.open_issues) open]: \(.description)"'   # the sprints + their gates
+gh issue list -R beinsiculous/insiculous_2d --milestone "<title>"    # one sprint's issues
+gh issue list -R beinsiculous/<game> --state open                    # game-specific tasks live in their own repos
 ```
 
-Pick the next task by the board's Priority/Phase fields. When the fields tie,
-prefer:
-1. High priority technical debt (stability/architecture risks)
-2. Active roadmap phase milestones (see `PROJECT_ROADMAP.md` for phase context)
-3. Medium priority improvements
-4. Documentation/testing gaps
+Choosing between sprints: follow the board's Priority/Phase fields, an
+explicit steer from Jesse, or continue the sprint that's already partially
+done. Respect a milestone's stated gate before starting a gated sprint.
+Milestone-less issues (the `[tech-debt] Low-priority backlog` set, #84–#93)
+are opportunistic — work their checklists when already touching that crate,
+never as "the next task".
 
 **Claim it:** assign yourself and/or comment on the issue before starting.
 (The old `coordination/current_tasks/` lock files and TODO.md queue are retired.)
