@@ -67,8 +67,11 @@ impl SheetGrid {
     /// covering the full axis.
     #[inline]
     pub fn from_cell_size(sheet_w: u32, sheet_h: u32, cell_w: u32, cell_h: u32) -> Self {
-        let cols = if cell_w > 0 { (sheet_w / cell_w).max(1) } else { 1 };
-        let rows = if cell_h > 0 { (sheet_h / cell_h).max(1) } else { 1 };
+        // checked_div: None on a zero cell dimension → 1 cell (same result
+        // as the old explicit `> 0` guard; rust 1.98's manual_checked_ops
+        // lint requires this spelling).
+        let cols = sheet_w.checked_div(cell_w).map_or(1, |c| c.max(1));
+        let rows = sheet_h.checked_div(cell_h).map_or(1, |r| r.max(1));
         let uv_x = if cell_w > 0 && cell_w <= sheet_w {
             cell_w as f32 / sheet_w as f32
         } else {

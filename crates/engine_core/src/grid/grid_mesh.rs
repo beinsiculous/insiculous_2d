@@ -264,7 +264,7 @@ impl GridMesh {
 
     /// Sum spring forces and rest-position pulls into `force_scratch`.
     fn accumulate_forces(&mut self) {
-        for f in &mut self.force_scratch { *f = Vec2::ZERO; }
+        self.force_scratch.fill(Vec2::ZERO);
 
         // Spring forces.
         for s in &self.springs {
