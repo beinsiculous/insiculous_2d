@@ -52,6 +52,8 @@ impl Rig {
             selection: &mut self.selection,
             play_state: self.play_state,
             batch: &mut self.batch,
+            // The rig's "resolver" issued only the built-in #white.
+            texture_known: &|handle| handle == 0,
         };
         super::write::run(&write, &mut ctx)
     }
@@ -143,6 +145,51 @@ fn test_set_rejects_non_finite_numbers() {
     let err = rig.run(r#"set Player Transform2D {"rotation": 1e999}"#);
     assert!(err.is_err(), "non-finite input must not reach the world");
     assert!(!rig.history.can_undo());
+}
+
+#[test]
+fn test_set_rejects_unissued_texture_handle() {
+    // #66: a handle the resolver never issued would save as `#texture_999`
+    // and only fail on the next load — refuse it at the write instead.
+    let mut rig = Rig::new();
+    let e = rig.spawn_player();
+    rig.world.add_component(&e, Sprite::new(0)).ok();
+
+    let err = rig.run(r#"set Player Sprite {"texture_handle": 999}"#).unwrap_err();
+    assert!(matches!(err, ApiError::Invalid(ref msg) if msg.contains("999")), "{err:?}");
+    assert_eq!(rig.world.get::<Sprite>(e).unwrap().texture_handle, 0, "world untouched");
+    assert!(!rig.history.can_undo(), "nothing recorded");
+
+    // The built-in #white (handle 0) is always issued.
+    rig.run(r#"set Player Sprite {"texture_handle": 0, "depth": 2.0}"#).unwrap();
+    assert_eq!(rig.world.get::<Sprite>(e).unwrap().depth, 2.0);
+}
+
+#[test]
+fn test_add_rejects_unissued_texture_handle_without_leaving_component() {
+    let mut rig = Rig::new();
+    let e = rig.spawn_player();
+
+    let err = rig.run(r#"add Player Sprite {"texture_handle": 42}"#).unwrap_err();
+    assert!(matches!(err, ApiError::Invalid(_)), "{err:?}");
+    assert!(rig.world.get::<Sprite>(e).is_none(), "the add is rolled back");
+    assert!(!rig.history.can_undo());
+}
+
+#[test]
+fn test_tilemap_tileset_shares_the_texture_handle_rule() {
+    // `Tilemap.tileset` lives in the same handle space as `Sprite.texture_handle`
+    // (both serialize through the resolver's inverse), so it gets the same
+    // refusal — and the bare default (tileset 0) still adds.
+    let mut rig = Rig::new();
+    let e = rig.spawn_player();
+
+    rig.run("add Player Tilemap").unwrap();
+    assert_eq!(rig.world.get::<ecs::Tilemap>(e).unwrap().tileset, 0);
+
+    let err = rig.run(r#"set Player Tilemap {"tileset": 7}"#).unwrap_err();
+    assert!(matches!(err, ApiError::Invalid(ref msg) if msg.contains("7")), "{err:?}");
+    assert_eq!(rig.world.get::<ecs::Tilemap>(e).unwrap().tileset, 0, "world untouched");
 }
 
 #[test]

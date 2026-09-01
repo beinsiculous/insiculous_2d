@@ -92,6 +92,31 @@ fn test_unreadable_startup_scene_fails_fast() {
 }
 
 #[test]
+fn test_unissued_texture_handle_is_refused_and_never_reaches_the_file() {
+    // #66: only handles the session's resolver issued may be written. The
+    // refusal is an ordinary error line; the session continues and the
+    // built-in #white (handle 0) still saves.
+    let dir = std::env::temp_dir().join(format!("insiculous_66_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let scene = dir.join("refused.scene.ron");
+    let script = format!(
+        "create sprite Hero\nset Hero Sprite {{\"texture_handle\": 999}}\nset Hero Sprite {{\"texture_handle\": 0}}\nsave {}\n",
+        scene.display()
+    );
+    let responses = run_session(None, &script);
+    assert_eq!(responses.len(), 4, "{responses:?}");
+    assert_eq!(responses[0]["ok"], true, "create: {}", responses[0]);
+    assert_eq!(responses[1]["ok"], false, "unissued handle: {}", responses[1]);
+    assert_eq!(responses[1]["error"]["kind"], "invalid", "{}", responses[1]);
+    assert_eq!(responses[2]["ok"], true, "#white is always issued: {}", responses[2]);
+    assert_eq!(responses[3]["ok"], true, "save: {}", responses[3]);
+
+    let saved = std::fs::read_to_string(&scene).expect("scene written");
+    assert!(!saved.contains("#texture_"), "no placeholder ref may be saved: {saved}");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
 fn test_headless_assets_round_trip_references_verbatim() {
     let mut assets = HeadlessAssets::new();
     let white = assets.resolve_texture("#white").unwrap();

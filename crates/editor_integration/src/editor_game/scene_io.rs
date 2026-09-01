@@ -9,6 +9,18 @@ use crate::constants::DEFAULT_SCENE_PATH;
 
 use super::EditorGame;
 
+/// The texture reference a scene file records for `handle`: the resolver's
+/// recorded string, `#white` for the built-in handle 0, else a `#texture_N`
+/// placeholder that fails loud on the next load. Shared by the GUI save and
+/// the API's hosted save — one rule, one place.
+pub(super) fn texture_ref_for_save(handle: u32, recorded: Option<impl Into<String>>) -> String {
+    match recorded {
+        Some(reference) => reference.into(),
+        None if handle == 0 => "#white".to_string(),
+        None => format!("#texture_{handle}"),
+    }
+}
+
 impl<G: Game> EditorGame<G> {
     /// Save the current scene to the existing scene path (or default if none set).
     pub(super) fn save_scene(
@@ -29,13 +41,8 @@ impl<G: Game> EditorGame<G> {
         assets: &engine_core::assets::AssetManager,
         path: PathBuf,
     ) -> Result<(), String> {
-        let texture_path_fn = |handle: u32| -> String {
-            assets.texture_path(handle)
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| {
-                    if handle == 0 { "#white".to_string() } else { format!("#texture_{}", handle) }
-                })
-        };
+        let texture_path_fn =
+            |handle: u32| -> String { texture_ref_for_save(handle, assets.texture_path(handle)) };
         self.save_scene_with(world, &texture_path_fn, path)
     }
 

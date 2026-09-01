@@ -148,19 +148,8 @@ pub fn run_headless_editor_api(
 
     for line in input.lines() {
         let line = line.map_err(|e| format!("stdin read failed: {e}"))?;
-        let texture_path_fn = |handle: u32| -> String {
-            assets
-                .texture_path(handle)
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| {
-                    if handle == 0 {
-                        "#white".to_string()
-                    } else {
-                        format!("#texture_{handle}")
-                    }
-                })
-        };
-        let responses = editor_game.answer_api_lines(&[line], &mut world, &texture_path_fn);
+        let texture_path = |handle: u32| assets.texture_path(handle).map(str::to_string);
+        let responses = editor_game.answer_api_lines(&[line], &mut world, &texture_path);
         for response in responses {
             writeln!(output, "{response}").map_err(|e| format!("stdout write failed: {e}"))?;
         }

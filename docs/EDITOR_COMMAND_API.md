@@ -38,8 +38,8 @@ Write verbs (Stage B — one undo entry each unless noted):
 
 | Request | Effect |
 |---------|--------|
-| `set <entity> <Component> <json>` | shallow-patch the component with the REST OF THE LINE as raw JSON (never tokenized). Unknown fields are an `invalid` error listing the real ones; a non-object serialization (externally-tagged enums like `Behavior`) is a whole-value replace. Absent component → `invalid` ("add it first"). `set <entity> Name ...` is `invalid` — Name goes through `rename`. |
-| `add <entity> <Component> [json]` | add default-valued (optionally patched — still ONE undo entry) |
+| `set <entity> <Component> <json>` | shallow-patch the component with the REST OF THE LINE as raw JSON (never tokenized). Unknown fields are an `invalid` error listing the real ones; a non-object serialization (externally-tagged enums like `Behavior`) is a whole-value replace. Absent component → `invalid` ("add it first"). `set <entity> Name ...` is `invalid` — Name goes through `rename`. A `texture_handle` / `tileset` the session's resolver never issued is `invalid` (#66). |
+| `add <entity> <Component> [json]` | add default-valued (optionally patched — still ONE undo entry; a patch carrying an unissued texture handle is `invalid` and the add is rolled back) |
 | `remove <entity> <Component>` | remove (undo restores the VALUE, not a default) |
 | `rename <entity> <name>` | assign/replace `Name` — works on unnamed entities; undo restores no-Name; empty/unchanged names are `invalid` |
 | `create <archetype> [name] [x y]` | spawn an archetype (see `commands` for the list) at the viewport center or an explicit position; an empty name is `invalid` |
@@ -56,7 +56,11 @@ Write semantics worth knowing:
   play session (Paused included) and while a batch is open.
 - **Sanitation**: non-finite numbers anywhere in a JSON value are
   `invalid`; the same hard physical floors the GUI enforces apply
-  (collider extents/radius, scale, audio volume/pitch).
+  (collider extents/radius, scale, audio volume/pitch). Texture handles
+  (`Sprite.texture_handle`, `Tilemap.tileset` — one id space) must have
+  been issued by the session's resolver, or the write is `invalid`:
+  handle 0 is always `#white`; anything else comes from a texture the
+  session loaded (windowed) or a reference it recorded (headless).
 - **Batches are NOT transactions**: each command executes immediately; an
   error mid-batch leaves earlier effects applied and the batch open —
   `batch abort` reverse-undoes what was collected. Pressing Play commits
@@ -95,7 +99,7 @@ Exactly one line of JSON per non-blank request, in request order:
 `kind` ∈ `parse` | `not_found` | `ambiguous_name` | `invalid` | `refused`.
 An `ambiguous_name` error additionally carries `"matches":[<id>,...]`.
 `invalid` = the arguments are unusable (unknown component/field, bad JSON,
-non-finite number); `refused` = the editor's current state forbids the
+non-finite number, unissued texture handle); `refused` = the editor's current state forbids the
 request (Playing, batch rules, a write over the read-only dispatch).
 
 Every entity appears as the same record shape:
@@ -181,7 +185,9 @@ Semantics identical to the windowed `--api` mode, with these limits:
 - **Textures are recorded, not loaded.** A path-recording resolver dedupes
   every texture reference to a stable handle and writes the same reference
   back on save — image files are never opened or validated, so a missing
-  texture cannot fail headless authoring.
+  texture cannot fail headless authoring. Handles ARE validated against
+  that resolver (#66): `set`/`add` refuse a handle it never issued, so a
+  saved scene never carries a `#texture_N` placeholder.
 - **`.sheet.ron` sidecars ARE consulted** (pure file I/O against the
   project's `assets/` directory), so a headless save bakes the current
   sidecar snapshot exactly like the windowed editor. Sessions started

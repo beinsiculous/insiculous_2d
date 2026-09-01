@@ -17,7 +17,9 @@ impl Game for DummyGame {
 }
 
 fn run(editor: &mut EditorGame<DummyGame>, world: &mut ecs::World, line: &str) -> String {
-    let responses = editor.answer_api_lines(&[line.to_string()], world, &|_| "#white".into());
+    // The test "resolver" issued only the built-in #white (handle 0).
+    let resolver = |handle: u32| (handle == 0).then(|| "#white".to_string());
+    let responses = editor.answer_api_lines(&[line.to_string()], world, &resolver);
     responses.into_iter().next().expect("one response per line")
 }
 

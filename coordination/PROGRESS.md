@@ -316,3 +316,20 @@ end_frame, so a Content-band trailing clip poisons every later-flushed band
 writeback (ctx.lines/window_title precedent) — the ENGINE wraps only its own
 frame-tail draws (ui_element pass + toasts) in push/pop; plain games leave it
 None. The editor sets scene_view_bounds every frame.
+
+## 2026-09-01 — #66 set/add refuse texture handles the session never issued (Sprint 6)
+`set Hero Sprite {"texture_handle": 999}` used to be accepted, saved as `#texture_999`,
+and fail only on the next load. Now `WriteCtx` carries a `texture_known` predicate the
+host answers from its resolver (windowed `AssetManager::texture_path`, headless
+`HeadlessAssets::texture_path` — both `None` = never issued), and
+`validate_texture_handles` runs right after `sanitize` at both write sites (`set`, and
+the `add` patch — which rolls the add back, so a refusal leaves no component behind).
+`Sprite.texture_handle` and `Tilemap.tileset` share the id space and are both checked.
+`answer_api_lines` now takes the resolver's `Option` form once; the `#texture_N`
+save-placeholder rule that was copied into three closures lives in ONE
+`texture_ref_for_save`. Docs + live `commands` summaries updated. Tests 1660 → 1664,
+clippy clean. fixes #66.
+(#66 review round: kimi 10 findings, adjudicated with Jesse — F4/F5 tests accepted
+(Tilemap tileset + bare add), F10 count fixed; F1 "set on an existing unissued handle"
+rebutted as unreachable — the loader refuses `#texture_N` refs and issues every handle it
+resolves; F3 rebutted — `unload_texture` keeps `handle_to_path`, so "ever issued" holds.)

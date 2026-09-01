@@ -24,12 +24,19 @@ impl<G: Game> EditorGame<G> {
     /// Blank lines produce no response; everything else produces exactly
     /// one line of JSON, in request order. Queries and pure writes run in
     /// the editor crate; hosted writes (create/save) run here.
+    ///
+    /// `texture_path` is the session resolver's inverse (`None` = never
+    /// issued): pure writes use it to refuse unissued handles (#66), hosted
+    /// saves to write the reference back.
     pub(super) fn answer_api_lines(
         &mut self,
         lines: &[String],
         world: &mut ecs::World,
-        texture_path_fn: &dyn Fn(u32) -> String,
+        texture_path: &dyn Fn(u32) -> Option<String>,
     ) -> Vec<String> {
+        let texture_known = |handle: u32| texture_path(handle).is_some();
+        let texture_path_fn =
+            |handle: u32| super::scene_io::texture_ref_for_save(handle, texture_path(handle));
         let mut responses = Vec::new();
         for line in lines {
             if line.trim().is_empty() {
@@ -58,6 +65,7 @@ impl<G: Game> EditorGame<G> {
                         selection: &mut self.editor.selection,
                         play_state,
                         batch: &mut self.api_batch,
+                        texture_known: &texture_known,
                     };
                     match command_api::write::run(&write, &mut ctx) {
                         Ok(data) => ok_response(data),
@@ -65,7 +73,7 @@ impl<G: Game> EditorGame<G> {
                     }
                 }
                 Ok(Request::Write(WriteCmd::Hosted(hosted))) => {
-                    match self.run_hosted_write(&hosted, world, texture_path_fn) {
+                    match self.run_hosted_write(&hosted, world, &texture_path_fn) {
                         Ok(data) => ok_response(data),
                         Err(err) => error_response(&err),
                     }
@@ -195,15 +203,8 @@ impl<G: Game> EditorGame<G> {
         }
 
         let assets = &*ctx.assets;
-        let texture_path_fn = move |handle: u32| -> String {
-            assets
-                .texture_path(handle)
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| {
-                    if handle == 0 { "#white".to_string() } else { format!("#texture_{}", handle) }
-                })
-        };
-        let responses = self.answer_api_lines(&lines, ctx.world, &texture_path_fn);
+        let texture_path = move |handle: u32| assets.texture_path(handle).map(str::to_string);
+        let responses = self.answer_api_lines(&lines, ctx.world, &texture_path);
         // An API line may have changed the selection (`select`, `create`);
         // GUI commands recorded LATER this frame must see the current
         // selection as their before-image, not the frame-start note (#59
@@ -258,12 +259,12 @@ mod tests {
         let entity = world.create_entity();
         world.add_component(&entity, common::Transform2D::new(glam::Vec2::ZERO)).ok();
 
-        let clean = editor.answer_api_lines(&["scene".to_string()], &mut world, &|_| "#white".into());
+        let clean = editor.answer_api_lines(&["scene".to_string()], &mut world, &|_| Some("#white".into()));
         assert!(clean[0].contains("\"dirty\":false"), "clean history: {}", clean[0]);
 
         let cmd = editor::commands::CreateEntityCommand::already_created(&world, entity);
         editor.command_history.push_already_executed(Box::new(cmd));
-        let dirty = editor.answer_api_lines(&["scene".to_string()], &mut world, &|_| "#white".into());
+        let dirty = editor.answer_api_lines(&["scene".to_string()], &mut world, &|_| Some("#white".into()));
         assert!(dirty[0].contains("\"dirty\":true"), "recorded command: {}", dirty[0]);
     }
 
@@ -278,7 +279,7 @@ mod tests {
         let responses = editor.answer_api_lines(
             &["describe Player".to_string(), "".to_string()],
             &mut world,
-            &|_| "#white".into(),
+            &|_| Some("#white".into()),
         );
 
         assert_eq!(responses.len(), 1, "blank line owes no response");

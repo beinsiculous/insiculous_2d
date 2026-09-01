@@ -40,6 +40,10 @@ pub struct WriteCtx<'a> {
     pub selection: &'a mut Selection,
     pub play_state: EditorPlayState,
     pub batch: &'a mut Option<ApiBatch>,
+    /// Whether the session's texture resolver ever issued this handle.
+    /// `set`/`add` refuse a handle nothing can resolve on save (#66) — the
+    /// editor crate cannot see the resolver, so the host answers by closure.
+    pub texture_known: &'a dyn Fn(u32) -> bool,
 }
 
 impl WriteCtx<'_> {
@@ -78,6 +82,7 @@ fn build_add_patch_set(
     entity: ecs::EntityId,
     component: &str,
     patch: &Value,
+    texture_known: &dyn Fn(u32) -> bool,
 ) -> Result<SetComponentValueCommand, ApiError> {
     let old = capture_component_by_name(world, entity, component)
         .map_err(ApiError::Invalid)?
@@ -86,7 +91,29 @@ fn build_add_patch_set(
     let merged = merge_patch(current, patch.clone(), component)?;
     let new = stored_component_from_json(component, merged).map_err(ApiError::Invalid)?;
     let new = sanitize(new);
+    validate_texture_handles(&new, texture_known)?;
     Ok(SetComponentValueCommand::new(entity, old, new))
+}
+
+/// Reject a texture handle the session never issued: it would save as
+/// `#texture_N` and fail loud only on the next load (#66). `Sprite.texture_handle`
+/// and `Tilemap.tileset` share one id space.
+fn validate_texture_handles(
+    stored: &StoredComponent,
+    texture_known: &dyn Fn(u32) -> bool,
+) -> Result<(), ApiError> {
+    let handle = match stored {
+        StoredComponent::Sprite(sprite) => sprite.texture_handle,
+        StoredComponent::Tilemap(tilemap) => tilemap.tileset,
+        _ => return Ok(()),
+    };
+    if texture_known(handle) {
+        return Ok(());
+    }
+    Err(ApiError::Invalid(format!(
+        "texture handle {handle} was never issued by this session's assets — \
+         load a texture first (handle 0 is always #white)"
+    )))
 }
 
 /// The component's current serde value (the same generic read `describe`
@@ -215,6 +242,7 @@ pub fn run(write: &PureWrite, ctx: &mut WriteCtx<'_>) -> Result<Value, ApiError>
             let merged = merge_patch(current, patch.clone(), component)?;
             let new = stored_component_from_json(component, merged).map_err(ApiError::Invalid)?;
             let new = sanitize(new);
+            validate_texture_handles(&new, ctx.texture_known)?;
             let mut cmd = SetComponentValueCommand::new(entity, old, new);
             cmd.execute(ctx.world);
             ctx.record(Box::new(cmd));
@@ -274,7 +302,7 @@ pub fn run(write: &PureWrite, ctx: &mut WriteCtx<'_>) -> Result<Value, ApiError>
                 // An error after the attach must not leave an unrecorded
                 // component behind — roll the add back so the world matches
                 // the error response exactly (kimi #43 F2).
-                match build_add_patch_set(ctx.world, entity, component, patch) {
+                match build_add_patch_set(ctx.world, entity, component, patch, ctx.texture_known) {
                     Ok(mut set) => {
                         set.execute(ctx.world);
                         recorded = Box::new(MacroCommand::new(
