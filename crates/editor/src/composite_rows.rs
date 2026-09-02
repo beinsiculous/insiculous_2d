@@ -10,7 +10,7 @@ use std::ops::RangeInclusive;
 use glam::{Vec2, Vec4};
 use ui::{Color, Rect, UIContext};
 
-use crate::field_style::{EditResult, EditableFieldStyle, FieldId};
+use crate::field_style::{EditResult, EditableFieldStyle, FieldEdit, FieldId};
 use crate::row_layout::{pair_slots, PairSlot, RowLayout};
 
 /// Render an editable Vec2 value as one composite row:
@@ -23,7 +23,7 @@ pub fn edit_vec2(
     range: RangeInclusive<f32>,
     layout: RowLayout,
     style: &EditableFieldStyle,
-) -> EditResult<Vec2> {
+) -> FieldEdit<Vec2> {
     let (min, max) = (*range.start(), *range.end());
     let pos = layout.pos;
     crate::editable_inspector::draw_field_label(ui, label, &layout, style);
@@ -40,6 +40,7 @@ pub fn edit_vec2(
         .with_step(crate::row_layout::scrub_step(&(min..=max)));
 
     let mut new_value = value;
+    let mut warnings = Vec::new();
     for (axis, (slot, badge, color)) in [
         (slots[0], "X", style.axis_x_label),
         (slots[1], "Y", style.axis_y_label),
@@ -56,6 +57,14 @@ pub fn edit_vec2(
             opts,
             bounds,
         );
+        if edited.out_of_range {
+            let axis_label = format!("{label} {badge}");
+            warnings.push(crate::editable_inspector::out_of_range_warning(
+                &axis_label,
+                edited.value,
+                &opts,
+            ));
+        }
         if edited.changed {
             if axis == 0 {
                 new_value.x = edited.value;
@@ -65,11 +74,12 @@ pub fn edit_vec2(
         }
     }
 
-    if new_value != value {
+    let result = if new_value != value {
         EditResult::Changed(new_value)
     } else {
         EditResult::Unchanged
-    }
+    };
+    FieldEdit { result, warnings }
 }
 
 /// Render an editable color (Vec4) as a preview swatch plus a 2×2 channel

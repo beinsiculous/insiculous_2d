@@ -96,7 +96,7 @@ pub use editor_preferences::{EditorPreferences, PanelPrefs};
 pub use dock::{panel_id_for_menu_label, DockArea, DockPanel, DockPosition, PanelId};
 pub use editable_inspector::{
     component_header, cycle_step, edit_bool, edit_color, edit_f32, edit_f32_opts, edit_vec2,
-    wrap_degrees, EditableFieldStyle, EditableInspector, EditResult, FieldId,
+    wrap_degrees, EditableFieldStyle, EditableInspector, EditResult, FieldEdit, FieldId,
 };
 pub use row_layout::{
     color_block_height, ellipsize, field_row, pair_slots, remove_button_x, scrub_step, PairSlot,

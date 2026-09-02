@@ -168,7 +168,7 @@ mod tests {
 
         let mut drag_drop = crate::DragDropState::new();
         let mut extras =
-            crate::InspectorExtras { drag_drop: &mut drag_drop, texture_display: None };
+            crate::InspectorExtras { drag_drop: &mut drag_drop, texture_display: None, warnings: Vec::new() };
 
         let mut inspector = EditableInspector::new(&mut ui, 10.0, 10.0);
         assert!(edit_ui_label(&mut inspector, &UiLabel::default(), &mut extras).is_none());

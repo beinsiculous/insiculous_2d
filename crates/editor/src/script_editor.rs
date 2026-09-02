@@ -239,7 +239,7 @@ mod tests {
         let mut run = |ui: &mut ui::UIContext, input: &input::InputHandler| {
             ui.begin_frame(input, Vec2::new(800.0, 600.0));
             let mut extras =
-                crate::InspectorExtras { drag_drop: &mut drag_drop, texture_display: None };
+                crate::InspectorExtras { drag_drop: &mut drag_drop, texture_display: None, warnings: Vec::new() };
             let mut inspector = EditableInspector::new(ui, ORIGIN.x, ORIGIN.y);
             edit_scripts(&mut inspector, scripts, &mut extras)
         };
@@ -299,7 +299,7 @@ mod tests {
         let mut drag_drop = crate::DragDropState::new();
         ui.begin_frame(&input, Vec2::new(800.0, 600.0));
         let mut extras =
-            crate::InspectorExtras { drag_drop: &mut drag_drop, texture_display: None };
+            crate::InspectorExtras { drag_drop: &mut drag_drop, texture_display: None, warnings: Vec::new() };
         let mut inspector = EditableInspector::new(&mut ui, ORIGIN.x, ORIGIN.y);
         assert!(edit_scripts(&mut inspector, &scripts, &mut extras).is_none());
     }

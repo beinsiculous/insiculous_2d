@@ -283,6 +283,76 @@ fn test_float_typed_commit_beyond_soft_range_not_clamped() {
 }
 
 #[test]
+fn test_float_typed_commit_beyond_soft_range_flags_out_of_range() {
+    use input::prelude::KeyCode;
+    let mut ui = UIContext::new();
+    let mut input = input::InputHandler::new();
+    let bounds = Rect::new(10.0, 10.0, 80.0, 20.0);
+
+    // #55: the value is accepted AND reported, so the host can warn.
+    let committed = type_and_commit(
+        &mut ui, &mut input, "soft_warn", bounds, 5.0,
+        crate::FloatFieldOpts::range(0.0, 10.0),
+        &[KeyCode::Digit9, KeyCode::Digit9],
+    );
+    assert!(committed.out_of_range, "99 lies outside the soft 0..=10");
+
+    // In-range commits stay quiet.
+    let committed = type_and_commit(
+        &mut ui, &mut input, "soft_ok", bounds, 5.0,
+        crate::FloatFieldOpts::range(0.0, 10.0),
+        &[KeyCode::Digit7],
+    );
+    assert_eq!(committed.value, 7.0);
+    assert!(!committed.out_of_range);
+}
+
+#[test]
+fn test_float_unchanged_or_unparsable_commit_never_flags_out_of_range() {
+    use input::prelude::KeyCode;
+    let mut ui = UIContext::new();
+    let mut input = input::InputHandler::new();
+    let bounds = Rect::new(10.0, 10.0, 80.0, 20.0);
+
+    // #55 review F4: a value that was ALREADY outside the soft range (a scene
+    // author's 500 on a 0..=10 field) is not the user's doing — Enter with
+    // nothing typed must stay quiet...
+    let committed = type_and_commit(
+        &mut ui, &mut input, "preexisting", bounds, 500.0,
+        crate::FloatFieldOpts::range(0.0, 10.0),
+        &[],
+    );
+    assert!(committed.committed && !committed.changed);
+    assert!(!committed.out_of_range, "no new value was typed");
+
+    // ...and so must a parse failure, which reverts to that value.
+    let committed = type_and_commit(
+        &mut ui, &mut input, "garbage", bounds, 500.0,
+        crate::FloatFieldOpts::range(0.0, 10.0),
+        &[KeyCode::KeyX],
+    );
+    assert_eq!(committed.value, 500.0, "reverted");
+    assert!(!committed.out_of_range);
+}
+
+#[test]
+fn test_float_hard_clamp_never_flags_out_of_range() {
+    use input::prelude::KeyCode;
+    let mut ui = UIContext::new();
+    let mut input = input::InputHandler::new();
+    let bounds = Rect::new(10.0, 10.0, 80.0, 20.0);
+
+    // A hard range clamps, so there is nothing to warn about.
+    let committed = type_and_commit(
+        &mut ui, &mut input, "hard_quiet", bounds, 5.0,
+        crate::FloatFieldOpts::hard(0.0, 10.0),
+        &[KeyCode::Digit9, KeyCode::Digit9],
+    );
+    assert_eq!(committed.value, 10.0);
+    assert!(!committed.out_of_range);
+}
+
+#[test]
 fn test_float_hard_clamp_clamps_typed_commit() {
     use input::prelude::KeyCode;
     let mut ui = UIContext::new();

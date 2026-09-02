@@ -14,7 +14,7 @@ use glam::{Vec2, Vec4};
 use ui::{Rect, UIContext};
 
 pub use crate::composite_rows::{edit_color, edit_vec2};
-pub use crate::field_style::{EditResult, EditableFieldStyle, FieldId};
+pub use crate::field_style::{EditResult, EditableFieldStyle, FieldEdit, FieldId};
 use crate::row_layout::{color_block_height, field_row, remove_button_x, scrub_step, RowLayout};
 
 /// Fallback content width for inspectors constructed without an explicit
@@ -49,13 +49,23 @@ pub fn edit_f32(
     range: RangeInclusive<f32>,
     layout: RowLayout,
     style: &EditableFieldStyle,
-) -> EditResult<f32> {
+) -> FieldEdit<f32> {
     let opts = ui::FloatFieldOpts::range(*range.start(), *range.end())
         .with_step(scrub_step(&range));
     edit_f32_opts(ui, id, label, value, opts, layout, style)
 }
 
+/// The status-bar line for a typed value outside its soft range (#55).
+pub(crate) fn out_of_range_warning(label: &str, value: f32, opts: &ui::FloatFieldOpts) -> String {
+    format!(
+        "{label} = {value:.2}{} is outside the usual {}..{}",
+        opts.suffix, opts.min, opts.max
+    )
+}
+
 /// [`edit_f32`] with explicit float-field options (hard clamp, suffix).
+/// A typed commit outside a SOFT range is accepted; the returned
+/// [`FieldEdit`] carries the warning for the host to surface.
 pub fn edit_f32_opts(
     ui: &mut UIContext,
     id: FieldId,
@@ -64,7 +74,7 @@ pub fn edit_f32_opts(
     opts: ui::FloatFieldOpts,
     layout: RowLayout,
     style: &EditableFieldStyle,
-) -> EditResult<f32> {
+) -> FieldEdit<f32> {
     draw_field_label(ui, label, &layout, style);
 
     let input_height = style.row_height - 4.0;
@@ -76,12 +86,17 @@ pub fn edit_f32_opts(
     );
 
     let result = ui.float_input(id, value, opts, input_bounds);
-
-    if result.changed {
+    let warnings = if result.out_of_range {
+        vec![out_of_range_warning(label, result.value, &opts)]
+    } else {
+        Vec::new()
+    };
+    let result = if result.changed {
         EditResult::Changed(result.value)
     } else {
         EditResult::Unchanged
-    }
+    };
+    FieldEdit { result, warnings }
 }
 
 /// Wrap a degree value into `-180.0..180.0` (720° → 0°, 190° → −170°).
@@ -157,6 +172,9 @@ pub struct EditableInspector<'a> {
     current_y: f32,
     x: f32,
     width: f32,
+    /// Soft-range warnings raised by this component's fields this frame
+    /// (#55); drained by the registry block into `InspectorExtras`.
+    warnings: Vec<String>,
 }
 
 impl<'a> EditableInspector<'a> {
@@ -170,7 +188,13 @@ impl<'a> EditableInspector<'a> {
             current_y: y,
             x,
             width: DEFAULT_INSPECTOR_WIDTH,
+            warnings: Vec::new(),
         }
+    }
+
+    /// Take the soft-range warnings raised so far this frame.
+    pub fn take_warnings(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.warnings)
     }
 
     /// Set the component index for field IDs.
@@ -275,10 +299,17 @@ impl<'a> EditableInspector<'a> {
     pub fn f32(&mut self, label: &str, value: f32, range: RangeInclusive<f32>) -> EditResult<f32> {
         let id = FieldId::new(self.component_index, self.field_index, 0);
         let layout = self.row();
-        let result = edit_f32(self.ui, id, label, value, range, layout, &self.style);
+        let edit = edit_f32(self.ui, id, label, value, range, layout, &self.style);
         self.field_index += 1;
         self.current_y += self.style.row_height;
-        result
+        self.route(edit)
+    }
+
+    /// Keep a field's warnings for the registry block to drain, hand back
+    /// its edit result.
+    fn route<T>(&mut self, edit: FieldEdit<T>) -> EditResult<T> {
+        self.warnings.extend(edit.warnings);
+        edit.result
     }
 
     /// Add an editable f32 field with a HARD range: typed commits clamp
@@ -289,10 +320,10 @@ impl<'a> EditableInspector<'a> {
         let layout = self.row();
         let opts = ui::FloatFieldOpts::hard(*range.start(), *range.end())
             .with_step(scrub_step(&range));
-        let result = edit_f32_opts(self.ui, id, label, value, opts, layout, &self.style);
+        let edit = edit_f32_opts(self.ui, id, label, value, opts, layout, &self.style);
         self.field_index += 1;
         self.current_y += self.style.row_height;
-        result
+        self.route(edit)
     }
 
     /// Add an editable angle field: stored in radians, displayed and edited
@@ -307,7 +338,7 @@ impl<'a> EditableInspector<'a> {
         // Display wraps too, so the field always operates in the canonical
         // ±180° space — a rotation stored as 270° shows (and scrubs) as
         // −90° instead of sitting outside its own range (kimi F2).
-        let result = edit_f32_opts(
+        let edit = edit_f32_opts(
             self.ui,
             id,
             label,
@@ -318,7 +349,9 @@ impl<'a> EditableInspector<'a> {
         );
         self.field_index += 1;
         self.current_y += self.style.row_height;
-        match result {
+        // The wrap makes the soft range meaningless for typed commits (270°
+        // lands at −90°), so this row raises no out-of-range warning.
+        match edit.result {
             EditResult::Changed(deg) => EditResult::Changed(wrap_degrees(deg).to_radians()),
             EditResult::Unchanged => EditResult::Unchanged,
         }
@@ -338,10 +371,10 @@ impl<'a> EditableInspector<'a> {
     pub fn vec2(&mut self, label: &str, value: Vec2, range: RangeInclusive<f32>) -> EditResult<Vec2> {
         let id = FieldId::new(self.component_index, self.field_index, 0);
         let layout = self.row();
-        let result = edit_vec2(self.ui, id, label, value, range, layout, &self.style);
+        let edit = edit_vec2(self.ui, id, label, value, range, layout, &self.style);
         self.field_index += 1;
         self.current_y += self.style.row_height;
-        result
+        self.route(edit)
     }
 
     /// Add a read-only u32 display.

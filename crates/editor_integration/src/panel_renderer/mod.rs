@@ -213,23 +213,30 @@ fn apply_hierarchy_rename(
     warn_if_name_ambiguous(editor, ctx.world, &new_name);
 }
 
-/// Status-bar warning when a just-committed name is shared by several
-/// entities — it stops being a usable command-API address. Called from BOTH
-/// rename paths: the hierarchy F2 commit and the inspector Name field
-/// (kimi batch-2 F1).
+/// The warning text when a just-committed name is shared by several
+/// entities — it stops being a usable command-API address. Both rename
+/// paths raise it: the hierarchy F2 commit (via [`warn_if_name_ambiguous`])
+/// and the inspector Name field, which folds it into the frame's field
+/// warnings so neither overwrites the other (kimi batch-2 F1, #55 F2).
+pub(super) fn name_ambiguity_warning(world: &ecs::World, name: &str) -> Option<String> {
+    match HierarchyPanel::resolve_by_name(world, name) {
+        editor::NameResolution::Ambiguous(matches) => Some(format!(
+            "{} entities are now named \"{}\" — the name is ambiguous for API addressing",
+            matches.len(),
+            name
+        )),
+        _ => None,
+    }
+}
+
+/// Show [`name_ambiguity_warning`] on the status bar, if any.
 pub(super) fn warn_if_name_ambiguous(
     editor: &mut EditorContext,
     world: &ecs::World,
     name: &str,
 ) {
-    if let editor::NameResolution::Ambiguous(matches) =
-        HierarchyPanel::resolve_by_name(world, name)
-    {
-        editor.status_bar.show_message(format!(
-            "Warning: {} entities are now named \"{}\" — the name is ambiguous for API addressing",
-            matches.len(),
-            name
-        ));
+    if let Some(warning) = name_ambiguity_warning(world, name) {
+        editor.status_bar.show_message(format!("Warning: {warning}"));
     }
 }
 

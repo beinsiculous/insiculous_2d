@@ -19,6 +19,10 @@ pub struct InspectorExtras<'a> {
     /// Display path for the selected entity's sprite texture, if resolvable
     /// (e.g. `"player.png"` or `"#white"`).
     pub texture_display: Option<String>,
+    /// Field warnings raised this frame (a typed value outside its soft
+    /// range, #55) — the host surfaces them on the status bar, which the
+    /// editor crate's widgets cannot see.
+    pub warnings: Vec<String>,
 }
 
 /// Render a texture slot: label + a boxed value showing the texture's path

@@ -50,6 +50,7 @@ macro_rules! registry_edit_block {
                 .with_width($width)
                 .with_style($field_style.clone());
             let edit = $edit_fn(&mut inspector, &value, &mut *$extras);
+            $extras.warnings.append(&mut inspector.take_warnings());
             $y = inspector.y();
             crate::component_editors::apply_component_edit($world, $entity, &value, edit, $history, |e, old, new, hint| {
                 Box::new($cmd::new(e, old, new, hint))
@@ -70,6 +71,7 @@ macro_rules! registry_edit_block {
                 .with_width($width)
                 .with_style($field_style.clone());
             let edit = $edit_fn(&mut inspector, &value, &mut *$extras);
+            $extras.warnings.append(&mut inspector.take_warnings());
             $y = inspector.y();
             if crate::component_editors::remove_button($ui, $idx, $x, header_y, $width) {
                 $removals.push(ComponentKind::$name);

@@ -75,6 +75,10 @@ pub struct FloatInputResult {
     pub invalid: bool,
     /// A drag-scrub gesture is active.
     pub scrubbing: bool,
+    /// A typed commit landed outside the SOFT `min..=max` (accepted by
+    /// design — the host warns instead of clamping). Never set under
+    /// `hard_clamp`.
+    pub out_of_range: bool,
 }
 
 impl FloatInputResult {
@@ -383,24 +387,34 @@ impl UIContext {
         opts: &FloatFieldOpts,
         bounds: Rect,
     ) -> FloatInputResult {
-        let parsed = self.interaction.get_state(id).edit.text.parse::<f32>();
+        let parsed = self
+            .interaction
+            .get_state(id)
+            .edit
+            .text
+            .parse::<f32>()
+            .ok()
+            .filter(|v| v.is_finite());
         let new_value = match parsed {
-            Ok(v) if v.is_finite() => {
-                if opts.hard_clamp {
-                    v.clamp(opts.min, opts.max)
-                } else {
-                    v
-                }
-            }
-            _ => fallback,
+            Some(v) if opts.hard_clamp => v.clamp(opts.min, opts.max),
+            Some(v) => v,
+            None => fallback,
         };
         self.interaction.clear_focus();
         self.draw_float_value(bounds, new_value, opts.suffix, false);
         self.note_edit_commit();
+        let changed = (new_value - fallback).abs() > f32::EPSILON;
+        // Only a NEW typed value warns — a parse failure reverts, and a
+        // value that was already outside its range is not the user's doing.
+        let out_of_range = parsed.is_some()
+            && changed
+            && !opts.hard_clamp
+            && (new_value < opts.min || new_value > opts.max);
         FloatInputResult {
             value: new_value,
-            changed: (new_value - fallback).abs() > f32::EPSILON,
+            changed,
             committed: true,
+            out_of_range,
             ..FloatInputResult::default()
         }
     }

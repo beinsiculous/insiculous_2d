@@ -14,7 +14,7 @@ use crate::{DragDropState, EditableInspector, FieldId, InspectorExtras};
 const ORIGIN: Vec2 = Vec2::new(10.0, 10.0);
 
 fn extras(drag_drop: &mut DragDropState) -> InspectorExtras<'_> {
-    InspectorExtras { drag_drop, texture_display: None }
+    InspectorExtras { drag_drop, texture_display: None, warnings: Vec::new() }
 }
 
 /// Geometry of the first field row under a component header, mirroring the
@@ -200,4 +200,70 @@ fn test_pending_string_edit_commits_before_variant_cycle_applies() {
     let cycled = release.expect("release frame applies the variant cycle");
     assert_eq!(cycled.field_hint, "variant");
     assert_ne!(cycled.new_value.variant_index(), behavior.variant_index());
+}
+
+#[test]
+fn test_typed_value_outside_soft_range_raises_a_warning() {
+    // #55: soft ranges accept the typed value; the inspector reports it so
+    // the host can warn on the status bar instead of silently clamping.
+    let mut ui = ui::UIContext::new();
+    let mut input = input::InputHandler::new();
+
+    let field: ui::WidgetId = FieldId::new(0, 0, 0).into();
+    ui.focus_text_input(field, "9999");
+    input.keyboard_mut().handle_key_press(input::prelude::KeyCode::Enter);
+
+    ui.begin_frame(&input, Vec2::new(800.0, 600.0));
+    let mut inspector = EditableInspector::new(&mut ui, ORIGIN.x, ORIGIN.y);
+    let edit = inspector.f32("Stiffness", 60.0, 0.0..=200.0);
+    let warnings = inspector.take_warnings();
+    ui.end_frame();
+
+    assert_eq!(edit, crate::EditResult::Changed(9999.0), "the value is accepted");
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(warnings[0].contains("Stiffness") && warnings[0].contains("0..200"), "{}", warnings[0]);
+}
+
+#[test]
+fn test_typed_value_inside_soft_range_raises_no_warning() {
+    let mut ui = ui::UIContext::new();
+    let mut input = input::InputHandler::new();
+
+    let field: ui::WidgetId = FieldId::new(0, 0, 0).into();
+    ui.focus_text_input(field, "80");
+    input.keyboard_mut().handle_key_press(input::prelude::KeyCode::Enter);
+
+    ui.begin_frame(&input, Vec2::new(800.0, 600.0));
+    let mut inspector = EditableInspector::new(&mut ui, ORIGIN.x, ORIGIN.y);
+    let edit = inspector.f32("Stiffness", 60.0, 0.0..=200.0);
+    let warnings = inspector.take_warnings();
+    ui.end_frame();
+
+    assert_eq!(edit, crate::EditResult::Changed(80.0));
+    assert!(warnings.is_empty(), "{warnings:?}");
+}
+
+#[test]
+fn test_wrapped_angle_commit_raises_no_warning() {
+    // #55 review F1: 270° wraps to −90°, inside the range — no false warning.
+    let mut ui = ui::UIContext::new();
+    let mut input = input::InputHandler::new();
+
+    let field: ui::WidgetId = FieldId::new(0, 0, 0).into();
+    ui.focus_text_input(field, "270");
+    input.keyboard_mut().handle_key_press(input::prelude::KeyCode::Enter);
+
+    ui.begin_frame(&input, Vec2::new(800.0, 600.0));
+    let mut inspector = EditableInspector::new(&mut ui, ORIGIN.x, ORIGIN.y);
+    let edit = inspector.angle("Rotation", 0.0);
+    let warnings = inspector.take_warnings();
+    ui.end_frame();
+
+    match edit {
+        crate::EditResult::Changed(radians) => {
+            assert!((radians.to_degrees() + 90.0).abs() < 1e-3, "{radians}");
+        }
+        other => panic!("expected a commit, got {other:?}"),
+    }
+    assert!(warnings.is_empty(), "{warnings:?}");
 }

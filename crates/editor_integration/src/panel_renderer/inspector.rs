@@ -124,6 +124,7 @@ fn render_inspector_editable(
     let mut extras = editor::InspectorExtras {
         drag_drop: &mut editor.drag_drop,
         texture_display,
+        warnings: Vec::new(),
     };
 
     // A Name edit landing this frame must trigger the same ambiguity
@@ -152,6 +153,7 @@ fn render_inspector_editable(
         &mut extras,
     );
     y = next_y;
+    let mut warnings = std::mem::take(&mut extras.warnings);
 
     // Gesture boundary: an edit committed this frame (typed commit or scrub
     // release) seals the top undo entry, so the NEXT gesture on the same
@@ -165,7 +167,14 @@ fn render_inspector_editable(
         .get::<ecs::Name>(entity_id)
         .map(|n| n.as_str().to_string());
     if let Some(new_name) = name_after.filter(|after| Some(after) != name_before.as_ref()) {
-        super::warn_if_name_ambiguous(editor, ctx.world, &new_name);
+        warnings.extend(super::name_ambiguity_warning(ctx.world, &new_name));
+    }
+    // Soft-range warnings (#55): typed values beyond a field's usual range
+    // are accepted by design. Every warning raised this frame — name
+    // ambiguity included — lands in ONE transient status message, so none
+    // overwrites another.
+    if !warnings.is_empty() {
+        editor.status_bar.show_message(format!("Warning: {}", warnings.join(" · ")));
     }
 
     // --- [+ Add Component] button ---

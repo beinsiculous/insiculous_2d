@@ -132,6 +132,15 @@ impl Default for EditableFieldStyle {
     }
 }
 
+/// A field renderer's report: the edit result plus any warnings the host
+/// should surface (a typed value outside its soft range, #55). Renderers
+/// stay pure widget code; [`crate::EditableInspector`] routes the warnings.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FieldEdit<T> {
+    pub result: EditResult<T>,
+    pub warnings: Vec<String>,
+}
+
 /// Result of editing a field.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum EditResult<T> {

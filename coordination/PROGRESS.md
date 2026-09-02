@@ -333,3 +333,20 @@ clippy clean. fixes #66.
 (Tilemap tileset + bare add), F10 count fixed; F1 "set on an existing unissued handle"
 rebutted as unreachable — the loader refuses `#texture_N` refs and issues every handle it
 resolves; F3 rebutted — `unload_texture` keeps `handle_to_path`, so "ever issued" holds.)
+
+## 2026-09-01 — #55 Soft-range typed values warn on the status bar (Sprint 6)
+The audit's mandate (clamp the scrub, allow typed values outside, WARN) shipped its
+first two halves in #30; the warn half needed plumbing the ui crate cannot see.
+`FloatInputResult.out_of_range` is set on a typed commit beyond a SOFT range (never
+under `hard_clamp`). The field renderers (`edit_f32`/`edit_f32_opts`/`edit_vec2`) now
+return a `FieldEdit { result, warnings }` — renderers stay pure widget code and
+`EditableInspector::route` keeps the warnings, which the registry block drains into
+`InspectorExtras.warnings`; the inspector host joins every warning raised in the frame
+into ONE transient `status_bar.show_message` (3 s, like the duplicate-name warning —
+kimi plan-round F5). Tests 1664 → 1670, clippy clean. fixes #55.
+(#55 review round: kimi 4 findings — F1 fixed (the angle row drops soft-range warnings:
+270° wraps to −90°, no false warning); F2 fixed (`name_ambiguity_warning` is text, the
+inspector folds it into the same joined message so neither overwrites the other); F4
+fixed (`out_of_range` needs a successful, CHANGED parse — Enter on a pre-existing
+out-of-range value or a reverted parse failure stays quiet); F3 rebutted — the warning
+describes the typed commit, the GUI hard floors are a separate invariant.)
