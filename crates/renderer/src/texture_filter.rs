@@ -55,33 +55,30 @@ impl From<TextureFilter> for SamplerConfig {
 mod tests {
     use super::*;
 
+    /// Nearest is the pixel-art knob: mag, min AND mipmap must all agree, or
+    /// a tileset strip bleeds across cell borders on whichever one is still
+    /// linear. Every other sampler field stays at its default.
     #[test]
-    fn test_texture_filter_defaults_to_linear() {
-        assert_eq!(TextureFilter::default(), TextureFilter::Linear);
-    }
-
-    #[test]
-    fn test_linear_filter_maps_every_sampler_filter_to_linear() {
-        let config: SamplerConfig = TextureFilter::Linear.into();
-        assert_eq!(config.mag_filter, wgpu::FilterMode::Linear);
-        assert_eq!(config.min_filter, wgpu::FilterMode::Linear);
-        assert_eq!(config.mipmap_filter, wgpu::MipmapFilterMode::Linear);
-    }
-
-    #[test]
-    fn test_nearest_filter_maps_every_sampler_filter_to_nearest() {
-        let config: SamplerConfig = TextureFilter::Nearest.into();
-        assert_eq!(config.mag_filter, wgpu::FilterMode::Nearest);
-        assert_eq!(config.min_filter, wgpu::FilterMode::Nearest);
-        assert_eq!(config.mipmap_filter, wgpu::MipmapFilterMode::Nearest);
-    }
-
-    #[test]
-    fn test_texture_filter_leaves_other_sampler_fields_at_default() {
-        let config: SamplerConfig = TextureFilter::Nearest.into();
+    fn test_filter_sets_every_sampler_filter_and_nothing_else() {
+        let cases = [
+            (TextureFilter::Linear, wgpu::FilterMode::Linear, wgpu::MipmapFilterMode::Linear),
+            (TextureFilter::Nearest, wgpu::FilterMode::Nearest, wgpu::MipmapFilterMode::Nearest),
+        ];
         let defaults = SamplerConfig::default();
-        assert_eq!(config.address_mode_u, defaults.address_mode_u);
-        assert_eq!(config.lod_max_clamp, defaults.lod_max_clamp);
-        assert_eq!(config.anisotropy_clamp, defaults.anisotropy_clamp);
+
+        for (filter, expected_filter, expected_mipmap) in cases {
+            let config: SamplerConfig = filter.into();
+
+            assert_eq!(config.mag_filter, expected_filter, "{filter:?} mag");
+            assert_eq!(config.min_filter, expected_filter, "{filter:?} min");
+            assert_eq!(config.mipmap_filter, expected_mipmap, "{filter:?} mipmap");
+            assert_eq!(config.address_mode_u, defaults.address_mode_u, "{filter:?}");
+            assert_eq!(config.address_mode_v, defaults.address_mode_v, "{filter:?}");
+            assert_eq!(config.address_mode_w, defaults.address_mode_w, "{filter:?}");
+            assert_eq!(config.lod_min_clamp, defaults.lod_min_clamp, "{filter:?}");
+            assert_eq!(config.lod_max_clamp, defaults.lod_max_clamp, "{filter:?}");
+            assert_eq!(config.compare, defaults.compare, "{filter:?}");
+            assert_eq!(config.anisotropy_clamp, defaults.anisotropy_clamp, "{filter:?}");
+        }
     }
 }

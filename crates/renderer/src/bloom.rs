@@ -544,24 +544,40 @@ fn build_fullscreen_pipeline(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::mem::{offset_of, size_of};
 
+    /// Uniform buffers are 16-byte aligned and the WGSL structs read fields
+    /// by position: `BloomParams` feeds `bloom_extract.wgsl` and
+    /// `bloom_composite.wgsl`, `BlurParams` feeds `bloom_blur.wgsl`.
     #[test]
-    fn bloom_config_defaults_are_sane() {
-        let cfg = BloomConfig::default();
-        assert!(cfg.enabled);
-        assert!(cfg.threshold > 0.0);
-        assert!(cfg.intensity > 0.0);
-        assert!(cfg.blur_iterations >= 1);
+    fn test_uniform_structs_match_shader_layout() {
+        assert_eq!(size_of::<BloomParams>(), 16);
+        assert_eq!(
+            [
+                offset_of!(BloomParams, threshold),
+                offset_of!(BloomParams, knee),
+                offset_of!(BloomParams, intensity),
+                offset_of!(BloomParams, inv_gamma),
+            ],
+            [0, 4, 8, 12]
+        );
+
+        assert_eq!(size_of::<BlurParams>(), 16);
+        assert_eq!(
+            [offset_of!(BlurParams, texel_size), offset_of!(BlurParams, direction)],
+            [0, 8]
+        );
     }
 
+    /// The shipped look: every game's glow is tuned against these values.
     #[test]
-    fn bloom_params_struct_is_16_bytes() {
-        // Must match the uniform buffer layout the shaders expect.
-        assert_eq!(std::mem::size_of::<BloomParams>(), 16);
-    }
+    fn test_default_bloom_config_is_the_shipped_tuning() {
+        let config = BloomConfig::default();
 
-    #[test]
-    fn blur_params_struct_is_16_bytes() {
-        assert_eq!(std::mem::size_of::<BlurParams>(), 16);
+        assert!(config.enabled, "bloom is on by default");
+        assert_eq!(config.threshold, 1.0);
+        assert_eq!(config.knee, 0.5);
+        assert_eq!(config.intensity, 0.8);
+        assert_eq!(config.blur_iterations, 3);
     }
 }

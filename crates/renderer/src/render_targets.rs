@@ -135,26 +135,3 @@ fn create_bloom_tex(device: &Device, width: u32, height: u32, label: &str) -> (T
     let view = texture.create_view(&TextureViewDescriptor::default());
     (texture, view)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn bloom_dimensions_halve_surface() {
-        // Math-only check — no device required.
-        let width = 1920;
-        let height = 1080;
-        assert_eq!((width / BLOOM_DOWNSAMPLE).max(1), 960);
-        assert_eq!((height / BLOOM_DOWNSAMPLE).max(1), 540);
-    }
-
-    #[test]
-    fn bloom_dimensions_never_zero() {
-        // Tiny surfaces still produce a 1x1 bloom buffer instead of zero.
-        let width = 1u32;
-        let height = 1u32;
-        assert_eq!((width / BLOOM_DOWNSAMPLE).max(1), 1);
-        assert_eq!((height / BLOOM_DOWNSAMPLE).max(1), 1);
-    }
-}

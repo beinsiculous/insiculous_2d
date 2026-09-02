@@ -73,117 +73,67 @@ pub fn batch_scissor(
 mod tests {
     use super::*;
 
+    /// A UI clip rect arrives in float pixels; the scissor must cover every
+    /// pixel the rect touches (outward rounding), start at the surface
+    /// origin (negative origins clamp, keeping the far edge), and never
+    /// carry a non-finite value into `set_scissor_rect`.
     #[test]
-    fn test_quantize_rounds_outward_to_cover_partial_pixels() {
-        // 10.3..89.7 must cover pixels 10..90.
-        assert_eq!(quantize_rect(10.3, 20.7, 79.4, 49.0), [10, 20, 80, 50]);
+    fn test_quantize_rounds_outward_clamps_the_origin_and_empties_non_finite() {
+        let cases = [
+            ((10.3, 20.7, 79.4, 49.0), [10, 20, 80, 50], "10.3..89.7 covers pixels 10..90"),
+            ((5.0, 6.0, 100.0, 200.0), [5, 6, 100, 200], "exact integers pass through"),
+            ((-10.0, -5.0, 40.0, 25.0), [0, 0, 30, 20], "negative origin clamps, far edge kept"),
+            ((-50.0, -50.0, 20.0, 20.0), [0, 0, 0, 0], "a fully negative rect is empty"),
+            ((10.0, 10.0, 0.0, 0.0), [10, 10, 0, 0], "zero size stays zero size"),
+            ((f32::NAN, 0.0, 10.0, 10.0), [0, 0, 0, 0], "a NaN origin is empty"),
+            ((0.0, 0.0, f32::INFINITY, 10.0), [0, 0, 0, 0], "an infinite width is empty"),
+            ((0.0, f32::NEG_INFINITY, 10.0, 10.0), [0, 0, 0, 0], "a -inf origin is empty"),
+        ];
+
+        for ((x, y, w, h), expected, why) in cases {
+            assert_eq!(quantize_rect(x, y, w, h), expected, "{why}");
+        }
     }
 
+    /// wgpu validates scissor ⊆ attachment. A rect computed from last
+    /// frame's larger window must clamp to the live surface, and an empty
+    /// intersection comes back `None` so the caller skips the draw.
     #[test]
-    fn test_quantize_exact_integers_pass_through() {
-        assert_eq!(quantize_rect(5.0, 6.0, 100.0, 200.0), [5, 6, 100, 200]);
+    fn test_clamp_trims_to_the_live_surface_and_empties_to_none() {
+        let cases = [
+            ([10, 10, 50, 50], (100, 100), Some((10, 10, 50, 50)), "inside stays"),
+            ([0, 0, 100, 80], (100, 80), Some((0, 0, 100, 80)), "an exact fit survives"),
+            ([50, 50, 100, 100], (100, 80), Some((50, 50, 50, 30)), "overhang trimmed after a shrink"),
+            ([200, 0, 50, 50], (100, 100), None, "past the right edge"),
+            ([0, 300, 50, 50], (100, 100), None, "past the bottom edge"),
+            ([10, 10, 0, 0], (100, 100), None, "zero size draws nothing"),
+        ];
+
+        for (rect, (surface_w, surface_h), expected, why) in cases {
+            assert_eq!(clamp_scissor(rect, surface_w, surface_h), expected, "{why}");
+        }
     }
 
+    /// The per-batch decision: no clip and no default = the full surface;
+    /// the pass default (the editor's scene panel) applies to unclipped game
+    /// batches; a UI clip intersects it; an empty result skips the draw.
     #[test]
-    fn test_quantize_negative_origin_clamps_to_zero_keeping_far_edge() {
-        // x -10..+30 → scissor 0..30.
-        assert_eq!(quantize_rect(-10.0, -5.0, 40.0, 25.0), [0, 0, 30, 20]);
-    }
+    fn test_batch_scissor_intersects_clip_with_default_and_skips_empty() {
+        let surface = (640, 480);
+        let cases = [
+            (None, None, Some((0, 0, 640, 480)), "no clip, no default: the full surface"),
+            (None, Some([100, 50, 200, 150]), Some((100, 50, 200, 150)), "the default applies to unclipped batches"),
+            (Some([0, 0, 50, 50]), Some([25, 25, 50, 50]), Some((25, 25, 25, 25)), "overlapping: the overlap"),
+            (Some([0, 0, 150, 150]), Some([100, 100, 200, 200]), Some((100, 100, 50, 50)), "clip ∩ default"),
+            (Some([0, 0, 100, 100]), Some([10, 20, 30, 40]), Some((10, 20, 30, 40)), "nested: the inner rect"),
+            (Some([100, 100, 1000, 1000]), None, Some((100, 100, 540, 380)), "a clip alone still clamps to the surface"),
+            (Some([0, 0, 10, 10]), Some([500, 400, 50, 50]), None, "a disjoint clip and default draw nothing"),
+            (None, Some([0, 0, 0, 0]), None, "a zero-size default (scene panel hidden) draws nothing"),
+        ];
 
-    #[test]
-    fn test_quantize_fully_negative_rect_is_empty() {
-        assert_eq!(quantize_rect(-50.0, -50.0, 20.0, 20.0), [0, 0, 0, 0]);
-    }
-
-    #[test]
-    fn test_quantize_non_finite_inputs_yield_empty() {
-        assert_eq!(quantize_rect(f32::NAN, 0.0, 10.0, 10.0), [0, 0, 0, 0]);
-        assert_eq!(quantize_rect(0.0, 0.0, f32::INFINITY, 10.0), [0, 0, 0, 0]);
-        assert_eq!(quantize_rect(0.0, f32::NEG_INFINITY, 10.0, 10.0), [0, 0, 0, 0]);
-    }
-
-    #[test]
-    fn test_quantize_zero_size_is_empty() {
-        assert_eq!(quantize_rect(10.0, 10.0, 0.0, 0.0), [10, 10, 0, 0]);
-        assert_eq!(clamp_scissor(quantize_rect(10.0, 10.0, 0.0, 0.0), 100, 100), None);
-    }
-
-    #[test]
-    fn test_clamp_keeps_rect_inside_surface() {
-        assert_eq!(clamp_scissor([10, 10, 50, 50], 100, 100), Some((10, 10, 50, 50)));
-    }
-
-    #[test]
-    fn test_clamp_trims_overhang_on_resize_race() {
-        // Rect computed from last frame's larger window must clamp to the
-        // live surface, never submit out-of-bounds (wgpu validation error).
-        assert_eq!(clamp_scissor([50, 50, 100, 100], 100, 80), Some((50, 50, 50, 30)));
-    }
-
-    #[test]
-    fn test_clamp_fully_outside_is_none() {
-        assert_eq!(clamp_scissor([200, 0, 50, 50], 100, 100), None);
-        assert_eq!(clamp_scissor([0, 300, 50, 50], 100, 100), None);
-    }
-
-    #[test]
-    fn test_clamp_exact_fit_survives() {
-        assert_eq!(clamp_scissor([0, 0, 100, 80], 100, 80), Some((0, 0, 100, 80)));
-    }
-
-    #[test]
-    fn test_intersect_overlapping_rects() {
-        assert_eq!(intersect_scissor([0, 0, 50, 50], [25, 25, 50, 50]), [25, 25, 25, 25]);
-    }
-
-    #[test]
-    fn test_intersect_disjoint_rects_is_empty() {
-        let r = intersect_scissor([0, 0, 10, 10], [20, 20, 10, 10]);
-        assert_eq!(r[2], 0);
-        assert_eq!(r[3], 0);
-    }
-
-    #[test]
-    fn test_intersect_nested_rect_returns_inner() {
-        assert_eq!(intersect_scissor([0, 0, 100, 100], [10, 20, 30, 40]), [10, 20, 30, 40]);
-    }
-
-    #[test]
-    fn test_batch_scissor_unclipped_batch_no_default_gets_full_surface() {
-        assert_eq!(batch_scissor(None, None, (640, 480)), Some((0, 0, 640, 480)));
-    }
-
-    #[test]
-    fn test_batch_scissor_default_applies_to_unclipped_batches() {
-        // The sprite pass: game batches carry no clip, the viewport scissor
-        // is the pass default.
-        assert_eq!(
-            batch_scissor(None, Some([100, 50, 200, 150]), (640, 480)),
-            Some((100, 50, 200, 150))
-        );
-    }
-
-    #[test]
-    fn test_batch_scissor_clip_intersects_default() {
-        assert_eq!(
-            batch_scissor(Some([0, 0, 150, 150]), Some([100, 100, 200, 200]), (640, 480)),
-            Some((100, 100, 50, 50))
-        );
-    }
-
-    #[test]
-    fn test_batch_scissor_empty_result_skips_draw() {
-        // Zero-size default = the "scene panel hidden" case: nothing draws.
-        assert_eq!(batch_scissor(None, Some([0, 0, 0, 0]), (640, 480)), None);
-        // Clip disjoint from default: nothing draws.
-        assert_eq!(
-            batch_scissor(Some([0, 0, 10, 10]), Some([500, 400, 50, 50]), (640, 480)),
-            None
-        );
-    }
-
-    #[test]
-    fn test_batch_scissor_zero_surface_is_none() {
-        assert_eq!(batch_scissor(None, None, (0, 0)), None);
+        for (clip, default, expected, why) in cases {
+            assert_eq!(batch_scissor(clip, default, surface), expected, "{why}");
+        }
+        assert_eq!(batch_scissor(None, None, (0, 0)), None, "a zero surface draws nothing");
     }
 }

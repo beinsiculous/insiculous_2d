@@ -240,4 +240,58 @@ mod tests {
             "a point below screen center must be -Y in world, got {below_center:?}"
         );
     }
+
+    /// The orthographic projection maps the viewport's half extents to the
+    /// NDC corners; get this wrong and every sprite is scaled or off-centre.
+    #[test]
+    fn test_projection_maps_viewport_half_extents_to_ndc_corners() {
+        let camera = Camera::new(Vec2::ZERO, Vec2::new(800.0, 600.0));
+        let projection = camera.projection_matrix();
+
+        let top_right = projection * Vec4::new(400.0, 300.0, 0.0, 1.0);
+        let bottom_left = projection * Vec4::new(-400.0, -300.0, 0.0, 1.0);
+
+        assert!(
+            (Vec2::new(top_right.x, top_right.y) - Vec2::new(1.0, 1.0)).length() < 1e-4,
+            "(+half_w, +half_h) must be NDC (1, 1), got {top_right:?}"
+        );
+        assert!(
+            (Vec2::new(bottom_left.x, bottom_left.y) - Vec2::new(-1.0, -1.0)).length() < 1e-4,
+            "(-half_w, -half_h) must be NDC (-1, -1), got {bottom_left:?}"
+        );
+    }
+
+    /// Both GPU pipelines upload this uniform every frame; the shader reads
+    /// the view-projection as column-major columns and the position after it.
+    #[test]
+    fn test_camera_uniform_carries_the_view_projection_and_position() {
+        let camera = Camera::new(Vec2::new(50.0, 100.0), Vec2::new(800.0, 600.0)).with_zoom(2.0);
+
+        let uniform = CameraUniform::from_camera(&camera);
+
+        assert_eq!(uniform.view_projection, camera.view_projection_matrix().to_cols_array_2d());
+        assert_eq!(uniform.position, [50.0, 100.0]);
+        assert_eq!(uniform._padding, [0.0, 0.0]);
+    }
+
+    /// Zoom scales the view (2x zoom moves world (10, 10) to view (20, 20))
+    /// and `view_projection_matrix` composes view first, then projection.
+    #[test]
+    fn test_zoom_scales_the_view_and_view_projection_composes_view_then_projection() {
+        let camera = Camera::new(Vec2::ZERO, Vec2::new(800.0, 600.0)).with_zoom(2.0);
+        let world_point = Vec4::new(10.0, 10.0, 0.0, 1.0);
+
+        let in_view = camera.view_matrix() * world_point;
+        let via_view_projection = camera.view_projection_matrix() * world_point;
+        let via_composition = camera.projection_matrix() * (camera.view_matrix() * world_point);
+
+        assert!(
+            (Vec2::new(in_view.x, in_view.y) - Vec2::new(20.0, 20.0)).length() < 1e-4,
+            "2x zoom must double view-space coordinates, got {in_view:?}"
+        );
+        assert!(
+            (via_view_projection - via_composition).length() < 1e-5,
+            "view_projection must equal projection * view, got {via_view_projection:?} vs {via_composition:?}"
+        );
+    }
 }

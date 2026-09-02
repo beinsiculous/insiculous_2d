@@ -69,58 +69,40 @@ pub fn resize_action(
 mod tests {
     use super::*;
 
+    /// Fail-stop: once wgpu's lost callback marks the latch, every clone the
+    /// render path polls sees it, and nothing ever clears it.
     #[test]
-    fn latch_starts_not_lost() {
-        assert!(!DeviceLossLatch::new().is_lost());
-    }
-
-    #[test]
-    fn latch_reports_lost_after_mark() {
+    fn test_device_loss_latch_is_one_way_and_shared_by_clones() {
         let latch = DeviceLossLatch::new();
-        latch.mark_lost();
-        assert!(latch.is_lost());
+        let callback_copy = latch.clone();
+        assert!(!latch.is_lost(), "a fresh latch is not lost");
+
+        callback_copy.mark_lost();
+        callback_copy.mark_lost();
+
+        assert!(latch.is_lost(), "a mark on one clone is visible on the other");
+        assert!(callback_copy.is_lost(), "a second mark keeps it lost");
     }
 
+    /// Same size is a no-op (ResizeObserver echoes must not rebuild the
+    /// swapchain); zero is always skipped (a wgpu validation error, and what
+    /// a hidden web canvas reports); a new size reconfigures; and `force`
+    /// reconfigures at the same size — the hidden-canvas round trip
+    /// 800x600 → 0x0 → 800x600 must not leave a stale surface.
     #[test]
-    fn latch_clones_share_state() {
-        let latch = DeviceLossLatch::new();
-        let clone = latch.clone();
-        clone.mark_lost();
-        assert!(latch.is_lost());
-    }
+    fn test_resize_action_skips_same_size_and_zero_unless_forced_non_zero() {
+        let current = (800, 600);
+        let cases = [
+            ((800, 600), false, None, "the same size is a no-op"),
+            ((0, 600), false, None, "zero width is skipped"),
+            ((800, 0), false, None, "zero height is skipped"),
+            ((0, 0), true, None, "zero stays skipped even when forced"),
+            ((1024, 768), false, Some((1024, 768)), "a new size reconfigures"),
+            ((800, 600), true, Some((800, 600)), "force reconfigures at the same size"),
+        ];
 
-    #[test]
-    fn latch_mark_is_idempotent() {
-        let latch = DeviceLossLatch::new();
-        latch.mark_lost();
-        latch.mark_lost();
-        assert!(latch.is_lost());
-    }
-
-    #[test]
-    fn resize_action_skips_unchanged_size() {
-        assert_eq!(resize_action((800, 600), (800, 600), false), None);
-    }
-
-    #[test]
-    fn resize_action_skips_zero_width_or_height() {
-        assert_eq!(resize_action((800, 600), (0, 600), false), None);
-        assert_eq!(resize_action((800, 600), (800, 0), false), None);
-        // Zero stays skipped even when forced — configuring a zero-size
-        // surface is a wgpu validation error.
-        assert_eq!(resize_action((800, 600), (0, 0), true), None);
-    }
-
-    #[test]
-    fn resize_action_returns_new_size_when_changed() {
-        assert_eq!(resize_action((800, 600), (1024, 768), false), Some((1024, 768)));
-    }
-
-    #[test]
-    fn resize_action_forces_reconfigure_at_same_size() {
-        // The hidden-canvas round trip: 800x600 -> 0x0 (skipped) -> 800x600
-        // must reconfigure, or the surface stays stale after the canvas
-        // becomes visible again.
-        assert_eq!(resize_action((800, 600), (800, 600), true), Some((800, 600)));
+        for (requested, force, expected, why) in cases {
+            assert_eq!(resize_action(current, requested, force), expected, "{why}");
+        }
     }
 }

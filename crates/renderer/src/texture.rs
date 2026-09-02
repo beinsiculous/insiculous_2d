@@ -395,125 +395,27 @@ impl TextureManager {
 mod tests {
     use super::*;
 
-    // ==================== TextureHandle Tests ====================
-
+    /// `Sprite::default()` carries `TextureHandle::default()`; it must be the
+    /// built-in white so a flat-colour sprite renders its tint instead of
+    /// sampling nothing. (`TextureManager` allocating from `WHITE.id + 1` is
+    /// device-bound and not provable here.)
     #[test]
-    fn test_texture_handle_new() {
-        let handle = TextureHandle::new(42);
-        assert_eq!(handle.id, 42);
+    fn test_default_handle_is_the_reserved_white_texture() {
+        assert_eq!(TextureHandle::default(), TextureHandle::WHITE);
     }
 
+    /// The error a game author sees names the file, the size and the limit,
+    /// not just the variant.
     #[test]
-    fn test_texture_handle_default() {
-        let handle = TextureHandle::default();
-        assert_eq!(handle.id, 0);
+    fn test_texture_errors_carry_their_operands_in_the_message() {
+        let load = TextureError::ImageLoadError("Failed to load \"missing.png\": no such file".into());
+        let too_large = TextureError::TextureTooLarge { width: 10000, height: 4096, max_dimension: 8192 };
+
+        assert_eq!(
+            load.to_string(),
+            "Failed to load image: Failed to load \"missing.png\": no such file"
+        );
+        assert_eq!(too_large.to_string(), "Texture too large: 10000x4096, max: 8192");
+        assert_eq!(TextureError::InvalidFormat.to_string(), "Invalid texture format");
     }
-
-    #[test]
-    fn test_texture_handle_equality() {
-        let handle1 = TextureHandle::new(5);
-        let handle2 = TextureHandle::new(5);
-        let handle3 = TextureHandle::new(10);
-
-        assert_eq!(handle1, handle2);
-        assert_ne!(handle1, handle3);
-    }
-
-    #[test]
-    fn test_texture_handle_hash() {
-        use std::collections::HashMap;
-
-        let mut map: HashMap<TextureHandle, &str> = HashMap::new();
-        map.insert(TextureHandle::new(1), "texture1");
-        map.insert(TextureHandle::new(2), "texture2");
-
-        assert_eq!(map.get(&TextureHandle::new(1)), Some(&"texture1"));
-        assert_eq!(map.get(&TextureHandle::new(2)), Some(&"texture2"));
-        assert_eq!(map.get(&TextureHandle::new(3)), None);
-    }
-
-    #[test]
-    fn test_texture_handle_copy() {
-        let handle1 = TextureHandle::new(7);
-        let handle2 = handle1; // Copy
-        assert_eq!(handle1.id, handle2.id);
-    }
-
-    // ==================== TextureLoadConfig Tests ====================
-
-    #[test]
-    fn test_texture_load_config_default() {
-        let config = TextureLoadConfig::default();
-        assert!(config.format.is_none());
-    }
-
-    #[test]
-    fn test_texture_load_config_with_format() {
-        let config = TextureLoadConfig {
-            format: Some(wgpu::TextureFormat::Rgba8Unorm),
-            ..Default::default()
-        };
-        assert_eq!(config.format, Some(wgpu::TextureFormat::Rgba8Unorm));
-    }
-
-    // ==================== SamplerConfig Tests ====================
-
-    #[test]
-    fn test_sampler_config_default() {
-        let config = SamplerConfig::default();
-        assert_eq!(config.address_mode_u, wgpu::AddressMode::ClampToEdge);
-        assert_eq!(config.address_mode_v, wgpu::AddressMode::ClampToEdge);
-        assert_eq!(config.address_mode_w, wgpu::AddressMode::ClampToEdge);
-        assert_eq!(config.mag_filter, wgpu::FilterMode::Linear);
-        assert_eq!(config.min_filter, wgpu::FilterMode::Linear);
-        assert_eq!(config.mipmap_filter, wgpu::MipmapFilterMode::Linear);
-        assert_eq!(config.lod_min_clamp, 0.0);
-        assert_eq!(config.lod_max_clamp, f32::MAX);
-        assert!(config.compare.is_none());
-        assert_eq!(config.anisotropy_clamp, 1);
-    }
-
-    #[test]
-    fn test_sampler_config_custom() {
-        let config = SamplerConfig {
-            address_mode_u: wgpu::AddressMode::Repeat,
-            address_mode_v: wgpu::AddressMode::MirrorRepeat,
-            mag_filter: wgpu::FilterMode::Nearest,
-            min_filter: wgpu::FilterMode::Nearest,
-            anisotropy_clamp: 4,
-            ..Default::default()
-        };
-
-        assert_eq!(config.address_mode_u, wgpu::AddressMode::Repeat);
-        assert_eq!(config.address_mode_v, wgpu::AddressMode::MirrorRepeat);
-        assert_eq!(config.mag_filter, wgpu::FilterMode::Nearest);
-        assert_eq!(config.min_filter, wgpu::FilterMode::Nearest);
-        assert_eq!(config.anisotropy_clamp, 4);
-    }
-
-    // ==================== TextureError Tests ====================
-
-    #[test]
-    fn test_texture_error_display() {
-        let error = TextureError::ImageLoadError("file not found".to_string());
-        assert!(error.to_string().contains("file not found"));
-
-        let error = TextureError::TextureNotFound("missing.png".to_string());
-        assert!(error.to_string().contains("missing.png"));
-
-        let error = TextureError::InvalidFormat;
-        assert!(error.to_string().contains("Invalid"));
-
-        let error = TextureError::TextureTooLarge {
-            width: 10000,
-            height: 10000,
-            max_dimension: 8192,
-        };
-        let msg = error.to_string();
-        assert!(msg.contains("10000"));
-        assert!(msg.contains("8192"));
-    }
-
-    // Note: TextureManager requires a GPU device, so its load paths are
-    // exercised by ignored GPU tests / examples.
 }

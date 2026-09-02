@@ -79,71 +79,44 @@ impl InstanceCache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use glam::{Vec2, Vec4};
+    use crate::sprite::fixtures::{batch_with, instance};
 
-    fn instance(x: f32) -> SpriteInstance {
-        SpriteInstance::new(Vec2::new(x, 0.0), 0.0, Vec2::ONE, [0.0, 0.0, 1.0, 1.0], Vec4::ONE, 0.0)
-    }
-
-    fn batch_with(instances: &[SpriteInstance], texture: TextureHandle) -> SpriteBatch {
-        let mut batch = SpriteBatch::new(texture);
-        batch.add_instances(instances);
-        batch
-    }
-
+    /// The upload is skipped only while nothing changed: an identical restage
+    /// skips, a moved sprite uploads (and the snapshot follows it), and
+    /// empty ↔ content in either direction counts as a change.
     #[test]
-    fn test_identical_batches_skip_upload() {
+    fn test_upload_is_skipped_only_while_the_staged_instances_are_unchanged() {
         let mut cache = InstanceCache::new();
+        let empty: [&SpriteBatch; 0] = [];
         let batch = batch_with(&[instance(1.0), instance(2.0)], TextureHandle::WHITE);
-        let refs = [&batch];
+        let moved = batch_with(&[instance(5.0), instance(2.0)], TextureHandle::WHITE);
 
-        assert!(cache.stage(&refs), "first stage must upload");
-        assert!(!cache.stage(&refs), "identical restage must skip");
-        assert!(!cache.stage(&refs), "and keep skipping");
-        assert_eq!(cache.uploads_performed(), 1);
-        assert_eq!(cache.uploads_skipped(), 2);
-        assert_eq!(cache.staged().len(), 2, "snapshot holds the staged data");
-    }
-
-    #[test]
-    fn test_instance_change_triggers_upload() {
-        let mut cache = InstanceCache::new();
-        let batch = batch_with(&[instance(1.0)], TextureHandle::WHITE);
-        assert!(cache.stage(&[&batch]));
-
-        // The sprite moved.
-        let moved = batch_with(&[instance(5.0)], TextureHandle::WHITE);
+        assert!(!cache.stage(&empty), "an empty first frame stages nothing new");
+        assert!(cache.stage(&[&batch]), "content after empty must upload");
+        assert!(!cache.stage(&[&batch]), "an identical restage must skip");
+        assert!(!cache.stage(&[&batch]), "and keep skipping");
         assert!(cache.stage(&[&moved]), "a moved instance must re-upload");
-        assert_eq!(cache.staged()[0].position, [5.0, 0.0]);
+        assert_eq!(cache.staged()[0].position, [5.0, 0.0], "the snapshot follows the move");
+        assert!(cache.stage(&empty), "content -> empty is a change");
+        assert!(cache.staged().is_empty());
+
+        assert_eq!((cache.uploads_performed(), cache.uploads_skipped()), (3, 3));
     }
 
+    /// The subtle half: the flattened bytes can be identical while the batch
+    /// boundaries (the draw ranges) moved — that must still re-upload.
     #[test]
-    fn test_layout_change_triggers_upload_even_with_same_bytes() {
+    fn test_same_bytes_with_different_batch_boundaries_still_upload() {
         let mut cache = InstanceCache::new();
-        // Two instances on one texture...
         let one = batch_with(&[instance(1.0), instance(2.0)], TextureHandle::WHITE);
         assert!(cache.stage(&[&one]));
 
-        // ...vs the same flattened instances split across two textures: the
-        // draw ranges differ, so this must count as changed.
         let a = batch_with(&[instance(1.0)], TextureHandle::WHITE);
         let b = batch_with(&[instance(2.0)], TextureHandle { id: 7 });
+
         assert!(
             cache.stage(&[&a, &b]),
             "same bytes with different batch boundaries must re-upload"
         );
-    }
-
-    #[test]
-    fn test_empty_to_content_and_back() {
-        let mut cache = InstanceCache::new();
-        let empty: [&SpriteBatch; 0] = [];
-        assert!(!cache.stage(&empty), "empty first frame stages nothing new");
-
-        let batch = batch_with(&[instance(1.0)], TextureHandle::WHITE);
-        assert!(cache.stage(&[&batch]), "content after empty must upload");
-
-        assert!(cache.stage(&empty), "content -> empty is a change");
-        assert!(cache.staged().is_empty());
     }
 }

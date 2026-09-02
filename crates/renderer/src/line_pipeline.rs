@@ -263,23 +263,25 @@ impl LinePipeline {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use glam::{Vec2, Vec4};
+    use crate::test_support::vertex_attribute;
+    use std::mem::{offset_of, size_of};
+    use wgpu::{VertexFormat, VertexStepMode};
 
+    /// `shaders/line.wgsl` reads a 28-byte vertex at locations 0–2; the
+    /// offsets are hand-written as `size_of::<[f32; N]>()`, so each is
+    /// pinned to the struct field that feeds it.
     #[test]
-    fn line_vertex_layout_size() {
-        // 2*4 + 4*4 + 1*4 = 28 bytes.
-        assert_eq!(std::mem::size_of::<LineVertex>(), 28);
+    fn test_line_vertex_matches_shader_layout() {
         let desc = LineVertex::desc();
-        assert_eq!(desc.step_mode, wgpu::VertexStepMode::Vertex);
-        assert_eq!(desc.attributes.len(), 3);
-        assert_eq!(desc.array_stride, 28);
-    }
+        let expected = [
+            vertex_attribute(0, offset_of!(LineVertex, position), VertexFormat::Float32x2),
+            vertex_attribute(1, offset_of!(LineVertex, color), VertexFormat::Float32x4),
+            vertex_attribute(2, offset_of!(LineVertex, emissive), VertexFormat::Float32),
+        ];
 
-    #[test]
-    fn line_vertex_new_populates_fields() {
-        let v = LineVertex::new(Vec2::new(1.0, 2.0), Vec4::new(0.5, 0.5, 0.5, 1.0), 1.2);
-        assert_eq!(v.position, [1.0, 2.0]);
-        assert_eq!(v.color, [0.5, 0.5, 0.5, 1.0]);
-        assert!((v.emissive - 1.2).abs() < 1e-5);
+        assert_eq!(size_of::<LineVertex>(), 28, "2 + 4 + 1 floats");
+        assert_eq!(desc.array_stride, 28);
+        assert_eq!(desc.step_mode, VertexStepMode::Vertex);
+        assert_eq!(desc.attributes, &expected[..]);
     }
 }

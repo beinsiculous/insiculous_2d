@@ -10,6 +10,8 @@ use crate::sprite_data::SpriteInstance;
 use crate::texture::TextureHandle;
 
 mod batch;
+#[cfg(test)]
+mod fixtures;
 mod instance_cache;
 mod pipeline;
 
@@ -173,22 +175,45 @@ impl Sprite {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use glam::{Vec2, Vec4};
 
+    /// Shape kind 0 with no emissive is what the shader treats as "no SDF
+    /// mask, no glow" — the legacy textured quad every scene sprite starts as.
     #[test]
-    fn test_sprite_to_instance() {
-        let sprite = Sprite::new(TextureHandle::default())
+    fn test_default_sprite_renders_as_a_plain_unlit_textured_quad() {
+        let instance = Sprite::default().to_instance();
+
+        assert_eq!(instance.shape, [0.0; 4], "zeroed shape == legacy textured quad");
+        assert_eq!(instance.shape[0], SpriteShape::Quad.to_f32());
+        assert_eq!(instance.emissive, 0.0, "no glow unless asked for");
+        assert_eq!(instance.tex_region, [0.0, 0.0, 1.0, 1.0], "the whole texture");
+        assert_eq!(instance.color, [1.0; 4], "untinted");
+    }
+
+    /// `SpriteAnimationSystem` writes `tex_region` every frame and the SDF
+    /// builders write `shape`; `to_instance` is the only place either
+    /// reaches the GPU.
+    #[test]
+    fn test_every_sprite_field_lands_on_the_gpu_instance() {
+        let sprite = Sprite::new(TextureHandle::WHITE)
             .with_position(Vec2::new(100.0, 200.0))
             .with_rotation(0.5)
             .with_scale(Vec2::new(2.0, 3.0))
+            .with_tex_region(0.25, 0.5, 0.25, 0.5)
             .with_color(Vec4::new(1.0, 0.5, 0.25, 1.0))
-            .with_depth(5.0);
+            .with_depth(5.0)
+            .with_emissive(1.5)
+            .with_corner_radius(8.0)
+            .with_border(2.0);
 
         let instance = sprite.to_instance();
+
         assert_eq!(instance.position, [100.0, 200.0]);
-        assert!((instance.rotation - 0.5).abs() < 0.0001);
+        assert_eq!(instance.rotation, 0.5);
         assert_eq!(instance.scale, [2.0, 3.0]);
+        assert_eq!(instance.tex_region, [0.25, 0.5, 0.25, 0.5]);
         assert_eq!(instance.color, [1.0, 0.5, 0.25, 1.0]);
         assert_eq!(instance.depth, 5.0);
+        assert_eq!(instance.emissive, 1.5);
+        assert_eq!(instance.shape, [SpriteShape::RoundedRect.to_f32(), 8.0, 2.0, 0.0]);
     }
 }

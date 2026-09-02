@@ -19,6 +19,9 @@ pub mod texture_filter;
 mod white_texture;
 mod window;
 
+#[cfg(test)]
+mod test_support;
+
 pub mod prelude;
 
 // Re-export wgpu for use by dependent crates

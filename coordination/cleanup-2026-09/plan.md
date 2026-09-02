@@ -191,7 +191,9 @@ wait for batch 7; `renderer.rs:230` `arc_with_non_send_sync` stays (decided with
   loaders; `Sprite` stores `SpriteShape` (flattened only in `to_instance`); `sprite_data.rs`
   and `line_pipeline.rs` attributes via `wgpu::vertex_attr_array!` (offsets verified identical
   to the WGSL locations; add `offset_of!` tests); `PassScissor { Fullscreen, Rect, Empty }`
-  replaces `Option<Option<..>>`.
+  replaces `Option<Option<..>>`; extract pure `bloom_dims(width, height)` (the `.max(1)`
+  guard) and `DynamicBuffer::grown_capacity(current, needed)` so both get headless tests
+  (renderer cut review, F4 and the skipped guard).
 - physics: `push_collision` helper in `stepping.rs`; `previous_collisions` reuses its
   allocation.
 - audio: private `start_sink(output, source, base, bus, looping)`; factor the effective
@@ -739,7 +741,12 @@ with them), `set_body_transform` (internal only), `CollisionEvent::involves_enti
 `meters_to_pixels*`/`with_iterations`/`with_fixed_timestep`/`set_gravity`/`gravity()` —
 0 callers outside physics; and NINE unused presets (`player_top_down`, `pushable`,
 `physics_prop`, `small_box`, `pushable_box`, `bouncy`, `slippery`, `low_gravity`,
-`high_gravity`), not the four the audit counted. NOT `Transform2D::forward` — asteroids aims every
+`high_gravity`), not the four the audit counted; from the `renderer` cut:
+`SpriteBatch::add_instances`, `SpriteBatcher::add_sprites`/`batches_mut`/`sprite_count`
+(test-only consumer), `SpriteInstance::new`, `TextureHandle::new`,
+`TextureError::TextureNotFound` (never constructed), and `scissor::intersect_scissor`
+becomes private; from the `audio` cut: `play_music_once`, `stop_all`, `active_sound_count`,
+`unload_all` (confirmed 0 callers). NOT `Transform2D::forward` — asteroids aims every
 bullet with it (`ship.rs:122`); its test was restored (review-4 F1). Rule: show the
 workspace AND `../games` grep for every candidate in the batch-2 review before deleting it. NOT `Rect::contains`/`center`/`expand` — the keep-list called `Rect`
 dead, but `contains` decides every widget interaction and the editor uses the other two;
