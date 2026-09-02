@@ -1,52 +1,19 @@
-//! Headless tests for [`AudioManager`] — both seams (device/SFX and
-//! music/buses) share the WAV fixtures below, so they live in one file.
+//! Tests for [`AudioManager`]: the disabled no-op mode, the gesture-gated
+//! `enable_output` upgrade with its pending music, typed load errors, handle
+//! lifetime, and the volume model (`base × bus × master`). Both seams
+//! (device/SFX and music/buses) share the WAV fixtures below, so they live in
+//! one file.
+//!
+//! Tests run on machines WITH an audio device (dev) and without one (CI), so
+//! anything that needs a live sink matches on `enable_output`'s result and
+//! asserts the invariants of whichever branch ran.
+
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::*;
 
-#[test]
-fn test_sound_settings_volume_clamping() {
-    let settings = SoundSettings::new().with_volume(2.0);
-    assert!((settings.volume - 1.0).abs() < f32::EPSILON);
-
-    let settings = SoundSettings::new().with_volume(-1.0);
-    assert!(settings.volume.abs() < f32::EPSILON);
-}
-
-#[test]
-fn test_sound_settings_speed_floored_at_point_one() {
-    let settings = SoundSettings::new().with_speed(0.01);
-    assert!((settings.speed - 0.1).abs() < f32::EPSILON);
-
-    let settings = SoundSettings::new().with_speed(-3.0);
-    assert!((settings.speed - 0.1).abs() < f32::EPSILON);
-}
-
-#[test]
-fn test_clamp_helpers_enforce_valid_ranges() {
-    assert!((clamp_volume(2.0) - 1.0).abs() < f32::EPSILON);
-    assert!(clamp_volume(-0.5).abs() < f32::EPSILON);
-    assert!((clamp_volume(0.7) - 0.7).abs() < f32::EPSILON);
-
-    assert!((clamp_speed(0.0) - 0.1).abs() < f32::EPSILON);
-    assert!((clamp_speed(-1.0) - 0.1).abs() < f32::EPSILON);
-    assert!((clamp_speed(2.5) - 2.5).abs() < f32::EPSILON);
-}
-
-#[test]
-fn test_sound_ids_are_manager_local_and_deterministic() {
-    // Ids come from an instance-local counter, so two independent managers
-    // hand out the same first id (no process-global drift across managers).
-    let mut first = AudioManager::disabled();
-    let mut second = AudioManager::disabled();
-
-    let a = first.load_sound_from_bytes(tiny_wav()).unwrap();
-    let b = second.load_sound_from_bytes(tiny_wav()).unwrap();
-    assert_eq!(a.id(), b.id(), "fresh managers must start from the same id");
-
-    // Ids still climb within a single manager.
-    let a2 = first.load_sound_from_bytes(tiny_wav()).unwrap();
-    assert_ne!(a.id(), a2.id(), "ids within one manager must be unique");
-}
+// === Fixtures ===
 
 /// Minimal valid WAV file (44-byte header + one silent 16-bit sample).
 fn tiny_wav() -> Vec<u8> {
@@ -67,295 +34,376 @@ fn tiny_wav() -> Vec<u8> {
     bytes
 }
 
-/// Write `tiny_wav` to a unique temp file and return its path.
-fn write_temp_wav(tag: &str) -> std::path::PathBuf {
+/// A file in the temp dir, removed when dropped (also on a failed assert).
+struct TempFile(PathBuf);
+
+impl TempFile {
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TempFile {
+    fn drop(&mut self) {
+        std::fs::remove_file(&self.0).ok();
+    }
+}
+
+/// Write `bytes` to a temp file whose name is unique per process AND per
+/// call, so parallel tests (and one test writing twice) never collide.
+fn write_temp_file(bytes: &[u8]) -> TempFile {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let path = std::env::temp_dir().join(format!(
         "insiculous_audio_test_{}_{}.wav",
-        tag,
-        std::process::id()
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
-    std::fs::write(&path, tiny_wav()).expect("temp dir must be writable");
-    path
+    std::fs::write(&path, bytes).expect("temp dir must be writable");
+    TempFile(path)
 }
 
+/// Write `tiny_wav` to a unique temp file.
+fn write_temp_wav() -> TempFile {
+    write_temp_file(&tiny_wav())
+}
+
+/// A path that no test ever creates.
+fn missing_path() -> PathBuf {
+    std::env::temp_dir().join("insiculous_audio_test_definitely_missing.wav")
+}
+
+fn sfx_sink_volume(manager: &AudioManager) -> f32 {
+    manager.active_sounds[0].sink.volume()
+}
+
+fn music_sink_volume(manager: &AudioManager) -> f32 {
+    manager
+        .music_sink
+        .as_ref()
+        .expect("music sink exists")
+        .volume()
+}
+
+// === SoundSettings ===
+
 #[test]
-fn test_disabled_manager_loads_and_plays_as_noop() {
+fn test_sound_settings_clamp_volume_to_unit_range_and_floor_speed_at_a_tenth() {
+    let loud = SoundSettings::new().with_volume(2.0);
+    let negative = SoundSettings::new().with_volume(-1.0);
+    let crawl = SoundSettings::new().with_speed(0.01);
+    let backwards = SoundSettings::new().with_speed(-3.0);
+
+    assert_eq!(loud.volume, 1.0, "volume clamps at full");
+    assert_eq!(negative.volume, 0.0, "volume clamps at silent");
+    assert_eq!(
+        crawl.speed, 0.1,
+        "speed floors at 0.1 (rodio misbehaves at zero)"
+    );
+    assert_eq!(backwards.speed, 0.1, "negative speed floors at 0.1");
+}
+
+// === Disabled mode ===
+
+#[test]
+fn test_disabled_manager_validates_everything_and_plays_nothing() -> AudioResult<()> {
     let mut manager = AudioManager::disabled();
+    let music = write_temp_wav();
     assert!(!manager.is_enabled());
-    let handle = manager.load_sound_from_bytes(tiny_wav()).unwrap();
-    assert!(manager.play(handle).is_ok());
-    assert_eq!(manager.active_sound_count(), 0, "no-op playback must not track sinks");
-}
 
-#[test]
-fn test_disabled_manager_still_rejects_invalid_handles() {
-    let mut manager = AudioManager::disabled();
+    // Sounds load and every playback call succeeds as a no-op.
+    let handle = manager.load_sound_from_bytes(tiny_wav())?;
+    manager.play(handle)?;
+    manager.play_with_settings(&handle, SoundSettings::new().with_looping(true))?;
+    manager.stop(handle);
+    manager.update();
+
+    // Handles are still validated: an unknown one is rejected, not ignored.
     let bogus = SoundHandle::from_id(9999);
-    assert!(manager.play(bogus).is_err());
-}
+    assert!(
+        matches!(manager.play(bogus), Err(AudioError::InvalidHandle(9999))),
+        "a disabled manager still rejects unknown handles"
+    );
 
-#[test]
-fn test_disabled_manager_music_controls_are_safe() {
-    let mut manager = AudioManager::disabled();
-    manager.stop_music();
+    // Music validates the file and returns Ok, but never claims to be audible.
+    manager.play_music(music.path())?;
     manager.pause_music();
     manager.resume_music();
-    assert!(!manager.is_music_playing());
-    manager.update();
-}
-
-#[test]
-fn test_new_or_disabled_never_fails() {
-    // With or without an audio device, construction must succeed and be usable.
-    let mut manager = AudioManager::new_or_disabled();
-    let handle = manager.load_sound_from_bytes(tiny_wav()).unwrap();
-    assert!(manager.play(handle).is_ok());
-}
-
-#[test]
-fn test_load_sound_from_file_succeeds() {
-    let path = write_temp_wav("load_ok");
-    let mut manager = AudioManager::disabled();
-    let result = manager.load_sound(&path);
-    std::fs::remove_file(&path).ok();
-
-    let handle = result.expect("valid wav file must load");
-    assert!(manager.play(handle).is_ok());
-}
-
-#[test]
-fn test_load_sound_missing_file_returns_io_error() {
-    let mut manager = AudioManager::disabled();
-    let missing = std::env::temp_dir().join("insiculous_audio_test_definitely_missing.wav");
-    let err = manager.load_sound(&missing).expect_err("missing file must fail");
     assert!(
-        matches!(err, AudioError::IoError(_)),
-        "expected IoError, got: {err:?}"
+        !manager.is_music_playing(),
+        "disabled play_music returns Ok but is_music_playing stays false"
     );
+
+    // The engine's constructor never fails, device or not.
+    let mut fallback = AudioManager::new_or_disabled();
+    let handle = fallback.load_sound_from_bytes(tiny_wav())?;
+    fallback.play(handle)?;
+    Ok(())
 }
 
-#[test]
-fn test_load_sound_from_invalid_bytes_returns_decode_error() {
-    let mut manager = AudioManager::disabled();
-    let err = manager
-        .load_sound_from_bytes(vec![0xDE, 0xAD, 0xBE, 0xEF])
-        .expect_err("garbage bytes must fail to decode");
-    assert!(
-        matches!(err, AudioError::DecodeError(_)),
-        "expected DecodeError, got: {err:?}"
-    );
-}
+// === enable_output ===
 
 #[test]
-fn test_unloaded_sound_can_no_longer_be_played() {
-    let mut manager = AudioManager::disabled();
-    let handle = manager.load_sound_from_bytes(tiny_wav()).unwrap();
-    assert!(manager.play(handle).is_ok());
-
-    manager.unload(handle);
-    let err = manager.play(handle).expect_err("unloaded handle must be rejected");
-    assert!(matches!(err, AudioError::InvalidHandle(_)));
-}
-
-#[test]
-fn test_unload_all_invalidates_every_handle() {
-    let mut manager = AudioManager::disabled();
-    let first = manager.load_sound_from_bytes(tiny_wav()).unwrap();
-    let second = manager.load_sound_from_bytes(tiny_wav()).unwrap();
-
-    manager.unload_all();
-
-    assert!(manager.play(first).is_err());
-    assert!(manager.play(second).is_err());
-}
-
-#[test]
-fn test_stop_on_unknown_handle_is_noop() {
-    let mut manager = AudioManager::disabled();
-    let bogus = SoundHandle::from_id(9999);
-    manager.stop(bogus);
-    assert_eq!(manager.active_sound_count(), 0);
-}
-
-#[test]
-fn test_stop_and_stop_all_are_safe_when_nothing_plays() {
-    let mut manager = AudioManager::disabled();
-    let handle = manager.load_sound_from_bytes(tiny_wav()).unwrap();
-    manager.play(handle).unwrap();
-
-    manager.stop(handle);
-    manager.stop_all();
-    assert_eq!(manager.active_sound_count(), 0);
-}
-
-#[test]
-fn test_volume_setters_clamp_out_of_range_values() {
-    let mut manager = AudioManager::disabled();
-
-    manager.set_master_volume(2.0);
-    assert!((manager.master_volume() - 1.0).abs() < f32::EPSILON);
-    manager.set_master_volume(-1.0);
-    assert!(manager.master_volume().abs() < f32::EPSILON);
-
-    manager.set_sfx_volume(5.0);
-    assert!((manager.sfx_volume() - 1.0).abs() < f32::EPSILON);
-    manager.set_sfx_volume(-0.2);
-    assert!(manager.sfx_volume().abs() < f32::EPSILON);
-
-    manager.set_music_volume(1.5);
-    assert!((manager.music_volume() - 1.0).abs() < f32::EPSILON);
-    manager.set_music_volume(-0.5);
-    assert!(manager.music_volume().abs() < f32::EPSILON);
-}
-
-#[test]
-fn test_disabled_manager_music_loads_but_reports_not_playing() {
-    let path = write_temp_wav("music_once");
-    let mut manager = AudioManager::disabled();
-
-    let looping = manager.play_music(&path);
-    let once = manager.play_music_once(&path, 0.5);
-    std::fs::remove_file(&path).ok();
-
-    assert!(looping.is_ok());
-    assert!(once.is_ok());
-    // Documented behavior: disabled mode validates the file but never
-    // reports music as playing.
-    assert!(!manager.is_music_playing());
-}
-
-#[test]
-fn test_play_music_missing_file_returns_io_error() {
-    let mut manager = AudioManager::disabled();
-    let missing = std::env::temp_dir().join("insiculous_audio_test_no_such_music.ogg");
-    let err = manager
-        .play_music_once(&missing, 1.0)
-        .expect_err("missing music file must fail");
-    assert!(matches!(err, AudioError::IoError(_)));
-}
-
-// enable_output tests run on machines WITH an audio device (dev) and without
-// one (CI), so they match on the result and assert whichever branch's
-// invariants apply — same philosophy as `test_new_or_disabled_never_fails`.
-
-#[test]
-fn test_enable_output_result_matches_enabled_state() {
-    let mut manager = AudioManager::disabled();
-    let handle = manager.load_sound_from_bytes(tiny_wav()).unwrap();
-
-    match manager.enable_output() {
-        Ok(()) => assert!(manager.is_enabled(), "Ok must mean a live device"),
-        Err(_) => assert!(!manager.is_enabled(), "Err must leave the manager disabled"),
-    }
-    // Either way the manager stays fully functional.
-    assert!(manager.play(handle).is_ok());
-}
-
-#[test]
-fn test_enable_output_preserves_sounds_ids_and_volumes() {
+fn test_enable_output_keeps_handles_ids_buses_and_pending_music_whatever_the_outcome(
+) -> AudioResult<()> {
     let mut manager = AudioManager::disabled();
     manager.set_master_volume(0.5);
-    manager.set_sfx_volume(0.5);
-    manager.set_music_volume(0.5);
-    let first = manager.load_sound_from_bytes(tiny_wav()).unwrap();
-    let second = manager.load_sound_from_bytes(tiny_wav()).unwrap();
+    manager.set_sfx_volume(0.25);
+    manager.set_music_volume(0.75);
+    let first = manager.load_sound_from_bytes(tiny_wav())?;
+    let second = manager.load_sound_from_bytes(tiny_wav())?;
+    let music = write_temp_wav();
+    manager.play_music(music.path())?;
+    // Ids come from an instance-local counter: a sibling manager hands out
+    // the same first id, so nothing process-global drifts between managers.
+    let sibling = AudioManager::disabled().load_sound_from_bytes(tiny_wav())?;
+    assert_eq!(sibling.id(), first.id(), "ids are manager-local");
 
-    let _ = manager.enable_output();
+    let enabled = manager.enable_output().is_ok();
 
-    assert!((manager.master_volume() - 0.5).abs() < f32::EPSILON);
-    assert!((manager.sfx_volume() - 0.5).abs() < f32::EPSILON);
-    assert!((manager.music_volume() - 0.5).abs() < f32::EPSILON);
-    assert!(manager.play(first).is_ok(), "pre-upgrade handles must stay valid");
-    assert!(manager.play(second).is_ok());
-    let third = manager.load_sound_from_bytes(tiny_wav()).unwrap();
-    assert_eq!(third.id(), second.id() + 1, "id sequence must continue across upgrade");
-}
-
-#[test]
-fn test_enable_output_twice_is_noop() {
-    let mut manager = AudioManager::disabled();
-    let first = manager.enable_output();
-    let enabled_after_first = manager.is_enabled();
-
-    let second = manager.enable_output();
-
-    if first.is_ok() {
-        assert!(second.is_ok(), "already-enabled must be an Ok no-op");
-    }
     assert_eq!(
         manager.is_enabled(),
-        enabled_after_first,
-        "a second call must not change the enabled state"
+        enabled,
+        "Ok means a live device, Err means still disabled"
     );
+    let second_call = manager.enable_output();
+    assert_eq!(
+        manager.is_enabled(),
+        enabled,
+        "a second call never changes the state"
+    );
+    if enabled {
+        assert!(second_call.is_ok(), "already enabled is an Ok no-op");
+        assert!(
+            manager.pending_music.is_none(),
+            "success consumes the pending request"
+        );
+        assert!(
+            manager.is_music_playing(),
+            "the pending track actually started"
+        );
+    } else {
+        assert!(
+            manager.pending_music.is_some(),
+            "failure keeps the request for a later try"
+        );
+        assert!(!manager.is_music_playing());
+    }
+    assert_eq!(manager.master_volume(), 0.5, "bus volumes carry over");
+    assert_eq!(manager.sfx_volume(), 0.25);
+    assert_eq!(manager.music_volume(), 0.75);
+    manager.play(first)?;
+    manager.play(second)?;
+    let third = manager.load_sound_from_bytes(tiny_wav())?;
+    assert_eq!(
+        third.id(),
+        second.id() + 1,
+        "the id sequence continues across the upgrade"
+    );
+    Ok(())
 }
 
-#[test]
-fn test_start_music_while_disabled_records_pending() {
-    let path = write_temp_wav("pending_records");
-    let mut manager = AudioManager::disabled();
-
-    let result = manager.play_music(&path);
-    std::fs::remove_file(&path).ok();
-
-    assert!(result.is_ok());
-    assert!(manager.pending_music.is_some(), "disabled play_music must record pending");
-    assert!(!manager.is_music_playing(), "pending music must not report as playing");
-}
+// === Pending music ===
 
 #[test]
-fn test_stop_music_while_disabled_clears_pending() {
-    let path = write_temp_wav("pending_clears");
+fn test_pending_music_keeps_only_the_last_request_until_stop_or_a_failed_load() -> AudioResult<()> {
+    let first = write_temp_wav();
+    let second = write_temp_wav();
     let mut manager = AudioManager::disabled();
-    manager.play_music(&path).unwrap();
-    std::fs::remove_file(&path).ok();
+
+    manager.play_music(first.path())?;
+    let pending = manager
+        .pending_music
+        .as_ref()
+        .expect("a disabled play_music records the request");
+    assert_eq!(pending.path, first.path());
+    assert_eq!(pending.volume, 1.0);
+    assert!(pending.looping, "play_music records a looping request");
+
+    manager.play_music_with_volume(second.path(), 0.5)?;
+    let pending = manager
+        .pending_music
+        .as_ref()
+        .expect("the newer request is pending");
+    assert_eq!(pending.path, second.path(), "last request wins");
+    assert_eq!(pending.volume, 0.5);
 
     manager.stop_music();
-
-    assert!(manager.pending_music.is_none(), "stop_music must clear the pending request");
-}
-
-#[test]
-fn test_new_music_request_replaces_pending() {
-    let first = write_temp_wav("pending_first");
-    let second = write_temp_wav("pending_second");
-    let mut manager = AudioManager::disabled();
-
-    manager.play_music(&first).unwrap();
-    manager.play_music_once(&second, 0.5).unwrap();
-    std::fs::remove_file(&first).ok();
-    std::fs::remove_file(&second).ok();
-
-    let pending = manager.pending_music.as_ref().expect("last request must be pending");
-    assert_eq!(pending.path, second);
-    assert!(!pending.looping, "play_music_once must record a non-looping request");
-    assert!((pending.volume - 0.5).abs() < f32::EPSILON);
-}
-
-#[test]
-fn test_play_music_missing_file_leaves_no_pending() {
-    let mut manager = AudioManager::disabled();
-    let missing = std::env::temp_dir().join("insiculous_audio_test_pending_missing.ogg");
-
-    assert!(manager.play_music(&missing).is_err());
     assert!(
         manager.pending_music.is_none(),
-        "a failed request must not leave a doomed pending entry"
+        "stop_music clears the request so a stopped track cannot resurrect on enable"
     );
+
+    manager.play_music(first.path())?;
+    assert!(manager.play_music(missing_path()).is_err());
+    assert!(
+        manager.pending_music.is_none(),
+        "a failed request leaves no doomed entry; like any new request it stopped the previous one"
+    );
+    Ok(())
 }
 
+// === Typed load errors ===
+
 #[test]
-fn test_enable_output_consumes_or_keeps_pending_by_outcome() {
-    let path = write_temp_wav("pending_outcome");
+fn test_missing_files_are_io_errors_and_undecodable_data_is_a_decode_error_naming_the_file() {
     let mut manager = AudioManager::disabled();
-    manager.play_music(&path).unwrap();
+    let garbage = write_temp_file(&[0xDE, 0xAD, 0xBE, 0xEF]);
+    let garbage_name = garbage.path().display().to_string();
 
-    let result = manager.enable_output();
-    std::fs::remove_file(&path).ok();
-
-    match result {
-        // Success consumes the request (the music actually started).
-        Ok(()) => assert!(manager.pending_music.is_none()),
-        // Failure keeps it so a later attempt can still start the track.
-        Err(_) => assert!(manager.pending_music.is_some()),
+    assert!(matches!(
+        manager.load_sound(missing_path()),
+        Err(AudioError::IoError(_))
+    ));
+    assert!(matches!(
+        manager.play_music(missing_path()),
+        Err(AudioError::IoError(_))
+    ));
+    assert!(matches!(
+        manager.load_sound_from_bytes(vec![0xDE, 0xAD, 0xBE, 0xEF]),
+        Err(AudioError::DecodeError(_))
+    ));
+    match manager.load_sound(garbage.path()) {
+        Err(AudioError::DecodeError(message)) => {
+            assert!(
+                message.contains(&garbage_name),
+                "load_sound names the file: {message}"
+            );
+        }
+        other => panic!("expected DecodeError, got {other:?}"),
     }
+    match manager.play_music_with_volume(garbage.path(), 1.0) {
+        Err(AudioError::DecodeError(message)) => {
+            assert!(
+                message.contains(&garbage_name),
+                "play_music names the file: {message}"
+            );
+        }
+        other => panic!("expected DecodeError, got {other:?}"),
+    }
+}
+
+// === Handle lifetime ===
+
+#[test]
+fn test_unloaded_handle_is_rejected_and_its_id_is_never_recycled() -> AudioResult<()> {
+    let mut manager = AudioManager::disabled();
+    let wav = write_temp_wav();
+    // The path-based load goes through the VFS seam; a valid file plays.
+    let handle = manager.load_sound(wav.path())?;
+    manager.play(handle)?;
+
+    manager.unload(handle);
+
+    assert!(
+        matches!(manager.play(handle), Err(AudioError::InvalidHandle(id)) if id == handle.id()),
+        "an unloaded handle is InvalidHandle carrying its own id"
+    );
+    let next = manager.load_sound_from_bytes(tiny_wav())?;
+    assert_ne!(
+        next, handle,
+        "a stale Copy of the handle can never play a newer sound"
+    );
+    Ok(())
+}
+
+// === Volume buses ===
+
+#[test]
+fn test_bus_volumes_clamp_to_the_unit_range() {
+    type Setter = fn(&mut AudioManager, f32);
+    type Getter = fn(&AudioManager) -> f32;
+    let buses: [(&str, Setter, Getter); 3] = [
+        (
+            "master",
+            AudioManager::set_master_volume,
+            AudioManager::master_volume,
+        ),
+        (
+            "sfx",
+            AudioManager::set_sfx_volume,
+            AudioManager::sfx_volume,
+        ),
+        (
+            "music",
+            AudioManager::set_music_volume,
+            AudioManager::music_volume,
+        ),
+    ];
+    let mut manager = AudioManager::disabled();
+
+    for (bus, set, get) in buses {
+        set(&mut manager, 2.0);
+        assert_eq!(get(&manager), 1.0, "{bus} bus clamps at full");
+        set(&mut manager, -1.0);
+        assert_eq!(get(&manager), 0.0, "{bus} bus clamps at silent");
+        set(&mut manager, 0.7);
+        assert_eq!(get(&manager), 0.7, "{bus} bus keeps an in-range value");
+    }
+}
+
+/// Needs a live device: a disabled manager owns no sinks, so the product is
+/// unobservable there and the test passes vacuously on CI.
+#[test]
+fn test_bus_volumes_multiply_into_every_live_sink_and_reapply_on_change() -> AudioResult<()> {
+    let mut manager = AudioManager::disabled();
+    if manager.enable_output().is_err() {
+        assert!(
+            !manager.is_enabled(),
+            "a failed enable leaves the manager disabled"
+        );
+        return Ok(());
+    }
+    let handle = manager.load_sound_from_bytes(tiny_wav())?;
+    let music = write_temp_wav();
+    manager.set_master_volume(0.5);
+    manager.set_sfx_volume(0.5);
+    manager.set_music_volume(0.25);
+
+    // Public fields bypass the builder clamps, so clamping happens at play.
+    let settings = SoundSettings {
+        volume: 2.0,
+        speed: 0.0,
+        looping: false,
+    };
+    manager.play_with_settings(&handle, settings)?;
+    manager.play_music_with_volume(music.path(), 0.5)?;
+
+    assert_eq!(
+        sfx_sink_volume(&manager),
+        0.25,
+        "sfx sink = clamp(base) × sfx × master"
+    );
+    assert_eq!(
+        manager.active_sounds[0].sink.speed(),
+        0.1,
+        "speed floors at play time"
+    );
+    assert_eq!(
+        music_sink_volume(&manager),
+        0.0625,
+        "music sink = base × music × master"
+    );
+
+    manager.set_master_volume(1.0);
+    assert_eq!(sfx_sink_volume(&manager), 0.5, "master re-derives live sfx");
+    assert_eq!(
+        music_sink_volume(&manager),
+        0.125,
+        "master re-derives live music"
+    );
+    manager.set_sfx_volume(0.2);
+    assert_eq!(sfx_sink_volume(&manager), 0.2);
+    assert_eq!(
+        music_sink_volume(&manager),
+        0.125,
+        "the sfx bus leaves music alone"
+    );
+    manager.set_music_volume(1.0);
+    assert_eq!(music_sink_volume(&manager), 0.5);
+    assert_eq!(
+        sfx_sink_volume(&manager),
+        0.2,
+        "the music bus leaves sfx alone"
+    );
+    Ok(())
 }

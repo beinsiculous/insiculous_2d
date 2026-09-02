@@ -194,7 +194,9 @@ wait for batch 7; `renderer.rs:230` `arc_with_non_send_sync` stays (decided with
   replaces `Option<Option<..>>`.
 - physics: `push_collision` helper in `stepping.rs`; `previous_collisions` reuses its
   allocation.
-- audio: private `start_sink(output, source, base, bus, looping)`.
+- audio: private `start_sink(output, source, base, bus, looping)`; factor the effective
+  volume into a pure `effective_volume(base, bus, master)` so the multiplication is tested
+  without a device (audio cut review, F3).
 - common: `clamp_volume` used by the audio manager and the three `with_volume` builders in
   `ecs/audio_components.rs` (closes #82, ticks #86 DRY-004).
 - input: fixture test FIRST (a bindings JSON written by today's code, checked in under
