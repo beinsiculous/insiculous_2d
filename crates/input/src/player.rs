@@ -427,6 +427,8 @@ mod tests {
     use super::*;
     use crate::input_handler::InputEvent;
 
+    /// Queue `events` and process them, as the engine does at the top of a frame.
+    /// (`tests/common/mod.rs` carries the same helper for the integration tests.)
     fn frame(input: &mut InputHandler, events: &[InputEvent]) {
         for event in events {
             input.queue_event(event.clone());
@@ -435,62 +437,48 @@ mod tests {
     }
 
     #[test]
-    fn fresh_settings_are_not_dirty() {
+    fn test_dirty_tracks_real_binding_changes_only_and_take_dirty_clears_it() {
+        // Construction and loading are baselines, not changes worth re-saving
         let mut settings = InputSettings::default_two_player();
         assert!(!settings.take_dirty(), "construction must not trigger a save");
         let mut loaded = InputSettings::from_players(vec![PlayerBindings::new()]);
         assert!(!loaded.take_dirty(), "loading a settings file must not trigger a save");
-    }
 
-    #[test]
-    fn binding_changes_set_dirty_and_take_dirty_clears_it() {
-        let mut settings = InputSettings::default_two_player();
-
+        // Real changes: a pad reassignment, a new binding, an effective unbind
         settings.assign_pad(PlayerId::P2, Some(3));
         assert!(settings.take_dirty(), "a pad reassignment is a change");
         assert!(!settings.take_dirty(), "take_dirty must clear the flag");
-
-        let p1 = settings.player_mut(PlayerId::P1).unwrap();
+        let p1 = settings.player_mut(PlayerId::P1).expect("P1 slot exists");
         p1.bind(GameAction::Action3, PlayerSource::Keyboard(KeyCode::KeyQ));
         assert!(settings.take_dirty(), "a new binding via player_mut is a change");
-
-        let p1 = settings.player_mut(PlayerId::P1).unwrap();
+        let p1 = settings.player_mut(PlayerId::P1).expect("P1 slot exists");
         p1.unbind(GameAction::Action3, &PlayerSource::Keyboard(KeyCode::KeyQ));
         assert!(settings.take_dirty(), "removing a binding is a change");
-    }
 
-    #[test]
-    fn redundant_mutations_do_not_set_dirty() {
-        let mut settings = InputSettings::default_two_player();
-
-        settings.assign_pad(PlayerId::P1, Some(0)); // already pad 0
+        // Redundant mutations are not changes
+        settings.assign_pad(PlayerId::P2, Some(3));
         assert!(!settings.take_dirty(), "assigning the same pad is not a change");
-
-        let p1 = settings.player_mut(PlayerId::P1).unwrap();
-        p1.bind(GameAction::MoveUp, PlayerSource::Keyboard(KeyCode::KeyW)); // already bound
-        assert!(!settings.take_dirty(), "duplicate bind is not a change");
-
-        let p1 = settings.player_mut(PlayerId::P1).unwrap();
-        p1.unbind(GameAction::Action4, &PlayerSource::Keyboard(KeyCode::KeyZ)); // never bound
+        let p1 = settings.player_mut(PlayerId::P1).expect("P1 slot exists");
+        p1.bind(GameAction::MoveUp, PlayerSource::Keyboard(KeyCode::KeyW));
+        assert!(!settings.take_dirty(), "a duplicate bind is not a change");
+        let p1 = settings.player_mut(PlayerId::P1).expect("P1 slot exists");
+        p1.unbind(GameAction::Action4, &PlayerSource::Keyboard(KeyCode::KeyZ));
         assert!(!settings.take_dirty(), "unbinding an absent source is not a change");
-    }
 
-    #[test]
-    fn mark_dirty_requeues_a_failed_save() {
-        let mut settings = InputSettings::default_two_player();
+        // A failed save re-queues itself
         settings.mark_dirty();
         assert!(settings.take_dirty(), "mark_dirty must make the next poll save again");
     }
 
     #[test]
-    fn default_pairing_isolates_player_devices() {
+    fn test_default_pairing_routes_each_device_to_its_player_and_shares_menu() {
         let settings = InputSettings::default_two_player();
         let mut input = InputHandler::new();
 
-        // P1's W and pad-0 A belong to P1 only
+        // P1: WASD, Space, left click
         frame(&mut input, &[
             InputEvent::KeyPressed(KeyCode::KeyW),
-            InputEvent::GamepadButtonPressed(0, GamepadButton::A),
+            InputEvent::MouseButtonPressed(MouseButton::Left),
         ]);
         assert!(settings.is_active(PlayerId::P1, GameAction::MoveUp, &input));
         assert!(settings.is_active(PlayerId::P1, GameAction::Action1, &input));
@@ -498,60 +486,100 @@ mod tests {
         assert!(!settings.is_active(PlayerId::P2, GameAction::Action1, &input));
         input.end_frame();
 
-        // P2's ArrowUp and pad-1 dpad belong to P2 only
+        // P2: arrows, Enter
         frame(&mut input, &[
             InputEvent::KeyReleased(KeyCode::KeyW),
-            InputEvent::GamepadButtonReleased(0, GamepadButton::A),
+            InputEvent::MouseButtonReleased(MouseButton::Left),
             InputEvent::KeyPressed(KeyCode::ArrowUp),
-            InputEvent::GamepadButtonPressed(1, GamepadButton::DPadUp),
+            InputEvent::KeyPressed(KeyCode::Enter),
         ]);
         assert!(settings.is_active(PlayerId::P2, GameAction::MoveUp, &input));
+        assert!(settings.is_active(PlayerId::P2, GameAction::Action1, &input));
         assert!(!settings.is_active(PlayerId::P1, GameAction::MoveUp, &input));
+        assert!(!settings.is_active(PlayerId::P1, GameAction::Action1, &input));
+        input.end_frame();
+
+        // Pad 0 is P1's, pad 1 is P2's
+        frame(&mut input, &[
+            InputEvent::KeyReleased(KeyCode::ArrowUp),
+            InputEvent::KeyReleased(KeyCode::Enter),
+            InputEvent::GamepadButtonPressed(0, GamepadButton::A),
+            InputEvent::GamepadButtonPressed(1, GamepadButton::DPadUp),
+        ]);
+        assert!(settings.is_active(PlayerId::P1, GameAction::Action1, &input));
+        assert!(!settings.is_active(PlayerId::P2, GameAction::Action1, &input));
+        assert!(settings.is_active(PlayerId::P2, GameAction::MoveUp, &input));
+        assert!(!settings.is_active(PlayerId::P1, GameAction::MoveUp, &input));
+        input.end_frame();
+
+        // Menu is shared: Escape pauses once per press for either player ...
+        frame(&mut input, &[InputEvent::KeyPressed(KeyCode::Escape)]);
+        assert!(settings.just_activated_any(GameAction::Menu, &input));
+        input.end_frame();
+        frame(&mut input, &[]);
+        assert!(settings.is_active_any(GameAction::Menu, &input));
+        assert!(
+            !settings.just_activated_any(GameAction::Menu, &input),
+            "a held Menu key must not re-toggle the pause every frame"
+        );
+        input.end_frame();
+
+        // ... and so does P2's Start, which P1 never sees
+        frame(&mut input, &[InputEvent::KeyReleased(KeyCode::Escape)]);
+        input.end_frame();
+        frame(&mut input, &[InputEvent::GamepadButtonPressed(1, GamepadButton::Start)]);
+        assert!(settings.just_activated_any(GameAction::Menu, &input));
+        assert!(!settings.is_active(PlayerId::P1, GameAction::Menu, &input));
     }
 
     #[test]
-    fn assign_pad_repoints_pad_sources_without_touching_keyboard() {
+    fn test_assign_pad_repoints_pad_sources_only_and_an_unassigned_pad_is_inert() {
         let mut settings = InputSettings::default_two_player();
         let mut input = InputHandler::new();
 
-        // Re-point P1 at pad 3: pad 0 stops driving P1, pad 3 starts
+        // Re-point P1 at pad 3: pad 0 stops driving P1, pad 3 starts, and the
+        // stick edge fires once through the pad-relative axis source
         settings.assign_pad(PlayerId::P1, Some(3));
         frame(&mut input, &[InputEvent::GamepadButtonPressed(0, GamepadButton::A)]);
         assert!(!settings.is_active(PlayerId::P1, GameAction::Action1, &input));
         input.end_frame();
 
-        frame(&mut input, &[InputEvent::GamepadButtonPressed(3, GamepadButton::A)]);
+        let pad3_a = InputEvent::GamepadButtonPressed(3, GamepadButton::A);
+        let pad3_stick_right = InputEvent::GamepadAxisUpdated(3, GamepadAxis::LeftStickX, 0.8);
+        frame(&mut input, &[pad3_a, pad3_stick_right]);
         assert!(settings.is_active(PlayerId::P1, GameAction::Action1, &input));
+        assert!(settings.just_activated(PlayerId::P1, GameAction::MoveRight, &input));
         input.end_frame();
 
-        // Keyboard cluster unaffected by the re-point
+        frame(&mut input, &[InputEvent::GamepadAxisUpdated(3, GamepadAxis::LeftStickX, 0.9)]);
+        assert!(settings.is_active(PlayerId::P1, GameAction::MoveRight, &input));
+        assert!(!settings.just_activated(PlayerId::P1, GameAction::MoveRight, &input));
+        input.end_frame();
+
+        // The keyboard cluster is untouched by the re-point
         frame(&mut input, &[InputEvent::KeyPressed(KeyCode::KeyW)]);
         assert!(settings.is_active(PlayerId::P1, GameAction::MoveUp, &input));
-    }
+        input.end_frame();
 
-    #[test]
-    fn unassigned_pad_makes_pad_sources_inert() {
-        let mut settings = InputSettings::default_two_player();
+        // No pad at all: every pad source is inert, the stick contributes no movement
         settings.assign_pad(PlayerId::P1, None);
-        let mut input = InputHandler::new();
-
-        frame(&mut input, &[
-            InputEvent::GamepadButtonPressed(0, GamepadButton::A),
-            InputEvent::GamepadAxisUpdated(0, GamepadAxis::LeftStickX, 1.0),
-        ]);
+        let w_up = InputEvent::KeyReleased(KeyCode::KeyW);
+        let pad3_stick_full = InputEvent::GamepadAxisUpdated(3, GamepadAxis::LeftStickX, 1.0);
+        frame(&mut input, &[w_up, pad3_stick_full]);
         assert!(!settings.is_active(PlayerId::P1, GameAction::Action1, &input));
+        assert!(!settings.is_active(PlayerId::P1, GameAction::MoveRight, &input));
         assert_eq!(settings.move_x(PlayerId::P1, &input), 0.0);
     }
 
     #[test]
-    fn move_y_merges_digital_and_stick_and_clamps() {
+    fn test_move_y_merges_digital_and_stick_and_clamps() {
         let settings = InputSettings::default_two_player();
         let mut input = InputHandler::new();
 
-        // Stick alone: analog granularity preserved (not flattened to 1.0
-        // by the stick's own threshold binding)
+        // Stick alone: analog granularity preserved (not flattened to 1.0 by
+        // the stick's own threshold binding)
         frame(&mut input, &[InputEvent::GamepadAxisUpdated(0, GamepadAxis::LeftStickY, 0.6)]);
-        assert!((settings.move_y(PlayerId::P1, &input) - 0.6).abs() < f32::EPSILON);
+        assert_eq!(settings.move_y(PlayerId::P1, &input), 0.6);
         input.end_frame();
 
         // Key + stick together: clamped to 1.0
@@ -566,30 +594,5 @@ mod tests {
             InputEvent::KeyPressed(KeyCode::KeyS),
         ]);
         assert_eq!(settings.move_y(PlayerId::P1, &input), -1.0);
-    }
-
-    #[test]
-    fn is_active_any_sees_either_players_menu() {
-        let settings = InputSettings::default_two_player();
-        let mut input = InputHandler::new();
-
-        frame(&mut input, &[InputEvent::GamepadButtonPressed(1, GamepadButton::Start)]);
-        assert!(settings.is_active_any(GameAction::Menu, &input));
-        assert!(!settings.is_active(PlayerId::P1, GameAction::Menu, &input));
-    }
-
-    #[test]
-    fn just_activated_edges_for_pad_relative_axis_source() {
-        let settings = InputSettings::default_two_player();
-        let mut input = InputHandler::new();
-
-        // P2's stick right crosses the threshold: edge fires once
-        frame(&mut input, &[InputEvent::GamepadAxisUpdated(1, GamepadAxis::LeftStickX, 0.8)]);
-        assert!(settings.just_activated(PlayerId::P2, GameAction::MoveRight, &input));
-        input.end_frame();
-
-        frame(&mut input, &[InputEvent::GamepadAxisUpdated(1, GamepadAxis::LeftStickX, 0.9)]);
-        assert!(settings.is_active(PlayerId::P2, GameAction::MoveRight, &input));
-        assert!(!settings.just_activated(PlayerId::P2, GameAction::MoveRight, &input));
     }
 }

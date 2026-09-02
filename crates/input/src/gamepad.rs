@@ -224,67 +224,71 @@ mod tests {
     use super::*;
 
     #[test]
-    fn axis_just_activated_fires_once_on_crossing_and_rearms_below_threshold() {
+    fn test_axis_edges_fire_once_per_crossing_rearm_below_threshold_and_track_each_direction() {
         let mut pad = GamepadState::new();
+        let axis = GamepadAxis::LeftStickX;
+        let (right, left) = (AxisDirection::Positive, AxisDirection::Negative);
 
-        // Frame 1: stick pushed past the threshold
-        pad.update_axis(GamepadAxis::LeftStickX, 0.8);
-        assert!(pad.axis_just_activated(GamepadAxis::LeftStickX, AxisDirection::Positive, 0.5));
+        // Frame 1: pushed right past the threshold — fires; the other direction stays quiet
+        pad.update_axis(axis, 0.8);
+        assert!(pad.axis_just_activated(axis, right, 0.5));
+        assert!(!pad.axis_active(axis, left, 0.5), "a positive deflection must not read as negative");
         pad.clear_frame_state();
 
-        // Frame 2: still held — no re-trigger
-        pad.update_axis(GamepadAxis::LeftStickX, 0.9);
-        assert!(pad.axis_active(GamepadAxis::LeftStickX, AxisDirection::Positive, 0.5));
-        assert!(!pad.axis_just_activated(GamepadAxis::LeftStickX, AxisDirection::Positive, 0.5));
+        // Frame 2: still held — active, no re-trigger; a move on another axis
+        // does not disturb this one's value
+        pad.update_axis(axis, 0.9);
+        pad.update_axis(GamepadAxis::LeftStickY, -0.4);
+        assert_eq!(pad.axis_value(axis), 0.9, "axes are stored independently");
+        assert_eq!(pad.axis_value(GamepadAxis::LeftStickY), -0.4);
+        assert!(pad.axis_active(axis, right, 0.5));
+        assert!(!pad.axis_just_activated(axis, right, 0.5));
         pad.clear_frame_state();
 
-        // Frame 3: released back inside the threshold
-        pad.update_axis(GamepadAxis::LeftStickX, 0.1);
-        assert!(pad.axis_just_deactivated(GamepadAxis::LeftStickX, AxisDirection::Positive, 0.5));
+        // Frame 3: released back inside the threshold — deactivation edge
+        pad.update_axis(axis, 0.1);
+        assert!(pad.axis_just_deactivated(axis, right, 0.5));
         pad.clear_frame_state();
 
         // Frame 4: pushed again — re-armed, fires again
-        pad.update_axis(GamepadAxis::LeftStickX, 0.7);
-        assert!(pad.axis_just_activated(GamepadAxis::LeftStickX, AxisDirection::Positive, 0.5));
-    }
-
-    #[test]
-    fn negative_direction_activates_on_negative_values_only() {
-        let mut pad = GamepadState::new();
-        pad.update_axis(GamepadAxis::LeftStickX, -0.6);
-        assert!(pad.axis_active(GamepadAxis::LeftStickX, AxisDirection::Negative, 0.5));
-        assert!(!pad.axis_active(GamepadAxis::LeftStickX, AxisDirection::Positive, 0.5));
-
-        pad.update_axis(GamepadAxis::LeftStickX, 0.6);
-        assert!(!pad.axis_active(GamepadAxis::LeftStickX, AxisDirection::Negative, 0.5));
-        assert!(pad.axis_active(GamepadAxis::LeftStickX, AxisDirection::Positive, 0.5));
-    }
-
-    #[test]
-    fn opposite_directions_track_edges_independently() {
-        let mut pad = GamepadState::new();
-
-        // Swing from hard left to hard right in one frame
-        pad.update_axis(GamepadAxis::LeftStickX, -0.9);
+        pad.update_axis(axis, 0.7);
+        assert!(pad.axis_just_activated(axis, right, 0.5));
         pad.clear_frame_state();
-        pad.update_axis(GamepadAxis::LeftStickX, 0.9);
 
-        assert!(pad.axis_just_activated(GamepadAxis::LeftStickX, AxisDirection::Positive, 0.5));
-        assert!(pad.axis_just_deactivated(GamepadAxis::LeftStickX, AxisDirection::Negative, 0.5));
+        // Frame 5: swung hard right → hard left in one frame — each direction
+        // reports its own edge, and only the negative side is active
+        pad.update_axis(axis, -0.9);
+        assert!(pad.axis_active(axis, left, 0.5));
+        assert!(!pad.axis_active(axis, right, 0.5));
+        assert!(pad.axis_just_activated(axis, left, 0.5));
+        assert!(pad.axis_just_deactivated(axis, right, 0.5));
     }
 
     #[test]
-    fn manager_iter_and_connected_ids_reflect_registration() {
+    fn test_manager_reflects_registration_and_clears_frame_state_on_every_pad() {
         let mut manager = GamepadManager::new();
         manager.register_gamepad(0);
         manager.register_gamepad(1);
 
+        // `MenuInput` scans every connected pad through `iter`
         let mut ids = manager.connected_ids();
         ids.sort_unstable();
         assert_eq!(ids, vec![0, 1]);
         assert_eq!(manager.iter().count(), 2);
 
+        // One end-of-frame call on the manager reaches every pad
+        for id in [0, 1] {
+            let pad = manager.get_gamepad_mut(id).expect("registered above");
+            pad.handle_button_press(GamepadButton::A);
+        }
+        manager.clear_frame_state();
+        for (id, pad) in manager.iter() {
+            assert!(pad.is_button_pressed(GamepadButton::A), "pad {id} must stay held across the frame");
+            assert!(!pad.is_button_just_pressed(GamepadButton::A), "pad {id} must have its edge cleared");
+        }
+
         manager.unregister_gamepad(0);
         assert_eq!(manager.connected_ids(), vec![1]);
+        assert!(manager.get_gamepad(0).is_none());
     }
 }

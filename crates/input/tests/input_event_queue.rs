@@ -1,114 +1,60 @@
+//! Integration tests: the InputHandler event queue and frame lifecycle.
+
+mod common;
+
+use common::frame;
 use input::prelude::*;
-use winit::event::MouseButton;
-use winit::keyboard::KeyCode;
 
 #[test]
-fn test_input_event_queuing() {
-    let mut input_handler = InputHandler::new();
-    
-    // Queue some events
-    input_handler.queue_event(InputEvent::KeyPressed(KeyCode::KeyA));
-    input_handler.queue_event(InputEvent::KeyReleased(KeyCode::KeyB));
-    input_handler.queue_event(InputEvent::MouseButtonPressed(MouseButton::Left));
-    
-    // Events should be queued but not processed yet
-    assert!(!input_handler.keyboard().is_key_pressed(KeyCode::KeyA));
-    assert!(!input_handler.keyboard().is_key_pressed(KeyCode::KeyB));
-    assert!(!input_handler.mouse().is_button_pressed(MouseButton::Left));
+fn test_queued_events_apply_only_on_process_and_in_queue_order() {
+    let mut input = InputHandler::new();
+    input.gamepads_mut().register_gamepad(0);
+
+    input.queue_event(InputEvent::KeyPressed(KeyCode::KeyA));
+    input.queue_event(InputEvent::KeyPressed(KeyCode::KeyB));
+    input.queue_event(InputEvent::KeyReleased(KeyCode::KeyA));
+    input.queue_event(InputEvent::MouseButtonPressed(MouseButton::Left));
+    input.queue_event(InputEvent::MouseMoved(100.0, 200.0));
+    input.queue_event(InputEvent::GamepadButtonPressed(0, GamepadButton::A));
+    input.queue_event(InputEvent::GamepadAxisUpdated(0, GamepadAxis::LeftStickX, 0.5));
+
+    // Queued, not yet applied
+    assert!(!input.is_key_pressed(KeyCode::KeyA));
+    assert!(!input.is_key_pressed(KeyCode::KeyB));
+    assert!(!input.is_mouse_button_pressed(MouseButton::Left));
+    assert_eq!(input.mouse_position(), MousePosition { x: 0.0, y: 0.0 });
+    let pad = input.gamepads().get_gamepad(0).expect("registered above");
+    assert!(!pad.is_button_pressed(GamepadButton::A));
+    assert_eq!(pad.axis_value(GamepadAxis::LeftStickX), 0.0);
+
+    input.process_queued_events();
+
+    // Applied in queue order: A was pressed and then released within the frame
+    assert!(!input.is_key_pressed(KeyCode::KeyA));
+    assert!(input.is_key_just_released(KeyCode::KeyA));
+    assert!(input.is_key_pressed(KeyCode::KeyB));
+    assert!(input.is_key_just_pressed(KeyCode::KeyB));
+    assert!(input.is_mouse_button_just_pressed(MouseButton::Left));
+    assert_eq!(input.mouse_position(), MousePosition { x: 100.0, y: 200.0 });
+    let pad = input.gamepads().get_gamepad(0).expect("registered above");
+    assert!(pad.is_button_just_pressed(GamepadButton::A));
+    assert_eq!(pad.axis_value(GamepadAxis::LeftStickX), 0.5);
 }
 
 #[test]
-fn test_input_event_processing() {
-    let mut input_handler = InputHandler::new();
-    
-    // Queue some events
-    input_handler.queue_event(InputEvent::KeyPressed(KeyCode::KeyA));
-    input_handler.queue_event(InputEvent::KeyReleased(KeyCode::KeyB));
-    input_handler.queue_event(InputEvent::MouseButtonPressed(MouseButton::Left));
-    input_handler.queue_event(InputEvent::MouseMoved(100.0, 200.0));
-    
-    // Process the queued events
-    input_handler.process_queued_events();
-    
-    // Verify events were processed
-    assert!(input_handler.keyboard().is_key_pressed(KeyCode::KeyA));
-    assert!(input_handler.keyboard().is_key_just_pressed(KeyCode::KeyA));
-    assert!(!input_handler.keyboard().is_key_pressed(KeyCode::KeyB));
-    assert!(input_handler.mouse().is_button_pressed(MouseButton::Left));
-    assert!(input_handler.mouse().is_button_just_pressed(MouseButton::Left));
-    assert_eq!(input_handler.mouse().position().x, 100.0);
-    assert_eq!(input_handler.mouse().position().y, 200.0);
-}
+fn test_update_clears_edges_but_keeps_held_inputs() {
+    let mut input = InputHandler::new();
+    frame(&mut input, &[
+        InputEvent::KeyPressed(KeyCode::KeyA),
+        InputEvent::MouseButtonPressed(MouseButton::Left),
+    ]);
+    assert!(input.is_key_just_pressed(KeyCode::KeyA));
+    assert!(input.is_mouse_button_just_pressed(MouseButton::Left));
 
-#[test]
-fn test_update_clears_just_states() {
-    let mut input_handler = InputHandler::new();
-    
-    // Queue and process some events
-    input_handler.queue_event(InputEvent::KeyPressed(KeyCode::KeyA));
-    input_handler.queue_event(InputEvent::MouseButtonPressed(MouseButton::Left));
-    input_handler.process_queued_events();
-    
-    // Verify just pressed states are set
-    assert!(input_handler.keyboard().is_key_just_pressed(KeyCode::KeyA));
-    assert!(input_handler.mouse().is_button_just_pressed(MouseButton::Left));
-    
-    // Update (this should clear just pressed/released states)
-    input_handler.update();
-    
-    // Verify just pressed states are cleared
-    assert!(!input_handler.keyboard().is_key_just_pressed(KeyCode::KeyA));
-    assert!(!input_handler.mouse().is_button_just_pressed(MouseButton::Left));
-    
-    // But the keys should still be considered pressed
-    assert!(input_handler.keyboard().is_key_pressed(KeyCode::KeyA));
-    assert!(input_handler.mouse().is_button_pressed(MouseButton::Left));
-}
+    input.update();
 
-#[test]
-fn test_multiple_events_processing_order() {
-    let mut input_handler = InputHandler::new();
-    
-    // Queue events in a specific order
-    input_handler.queue_event(InputEvent::KeyPressed(KeyCode::KeyA));
-    input_handler.queue_event(InputEvent::KeyPressed(KeyCode::KeyB));
-    input_handler.queue_event(InputEvent::KeyReleased(KeyCode::KeyA));
-    
-    // Process events
-    input_handler.process_queued_events();
-    
-    // Verify final state
-    assert!(!input_handler.keyboard().is_key_pressed(KeyCode::KeyA)); // Released
-    assert!(input_handler.keyboard().is_key_pressed(KeyCode::KeyB));   // Still pressed
-    assert!(input_handler.keyboard().is_key_just_released(KeyCode::KeyA));
-    assert!(input_handler.keyboard().is_key_just_pressed(KeyCode::KeyB));
-}
-
-#[test]
-fn test_gamepad_event_queuing() {
-    let mut input_handler = InputHandler::new();
-    
-    // Register a gamepad first
-    input_handler.gamepads_mut().register_gamepad(0);
-    
-    // Queue gamepad events
-    input_handler.queue_event(InputEvent::GamepadButtonPressed(0, GamepadButton::A));
-    input_handler.queue_event(InputEvent::GamepadButtonReleased(0, GamepadButton::B));
-    input_handler.queue_event(InputEvent::GamepadAxisUpdated(0, GamepadAxis::LeftStickX, 0.5));
-    
-    // Events should be queued but not processed yet
-    let gamepad = input_handler.gamepads().get_gamepad(0).unwrap();
-    assert!(!gamepad.is_button_pressed(GamepadButton::A));
-    assert!(!gamepad.is_button_pressed(GamepadButton::B));
-    assert_eq!(gamepad.axis_value(GamepadAxis::LeftStickX), 0.0);
-    
-    // Process the queued events
-    input_handler.process_queued_events();
-    
-    // Verify events were processed
-    let gamepad = input_handler.gamepads().get_gamepad(0).unwrap();
-    assert!(gamepad.is_button_pressed(GamepadButton::A));
-    assert!(gamepad.is_button_just_pressed(GamepadButton::A));
-    assert!(!gamepad.is_button_pressed(GamepadButton::B));
-    assert_eq!(gamepad.axis_value(GamepadAxis::LeftStickX), 0.5);
+    assert!(!input.is_key_just_pressed(KeyCode::KeyA));
+    assert!(!input.is_mouse_button_just_pressed(MouseButton::Left));
+    assert!(input.is_key_pressed(KeyCode::KeyA));
+    assert!(input.is_mouse_button_pressed(MouseButton::Left));
 }

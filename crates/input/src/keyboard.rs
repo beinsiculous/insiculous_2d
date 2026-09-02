@@ -53,3 +53,20 @@ pub fn convert_physical_key(key: PhysicalKey) -> Option<KeyCode> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use winit::keyboard::NativeKeyCode;
+
+    /// The winit boundary: a winit upgrade that changes `PhysicalKey` breaks
+    /// here, not silently in every game's key handling.
+    #[test]
+    fn test_convert_physical_key_maps_known_codes_and_drops_unidentified_keys() {
+        let known = PhysicalKey::Code(KeyCode::KeyA);
+        let unknown = PhysicalKey::Unidentified(NativeKeyCode::Unidentified);
+
+        assert_eq!(convert_physical_key(known), Some(KeyCode::KeyA));
+        assert_eq!(convert_physical_key(unknown), None);
+    }
+}

@@ -84,40 +84,40 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_press_sets_pressed_and_just_pressed() {
+    fn test_edges_last_one_frame_and_key_repeat_does_not_retrigger() {
         let mut tracker = ButtonTracker::new();
+
         tracker.press(1u32);
         assert!(tracker.is_pressed(1));
         assert!(tracker.is_just_pressed(1));
         assert!(!tracker.is_just_released(1));
-    }
 
-    #[test]
-    fn test_repeated_press_does_not_retrigger_just_pressed() {
-        let mut tracker = ButtonTracker::new();
-        tracker.press(1u32);
-        tracker.clear_frame_state();
-        tracker.press(1u32); // OS key-repeat while held
-        assert!(tracker.is_pressed(1));
-        assert!(!tracker.is_just_pressed(1));
-    }
-
-    #[test]
-    fn test_release_clears_pressed_and_sets_just_released() {
-        let mut tracker = ButtonTracker::new();
-        tracker.press(1u32);
-        tracker.release(1u32);
-        assert!(!tracker.is_pressed(1));
-        assert!(tracker.is_just_released(1));
-    }
-
-    #[test]
-    fn test_clear_frame_state_keeps_held_buttons() {
-        let mut tracker = ButtonTracker::new();
-        tracker.press(1u32);
+        // End of frame: the edge clears, the hold does not
         tracker.clear_frame_state();
         assert!(tracker.is_pressed(1));
         assert!(!tracker.is_just_pressed(1));
         assert!(!tracker.is_just_released(1));
+
+        // OS key-repeat while held is not a new edge
+        tracker.press(1u32);
+        assert!(tracker.is_pressed(1));
+        assert!(
+            !tracker.is_just_pressed(1),
+            "a repeated press while held must not re-trigger just_pressed"
+        );
+
+        // Releasing one button leaves the other held
+        tracker.press(2u32);
+        tracker.release(1u32);
+        assert!(!tracker.is_pressed(1));
+        assert!(tracker.is_just_released(1));
+        assert!(tracker.is_pressed(2));
+        assert!(tracker.is_just_pressed(2));
+        assert!(!tracker.is_just_released(2));
+
+        tracker.clear_frame_state();
+        assert!(!tracker.is_pressed(1));
+        assert!(!tracker.is_just_released(1));
+        assert!(tracker.is_pressed(2));
     }
 }

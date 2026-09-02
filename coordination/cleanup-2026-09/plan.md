@@ -725,7 +725,11 @@ More dead API it surfaced (add to batch 2 after a workspace + games grep each):
 `GlobalTransform2D::transform_point`/`from_transform`, `Children::is_empty`/`len`/`contains`,
 `Parent::new`/`entity`, `SimpleSystem`, `ecs::init()`, and the whole `ecs::generation` module
 (`EntityGeneration`, `EntityIdGenerator`, `EntityReference`) — all reported caller-free by the
-`ecs` cut review (review-5 F5). NOT `Transform2D::forward` — asteroids aims every
+`ecs` cut review (review-5 F5); from the `input` cut: `GamepadManager::connected_ids`,
+`get_gamepad_mut`, `InputHandler::gamepads_mut`, `GamepadState::prev_axis_value`,
+`InputMapping::{unbind_source, unbind_action, actions_for, has_binding, clear,
+just_deactivated}`, `InputSettings::{just_deactivated, is_active_any, axis_value}` (some
+carry keeper assertions that go with them). NOT `Transform2D::forward` — asteroids aims every
 bullet with it (`ship.rs:122`); its test was restored (review-4 F1). Rule: show the
 workspace AND `../games` grep for every candidate in the batch-2 review before deleting it. NOT `Rect::contains`/`center`/`expand` — the keep-list called `Rect`
 dead, but `contains` decides every widget interaction and the editor uses the other two;
