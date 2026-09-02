@@ -381,119 +381,12 @@ impl Default for EntityTag {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_behavior_serialization() {
-        let behavior = Behavior::PlayerPlatformer {
-            move_speed: 150.0,
-            jump_impulse: 500.0,
-            jump_cooldown: 0.25,
-            tag: "hero".to_string(),
-        };
-
-        let serialized = ron::to_string(&behavior).expect("Failed to serialize");
-        let deserialized: Behavior = ron::from_str(&serialized).expect("Failed to deserialize");
-
-        match deserialized {
-            Behavior::PlayerPlatformer {
-                move_speed,
-                jump_impulse,
-                jump_cooldown,
-                tag,
-            } => {
-                assert_eq!(move_speed, 150.0);
-                assert_eq!(jump_impulse, 500.0);
-                assert_eq!(jump_cooldown, 0.25);
-                assert_eq!(tag, "hero");
-            }
-            _ => panic!("Wrong variant"),
-        }
-    }
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
 
     #[test]
-    fn test_behavior_defaults() {
-        let ron_str = "PlayerPlatformer()";
-        let behavior: Behavior = ron::from_str(ron_str).expect("Failed to parse");
-
-        match behavior {
-            Behavior::PlayerPlatformer {
-                move_speed,
-                jump_impulse,
-                jump_cooldown,
-                tag,
-            } => {
-                assert_eq!(move_speed, 120.0);
-                assert_eq!(jump_impulse, 420.0);
-                assert_eq!(jump_cooldown, 0.3);
-                assert_eq!(tag, "player"); // Default tag
-            }
-            _ => panic!("Wrong variant"),
-        }
-    }
-
-    #[test]
-    fn test_behavior_state_default_is_idle() {
-        let state = BehaviorState::default();
-        assert_eq!(state.timer, 0.0);
-        assert_eq!(state.look_offset, Vec2::ZERO);
-        assert!(state.phase.is(&BehaviorPhase::Idle));
-        assert!(state.phase.just_entered());
-    }
-
-    #[test]
-    fn test_patrol_target_other_flips_endpoint() {
-        assert_eq!(PatrolTarget::A.other(), PatrolTarget::B);
-        assert_eq!(PatrolTarget::B.other(), PatrolTarget::A);
-    }
-
-    #[test]
-    fn test_entity_tag() {
-        let tag = EntityTag::new("enemy");
-        assert!(tag.matches("enemy"));
-        assert!(!tag.matches("player"));
-        assert_eq!(tag.0, "enemy");
-    }
-
-    #[test]
-    fn test_behavior_default_is_player_platformer_with_serde_defaults() {
-        match Behavior::default() {
-            Behavior::PlayerPlatformer {
-                move_speed,
-                jump_impulse,
-                jump_cooldown,
-                tag,
-            } => {
-                assert_eq!(move_speed, 120.0);
-                assert_eq!(jump_impulse, 420.0);
-                assert_eq!(jump_cooldown, 0.3);
-                assert_eq!(tag, "player");
-            }
-            _ => panic!("Default must be PlayerPlatformer"),
-        }
-    }
-
-    #[test]
-    fn test_default_for_variant_round_trips_variant_index() {
-        for index in 0..Behavior::VARIANT_NAMES.len() {
-            let behavior = Behavior::default_for_variant(index);
-            assert_eq!(behavior.variant_index(), index);
-            assert_eq!(behavior.variant_name(), Behavior::VARIANT_NAMES[index]);
-        }
-    }
-
-    #[test]
-    fn test_default_for_variant_wraps_out_of_range_indices() {
-        let count = Behavior::VARIANT_NAMES.len();
-        assert_eq!(count, 8);
-        assert_eq!(Behavior::default_for_variant(count).variant_index(), 0);
-        assert_eq!(
-            Behavior::default_for_variant(count + 2).variant_index(),
-            2
-        );
-    }
-
-    #[test]
-    fn test_camera_follow_serialization_round_trips_dead_zone() {
-        let behavior = Behavior::CameraFollow {
+    fn test_every_variant_round_trips_through_ron_including_option_fields() -> TestResult {
+        // An authored CameraFollow with every optional field set.
+        let authored = Behavior::CameraFollow {
             target_tag: "player".to_string(),
             lerp_speed: 0.5,
             offset: (0.0, 50.0),
@@ -502,10 +395,9 @@ mod tests {
             look_ahead_lerp: 0.05,
         };
 
-        let serialized = ron::to_string(&behavior).expect("Failed to serialize");
-        let deserialized: Behavior = ron::from_str(&serialized).expect("Failed to deserialize");
+        let restored: Behavior = ron::from_str(&ron::to_string(&authored)?)?;
 
-        match deserialized {
+        match restored {
             Behavior::CameraFollow {
                 target_tag,
                 lerp_speed,
@@ -521,74 +413,106 @@ mod tests {
                 assert_eq!(look_ahead, (220.0, 140.0));
                 assert_eq!(look_ahead_lerp, 0.05);
             }
-            _ => panic!("Wrong variant"),
+            other => panic!("wrong variant: {other:?}"),
         }
+
+        // The default of every variant survives the same trip unchanged.
+        for (index, name) in Behavior::VARIANT_NAMES.iter().enumerate() {
+            let serialized = ron::to_string(&Behavior::default_for_variant(index))?;
+            let restored: Behavior = ron::from_str(&serialized)?;
+            assert_eq!(restored.variant_index(), index, "{name}");
+            assert_eq!(ron::to_string(&restored)?, serialized, "{name} must re-serialize identically");
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_camera_follow_defaults() {
-        let behavior: Behavior = ron::from_str("CameraFollow()").expect("Failed to parse");
+    fn test_bare_variant_form_parses_to_the_variant_default() -> TestResult {
+        // Hand-written scenes write `PlayerPlatformer()` and get the
+        // documented defaults, which are also `Behavior::default()`.
+        let parsed: Behavior = ron::from_str("PlayerPlatformer()")?;
 
-        match behavior {
-            Behavior::CameraFollow {
-                target_tag,
-                lerp_speed,
-                offset,
-                dead_zone,
-                look_ahead,
-                look_ahead_lerp,
-            } => {
-                assert_eq!(target_tag, "player");
-                assert_eq!(lerp_speed, 0.1);
-                assert_eq!(offset, (0.0, 0.0));
-                assert_eq!(dead_zone, None);
-                assert_eq!(look_ahead, (0.0, 0.0));
-                assert_eq!(look_ahead_lerp, 0.08);
+        assert_eq!(ron::to_string(&parsed)?, ron::to_string(&Behavior::default())?);
+        match parsed {
+            Behavior::PlayerPlatformer { move_speed, jump_impulse, jump_cooldown, tag } => {
+                assert_eq!(move_speed, 120.0);
+                assert_eq!(jump_impulse, 420.0);
+                assert_eq!(jump_cooldown, 0.3);
+                assert_eq!(tag, "player");
             }
-            _ => panic!("Wrong variant"),
+            other => panic!("wrong variant: {other:?}"),
         }
+
+        // The runner gives every scene-loaded Behavior entity this state:
+        // Idle, just entered, with nothing accumulated.
+        let state = BehaviorState::default();
+        assert!(state.phase.is(&BehaviorPhase::Idle));
+        assert!(state.phase.just_entered());
+        assert_eq!(state.timer, 0.0);
+        assert_eq!(state.look_offset, Vec2::ZERO);
+        Ok(())
     }
 
     #[test]
-    fn test_camera_follow_parses_legacy_four_field_form() {
-        // Exactly the shape shipped scene files used before look-ahead
-        // existed — must still parse, with look-ahead defaulted off.
-        let ron_str = r#"CameraFollow(
-            target_tag: "player",
-            lerp_speed: 0.12,
-            offset: (0.0, 60.0),
-            dead_zone: Some((160.0, 100.0)),
-        )"#;
-        let behavior: Behavior = ron::from_str(ron_str).expect("legacy form must parse");
+    fn test_camera_follow_parses_legacy_four_field_form() -> TestResult {
+        // The bare form carries the documented defaults: look-ahead OFF.
+        let bare: Behavior = ron::from_str("CameraFollow()")?;
+        let Behavior::CameraFollow {
+            dead_zone: default_dead_zone,
+            look_ahead: default_look_ahead,
+            look_ahead_lerp: default_look_ahead_lerp,
+            ..
+        } = bare
+        else {
+            panic!("wrong variant: {bare:?}");
+        };
+        assert_eq!(default_dead_zone, None);
+        assert_eq!(default_look_ahead, (0.0, 0.0), "look-ahead defaults to disabled");
+        assert_eq!(default_look_ahead_lerp, 0.08);
 
-        match behavior {
+        // Exactly the shape shipped scene files used before look-ahead
+        // existed: it must still parse, keeping its authored fields and
+        // landing the missing ones on those defaults.
+        let legacy: Behavior = ron::from_str(
+            r#"CameraFollow(
+                target_tag: "player",
+                lerp_speed: 0.12,
+                offset: (0.0, 60.0),
+                dead_zone: Some((160.0, 100.0)),
+            )"#,
+        )?;
+        match legacy {
             Behavior::CameraFollow { lerp_speed, dead_zone, look_ahead, look_ahead_lerp, .. } => {
                 assert_eq!(lerp_speed, 0.12);
                 assert_eq!(dead_zone, Some((160.0, 100.0)));
-                assert_eq!(look_ahead, (0.0, 0.0), "absent look_ahead must default to disabled");
-                assert_eq!(look_ahead_lerp, 0.08);
+                assert_eq!(look_ahead, default_look_ahead);
+                assert_eq!(look_ahead_lerp, default_look_ahead_lerp);
             }
-            _ => panic!("Wrong variant"),
+            other => panic!("wrong variant: {other:?}"),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_chase_tagged_serialization() {
-        let behavior = Behavior::ChaseTagged {
-            target_tag: "hero".to_string(),
-            detection_range: 150.0,
-            chase_speed: 100.0,
-            lose_interest_range: 250.0,
-        };
-
-        let serialized = ron::to_string(&behavior).expect("Failed to serialize");
-        let deserialized: Behavior = ron::from_str(&serialized).expect("Failed to deserialize");
-
-        match deserialized {
-            Behavior::ChaseTagged { target_tag, .. } => {
-                assert_eq!(target_tag, "hero");
-            }
-            _ => panic!("Wrong variant"),
+    fn test_default_for_variant_round_trips_variant_index_and_wraps() {
+        let count = Behavior::VARIANT_NAMES.len();
+        for index in 0..count {
+            let behavior = Behavior::default_for_variant(index);
+            assert_eq!(behavior.variant_index(), index);
+            assert_eq!(behavior.variant_name(), Behavior::VARIANT_NAMES[index]);
         }
+
+        // The editor's cycle row steps past the end and wraps.
+        assert_eq!(Behavior::default_for_variant(count).variant_index(), 0);
+        assert_eq!(Behavior::default_for_variant(count + 2).variant_index(), 2);
+    }
+
+    #[test]
+    fn test_entity_tag_matches_only_its_own_tag() {
+        let tag = EntityTag::new("enemy");
+
+        assert!(tag.matches("enemy"));
+        assert!(!tag.matches("player"));
+        assert!(!tag.matches("Enemy"), "matching is exact, not case-folded");
     }
 }

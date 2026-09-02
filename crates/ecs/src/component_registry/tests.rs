@@ -4,6 +4,7 @@
 // a collision panics loudly by design.
 use super::*;
 use crate::World;
+use serde_json::json;
 
 define_component! {
     /// Test component for unit tests
@@ -22,125 +23,60 @@ define_component! {
 }
 
 #[test]
-fn test_define_component_creates_struct() {
-    let component = TestComponent::default();
-    assert_eq!(component.value, 1.0);
-    assert_eq!(component.name, "");
-}
-
-#[test]
-fn test_component_meta_type_name_and_fields() {
-    assert_eq!(TestComponent::type_name(), "TestComponent");
-    assert_eq!(TestComponent::field_names(), &["value", "name"]);
-}
-
-#[test]
-fn test_registry_register_and_lookup() {
-    let mut registry = ComponentRegistry::new();
-    registry.register::<TestComponent>();
-
-    assert!(registry.is_registered("TestComponent"));
-    assert!(!registry.is_registered("NonExistent"));
-    assert_eq!(
-        registry.name_for(std::any::TypeId::of::<TestComponent>()),
-        Some("TestComponent")
-    );
-}
-
-#[test]
-fn test_component_factory_creates_from_json() {
-    use serde_json::json;
-
-    let mut registry = ComponentRegistry::new();
-    registry.register::<TestComponent>();
-
-    let component = registry
-        .create_component("TestComponent", json!({"value": 42.0, "name": "factory_test"}))
-        .expect("factory should build from JSON");
-    let test_component = component.downcast_ref::<TestComponent>().expect("downcast");
-    assert_eq!(test_component.value, 42.0);
-    assert_eq!(test_component.name, "factory_test");
-}
-
-#[test]
-fn test_component_factory_unknown_type() {
-    let registry = ComponentRegistry::new();
-
-    let result = registry.create_component("NonExistent", serde_json::json!({}));
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Unknown component type"));
-}
-
-#[test]
-fn test_insert_extract_remove_round_trip_on_a_world() {
+fn test_insert_extract_remove_round_trip_on_a_world() -> Result<(), String> {
     // The heart of #43: a component reaches a World and comes back out
     // through nothing but its registered name.
-    use serde_json::json;
-
     let mut registry = ComponentRegistry::new();
     registry.register::<TestComponent>();
+    assert_eq!(
+        registry.name_for(std::any::TypeId::of::<TestComponent>()),
+        Some("TestComponent"),
+        "the name maps back from the concrete TypeId"
+    );
     let mut world = World::new();
     let entity = world.create_entity();
 
-    registry
-        .insert_component(&mut world, entity, "TestComponent", json!({"value": 7.5, "name": "dyn"}))
-        .expect("insert");
+    registry.insert_component(&mut world, entity, "TestComponent", json!({"value": 7.5, "name": "dyn"}))?;
     assert!(registry.has_component(&world, entity, "TestComponent"));
     assert_eq!(world.get::<TestComponent>(entity).map(|c| c.value), Some(7.5));
 
-    let value = registry
-        .extract_component(&world, entity, "TestComponent")
-        .expect("known type")
-        .expect("present on entity");
-    assert_eq!(value["value"], 7.5);
-    assert_eq!(value["name"], "dyn");
+    let extracted = registry
+        .extract_component(&world, entity, "TestComponent")?
+        .expect("present on the entity");
+    assert_eq!(extracted, json!({"value": 7.5, "name": "dyn"}));
 
     assert!(registry.remove_component(&mut world, entity, "TestComponent"));
     assert!(!registry.has_component(&world, entity, "TestComponent"));
+    assert_eq!(registry.extract_component(&world, entity, "TestComponent"), Ok(None));
+
+    // insert_default is the Add Component popup's path: the type's Default lands.
+    registry.insert_default(&mut world, entity, "TestComponent")?;
     assert_eq!(
-        registry.extract_component(&world, entity, "TestComponent"),
-        Ok(None)
+        registry.extract_component(&world, entity, "TestComponent")?,
+        Some(json!({"value": 1.0, "name": ""}))
     );
+    Ok(())
 }
 
 #[test]
-fn test_insert_default_attaches_default_value() {
-    let mut registry = ComponentRegistry::new();
-    registry.register::<GameHealth>();
-    let mut world = World::new();
-    let entity = world.create_entity();
-
-    registry
-        .insert_default(&mut world, entity, "GameHealth")
-        .expect("insert default");
-    let health = world.get::<GameHealth>(entity).expect("attached");
-    assert_eq!(health.value, 100.0);
-    assert_eq!(health.max, 100.0);
-}
-
-#[test]
-fn test_insert_rejects_malformed_json() {
+fn test_dynamic_operations_reject_unknown_names_and_malformed_json() {
     let mut registry = ComponentRegistry::new();
     registry.register::<TestComponent>();
     let mut world = World::new();
     let entity = world.create_entity();
 
-    let result = registry.insert_component(
-        &mut world,
-        entity,
-        "TestComponent",
-        serde_json::json!({"value": "not a number"}),
-    );
-    assert!(result.is_err());
+    // An unknown name is a typed refusal that names the type, never a panic.
+    let unknown = registry.create_component("NonExistent", json!({}));
+    assert_eq!(unknown.err().as_deref(), Some("Unknown component type: NonExistent"));
+    assert!(registry.insert_component(&mut world, entity, "NonExistent", json!({})).is_err());
+    assert!(!registry.has_component(&world, entity, "NonExistent"));
+    assert!(!registry.remove_component(&mut world, entity, "NonExistent"));
+
+    // Malformed JSON is refused and leaves NOTHING attached.
+    let malformed = registry.insert_component(&mut world, entity, "TestComponent", json!({"value": "not a number"}));
+    assert!(malformed.is_err());
     assert!(!registry.has_component(&world, entity, "TestComponent"));
-}
-
-#[test]
-fn test_reregistration_is_a_noop() {
-    let mut registry = ComponentRegistry::new();
-    registry.register::<TestComponent>();
-    registry.register::<TestComponent>(); // must not panic
-    assert!(registry.is_registered("TestComponent"));
+    assert!(world.get::<TestComponent>(entity).is_none());
 }
 
 #[test]
@@ -158,6 +94,9 @@ fn test_same_name_different_type_registration_panics() {
     }
     let mut registry = ComponentRegistry::new();
     registry.register::<TestComponent>();
+    registry.register::<TestComponent>(); // the SAME type again is a harmless no-op
+    assert!(registry.is_registered("TestComponent"));
+
     registry.register::<imposter::TestComponent>();
 }
 
@@ -168,10 +107,12 @@ fn test_transient_types_are_excluded_from_persistent_names() {
     registry.register_transient::<TestComponent>();
 
     let names = registry.persistent_names();
+
     assert!(names.contains(&"GameHealth"));
     assert!(!names.contains(&"TestComponent"));
     assert!(registry.is_persisted("GameHealth"));
     assert!(!registry.is_persisted("TestComponent"));
+    assert!(registry.is_registered("TestComponent"), "transient still means editable");
 }
 
 #[test]
@@ -179,15 +120,18 @@ fn test_persistent_names_are_sorted_for_stable_scene_diffs() {
     let mut registry = ComponentRegistry::new();
     registry.register::<TestComponent>();
     registry.register::<GameHealth>();
+
     let names = registry.persistent_names();
+
     let mut sorted = names.clone();
     sorted.sort_unstable();
     assert_eq!(names, sorted);
 }
 
 #[test]
-fn test_late_registration_into_global_is_visible() {
-    // GPP-16: the global registry accepts registrations AFTER init.
+fn test_late_registration_into_global_is_visible() -> Result<(), String> {
+    // GPP-16: the global registry accepts registrations AFTER init, which
+    // is how games register their own components in main().
     register_components(|r| r.register::<GameHealth>());
     assert!(with_global_registry(|r| r.is_registered("GameHealth")));
 
@@ -195,76 +139,73 @@ fn test_late_registration_into_global_is_visible() {
     let mut world = World::new();
     let entity = world.create_entity();
     with_global_registry(|r| {
-        r.insert_component(
-            &mut world,
-            entity,
-            "GameHealth",
-            serde_json::json!({"value": 25.0, "max": 50.0}),
-        )
-    })
-    .expect("insert via global");
+        r.insert_component(&mut world, entity, "GameHealth", json!({"value": 25.0, "max": 50.0}))
+    })?;
     assert_eq!(world.get::<GameHealth>(entity).map(|h| h.max), Some(50.0));
+    Ok(())
 }
 
 #[test]
 fn test_global_registry_has_builtin_components() {
-    with_global_registry(|registry| {
-        for name in [
-            "Transform2D",
-            "Sprite",
-            "SpriteAnimation",
-            "Camera",
-            "Name",
-            "AudioSource",
-            "AudioListener",
-            "Tilemap",
-            "PlaySoundEffect",
-            "UiLabel",
-            "UiPanel",
-            "UiButton",
-        ] {
-            assert!(registry.is_registered(name), "missing builtin {name}");
-        }
+    // (name, persisted): the persisted flag is asserted BOTH ways so a
+    // builtin silently flipping between saved and transient fails here.
+    let roster = [
+        ("Transform2D", true),
+        ("Sprite", true),
+        ("SpriteAnimation", true),
+        ("Camera", true),
+        ("Name", true),
+        ("Tilemap", true),
+        ("AudioSource", true),
+        ("AudioListener", true),
+        ("UiLabel", true),
+        ("UiPanel", true),
+        ("UiButton", true),
+        ("Scripts", true),
+        ("GridBackdrop", true),
+        // Behavior/EntityTag are registered so a GAME reusing those names
+        // panics at startup instead of the scene serializer's skip arms
+        // silently eating its data (kimi #43 F1).
+        ("Behavior", true),
+        ("EntityTag", true),
         // PlaySoundEffect is a one-shot request: editable, never saved.
-        assert!(!registry.is_persisted("PlaySoundEffect"));
-        assert!(registry.is_persisted("AudioSource"));
-        // Behavior/EntityTag/GlobalTransform2D are registered so a GAME
-        // reusing those names panics at startup instead of the scene
-        // serializer's skip arms silently eating its data (kimi #43 F1).
-        assert!(registry.is_registered("Behavior"));
-        assert!(registry.is_registered("EntityTag"));
-        assert!(registry.is_registered("GlobalTransform2D"));
-        assert!(!registry.is_persisted("GlobalTransform2D"), "system-computed, never saved");
+        ("PlaySoundEffect", false),
+        // System-computed, never saved.
+        ("GlobalTransform2D", false),
+    ];
+
+    with_global_registry(|registry| {
+        let persistent = registry.persistent_names();
+        for (name, persisted) in roster {
+            assert!(registry.is_registered(name), "missing builtin {name}");
+            assert_eq!(registry.is_persisted(name), persisted, "{name} persisted flag");
+            assert_eq!(persistent.contains(&name), persisted, "{name} in persistent_names");
+        }
     });
 }
 
 #[test]
-fn test_global_registry_creates_audio_source_from_json() {
-    use crate::audio_components::AudioSource;
-    use serde_json::json;
+fn test_every_persistent_builtin_round_trips_through_its_json_wire() -> Result<(), String> {
+    // The inspector and the command API move components as JSON by name:
+    // every persisted type's default must extract and re-insert unchanged.
+    let mut world = World::new();
+    let source = world.create_entity();
+    let copy = world.create_entity();
 
-    let json = json!({
-        "sound_id": 7,
-        "volume": 0.5,
-        "pitch": 1.25,
-        "looping": true,
-        "play_on_spawn": false,
-        "playing": false,
-        "spatial": true,
-        "max_distance": 800.0,
-        "reference_distance": 80.0,
-        "rolloff_factor": 2.0
-    });
+    with_global_registry(|registry| {
+        for name in registry.persistent_names() {
+            registry.insert_default(&mut world, source, name)?;
+            let extracted = registry
+                .extract_component(&world, source, name)?
+                .ok_or_else(|| format!("{name} vanished after insert_default"))?;
 
-    let component = with_global_registry(|r| r.create_component("AudioSource", json))
-        .expect("AudioSource should be creatable from JSON");
-    let source = component
-        .downcast_ref::<AudioSource>()
-        .expect("created component should downcast to AudioSource");
+            registry.insert_component(&mut world, copy, name, extracted.clone())?;
+            let re_extracted = registry.extract_component(&world, copy, name)?;
 
-    assert_eq!(source.sound_id, 7);
-    assert!((source.volume - 0.5).abs() < f32::EPSILON);
-    assert!(source.spatial);
+            assert_eq!(re_extracted, Some(extracted), "{name} must survive extract -> insert");
+        }
+        Ok(())
+    })
 }
 
 #[test]
@@ -272,15 +213,11 @@ fn test_reentrant_global_access_panics_with_clear_message() {
     // kimi R2-F9: a nested lock acquisition must panic loudly instead of
     // deadlocking the RwLock.
     let result = std::panic::catch_unwind(|| {
-        with_global_registry(|_| {
-            with_global_registry(|r| r.is_registered("Transform2D"))
-        })
+        with_global_registry(|_| with_global_registry(|r| r.is_registered("Transform2D")))
     });
+
     let err = result.expect_err("nested access must panic");
-    let message = err
-        .downcast_ref::<String>()
-        .cloned()
-        .unwrap_or_default();
+    let message = err.downcast_ref::<String>().cloned().unwrap_or_default();
     assert!(
         message.contains("re-entrant global component-registry access"),
         "unexpected panic message: {message}"
@@ -294,14 +231,9 @@ fn test_global_registry_recovers_from_a_poisoned_lock() {
     let _ = std::panic::catch_unwind(|| {
         register_components(|_| panic!("boom during registration"));
     });
-    // ...and the registry still answers.
+
+    // ...and the registry still answers, and still accepts registrations.
     assert!(with_global_registry(|r| r.is_registered("Transform2D")));
     register_components(|r| r.register::<TestComponent>());
     assert!(with_global_registry(|r| r.is_registered("TestComponent")));
-}
-
-#[test]
-fn test_grid_backdrop_is_a_registered_builtin() {
-    // #46: create-by-name, dynamic tooling and the editor popup all key on this.
-    assert!(with_global_registry(|r| r.is_registered("GridBackdrop")));
 }

@@ -439,19 +439,24 @@ pub fn set_sprites_visible(
 }
 
 #[cfg(test)]
-mod visibility_tests {
+mod tests {
     use super::*;
 
     #[test]
-    fn test_set_sprites_visible_toggles_and_skips_spriteless() {
+    fn test_set_sprites_visible_toggles_only_entities_that_carry_a_sprite() -> Result<(), crate::EcsError> {
+        // The editor hides scene UI outside Play through this; an entity
+        // without a Sprite in the list must be skipped, not panic.
         let mut world = crate::World::new();
-        let a = world.create_entity();
-        world.add_component(&a, Sprite::new(0)).unwrap();
-        let b = world.create_entity(); // no sprite — must be skipped, not panic
+        let drawn = world.create_entity();
+        world.add_component(&drawn, Sprite::new(0))?;
+        let bare = world.create_entity();
 
-        set_sprites_visible(&mut world, [a, b], false);
-        assert!(!world.get::<Sprite>(a).unwrap().visible);
-        set_sprites_visible(&mut world, [a], true);
-        assert!(world.get::<Sprite>(a).unwrap().visible);
+        set_sprites_visible(&mut world, [drawn, bare], false);
+        assert!(!world.get::<Sprite>(drawn).expect("sprite").visible);
+
+        set_sprites_visible(&mut world, [drawn, bare], true);
+        assert!(world.get::<Sprite>(drawn).expect("sprite").visible);
+        assert!(world.get::<Sprite>(bare).is_none(), "no sprite is ever created");
+        Ok(())
     }
 }

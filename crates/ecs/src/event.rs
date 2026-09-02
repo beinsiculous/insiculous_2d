@@ -156,30 +156,35 @@ mod tests {
         player_id: u64,
     }
 
-    #[derive(Debug, Clone, PartialEq)]
-    struct DamageDealt {
-        source: u64,
-        target: u64,
-        amount: f32,
-    }
-
     #[test]
     fn test_emit_and_read_events() {
         let mut bus = EventBus::new();
+        assert!(bus.read::<CoinCollected>().is_empty(), "a type nobody emitted reads as empty");
+
         bus.emit(CoinCollected { value: 10 });
+        bus.emit(PlayerDied { player_id: 1 });
         bus.emit(CoinCollected { value: 5 });
 
-        let events = bus.read::<CoinCollected>();
-        assert_eq!(events.len(), 2);
-        assert_eq!(events[0].value, 10);
-        assert_eq!(events[1].value, 5);
+        assert_eq!(
+            bus.read::<CoinCollected>(),
+            [CoinCollected { value: 10 }, CoinCollected { value: 5 }],
+            "events come back in emission order"
+        );
+        assert_eq!(
+            bus.read::<PlayerDied>(),
+            [PlayerDied { player_id: 1 }],
+            "each event type has its own queue"
+        );
     }
 
     #[test]
-    fn test_read_empty_returns_empty_slice() {
-        let bus = EventBus::new();
-        let events = bus.read::<CoinCollected>();
-        assert!(events.is_empty());
+    fn test_events_readable_multiple_times_before_flush() {
+        let mut bus = EventBus::new();
+        bus.emit(CoinCollected { value: 10 });
+
+        // Two consumers in one frame both see the event: reading never drains.
+        assert_eq!(bus.read::<CoinCollected>().len(), 1);
+        assert_eq!(bus.read::<CoinCollected>().len(), 1);
     }
 
     #[test]
@@ -192,91 +197,9 @@ mod tests {
 
         assert!(bus.read::<CoinCollected>().is_empty());
         assert!(bus.read::<PlayerDied>().is_empty());
-    }
 
-    #[test]
-    fn test_multiple_event_types_independent() {
-        let mut bus = EventBus::new();
-        bus.emit(CoinCollected { value: 10 });
-        bus.emit(PlayerDied { player_id: 1 });
-        bus.emit(CoinCollected { value: 20 });
-
-        assert_eq!(bus.read::<CoinCollected>().len(), 2);
-        assert_eq!(bus.read::<PlayerDied>().len(), 1);
-    }
-
-    #[test]
-    fn test_has_events() {
-        let mut bus = EventBus::new();
-        assert!(!bus.has_events::<CoinCollected>());
-
-        bus.emit(CoinCollected { value: 5 });
-        assert!(bus.has_events::<CoinCollected>());
-        assert!(!bus.has_events::<PlayerDied>());
-    }
-
-    #[test]
-    fn test_count_events() {
-        let mut bus = EventBus::new();
-        assert_eq!(bus.count::<CoinCollected>(), 0);
-
-        bus.emit(CoinCollected { value: 1 });
+        // The next frame starts fresh on the same bus.
         bus.emit(CoinCollected { value: 2 });
-        bus.emit(CoinCollected { value: 3 });
-
-        assert_eq!(bus.count::<CoinCollected>(), 3);
-    }
-
-    #[test]
-    fn test_type_count() {
-        let mut bus = EventBus::new();
-        assert_eq!(bus.type_count(), 0);
-
-        bus.emit(CoinCollected { value: 1 });
-        assert_eq!(bus.type_count(), 1);
-
-        bus.emit(PlayerDied { player_id: 1 });
-        assert_eq!(bus.type_count(), 2);
-    }
-
-    #[test]
-    fn test_flush_preserves_queue_allocations() {
-        let mut bus = EventBus::new();
-        bus.emit(CoinCollected { value: 1 });
-        bus.flush();
-
-        // Queue type still registered, just empty
-        assert_eq!(bus.type_count(), 1);
-        assert!(!bus.has_events::<CoinCollected>());
-
-        // Can still emit after flush
-        bus.emit(CoinCollected { value: 2 });
-        assert_eq!(bus.read::<CoinCollected>()[0].value, 2);
-    }
-
-    #[test]
-    fn test_complex_event_data() {
-        let mut bus = EventBus::new();
-        bus.emit(DamageDealt {
-            source: 1,
-            target: 2,
-            amount: 25.5,
-        });
-
-        let events = bus.read::<DamageDealt>();
-        assert_eq!(events.len(), 1);
-        assert_eq!(events[0].source, 1);
-        assert_eq!(events[0].target, 2);
-        assert_eq!(events[0].amount, 25.5);
-    }
-
-    #[test]
-    fn test_events_readable_multiple_times_before_flush() {
-        let mut bus = EventBus::new();
-        bus.emit(CoinCollected { value: 10 });
-
-        // Read twice — same data both times
-        assert_eq!(bus.read::<CoinCollected>().len(), 1);
-        assert_eq!(bus.read::<CoinCollected>().len(), 1);
+        assert_eq!(bus.read::<CoinCollected>(), [CoinCollected { value: 2 }]);
     }
 }

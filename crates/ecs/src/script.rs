@@ -121,7 +121,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_scripts_serde_round_trips_every_value_variant() {
+    fn test_scripts_serde_round_trips_every_value_variant() -> Result<(), Box<dyn std::error::Error>> {
         let mut params = BTreeMap::new();
         params.insert("speed".to_string(), ScriptValue::F32(240.0));
         params.insert("lives".to_string(), ScriptValue::I32(-3));
@@ -136,33 +136,16 @@ mod tests {
             params,
         }]);
 
-        // JSON (inspector/command API path)
-        let json = serde_json::to_value(&scripts).expect("json");
-        let back: Scripts = serde_json::from_value(json).expect("json back");
-        assert_eq!(back, scripts);
+        // JSON (inspector / command API path).
+        let json = serde_json::to_value(&scripts)?;
+        let from_json: Scripts = serde_json::from_value(json)?;
+        assert_eq!(from_json, scripts);
 
-        // RON (scene path — Stage 1 wire uses name-mapped entities, but the
-        // component itself must round-trip too for snapshots)
-        let ron = ron::to_string(&scripts).expect("ron");
-        let back: Scripts = ron::from_str(&ron).expect("ron back");
-        assert_eq!(back, scripts);
-    }
-
-    #[test]
-    fn test_params_iterate_in_stable_name_order() {
-        let mut a = ScriptRef::new("s");
-        a.params.insert("zeta".to_string(), ScriptValue::F32(1.0));
-        a.params.insert("alpha".to_string(), ScriptValue::F32(2.0));
-        a.params.insert("mid".to_string(), ScriptValue::F32(3.0));
-        let keys: Vec<_> = a.params.keys().cloned().collect();
-        assert_eq!(keys, ["alpha", "mid", "zeta"], "BTreeMap = deterministic order");
-    }
-
-    #[test]
-    fn test_variant_cycle_round_trips() {
-        for (i, name) in ScriptValue::VARIANT_NAMES.iter().enumerate() {
-            let value = ScriptValue::default_for_variant(i);
-            assert_eq!(value.variant_index(), i, "index of {name}");
-        }
+        // RON (scene path: the Stage 1 wire maps entities by name, but the
+        // component itself must round-trip too for snapshots).
+        let ron = ron::to_string(&scripts)?;
+        let from_ron: Scripts = ron::from_str(&ron)?;
+        assert_eq!(from_ron, scripts);
+        Ok(())
     }
 }

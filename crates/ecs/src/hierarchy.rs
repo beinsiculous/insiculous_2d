@@ -221,103 +221,40 @@ impl GlobalTransform2D {
 mod tests {
     use super::*;
     use crate::sprite_components::Transform2D;
+    use std::f32::consts::FRAC_PI_2;
 
     #[test]
-    fn test_parent_component() {
-        let id = EntityId::new();
-        let parent = Parent::new(id);
-        assert_eq!(parent.entity(), id);
-    }
-
-    #[test]
-    fn test_children_component() {
+    fn test_children_keep_insertion_order_across_remove_and_readd() {
+        // Child order is load-bearing for the hierarchy panel and scene
+        // serialization: a HashSet swap would pass a membership-only test.
+        let (a, b, c) = (EntityId::new(), EntityId::new(), EntityId::new());
         let mut children = Children::new();
-        assert!(children.is_empty());
-        assert_eq!(children.len(), 0);
 
-        let child1 = EntityId::new();
-        let child2 = EntityId::new();
+        children.add(a);
+        children.add(b);
+        children.add(c);
+        children.add(b); // duplicate add: neither a second entry nor a reorder
+        assert_eq!(children.entities(), [a, b, c]);
 
-        children.add(child1);
-        assert!(children.contains(&child1));
-        assert!(!children.contains(&child2));
-        assert_eq!(children.len(), 1);
+        children.remove(&a);
+        assert_eq!(children.entities(), [b, c]);
 
-        children.add(child2);
-        assert_eq!(children.len(), 2);
-
-        // Adding duplicate should not increase count
-        children.add(child1);
-        assert_eq!(children.len(), 2);
-
-        children.remove(&child1);
-        assert!(!children.contains(&child1));
-        assert_eq!(children.len(), 1);
+        children.add(a);
+        assert_eq!(children.entities(), [b, c, a], "a re-added child goes to the end");
     }
 
     #[test]
-    fn test_global_transform_identity() {
-        let global = GlobalTransform2D::default();
-        assert_eq!(global.position, Vec2::ZERO);
-        assert_eq!(global.rotation, 0.0);
-        assert_eq!(global.scale, Vec2::ONE);
-    }
+    fn test_global_transform_composes_parent_scale_and_rotation_onto_child_local() {
+        // Parent scale 2x at (100, 50): child (10, 5) -> (100, 50) + (10, 5) * 2.
+        let scaled = GlobalTransform2D::new(Vec2::new(100.0, 50.0), 0.0, Vec2::new(2.0, 2.0));
+        let child = scaled.mul_transform(&Transform2D::new(Vec2::new(10.0, 5.0)));
+        assert!(child.position.abs_diff_eq(Vec2::new(120.0, 60.0), 1e-3), "{:?}", child.position);
+        assert_eq!(child.scale, Vec2::new(2.0, 2.0), "scale is inherited");
 
-    #[test]
-    fn test_global_transform_from_local() {
-        let local = Transform2D::new(Vec2::new(100.0, 50.0))
-            .with_rotation(0.5)
-            .with_scale(Vec2::new(2.0, 2.0));
-
-        let global = GlobalTransform2D::from_transform(&local);
-        assert_eq!(global.position, local.position);
-        assert_eq!(global.rotation, local.rotation);
-        assert_eq!(global.scale, local.scale);
-    }
-
-    #[test]
-    fn test_global_transform_mul() {
-        // Parent at (100, 50), no rotation, scale 2x
-        let parent = GlobalTransform2D::new(Vec2::new(100.0, 50.0), 0.0, Vec2::new(2.0, 2.0));
-
-        // Child at (10, 5) local
-        let child_local = Transform2D::new(Vec2::new(10.0, 5.0));
-
-        let child_global = parent.mul_transform(&child_local);
-
-        // Child world position should be parent + child_local * parent_scale
-        // = (100, 50) + (10, 5) * 2 = (120, 60)
-        assert!((child_global.position.x - 120.0).abs() < 0.001);
-        assert!((child_global.position.y - 60.0).abs() < 0.001);
-        assert_eq!(child_global.scale, Vec2::new(2.0, 2.0));
-    }
-
-    #[test]
-    fn test_global_transform_mul_with_rotation() {
-        use std::f32::consts::FRAC_PI_2;
-
-        // Parent at (0, 0), rotated 90 degrees, scale 1x
-        let parent = GlobalTransform2D::new(Vec2::ZERO, FRAC_PI_2, Vec2::ONE);
-
-        // Child at (10, 0) local - should end up at (0, 10) after 90 degree rotation
-        let child_local = Transform2D::new(Vec2::new(10.0, 0.0));
-
-        let child_global = parent.mul_transform(&child_local);
-
-        // After 90 degree rotation: (10, 0) -> (0, 10)
-        assert!((child_global.position.x).abs() < 0.001);
-        assert!((child_global.position.y - 10.0).abs() < 0.001);
-    }
-
-    #[test]
-    fn test_transform_point() {
-        let global = GlobalTransform2D::new(Vec2::new(100.0, 100.0), 0.0, Vec2::new(2.0, 2.0));
-
-        let local_point = Vec2::new(10.0, 5.0);
-        let world_point = global.transform_point(local_point);
-
-        // (100, 100) + (10, 5) * 2 = (120, 110)
-        assert!((world_point.x - 120.0).abs() < 0.001);
-        assert!((world_point.y - 110.0).abs() < 0.001);
+        // Parent rotated 90 degrees: child (10, 0) -> (0, 10), rotation added.
+        let rotated = GlobalTransform2D::new(Vec2::ZERO, FRAC_PI_2, Vec2::ONE);
+        let child = rotated.mul_transform(&Transform2D::new(Vec2::new(10.0, 0.0)).with_rotation(0.5));
+        assert!(child.position.abs_diff_eq(Vec2::new(0.0, 10.0), 1e-3), "{:?}", child.position);
+        assert!((child.rotation - (FRAC_PI_2 + 0.5)).abs() < 1e-6);
     }
 }

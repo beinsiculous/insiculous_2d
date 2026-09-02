@@ -244,48 +244,32 @@ mod tests {
 
     #[test]
     fn test_audio_source_attenuation() {
-        let source = AudioSource::new(1)
-            .with_spatial_settings(1000.0, 100.0, 1.0);
+        let source = AudioSource::new(1).with_spatial_settings(1000.0, 100.0, 1.0);
+        let attenuation_at = |distance: f32| source.calculate_attenuation(distance);
 
-        // At reference distance, full volume
-        let atten = source.calculate_attenuation(100.0);
-        assert!((atten - 1.0).abs() < f32::EPSILON);
+        // Inside the reference distance: full volume.
+        assert!((attenuation_at(50.0) - 1.0).abs() < f32::EPSILON);
+        assert!((attenuation_at(100.0) - 1.0).abs() < f32::EPSILON);
+        // Inverse distance model: reference / (reference + rolloff * (distance - reference))
+        // = 100 / (100 + 1 * (200 - 100)) = 0.5.
+        assert!((attenuation_at(200.0) - 0.5).abs() < f32::EPSILON);
+        // At and beyond the max distance: silent.
+        assert!(attenuation_at(1000.0).abs() < f32::EPSILON);
+        assert!(attenuation_at(2000.0).abs() < f32::EPSILON);
 
-        // At max distance, silent
-        let atten = source.calculate_attenuation(1000.0);
-        assert!(atten.abs() < f32::EPSILON);
-
-        // Beyond max distance, silent
-        let atten = source.calculate_attenuation(2000.0);
-        assert!(atten.abs() < f32::EPSILON);
-
-        // Within reference distance, full volume
-        let atten = source.calculate_attenuation(50.0);
-        assert!((atten - 1.0).abs() < f32::EPSILON);
-
-        // At 200 distance (inverse distance model)
-        let atten = source.calculate_attenuation(200.0);
-        // reference / (reference + rolloff * (distance - reference))
-        // 100 / (100 + 1 * (200 - 100)) = 100 / 200 = 0.5
-        assert!((atten - 0.5).abs() < f32::EPSILON);
+        // A non-spatial source never attenuates, whatever the distance.
+        let flat = AudioSource::new(1);
+        assert!((flat.calculate_attenuation(10_000.0) - 1.0).abs() < f32::EPSILON);
     }
 
     #[test]
-    fn test_audio_source_non_spatial_attenuation() {
-        let source = AudioSource::new(1); // Non-spatial by default
-
-        // Should always return 1.0 for non-spatial sources
-        assert!((source.calculate_attenuation(0.0) - 1.0).abs() < f32::EPSILON);
-        assert!((source.calculate_attenuation(500.0) - 1.0).abs() < f32::EPSILON);
-        assert!((source.calculate_attenuation(10000.0) - 1.0).abs() < f32::EPSILON);
-    }
-
-    #[test]
-    fn test_volume_clamping() {
-        let source = AudioSource::new(1).with_volume(2.0);
-        assert!((source.volume - 1.0).abs() < f32::EPSILON);
-
-        let source = AudioSource::new(1).with_volume(-1.0);
-        assert!(source.volume.abs() < f32::EPSILON);
+    fn test_volume_builders_clamp_to_the_unit_range() {
+        // Scene-authored volumes outside 0..=1 must never reach the mixer.
+        assert_eq!(AudioSource::new(1).with_volume(2.0).volume, 1.0);
+        assert_eq!(AudioSource::new(1).with_volume(-1.0).volume, 0.0);
+        assert_eq!(AudioListener::new().with_volume(2.0).volume, 1.0);
+        assert_eq!(AudioListener::new().with_volume(-1.0).volume, 0.0);
+        assert_eq!(PlaySoundEffect::new(1).with_volume(2.0).volume, 1.0);
+        assert_eq!(PlaySoundEffect::new(1).with_volume(-1.0).volume, 0.0);
     }
 }

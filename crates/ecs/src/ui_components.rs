@@ -236,85 +236,61 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_anchor_fraction_matrix() {
-        assert_eq!(UiAnchor::TopLeft.fraction(), Vec2::new(0.0, 0.0));
-        assert_eq!(UiAnchor::TopCenter.fraction(), Vec2::new(0.5, 0.0));
-        assert_eq!(UiAnchor::TopRight.fraction(), Vec2::new(1.0, 0.0));
-        assert_eq!(UiAnchor::CenterLeft.fraction(), Vec2::new(0.0, 0.5));
-        assert_eq!(UiAnchor::Center.fraction(), Vec2::new(0.5, 0.5));
-        assert_eq!(UiAnchor::CenterRight.fraction(), Vec2::new(1.0, 0.5));
-        assert_eq!(UiAnchor::BottomLeft.fraction(), Vec2::new(0.0, 1.0));
-        assert_eq!(UiAnchor::BottomCenter.fraction(), Vec2::new(0.5, 1.0));
-        assert_eq!(UiAnchor::BottomRight.fraction(), Vec2::new(1.0, 1.0));
+    fn test_resolve_anchored_pos_matrix() {
+        let window = Vec2::new(800.0, 600.0);
+        let size = Vec2::new(100.0, 50.0);
+        let at = |anchor, offset| resolve_anchored_pos(anchor, offset, size, window);
+
+        // The rect's matching corner/edge lands on the window's.
+        assert_eq!(at(UiAnchor::TopLeft, Vec2::ZERO), Vec2::new(0.0, 0.0));
+        assert_eq!(at(UiAnchor::TopCenter, Vec2::ZERO), Vec2::new(350.0, 0.0));
+        assert_eq!(at(UiAnchor::TopRight, Vec2::ZERO), Vec2::new(700.0, 0.0));
+        assert_eq!(at(UiAnchor::CenterLeft, Vec2::ZERO), Vec2::new(0.0, 275.0));
+        assert_eq!(at(UiAnchor::Center, Vec2::ZERO), Vec2::new(350.0, 275.0));
+        assert_eq!(at(UiAnchor::CenterRight, Vec2::ZERO), Vec2::new(700.0, 275.0));
+        assert_eq!(at(UiAnchor::BottomLeft, Vec2::ZERO), Vec2::new(0.0, 550.0));
+        assert_eq!(at(UiAnchor::BottomCenter, Vec2::ZERO), Vec2::new(350.0, 550.0));
+        assert_eq!(at(UiAnchor::BottomRight, Vec2::ZERO), Vec2::new(700.0, 550.0));
+        // The offset shifts the result (+y down).
+        assert_eq!(at(UiAnchor::TopRight, Vec2::new(-10.0, 20.0)), Vec2::new(690.0, 20.0));
     }
 
     #[test]
-    fn test_anchor_all_index_label_roundtrip() {
-        for (i, anchor) in UiAnchor::ALL.iter().enumerate() {
-            assert_eq!(anchor.index(), i);
-            assert!(!anchor.label().is_empty());
+    fn test_anchor_cycle_order_round_trips_through_index_and_labels() {
+        // The editor's cycle row steps through ALL and shows label(); the
+        // order and spelling are what an author sees.
+        let labels: Vec<&str> = UiAnchor::ALL.iter().map(UiAnchor::label).collect();
+        assert_eq!(
+            labels,
+            [
+                "TopLeft", "TopCenter", "TopRight", "CenterLeft", "Center", "CenterRight",
+                "BottomLeft", "BottomCenter", "BottomRight",
+            ]
+        );
+        for (index, anchor) in UiAnchor::ALL.iter().enumerate() {
+            assert_eq!(anchor.index(), index, "{} must map back to its slot", anchor.label());
         }
     }
 
     #[test]
-    fn test_resolve_anchored_pos_matrix() {
-        let window = Vec2::new(800.0, 600.0);
-        let size = Vec2::new(100.0, 50.0);
-
-        // Top-left: rect's top-left on the window's top-left
-        assert_eq!(
-            resolve_anchored_pos(UiAnchor::TopLeft, Vec2::ZERO, size, window),
-            Vec2::new(0.0, 0.0)
-        );
-        // Center: rect centered
-        assert_eq!(
-            resolve_anchored_pos(UiAnchor::Center, Vec2::ZERO, size, window),
-            Vec2::new(350.0, 275.0)
-        );
-        // Bottom-right: rect's bottom-right on the window's bottom-right
-        assert_eq!(
-            resolve_anchored_pos(UiAnchor::BottomRight, Vec2::ZERO, size, window),
-            Vec2::new(700.0, 550.0)
-        );
-        // Offset shifts the result (+y down)
-        assert_eq!(
-            resolve_anchored_pos(UiAnchor::TopRight, Vec2::new(-10.0, 20.0), size, window),
-            Vec2::new(690.0, 20.0)
-        );
-    }
-
-    #[test]
-    fn test_serde_defaults_fill_missing_fields() {
-        // Old/hand-written scene data with only some fields must deserialize.
-        let label: UiLabel = serde_json::from_str(r#"{"text": "@hud.score"}"#).unwrap();
+    fn test_serde_defaults_fill_missing_fields() -> Result<(), serde_json::Error> {
+        // Old/hand-written scene data with only some fields must deserialize,
+        // and an omitted `visible` must yield elements that RENDER: a false
+        // default would silently hide every hand-written label and button.
+        let label: UiLabel = serde_json::from_str(r#"{"text": "@hud.score"}"#)?;
         assert_eq!(label.text, "@hud.score");
         assert_eq!(label.anchor, UiAnchor::TopLeft);
         assert_eq!(label.font_size, 16.0);
         assert!(label.visible);
 
-        let button: UiButton = serde_json::from_str(r#"{"id": "play"}"#).unwrap();
+        let button: UiButton = serde_json::from_str(r#"{"id": "play"}"#)?;
         assert_eq!(button.id, "play");
         assert_eq!(button.size, Vec2::new(120.0, 32.0));
+        assert!(button.visible);
 
-        let panel: UiPanel = serde_json::from_str("{}").unwrap();
+        let panel: UiPanel = serde_json::from_str("{}")?;
         assert!(panel.border_width > 0.0);
         assert!(panel.visible);
-    }
-
-    #[test]
-    fn test_component_meta_names() {
-        // Derive-macro output: the registry and inspector look these up by name.
-        assert_eq!(UiLabel::type_name(), "UiLabel");
-        assert_eq!(UiPanel::type_name(), "UiPanel");
-        assert_eq!(UiButton::type_name(), "UiButton");
-    }
-
-    #[test]
-    fn test_ui_components_default_to_visible() {
-        // Scene RON omitting `visible` must yield elements that render —
-        // a false default would silently hide every hand-written label/button.
-        assert!(UiLabel::default().visible);
-        assert!(UiPanel::default().visible);
-        assert!(UiButton::default().visible);
+        Ok(())
     }
 }

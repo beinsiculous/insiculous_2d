@@ -113,102 +113,45 @@ mod tests {
         count: i32,
     }
 
-    #[derive(Debug, PartialEq)]
-    struct GameSettings {
-        difficulty: String,
-        volume: f32,
-    }
-
-    #[test]
-    fn test_insert_and_get_resource() {
-        let mut storage = ResourceStorage::new();
-        storage.insert(Score { value: 100 });
-
-        let score = storage.get::<Score>().unwrap();
-        assert_eq!(score.value, 100);
-    }
-
-    #[test]
-    fn test_get_mut_resource() {
-        let mut storage = ResourceStorage::new();
-        storage.insert(Score { value: 0 });
-
-        storage.get_mut::<Score>().unwrap().value += 50;
-
-        let score = storage.get::<Score>().unwrap();
-        assert_eq!(score.value, 50);
-    }
-
     #[test]
     fn test_insert_replaces_previous() {
         let mut storage = ResourceStorage::new();
         storage.insert(Score { value: 10 });
 
         let previous = storage.insert(Score { value: 20 });
-        assert_eq!(previous, Some(Score { value: 10 }));
 
-        let score = storage.get::<Score>().unwrap();
-        assert_eq!(score.value, 20);
+        assert_eq!(previous, Some(Score { value: 10 }), "the replaced value comes back");
+        assert_eq!(storage.get::<Score>(), Some(&Score { value: 20 }));
+
+        // Mutation through get_mut is visible on the next get.
+        storage.get_mut::<Score>().expect("present").value += 5;
+        assert_eq!(storage.get::<Score>(), Some(&Score { value: 25 }));
     }
 
     #[test]
-    fn test_remove_resource() {
-        let mut storage = ResourceStorage::new();
-        storage.insert(Score { value: 42 });
-
-        let removed = storage.remove::<Score>();
-        assert_eq!(removed, Some(Score { value: 42 }));
-        assert!(storage.get::<Score>().is_none());
-    }
-
-    #[test]
-    fn test_remove_nonexistent_returns_none() {
-        let mut storage = ResourceStorage::new();
-        assert!(storage.remove::<Score>().is_none());
-    }
-
-    #[test]
-    fn test_contains_resource() {
-        let mut storage = ResourceStorage::new();
-        assert!(!storage.contains::<Score>());
-
-        storage.insert(Score { value: 0 });
-        assert!(storage.contains::<Score>());
-    }
-
-    #[test]
-    fn test_multiple_resource_types() {
+    fn test_resources_are_keyed_by_type_and_coexist() {
         let mut storage = ResourceStorage::new();
         storage.insert(Score { value: 100 });
         storage.insert(Lives { count: 3 });
-        storage.insert(GameSettings {
-            difficulty: "hard".to_string(),
-            volume: 0.8,
-        });
 
-        assert_eq!(storage.get::<Score>().unwrap().value, 100);
-        assert_eq!(storage.get::<Lives>().unwrap().count, 3);
-        assert_eq!(storage.get::<GameSettings>().unwrap().volume, 0.8);
-        assert_eq!(storage.len(), 3);
-    }
-
-    #[test]
-    fn test_get_nonexistent_returns_none() {
-        let storage = ResourceStorage::new();
-        assert!(storage.get::<Score>().is_none());
-    }
-
-    #[test]
-    fn test_clear_resources() {
-        let mut storage = ResourceStorage::new();
-        storage.insert(Score { value: 1 });
-        storage.insert(Lives { count: 5 });
-
+        assert_eq!(storage.get::<Score>(), Some(&Score { value: 100 }));
+        assert_eq!(storage.get::<Lives>(), Some(&Lives { count: 3 }));
         assert_eq!(storage.len(), 2);
+
         storage.clear();
         assert!(storage.is_empty());
-        assert_eq!(storage.len(), 0);
-        assert!(storage.get::<Score>().is_none());
-        assert!(storage.get::<Lives>().is_none());
+        assert_eq!(storage.get::<Score>(), None);
+        assert_eq!(storage.get::<Lives>(), None);
+    }
+
+    #[test]
+    fn test_remove_returns_the_resource_and_none_when_absent() {
+        let mut storage = ResourceStorage::new();
+        storage.insert(Score { value: 42 });
+
+        assert_eq!(storage.remove::<Score>(), Some(Score { value: 42 }));
+        assert_eq!(storage.get::<Score>(), None, "removed means gone");
+        assert_eq!(storage.remove::<Score>(), None, "a second remove finds nothing");
+        assert_eq!(storage.remove::<Lives>(), None, "a type never inserted is None");
     }
 }

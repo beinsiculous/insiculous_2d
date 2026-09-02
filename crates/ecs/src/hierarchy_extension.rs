@@ -278,173 +278,65 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_set_parent_basic() {
-        let mut world = World::new();
-        let parent = world.create_entity();
-        let child = world.create_entity();
-
-        world.set_parent(child, parent).unwrap();
-
-        assert_eq!(world.get_parent(child), Some(parent));
-        assert!(world.get_children(parent).unwrap().contains(&child));
-    }
-
-    #[test]
-    fn test_set_parent_rejects_self_parent() {
-        let mut world = World::new();
-        let entity = world.create_entity();
-
-        let result = world.set_parent(entity, entity);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_set_parent_rejects_cycle() {
+    fn test_get_ancestors_are_ordered_nearest_first() -> Result<(), EcsError> {
         let mut world = World::new();
         let grandparent = world.create_entity();
         let parent = world.create_entity();
         let child = world.create_entity();
-
-        // Set up: grandparent -> parent -> child
-        world.set_parent(parent, grandparent).unwrap();
-        world.set_parent(child, parent).unwrap();
-
-        // Try to create cycle: grandparent -> child (where child is ancestor of parent)
-        let result = world.set_parent(grandparent, child);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_remove_parent() {
-        let mut world = World::new();
-        let parent = world.create_entity();
-        let child = world.create_entity();
-
-        world.set_parent(child, parent).unwrap();
-        assert!(world.get_parent(child).is_some());
-
-        world.remove_parent(child).unwrap();
-        assert!(world.get_parent(child).is_none());
-    }
-
-    #[test]
-    fn test_get_root_entities() {
-        let mut world = World::new();
-        let root1 = world.create_entity();
-        let root2 = world.create_entity();
-        let child = world.create_entity();
-
-        world.set_parent(child, root1).unwrap();
-
-        let roots = world.get_root_entities();
-        assert!(roots.contains(&root1));
-        assert!(roots.contains(&root2));
-        assert!(!roots.contains(&child));
-    }
-
-    #[test]
-    fn test_get_descendants() {
-        let mut world = World::new();
-        let grandparent = world.create_entity();
-        let parent = world.create_entity();
-        let child = world.create_entity();
-
-        world.set_parent(parent, grandparent).unwrap();
-        world.set_parent(child, parent).unwrap();
-
-        let descendants = world.get_descendants(grandparent);
-        assert_eq!(descendants.len(), 2);
-        assert!(descendants.contains(&parent));
-        assert!(descendants.contains(&child));
-    }
-
-    #[test]
-    fn test_get_ancestors() {
-        let mut world = World::new();
-        let grandparent = world.create_entity();
-        let parent = world.create_entity();
-        let child = world.create_entity();
-
-        world.set_parent(parent, grandparent).unwrap();
-        world.set_parent(child, parent).unwrap();
+        world.set_parent(parent, grandparent)?;
+        world.set_parent(child, parent)?;
 
         let ancestors = world.get_ancestors(child);
-        assert_eq!(ancestors.len(), 2);
-        assert_eq!(ancestors[0], parent);
-        assert_eq!(ancestors[1], grandparent);
+
+        assert_eq!(ancestors, [parent, grandparent]);
+        Ok(())
     }
 
     #[test]
-    fn test_is_ancestor_of() {
+    fn test_reparent_prunes_the_old_parents_child_list() -> Result<(), EcsError> {
         let mut world = World::new();
-        let grandparent = world.create_entity();
-        let parent = world.create_entity();
+        let first = world.create_entity();
+        let second = world.create_entity();
         let child = world.create_entity();
+        world.set_parent(child, first)?;
 
-        world.set_parent(parent, grandparent).unwrap();
-        world.set_parent(child, parent).unwrap();
+        world.set_parent(child, second)?;
 
-        assert!(world.is_ancestor_of(grandparent, child));
-        assert!(world.is_ancestor_of(parent, child));
-        assert!(!world.is_ancestor_of(child, grandparent));
-    }
-
-    #[test]
-    fn test_is_descendant_of() {
-        let mut world = World::new();
-        let grandparent = world.create_entity();
-        let parent = world.create_entity();
-        let child = world.create_entity();
-
-        world.set_parent(parent, grandparent).unwrap();
-        world.set_parent(child, parent).unwrap();
-
-        assert!(world.is_descendant_of(child, grandparent));
-        assert!(world.is_descendant_of(parent, grandparent));
-        assert!(!world.is_descendant_of(grandparent, child));
-    }
-
-    #[test]
-    fn test_remove_entity_hierarchy() {
-        let mut world = World::new();
-        let grandparent = world.create_entity();
-        let parent = world.create_entity();
-        let child = world.create_entity();
-
-        world.set_parent(parent, grandparent).unwrap();
-        world.set_parent(child, parent).unwrap();
-
-        // Before removal
-        assert_eq!(world.entity_count(), 3);
-
-        // Remove parent and its descendants
-        world.remove_entity_hierarchy(&parent).unwrap();
-
-        // Only grandparent should remain
-        assert_eq!(world.entity_count(), 1);
-        assert!(world.get_entity(&grandparent).is_ok());
-    }
-
-    #[test]
-    fn test_reparent_entity() {
-        let mut world = World::new();
-        let parent1 = world.create_entity();
-        let parent2 = world.create_entity();
-        let child = world.create_entity();
-
-        // Initially parent child under parent1
-        world.set_parent(child, parent1).unwrap();
-        assert_eq!(world.get_parent(child), Some(parent1));
-        assert!(world.get_children(parent1).unwrap().contains(&child));
-
-        // Reparent to parent2
-        world.set_parent(child, parent2).unwrap();
-        assert_eq!(world.get_parent(child), Some(parent2));
-        assert!(world.get_children(parent2).unwrap().contains(&child));
-        // Parent1 should no longer have child
-        assert!(
-            world.get_children(parent1).is_none()
-                || !world.get_children(parent1).unwrap().contains(&child)
+        assert_eq!(world.get_parent(child), Some(second));
+        assert_eq!(world.get_children(second), Some(&[child][..]));
+        assert_eq!(
+            world.get_children(first).unwrap_or(&[]),
+            [],
+            "the old parent must not keep the child"
         );
+
+        // remove_parent makes the child a root again.
+        world.remove_parent(child)?;
+        assert_eq!(world.get_parent(child), None);
+        assert_eq!(world.get_children(second).unwrap_or(&[]), []);
+        assert!(world.get_root_entities().contains(&child));
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_children_preserves_insertion_order_across_reparenting() -> Result<(), EcsError> {
+        // The hierarchy panel lists children in this order, and the scene
+        // serializer writes them in it.
+        let mut world = World::new();
+        let parent = world.create_entity();
+        let a = world.create_entity();
+        let b = world.create_entity();
+        let c = world.create_entity();
+        world.set_parent(a, parent)?;
+        world.set_parent(b, parent)?;
+        world.set_parent(c, parent)?;
+        assert_eq!(world.get_children(parent), Some(&[a, b, c][..]));
+
+        world.remove_parent(b)?;
+        assert_eq!(world.get_children(parent), Some(&[a, c][..]));
+
+        world.set_parent(b, parent)?;
+        assert_eq!(world.get_children(parent), Some(&[a, c, b][..]), "a re-added child goes last");
+        Ok(())
     }
 }

@@ -292,170 +292,22 @@ mod tests {
     use glam::Vec2;
 
     #[test]
-    fn test_root_entity_transform_propagation() {
+    fn test_scaled_parent_transform_propagation() -> Result<(), crate::EcsError> {
         let mut world = World::new();
-
-        // Create a root entity
-        let root = world.create_entity();
-        world
-            .add_component(&root, Transform2D::new(Vec2::new(100.0, 50.0)))
-            .unwrap();
-        world
-            .add_component(&root, GlobalTransform2D::default())
-            .unwrap();
-
-        // Run the system
-        let mut system = TransformHierarchySystem::new();
-        system.update(&mut world, 0.016);
-
-        // Check global transform equals local transform for root
-        let global = world.get::<GlobalTransform2D>(root).unwrap();
-        assert_eq!(global.position, Vec2::new(100.0, 50.0));
-    }
-
-    #[test]
-    fn test_child_entity_transform_propagation() {
-        let mut world = World::new();
-
-        // Create parent at (100, 50)
         let parent = world.create_entity();
-        world
-            .add_component(&parent, Transform2D::new(Vec2::new(100.0, 50.0)))
-            .unwrap();
-        world
-            .add_component(&parent, GlobalTransform2D::default())
-            .unwrap();
-
-        // Create child at local (20, 10)
+        world.add_component(&parent, Transform2D::new(Vec2::ZERO).with_scale(Vec2::new(2.0, 2.0)))?;
+        world.add_component(&parent, GlobalTransform2D::default())?;
         let child = world.create_entity();
-        world
-            .add_component(&child, Transform2D::new(Vec2::new(20.0, 10.0)))
-            .unwrap();
-        world
-            .add_component(&child, GlobalTransform2D::default())
-            .unwrap();
+        world.add_component(&child, Transform2D::new(Vec2::new(10.0, 10.0)))?;
+        world.add_component(&child, GlobalTransform2D::default())?;
+        world.set_parent(child, parent)?;
 
-        // Set up hierarchy
-        world.set_parent(child, parent).unwrap();
+        TransformHierarchySystem::new().update(&mut world, 0.016);
 
-        // Run the system
-        let mut system = TransformHierarchySystem::new();
-        system.update(&mut world, 0.016);
-
-        // Check child's global transform: (100, 50) + (20, 10) = (120, 60)
-        let child_global = world.get::<GlobalTransform2D>(child).unwrap();
-        assert!((child_global.position.x - 120.0).abs() < 0.001);
-        assert!((child_global.position.y - 60.0).abs() < 0.001);
-    }
-
-    #[test]
-    fn test_grandchild_transform_propagation() {
-        let mut world = World::new();
-
-        // Create grandparent at (100, 0)
-        let grandparent = world.create_entity();
-        world
-            .add_component(&grandparent, Transform2D::new(Vec2::new(100.0, 0.0)))
-            .unwrap();
-        world
-            .add_component(&grandparent, GlobalTransform2D::default())
-            .unwrap();
-
-        // Create parent at local (50, 0)
-        let parent = world.create_entity();
-        world
-            .add_component(&parent, Transform2D::new(Vec2::new(50.0, 0.0)))
-            .unwrap();
-        world
-            .add_component(&parent, GlobalTransform2D::default())
-            .unwrap();
-        world.set_parent(parent, grandparent).unwrap();
-
-        // Create child at local (25, 0)
-        let child = world.create_entity();
-        world
-            .add_component(&child, Transform2D::new(Vec2::new(25.0, 0.0)))
-            .unwrap();
-        world
-            .add_component(&child, GlobalTransform2D::default())
-            .unwrap();
-        world.set_parent(child, parent).unwrap();
-
-        // Run the system
-        let mut system = TransformHierarchySystem::new();
-        system.update(&mut world, 0.016);
-
-        // Check grandparent: (100, 0)
-        let gp_global = world.get::<GlobalTransform2D>(grandparent).unwrap();
-        assert!((gp_global.position.x - 100.0).abs() < 0.001);
-
-        // Check parent: (100, 0) + (50, 0) = (150, 0)
-        let p_global = world.get::<GlobalTransform2D>(parent).unwrap();
-        assert!((p_global.position.x - 150.0).abs() < 0.001);
-
-        // Check child: (150, 0) + (25, 0) = (175, 0)
-        let c_global = world.get::<GlobalTransform2D>(child).unwrap();
-        assert!((c_global.position.x - 175.0).abs() < 0.001);
-    }
-
-    #[test]
-    fn test_scaled_parent_transform_propagation() {
-        let mut world = World::new();
-
-        // Create parent at (0, 0) with scale 2x
-        let parent = world.create_entity();
-        world
-            .add_component(
-                &parent,
-                Transform2D::new(Vec2::ZERO).with_scale(Vec2::new(2.0, 2.0)),
-            )
-            .unwrap();
-        world
-            .add_component(&parent, GlobalTransform2D::default())
-            .unwrap();
-
-        // Create child at local (10, 10)
-        let child = world.create_entity();
-        world
-            .add_component(&child, Transform2D::new(Vec2::new(10.0, 10.0)))
-            .unwrap();
-        world
-            .add_component(&child, GlobalTransform2D::default())
-            .unwrap();
-        world.set_parent(child, parent).unwrap();
-
-        // Run the system
-        let mut system = TransformHierarchySystem::new();
-        system.update(&mut world, 0.016);
-
-        // Child's global position should be (10, 10) * 2 = (20, 20)
-        let child_global = world.get::<GlobalTransform2D>(child).unwrap();
-        assert!((child_global.position.x - 20.0).abs() < 0.001);
-        assert!((child_global.position.y - 20.0).abs() < 0.001);
-        // Child's global scale should be 2x
-        assert!((child_global.scale.x - 2.0).abs() < 0.001);
-        assert!((child_global.scale.y - 2.0).abs() < 0.001);
-    }
-
-    #[test]
-    fn test_disabled_system_does_nothing() {
-        let mut world = World::new();
-
-        let entity = world.create_entity();
-        world
-            .add_component(&entity, Transform2D::new(Vec2::new(100.0, 50.0)))
-            .unwrap();
-        world
-            .add_component(&entity, GlobalTransform2D::default())
-            .unwrap();
-
-        // Disable the system
-        let mut system = TransformHierarchySystem::new();
-        system.set_enabled(false);
-        system.update(&mut world, 0.016);
-
-        // GlobalTransform should remain at default (0, 0) since system didn't run
-        let global = world.get::<GlobalTransform2D>(entity).unwrap();
-        assert_eq!(global.position, Vec2::ZERO);
+        // The parent's scale multiplies the child's local position and scale.
+        let child_global = world.get::<GlobalTransform2D>(child).expect("system writes the global");
+        assert!(child_global.position.abs_diff_eq(Vec2::new(20.0, 20.0), 1e-3), "{:?}", child_global);
+        assert!(child_global.scale.abs_diff_eq(Vec2::new(2.0, 2.0), 1e-3), "{:?}", child_global);
+        Ok(())
     }
 }

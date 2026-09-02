@@ -207,3 +207,26 @@ impl ComponentRegistry {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug, PartialEq)]
+    struct Health(u32);
+
+    #[test]
+    fn test_boxed_component_downcasts_only_through_as_ref_as_any() {
+        let boxed: Box<dyn Component> = Box::new(Health(7));
+
+        // The right path: `.as_ref()` reaches the concrete type by virtual dispatch.
+        assert_eq!(boxed.as_ref().as_any().downcast_ref::<Health>(), Some(&Health(7)));
+        assert_eq!(boxed.as_ref().type_name(), std::any::type_name::<Health>());
+
+        // The footgun: `.as_any()` on the Box itself resolves the blanket
+        // `Component` impl for `Box<dyn Component>`, so the concrete
+        // downcast fails and the type name is the Box's own.
+        assert_eq!(boxed.as_any().downcast_ref::<Health>(), None);
+        assert_ne!(boxed.type_name(), std::any::type_name::<Health>());
+    }
+}

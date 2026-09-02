@@ -249,14 +249,6 @@ mod tests {
     }
 
     #[derive(Debug, Clone, PartialEq)]
-    enum EnemyState {
-        Patrol,
-        Chase,
-        Attack,
-        Dead,
-    }
-
-    #[derive(Debug, Clone, PartialEq)]
     enum PlayerGroup {
         OnGround,
         InAir,
@@ -269,195 +261,75 @@ mod tests {
         }
     }
 
-    // --- StateMachine tests ---
-
-    #[test]
-    fn test_initial_state() {
-        let sm = StateMachine::new(PlayerState::Idle);
-        assert_eq!(*sm.current(), PlayerState::Idle);
-        assert!(sm.previous().is_none());
-        assert!(sm.just_entered());
-        assert_eq!(sm.elapsed(), 0.0);
-    }
-
     #[test]
     fn test_transition_updates_current_and_previous() {
-        let mut sm = StateMachine::new(PlayerState::Idle);
-        sm.tick(0.016); // clear initial just_entered
+        let mut machine = StateMachine::new(PlayerState::Idle);
+        machine.tick(1.0);
 
-        sm.transition_to(PlayerState::Running { speed: 200.0 });
+        machine.transition_to(PlayerState::Running { speed: 200.0 });
 
-        assert_eq!(*sm.current(), PlayerState::Running { speed: 200.0 });
-        assert_eq!(*sm.previous().unwrap(), PlayerState::Idle);
-        assert!(sm.just_entered());
-        assert_eq!(sm.elapsed(), 0.0);
+        assert_eq!(*machine.current(), PlayerState::Running { speed: 200.0 });
+        assert_eq!(machine.previous(), Some(&PlayerState::Idle));
+        assert!(machine.is(&PlayerState::Running { speed: 200.0 }));
+        assert!(machine.just_entered(), "the entered state starts fresh");
+        assert_eq!(machine.elapsed(), 0.0, "elapsed restarts on every transition");
+
+        machine.transition_to(PlayerState::Jumping { velocity: 300.0 });
+        assert_eq!(
+            machine.previous(),
+            Some(&PlayerState::Running { speed: 200.0 }),
+            "only the most recent previous state is remembered"
+        );
     }
 
     #[test]
     fn test_same_state_transition_is_noop() {
-        let mut sm = StateMachine::new(PlayerState::Idle);
-        sm.tick(0.016);
+        let mut machine = StateMachine::new(PlayerState::Idle);
+        machine.tick(0.016);
 
-        sm.transition_to(PlayerState::Idle);
+        machine.transition_to(PlayerState::Idle);
 
-        assert!(!sm.just_entered()); // flag not re-set
-        assert!(sm.previous().is_none()); // no transition recorded
-    }
-
-    #[test]
-    fn test_force_transition_to_same_state() {
-        let mut sm = StateMachine::new(PlayerState::Idle);
-        sm.tick(0.5);
-
-        sm.force_transition_to(PlayerState::Idle);
-
-        assert!(sm.just_entered());
-        assert_eq!(sm.elapsed(), 0.0);
-        assert_eq!(*sm.previous().unwrap(), PlayerState::Idle);
+        assert!(!machine.just_entered(), "the flag is not re-set");
+        assert_eq!(machine.previous(), None, "no transition is recorded");
+        assert!(machine.elapsed() > 0.0, "elapsed keeps counting");
     }
 
     #[test]
     fn test_tick_clears_just_entered_and_accumulates_time() {
-        let mut sm = StateMachine::new(PlayerState::Idle);
-        assert!(sm.just_entered());
+        let mut machine = StateMachine::new(PlayerState::Idle);
+        assert!(machine.just_entered(), "a fresh machine has just entered its initial state");
 
-        sm.tick(0.016);
-        assert!(!sm.just_entered());
-        assert!((sm.elapsed() - 0.016).abs() < f32::EPSILON);
+        machine.tick(0.016);
+        assert!(!machine.just_entered());
+        assert!((machine.elapsed() - 0.016).abs() < f32::EPSILON);
 
-        sm.tick(0.016);
-        assert!((sm.elapsed() - 0.032).abs() < f32::EPSILON);
+        machine.tick(0.016);
+        assert!((machine.elapsed() - 0.032).abs() < f32::EPSILON);
     }
 
     #[test]
-    fn test_elapsed_resets_on_transition() {
-        let mut sm = StateMachine::new(PlayerState::Idle);
-        sm.tick(1.0);
-        assert!((sm.elapsed() - 1.0).abs() < f32::EPSILON);
+    fn test_hierarchical_transition_reports_parent_change_only_across_groups() {
+        let mut machine = HierarchicalStateMachine::new(PlayerState::Idle, player_group);
+        assert_eq!(*machine.parent(), PlayerGroup::OnGround, "the parent derives from the state");
+        machine.tick(0.016);
 
-        sm.transition_to(PlayerState::Falling);
-        assert_eq!(sm.elapsed(), 0.0);
-    }
+        // Idle -> Running stays OnGround.
+        machine.transition_to(PlayerState::Running { speed: 200.0 });
+        assert!(machine.just_entered());
+        assert!(!machine.parent_just_changed());
+        assert_eq!(*machine.parent(), PlayerGroup::OnGround);
+        machine.tick(0.016);
 
-    #[test]
-    fn test_is_check() {
-        let sm = StateMachine::new(PlayerState::Idle);
-        assert!(sm.is(&PlayerState::Idle));
-        assert!(!sm.is(&PlayerState::Falling));
-    }
+        // Running -> Jumping crosses into InAir.
+        machine.transition_to(PlayerState::Jumping { velocity: 300.0 });
+        assert!(machine.parent_just_changed());
+        assert_eq!(*machine.parent(), PlayerGroup::InAir);
+        assert_eq!(machine.previous_parent(), Some(&PlayerGroup::OnGround));
+        machine.tick(0.016);
 
-    #[test]
-    fn test_just_left_state() {
-        let mut sm = StateMachine::new(PlayerState::Idle);
-        sm.tick(0.016);
-
-        sm.transition_to(PlayerState::Jumping { velocity: 300.0 });
-
-        assert!(sm.just_left(&PlayerState::Idle));
-        assert!(!sm.just_left(&PlayerState::Falling));
-    }
-
-    #[test]
-    fn test_multiple_transitions_track_only_last_previous() {
-        let mut sm = StateMachine::new(PlayerState::Idle);
-        sm.transition_to(PlayerState::Running { speed: 100.0 });
-        sm.transition_to(PlayerState::Jumping { velocity: 300.0 });
-
-        assert_eq!(*sm.current(), PlayerState::Jumping { velocity: 300.0 });
-        assert_eq!(*sm.previous().unwrap(), PlayerState::Running { speed: 100.0 });
-    }
-
-    #[test]
-    fn test_state_machine_with_simple_enum() {
-        let mut sm = StateMachine::new(EnemyState::Patrol);
-        sm.tick(0.5);
-
-        sm.transition_to(EnemyState::Chase);
-        assert!(sm.just_entered());
-
-        sm.tick(0.1);
-        sm.transition_to(EnemyState::Attack);
-        assert!(sm.just_left(&EnemyState::Chase));
-
-        sm.tick(0.1);
-        sm.transition_to(EnemyState::Dead);
-        assert_eq!(*sm.current(), EnemyState::Dead);
-    }
-
-    // --- HierarchicalStateMachine tests ---
-
-    #[test]
-    fn test_hierarchical_initial_state() {
-        let sm = HierarchicalStateMachine::new(PlayerState::Idle, player_group);
-
-        assert_eq!(*sm.current(), PlayerState::Idle);
-        assert_eq!(*sm.parent(), PlayerGroup::OnGround);
-        assert!(sm.in_group(&PlayerGroup::OnGround));
-        assert!(sm.just_entered());
-    }
-
-    #[test]
-    fn test_hierarchical_transition_within_group() {
-        let mut sm = HierarchicalStateMachine::new(PlayerState::Idle, player_group);
-        sm.tick(0.016);
-
-        sm.transition_to(PlayerState::Running { speed: 200.0 });
-
-        assert_eq!(*sm.current(), PlayerState::Running { speed: 200.0 });
-        assert_eq!(*sm.parent(), PlayerGroup::OnGround);
-        assert!(sm.just_entered());
-        assert!(!sm.parent_just_changed()); // same group
-    }
-
-    #[test]
-    fn test_hierarchical_transition_across_groups() {
-        let mut sm = HierarchicalStateMachine::new(PlayerState::Idle, player_group);
-        sm.tick(0.016);
-
-        sm.transition_to(PlayerState::Jumping { velocity: 300.0 });
-
-        assert_eq!(*sm.current(), PlayerState::Jumping { velocity: 300.0 });
-        assert_eq!(*sm.parent(), PlayerGroup::InAir);
-        assert!(sm.just_entered());
-        assert!(sm.parent_just_changed());
-        assert_eq!(*sm.previous_parent().unwrap(), PlayerGroup::OnGround);
-    }
-
-    #[test]
-    fn test_hierarchical_previous_parent_tracking() {
-        let mut sm = HierarchicalStateMachine::new(PlayerState::Idle, player_group);
-        sm.tick(0.016);
-
-        sm.transition_to(PlayerState::Jumping { velocity: 300.0 });
-        sm.tick(0.016);
-
-        sm.transition_to(PlayerState::Falling);
-        // Falling is still InAir, so parent didn't change
-        assert!(!sm.parent_just_changed());
-        assert_eq!(*sm.parent(), PlayerGroup::InAir);
-    }
-
-    #[test]
-    fn test_hierarchical_in_group_check() {
-        let sm = HierarchicalStateMachine::new(PlayerState::Falling, player_group);
-        assert!(sm.in_group(&PlayerGroup::InAir));
-        assert!(!sm.in_group(&PlayerGroup::OnGround));
-    }
-
-    #[test]
-    fn test_hierarchical_tick_and_elapsed() {
-        let mut sm = HierarchicalStateMachine::new(PlayerState::Idle, player_group);
-        sm.tick(0.5);
-        assert!((sm.elapsed() - 0.5).abs() < f32::EPSILON);
-        assert!(!sm.just_entered());
-    }
-
-    #[test]
-    fn test_hierarchical_same_state_is_noop() {
-        let mut sm = HierarchicalStateMachine::new(PlayerState::Idle, player_group);
-        sm.tick(0.016);
-
-        sm.transition_to(PlayerState::Idle);
-        assert!(!sm.just_entered());
+        // Jumping -> Falling stays InAir.
+        machine.transition_to(PlayerState::Falling);
+        assert!(!machine.parent_just_changed());
+        assert_eq!(*machine.parent(), PlayerGroup::InAir);
     }
 }

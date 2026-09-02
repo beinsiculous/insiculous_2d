@@ -44,71 +44,56 @@ impl System for SpriteAnimationSystem {
 mod tests {
     use super::*;
     use crate::sprite_components::{AnimationClip, SheetGrid};
+    use crate::EcsError;
 
     /// A 4x1 sheet with a two-frame clip selected and playing.
-    fn animated_entity(world: &mut World) -> crate::EntityId {
+    fn animated_entity(world: &mut World) -> Result<crate::EntityId, EcsError> {
         let entity = world.create_entity();
         let mut animation = SpriteAnimation::new(SheetGrid::new(4, 1))
-            .with_clip("walk", AnimationClip::new(vec![0, 1], 10.0));
+            .with_clip("walk", AnimationClip::new(vec![0, 1], 10.0))
+            .with_clip("bad", AnimationClip::new(vec![99], 10.0));
         animation.play("walk");
-        world.add_component(&entity, animation).unwrap();
-        world.add_component(&entity, Sprite::new(0)).unwrap();
-        entity
+        world.add_component(&entity, animation)?;
+        world.add_component(&entity, Sprite::new(0))?;
+        Ok(entity)
+    }
+
+    fn region(world: &World, entity: crate::EntityId) -> [f32; 4] {
+        world.get::<Sprite>(entity).expect("sprite").tex_region
     }
 
     #[test]
-    fn test_system_writes_current_frame_region_to_sprite() {
+    fn test_system_writes_current_frame_region_to_sprite() -> Result<(), EcsError> {
         let mut world = World::new();
-        let entity = animated_entity(&mut world);
+        let entity = animated_entity(&mut world)?;
 
         SpriteAnimationSystem.update(&mut world, 0.0);
-        assert_eq!(world.get::<Sprite>(entity).unwrap().tex_region, [0.0, 0.0, 0.25, 1.0]);
+        assert_eq!(region(&world, entity), [0.0, 0.0, 0.25, 1.0]);
 
         // One full frame at 10 fps advances to cell 1.
         SpriteAnimationSystem.update(&mut world, 0.1);
-        assert_eq!(world.get::<Sprite>(entity).unwrap().tex_region, [0.25, 0.0, 0.25, 1.0]);
-    }
+        assert_eq!(region(&world, entity), [0.25, 0.0, 0.25, 1.0]);
 
-    #[test]
-    fn test_system_skips_animation_without_sprite() {
-        let mut world = World::new();
-        let entity = world.create_entity();
-        let mut animation = SpriteAnimation::new(SheetGrid::new(2, 1))
-            .with_clip("walk", AnimationClip::new(vec![0, 1], 10.0));
-        animation.play("walk");
-        world.add_component(&entity, animation).unwrap();
-
-        // No Sprite on the entity — must advance the animation, not panic.
+        // A frame that does not resolve (index past the 4-cell grid) leaves
+        // the sprite's region alone instead of writing garbage.
+        world.get_mut::<SpriteAnimation>(entity).expect("animation").play("bad");
         SpriteAnimationSystem.update(&mut world, 0.1);
-        assert_eq!(world.get::<SpriteAnimation>(entity).unwrap().current_frame, 1);
+        assert_eq!(region(&world, entity), [0.25, 0.0, 0.25, 1.0]);
+        Ok(())
     }
 
     #[test]
-    fn test_system_with_zero_delta_freezes_the_frame() {
+    fn test_system_with_zero_delta_freezes_the_frame() -> Result<(), EcsError> {
         let mut world = World::new();
-        let entity = animated_entity(&mut world);
+        let entity = animated_entity(&mut world)?;
 
         // dt 0 is how a paused game reaches the system (time_scale 0.0).
         for _ in 0..100 {
             SpriteAnimationSystem.update(&mut world, 0.0);
         }
-        assert_eq!(world.get::<SpriteAnimation>(entity).unwrap().current_frame, 0);
-        assert_eq!(world.get::<Sprite>(entity).unwrap().tex_region, [0.0, 0.0, 0.25, 1.0]);
-    }
 
-    #[test]
-    fn test_system_leaves_sprite_region_untouched_when_nothing_resolves() {
-        let mut world = World::new();
-        let entity = world.create_entity();
-        // A frame index past the end of a 2-cell grid never resolves.
-        let mut animation = SpriteAnimation::new(SheetGrid::new(2, 1))
-            .with_clip("bad", AnimationClip::new(vec![99], 10.0));
-        animation.play("bad");
-        world.add_component(&entity, animation).unwrap();
-        let sprite = Sprite::new(0).with_tex_region(0.5, 0.5, 0.5, 0.5);
-        world.add_component(&entity, sprite).unwrap();
-
-        SpriteAnimationSystem.update(&mut world, 0.1);
-        assert_eq!(world.get::<Sprite>(entity).unwrap().tex_region, [0.5, 0.5, 0.5, 0.5]);
+        assert_eq!(world.get::<SpriteAnimation>(entity).expect("animation").current_frame, 0);
+        assert_eq!(region(&world, entity), [0.0, 0.0, 0.25, 1.0]);
+        Ok(())
     }
 }

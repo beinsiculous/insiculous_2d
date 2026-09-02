@@ -1,10 +1,9 @@
-//! Integration tests for ComponentMeta derive macro.
+//! Integration test for the `ComponentMeta` derive macro.
 
 use ecs_macros::ComponentMeta;
 
-// Import the trait to call methods
-// Note: We need to define the trait here since ecs crate depends on ecs_macros
-// This is a simplified version for testing
+// The ecs crate depends on ecs_macros, so the trait the macro targets is
+// restated here in the shape the macro emits for.
 pub trait ComponentMeta {
     fn type_name() -> &'static str
     where
@@ -14,7 +13,6 @@ pub trait ComponentMeta {
         Self: Sized;
 }
 
-// Test struct using the derive macro
 #[derive(Debug, Clone, ComponentMeta)]
 pub struct TestComponent {
     pub health: f32,
@@ -23,21 +21,9 @@ pub struct TestComponent {
 }
 
 #[test]
-fn test_type_name_generated() {
+fn test_derive_emits_type_name_and_field_names_in_declaration_order() {
+    // The registry keys on type_name and the inspector renders fields in
+    // this order, so both are the contract.
     assert_eq!(TestComponent::type_name(), "TestComponent");
-}
-
-#[test]
-fn test_field_names_generated() {
-    let fields = TestComponent::field_names();
-    assert_eq!(fields.len(), 3);
-    assert!(fields.contains(&"health"));
-    assert!(fields.contains(&"name"));
-    assert!(fields.contains(&"active"));
-}
-
-#[test]
-fn test_field_names_order_preserved() {
-    let fields = TestComponent::field_names();
-    assert_eq!(fields, &["health", "name", "active"]);
+    assert_eq!(TestComponent::field_names(), &["health", "name", "active"]);
 }

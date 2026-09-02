@@ -719,7 +719,13 @@ More dead API it surfaced (add to batch 2 after a workspace + games grep each):
 `common::Time` (also unwind its re-exports, e.g. `crates/renderer/src/lib.rs`),
 `common::Camera::world_bounds`/`contains_point` (the editor uses its own `AABB` and
 `visible_world_bounds`), `Transform2D::lerp`, `Color::lerp`, `Rect::intersects`/
-`intersection`, `EventBus::type_count`. NOT `Transform2D::forward` — asteroids aims every
+`intersection`, `EventBus::type_count`/`count`/`has_events` (+ `World::has_events`),
+`ResourceStorage::contains`, `StateMachine::just_left`/`force_transition_to`,
+`HierarchicalStateMachine::in_group`, `SpriteAnimation::is_complete`, `Tilemap::tile`,
+`GlobalTransform2D::transform_point`/`from_transform`, `Children::is_empty`/`len`/`contains`,
+`Parent::new`/`entity`, `SimpleSystem`, `ecs::init()`, and the whole `ecs::generation` module
+(`EntityGeneration`, `EntityIdGenerator`, `EntityReference`) — all reported caller-free by the
+`ecs` cut review (review-5 F5). NOT `Transform2D::forward` — asteroids aims every
 bullet with it (`ship.rs:122`); its test was restored (review-4 F1). Rule: show the
 workspace AND `../games` grep for every candidate in the batch-2 review before deleting it. NOT `Rect::contains`/`center`/`expand` — the keep-list called `Rect`
 dead, but `contains` decides every widget interaction and the editor uses the other two;

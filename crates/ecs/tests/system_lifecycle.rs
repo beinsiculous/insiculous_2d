@@ -1,366 +1,149 @@
-//! Tests for system lifecycle management.
+//! Public-API contracts of the world lifecycle: hooks fire in order and
+//! against the real world, late systems catch up, and one panicking system
+//! never takes the others down.
 
 use ecs::prelude::*;
-use ecs::system::SystemRegistry;
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::Arc;
 
-#[derive(Debug)]
-struct TestSystem {
-    name: String,
-    initialized: Arc<Mutex<bool>>,
-    started: Arc<Mutex<bool>>,
-    stopped: Arc<Mutex<bool>>,
-    shutdown: Arc<Mutex<bool>>,
-    update_count: Arc<Mutex<u32>>,
+struct InitMarker;
+struct StartMarker;
+
+/// Records every lifecycle hook it receives; the shared handles let a test
+/// keep watching after the world has taken ownership of the system.
+#[derive(Default, Clone)]
+struct HookLog {
+    initialized: Arc<AtomicBool>,
+    started: Arc<AtomicBool>,
+    stopped: Arc<AtomicBool>,
+    shut_down: Arc<AtomicBool>,
+    updates: Arc<AtomicU32>,
 }
 
-impl TestSystem {
-    fn new(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            initialized: Arc::new(Mutex::new(false)),
-            started: Arc::new(Mutex::new(false)),
-            stopped: Arc::new(Mutex::new(false)),
-            shutdown: Arc::new(Mutex::new(false)),
-            update_count: Arc::new(Mutex::new(0)),
-        }
-    }
-
-    fn is_initialized(&self) -> bool {
-        *self.initialized.lock().unwrap()
-    }
-
-    fn is_started(&self) -> bool {
-        *self.started.lock().unwrap()
-    }
-
-    fn is_stopped(&self) -> bool {
-        *self.stopped.lock().unwrap()
-    }
-
-    fn is_shutdown(&self) -> bool {
-        *self.shutdown.lock().unwrap()
-    }
-
-    fn update_count(&self) -> u32 {
-        *self.update_count.lock().unwrap()
+impl HookLog {
+    fn updates(&self) -> u32 {
+        self.updates.load(Ordering::SeqCst)
     }
 }
 
-impl System for TestSystem {
-    fn initialize(&mut self, _world: &mut World) -> Result<(), String> {
-        *self.initialized.lock().unwrap() = true;
-        log::debug!("System '{}' initialized", self.name);
+struct LoggingSystem(HookLog);
+
+impl System for LoggingSystem {
+    fn initialize(&mut self, world: &mut World) -> Result<(), String> {
+        world.insert_resource(InitMarker);
+        self.0.initialized.store(true, Ordering::SeqCst);
         Ok(())
     }
 
-    fn start(&mut self, _world: &mut World) -> Result<(), String> {
-        if !self.is_initialized() {
-            return Err("System not initialized".to_string());
-        }
-        if self.is_started() {
-            return Err("System already started".to_string());
-        }
-        *self.started.lock().unwrap() = true;
-        log::debug!("System '{}' started", self.name);
+    fn start(&mut self, world: &mut World) -> Result<(), String> {
+        world.insert_resource(StartMarker);
+        self.0.started.store(true, Ordering::SeqCst);
         Ok(())
     }
 
     fn update(&mut self, _world: &mut World, _delta_time: f32) {
-        if self.is_started() && !self.is_stopped() {
-            *self.update_count.lock().unwrap() += 1;
-        }
+        self.0.updates.fetch_add(1, Ordering::SeqCst);
     }
 
     fn stop(&mut self, _world: &mut World) -> Result<(), String> {
-        if !self.is_started() {
-            return Err("System not started".to_string());
-        }
-        if self.is_stopped() {
-            return Err("System already stopped".to_string());
-        }
-        *self.stopped.lock().unwrap() = true;
-        log::debug!("System '{}' stopped", self.name);
+        self.0.stopped.store(true, Ordering::SeqCst);
         Ok(())
     }
 
     fn shutdown(&mut self, _world: &mut World) -> Result<(), String> {
-        if !self.is_initialized() {
-            return Err("System not initialized".to_string());
-        }
-        *self.shutdown.lock().unwrap() = true;
-        log::debug!("System '{}' shut down", self.name);
+        self.0.shut_down.store(true, Ordering::SeqCst);
         Ok(())
     }
 
     fn name(&self) -> &str {
-        &self.name
+        "LoggingSystem"
     }
 }
 
 #[test]
-fn test_system_lifecycle() {
+fn test_world_lifecycle_runs_systems_only_while_running_and_refuses_out_of_order_calls() -> Result<(), EcsError> {
+    let log = HookLog::default();
     let mut world = World::new();
-    let mut system = TestSystem::new("TestSystem");
-    
-    // Test lifecycle
-    assert!(!system.is_initialized());
-    assert!(!system.is_started());
-    assert!(!system.is_stopped());
-    assert!(!system.is_shutdown());
-    assert_eq!(system.update_count(), 0);
-    
-    // Initialize
-    system.initialize(&mut world).unwrap();
-    assert!(system.is_initialized());
-    
-    // Start
-    system.start(&mut world).unwrap();
-    assert!(system.is_started());
-    
-    // Update (should increment count)
-    system.update(&mut world, 0.016);
-    assert_eq!(system.update_count(), 1);
-    
-    // Stop
-    system.stop(&mut world).unwrap();
-    assert!(system.is_stopped());
-    
-    // Update after stop (should not increment)
-    system.update(&mut world, 0.016);
-    assert_eq!(system.update_count(), 1);
-    
-    // Shutdown
-    system.shutdown(&mut world).unwrap();
-    assert!(system.is_shutdown());
+    world.add_system(LoggingSystem(log.clone()));
+    assert!(!world.is_initialized());
+    assert!(!world.is_running());
+
+    assert!(matches!(world.update(0.016), Err(EcsError::NotInitialized)));
+    assert!(matches!(world.start(), Err(EcsError::NotInitialized)));
+
+    world.initialize()?;
+    assert!(world.is_initialized());
+    assert!(log.initialized.load(Ordering::SeqCst));
+    assert!(matches!(world.initialize(), Err(EcsError::AlreadyInitialized)));
+    assert!(matches!(world.update(0.016), Err(EcsError::NotRunning)));
+    assert_eq!(log.updates(), 0, "nothing updates before start");
+
+    world.start()?;
+    assert!(world.is_running());
+    assert!(log.started.load(Ordering::SeqCst));
+    assert!(matches!(world.start(), Err(EcsError::AlreadyRunning)));
+    world.update(0.016)?;
+    world.update(0.016)?;
+    assert_eq!(log.updates(), 2, "every update reaches the system while running");
+
+    world.stop()?;
+    assert!(!world.is_running());
+    assert!(log.stopped.load(Ordering::SeqCst));
+    assert!(matches!(world.stop(), Err(EcsError::NotRunning)));
+    assert!(matches!(world.update(0.016), Err(EcsError::NotRunning)));
+    assert_eq!(log.updates(), 2, "a stopped world updates nothing");
+
+    world.shutdown()?;
+    assert!(!world.is_initialized());
+    assert!(log.shut_down.load(Ordering::SeqCst));
+    Ok(())
 }
 
 #[test]
-fn test_system_registry_lifecycle() {
-    let mut registry = SystemRegistry::new();
+fn test_late_added_system_gets_missed_hooks() -> Result<(), EcsError> {
     let mut world = World::new();
-    
-    let system1 = TestSystem::new("System1");
-    let system2 = TestSystem::new("System2");
-    
-    registry.add(system1);
-    registry.add(system2);
-    
-    assert_eq!(registry.len(), 2);
-    
-    // Initialize
-    registry.initialize(&mut world).unwrap();
+    world.initialize()?;
+    world.start()?;
+    let log = HookLog::default();
 
-    // Start
-    registry.start(&mut world).unwrap();
+    world.add_system(LoggingSystem(log.clone()));
 
-    // Update systems through world
-    world.initialize().unwrap();
-    world.start().unwrap();
-    world.update(0.016).unwrap();
-
-    // Stop
-    registry.stop(&mut world).unwrap();
-
-    // Shutdown
-    registry.shutdown(&mut world).unwrap();
+    assert!(log.initialized.load(Ordering::SeqCst), "late-added system is initialized immediately");
+    assert!(log.started.load(Ordering::SeqCst), "late-added system is started immediately");
+    assert!(world.has_resource::<InitMarker>(), "the initialize hook received the real world");
+    assert!(world.has_resource::<StartMarker>(), "the start hook received the real world");
+    world.update(0.016)?;
+    assert_eq!(log.updates(), 1, "and it takes part in the next update");
+    Ok(())
 }
 
 #[test]
-fn test_lifecycle_hooks_receive_world() {
-    struct ResourceWritingSystem;
-
-    struct InitMarker;
-    struct StartMarker;
-
-    impl System for ResourceWritingSystem {
-        fn initialize(&mut self, world: &mut World) -> Result<(), String> {
-            world.insert_resource(InitMarker);
-            Ok(())
-        }
-
-        fn start(&mut self, world: &mut World) -> Result<(), String> {
-            world.insert_resource(StartMarker);
-            Ok(())
-        }
-
-        fn update(&mut self, _world: &mut World, _delta_time: f32) {}
-
-        fn name(&self) -> &str {
-            "ResourceWritingSystem"
-        }
-    }
-
-    let mut world = World::new();
-    world.add_system(ResourceWritingSystem);
-
-    assert!(!world.has_resource::<InitMarker>());
-    world.initialize().unwrap();
-    assert!(world.has_resource::<InitMarker>(), "initialize hook must receive the real world");
-
-    assert!(!world.has_resource::<StartMarker>());
-    world.start().unwrap();
-    assert!(world.has_resource::<StartMarker>(), "start hook must receive the real world");
-}
-
-#[test]
-fn test_late_added_system_gets_missed_hooks() {
-    let mut world = World::new();
-    world.initialize().unwrap();
-    world.start().unwrap();
-
-    let system = TestSystem::new("LateSystem");
-    let initialized = system.initialized.clone();
-    let started = system.started.clone();
-    world.add_system(system);
-
-    assert!(*initialized.lock().unwrap(), "late-added system must be initialized immediately");
-    assert!(*started.lock().unwrap(), "late-added system must be started immediately");
-}
-
-#[test]
-fn test_system_lifecycle_errors() {
-    let mut world = World::new();
-    let mut system = TestSystem::new("TestSystem");
-    
-    // Try to start without initialization
-    let result = system.start(&mut world);
-    assert!(result.is_err());
-    
-    // Initialize
-    system.initialize(&mut world).unwrap();
-    
-    // Try to start twice
-    system.start(&mut world).unwrap();
-    let result = system.start(&mut world);
-    assert!(result.is_err());
-    
-    // Try to stop without being started
-    system.stop(&mut world).unwrap(); // Stop it first
-    let result = system.stop(&mut world);
-    assert!(result.is_err());
-    
-    // Try to shutdown without initialization
-    let mut new_system = TestSystem::new("NewSystem");
-    let result = new_system.shutdown(&mut world);
-    assert!(result.is_err());
-}
-
-#[test]
-fn test_system_registry_error_handling() {
-    let mut registry = SystemRegistry::new();
-    let mut world = World::new();
-
-    // Try to start without initialization
-    let result = registry.start(&mut world);
-    assert!(result.is_err());
-
-    // Initialize
-    registry.initialize(&mut world).unwrap();
-
-    // Try to initialize twice
-    let result = registry.initialize(&mut world);
-    assert!(result.is_err());
-
-    // Start
-    registry.start(&mut world).unwrap();
-
-    // Try to start twice
-    let result = registry.start(&mut world);
-    assert!(result.is_err());
-
-    // Stop
-    registry.stop(&mut world).unwrap();
-
-    // Try to stop twice
-    let result = registry.stop(&mut world);
-    assert!(result.is_err());
-}
-
-#[test]
-fn test_system_update_safety() {
-    let mut registry = SystemRegistry::new();
-    let mut world = World::new();
-    
-    let system = TestSystem::new("UpdateTest");
-    registry.add(system);
-    
-    // Try to update without starting (should log warning but not panic)
-    registry.update_all(&mut world, 0.016);
-    
-    // Initialize and start
-    registry.initialize(&mut world).unwrap();
-    registry.start(&mut world).unwrap();
-
-    // Update should work now
-    world.initialize().unwrap();
-    world.start().unwrap();
-    world.update(0.016).unwrap();
-
-    // Stop and try to update (should log warning)
-    registry.stop(&mut world).unwrap();
-    registry.update_all(&mut world, 0.016);
-}
-
-#[test]
-fn test_panic_recovery_in_systems() {
-    use std::panic;
-    
+fn test_a_panicking_system_does_not_stop_later_systems_from_updating() -> Result<(), EcsError> {
     struct PanicSystem;
-    
+
     impl System for PanicSystem {
         fn update(&mut self, _world: &mut World, _delta_time: f32) {
             panic!("Test panic in system");
         }
-        
+
         fn name(&self) -> &str {
             "PanicSystem"
         }
     }
-    
-    let mut registry = SystemRegistry::new();
-    let mut world = World::new();
-    
-    registry.add(PanicSystem);
-    registry.initialize(&mut world).unwrap();
-    registry.start(&mut world).unwrap();
-    
-    world.initialize().unwrap();
-    world.start().unwrap();
-    
-    // This should not panic the whole engine
-    registry.update_all(&mut world, 0.016);
-    
-    // Other systems should still work
-    let normal_system = TestSystem::new("NormalSystem");
-    registry.add(normal_system);
-    
-    // Should still be able to update
-    registry.update_all(&mut world, 0.016);
-}
 
-#[test]
-fn test_world_lifecycle_integration() {
+    let log = HookLog::default();
     let mut world = World::new();
-    let system = TestSystem::new("WorldIntegration");
-    world.add_system(system);
-    
-    // Test full world lifecycle
-    assert!(!world.is_initialized());
-    assert!(!world.is_running());
-    
-    world.initialize().unwrap();
-    assert!(world.is_initialized());
-    
-    world.start().unwrap();
+    world.add_system(PanicSystem);
+    world.add_system(LoggingSystem(log.clone()));
+    world.initialize()?;
+    world.start()?;
+
+    // The registry catches the panic, so the frame completes and the
+    // next system still runs, this frame and every frame after.
+    world.update(0.016)?;
+    world.update(0.016)?;
+
+    assert_eq!(log.updates(), 2);
     assert!(world.is_running());
-    
-    // Should be able to update
-    world.update(0.016).unwrap();
-    
-    world.stop().unwrap();
-    assert!(!world.is_running());
-    
-    world.shutdown().unwrap();
-    assert!(!world.is_initialized());
+    Ok(())
 }

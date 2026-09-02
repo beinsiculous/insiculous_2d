@@ -129,39 +129,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_sprite_instances_count_matches_non_zero_tiles() {
-        let mut map = Tilemap::new(3, 2, 40.0);
-        map.set_tile(0, 0, 1);
-        map.set_tile(2, 0, 3);
-        map.set_tile(1, 1, 2);
-
-        assert_eq!(map.sprite_instances().count(), 3);
-    }
-
-    #[test]
-    fn test_sprite_instances_uv_region_for_known_index() {
-        let mut map = Tilemap::new(1, 1, 32.0);
-        map.tile_uv_size = Vec2::new(0.25, 0.25); // 4x4 tileset
-        map.set_tile(0, 0, 6); // cell 5 -> col 1, row 1
-
-        let instance = map.sprite_instances().next().unwrap();
-        assert_eq!(instance.tex_region, [0.25, 0.25, 0.25, 0.25]);
-    }
-
-    #[test]
-    fn test_sprite_instances_offsets_row_zero_on_top() {
+    fn test_sprite_instances_place_non_zero_tiles_with_row_zero_on_top() {
         let mut map = Tilemap::new(4, 3, 50.0);
-        map.set_tile(2, 1, 1);
+        map.tile_uv_size = Vec2::new(0.25, 0.25); // 4x4 tileset
+        map.set_tile(0, 0, 1); // tileset cell 0
+        map.set_tile(2, 1, 6); // tileset cell 5 -> column 1, row 1
+        map.set_tile(5, 0, 9); // outside the grid: ignored
 
-        let instance = map.sprite_instances().next().unwrap();
-        // Columns grow right, rows grow DOWN (world Y is up).
-        assert_eq!(instance.offset, Vec2::new(100.0, -50.0));
-    }
+        let instances: Vec<TileInstance> = map.sprite_instances().collect();
 
-    #[test]
-    fn test_all_zero_map_yields_no_instances() {
-        let map = Tilemap::new(16, 16, 32.0);
-        assert_eq!(map.sprite_instances().count(), 0);
+        // Zero tiles emit nothing; the out-of-grid write was dropped.
+        assert_eq!(
+            instances,
+            [
+                TileInstance { offset: Vec2::ZERO, tex_region: [0.0, 0.0, 0.25, 0.25] },
+                // Columns grow right, rows grow DOWN (world Y is up).
+                TileInstance {
+                    offset: Vec2::new(100.0, -50.0),
+                    tex_region: [0.25, 0.25, 0.25, 0.25],
+                },
+            ]
+        );
+        assert_eq!(Tilemap::new(16, 16, 32.0).sprite_instances().count(), 0, "an all-zero map draws nothing");
     }
 
     #[test]
@@ -175,29 +164,22 @@ mod tests {
     }
 
     #[test]
-    fn test_tile_accessors_bounds_checked() {
-        let mut map = Tilemap::new(2, 2, 32.0);
-        map.set_tile(1, 1, 7);
-        map.set_tile(5, 0, 9); // out of grid: ignored
-
-        assert_eq!(map.tile(1, 1), Some(7));
-        assert_eq!(map.tile(0, 0), Some(0));
-        assert_eq!(map.tile(5, 0), None);
-    }
-
-    #[test]
-    fn test_tilemap_ron_round_trip() {
+    fn test_tilemap_ron_round_trip() -> Result<(), Box<dyn std::error::Error>> {
         let mut map = Tilemap::new(2, 2, 40.0);
         map.tileset = 3;
         map.tile_uv_size = Vec2::new(0.5, 0.5);
         map.set_tile(0, 1, 4);
 
-        let serialized = ron::to_string(&map).expect("Failed to serialize");
-        let restored: Tilemap = ron::from_str(&serialized).expect("Failed to deserialize");
+        let serialized = ron::to_string(&map)?;
+        let restored: Tilemap = ron::from_str(&serialized)?;
 
         assert_eq!(restored.width, 2);
-        assert_eq!(restored.tiles, map.tiles);
-        assert_eq!(restored.tile_uv_size, map.tile_uv_size);
-        assert_eq!(restored.depth, -1.0);
+        assert_eq!(restored.height, 2);
+        assert_eq!(restored.tile_size, 40.0);
+        assert_eq!(restored.tileset, 3);
+        assert_eq!(restored.tiles, [0, 0, 4, 0]);
+        assert_eq!(restored.tile_uv_size, Vec2::new(0.5, 0.5));
+        assert_eq!(restored.depth, -1.0, "maps draw behind default-depth sprites");
+        Ok(())
     }
 }

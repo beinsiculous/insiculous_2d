@@ -179,16 +179,10 @@ mod tests {
 
     #[test]
     fn test_topology_cycle_order_round_trips_through_index() {
+        // The editor's cycle row steps through ALL by index.
         for (index, topology) in GridTopology::ALL.iter().enumerate() {
             assert_eq!(topology.index(), index);
             assert_eq!(GridTopology::ALL[topology.index()], *topology);
         }
-    }
-
-    #[test]
-    fn test_component_meta_names_every_field() {
-        assert_eq!(GridBackdrop::type_name(), "GridBackdrop");
-        assert!(GridBackdrop::field_names().contains(&"topology"));
-        assert!(GridBackdrop::field_names().contains(&"activity_velocity_ref"));
     }
 }
