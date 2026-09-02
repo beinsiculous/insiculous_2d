@@ -146,7 +146,7 @@ OS window in the frame tail (`WindowManager::set_title`, headless no-op, title
 stored pre-creation).
 
 ## Testing
-- 381 passing (incl. doc tests; GPU/window-bound ones compile-only `no_run`), 0 ignored — `cargo test -p engine_core`
+- `cargo test -p engine_core` — 0 failed, 0 ignored (GPU/window-bound doc examples are compile-only `no_run`)
 
 ## Godot Oracle
 - Game loop: `main/main.cpp` — `iteration()` method

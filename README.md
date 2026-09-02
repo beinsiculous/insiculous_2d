@@ -465,7 +465,7 @@ or window required.
 
 **Current State:** Functional editor (Phase 1 complete); work follows the UX-audit sprint order — see `PROJECT_ROADMAP.md` § "Editor — UX Audit & Work Order" and `docs/EDITOR_UX_AUDIT.md`
 
-- **Test Status:** 955/955 passing, 0 ignored, 0 failures
+- **Test Status:** `cargo test --workspace` — 0 failed, 0 ignored is the invariant
 - **Lint Status:** `cargo clippy --workspace --all-targets` clean
 - **Editor:** entity CRUD, component management, undo/redo, play/pause/stop, scene save/load, collider visualization
 - **Architecture:** Manager pattern, SRP-refactored core, all files under 600 lines

@@ -65,8 +65,8 @@ Open debt lives on the Studio Board (`tech-debt` label); this crate currently
 has none.
 
 ## Testing
-- 27 headless tests (26 unit + 1 doc; disabled mode + bytes/temp-file APIs +
-  enable_output/pending-music), run with `cargo test -p audio`. No audio
+- `cargo test -p audio` — headless (disabled mode + bytes/temp-file APIs +
+  enable_output/pending-music). No audio
   device needed — enable_output tests match on the result and assert the
   invariants of whichever branch ran.
 

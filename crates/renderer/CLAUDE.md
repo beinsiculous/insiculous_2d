@@ -78,7 +78,7 @@ generation); `RendererConfig` stays vsync-only until a game needs more
 (power preference / MSAA / bloom downsample).
 
 ## Testing
-- 73 tests (71 unit + 2 doc), run with `cargo test -p renderer`
+- `cargo test -p renderer` — 0 failed, 0 ignored
 
 ## Godot Oracle — When Stuck
 Use `WebFetch` to read from `https://github.com/godotengine/godot/blob/master/`

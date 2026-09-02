@@ -82,7 +82,7 @@ aren't enough.
 - serde_json for inspector, RON for scene files — both must work
 
 ## Testing
-- 211 passing (incl. 10 doc tests), 0 ignored — `cargo test -p ecs`
+- `cargo test -p ecs` — 0 failed, 0 ignored
 - Integration tests in `tests/world.rs`, unit tests inline in source
 - Naming: `test_<behavior_description>`
 

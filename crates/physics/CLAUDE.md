@@ -87,7 +87,7 @@ rapier types), API-001 (timing getters), partial MISSING-001
 SRP-002 (collider clamping vs builder).
 
 ## Testing
-- 66 passing (57 lib + 6 integration + 3 doc), 0 ignored — `cargo test -p physics`
+- `cargo test -p physics` — 0 failed, 0 ignored
 - Pure math/simulation — no GPU needed
 
 ## Godot Oracle — When Stuck

@@ -55,4 +55,4 @@ player-aware settings layer (the universal mapping games consume).
 - Stick Y follows gilrs convention: **positive = up**
 
 ## Testing
-- 79 passing (18 unit + 56 integration/doc), 0 ignored — `cargo test -p input`
+- `cargo test -p input` — 0 failed, 0 ignored
