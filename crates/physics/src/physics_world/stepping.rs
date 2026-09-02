@@ -210,3 +210,18 @@ impl PhysicsWorld {
         self.collision_events.clear();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_collision_pair_is_the_same_pair_in_either_order() {
+        // started/ongoing dedup looks the pair up across steps; a pair that
+        // depended on rapier's collider order would re-start every frame.
+        let a = EntityId::new();
+        let b = EntityId::new();
+        assert_eq!(CollisionPair::new(a, b), CollisionPair::new(b, a));
+        assert_eq!(CollisionPair::new(a, b).entities(), CollisionPair::new(b, a).entities());
+    }
+}

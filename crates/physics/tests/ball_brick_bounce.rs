@@ -6,6 +6,9 @@
 //! bricks on contact start, which cancels the impulse on corner/gap hits;
 //! the fix and its regression test live in the breakout game.)
 
+mod common;
+
+use common::spawn_body;
 use ecs::sprite_components::Transform2D;
 use ecs::{System, World};
 use glam::Vec2;
@@ -15,36 +18,26 @@ const BALL_SPEED: f32 = 360.0;
 const DT: f32 = 1.0 / 60.0;
 
 fn spawn_brick(world: &mut World, pos: Vec2) -> ecs::EntityId {
-    world
-        .spawn()
-        .with(Transform2D::new(pos))
-        .with(RigidBody::new_static())
-        .with(
-            Collider::box_collider(70.0, 24.0)
-                .with_friction(0.0)
-                .with_restitution(1.0),
-        )
-        .id()
+    spawn_body(
+        world,
+        pos,
+        RigidBody::new_static(),
+        Collider::box_collider(70.0, 24.0).with_friction(0.0).with_restitution(1.0),
+    )
 }
 
 fn spawn_ball(world: &mut World, pos: Vec2) -> ecs::EntityId {
-    world
-        .spawn()
-        .with(Transform2D::new(pos))
-        .with(
-            RigidBody::new_dynamic()
-                .with_gravity_scale(0.0)
-                .with_rotation_locked(true)
-                .with_linear_damping(0.0)
-                .with_angular_damping(0.0)
-                .with_ccd(true),
-        )
-        .with(
-            Collider::circle_collider(8.0)
-                .with_friction(0.0)
-                .with_restitution(1.0),
-        )
-        .id()
+    spawn_body(
+        world,
+        pos,
+        RigidBody::new_dynamic()
+            .with_gravity_scale(0.0)
+            .with_rotation_locked(true)
+            .with_linear_damping(0.0)
+            .with_angular_damping(0.0)
+            .with_ccd(true),
+        Collider::circle_collider(8.0).with_friction(0.0).with_restitution(1.0),
+    )
 }
 
 #[test]

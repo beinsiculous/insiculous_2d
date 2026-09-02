@@ -425,175 +425,112 @@ pub struct CollisionData {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_box_collider_stores_half_extents() {
-        let collider = Collider::box_collider(32.0, 64.0);
-        match collider.shape {
-            ColliderShape::Box { half_extents } => {
-                assert_eq!(half_extents, Vec2::new(16.0, 32.0));
-            }
-            other => panic!("expected box shape, got {other:?}"),
-        }
+    fn event_between(a: ecs::EntityId, b: ecs::EntityId) -> CollisionEvent {
+        CollisionEvent { entity_a: a, entity_b: b, started: true, stopped: false }
     }
 
     #[test]
-    fn test_collider_shapes() {
-        let circle = ColliderShape::circle(25.0);
-        if let ColliderShape::Circle { radius } = circle {
-            assert_eq!(radius, 25.0);
-        } else {
-            panic!("Expected circle shape");
-        }
-
-        let capsule = ColliderShape::capsule_y(50.0, 10.0);
-        if let ColliderShape::CapsuleY { half_height, radius } = capsule {
-            assert_eq!(radius, 10.0);
-            assert_eq!(half_height, 15.0); // (50 - 2*10) / 2 = 15
-        } else {
-            panic!("Expected capsule shape");
-        }
+    fn test_shape_constructors_take_full_sizes_and_store_half_dimensions() {
+        assert_eq!(
+            ColliderShape::box_shape(32.0, 64.0),
+            ColliderShape::Box { half_extents: Vec2::new(16.0, 32.0) },
+            "a box is authored by full width and height"
+        );
+        // A capsule's half-height is the cylinder section only: the two
+        // end caps (2 × radius) come off the total before halving.
+        assert_eq!(
+            ColliderShape::capsule_y(50.0, 10.0),
+            ColliderShape::CapsuleY { half_height: 15.0, radius: 10.0 }
+        );
+        assert_eq!(
+            ColliderShape::capsule_x(50.0, 10.0),
+            ColliderShape::CapsuleX { half_height: 15.0, radius: 10.0 }
+        );
+        assert_eq!(
+            ColliderShape::capsule_y(10.0, 10.0),
+            ColliderShape::CapsuleY { half_height: 0.0, radius: 10.0 },
+            "a capsule shorter than its caps is a ball, never a negative cylinder"
+        );
     }
 
-    // === CollisionEvent helper tests ===
-
     #[test]
-    fn test_collision_event_involves_matching_pair() {
+    fn test_collision_event_membership_is_order_independent() {
         let a = ecs::EntityId::new();
         let b = ecs::EntityId::new();
-        let event = CollisionEvent { entity_a: a, entity_b: b, started: true, stopped: false };
-        assert!(event.involves(a, b));
+        let stranger = ecs::EntityId::new();
+        let event = event_between(a, b);
+
+        assert!(event.involves(a, b) && event.involves(b, a), "both orders name the same pair");
+        assert!(!event.involves(a, stranger) && !event.involves(stranger, b));
+        assert!(event.involves_entity(a) && event.involves_entity(b));
+        assert!(!event.involves_entity(stranger));
     }
 
     #[test]
-    fn test_collision_event_involves_reversed_pair() {
+    fn test_collision_event_other_returns_the_partner_or_none() {
         let a = ecs::EntityId::new();
         let b = ecs::EntityId::new();
-        let event = CollisionEvent { entity_a: a, entity_b: b, started: true, stopped: false };
-        assert!(event.involves(b, a));
-    }
+        let stranger = ecs::EntityId::new();
+        let event = event_between(a, b);
 
-    #[test]
-    fn test_collision_event_involves_non_matching_pair() {
-        let a = ecs::EntityId::new();
-        let b = ecs::EntityId::new();
-        let c = ecs::EntityId::new();
-        let event = CollisionEvent { entity_a: a, entity_b: b, started: true, stopped: false };
-        assert!(!event.involves(a, c));
-        assert!(!event.involves(c, b));
-    }
-
-    #[test]
-    fn test_collision_event_involves_entity() {
-        let a = ecs::EntityId::new();
-        let b = ecs::EntityId::new();
-        let c = ecs::EntityId::new();
-        let event = CollisionEvent { entity_a: a, entity_b: b, started: true, stopped: false };
-        assert!(event.involves_entity(a));
-        assert!(event.involves_entity(b));
-        assert!(!event.involves_entity(c));
-    }
-
-    #[test]
-    fn test_collision_event_other_returns_partner() {
-        let a = ecs::EntityId::new();
-        let b = ecs::EntityId::new();
-        let event = CollisionEvent { entity_a: a, entity_b: b, started: true, stopped: false };
         assert_eq!(event.other(a), Some(b));
         assert_eq!(event.other(b), Some(a));
+        assert_eq!(event.other(stranger), None);
     }
 
     #[test]
-    fn test_collision_event_other_returns_none_for_uninvolved() {
-        let a = ecs::EntityId::new();
-        let b = ecs::EntityId::new();
-        let c = ecs::EntityId::new();
-        let event = CollisionEvent { entity_a: a, entity_b: b, started: true, stopped: false };
-        assert_eq!(event.other(c), None);
-    }
-
-    #[test]
-    fn test_rigid_body_type_cycle_order_round_trips() {
-        for (i, ty) in RigidBodyType::ALL.iter().enumerate() {
-            assert_eq!(ty.index(), i, "{} out of order", ty.label());
-            assert_eq!(RigidBodyType::ALL[ty.index()], *ty);
+    fn test_editor_selector_indices_round_trip_through_their_variant_tables() {
+        // The inspector cycles by index into ALL / VARIANT_NAMES: an index
+        // that disagrees with its table jumps the selector to the wrong variant.
+        for (index, body_type) in RigidBodyType::ALL.iter().enumerate() {
+            assert_eq!(body_type.index(), index, "{} out of order", body_type.label());
+            assert_eq!(RigidBodyType::ALL[body_type.index()], *body_type);
         }
-    }
-
-    #[test]
-    fn test_collider_shape_variant_names_round_trip() {
         let shapes = [
             ColliderShape::Box { half_extents: Vec2::new(1.0, 2.0) },
             ColliderShape::Circle { radius: 3.0 },
             ColliderShape::CapsuleY { half_height: 4.0, radius: 1.0 },
             ColliderShape::CapsuleX { half_height: 5.0, radius: 2.0 },
         ];
-        for (i, shape) in shapes.iter().enumerate() {
-            assert_eq!(shape.variant_index(), i);
-            assert_eq!(shape.variant_name(), ColliderShape::VARIANT_NAMES[i]);
+        for (index, shape) in shapes.iter().enumerate() {
+            assert_eq!(shape.variant_index(), index);
+            assert_eq!(shape.variant_name(), ColliderShape::VARIANT_NAMES[index]);
         }
     }
 
     #[test]
-    fn test_shape_cycle_carries_tuned_dimensions() {
+    fn test_shape_cycle_carries_tuned_dimensions_and_clean_round_trips_are_exact() {
         // A wide box cycled to a circle keeps its footprint (max extent),
         // not the default radius — level tuning survives a cycle + undo.
-        let box_shape = ColliderShape::Box { half_extents: Vec2::new(40.0, 20.0) };
-        assert_eq!(
-            box_shape.variant_with_carried_dimensions(1),
-            ColliderShape::Circle { radius: 40.0 }
-        );
-        // Box → CapsuleY: radius from the half-width, the rest of the
-        // height in the cylinder part (total height preserved; a wide box
-        // yields a zero cylinder = ball).
-        assert_eq!(
-            box_shape.variant_with_carried_dimensions(2),
-            ColliderShape::CapsuleY { half_height: 0.0, radius: 40.0 }
-        );
+        let wide = ColliderShape::Box { half_extents: Vec2::new(40.0, 20.0) };
+        assert_eq!(wide.variant_with_carried_dimensions(1), ColliderShape::Circle { radius: 40.0 });
+        // Box → CapsuleY: radius from the half-width, the rest of the height
+        // in the cylinder (a wide box yields a zero cylinder = ball).
+        assert_eq!(wide.variant_with_carried_dimensions(2), ColliderShape::CapsuleY { half_height: 0.0, radius: 40.0 });
         let tall = ColliderShape::Box { half_extents: Vec2::new(10.0, 50.0) };
-        assert_eq!(
-            tall.variant_with_carried_dimensions(2),
-            ColliderShape::CapsuleY { half_height: 40.0, radius: 10.0 }
-        );
-        // Circle → Box is exact both ways.
-        let circle = ColliderShape::Circle { radius: 7.0 };
-        assert_eq!(
-            circle.variant_with_carried_dimensions(0),
-            ColliderShape::Box { half_extents: Vec2::new(7.0, 7.0) }
-        );
-        // Capsule axes swap cleanly.
-        let cap_y = ColliderShape::CapsuleY { half_height: 30.0, radius: 10.0 };
-        assert_eq!(
-            cap_y.variant_with_carried_dimensions(3),
-            ColliderShape::CapsuleX { half_height: 30.0, radius: 10.0 }
-        );
-        // Out-of-range index is a no-op clone.
-        assert_eq!(box_shape.variant_with_carried_dimensions(9), box_shape);
-    }
+        assert_eq!(tall.variant_with_carried_dimensions(2), ColliderShape::CapsuleY { half_height: 40.0, radius: 10.0 });
+        assert_eq!(wide.variant_with_carried_dimensions(9), wide, "an out-of-range index is a no-op");
 
-    #[test]
-    fn test_shape_cycle_round_trips_are_exact_where_the_mapping_is_clean() {
-        // Cycling AWAY from a shape and straight back must not change it —
-        // a designer previewing shapes gets their collider back (kimi F2:
-        // the old 0.5 capsule floor grew a Circle by 0.5 per lap).
+        // Cycling away and straight back must return the same shape — a
+        // designer previewing shapes gets their collider back (the old 0.5
+        // capsule floor grew a Circle by 0.5 per lap).
         let circle = ColliderShape::Circle { radius: 5.0 };
-        assert_eq!(
-            circle.variant_with_carried_dimensions(2).variant_with_carried_dimensions(1),
-            circle
-        );
-        assert_eq!(
-            circle.variant_with_carried_dimensions(0).variant_with_carried_dimensions(1),
-            circle
-        );
-        let tall = ColliderShape::Box { half_extents: Vec2::new(10.0, 50.0) };
-        assert_eq!(
-            tall.variant_with_carried_dimensions(2).variant_with_carried_dimensions(0),
-            tall
-        );
-        let cap = ColliderShape::CapsuleY { half_height: 30.0, radius: 10.0 };
-        assert_eq!(
-            cap.variant_with_carried_dimensions(3).variant_with_carried_dimensions(2),
-            cap
-        );
-        assert_eq!(cap.variant_with_carried_dimensions(0).variant_with_carried_dimensions(2), cap);
+        let capsule = ColliderShape::CapsuleY { half_height: 30.0, radius: 10.0 };
+        let round_trips = [
+            (&circle, 2, 1),
+            (&circle, 0, 1),
+            (&tall, 2, 0),
+            (&capsule, 3, 2),
+            (&capsule, 0, 2),
+        ];
+        for (shape, away, back) in round_trips {
+            assert_eq!(
+                &shape.variant_with_carried_dimensions(away).variant_with_carried_dimensions(back),
+                shape,
+                "{} → {} → back changed the shape",
+                shape.variant_name(),
+                ColliderShape::VARIANT_NAMES[away]
+            );
+        }
     }
 }

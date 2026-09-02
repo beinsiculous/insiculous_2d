@@ -127,28 +127,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_rigid_body_presets() {
+    fn test_preset_values_are_the_tuning_the_examples_and_games_rely_on() {
+        // hello_world / editor_demo build their player and ground on these.
         let player = RigidBody::player_platformer();
-        assert!(!player.can_rotate);
-        assert!(player.ccd_enabled);
-        assert_eq!(player.linear_damping, 5.0);
-    }
+        assert_eq!(
+            (player.linear_damping, player.can_rotate, player.ccd_enabled),
+            (5.0, false, true),
+            "player_platformer: quick stop, no tumbling, no tunnelling"
+        );
+        assert_eq!(Collider::player_box(80.0, 80.0).friction, 0.8);
+        assert_eq!(Collider::platform(800.0, 40.0).friction, 0.8);
+        assert_eq!(Collider::bouncy(50.0, 50.0).restitution, 0.9);
 
-    #[test]
-    fn test_collider_presets() {
-        let player = Collider::player_box(80.0, 80.0);
-        assert_eq!(player.friction, 0.8);
-
-        let bouncy = Collider::bouncy(50.0, 50.0);
-        assert_eq!(bouncy.restitution, 0.9);
-    }
-
-    #[test]
-    fn test_physics_config_presets() {
-        let platformer = PhysicsConfig::platformer();
-        assert_eq!(platformer.gravity.y, -980.0);
-
-        let top_down = PhysicsConfig::top_down();
-        assert_eq!(top_down.gravity, Vec2::ZERO);
+        // The examples and the standalone editor default to platformer();
+        // breakout / space_invaders run on top_down(), asteroids on space().
+        let configs = [
+            (PhysicsConfig::platformer(), Vec2::new(0.0, -980.0), "platformer"),
+            (PhysicsConfig::top_down(), Vec2::ZERO, "top_down"),
+            (PhysicsConfig::space(), Vec2::ZERO, "space"),
+        ];
+        for (config, gravity, name) in configs {
+            assert_eq!(config.gravity, gravity, "{name} gravity");
+            assert_eq!(config.pixels_per_meter, 100.0, "{name} keeps the 100 px/m scale");
+        }
     }
 }

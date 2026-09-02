@@ -729,7 +729,15 @@ More dead API it surfaced (add to batch 2 after a workspace + games grep each):
 `get_gamepad_mut`, `InputHandler::gamepads_mut`, `GamepadState::prev_axis_value`,
 `InputMapping::{unbind_source, unbind_action, actions_for, has_binding, clear,
 just_deactivated}`, `InputSettings::{just_deactivated, is_active_any, axis_value}` (some
-carry keeper assertions that go with them). NOT `Transform2D::forward` — asteroids aims every
+carry keeper assertions that go with them); from the `physics` cut: `PhysicsSystem::raycast`
+and `PhysicsWorld::raycast`, `apply_force`/`reset_forces` (the one-update-force guard goes
+with them), `set_body_transform` (internal only), `CollisionEvent::involves_entity`,
+`Collider::with_collision_groups` (fields stay: inspector + RON read them),
+`tracked_entities`/`rigid_body_count`/`collider_count`/`pixels_to_meters*`/
+`meters_to_pixels*`/`with_iterations`/`with_fixed_timestep`/`set_gravity`/`gravity()` —
+0 callers outside physics; and NINE unused presets (`player_top_down`, `pushable`,
+`physics_prop`, `small_box`, `pushable_box`, `bouncy`, `slippery`, `low_gravity`,
+`high_gravity`), not the four the audit counted. NOT `Transform2D::forward` — asteroids aims every
 bullet with it (`ship.rs:122`); its test was restored (review-4 F1). Rule: show the
 workspace AND `../games` grep for every candidate in the batch-2 review before deleting it. NOT `Rect::contains`/`center`/`expand` — the keep-list called `Rect`
 dead, but `contains` decides every widget interaction and the editor uses the other two;
