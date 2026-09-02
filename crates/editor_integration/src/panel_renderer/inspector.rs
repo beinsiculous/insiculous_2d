@@ -112,7 +112,8 @@ fn render_inspector_editable(
 ) -> f32 {
     let line_height = 20.0;
     let inspect_style = editor.theme.inspector_style();
-    let field_style = editor.theme.editable_field_style();
+    // Numeric inputs render in the crate-shipped monospace face (#54).
+    let field_style = editor.theme.editable_field_style().with_numeric_font(editor.fonts.mono);
 
     // Resolve the sprite texture's display path up front (the editor crate
     // cannot see AssetManager) and hand the drag-drop coordinator to the

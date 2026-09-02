@@ -50,14 +50,36 @@ impl UIContext {
         font_size: f32,
         padding: f32,
     ) -> Vec2 {
-        let text_size = self.measure_text_styled(text, font_size);
+        self.text_pos_in_bounds_with_font(
+            text,
+            bounds,
+            align,
+            font_size,
+            padding,
+            self.font_manager.default_font(),
+        )
+    }
+
+    /// [`Self::text_pos_in_bounds`] measured and baselined with an explicit
+    /// font (`None` = the placeholder estimate), so a widget drawing in a
+    /// non-default face places its text where that face measures.
+    pub(super) fn text_pos_in_bounds_with_font(
+        &self,
+        text: &str,
+        bounds: Rect,
+        align: TextAlign,
+        font_size: f32,
+        padding: f32,
+        font: Option<FontHandle>,
+    ) -> Vec2 {
+        let text_size = self.measure_text_with_font(text, font_size, font);
         let x = match align {
             TextAlign::Left => bounds.x + padding,
             TextAlign::Center => bounds.x + (bounds.width - text_size.x) / 2.0,
             TextAlign::Right => bounds.x + bounds.width - text_size.x - padding,
         };
         let text_top = bounds.y + (bounds.height - text_size.y) / 2.0;
-        let baseline_y = self.baseline_y(text_top, font_size, self.font_manager.default_font());
+        let baseline_y = self.baseline_y(text_top, font_size, font);
         Vec2::new(x, baseline_y)
     }
 
@@ -66,7 +88,7 @@ impl UIContext {
     ///
     /// Single home for the layout-or-placeholder tail shared by all
     /// text-drawing widgets.
-    fn draw_text_with_font(
+    pub(super) fn draw_text_with_font(
         &mut self,
         font: Option<FontHandle>,
         text: &str,
@@ -217,9 +239,14 @@ impl UIContext {
 
     /// Measure text dimensions with a custom font size.
     pub fn measure_text_styled(&self, text: &str, font_size: f32) -> Vec2 {
-        self.font_manager
-            .default_font()
-            .and_then(|fh| self.font_manager.measure_text(fh, text, font_size).ok())
+        self.measure_text_with_font(text, font_size, self.font_manager.default_font())
+    }
+
+    /// Measure text in an explicit font; `None` (or a handle that no longer
+    /// resolves) falls back to the character-count estimate the placeholder
+    /// draw path uses, so measurement and drawing stay in step.
+    pub fn measure_text_with_font(&self, text: &str, font_size: f32, font: Option<FontHandle>) -> Vec2 {
+        font.and_then(|fh| self.font_manager.measure_text(fh, text, font_size).ok())
             .unwrap_or_else(|| Self::estimate_text_size(text, font_size))
     }
 }

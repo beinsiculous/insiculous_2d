@@ -208,6 +208,24 @@ fn test_float_input_draws_box() {
     assert!(ui.draw_list().len() >= 3);
 }
 
+#[test]
+fn test_float_input_with_unresolvable_font_falls_back_to_placeholder() {
+    // #54: a stale handle must not panic or draw nothing — the field takes
+    // the same placeholder path as a missing default font.
+    let mut ui = UIContext::new();
+    ui.begin_frame(&input::InputHandler::new(), Vec2::new(800.0, 600.0));
+
+    let bounds = Rect::new(50.0, 50.0, 100.0, 24.0);
+    let opts = crate::FloatFieldOpts::range(0.0, 100.0).with_font(Some(crate::FontHandle { id: 999 }));
+    let result = ui.float_input("stale_font", 42.0, opts, bounds);
+
+    assert_eq!(result.value, 42.0);
+    assert!(
+        ui.draw_list().commands().iter().any(|c| matches!(c, DrawCommand::TextPlaceholder { .. })),
+        "placeholder text stands in for the unresolvable face"
+    );
+}
+
 // === label_centered / measure_text tests ===
 
 #[test]

@@ -37,7 +37,8 @@ pub fn edit_vec2(
     let input_height = style.row_height - 4.0;
     let input_y = pos.y + (style.row_height - input_height) / 2.0;
     let opts = ui::FloatFieldOpts::range(min, max)
-        .with_step(crate::row_layout::scrub_step(&(min..=max)));
+        .with_step(crate::row_layout::scrub_step(&(min..=max)))
+        .with_font(style.numeric_font);
 
     let mut new_value = value;
     let mut warnings = Vec::new();
@@ -132,7 +133,8 @@ pub fn edit_color(
 
     // Channels are a true 0..=1 invariant: typed commits clamp too, and a
     // fine scrub step suits the range.
-    let channel_opts = ui::FloatFieldOpts::hard(0.0, 1.0).with_step(0.005);
+    let channel_opts =
+        ui::FloatFieldOpts::hard(0.0, 1.0).with_step(0.005).with_font(style.numeric_font);
 
     let mut new_value = value;
     let mut changed = false;

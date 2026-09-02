@@ -7,7 +7,7 @@
 //! input-state flags into edit calls and draws the box/selection/caret.
 
 use crate::input_state::InputState;
-use crate::{Rect, ScrubState, TextEditState, WidgetId, WidgetState};
+use crate::{FontHandle, Rect, ScrubState, TextEditState, WidgetId, WidgetState};
 
 use super::{TextAlign, UIContext};
 
@@ -34,12 +34,17 @@ pub struct FloatFieldOpts {
     pub step: f32,
     /// Display-only suffix (e.g. `"°"`); never part of the edit buffer.
     pub suffix: &'static str,
+    /// Face to draw AND measure the value in (`None` = the default font).
+    /// Every measurement — caret, selection band, click-to-cursor — uses
+    /// the same face, so a monospace numeric field never mis-places its
+    /// caret (#54).
+    pub font: Option<FontHandle>,
 }
 
 impl FloatFieldOpts {
-    /// Soft range with a 1.0 step and no suffix.
+    /// Soft range with a 1.0 step, no suffix, the default font.
     pub fn range(min: f32, max: f32) -> Self {
-        Self { min, max, hard_clamp: false, step: 1.0, suffix: "" }
+        Self { min, max, hard_clamp: false, step: 1.0, suffix: "", font: None }
     }
 
     /// Hard-clamped range (typed commits clamp too).
@@ -56,6 +61,12 @@ impl FloatFieldOpts {
     /// Set the display suffix.
     pub fn with_suffix(mut self, suffix: &'static str) -> Self {
         self.suffix = suffix;
+        self
+    }
+
+    /// Draw and measure in `font` (`None` keeps the default font).
+    pub fn with_font(mut self, font: Option<FontHandle>) -> Self {
+        self.font = font;
         self
     }
 }
@@ -149,6 +160,7 @@ impl UIContext {
         let mouse_in_bounds = bounds.contains(input.mouse_pos);
         let padding = self.theme.text_input.padding;
         let font_size = self.theme.text_input.font_size;
+        let font = self.field_font(&opts);
 
         // ---- drag-scrub (unfocused only) ------------------------------
         if !was_focused {
@@ -175,7 +187,7 @@ impl UIContext {
         } else if result.clicked && was_focused {
             // Click inside while editing: place the cursor at the click
             let text = self.interaction.get_state(id).edit.text.clone();
-            let widths = self.prefix_widths(&text, font_size);
+            let widths = self.prefix_widths(&text, font_size, font);
             let local_x = input.mouse_pos.x - (bounds.x + padding);
             self.interaction.get_state(id).edit.cursor_from_click(&widths, local_x);
         }
@@ -184,7 +196,7 @@ impl UIContext {
             // Cancel on Escape
             if input.escape_pressed {
                 self.interaction.clear_focus();
-                self.draw_float_value(bounds, value, opts.suffix, false);
+                self.draw_float_value(bounds, value, opts.suffix, false, font);
                 return FloatInputResult::unchanged(value);
             }
 
@@ -203,7 +215,7 @@ impl UIContext {
                     let text = format!("{:.2}", nudged);
                     self.interaction.get_state(id).edit.set_text_select_all(&text);
                     let edit = self.interaction.get_state(id).edit.clone();
-                    self.draw_text_input_editing_invalid(bounds, &edit, false);
+                    self.draw_text_input_editing_invalid(bounds, &edit, false, font);
                     return FloatInputResult {
                         value: nudged,
                         changed: (nudged - value).abs() > f32::EPSILON,
@@ -217,13 +229,13 @@ impl UIContext {
 
             let edit = self.interaction.get_state(id).edit.clone();
             let invalid = edit.text.parse::<f32>().is_err();
-            self.draw_text_input_editing_invalid(bounds, &edit, invalid);
+            self.draw_text_input_editing_invalid(bounds, &edit, invalid, font);
             return FloatInputResult { invalid, ..FloatInputResult::unchanged(value) };
         }
 
         // Not focused — draw display value
         let hovered = result.state == WidgetState::Hovered;
-        self.draw_float_value(bounds, value, opts.suffix, hovered);
+        self.draw_float_value(bounds, value, opts.suffix, hovered, font);
         FloatInputResult::unchanged(value)
     }
 
@@ -239,11 +251,12 @@ impl UIContext {
         input: &InputState,
         mouse_in_bounds: bool,
     ) -> Option<FloatInputResult> {
+        let font = self.field_font(opts);
         if input.mouse_just_pressed && mouse_in_bounds {
             // Arm (re-seeding wipes any stale state from a prior gesture).
             self.interaction.get_state(id).scrub =
                 Some(ScrubState { press_x: input.mouse_pos.x, start_value: value, active: false });
-            self.draw_float_value(bounds, value, opts.suffix, true);
+            self.draw_float_value(bounds, value, opts.suffix, true, font);
             return Some(FloatInputResult::unchanged(value));
         }
 
@@ -252,7 +265,7 @@ impl UIContext {
         // Escape mid-scrub: restore the start value and end the gesture.
         if input.escape_pressed {
             self.interaction.get_state(id).scrub = None;
-            self.draw_float_value(bounds, scrub.start_value, opts.suffix, false);
+            self.draw_float_value(bounds, scrub.start_value, opts.suffix, false, font);
             self.note_edit_commit();
             return Some(FloatInputResult {
                 value: scrub.start_value,
@@ -279,7 +292,7 @@ impl UIContext {
                     scrubbed = (scrubbed / opts.step).round() * opts.step;
                 }
                 let scrubbed = scrubbed.clamp(opts.min, opts.max);
-                self.draw_float_value(bounds, scrubbed, opts.suffix, true);
+                self.draw_float_value(bounds, scrubbed, opts.suffix, true, font);
                 return Some(FloatInputResult {
                     value: scrubbed,
                     changed: (scrubbed - value).abs() > f32::EPSILON,
@@ -288,14 +301,14 @@ impl UIContext {
                 });
             }
             // Armed but below threshold: still a potential click.
-            self.draw_float_value(bounds, value, opts.suffix, true);
+            self.draw_float_value(bounds, value, opts.suffix, true, font);
             return Some(FloatInputResult::unchanged(value));
         }
 
         if input.mouse_just_released && scrub.active {
             // Scrub release: the last emitted value stands; seal the gesture.
             self.interaction.get_state(id).scrub = None;
-            self.draw_float_value(bounds, value, opts.suffix, false);
+            self.draw_float_value(bounds, value, opts.suffix, false, font);
             self.note_edit_commit();
             return Some(FloatInputResult {
                 value,
@@ -331,6 +344,7 @@ impl UIContext {
         let mouse_in_bounds = bounds.contains(input.mouse_pos);
         let padding = self.theme.text_input.padding;
         let font_size = self.theme.text_input.font_size;
+        let font = self.font_manager.default_font();
 
         if result.clicked && !was_focused {
             // Enter edit mode with the whole value selected — typing replaces it
@@ -339,7 +353,7 @@ impl UIContext {
         } else if result.clicked && was_focused {
             // Click inside while editing: place the cursor at the click
             let text = self.interaction.get_state(id).edit.text.clone();
-            let widths = self.prefix_widths(&text, font_size);
+            let widths = self.prefix_widths(&text, font_size, font);
             let local_x = input.mouse_pos.x - (bounds.x + padding);
             self.interaction.get_state(id).edit.cursor_from_click(&widths, local_x);
         }
@@ -348,7 +362,7 @@ impl UIContext {
             // Cancel on Escape
             if input.escape_pressed {
                 self.interaction.clear_focus();
-                self.draw_text_input_box(bounds, value, false);
+                self.draw_text_input_box(bounds, value, false, font);
                 return None;
             }
 
@@ -359,7 +373,7 @@ impl UIContext {
             {
                 let new_text = self.interaction.get_state(id).edit.text.clone();
                 self.interaction.clear_focus();
-                self.draw_text_input_box(bounds, &new_text, false);
+                self.draw_text_input_box(bounds, &new_text, false, font);
                 self.note_edit_commit();
                 return Some(new_text);
             }
@@ -367,13 +381,13 @@ impl UIContext {
             apply_edit_keys(&mut self.interaction.get_state(id).edit, &input);
 
             let edit = self.interaction.get_state(id).edit.clone();
-            self.draw_text_input_editing(bounds, &edit);
+            self.draw_text_input_editing_invalid(bounds, &edit, false, font);
             return None;
         }
 
         // Not focused — draw display value
         let hovered = result.state == WidgetState::Hovered;
-        self.draw_text_input_box(bounds, value, hovered);
+        self.draw_text_input_box(bounds, value, hovered, font);
         None
     }
 
@@ -387,6 +401,7 @@ impl UIContext {
         opts: &FloatFieldOpts,
         bounds: Rect,
     ) -> FloatInputResult {
+        let font = self.field_font(opts);
         let parsed = self
             .interaction
             .get_state(id)
@@ -401,7 +416,7 @@ impl UIContext {
             None => fallback,
         };
         self.interaction.clear_focus();
-        self.draw_float_value(bounds, new_value, opts.suffix, false);
+        self.draw_float_value(bounds, new_value, opts.suffix, false, font);
         self.note_edit_commit();
         let changed = (new_value - fallback).abs() > f32::EPSILON;
         // Only a NEW typed value warns — a parse failure reverts, and a
@@ -421,33 +436,51 @@ impl UIContext {
 
     /// Draw a float input showing a numeric value (plus a display-only
     /// suffix, e.g. `"°"`).
-    fn draw_float_value(&mut self, bounds: Rect, value: f32, suffix: &str, highlighted: bool) {
-        self.draw_text_input_box(bounds, &format!("{:.2}{}", value, suffix), highlighted);
+    fn draw_float_value(
+        &mut self,
+        bounds: Rect,
+        value: f32,
+        suffix: &str,
+        highlighted: bool,
+        font: Option<FontHandle>,
+    ) {
+        self.draw_text_input_box(bounds, &format!("{:.2}{}", value, suffix), highlighted, font);
+    }
+
+    /// The face a float field draws and measures in: its own when that
+    /// handle still resolves, else the default font (a stale handle must not
+    /// downgrade a field to placeholders while a usable font is loaded).
+    fn field_font(&self, opts: &FloatFieldOpts) -> Option<FontHandle> {
+        opts.font
+            .filter(|handle| self.font_manager.get_font(*handle).is_some())
+            .or(self.font_manager.default_font())
     }
 
     /// Pixel widths of every prefix of `text` at `font_size`:
     /// `result[i]` = width of the first `i` chars (so `len + 1` entries).
     /// Used to place the caret, the selection band, and click-to-cursor.
-    fn prefix_widths(&self, text: &str, font_size: f32) -> Vec<f32> {
+    fn prefix_widths(&self, text: &str, font_size: f32, font: Option<FontHandle>) -> Vec<f32> {
         let mut widths = Vec::with_capacity(text.chars().count() + 1);
         widths.push(0.0);
         let mut end = 0;
         for c in text.chars() {
             end += c.len_utf8();
-            widths.push(self.measure_text_styled(&text[..end], font_size).x);
+            widths.push(self.measure_text_with_font(&text[..end], font_size, font).x);
         }
         widths
     }
 
     /// Draw a focused text input: box, selection band, text, and caret,
-    /// clipped to the bounds so long edits don't overflow.
-    fn draw_text_input_editing(&mut self, bounds: Rect, edit: &TextEditState) {
-        self.draw_text_input_editing_invalid(bounds, edit, false);
-    }
-
-    /// [`Self::draw_text_input_editing`] with an invalid-buffer state: a
-    /// red border says "this text is not a number" while focused.
-    fn draw_text_input_editing_invalid(&mut self, bounds: Rect, edit: &TextEditState, invalid: bool) {
+    /// clipped to the bounds so long edits don't overflow. `invalid` adds a
+    /// red border ("this text is not a number") while focused. Every
+    /// measurement uses `font`, the face the text is drawn in.
+    fn draw_text_input_editing_invalid(
+        &mut self,
+        bounds: Rect,
+        edit: &TextEditState,
+        invalid: bool,
+        font: Option<FontHandle>,
+    ) {
         let style = self.theme.text_input.clone();
         let border = if invalid { style.border_invalid } else { style.border_focused };
 
@@ -457,7 +490,7 @@ impl UIContext {
 
         self.push_clip_rect(bounds);
 
-        let widths = self.prefix_widths(&edit.text, style.font_size);
+        let widths = self.prefix_widths(&edit.text, style.font_size, font);
         let text_origin_x = bounds.x + style.padding;
         // Vertical band for selection/caret: centered, sized from the font
         let band_height = (style.font_size * 1.2).min(bounds.height - 2.0);
@@ -473,9 +506,10 @@ impl UIContext {
             );
         }
 
-        let text_pos =
-            self.text_pos_in_bounds(&edit.text, bounds, TextAlign::Left, style.font_size, style.padding);
-        self.draw_text_at_baseline(&edit.text, text_pos, style.text_color, style.font_size);
+        let text_pos = self.text_pos_in_bounds_with_font(
+            &edit.text, bounds, TextAlign::Left, style.font_size, style.padding, font,
+        );
+        self.draw_text_with_font(font, &edit.text, text_pos, style.text_color, style.font_size);
 
         // Caret at the cursor position
         let caret_x = text_origin_x + widths[edit.cursor.min(widths.len() - 1)];
@@ -488,7 +522,7 @@ impl UIContext {
     }
 
     /// Draw a text input box (shared by unfocused and committed states).
-    fn draw_text_input_box(&mut self, bounds: Rect, text: &str, highlighted: bool) {
+    fn draw_text_input_box(&mut self, bounds: Rect, text: &str, highlighted: bool, font: Option<FontHandle>) {
         let style = self.theme.text_input.clone();
         let bg = if highlighted { style.background_focused } else { style.background };
         let border = if highlighted { style.border_focused } else { style.border };
@@ -497,8 +531,9 @@ impl UIContext {
         self.draw_list
             .rect_border_rounded(bounds, border, style.border_width, style.corner_radius);
 
-        let text_pos =
-            self.text_pos_in_bounds(text, bounds, TextAlign::Left, style.font_size, style.padding);
-        self.draw_text_at_baseline(text, text_pos, style.text_color, style.font_size);
+        let text_pos = self.text_pos_in_bounds_with_font(
+            text, bounds, TextAlign::Left, style.font_size, style.padding, font,
+        );
+        self.draw_text_with_font(font, text, text_pos, style.text_color, style.font_size);
     }
 }

@@ -76,6 +76,7 @@ pub fn edit_f32_opts(
     style: &EditableFieldStyle,
 ) -> FieldEdit<f32> {
     draw_field_label(ui, label, &layout, style);
+    let opts = opts.with_font(opts.font.or(style.numeric_font));
 
     let input_height = style.row_height - 4.0;
     let input_bounds = Rect::new(

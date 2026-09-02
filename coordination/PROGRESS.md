@@ -350,3 +350,20 @@ inspector folds it into the same joined message so neither overwrites the other)
 fixed (`out_of_range` needs a successful, CHANGED parse — Enter on a pre-existing
 out-of-range value or a reverted parse failure stays quiet); F3 rebutted — the warning
 describes the typed commit, the GUI hard floors are a separate invariant.)
+
+## 2026-09-01 — #54 Numeric inspector fields render in the monospace face (Sprint 6)
+`EDITOR_FONT_MONO` had shipped unused since Sprint 3 because `float_input` drew via
+`draw_text_at_baseline` and measured via `prefix_widths`/`measure_text_styled`, all
+hardwired to the default font. `FloatFieldOpts.font` now names the face; the widget
+resolves it ONCE (`field_font`) and uses it for every draw AND measurement — value text,
+selection band, caret, click-to-cursor — through the new font-explicit ui helpers
+(`measure_text_with_font`, `text_pos_in_bounds_with_font`, `draw_text_with_font`), so a
+mono field never mis-places its caret. `text_input` (free-form) stays on the default
+font. `EditableFieldStyle.numeric_font` carries the editor's mono handle; the inspector
+host sets it from `EditorFonts.mono`, and f32 / Vec2 / RGBA rows pick it up. A stale
+handle falls back to the default font (placeholders only when no font is loaded at all).
+Tests 1670 → 1675, clippy clean. fixes #54.
+(#54 review round: kimi 3 minors — F2 fixed (stale handle → default face, not
+placeholders), F3 fixed (tests lock the selection band to mono advances and the Vec2/RGBA
+rows to the numeric font); F1 `#[non_exhaustive]` rebutted with Jesse — no consumer outside
+the workspace, both types have canonical constructors.)

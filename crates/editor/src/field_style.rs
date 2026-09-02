@@ -94,6 +94,18 @@ pub struct EditableFieldStyle {
     pub axis_font: f32,
     /// Font size for "R"/"G"/"B"/"A" channel labels in color fields
     pub channel_font: f32,
+    /// Face for numeric inputs (f32, Vec2 axes, RGBA channels) — the editor
+    /// hands in its monospace handle so digits line up and a scrub never
+    /// jitters the caret (#54). `None` = the default font.
+    pub numeric_font: Option<ui::FontHandle>,
+}
+
+impl EditableFieldStyle {
+    /// Draw numeric inputs in `font` (`None` keeps the default font).
+    pub fn with_numeric_font(mut self, font: Option<ui::FontHandle>) -> Self {
+        self.numeric_font = font;
+        self
+    }
 }
 
 impl Default for EditableFieldStyle {
@@ -128,6 +140,7 @@ impl Default for EditableFieldStyle {
             header_font: 16.0,
             axis_font: 12.0,
             channel_font: 12.0,
+            numeric_font: None,
         }
     }
 }
