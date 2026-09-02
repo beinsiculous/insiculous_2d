@@ -191,45 +191,41 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_rect_center() {
-        let r = Rect::new(0.0, 0.0, 100.0, 100.0);
-        assert_eq!(r.center(), Vec2::new(50.0, 50.0));
+    fn test_contains_is_inclusive_on_every_edge_and_rejects_points_just_outside() {
+        // Every widget hit-test in the ui crate goes through contains, so an
+        // exclusive edge would drop clicks landing exactly on a border.
+        let rect = Rect::new(-10.0, -20.0, 30.0, 40.0);
+        let cases = [
+            ("interior", Vec2::new(0.0, 0.0), true),
+            ("min corner", Vec2::new(-10.0, -20.0), true),
+            ("max corner", Vec2::new(20.0, 20.0), true),
+            ("left edge", Vec2::new(-10.0, 5.0), true),
+            ("right edge", Vec2::new(20.0, 5.0), true),
+            ("top edge", Vec2::new(5.0, -20.0), true),
+            ("bottom edge", Vec2::new(5.0, 20.0), true),
+            ("just left", Vec2::new(-10.001, 5.0), false),
+            ("just right", Vec2::new(20.001, 5.0), false),
+            ("just above", Vec2::new(5.0, -20.001), false),
+            ("just below", Vec2::new(5.0, 20.001), false),
+            ("far negative", Vec2::new(-100.0, -100.0), false),
+        ];
+
+        for (label, point, expected) in cases {
+            assert_eq!(rect.contains(point), expected, "{label}: {point:?} in {rect:?}");
+        }
     }
 
     #[test]
-    fn test_rect_contains() {
-        let r = Rect::new(0.0, 0.0, 100.0, 100.0);
-        assert!(r.contains(Vec2::new(50.0, 50.0)));
-        assert!(!r.contains(Vec2::new(150.0, 50.0)));
-    }
+    fn test_center_and_expand_derive_exact_geometry_from_the_origin_corner() {
+        let rect = Rect::new(10.0, 20.0, 80.0, 40.0);
 
-    #[test]
-    fn test_rect_intersects() {
-        let a = Rect::new(0.0, 0.0, 100.0, 100.0);
-        let b = Rect::new(50.0, 50.0, 100.0, 100.0);
-        let c = Rect::new(200.0, 200.0, 100.0, 100.0);
+        let center = rect.center();
+        let grown = rect.expand(5.0);
+        let shrunk = rect.expand(-5.0);
 
-        assert!(a.intersects(&b));
-        assert!(!a.intersects(&c));
-    }
-
-    #[test]
-    fn test_rect_intersection() {
-        let a = Rect::new(0.0, 0.0, 100.0, 100.0);
-        let b = Rect::new(50.0, 50.0, 100.0, 100.0);
-
-        let i = a.intersection(&b).unwrap();
-        assert_eq!(i.x, 50.0);
-        assert_eq!(i.y, 50.0);
-        assert_eq!(i.width, 50.0);
-        assert_eq!(i.height, 50.0);
-    }
-
-    #[test]
-    fn test_rect_expand() {
-        let r = Rect::new(10.0, 10.0, 80.0, 80.0);
-        let expanded = r.expand(10.0);
-        assert_eq!(expanded.x, 0.0);
-        assert_eq!(expanded.width, 100.0);
+        assert_eq!(center, Vec2::new(50.0, 40.0));
+        assert_eq!(grown, Rect::new(5.0, 15.0, 90.0, 50.0), "expand grows every side by the amount");
+        assert_eq!(shrunk, Rect::new(15.0, 25.0, 70.0, 30.0), "a negative amount insets every side");
+        assert_eq!(grown.center(), center, "expanding must not move the center");
     }
 }

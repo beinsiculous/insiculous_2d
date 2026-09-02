@@ -140,57 +140,56 @@ impl MemFs {
 #[cfg(test)]
 mod tests {
     use super::MemFs;
+    use std::io;
     use std::path::Path;
+
+    const BASE: &str = "/games/pong/v1/assets";
 
     /// Populate the map the way the web boot phase will (base-joined keys)
     /// and read back through AssetManager-style `Path::join` lookups.
     #[test]
-    fn test_boot_phase_keys_resolve_through_base_joined_reads() {
-        let base = "/games/pong/v1/assets";
+    fn test_boot_phase_keys_resolve_through_base_joined_reads() -> io::Result<()> {
         let mut fs = MemFs::default();
-        for entry in ["paddle_16px.png", "fonts/font.ttf", "locales/en.ron"] {
-            fs.insert(format!("{base}/{entry}"), vec![1, 2, 3]);
-        }
+        fs.insert(format!("{BASE}/paddle_16px.png"), vec![1, 2, 3]);
+        fs.insert(format!("{BASE}/fonts/font.ttf"), vec![4, 5]);
+        fs.insert(format!("{BASE}/locales/broken.ron"), vec![0xFF, 0xFE]);
 
-        let joined = Path::new(base).join("paddle_16px.png");
-        assert!(fs.read(&joined).is_ok());
-        let nested = Path::new(base).join("fonts/font.ttf");
-        assert!(fs.read(&nested).is_ok());
-        assert!(fs.read(Path::new("paddle_16px.png")).is_err(), "relative key must miss");
+        let flat = fs.read(&Path::new(BASE).join("paddle_16px.png"))?;
+        let nested = fs.read(&Path::new(BASE).join("fonts/font.ttf"))?;
+        let relative_miss = fs.read(Path::new("paddle_16px.png"));
+        let invalid_utf8 = fs.read_to_string(&Path::new(BASE).join("locales/broken.ron"));
+
+        assert_eq!(flat, [1, 2, 3]);
+        assert_eq!(nested, [4, 5]);
+        assert_eq!(
+            relative_miss.map_err(|e| e.kind()),
+            Err(io::ErrorKind::NotFound),
+            "a relative key must miss: only the base-joined form is canonical"
+        );
+        assert_eq!(
+            invalid_utf8.map_err(|e| e.kind()),
+            Err(io::ErrorKind::InvalidData),
+            "read_to_string mirrors fs::read_to_string's UTF-8 rejection"
+        );
+        Ok(())
     }
 
     #[test]
-    fn test_list_dir_files_finds_locales_under_production_like_keys() {
-        let base = "/games/pong/v1/assets";
+    fn test_list_dir_files_is_sorted_extension_filtered_direct_children_only() {
         let mut fs = MemFs::default();
-        fs.insert(format!("{base}/locales/en.ron"), vec![1]);
-        fs.insert(format!("{base}/locales/pirate.ron"), vec![2]);
-        fs.insert(format!("{base}/locales/notes.txt"), vec![3]);
-        fs.insert(format!("{base}/paddle_16px.png"), vec![4]);
+        fs.insert(format!("{BASE}/locales/pirate.ron"), vec![2]);
+        fs.insert(format!("{BASE}/locales/en.ron"), vec![1]);
+        fs.insert(format!("{BASE}/locales/notes.txt"), vec![3]);
+        fs.insert(format!("{BASE}/locales/extra/deep.ron"), vec![5]);
+        fs.insert(format!("{BASE}/paddle_16px.png"), vec![4]);
+        let dir = Path::new(BASE).join("locales");
 
-        let dir = Path::new(base).join("locales");
         let files = fs.list_dir_files(&dir, "ron");
-        let names: Vec<_> = files
-            .iter()
-            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
-            .collect();
-        assert_eq!(names, ["en.ron", "pirate.ron"], "sorted, ron-only, direct children");
-    }
 
-    #[test]
-    fn test_list_dir_files_excludes_deeper_descendants() {
-        let mut fs = MemFs::default();
-        fs.insert("assets/locales/en.ron".to_string(), vec![1]);
-        fs.insert("assets/locales/extra/deep.ron".to_string(), vec![2]);
-
-        let files = fs.list_dir_files(Path::new("assets/locales"), "ron");
-        assert_eq!(files, [Path::new("assets/locales/en.ron")]);
-    }
-
-    #[test]
-    fn test_read_to_string_rejects_invalid_utf8() {
-        let mut fs = MemFs::default();
-        fs.insert("a/b.ron".to_string(), vec![0xFF, 0xFE]);
-        assert!(fs.read_to_string(Path::new("a/b.ron")).is_err());
+        assert_eq!(
+            files,
+            [dir.join("en.ron"), dir.join("pirate.ron")],
+            "sorted, ron-only, direct children (no extra/deep.ron)"
+        );
     }
 }

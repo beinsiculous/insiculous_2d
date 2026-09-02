@@ -47,20 +47,3 @@ impl Time {
         self.elapsed_seconds += delta_seconds;
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_time_tick() {
-        let mut time = Time::default();
-        time.tick(0.016);
-        assert_eq!(time.delta_seconds, 0.016);
-        assert_eq!(time.elapsed_seconds, 0.016);
-
-        time.tick(0.017);
-        assert_eq!(time.delta_seconds, 0.017);
-        assert!((time.elapsed_seconds - 0.033).abs() < 0.0001);
-    }
-}

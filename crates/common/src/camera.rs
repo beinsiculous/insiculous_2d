@@ -206,49 +206,31 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_world_bounds() {
-        let camera = Camera::new(Vec2::ZERO, Vec2::new(800.0, 600.0));
-        let (min_x, min_y, max_x, max_y) = camera.world_bounds();
-        assert_eq!(min_x, -400.0);
-        assert_eq!(min_y, -300.0);
-        assert_eq!(max_x, 400.0);
-        assert_eq!(max_y, 300.0);
-    }
-
-    #[test]
-    fn test_contains_point() {
-        let camera = Camera::new(Vec2::ZERO, Vec2::new(800.0, 600.0));
-        assert!(camera.contains_point(Vec2::ZERO));
-        assert!(camera.contains_point(Vec2::new(399.0, 299.0)));
-        assert!(!camera.contains_point(Vec2::new(500.0, 0.0)));
-    }
-
-    #[test]
-    fn test_screen_center_maps_to_camera_position() {
-        let camera = Camera::new(Vec2::new(80.0, -20.0), Vec2::new(800.0, 600.0));
-        let world = camera.screen_to_world(Vec2::new(400.0, 300.0));
-        assert!(
-            (world - camera.position).length() < 0.001,
-            "screen center should be the camera position, got {world:?}"
-        );
-    }
-
-    #[test]
     fn test_world_to_screen_round_trips_screen_to_world() {
         let camera = Camera::new(Vec2::new(80.0, -20.0), Vec2::new(800.0, 600.0));
-        let screen = Vec2::new(120.0, 90.0);
-        let back = camera.world_to_screen(camera.screen_to_world(screen));
+        let screen_center = Vec2::new(400.0, 300.0);
+        let screen_point = Vec2::new(120.0, 90.0);
+
+        let world_at_center = camera.screen_to_world(screen_center);
+        let round_tripped = camera.world_to_screen(camera.screen_to_world(screen_point));
+
         assert!(
-            (back - screen).length() < 0.05,
-            "expected {screen:?}, got {back:?}"
+            (world_at_center - camera.position).length() < 0.001,
+            "screen center must be the camera position, got {world_at_center:?}"
+        );
+        assert!(
+            (round_tripped - screen_point).length() < 0.05,
+            "expected {screen_point:?}, got {round_tripped:?}"
         );
     }
 
     #[test]
     fn test_screen_y_down_maps_to_world_y_up() {
         let camera = Camera::new(Vec2::ZERO, Vec2::new(800.0, 600.0));
+
         let above_center = camera.screen_to_world(Vec2::new(400.0, 100.0));
         let below_center = camera.screen_to_world(Vec2::new(400.0, 500.0));
+
         assert!(
             above_center.y > 0.0,
             "a point above screen center must be +Y in world, got {above_center:?}"

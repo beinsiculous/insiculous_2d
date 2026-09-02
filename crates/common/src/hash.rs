@@ -18,18 +18,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_hash_f32_is_deterministic_and_in_unit_range() {
-        for seed in [0u32, 1, 7, 12345, u32::MAX] {
-            let a = hash_f32(seed);
-            let b = hash_f32(seed);
-            assert_eq!(a, b, "same seed must hash identically");
-            assert!((0.0..1.0).contains(&a), "hash_f32({seed}) = {a} out of [0,1)");
-        }
-    }
+    fn test_hash_is_deterministic_in_unit_range_and_nearby_seeds_diverge() {
+        let seeds = [0u32, 1, 7, 12345, u32::MAX];
 
-    #[test]
-    fn test_nearby_seeds_diverge() {
-        assert_ne!(hash_f32(1), hash_f32(2));
-        assert_ne!(hash_u32(100), hash_u32(101));
+        let first_pass: Vec<f32> = seeds.iter().map(|&seed| hash_f32(seed)).collect();
+        let second_pass: Vec<f32> = seeds.iter().map(|&seed| hash_f32(seed)).collect();
+
+        assert_eq!(first_pass, second_pass, "same seed must hash identically");
+        for (seed, value) in seeds.iter().zip(&first_pass) {
+            assert!((0.0..1.0).contains(value), "hash_f32({seed}) = {value} out of [0,1)");
+        }
+        assert_ne!(hash_f32(1), hash_f32(2), "adjacent seeds must not collide");
+        assert_ne!(hash_u32(100), hash_u32(101), "adjacent seeds must not collide");
     }
 }

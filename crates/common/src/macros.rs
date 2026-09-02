@@ -45,12 +45,12 @@ macro_rules! with_fields {
 mod tests {
     use glam::Vec2;
 
-    struct TestStruct {
+    struct Sprite {
         position: Vec2,
         scale: f32,
     }
 
-    impl TestStruct {
+    impl Sprite {
         fn new() -> Self {
             Self {
                 position: Vec2::ZERO,
@@ -65,12 +65,12 @@ mod tests {
     }
 
     #[test]
-    fn test_with_fields_macro() {
-        let s = TestStruct::new()
-            .position(Vec2::new(10.0, 20.0))
-            .scale(2.0);
+    fn test_with_fields_generates_chainable_builders_that_set_each_field() {
+        let sprite = Sprite::new();
 
-        assert_eq!(s.position, Vec2::new(10.0, 20.0));
-        assert_eq!(s.scale, 2.0);
+        let built = sprite.position(Vec2::new(10.0, 20.0)).scale(2.0);
+
+        assert_eq!(built.position, Vec2::new(10.0, 20.0));
+        assert_eq!(built.scale, 2.0);
     }
 }

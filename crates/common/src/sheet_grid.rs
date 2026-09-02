@@ -160,20 +160,31 @@ mod tests {
     fn test_uv_rect_maps_index_to_row_major_cell() {
         let grid = SheetGrid::new(4, 4);
 
-        assert_eq!(grid.uv_rect(0), [0.0, 0.0, 0.25, 0.25]);
-        // Cell 5 -> column 1, row 1.
-        assert_eq!(grid.uv_rect(5), [0.25, 0.25, 0.25, 0.25]);
-        // Last cell of the first row.
-        assert_eq!(grid.uv_rect(3), [0.75, 0.0, 0.25, 0.25]);
+        let first = grid.uv_rect(0);
+        let last_of_first_row = grid.uv_rect(3);
+        let second_row_second_column = grid.uv_rect(5);
+
+        assert_eq!(first, [0.0, 0.0, 0.25, 0.25]);
+        assert_eq!(last_of_first_row, [0.75, 0.0, 0.25, 0.25]);
+        assert_eq!(second_row_second_column, [0.25, 0.25, 0.25, 0.25]);
     }
 
     #[test]
-    fn test_new_clamps_zero_dimensions() {
-        let grid = SheetGrid::new(0, 0);
+    fn test_degenerate_grids_clamp_to_one_usable_cell_without_dividing_by_zero() {
+        // Every constructor must survive zero or sub-cell inputs with a
+        // 1x1 grid whose first cell is a finite rect — never NaN, never a panic.
+        let cases = [
+            ("new(0, 0)", SheetGrid::new(0, 0), [0.0, 0.0, 1.0, 1.0]),
+            ("from_cell_size(64, 64, 0, 0)", SheetGrid::from_cell_size(64, 64, 0, 0), [0.0, 0.0, 1.0, 1.0]),
+            ("from_cell_size(10, 10, 16, 16)", SheetGrid::from_cell_size(10, 10, 16, 16), [0.0, 0.0, 1.0, 1.0]),
+            ("from_uv_size(ZERO)", SheetGrid::from_uv_size(Vec2::ZERO), [0.0, 0.0, 0.0, 0.0]),
+        ];
 
-        assert_eq!((grid.cols, grid.rows), (1, 1));
-        assert_eq!(grid.cell_uv_size(), Vec2::ONE);
-        assert_eq!(grid.cell_count(), 1);
+        for (label, grid, expected_first_cell) in cases {
+            assert_eq!((grid.cols, grid.rows), (1, 1), "{label}: dimensions");
+            assert_eq!(grid.cell_count(), 1, "{label}: cell count");
+            assert_eq!(grid.uv_rect(0), expected_first_cell, "{label}: first cell uv rect");
+        }
     }
 
     #[test]
@@ -181,63 +192,46 @@ mod tests {
         // 100 / 30 = 3 whole cells per axis, 10px of remainder ignored.
         let grid = SheetGrid::from_cell_size(100, 100, 30, 30);
 
+        let second_cell = grid.uv_rect(1);
+
         assert_eq!((grid.cols, grid.rows), (3, 3));
         assert_eq!(grid.cell_count(), 9);
         // Pixel-exact UVs: each cell covers 30/100 of the sheet, NOT 1/3 —
         // the 10px remainder is excluded from sampling, not stretched over.
         assert_eq!(grid.cell_uv_size(), Vec2::new(0.3, 0.3));
-        assert_eq!(grid.uv_rect(1), [0.3, 0.0, 0.3, 0.3]);
+        assert_eq!(second_cell, [0.3, 0.0, 0.3, 0.3]);
     }
 
     #[test]
-    fn test_from_cell_size_guards_degenerate_inputs() {
-        assert_eq!(SheetGrid::from_cell_size(64, 64, 0, 0), SheetGrid::new(1, 1));
-        // Sheet smaller than one cell still yields a usable 1x1 grid.
-        assert_eq!(SheetGrid::from_cell_size(10, 10, 16, 16), SheetGrid::new(1, 1));
-    }
-
-    #[test]
-    fn test_uv_rect_passes_through_out_of_range_index() {
+    fn test_uv_rect_checked_is_none_past_cell_count_while_uv_rect_passes_through() {
         let grid = SheetGrid::new(4, 4);
 
+        let last_checked = grid.uv_rect_checked(15);
+        let past_end_checked = grid.uv_rect_checked(16);
         // Cell 19 is one row past the bottom of the sheet: v = 1.0, left as-is
         // for the sampler to clamp rather than being wrapped or zeroed.
-        assert_eq!(grid.uv_rect(19), [0.75, 1.0, 0.25, 0.25]);
+        let past_end_unchecked = grid.uv_rect(19);
+
+        assert_eq!(last_checked, Some(grid.uv_rect(15)));
+        assert_eq!(past_end_checked, None);
+        assert_eq!(past_end_unchecked, [0.75, 1.0, 0.25, 0.25]);
     }
 
     #[test]
-    fn test_uv_rect_checked_is_none_past_cell_count() {
-        let grid = SheetGrid::new(4, 4);
-
-        assert_eq!(grid.uv_rect_checked(15), Some(grid.uv_rect(15)));
-        assert_eq!(grid.uv_rect_checked(16), None);
-    }
-
-    #[test]
-    fn test_from_uv_size_derives_dimensions() {
-        let grid = SheetGrid::from_uv_size(Vec2::new(0.25, 1.0));
-
-        assert_eq!((grid.cols, grid.rows), (4, 1));
-        assert_eq!(grid.uv_rect(2), [0.5, 0.0, 0.25, 1.0]);
-    }
-
-    #[test]
-    fn test_from_uv_size_preserves_non_reciprocal_cell_size() {
+    fn test_from_uv_size_derives_both_axes_and_preserves_non_reciprocal_cell_size() {
         // 1 / 0.3 rounds to 3 columns, but the cell size must stay 0.3 —
-        // 1.0 / 3 would shift every region.
-        let grid = SheetGrid::from_uv_size(Vec2::new(0.3, 1.0));
+        // 1.0 / 3 would shift every region. The y axis derives the same way.
+        let cases = [
+            ("(0.3, 1.0)", Vec2::new(0.3, 1.0), (3, 1), [0.3, 0.0, 0.3, 1.0]),
+            ("(0.25, 0.25)", Vec2::new(0.25, 0.25), (4, 4), [0.25, 0.0, 0.25, 0.25]),
+        ];
 
-        assert_eq!(grid.cols, 3);
-        assert_eq!(grid.cell_uv_size().x, 0.3);
-        assert_eq!(grid.uv_rect(1), [0.3, 0.0, 0.3, 1.0]);
-    }
+        for (label, uv_size, expected_dims, expected_second_cell) in cases {
+            let grid = SheetGrid::from_uv_size(uv_size);
 
-    #[test]
-    fn test_from_uv_size_guards_zero_uv() {
-        let grid = SheetGrid::from_uv_size(Vec2::ZERO);
-
-        assert_eq!((grid.cols, grid.rows), (1, 1));
-        // Degenerate in, degenerate out — no division by zero, no panic.
-        assert_eq!(grid.uv_rect(0), [0.0, 0.0, 0.0, 0.0]);
+            assert_eq!((grid.cols, grid.rows), expected_dims, "{label}: dimensions");
+            assert_eq!(grid.cell_uv_size(), uv_size, "{label}: cell size must be kept verbatim");
+            assert_eq!(grid.uv_rect(1), expected_second_cell, "{label}: second cell");
+        }
     }
 }

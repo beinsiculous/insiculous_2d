@@ -208,62 +208,74 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_color_from_rgb8() {
-        let color = Color::from_rgb8(255, 128, 0);
-        assert!((color.r - 1.0).abs() < 0.01);
-        assert!((color.g - 0.502).abs() < 0.01);
-        assert_eq!(color.b, 0.0);
+    fn test_from_hex_unpacks_rrggbb_into_the_same_opaque_channels_as_rgb8() {
+        // The editor theme and every 0xRRGGBB literal in the games decode
+        // through from_hex; a dropped channel (alpha especially) would
+        // silently tint or fade every one of them.
+        let cases = [
+            ("from_hex(0xFF8000)", Color::from_hex(0xFF8000), [1.0, 128.0 / 255.0, 0.0, 1.0]),
+            ("from_rgb8(255, 128, 0)", Color::from_rgb8(255, 128, 0), [1.0, 128.0 / 255.0, 0.0, 1.0]),
+            ("from_hex(0x000000)", Color::from_hex(0x000000), [0.0, 0.0, 0.0, 1.0]),
+            ("from_hex(0xFFFFFF)", Color::from_hex(0xFFFFFF), [1.0, 1.0, 1.0, 1.0]),
+            ("from_hex(0x0000FF)", Color::from_hex(0x0000FF), [0.0, 0.0, 1.0, 1.0]),
+        ];
+
+        for (label, color, expected) in cases {
+            let actual = color.to_array();
+            let channels_match = actual
+                .iter()
+                .zip(expected.iter())
+                .all(|(a, e)| (a - e).abs() < 0.001);
+            assert!(channels_match, "{label}: expected {expected:?}, got {actual:?}");
+        }
     }
 
     #[test]
-    fn test_color_from_hex() {
-        let color = Color::from_hex(0xFF8000);
-        assert!((color.r - 1.0).abs() < 0.01);
-        assert!((color.g - 0.502).abs() < 0.01);
+    fn test_contrast_ratio_is_symmetric_and_spans_one_to_twenty_one() {
+        let dark = Color::from_hex(0x1e1e1e);
+        let darker = Color::from_hex(0x333333);
+
+        let white_on_black = Color::WHITE.contrast_ratio(Color::BLACK);
+        let dark_on_darker = dark.contrast_ratio(darker);
+        let darker_on_dark = darker.contrast_ratio(dark);
+        let self_contrast = dark.contrast_ratio(dark);
+
+        assert!(
+            (white_on_black - 21.0).abs() < 0.01,
+            "white on black is WCAG's maximum 21:1, got {white_on_black}"
+        );
+        assert_eq!(dark_on_darker, darker_on_dark, "contrast must not depend on argument order");
+        assert_eq!(self_contrast, 1.0, "a color against itself is WCAG's minimum 1:1");
     }
 
     #[test]
-    fn test_color_lerp() {
-        let mid = Color::BLACK.lerp(Color::WHITE, 0.5);
-        assert!((mid.r - 0.5).abs() < 0.01);
+    fn test_luminance_linearizes_srgb_mid_gray_to_the_wcag_reference() {
+        // sRGB #808080 has WCAG relative luminance ≈ 0.2159; a pow(2.2)
+        // shortcut or a missing linearization lands nowhere near it.
+        let mid_gray = Color::from_hex(0x808080);
+
+        let luminance = mid_gray.luminance();
+
+        assert!(
+            (luminance - 0.2159).abs() < 0.002,
+            "expected ≈ 0.2159 for #808080, got {luminance}"
+        );
     }
 
     #[test]
-    fn test_color_conversions() {
+    fn test_all_four_channels_survive_vec4_and_array_conversions() {
+        // scene_serializer writes sprite colors through `color.into()`; a
+        // dropped or reordered channel would corrupt every saved scene.
         let color = Color::new(0.1, 0.2, 0.3, 0.4);
-        let vec: Vec4 = color.into();
-        assert_eq!(vec.x, 0.1);
 
-        let arr: [f32; 4] = color.into();
-        assert_eq!(arr[0], 0.1);
+        let as_vec4: Vec4 = color.into();
+        let as_array: [f32; 4] = color.into();
+        let from_vec4: Color = as_vec4.into();
+        let from_array: Color = as_array.into();
 
-        let back: Color = arr.into();
-        assert_eq!(back.r, 0.1);
-    }
-}
-
-#[cfg(test)]
-mod luminance_tests {
-    use super::*;
-
-    #[test]
-    fn test_white_black_contrast_is_21() {
-        let ratio = Color::WHITE.contrast_ratio(Color::BLACK);
-        assert!((ratio - 21.0).abs() < 0.01, "got {ratio}");
-    }
-
-    #[test]
-    fn test_contrast_is_symmetric_and_at_least_one() {
-        let a = Color::from_hex(0x1e1e1e);
-        let b = Color::from_hex(0x333333);
-        assert_eq!(a.contrast_ratio(b), b.contrast_ratio(a));
-        assert!(a.contrast_ratio(a) >= 1.0);
-    }
-
-    #[test]
-    fn test_known_srgb_luminance() {
-        // sRGB mid-gray #808080 has relative luminance ≈ 0.2159.
-        let lum = Color::from_hex(0x808080).luminance();
-        assert!((lum - 0.2159).abs() < 0.002, "got {lum}");
+        assert_eq!(as_vec4, Vec4::new(0.1, 0.2, 0.3, 0.4));
+        assert_eq!(as_array, [0.1, 0.2, 0.3, 0.4]);
+        assert_eq!(from_vec4, color, "Color -> Vec4 -> Color must be lossless");
+        assert_eq!(from_array, color, "Color -> [f32; 4] -> Color must be lossless");
     }
 }

@@ -716,10 +716,15 @@ line number re-derived from the tree) is the authority over the per-cluster outp
 above where they differ.** Batch 0 below copies it somewhere durable.
 
 More dead API it surfaced (add to batch 2 after a workspace + games grep each):
-`common::Time` and `common::Camera::world_bounds`/`contains_point` (grep-confirmed dead;
-the editor uses its own `AABB` and `visible_world_bounds`), `EventBus::type_count`,
-`Rect::intersects`/`intersection` (unverified). NOT `Rect::contains` — the keep-list called
-it dead, but it has eight production callers across ui, editor and engine_core.
+`common::Time` (also unwind its re-exports, e.g. `crates/renderer/src/lib.rs`),
+`common::Camera::world_bounds`/`contains_point` (the editor uses its own `AABB` and
+`visible_world_bounds`), `Transform2D::lerp`, `Color::lerp`, `Rect::intersects`/
+`intersection`, `EventBus::type_count`. NOT `Transform2D::forward` — asteroids aims every
+bullet with it (`ship.rs:122`); its test was restored (review-4 F1). Rule: show the
+workspace AND `../games` grep for every candidate in the batch-2 review before deleting it. NOT `Rect::contains`/`center`/`expand` — the keep-list called `Rect`
+dead, but `contains` decides every widget interaction and the editor uses the other two;
+their tests were restored (review-3 F1). Likewise the `Color ↔ Vec4` conversion test stays,
+strengthened to all four channels: it is the live scene-save path (review-3 F2).
 
 ## Batch 0 — before any code
 
