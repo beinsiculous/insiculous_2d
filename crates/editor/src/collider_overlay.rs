@@ -22,8 +22,12 @@ const CIRCLE_SEGMENTS: usize = 32;
 const CAP_SEGMENTS: usize = 12;
 /// Outline width for unselected colliders, in screen pixels.
 const OUTLINE_WIDTH: f32 = 1.5;
-/// Outline width for selected colliders, in screen pixels.
+/// Outline width for the primary selected entity's collider, in screen pixels.
 const OUTLINE_WIDTH_SELECTED: f32 = 2.5;
+/// Outline width for every other selected entity's collider (#51) — between
+/// the primary and the unselected, the same three-way split the viewport
+/// selection outline draws.
+const OUTLINE_WIDTH_SECONDARY: f32 = 2.0;
 
 /// Outline colors for the collider overlay.
 ///
@@ -152,7 +156,13 @@ pub fn render_collider_overlay(
 
         let is_selected = selection.contains(entity);
         let color = colors.color_for(collider, is_selected);
-        let width = if is_selected { OUTLINE_WIDTH_SELECTED } else { OUTLINE_WIDTH };
+        let width = if selection.primary() == Some(entity) {
+            OUTLINE_WIDTH_SELECTED
+        } else if is_selected {
+            OUTLINE_WIDTH_SECONDARY
+        } else {
+            OUTLINE_WIDTH
+        };
 
         for (start, end) in collider_outline_segments(transform, collider) {
             ui.line(
@@ -350,6 +360,53 @@ mod tests {
             .count();
         // A box collider draws exactly its 4 edges.
         assert_eq!(lines, 4);
+    }
+
+    #[test]
+    fn test_primary_collider_outline_is_wider_than_secondary_selected() {
+        let mut world = World::new();
+        let spawn = |world: &mut World| {
+            let entity = world.create_entity();
+            world.add_component(&entity, Transform2D::new(Vec2::ZERO)).ok();
+            world.add_component(&entity, Collider::box_collider(32.0, 32.0)).ok();
+            entity
+        };
+        let primary = spawn(&mut world);
+        let secondary = spawn(&mut world);
+        let mut selection = Selection::new();
+        selection.select(primary);
+        selection.add(secondary);
+
+        let mut ui = UIContext::new();
+        let mut viewport = SceneViewport::new();
+        viewport.set_viewport_bounds(Rect::new(0.0, 0.0, 800.0, 600.0));
+        let colors = ColliderOverlayColors {
+            solid: Color::new(0.0, 1.0, 0.0, 1.0),
+            sensor: Color::new(0.0, 1.0, 1.0, 1.0),
+            selected: Color::new(1.0, 1.0, 0.0, 1.0),
+        };
+        render_collider_overlay(
+            &mut ui,
+            &world,
+            &viewport,
+            &selection,
+            &colors,
+            Rect::new(0.0, 0.0, 800.0, 600.0),
+        );
+
+        let mut widths: Vec<f32> = ui
+            .draw_list()
+            .commands()
+            .iter()
+            .filter_map(|c| match c {
+                ui::DrawCommand::Line { width, .. } => Some(*width),
+                _ => None,
+            })
+            .collect();
+        widths.sort_by(|a, b| a.partial_cmp(b).expect("finite widths"));
+        widths.dedup();
+        // Both selected (same color), but the primary reads wider.
+        assert_eq!(widths, vec![OUTLINE_WIDTH_SECONDARY, OUTLINE_WIDTH_SELECTED]);
     }
 
     #[test]

@@ -110,6 +110,18 @@ impl Selection {
         self.primary = self.selected.first().copied();
     }
 
+    /// The inspector's heading for the primary entity, saying how many
+    /// others are selected with it (#51): `Entity: 7` alone, `Entity: 7
+    /// (1 of 5 selected)` in a multi-selection.
+    pub fn inspector_heading(&self) -> Option<String> {
+        let primary = self.primary()?;
+        Some(if self.len() > 1 {
+            format!("Entity: {}  (1 of {} selected)", primary.value(), self.len())
+        } else {
+            format!("Entity: {}", primary.value())
+        })
+    }
+
     /// Set the primary selection (must be in the current selection).
     pub fn set_primary(&mut self, entity: EntityId) {
         if self.selected.contains(&entity) {
@@ -124,6 +136,20 @@ mod tests {
 
     fn entity(id: u64) -> EntityId {
         EntityId::with_generation(id, 1)
+    }
+
+    #[test]
+    fn test_inspector_heading_counts_the_rest_of_a_multi_selection() {
+        let mut selection = Selection::new();
+        assert_eq!(selection.inspector_heading(), None);
+        selection.select(entity(7));
+        assert_eq!(selection.inspector_heading().as_deref(), Some("Entity: 7"));
+        selection.add(entity(8));
+        selection.add(entity(9));
+        assert_eq!(
+            selection.inspector_heading().as_deref(),
+            Some("Entity: 7  (1 of 3 selected)")
+        );
     }
 
     #[test]

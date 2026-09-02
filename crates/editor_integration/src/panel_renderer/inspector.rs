@@ -59,7 +59,12 @@ pub(super) fn render_inspector(
     let top = bounds.y + padding - offset;
     let mut y = top;
 
-    let heading = format!("Entity: {}", entity_id.value());
+    // "Entity: 7  (1 of 5 selected)" in a multi-selection (#51) — the
+    // inspector shows the primary, and says so.
+    let heading = editor
+        .selection
+        .inspector_heading()
+        .unwrap_or_else(|| format!("Entity: {}", entity_id.value()));
     match editor.fonts.bold {
         Some(bold) => ctx.ui.label_with_font(
             &heading,

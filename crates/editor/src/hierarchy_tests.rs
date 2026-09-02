@@ -346,3 +346,117 @@ fn test_rename_escape_cancels_without_commit() {
     assert_eq!(panel.renaming(), None, "escape exits rename mode");
     assert!(world.get::<Name>(e).is_none());
 }
+
+// ==================== Primary affordances + Shift range (#51) ====================
+
+/// A tree of four rows in draw order: `a`, `a_child`, `b`, `b_child`.
+fn four_row_world() -> (World, [EntityId; 4]) {
+    let mut world = World::new();
+    let a = world.create_entity();
+    let a_child = world.create_entity();
+    let b = world.create_entity();
+    let b_child = world.create_entity();
+    world.set_parent(a_child, a).unwrap();
+    world.set_parent(b_child, b).unwrap();
+    (world, [a, a_child, b, b_child])
+}
+
+#[test]
+fn test_visible_order_follows_draw_order_and_skips_collapsed_subtrees() {
+    let (world, [a, a_child, b, b_child]) = four_row_world();
+    let mut panel = HierarchyPanel::new();
+    let mut ui = ui::UIContext::new();
+    let input = input::InputHandler::new();
+    let mut selection = Selection::new();
+
+    rename_frame(&mut panel, &mut ui, &input, &world, &mut selection);
+    assert_eq!(panel.visible_order(), &[a, a_child, b, b_child]);
+
+    panel.collapse(a);
+    rename_frame(&mut panel, &mut ui, &input, &world, &mut selection);
+    assert_eq!(panel.visible_order(), &[a, b, b_child], "a collapsed subtree has no rows");
+}
+
+#[test]
+fn test_shift_click_range_runs_anchor_first_in_either_direction() {
+    let (world, [a, a_child, b, b_child]) = four_row_world();
+    let mut panel = HierarchyPanel::new();
+    let mut ui = ui::UIContext::new();
+    let input = input::InputHandler::new();
+    let mut selection = Selection::new();
+    selection.select(a_child);
+    rename_frame(&mut panel, &mut ui, &input, &world, &mut selection);
+
+    // Downwards: anchor, then the rows below it.
+    assert_eq!(panel.shift_click_range(&selection, b_child), Some(vec![a_child, b, b_child]));
+    // Upwards: the same rows, anchor still first — select_multiple keeps it primary.
+    assert_eq!(panel.shift_click_range(&selection, a), Some(vec![a_child, a]));
+}
+
+#[test]
+fn test_shift_click_range_anchors_on_last_visible_selected_row_when_primary_hidden() {
+    let (world, [a, a_child, b, b_child]) = four_row_world();
+    let mut panel = HierarchyPanel::new();
+    let mut ui = ui::UIContext::new();
+    let input = input::InputHandler::new();
+    let mut selection = Selection::new();
+    selection.select(a_child); // primary
+    selection.add(b);
+    panel.collapse(a); // hides the primary
+    rename_frame(&mut panel, &mut ui, &input, &world, &mut selection);
+
+    assert_eq!(
+        panel.shift_click_range(&selection, b_child),
+        Some(vec![b, b_child]),
+        "the range anchors on the last visible selected row, not on nothing"
+    );
+}
+
+#[test]
+fn test_shift_click_range_is_none_when_no_selected_row_is_visible() {
+    let (world, [a, a_child, _b, b_child]) = four_row_world();
+    let mut panel = HierarchyPanel::new();
+    let mut ui = ui::UIContext::new();
+    let input = input::InputHandler::new();
+    let mut selection = Selection::new();
+    selection.select(a_child);
+    panel.collapse(a);
+    rename_frame(&mut panel, &mut ui, &input, &world, &mut selection);
+
+    assert_eq!(panel.shift_click_range(&selection, b_child), None, "the host adds instead");
+}
+
+#[test]
+fn test_primary_row_fill_differs_from_secondary_rows_and_carries_an_accent() {
+    let (world, [a, a_child, b, _b_child]) = four_row_world();
+    let mut panel = HierarchyPanel::new();
+    let mut ui = ui::UIContext::new();
+    let input = input::InputHandler::new();
+    let mut selection = Selection::new();
+    selection.select(a); // primary
+    selection.add(a_child);
+    selection.add(b);
+
+    let bounds = common::Rect::new(0.0, 0.0, 220.0, 120.0);
+    let theme = crate::theme::EditorTheme::default();
+    let fills = theme.selection_row_fills();
+    ui.begin_frame(&input, glam::Vec2::new(800.0, 600.0));
+    panel.render(&mut ui, &world, &mut selection, bounds, &theme);
+    let rects: Vec<(common::Rect, ui::Color)> = ui
+        .draw_list()
+        .commands()
+        .iter()
+        .filter_map(|c| match c {
+            ui::DrawCommand::Rect { bounds, color, .. } => Some((*bounds, *color)),
+            _ => None,
+        })
+        .collect();
+    ui.end_frame();
+
+    let primary_fills = rects.iter().filter(|(r, c)| r.width == bounds.width && *c == fills.primary).count();
+    let secondary_fills = rects.iter().filter(|(r, c)| r.width == bounds.width && *c == fills.secondary).count();
+    let accents = rects.iter().filter(|(r, c)| r.width == PRIMARY_ACCENT_WIDTH && *c == fills.accent).count();
+    assert_eq!(primary_fills, 1, "exactly the primary row gets the primary fill");
+    assert_eq!(secondary_fills, 2, "the other selected rows get the secondary fill");
+    assert_eq!(accents, 1, "one accent bar, on the primary row");
+}

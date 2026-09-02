@@ -106,7 +106,10 @@ pub use text_field::{display_string, display_u32, edit_string};
 pub use ui_component_editors::{edit_ui_button, edit_ui_label, edit_ui_panel};
 pub use editor_input::{EditorAction, EditorBinding, EditorInputMapping, EditorInputState};
 pub use gizmo::{Corner, Gizmo, GizmoHandle, GizmoInteraction, GizmoMode, GizmoPalette};
-pub use hierarchy::{normalized_rename, HierarchyPanel, HierarchyResponse, NameResolution};
+pub use hierarchy::{
+    normalized_rename, HierarchyPanel, HierarchyResponse, NameResolution, SelectionRowFills,
+    PRIMARY_ACCENT_WIDTH,
+};
 pub use clipboard::{
     capture_entity_tree, spawn_entity_tree, uncaptured_component_names, ClipboardEntity,
     DeleteTreeCommand, SpawnTreeCommand,

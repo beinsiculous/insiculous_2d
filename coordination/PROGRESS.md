@@ -367,3 +367,20 @@ Tests 1670 → 1675, clippy clean. fixes #54.
 placeholders), F3 fixed (tests lock the selection band to mono advances and the Vec2/RGBA
 rows to the numeric font); F1 `#[non_exhaustive]` rebutted with Jesse — no consumer outside
 the workspace, both types have canonical constructors.)
+
+## 2026-09-01 — #51 Primary-selection affordances outside the viewport (Sprint 6)
+The viewport already told the primary apart (width + derived color); the hierarchy,
+inspector and collider overlay did not. `EditorTheme::selection_row_fills()` derives the
+hierarchy's fills from ONE token pair — primary keeps `selection_fill`, other selected
+rows get it at half alpha, and the primary's 3 px left accent bar IS the viewport's
+`selection_outline` (guard-tested like the outline contract). The inspector heading reads
+"Entity: 7  (1 of 5 selected)" via `Selection::inspector_heading`. The collider overlay
+draws three widths (primary 2.5 / secondary 2.0 / unselected 1.5). Shift-click range
+select: the hierarchy records `visible_order` on every render (collapsed subtrees
+excluded) and `shift_click_range` ranges from the primary when visible, else from the LAST
+visible selected row (kimi plan-round F4 — a hidden primary never collapses the selection);
+with no selected row visible the host ADDS like the Shift+marquee. The host now reads
+either Ctrl / either Shift, as the marquee does. Tests 1675 → 1684, clippy clean.
+fixes #51.
+(#51 review round: kimi 1 major — F1 fixed: Ctrl beats Shift in a chord, the marquee's
+precedence, through one pure `hierarchy_click_mode` pinned by a test.)

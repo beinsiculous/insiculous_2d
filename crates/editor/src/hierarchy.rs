@@ -12,6 +12,7 @@ use physics::components::RigidBody;
 use crate::layout::{LINE_HEIGHT, PADDING};
 use crate::theme::EditorTheme;
 use crate::Selection;
+use ui::Color;
 
 /// Row height for each entity in the hierarchy (matches LINE_HEIGHT).
 const ROW_HEIGHT: f32 = LINE_HEIGHT;
@@ -48,6 +49,22 @@ pub fn normalized_rename(current: Option<&str>, raw: &str) -> Option<String> {
     }
 }
 
+/// Width of the accent bar marking the primary selected row, in pixels.
+pub const PRIMARY_ACCENT_WIDTH: f32 = 3.0;
+
+/// Row fills for selected hierarchy rows, derived from the editor theme via
+/// `EditorTheme::selection_row_fills()` (#51). The primary row — the one the
+/// inspector shows and gizmos pivot on — reads differently from the rest.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SelectionRowFills {
+    /// Background of the primary selected row.
+    pub primary: Color,
+    /// Background of every other selected row.
+    pub secondary: Color,
+    /// The accent bar on the primary row's left edge.
+    pub accent: Color,
+}
+
 /// Hierarchy panel for displaying entity tree structure.
 #[derive(Debug, Default)]
 pub struct HierarchyPanel {
@@ -57,6 +74,10 @@ pub struct HierarchyPanel {
     pub scroll: crate::ScrollState,
     /// Row currently in inline-rename mode (F2), if any.
     renaming: Option<EntityId>,
+    /// Every row of the last render pass in draw order — collapsed
+    /// subtrees excluded, off-panel rows included. Shift-click ranges are
+    /// computed over it (#51).
+    visible_order: Vec<EntityId>,
 }
 
 /// What one hierarchy render pass reported back to the host.
@@ -76,6 +97,7 @@ struct NodeRenderCtx<'a> {
     world: &'a World,
     selection: &'a Selection,
     theme: &'a EditorTheme,
+    fills: SelectionRowFills,
     bounds: common::Rect,
     clicked_entities: &'a mut Vec<EntityId>,
     rename_committed: &'a mut Option<(EntityId, String)>,
@@ -88,7 +110,34 @@ impl HierarchyPanel {
             collapsed: HashSet::new(),
             scroll: crate::ScrollState::default(),
             renaming: None,
+            visible_order: Vec::new(),
         }
+    }
+
+    /// The rows of the last render pass in draw order (collapsed subtrees
+    /// excluded, off-panel rows included).
+    pub fn visible_order(&self) -> &[EntityId] {
+        &self.visible_order
+    }
+
+    /// The rows a Shift-click on `target` selects, anchor first: from the
+    /// primary when it is a visible row, else from the LAST visible selected
+    /// row (a primary hidden under a collapsed parent must not silently
+    /// collapse the selection to one row — kimi plan-round F4). `None` when
+    /// no selected row is visible; the host then adds `target` instead.
+    pub fn shift_click_range(&self, selection: &Selection, target: EntityId) -> Option<Vec<EntityId>> {
+        let index_of = |entity: EntityId| self.visible_order.iter().position(|&row| row == entity);
+        let target_index = index_of(target)?;
+        let anchor_index = selection
+            .primary()
+            .and_then(index_of)
+            .or_else(|| self.visible_order.iter().rposition(|&row| selection.contains(row)))?;
+        let (low, high) = (anchor_index.min(target_index), anchor_index.max(target_index));
+        let mut range = self.visible_order[low..=high].to_vec();
+        if anchor_index > target_index {
+            range.reverse();
+        }
+        Some(range)
     }
 
     /// Check if an entity is expanded (default: true).
@@ -213,11 +262,13 @@ impl HierarchyPanel {
         let mut roots = world.get_root_entities();
         roots.sort_by_key(|e| e.value());
 
+        self.visible_order.clear();
         let mut ctx = NodeRenderCtx {
             ui,
             world,
             selection,
             theme,
+            fills: theme.selection_row_fills(),
             bounds,
             clicked_entities: &mut clicked_entities,
             rename_committed: &mut rename_committed,
@@ -253,6 +304,7 @@ impl HierarchyPanel {
         y: f32,
     ) -> f32 {
         let bounds = ctx.bounds;
+        self.visible_order.push(entity);
 
         // Check if this row is visible within bounds
         if y + ROW_HEIGHT < bounds.y || y > bounds.y + bounds.height {
@@ -272,12 +324,18 @@ impl HierarchyPanel {
         let x = bounds.x + BASE_PADDING + (depth as f32 * INDENT_PER_DEPTH);
         let has_children = ctx.world.get_children(entity).is_some_and(|c| !c.is_empty());
         let is_selected = ctx.selection.contains(entity);
+        let is_primary = ctx.selection.primary() == Some(entity);
         let is_expanded = self.is_expanded(entity);
 
-        // Row background for selection (full width)
+        // Row background for selection (full width); the primary row gets
+        // its own fill plus a left accent bar (#51).
         let row_rect = common::Rect::new(bounds.x, y, bounds.width, ROW_HEIGHT);
-        if is_selected {
-            ctx.ui.rect(row_rect, ctx.theme.selection_fill);
+        if is_primary {
+            ctx.ui.rect(row_rect, ctx.fills.primary);
+            let accent_rect = common::Rect::new(bounds.x, y, PRIMARY_ACCENT_WIDTH, ROW_HEIGHT);
+            ctx.ui.rect(accent_rect, ctx.fills.accent);
+        } else if is_selected {
+            ctx.ui.rect(row_rect, ctx.fills.secondary);
         }
 
         // Check arrow interaction FIRST for entities with children. The

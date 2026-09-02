@@ -147,8 +147,9 @@ fn render_scene_view(editor: &EditorContext, ctx: &mut GameContext, bounds: comm
     );
 }
 
-/// Hierarchy — tree view with click-to-select, Ctrl toggle, and F2 inline
-/// rename (committed renames are undo-recorded here).
+/// Hierarchy — tree view with click-to-select, Ctrl toggle, Shift range
+/// select (#51), and F2 inline rename (committed renames are undo-recorded
+/// here).
 fn render_hierarchy(
     editor: &mut EditorContext,
     ctx: &mut GameContext,
@@ -171,11 +172,28 @@ fn render_hierarchy(
     if !clicked.is_empty() {
         editor.close_add_component_popup();
     }
+    // Same modifier read AND precedence as the marquee: either Ctrl /
+    // either Shift, Ctrl wins a chord (kimi #51 F1).
+    use winit::keyboard::KeyCode;
+    let keyboard = ctx.input.keyboard();
+    let ctrl_held =
+        keyboard.is_key_pressed(KeyCode::ControlLeft) || keyboard.is_key_pressed(KeyCode::ControlRight);
+    let shift_held =
+        keyboard.is_key_pressed(KeyCode::ShiftLeft) || keyboard.is_key_pressed(KeyCode::ShiftRight);
+    let mode = hierarchy_click_mode(ctrl_held, shift_held);
     for entity_id in clicked {
-        if ctx.input.keyboard().is_key_pressed(winit::keyboard::KeyCode::ControlLeft) {
-            editor.selection.toggle(entity_id);
-        } else {
-            editor.selection.select(entity_id);
+        match mode {
+            HierarchyClickMode::Toggle => editor.selection.toggle(entity_id),
+            // Range from the anchor row through the clicked one (anchor stays
+            // primary); with no selected row visible, Shift ADDS like the
+            // Shift+marquee does — never a silent collapse to one row.
+            HierarchyClickMode::Range => {
+                match editor.hierarchy.shift_click_range(&editor.selection, entity_id) {
+                    Some(range) => editor.selection.select_multiple(range),
+                    None => editor.selection.add(entity_id),
+                }
+            }
+            HierarchyClickMode::Select => editor.selection.select(entity_id),
         }
         log::info!(
             "Selected entity: {} ({})",
@@ -211,6 +229,29 @@ fn apply_hierarchy_rename(
     );
     command_history.execute(Box::new(cmd), ctx.world);
     warn_if_name_ambiguous(editor, ctx.world, &new_name);
+}
+
+/// What a hierarchy row click does under the held modifiers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum HierarchyClickMode {
+    /// Ctrl (with or without Shift): toggle the row — the marquee's precedence.
+    Toggle,
+    /// Shift alone: range-select from the anchor row.
+    Range,
+    /// No modifier: replace the selection.
+    Select,
+}
+
+/// Modifier precedence shared with the marquee (`apply_marquee_selection`):
+/// Ctrl beats Shift, so `Ctrl+Shift+click` still toggles.
+pub(super) fn hierarchy_click_mode(ctrl_held: bool, shift_held: bool) -> HierarchyClickMode {
+    if ctrl_held {
+        HierarchyClickMode::Toggle
+    } else if shift_held {
+        HierarchyClickMode::Range
+    } else {
+        HierarchyClickMode::Select
+    }
 }
 
 /// The warning text when a just-committed name is shared by several
@@ -251,3 +292,16 @@ use inspector::render_inspector;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod click_mode_tests {
+    use super::{hierarchy_click_mode, HierarchyClickMode};
+
+    #[test]
+    fn test_ctrl_beats_shift_like_the_marquee() {
+        assert_eq!(hierarchy_click_mode(true, true), HierarchyClickMode::Toggle);
+        assert_eq!(hierarchy_click_mode(true, false), HierarchyClickMode::Toggle);
+        assert_eq!(hierarchy_click_mode(false, true), HierarchyClickMode::Range);
+        assert_eq!(hierarchy_click_mode(false, false), HierarchyClickMode::Select);
+    }
+}

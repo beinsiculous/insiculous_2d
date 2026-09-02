@@ -454,6 +454,19 @@ impl EditorTheme {
         }
     }
 
+    /// Fills for selected hierarchy rows (#51). Derivation contract: the
+    /// primary row keeps `selection_fill`, every other selected row is the
+    /// same fill at half its alpha, and the primary's accent bar is the
+    /// viewport's `selection_outline` — one selection color in both places.
+    pub fn selection_row_fills(&self) -> crate::SelectionRowFills {
+        let primary = self.selection_fill;
+        crate::SelectionRowFills {
+            primary,
+            secondary: primary.with_alpha(primary.a * 0.5),
+            accent: self.selection_outline,
+        }
+    }
+
     /// Get the viewport border color for a given play state.
     pub fn play_state_border(&self, state: crate::EditorPlayState) -> Color {
         match state {

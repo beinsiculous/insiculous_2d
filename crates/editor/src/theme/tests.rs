@@ -81,6 +81,21 @@ use super::*;
         assert_ne!(theme.selection_outline, theme.collider_selected);
     }
 
+    #[test]
+    fn test_selection_row_fill_derivation_contract() {
+        let theme = EditorTheme::default();
+        let fills = theme.selection_row_fills();
+        // The primary row must read differently from the other selected rows,
+        // and its accent bar from both fills.
+        assert_ne!(fills.primary, fills.secondary);
+        assert_ne!(fills.accent, fills.primary);
+        assert_ne!(fills.accent, fills.secondary);
+        // Secondary is the primary at half alpha; the accent is the viewport
+        // selection color, so hierarchy and viewport agree on "selected".
+        assert!((fills.secondary.a - fills.primary.a * 0.5).abs() < 1e-6);
+        assert_eq!(fills.accent, theme.selection_outline);
+        assert_ne!(fills.secondary, theme.hover_fill, "a secondary row is not a hovered row");
+    }
 
 // ==================== Elevation ladder (audit §5.2, §5.3) ====================
 
