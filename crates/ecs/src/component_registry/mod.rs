@@ -353,6 +353,9 @@ fn global() -> &'static RwLock<ComponentRegistry> {
         // its concrete ComponentData::Scripts wire arm (name-mapped Entity
         // params), so the serializer's skip list covers it like Behavior.
         registry.register::<crate::script::Scripts>();
+        // The playfield spring grid as scene data (#46) — persisted through
+        // its concrete ComponentData::GridBackdrop wire arm.
+        registry.register::<crate::grid_backdrop::GridBackdrop>();
 
         RwLock::new(registry)
     })

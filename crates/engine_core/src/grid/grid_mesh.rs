@@ -186,6 +186,17 @@ impl GridMesh {
     /// Number of spring connections.
     pub fn spring_count(&self) -> usize { self.springs.len() }
 
+    /// Move the whole grid by `delta` — rest and current positions alike,
+    /// velocities untouched — so placement changes never reset the
+    /// simulation (#46: a backdrop following a scrolling camera).
+    pub fn translate(&mut self, delta: Vec2) {
+        self.origin += delta;
+        for node in &mut self.nodes {
+            node.rest += delta;
+            node.position += delta;
+        }
+    }
+
     /// Apply an impulse to the grid for one frame.
     pub fn apply_impulse(&mut self, impulse: &GridImpulse) {
         match *impulse {

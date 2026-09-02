@@ -24,6 +24,7 @@ impl SceneLoader {
             ComponentData::Sprite { .. } => "Sprite",
             ComponentData::Camera2D { .. } => "Camera2D",
             ComponentData::Tilemap { .. } => "Tilemap",
+            ComponentData::GridBackdrop { .. } => "GridBackdrop",
             ComponentData::SpriteAnimation { .. } => "SpriteAnimation",
             ComponentData::RigidBody { .. } => "RigidBody",
             ComponentData::Collider { .. } => "Collider",
@@ -123,6 +124,43 @@ impl SceneLoader {
                     depth: *depth,
                 };
                 Self::add_component_logged(world, entity_id, tilemap);
+            }
+
+            ComponentData::GridBackdrop {
+                topology,
+                cols,
+                rows,
+                spacing,
+                color,
+                emissive,
+                visible,
+                stiffness,
+                damping,
+                rest_pull,
+                rest_alpha_fraction,
+                activity_attack,
+                activity_release,
+                activity_displacement_ref,
+                activity_velocity_ref,
+            } => {
+                let backdrop = ecs::GridBackdrop {
+                    topology: *topology,
+                    cols: *cols,
+                    rows: *rows,
+                    spacing: *spacing,
+                    color: glam::Vec4::new(color.0, color.1, color.2, color.3),
+                    emissive: *emissive,
+                    visible: *visible,
+                    stiffness: *stiffness,
+                    damping: *damping,
+                    rest_pull: *rest_pull,
+                    rest_alpha_fraction: *rest_alpha_fraction,
+                    activity_attack: *activity_attack,
+                    activity_release: *activity_release,
+                    activity_displacement_ref: *activity_displacement_ref,
+                    activity_velocity_ref: *activity_velocity_ref,
+                };
+                Self::add_component_logged(world, entity_id, backdrop);
             }
 
             ComponentData::SpriteAnimation {

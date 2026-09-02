@@ -253,6 +253,9 @@ struct GameRunner<G: Game> {
     /// Line vertex buffer that the game fills each frame and the engine
     /// uploads to the renderer. Cleared before every `update()`.
     lines: Vec<renderer::line_pipeline::LineVertex>,
+    /// Scene-authored spring grids (`ecs::GridBackdrop`), simulated here and
+    /// drawn beneath the game's own lines (#46).
+    grid_backdrops: crate::grid::GridBackdropSystem,
     /// Persistent sprite batchers, cleared (capacity retained) each frame —
     /// no per-frame HashMap/Vec churn (GPP-15). Game and UI sprites batch
     /// separately so UI never shares a batch with (and paints over) sprites.
@@ -337,6 +340,7 @@ impl<G: Game> GameRunner<G> {
             scores,
             particles: crate::particles::ParticleManager::default(),
             lines: Vec::new(),
+            grid_backdrops: crate::grid::GridBackdropSystem::default(),
             game_batcher: SpriteBatcher::new(),
             ui_batcher: SpriteBatcher::new(),
             strings,

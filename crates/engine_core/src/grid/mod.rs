@@ -20,25 +20,29 @@
 //! [`RenderManager::set_lines`](crate::render_manager::RenderManager::set_lines).
 //! The line pipeline writes into the HDR target so the grid blooms.
 
+mod backdrop_system;
+mod build;
 mod grid_mesh;
 mod impulse;
 #[cfg(test)]
 mod opacity_tests;
 mod topology;
 
+pub use backdrop_system::{
+    request_backdrop_reset, ripple, GridBackdropReset, GridBackdropSystem, GridImpulses,
+};
+pub use build::{apply_grid_tunables, build_grid_mesh};
 pub use grid_mesh::GridMesh;
 pub use impulse::GridImpulse;
 
 /// The shared playfield backdrop: a 44×19-node honeycomb with 30px hexagon
 /// sides (≈1117×825px), tinted to the chaos theme, sized to cover an
 /// ~800×600 window with overscan. Every arcade game uses this exact preset;
-/// override fields per game only where the art genuinely differs.
+/// it IS `ecs::GridBackdrop::default()` with the theme's color — a scene
+/// carrying `GridBackdrop()` gets the same grid from the engine (#46).
 pub fn default_playfield_grid(theme: &crate::chaos_theme::ChaosTheme) -> GridMesh {
-    GridMesh::new(44, 19, 30.0, glam::Vec2::ZERO)
-        .with_color(theme.grid_color)
-        .with_emissive(0.7)
-        .with_stiffness(60.0)
-        .with_damping(0.07)
+    let config = ecs::GridBackdrop { color: theme.grid_color, ..ecs::GridBackdrop::default() };
+    build_grid_mesh(&config, glam::Vec2::ZERO)
 }
 
 /// Advance a spring-mass grid (if any) and push its line vertices into the

@@ -299,3 +299,9 @@ fn test_global_registry_recovers_from_a_poisoned_lock() {
     register_components(|r| r.register::<TestComponent>());
     assert!(with_global_registry(|r| r.is_registered("TestComponent")));
 }
+
+#[test]
+fn test_grid_backdrop_is_a_registered_builtin() {
+    // #46: create-by-name, dynamic tooling and the editor popup all key on this.
+    assert!(with_global_registry(|r| r.is_registered("GridBackdrop")));
+}

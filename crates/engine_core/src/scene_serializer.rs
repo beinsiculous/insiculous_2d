@@ -132,6 +132,27 @@ fn extract_components(
         });
     }
 
+    // GridBackdrop (#46)
+    if let Some(g) = world.get::<ecs::GridBackdrop>(entity) {
+        components.push(ComponentData::GridBackdrop {
+            topology: g.topology,
+            cols: g.cols,
+            rows: g.rows,
+            spacing: g.spacing,
+            color: g.color.into(),
+            emissive: g.emissive,
+            visible: g.visible,
+            stiffness: g.stiffness,
+            damping: g.damping,
+            rest_pull: g.rest_pull,
+            rest_alpha_fraction: g.rest_alpha_fraction,
+            activity_attack: g.activity_attack,
+            activity_release: g.activity_release,
+            activity_displacement_ref: g.activity_displacement_ref,
+            activity_velocity_ref: g.activity_velocity_ref,
+        });
+    }
+
     // SpriteAnimation
     if let Some(a) = world.get::<SpriteAnimation>(entity) {
         components.push(ComponentData::SpriteAnimation {
@@ -276,6 +297,7 @@ fn append_dynamic_components(
         "Camera",
         "SpriteAnimation",
         "Tilemap",
+        "GridBackdrop",
         "RigidBody",
         "Collider",
         "UiLabel",

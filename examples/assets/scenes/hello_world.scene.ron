@@ -110,6 +110,15 @@ SceneData(
 
     // Entity instances in the scene
     entities: [
+        // Spring-grid backdrop (#46): the engine simulates and draws it under
+        // everything else; `GridBackdrop()` is the arcade playfield preset.
+        EntityData(
+            name: Some("backdrop"),
+            components: [
+                Transform2D(position: (0.0, 0.0)),
+                GridBackdrop(),
+            ],
+        ),
         // Player - starts above ground, with a marker child
         EntityData(
             name: Some("player"),

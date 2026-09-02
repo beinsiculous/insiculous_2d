@@ -9,6 +9,9 @@ use common::SheetGrid;
 use ecs::sprite_components::AnimationClip;
 use serde::{Deserialize, Serialize};
 
+/// `GridBackdrop` wire defaults (#46), hoisted for file size.
+mod grid_defaults;
+
 // BehaviorData (+ its Behavior conversions) lives in `behavior_data.rs` for
 // file-size reasons; re-exported here so the scene schema stays one import.
 pub use crate::behavior_data::BehaviorData;
@@ -256,6 +259,41 @@ pub enum ComponentData {
         tile_uv_size: (f32, f32),
         #[serde(default = "default_tilemap_depth")]
         depth: f32,
+    },
+    /// Spring-grid backdrop the engine simulates and draws beneath the
+    /// game's lines (#46). `GridBackdrop()` = the arcade playfield preset;
+    /// the entity's `Transform2D.position` is the grid's center.
+    GridBackdrop {
+        #[serde(default)]
+        topology: ecs::GridTopology,
+        #[serde(default = "grid_defaults::default_grid_cols")]
+        cols: u32,
+        #[serde(default = "grid_defaults::default_grid_rows")]
+        rows: u32,
+        #[serde(default = "grid_defaults::default_grid_spacing")]
+        spacing: f32,
+        #[serde(default = "grid_defaults::default_grid_color")]
+        color: (f32, f32, f32, f32),
+        #[serde(default = "grid_defaults::default_grid_emissive")]
+        emissive: f32,
+        #[serde(default = "default_true")]
+        visible: bool,
+        #[serde(default = "grid_defaults::default_grid_stiffness")]
+        stiffness: f32,
+        #[serde(default = "grid_defaults::default_grid_damping")]
+        damping: f32,
+        #[serde(default = "grid_defaults::default_grid_rest_pull")]
+        rest_pull: f32,
+        #[serde(default = "grid_defaults::default_grid_rest_alpha_fraction")]
+        rest_alpha_fraction: f32,
+        #[serde(default = "grid_defaults::default_grid_activity_attack")]
+        activity_attack: f32,
+        #[serde(default = "grid_defaults::default_grid_activity_release")]
+        activity_release: f32,
+        #[serde(default = "grid_defaults::default_grid_activity_displacement_ref")]
+        activity_displacement_ref: f32,
+        #[serde(default = "grid_defaults::default_grid_activity_velocity_ref")]
+        activity_velocity_ref: f32,
     },
     /// Screen-space text label (data-driven UI; `@key` text localizes)
     UiLabel {

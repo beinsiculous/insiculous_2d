@@ -201,3 +201,44 @@ fn test_ui_button_roundtrip() {
     assert_eq!(button.offset, Vec2::new(0.0, 40.0));
     assert_eq!(button.size, Vec2::new(160.0, 40.0));
 }
+
+#[test]
+fn test_grid_backdrop_round_trips_every_field_and_parses_bare() {
+    // #46: the component survives save → load field for field ...
+    let mut world = World::new();
+    let entity = world.create_entity();
+    world.add_component(&entity, Transform2D::new(Vec2::new(10.0, 20.0))).ok();
+    let authored = ecs::GridBackdrop {
+        topology: ecs::GridTopology::Square,
+        cols: 7,
+        rows: 5,
+        spacing: 12.5,
+        color: Vec4::new(0.1, 0.2, 0.3, 0.4),
+        emissive: 1.5,
+        visible: false,
+        stiffness: 11.0,
+        damping: 0.2,
+        rest_pull: 3.0,
+        rest_alpha_fraction: 0.5,
+        activity_attack: 0.1,
+        activity_release: 0.9,
+        activity_displacement_ref: 2.0,
+        activity_velocity_ref: 20.0,
+    };
+    world.add_component(&entity, authored.clone()).ok();
+
+    let (loaded_world, loaded) = roundtrip_single_entity(&world);
+    assert_eq!(loaded_world.get::<ecs::GridBackdrop>(loaded), Some(&authored));
+    assert_eq!(loaded_world.get::<Transform2D>(loaded).unwrap().position, Vec2::new(10.0, 20.0));
+
+    // ... and `GridBackdrop()` alone means the playfield preset.
+    let scene = crate::scene_loader::SceneLoader::parse(
+        "SceneData(name: \"g\", entities: [EntityData(name: Some(\"backdrop\"), components: [GridBackdrop()])])",
+    )
+    .expect("bare GridBackdrop parses");
+    let mut bare_world = World::new();
+    let instance = crate::scene_loader::SceneLoader::instantiate(&scene, &mut bare_world, &mut StubResolver)
+        .expect("instantiate");
+    let backdrop = bare_world.get::<ecs::GridBackdrop>(instance.entities[0]).expect("component attached");
+    assert_eq!(backdrop, &ecs::GridBackdrop::default());
+}

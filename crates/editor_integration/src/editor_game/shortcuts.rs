@@ -149,6 +149,10 @@ impl<G: Game> EditorGame<G> {
                     // Re-hide scene-authored UI (the marker was removed when
                     // Play started; resources survive the snapshot restore).
                     world.insert_resource(engine_core::UiElementsHidden);
+                    // Spring-grid backdrops rebuild at rest: entity ids survive
+                    // the restore, so without this a grid stopped mid-ripple
+                    // would stay deformed and frozen (#46, kimi plan F7).
+                    engine_core::grid::request_backdrop_reset(world);
                     self.editor.set_play_state(EditorPlayState::Editing);
                     true
                 } else {

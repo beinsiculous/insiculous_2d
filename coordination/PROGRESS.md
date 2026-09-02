@@ -384,3 +384,31 @@ either Ctrl / either Shift, as the marquee does. Tests 1675 → 1684, clippy cle
 fixes #51.
 (#51 review round: kimi 1 major — F1 fixed: Ctrl beats Shift in a chord, the marquee's
 precedence, through one pure `hierarchy_click_mode` pinned by a test.)
+
+## 2026-09-01 — #46 GridBackdrop: the playfield spring grid as scene data (Sprint 6)
+`GridMesh` was pure game code — six copies of `Option<GridMesh>` built from
+`default_playfield_grid`. Now `ecs::GridBackdrop` (+ `GridTopology`) carries the config as
+scene data with `Default` == the playfield preset (an engine test pins its color to
+`ChaosTheme::Normal`); `GridBackdrop::normalized()` is THE clamp/snap rule (dims 2..=512,
+odd hex cols round up, non-finite tunables → preset) used by the engine builder and the
+inspector alike. `engine_core::grid::GridBackdropSystem` (owned by `GameRunner`, run in
+`post_update` with the time-scaled delta so the editor freeze holds it still) keeps one
+mesh per component entity: rebuilds only when the NORMALIZED config changes (NaN cannot
+churn — kimi plan F1), `GridMesh::translate` on a Transform2D move (no rebuild — F3), drains
+`GridImpulses` (via `grid::ripple`) only at dt > 0 (F7a), takes a `GridBackdropReset`
+marker the editor inserts on Stop so a grid stopped mid-ripple rebuilds at rest (F7b), and
+splices every grid's vertices — entity-id order, one splice — in FRONT of the game's lines
+(F2). Scene RON `GridBackdrop()` = the preset (wire defaults derive from `Default`; loader +
+serializer + skip-list arms); `default_playfield_grid` is now `build_grid_mesh` of the
+default config (DRY). Editor: `edit_grid_backdrop` (topology cycle, dims snapping through
+the same rule — typed 45 hex columns commit as 46 — color, tunables) behind one registry
+line + `SetGridBackdropCommand`; `hello_world.scene.ron` carries a `backdrop` entity so
+editor_demo shows it. F6 (theme-aware default color) rebutted — the editor has no chaos
+mode; games write `color` on theme change. Games migration = follow-up #96.
+Tests 1684 → 1703, clippy clean. fixes #46.
+(#46 code round: kimi 1 major + 2 minors, all fixed — F1 negative stiffness/rest_pull
+inverted the springs and exploded to NaN: `normalized()` keeps every physical coefficient
+≥ 0 and the fractions in 0..=1; F2 the origin is `GlobalTransform2D` when present, so a
+parented grid follows its rig; F3 `same_shape` + `apply_grid_tunables` — only a lattice
+change rebuilds, color/visibility/stiffness edits land on the live mesh and a ripple
+survives them.)

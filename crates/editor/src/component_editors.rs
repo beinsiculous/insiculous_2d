@@ -12,6 +12,10 @@
 //! `Some` with the full new value and a `field_hint` naming the changed
 //! field (used to merge continuous slider drags into one undo entry).
 
+/// The `GridBackdrop` editor (#46), a child module for file size.
+pub mod grid_backdrop;
+pub use grid_backdrop::edit_grid_backdrop;
+
 use ecs::sprite_components::Sprite;
 use common::Transform2D;
 use physics::components::{Collider, RigidBody, RigidBodyType, ColliderShape};

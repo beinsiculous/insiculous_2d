@@ -25,7 +25,10 @@ pub use crate::{
     // Particle system (CPU pool; spawn bursts or attach a ParticleEmitter)
     particles::{Particle, ParticleConfig, ParticleEmitter, ParticleManager, ParticleSystem},
     // Spring-mass grid (Geometry-Wars style deforming background)
-    grid::{default_playfield_grid, step_and_emit_grid, GridImpulse, GridMesh},
+    grid::{
+        default_playfield_grid, request_backdrop_reset, ripple, step_and_emit_grid, GridImpulse,
+        GridMesh,
+    },
     // Localization
     localization::{LocaleFile, Strings},
     // Data-driven UI elements

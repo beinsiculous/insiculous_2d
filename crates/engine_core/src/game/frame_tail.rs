@@ -28,6 +28,12 @@ impl<G: Game> GameRunner<G> {
         // so pausing (time_scale 0.0) freezes animation with the world.
         ecs::SpriteAnimationSystem.update(&mut self.scene.world, delta_time * self.time_scale);
 
+        // Scene-authored spring grids: same time-scaled delta (the editor's
+        // freeze holds them still, still drawn), vertices spliced in FRONT
+        // of the game's so its wireframes stay on top (#46).
+        self.grid_backdrops
+            .update(&mut self.scene.world, delta_time * self.time_scale, &mut self.lines);
+
         // Forward the line vertices the game pushed during update to the
         // renderer. Empty buffer == no lines drawn this frame.
         self.render_manager.set_lines(&self.lines);

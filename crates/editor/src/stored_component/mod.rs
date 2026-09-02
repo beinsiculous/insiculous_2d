@@ -8,6 +8,7 @@
 
 use ecs::audio_components::{AudioListener, AudioSource};
 use ecs::behavior::{Behavior, BehaviorState, EntityTag};
+use ecs::grid_backdrop::GridBackdrop;
 use ecs::hierarchy::GlobalTransform2D;
 use ecs::sprite_components::{Name, Sprite, SpriteAnimation};
 use ecs::tilemap::Tilemap;
@@ -19,13 +20,13 @@ use ui::UIContext;
 use crate::behavior_editor::edit_behavior;
 use crate::commands::{
     CommandHistory, RemoveComponentCommand, SetAudioSourceCommand, SetBehaviorCommand,
-    SetColliderCommand, SetEntityTagCommand, SetNameCommand, SetRigidBodyCommand,
-    SetScriptsCommand, SetSpriteCommand, SetTransformCommand, SetUiButtonCommand,
-    SetUiLabelCommand, SetUiPanelCommand,
+    SetColliderCommand, SetEntityTagCommand, SetGridBackdropCommand, SetNameCommand,
+    SetRigidBodyCommand, SetScriptsCommand, SetSpriteCommand, SetTransformCommand,
+    SetUiButtonCommand, SetUiLabelCommand, SetUiPanelCommand,
 };
 use crate::component_editors::{
-    edit_audio_source, edit_collider, edit_entity_tag, edit_name, edit_rigid_body, edit_sprite,
-    edit_transform2d,
+    edit_audio_source, edit_collider, edit_entity_tag, edit_grid_backdrop, edit_name,
+    edit_rigid_body, edit_sprite, edit_transform2d,
 };
 use crate::script_editor::edit_scripts;
 use crate::ui_component_editors::{edit_ui_button, edit_ui_label, edit_ui_panel};
@@ -487,6 +488,7 @@ editor_component_registry! {
         Sprite          => Sprite : Rendering { edit edit_sprite => SetSpriteCommand },
         SpriteAnimation => SpriteAnimation : Rendering { readonly },
         Tilemap         => Tilemap : Rendering { readonly },
+        GridBackdrop    => GridBackdrop : Rendering { edit edit_grid_backdrop => SetGridBackdropCommand },
         RigidBody       => RigidBody : Physics { edit edit_rigid_body => SetRigidBodyCommand },
         Collider        => Collider : Physics { edit edit_collider => SetColliderCommand },
         AudioSource     => AudioSource : Audio { edit edit_audio_source => SetAudioSourceCommand },
