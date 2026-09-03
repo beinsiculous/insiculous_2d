@@ -349,7 +349,7 @@ Outcome notes for later batches: the § B half-2 spike **failed** — ron's `UNW
 Extra verification: scene round-trip suite + new behaviour fixture; games test gate (all use
 `run_game`, twelve edited); wasm gate.
 
-## Batch 6 — DRY in editor commands and the command API (~450 removed, ~250 added; §F, §G)
+## Batch 6 — DRY in editor commands and the command API (~450 removed, ~250 added; §F, §G) — DONE Sep 3 2026 (b25eeb7; reviews 22 and 22-claude, fixes applied by Claude per Jesse's standing ruling; closes #90)
 
 Corrected Sep 3 2026 against the tree after batch 5, then again after review 21 (kimi, seven
 findings, all folded in): every line reference below was re-derived from the current files. The
