@@ -81,22 +81,8 @@ pub struct GameContext<'a> {
     /// game (`PauseMenu::time_scale()` provides the right value each frame).
     /// It does NOT scale `ctx.delta_time`; games gate their own logic.
     pub time_scale: f32,
-    /// Set to `true` to quit the game (title-screen Exit items, the pause
-    /// menu's Exit Game). The engine performs the same clean shutdown as
-    /// closing the window: `Game::on_exit`, input-settings save, scene
-    /// teardown, then the event loop exits at the end of the frame.
-    pub exit_requested: bool,
-    /// Write `Some(title)` to retitle the OS window; the engine applies it
-    /// after `update()` (same writeback pattern as `exit_requested`).
-    /// `None` (the default every frame) leaves the title unchanged — only
-    /// write on change, since retitling is a window-system round-trip.
-    pub window_title: Option<String>,
-    /// Writeback: clip the ENGINE's post-update UI draws (the frame tail's
-    /// scene-authored UiLabel/UiPanel/UiButton pass and achievement toasts)
-    /// to this rect. `None` (the default) draws unclipped — shipped games
-    /// never touch this; the editor sets its scene-panel bounds so tail
-    /// draws stay inside the game view.
-    pub game_ui_clip: Option<common::Rect>,
+    /// Requests accumulated during this frame (exit, title, UI clip).
+    pub(crate) requests: FrameRequests,
     /// Achievement / trophy manager. Register achievements in `init()`, then
     /// call `ctx.achievements.unlock("id")` from gameplay code.
     pub achievements: &'a mut AchievementManager,
@@ -143,4 +129,92 @@ pub struct RenderContext<'a> {
     /// rect draws no game world at all (hidden scene panel). The UI pass is
     /// unaffected.
     pub viewport_scissor: &'a mut Option<common::Rect>,
+}
+
+/// What a game asked the engine to do this frame. Drained after `update()` and after
+/// every key handler; nothing here is readable back by the game.
+#[derive(Debug, Default, Clone)]
+pub struct FrameRequests {
+    pub(crate) exit: bool,
+    pub(crate) window_title: Option<String>,
+    pub(crate) engine_ui_clip: Option<common::Rect>,
+}
+
+impl FrameRequests {
+    /// Fold one frame's requests into the engine's pending set. Exit latches
+    /// (a request is never un-requested); the latest title wins; the clip is
+    /// per frame and replaces the previous one.
+    pub(crate) fn absorb(&mut self, incoming: FrameRequests) {
+        self.exit |= incoming.exit;
+        if let Some(title) = incoming.window_title {
+            self.window_title = Some(title);
+        }
+        self.engine_ui_clip = incoming.engine_ui_clip;
+    }
+}
+
+/// The state changes a frame produces that the engine must absorb.
+pub(crate) struct FrameOutcome {
+    pub chaos_mode: ChaosMode,
+    pub time_scale: f32,
+    pub requests: FrameRequests,
+}
+
+impl GameContext<'_> {
+    /// Quit at the end of the frame: the same clean shutdown as closing the window
+    /// (`on_exit`, input-settings save, scene teardown).
+    pub fn request_exit(&mut self) {
+        self.requests.exit = true;
+    }
+
+    /// Retitle the OS window after this frame. One window-system round-trip, only when called.
+    pub fn set_window_title(&mut self, title: impl Into<String>) {
+        self.requests.window_title = Some(title.into());
+    }
+
+    /// Whether a title was already requested this frame (the editor yields to a Playing game).
+    pub fn window_title_requested(&self) -> bool {
+        self.requests.window_title.is_some()
+    }
+
+    /// Clip the ENGINE's post-update UI draws (scene-authored elements, toasts) to `bounds`.
+    /// Editor hosts only; plain games never call it.
+    pub fn clip_engine_ui(&mut self, bounds: common::Rect) {
+        self.requests.engine_ui_clip = Some(bounds);
+    }
+
+    /// Consume the context and hand back what the engine must absorb. Ends every borrow.
+    pub(crate) fn into_outcome(self) -> FrameOutcome {
+        FrameOutcome {
+            chaos_mode: self.chaos_mode,
+            time_scale: self.time_scale,
+            requests: self.requests,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::FrameRequests;
+
+    #[test]
+    fn exit_request_latches_across_frames_and_the_latest_title_wins() {
+        let mut pending = FrameRequests::default();
+        let mut frame = FrameRequests::default();
+        frame.exit = true;
+        frame.window_title = Some("first".to_string());
+        pending.absorb(frame);
+        assert!(pending.exit);
+
+        // A later frame that asks for nothing must not clear the exit, and a
+        // frame that never sets a title leaves the pending one for the tail.
+        pending.absorb(FrameRequests::default());
+        assert!(pending.exit, "exit is latched until the engine shuts down");
+        assert_eq!(pending.window_title.as_deref(), Some("first"));
+
+        let mut retitle = FrameRequests::default();
+        retitle.window_title = Some("second".to_string());
+        pending.absorb(retitle);
+        assert_eq!(pending.window_title.as_deref(), Some("second"));
+    }
 }

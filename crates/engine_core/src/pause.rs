@@ -21,7 +21,7 @@
 //! match pause.update(&settings, &input, window_size) {
 //!     PauseAction::Restart => { /* self.start_game(...) */ }
 //!     PauseAction::QuitToTitle => { /* self.reset_to_title(...) */ }
-//!     PauseAction::ExitGame => { /* ctx.exit_requested = true */ }
+//!     PauseAction::ExitGame => { /* ctx.request_exit() */ }
 //!     PauseAction::Resumed => { /* skip this frame; unfreeze next */ }
 //!     PauseAction::Idle => {}
 //! }
@@ -53,7 +53,7 @@ pub enum PauseAction {
     Restart,
     /// The player picked Quit to Title. Unpauses.
     QuitToTitle,
-    /// The player picked Exit Game — set `ctx.exit_requested = true` for a
+    /// The player picked Exit Game — call `ctx.request_exit()` for a
     /// clean engine shutdown. Unpauses (moot once the loop exits).
     ExitGame,
 }

@@ -52,7 +52,7 @@ mod tests {
         let mut animation = SpriteAnimation::new(SheetGrid::new(4, 1))
             .with_clip("walk", AnimationClip::new(vec![0, 1], 10.0))
             .with_clip("bad", AnimationClip::new(vec![99], 10.0));
-        animation.play("walk");
+        assert!(animation.play("walk"));
         world.add_component(&entity, animation)?;
         world.add_component(&entity, Sprite::new(0))?;
         Ok(entity)
@@ -76,7 +76,7 @@ mod tests {
 
         // A frame that does not resolve (index past the 4-cell grid) leaves
         // the sprite's region alone instead of writing garbage.
-        world.get_mut::<SpriteAnimation>(entity).expect("animation").play("bad");
+        assert!(world.get_mut::<SpriteAnimation>(entity).expect("animation").play("bad"));
         SpriteAnimationSystem.update(&mut world, 0.1);
         assert_eq!(region(&world, entity), [0.25, 0.0, 0.25, 1.0]);
         Ok(())

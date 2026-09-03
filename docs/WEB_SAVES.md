@@ -4,7 +4,7 @@ The engine and the website (`beinsiculous.com`, repo `insiculous_web`) share
 one origin, so **localStorage is the integration surface** for player
 progress. This document is the contract; the site's reader
 (`insiculous_web/src/lib/games-achievements.js`) and the engine's save-store seam
-(`crates/engine_core/src/save_store.rs`) both conform to it. Settled on
+(`crates/engine_core/src/save_store/mod.rs`) both conform to it. Settled on
 beinsiculous/insiculous_2d#17.
 
 ## Keys

@@ -136,7 +136,7 @@ fn custom_toast_style_drives_the_drawn_panel_size() {
         })
         .expect("the toast draws a panel");
     assert_eq!((panel.width, panel.height), (240.0, 48.0));
-    assert_eq!(panel.x, 800.0 - 240.0 - manager.toast_style.margin, "anchored to the top-right corner");
+    assert_eq!(panel.x, 800.0 - 240.0 - manager.toast_style().margin, "anchored to the top-right corner");
 }
 
 #[test]

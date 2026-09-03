@@ -53,7 +53,7 @@ fn walking_animation() -> SpriteAnimation {
         .with_clip("walk", AnimationClip::new(vec![0, 1, 2], 12.0))
         .with_clip("idle", AnimationClip::new(vec![4], 4.0).with_looping(false));
     animation.sheet = Some(SHEET.to_string());
-    animation.play("walk");
+    assert!(animation.play("walk"));
     animation
 }
 
@@ -330,7 +330,7 @@ fn animated_sprite_region_reaches_the_renderer_and_plain_sprites_stay_full() {
     world.add_component(&animated, Transform2D::new(Vec2::ZERO)).ok();
     world.add_component(&animated, Sprite::new(0)).ok();
     let mut animation = SpriteAnimation::new(SheetGrid::new(4, 2)).with_clip("walk", AnimationClip::new(vec![5], 10.0));
-    animation.play("walk");
+    assert!(animation.play("walk"));
     world.add_component(&animated, animation).ok();
     let plain = world.create_entity();
     world.add_component(&plain, Transform2D::new(Vec2::new(50.0, 0.0))).ok();

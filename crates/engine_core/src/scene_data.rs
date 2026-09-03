@@ -12,12 +12,12 @@ use serde::{Deserialize, Serialize};
 /// `GridBackdrop` wire defaults, hoisted for file size.
 mod grid_defaults;
 
-// BehaviorData (+ its Behavior conversions) lives in `behavior_data.rs` for
-// file-size reasons; re-exported here so the scene schema stays one import.
-pub use crate::behavior_data::BehaviorData;
+/// `ecs::Behavior` IS the wire schema for behaviors: it carries the serde defaults
+/// old scene files rely on. Adding a variant or field there changes scene files.
+pub type BehaviorData = ecs::behavior::Behavior;
 // ScriptRefData/ScriptValueData (+ their Scripts conversions) live in
 // `script_data.rs`; re-exported so `scene_data::ScriptRefData`
-// stays the canonical import path, mirroring BehaviorData.
+// stays the canonical import path.
 pub use crate::script_data::{ScriptRefData, ScriptValueData};
 
 /// Editor-specific settings persisted with the scene

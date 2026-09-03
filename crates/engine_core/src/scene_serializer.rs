@@ -100,7 +100,7 @@ fn extract_components(
             offset: (sprite.offset.x, sprite.offset.y),
             rotation: sprite.rotation,
             scale: (sprite.scale.x, sprite.scale.y),
-            color: (sprite.color.x, sprite.color.y, sprite.color.z, sprite.color.w),
+            color: sprite.color.into(),
             depth: sprite.depth,
             emissive: sprite.emissive,
             tex_region: (sprite.tex_region[0], sprite.tex_region[1], sprite.tex_region[2], sprite.tex_region[3]),
@@ -231,7 +231,7 @@ fn extract_components(
             anchor: label.anchor,
             offset: (label.offset.x, label.offset.y),
             font_size: label.font_size,
-            color: (label.color.x, label.color.y, label.color.z, label.color.w),
+            color: label.color.into(),
             visible: label.visible,
         });
     }
@@ -240,8 +240,8 @@ fn extract_components(
             anchor: panel.anchor,
             offset: (panel.offset.x, panel.offset.y),
             size: (panel.size.x, panel.size.y),
-            background: (panel.background.x, panel.background.y, panel.background.z, panel.background.w),
-            border: (panel.border.x, panel.border.y, panel.border.z, panel.border.w),
+            background: panel.background.into(),
+            border: panel.border.into(),
             border_width: panel.border_width,
             visible: panel.visible,
         });
@@ -257,9 +257,9 @@ fn extract_components(
         });
     }
 
-    // Behavior — conversion lives on `From<&Behavior> for BehaviorData` in scene_data.rs
+    // Behavior
     if let Some(behavior) = world.get::<ecs::behavior::Behavior>(entity) {
-        components.push(ComponentData::Behavior(BehaviorData::from(behavior)));
+        components.push(ComponentData::Behavior(behavior.clone()));
     }
 
     // EntityTag

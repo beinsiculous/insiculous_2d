@@ -31,7 +31,6 @@ mod scene;
 pub mod lifecycle;
 pub mod assets;
 pub mod chaos_theme;
-pub mod behavior_data;
 pub mod script_data;
 pub mod scene_data;
 pub mod component_registration;

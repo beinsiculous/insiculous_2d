@@ -150,11 +150,12 @@ pub trait Game: Sized + 'static {
 ///     run_game(MyGame, GameConfig::default()).unwrap();
 /// }
 /// ```
-pub fn run_game<G: Game>(game: G, config: GameConfig) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run_game<G: Game>(game: G, config: GameConfig) -> Result<(), crate::EngineError> {
     // Engine components reach the dynamic registry before any scene loads
     // or editor capture runs (idempotent).
     crate::component_registration::register_engine_components();
-    let event_loop = EventLoop::new()?;
+    let event_loop =
+        EventLoop::new().map_err(|e| crate::EngineError::InitializationError(e.to_string()))?;
     let runner = GameRunner::new(game, config);
 
     // Native: block until the window closes. Web: hand the runner to the
@@ -163,7 +164,9 @@ pub fn run_game<G: Game>(game: G, config: GameConfig) -> Result<(), Box<dyn std:
     #[cfg(not(target_arch = "wasm32"))]
     {
         let mut runner = runner;
-        event_loop.run_app(&mut runner)?;
+        event_loop
+            .run_app(&mut runner)
+            .map_err(|e| crate::EngineError::GameLoopError(e.to_string()))?;
     }
     #[cfg(target_arch = "wasm32")]
     {
@@ -226,19 +229,12 @@ struct GameRunner<G: Game> {
     /// Engine time multiplier mirrored onto `GameContext.time_scale`
     /// (read-write, persisted like chaos_mode). Scales particle stepping.
     time_scale: f32,
-    /// Set when the game writes `GameContext.exit_requested` — triggers the
-    /// clean shutdown path at the end of the frame.
-    exit_requested: bool,
+    /// What the game requested this frame (exit, title, UI clip).
+    requests: crate::contexts::FrameRequests,
     /// Latched when rendering fails fatally (GPU device lost). The frame
     /// driver stops the loop instead of submitting to a dead queue — the
     /// failure mode that crashed Firefox's parent-process WebGPU.
     render_fatal: bool,
-    /// Title requested via `GameContext.window_title`, applied to the OS
-    /// window in the frame tail (window-system round-trips happen at most
-    /// once per frame, and only when a title was actually requested).
-    pending_window_title: Option<String>,
-    /// Clip for the frame tail's UI draws, from `GameContext.game_ui_clip`.
-    pending_game_ui_clip: Option<common::Rect>,
     /// Main game scene containing ECS world
     scene: Scene,
     /// Achievement / trophy manager
@@ -260,14 +256,8 @@ struct GameRunner<G: Game> {
     /// separately so UI never shares a batch with (and paints over) sprites.
     game_batcher: SpriteBatcher,
     ui_batcher: SpriteBatcher,
-    /// Localization tables (loaded from `GameConfig::locales_dir` at startup).
-    strings: crate::localization::Strings,
-    /// The game's own default font, captured after `init()` so locale font
-    /// switches can restore it (`None` = game never loaded a font).
-    base_font: Option<ui::FontHandle>,
-    /// Locale font path → loaded handle, so cycling locales doesn't reload
-    /// font files.
-    locale_fonts: std::collections::HashMap<String, ui::FontHandle>,
+    /// Localization state: strings table, default font, and cached locale fonts.
+    localization: locale_font::Localization,
     /// Button presses from this frame's UI-element pass. The event bus
     /// flushes BEFORE `update()`, so presses are held here and emitted onto
     /// the bus right after the next frame's flush (one-frame latency).
@@ -276,12 +266,34 @@ struct GameRunner<G: Game> {
     initialized: bool,
 }
 
+macro_rules! build_context {
+    ($runner:expr, $assets:expr, $delta_time:expr, $window_size:expr) => {
+        crate::contexts::GameContext {
+            input: &$runner.input,
+            players: &mut $runner.player_input,
+            world: &mut $runner.scene.world,
+            assets: $assets,
+            audio: &mut $runner.audio_manager,
+            ui: &mut $runner.ui,
+            delta_time: $delta_time,
+            window_size: $window_size,
+            chaos_mode: $runner.config.chaos_mode,
+            time_scale: $runner.time_scale,
+            requests: crate::contexts::FrameRequests::default(),
+            achievements: &mut $runner.achievements,
+            scores: &mut $runner.scores,
+            particles: &mut $runner.particles,
+            lines: &mut $runner.lines,
+            strings: &mut $runner.localization.strings,
+        }
+    };
+}
+pub(super) use build_context;
+
 impl<G: Game> GameRunner<G> {
     fn new(game: G, config: GameConfig) -> Self {
         // Create window manager from game config
-        let window_config = WindowConfig::new(&config.title)
-            .with_size(config.width, config.height)
-            .with_resizable(config.resizable);
+        let window_config = WindowConfig::from(&config);
 
         // Audio init failure is non-fatal: falls back to a disabled manager
         // whose playback calls are no-ops, so init()/update() always run.
@@ -310,6 +322,7 @@ impl<G: Game> GameRunner<G> {
         let locales_dir = std::path::Path::new(&asset_base).join(&config.locales_dir);
         let mut strings = crate::localization::Strings::load_dir(&locales_dir);
         strings.set_locale(config.locale.clone());
+        let localization = locale_font::Localization::new(strings);
 
         Self {
             game,
@@ -330,10 +343,8 @@ impl<G: Game> GameRunner<G> {
             #[cfg(target_arch = "wasm32")]
             audio_gesture_attempts: 0,
             time_scale: 1.0,
-            exit_requested: false,
+            requests: crate::contexts::FrameRequests::default(),
             render_fatal: false,
-            pending_window_title: None,
-            pending_game_ui_clip: None,
             scene: Scene::new("main"),
             achievements,
             scores,
@@ -342,9 +353,7 @@ impl<G: Game> GameRunner<G> {
             grid_backdrops: crate::grid::GridBackdropSystem::default(),
             game_batcher: SpriteBatcher::new(),
             ui_batcher: SpriteBatcher::new(),
-            strings,
-            base_font: None,
-            locale_fonts: std::collections::HashMap::new(),
+            localization,
             pending_ui_events: Vec::new(),
             initialized: false,
         }
@@ -446,6 +455,14 @@ impl<G: Game> GameRunner<G> {
         self.ui.begin_frame_dt(&self.input, window_size, delta_time);
     }
 
+    /// The one writeback tail for `update()` and the key handlers: persist the
+    /// chaos mode and time scale the game wrote, fold its requests into ours.
+    fn absorb(&mut self, outcome: crate::contexts::FrameOutcome) {
+        self.config.chaos_mode = outcome.chaos_mode;
+        self.time_scale = outcome.time_scale;
+        self.requests.absorb(outcome.requests);
+    }
+
     /// Initialize game on first frame, then update game logic.
     fn initialize_and_update(&mut self, delta_time: f32, window_size: Vec2) {
         let Some(asset_manager) = self.asset_manager.as_mut() else {
@@ -457,26 +474,7 @@ impl<G: Game> GameRunner<G> {
         // vertices each update (typical case: grid.build_line_vertices()).
         self.lines.clear();
 
-        let mut ctx = GameContext {
-            input: &self.input,
-            players: &mut self.player_input,
-            world: &mut self.scene.world,
-            assets: asset_manager,
-            audio: &mut self.audio_manager,
-            ui: &mut self.ui,
-            delta_time,
-            window_size,
-            chaos_mode: self.config.chaos_mode,
-            time_scale: self.time_scale,
-            exit_requested: false,
-            window_title: None,
-            game_ui_clip: None,
-            achievements: &mut self.achievements,
-            scores: &mut self.scores,
-            particles: &mut self.particles,
-            lines: &mut self.lines,
-            strings: &mut self.strings,
-        };
+        let mut ctx = build_context!(self, asset_manager, delta_time, window_size);
 
         let first_frame = !self.initialized;
         if first_frame {
@@ -485,16 +483,8 @@ impl<G: Game> GameRunner<G> {
         }
 
         self.game.update(&mut ctx);
-
-        // Persist any chaos-mode or time-scale change the game wrote to the
-        // context, so both reflect the current runtime selection next frame.
-        self.config.chaos_mode = ctx.chaos_mode;
-        self.time_scale = ctx.time_scale;
-        self.exit_requested |= ctx.exit_requested;
-        if let Some(title) = ctx.window_title.take() {
-            self.pending_window_title = Some(title);
-        }
-        self.pending_game_ui_clip = ctx.game_ui_clip.take();
+        let outcome = ctx.into_outcome();
+        self.absorb(outcome);
 
         // Engine-side frame tail: particles, lines, scene-defined UI,
         // toasts, locale fonts (game/frame_tail.rs).

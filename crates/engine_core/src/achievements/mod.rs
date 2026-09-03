@@ -27,15 +27,20 @@
 //! assert_eq!(achievements.unlocked_count(), 1);
 //! ```
 
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+mod toast;
 
-use crate::save_store;
-use common::clock::{SystemTime, UNIX_EPOCH};
+pub use toast::{ToastStyle, DEFAULT_TOAST_DURATION};
+use toast::ToastQueue;
+
+use std::collections::HashMap;
+use std::path::PathBuf;
+
+use crate::save_store::{unix_seconds, JsonSaveSlot, MergeOnLoad, SaveError};
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use ui::UIContext;
-use common::{Color, Rect};
+
+pub type AchievementError = SaveError;
 
 /// An achievement definition.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,101 +84,25 @@ struct SaveFile {
     unlocks: HashMap<String, UnlockRecord>,
 }
 
-/// Active toast being displayed.
-#[derive(Debug, Clone)]
-struct Toast {
-    achievement_id: String,
-    name: String,
-    description: String,
-    remaining: f32,
-}
-
-/// Errors from achievement persistence.
-#[derive(Debug, thiserror::Error)]
-pub enum AchievementError {
-    #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
-    #[error("Serialization error: {0}")]
-    Serde(#[from] serde_json::Error),
-}
-
-/// Default time (seconds) a toast stays visible before fading out.
-pub const DEFAULT_TOAST_DURATION: f32 = 4.0;
-
-/// Visual styling for achievement toasts.
-///
-/// Colors carry their base alpha; the fade-out over a toast's last second
-/// multiplies that alpha at draw time. Override via
-/// [`AchievementManager::set_toast_style`].
-#[derive(Debug, Clone, PartialEq)]
-pub struct ToastStyle {
-    /// Toast panel width in pixels.
-    pub width: f32,
-    /// Toast panel height in pixels.
-    pub height: f32,
-    /// Margin from the window's top-right corner.
-    pub margin: f32,
-    /// Vertical spacing between stacked toasts.
-    pub spacing: f32,
-    /// Panel background color.
-    pub background: Color,
-    /// Panel border color.
-    pub border: Color,
-    /// Panel border width in pixels.
-    pub border_width: f32,
-    /// "Achievement Unlocked!" header color.
-    pub title_color: Color,
-    /// Achievement name color.
-    pub name_color: Color,
-    /// Achievement description color.
-    pub description_color: Color,
-    /// Header font size.
-    pub title_size: f32,
-    /// Achievement name font size.
-    pub name_size: f32,
-    /// Description font size.
-    pub description_size: f32,
-}
-
-impl Default for ToastStyle {
-    fn default() -> Self {
-        Self {
-            width: 320.0,
-            height: 72.0,
-            margin: 16.0,
-            spacing: 8.0,
-            background: Color::new(0.08, 0.08, 0.12, 0.92),
-            border: Color::new(1.0, 0.82, 0.2, 1.0),
-            border_width: 2.0,
-            title_color: Color::new(1.0, 0.82, 0.2, 1.0),
-            name_color: Color::new(1.0, 1.0, 1.0, 1.0),
-            description_color: Color::new(0.8, 0.8, 0.85, 1.0),
-            title_size: 14.0,
-            name_size: 16.0,
-            description_size: 12.0,
+impl MergeOnLoad for SaveFile {
+    fn merge_from_disk(&mut self, disk: Self) {
+        for (id, record) in disk.unlocks {
+            let entry = self.unlocks.entry(id).or_insert(UnlockRecord {
+                unlocked_at: record.unlocked_at,
+            });
+            entry.unlocked_at = entry.unlocked_at.min(record.unlocked_at);
         }
     }
-}
-
-/// Multiply a style color's base alpha by the toast's fade factor.
-fn faded(color: Color, fade: f32) -> Color {
-    Color::new(color.r, color.g, color.b, color.a * fade)
 }
 
 /// Manages achievement registration, unlocking, persistence, and toasts.
 pub struct AchievementManager {
     /// Registered achievement definitions, keyed by id.
     registered: HashMap<String, Achievement>,
-    /// Unlock records loaded from disk / accumulated this session.
-    unlocks: HashMap<String, UnlockRecord>,
+    /// Save slot for unlock records.
+    slot: JsonSaveSlot<SaveFile>,
     /// Toasts queued for display (FIFO).
-    toasts: Vec<Toast>,
-    /// Path to persist unlocks to. `None` disables persistence (useful for tests).
-    save_path: Option<PathBuf>,
-    /// How long each toast stays on screen.
-    toast_duration: f32,
-    /// Visual styling for toasts (dimensions, colors, font sizes).
-    toast_style: ToastStyle,
+    toasts: ToastQueue,
 }
 
 impl AchievementManager {
@@ -181,11 +110,8 @@ impl AchievementManager {
     pub fn in_memory() -> Self {
         Self {
             registered: HashMap::new(),
-            unlocks: HashMap::new(),
-            toasts: Vec::new(),
-            save_path: None,
-            toast_duration: DEFAULT_TOAST_DURATION,
-            toast_style: ToastStyle::default(),
+            slot: JsonSaveSlot::in_memory(),
+            toasts: ToastQueue::new(),
         }
     }
 
@@ -194,38 +120,26 @@ impl AchievementManager {
     /// If the file already exists, previously unlocked achievements are loaded.
     /// Missing file is treated as "nothing unlocked yet" (not an error).
     pub fn with_save_path(path: impl Into<PathBuf>) -> Self {
-        let path = path.into();
-        let mut manager = Self::in_memory();
-        manager.save_path = Some(path.clone());
-        // Absence is queried through the save_store seam, not Path::exists() — the
-        // latter is always false on wasm, where the slot is a localStorage key.
-        match save_store::read(&path) {
-            Ok(Some(_)) => {
-                if let Err(e) = manager.load() {
-                    log::warn!("Failed to load achievements from {}: {}", path.display(), e);
-                }
-            }
-            Ok(None) => {} // nothing unlocked yet
-            Err(e) => {
-                log::warn!("Failed to load achievements from {}: {}", path.display(), e);
-            }
+        Self {
+            registered: HashMap::new(),
+            slot: JsonSaveSlot::with_path(path),
+            toasts: ToastQueue::new(),
         }
-        manager
     }
 
     /// Override the toast duration (seconds).
     pub fn set_toast_duration(&mut self, seconds: f32) {
-        self.toast_duration = seconds;
+        self.toasts.duration = seconds;
     }
 
     /// Override the toast appearance (dimensions, colors, font sizes).
     pub fn set_toast_style(&mut self, style: ToastStyle) {
-        self.toast_style = style;
+        self.toasts.style = style;
     }
 
     /// The current toast styling.
     pub fn toast_style(&self) -> &ToastStyle {
-        &self.toast_style
+        &self.toasts.style
     }
 
     /// Register an achievement definition. Call once per achievement at startup.
@@ -252,12 +166,12 @@ impl AchievementManager {
 
     /// Number of unlocked achievements.
     pub fn unlocked_count(&self) -> usize {
-        self.unlocks.len()
+        self.slot.data().unlocks.len()
     }
 
     /// True if the achievement with this id is unlocked.
     pub fn is_unlocked(&self, id: &str) -> bool {
-        self.unlocks.contains_key(id)
+        self.slot.data().unlocks.contains_key(id)
     }
 
     /// Unlock an achievement by id. Returns true if this call actually unlocked
@@ -266,7 +180,7 @@ impl AchievementManager {
     ///
     /// If the id is not registered, this logs a warning and returns false.
     pub fn unlock(&mut self, id: &str) -> bool {
-        if self.unlocks.contains_key(id) {
+        if self.is_unlocked(id) {
             return false;
         }
         let Some(def) = self.registered.get(id) else {
@@ -274,25 +188,13 @@ impl AchievementManager {
             return false;
         };
 
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        self.unlocks
-            .insert(id.to_string(), UnlockRecord { unlocked_at: now });
+        let now = unix_seconds();
+        self.slot.data_mut().unlocks.insert(id.to_string(), UnlockRecord { unlocked_at: now });
 
-        self.toasts.push(Toast {
-            achievement_id: id.to_string(),
-            name: def.name.clone(),
-            description: def.description.clone(),
-            remaining: self.toast_duration,
-        });
+        self.toasts.push(id.to_string(), def.name.clone(), def.description.clone());
 
-        if let Some(path) = &self.save_path {
-            let path = path.clone();
-            if let Err(e) = self.save_to(&path, true) {
-                log::warn!("Failed to save achievements: {}", e);
-            }
+        if let Err(e) = self.slot.save_with_merge() {
+            log::warn!("Failed to save achievements: {}", e);
         }
 
         log::info!("Achievement unlocked: {} ({})", def.name, id);
@@ -302,117 +204,35 @@ impl AchievementManager {
     /// Wipe all unlocked state (and persist the empty state if a save path is set).
     /// Typically used for dev/QA or a "reset progress" menu.
     pub fn reset(&mut self) {
-        self.unlocks.clear();
+        self.slot.data_mut().unlocks.clear();
         self.toasts.clear();
-        if let Some(path) = &self.save_path {
-            let path = path.clone();
-            if let Err(e) = self.save_to(&path, false) {
-                log::warn!("Failed to save achievements after reset: {}", e);
-            }
+        if let Err(e) = self.slot.save_without_merge() {
+            log::warn!("Failed to save achievements after reset: {}", e);
         }
     }
 
     /// Advance toast timers. Called once per frame.
     pub fn tick(&mut self, delta_time: f32) {
-        for toast in &mut self.toasts {
-            toast.remaining -= delta_time;
-        }
-        self.toasts.retain(|t| t.remaining > 0.0);
+        self.toasts.tick(delta_time);
     }
 
     /// Draw any active toasts in the top-right corner of the window.
     ///
     /// Toasts fade out over their last second of life.
     pub fn draw_toasts(&self, ui: &mut UIContext, window_size: Vec2) {
-        let style = &self.toast_style;
-
-        for (i, toast) in self.toasts.iter().enumerate() {
-            let alpha = (toast.remaining / 1.0).clamp(0.0, 1.0);
-            let x = window_size.x - style.width - style.margin;
-            let y = style.margin + (style.height + style.spacing) * i as f32;
-
-            let bg = faded(style.background, alpha);
-            let border = faded(style.border, alpha);
-            ui.panel_styled(Rect::new(x, y, style.width, style.height), bg, border, style.border_width);
-
-            ui.label_styled(
-                "Achievement Unlocked!",
-                Vec2::new(x + 12.0, y + 10.0),
-                faded(style.title_color, alpha),
-                style.title_size,
-            );
-            ui.label_styled(
-                &toast.name,
-                Vec2::new(x + 12.0, y + 30.0),
-                faded(style.name_color, alpha),
-                style.name_size,
-            );
-            ui.label_styled(
-                &toast.description,
-                Vec2::new(x + 12.0, y + 52.0),
-                faded(style.description_color, alpha),
-                style.description_size,
-            );
-            let _ = toast.achievement_id; // reserved for future icon lookup
-        }
+        self.toasts.draw(ui, window_size);
     }
 
     /// Persist current unlock state to the configured save path.
     /// Returns `Ok(false)` with no action if no save path is configured.
     pub fn save(&self) -> Result<bool, AchievementError> {
-        let Some(path) = &self.save_path else { return Ok(false); };
-        self.save_to(path, true)?;
-        Ok(true)
-    }
-
-    /// Persist through the [`crate::save_store`] seam (native: atomic JSON file;
-    /// web: localStorage — see save_store.rs for the temp-file consequences).
-    ///
-    /// With `merge`, unlock records already in the slot are unioned into the
-    /// outgoing set first, keeping the earliest `unlocked_at` per id — so a
-    /// browser tab's save preserves unlocks another tab persisted earlier.
-    /// (The read-merge-write is not atomic: same-instant saves from two tabs
-    /// can still race, and the loser's unlock returns on its next save.)
-    /// `reset()` passes `merge: false`: an explicit clear must actually clear.
-    /// An unreadable or unparsable existing slot skips the merge (the write
-    /// then replaces the corrupt state).
-    fn save_to(&self, path: &Path, merge: bool) -> Result<(), AchievementError> {
-        let mut unlocks = self.unlocks.clone();
-        if merge {
-            if let Ok(Some(existing)) = save_store::read(path) {
-                if let Ok(disk) = serde_json::from_str::<SaveFile>(&existing) {
-                    for (id, record) in disk.unlocks {
-                        let entry = unlocks.entry(id).or_insert(UnlockRecord {
-                            unlocked_at: record.unlocked_at,
-                        });
-                        entry.unlocked_at = entry.unlocked_at.min(record.unlocked_at);
-                    }
-                }
-            }
-        }
-        let json = serde_json::to_string_pretty(&SaveFile { unlocks })?;
-        save_store::write(path, &json)?;
-        Ok(())
+        self.slot.save_with_merge()
     }
 
     /// Reload unlock state from the configured save path, discarding any
     /// in-memory unlocks. Errors if no path is set or the slot is absent.
     pub fn load(&mut self) -> Result<(), AchievementError> {
-        let Some(path) = &self.save_path else {
-            return Err(AchievementError::Io(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "no save path configured",
-            )));
-        };
-        let data = save_store::read(path)?.ok_or_else(|| {
-            AchievementError::Io(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                format!("no save data at {}", path.display()),
-            ))
-        })?;
-        let save: SaveFile = serde_json::from_str(&data)?;
-        self.unlocks = save.unlocks;
-        Ok(())
+        self.slot.reload()
     }
 }
 

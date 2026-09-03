@@ -189,9 +189,9 @@ mod tests {
         }
         system.update(&mut world, 0.0, &mut out);
         let mesh = system.mesh(entity).unwrap();
-        assert_eq!(mesh.color, glam::Vec4::new(1.0, 0.0, 0.0, 1.0));
-        assert_eq!(mesh.stiffness, 90.0);
-        assert!(!mesh.visible);
+        assert_eq!(mesh.config.color, glam::Vec4::new(1.0, 0.0, 0.0, 1.0));
+        assert_eq!(mesh.config.stiffness, 90.0);
+        assert!(!mesh.config.visible);
         assert!((mesh.total_energy() - energy).abs() < 1e-3, "the ripple survives a cosmetic edit");
 
         // A NaN tunable: built once (falls back to the preset), then left
@@ -199,7 +199,7 @@ mod tests {
         world.get_mut::<GridBackdrop>(entity).unwrap().stiffness = f32::NAN;
         system.update(&mut world, 1.0 / 60.0, &mut out);
         assert!(system.mesh(entity).unwrap().total_energy() > 0.0, "still the same simulation");
-        assert_eq!(system.mesh(entity).unwrap().stiffness, GridBackdrop::default().stiffness);
+        assert_eq!(system.mesh(entity).unwrap().config.stiffness, GridBackdrop::default().stiffness);
 
         // A shape change rebuilds: more columns, more nodes, at rest.
         world.get_mut::<GridBackdrop>(entity).unwrap().cols = 10;

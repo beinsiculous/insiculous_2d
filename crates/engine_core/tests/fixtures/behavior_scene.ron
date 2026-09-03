@@ -1,0 +1,134 @@
+(
+    name: "BehaviorScene",
+    physics: None,
+    editor: None,
+    prefabs: {},
+    entities: [
+        (
+            name: Some("root"),
+            prefab: None,
+            parent: None,
+            overrides: [],
+            components: [],
+            children: [
+                (
+                    name: Some("entity_PlayerPlatformer"),
+                    prefab: None,
+                    parent: None,
+                    overrides: [],
+                    components: [
+                        Behavior(PlayerPlatformer(
+                            move_speed: 120.0,
+                            jump_impulse: 420.0,
+                            jump_cooldown: 0.3,
+                            tag: "player",
+                        )),
+                    ],
+                    children: [],
+                ),
+                (
+                    name: Some("entity_PlayerTopDown"),
+                    prefab: None,
+                    parent: None,
+                    overrides: [],
+                    components: [
+                        Behavior(PlayerTopDown(
+                            move_speed: 120.0,
+                            tag: "player",
+                        )),
+                    ],
+                    children: [],
+                ),
+                (
+                    name: Some("entity_FollowEntity"),
+                    prefab: None,
+                    parent: None,
+                    overrides: [],
+                    components: [
+                        Behavior(FollowEntity(
+                            target_name: "",
+                            follow_distance: 50.0,
+                            follow_speed: 100.0,
+                        )),
+                    ],
+                    children: [],
+                ),
+                (
+                    name: Some("entity_FollowTagged"),
+                    prefab: None,
+                    parent: None,
+                    overrides: [],
+                    components: [
+                        Behavior(FollowTagged(
+                            target_tag: "player",
+                            follow_distance: 50.0,
+                            follow_speed: 100.0,
+                        )),
+                    ],
+                    children: [],
+                ),
+                (
+                    name: Some("entity_Patrol"),
+                    prefab: None,
+                    parent: None,
+                    overrides: [],
+                    components: [
+                        Behavior(Patrol(
+                            point_a: (0.0, 0.0),
+                            point_b: (100.0, 0.0),
+                            speed: 80.0,
+                            wait_time: 1.0,
+                        )),
+                    ],
+                    children: [],
+                ),
+                (
+                    name: Some("entity_Collectible"),
+                    prefab: None,
+                    parent: None,
+                    overrides: [],
+                    components: [
+                        Behavior(Collectible(
+                            score_value: 10,
+                            despawn_on_collect: true,
+                            collector_tag: "player",
+                        )),
+                    ],
+                    children: [],
+                ),
+                (
+                    name: Some("entity_ChaseTagged"),
+                    prefab: None,
+                    parent: None,
+                    overrides: [],
+                    components: [
+                        Behavior(ChaseTagged(
+                            target_tag: "player",
+                            detection_range: 200.0,
+                            chase_speed: 80.0,
+                            lose_interest_range: 300.0,
+                        )),
+                    ],
+                    children: [],
+                ),
+                (
+                    name: Some("entity_CameraFollow"),
+                    prefab: None,
+                    parent: None,
+                    overrides: [],
+                    components: [
+                        Behavior(CameraFollow(
+                            target_tag: "player",
+                            lerp_speed: 0.1,
+                            offset: (0.0, 0.0),
+                            dead_zone: None,
+                            look_ahead: (0.0, 0.0),
+                            look_ahead_lerp: 0.08,
+                        )),
+                    ],
+                    children: [],
+                ),
+            ],
+        ),
+    ],
+)

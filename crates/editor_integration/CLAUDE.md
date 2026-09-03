@@ -45,13 +45,13 @@ editor_integration ──→ editor, engine_core, ecs, ui, input, renderer, comm
 - **Asset browser** (`panel_renderer/asset_browser.rs`): scan-on-open + Rescan, lazy thumbnails (≤4 loads/frame), click-to-assign, drag-drop (ghost via ui overlay; viewport drop assigns on sprite hit, spawns on empty space — both undoable).
 - `EditorGame::update()` — main orchestration. Editor input → conditional game update (only if Playing) → render panels
 - Input routing: Editing/Paused → editor gets input. Playing → game gets input, editor hotkeys still work.
-- Dirty state: `CommandHistory::is_dirty()` is the source of truth; `EditorContext.is_dirty` is a per-frame mirror (synced at update 0d and again before the status bar); the OS window title renders `title_bar_text()` change-gated via `ctx.window_title` (game owns the title while Playing)
+- Dirty state: `CommandHistory::is_dirty()` is the source of truth; `EditorContext.is_dirty` is a per-frame mirror (synced at update 0d and again before the status bar); the OS window title renders `title_bar_text()` change-gated via `ctx.set_window_title` (game owns the title while Playing)
 - Inspector writeback: generated per-component by `editor_component_registry!` (editor crate) — `edit_*()` returns `Option<ComponentEdit<T>>` → `editor::apply_component_edit()` writes to world and records undo via `try_merge_or_push` (continuous edits merge by `field_hint`)
 - Play/Stop: snapshot world on Play (typed clone via `WorldSnapshot`), restore on Stop
 - Save/Load: Ctrl+S / Ctrl+Shift+S / Ctrl+O / Ctrl+N — `save_scene_with` (scene_io.rs) is the MANDATORY save choke point; save AND new/open are refused with a status-bar error during a play session (Playing or Paused — the world is mid-simulation). `SceneLoader` for load. Hardcoded paths (no file picker yet)
 - Status messages: `editor.status_bar.show_message("Saved")` after successful operations
 - Minimum window size: 1024x720 enforced for editor usability
-- **Editor prefs**: camera/grid/panel layout loaded in `init`, saved in `on_exit` (`editor_prefs.json`); menu Exit sets `ctx.exit_requested` (clean shutdown), never `process::exit`
+- **Editor prefs**: camera/grid/panel layout loaded in `init`, saved in `on_exit` (`editor_prefs.json`); menu Exit calls `ctx.request_exit()` (clean shutdown), never `process::exit`
 - **Font scoping**: editor font pinned at init and re-asserted every frame; `update_inner_game` swaps to `strings.active_font().or(game_base_font)` around `inner.update` so the game view localizes while chrome doesn't. View → "Cycle Game Locale" cycles `ctx.strings`
 - **Scene-authored UI**: `UiElementsHidden` inserted on init and Stop (after snapshot restore), removed on Play — UiLabel/UiPanel/UiButton only draw while the game runs
 

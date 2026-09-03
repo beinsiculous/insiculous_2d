@@ -1,8 +1,8 @@
-//! Behavior components for entity behaviors
+//! Behavior components for entity behaviors.
 //!
-//! This module provides behavior components that define how entities respond
-//! to input and game events. Behaviors are data-driven and can be defined
-//! in scene files.
+//! `ecs::Behavior` is the wire schema for behaviors in scene files: it carries
+//! the serde defaults old scene files rely on. Adding a variant or field here
+//! changes scene files. Wire-frozen.
 
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
@@ -514,5 +514,19 @@ mod tests {
         assert!(tag.matches("enemy"));
         assert!(!tag.matches("player"));
         assert!(!tag.matches("Enemy"), "matching is exact, not case-folded");
+    }
+
+    #[test]
+    fn test_every_behavior_variant_round_trips_through_ron() -> TestResult {
+        for index in 0..Behavior::VARIANT_NAMES.len() {
+            let original = Behavior::default_for_variant(index);
+            let ron_text = ron::to_string(&original)?;
+            let parsed: Behavior = ron::from_str(&ron_text)?;
+            assert_eq!(parsed.variant_index(), original.variant_index());
+            let original_json = serde_json::to_value(&original).expect("serializes to json");
+            let parsed_json = serde_json::to_value(&parsed).expect("serializes to json");
+            assert_eq!(parsed_json, original_json);
+        }
+        Ok(())
     }
 }

@@ -279,6 +279,7 @@ impl SpriteAnimation {
     ///
     /// Returns `false` for an unknown clip name: the call is a warned no-op
     /// and the current clip keeps playing.
+    #[must_use]
     pub fn play(&mut self, name: &str) -> bool {
         if !self.has_clip(name) {
             log::warn!(
@@ -302,6 +303,7 @@ impl SpriteAnimation {
     /// Safe to call every update: an already-running clip keeps advancing
     /// instead of restarting. A paused or finished clip of the same name does
     /// restart. Returns `false` for an unknown clip name.
+    #[must_use]
     pub fn ensure_playing(&mut self, name: &str) -> bool {
         if self.playing && self.current_clip.as_deref() == Some(name) {
             return true;

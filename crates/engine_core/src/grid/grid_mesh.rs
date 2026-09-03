@@ -11,7 +11,8 @@
 //!
 //! Border nodes are pinned (inv_mass = 0) so the grid doesn't drift.
 
-use glam::{Vec2, Vec4};
+use ecs::{GridBackdrop, GridTopology};
+use glam::Vec2;
 use renderer::line_pipeline::LineVertex;
 
 use super::impulse::GridImpulse;
@@ -24,15 +25,18 @@ const ACTIVITY_DEADBAND: f32 = 0.05;
 
 /// The spring-mass grid.
 ///
-/// Build with [`GridMesh::new`]. Each frame:
+/// Build with [`GridMesh::from_config`]. Each frame:
 /// 1. Apply impulses with [`apply_impulse`](Self::apply_impulse).
 /// 2. Step the simulation with [`step`](Self::step).
 /// 3. Build line vertices with [`build_line_vertices`](Self::build_line_vertices).
 pub struct GridMesh {
-    pub cols: u32,
-    pub rows: u32,
-    pub spacing: f32,
+    /// The NORMALIZED configuration this lattice was built from. Tunables are read
+    /// from here every step. The lattice fields (topology, cols, rows, spacing) are
+    /// what the springs encode: never edit them on a live mesh — rebuild.
+    pub config: GridBackdrop,
     pub origin: Vec2,
+    /// Physics substeps per frame. Not scene data — stays on the mesh.
+    pub substeps: u32,
     nodes: Vec<GridNode>,
     springs: Vec<Spring>,
     /// Per-node motion envelope in 0..=1 driving vertex alpha: rises fast
@@ -42,136 +46,33 @@ pub struct GridMesh {
     line_scratch: Vec<LineVertex>,
     /// Pre-allocated spring-force scratch reused every substep.
     force_scratch: Vec<Vec2>,
-    /// Visual params. The alpha component of `color` controls grid
-    /// translucency — fade it to 0 to hide the grid while keeping the
-    /// simulation running.
-    pub color: Vec4,
-    pub emissive: f32,
-    /// When `false`, [`build_line_vertices`](Self::build_line_vertices)
-    /// returns an empty slice and no lines render. The simulation still
-    /// steps (so re-enabling later resumes a settled grid).
-    pub visible: bool,
-    /// Spring stiffness (force per unit of stretch). Higher = faster ripples,
-    /// lower = wobblier.
-    pub stiffness: f32,
-    /// Per-frame velocity decay. 0.0 = no damping (energy preserved),
-    /// 1.0 = critical damping (no movement). Typical 0.05–0.15.
-    pub damping: f32,
-    /// Pull-to-rest force coefficient. Without this the grid never returns
-    /// to its rest position once excited. The honeycomb needs more of it
-    /// than a square lattice would: degree-3 nodes have floppy bending
-    /// modes that springs barely resist, so this is what brings those
-    /// displacements home. Typical 2.0–8.0.
-    pub rest_pull: f32,
-    /// Number of physics substeps per frame. Higher = more stable at large
-    /// dt or high stiffness.
-    pub substeps: u32,
-    /// Fraction of `color.w` shown while a node rests (0..=1). The grid sits
-    /// at this translucency until motion brightens it toward `color.w`;
-    /// `1.0` restores the legacy uniform-alpha look.
-    pub rest_alpha_fraction: f32,
-    /// Activity envelope rise time constant in seconds (smaller = the grid
-    /// lights up faster when disturbed).
-    pub activity_attack: f32,
-    /// Activity envelope fall time constant in seconds (larger = the glow
-    /// lingers longer after motion stops).
-    pub activity_release: f32,
-    /// Displacement from rest (world units) that counts as full activity.
-    pub activity_displacement_ref: f32,
-    /// Node speed (world units/sec) that counts as full activity.
-    pub activity_velocity_ref: f32,
 }
 
 impl GridMesh {
-    /// Build a `cols × rows` honeycomb grid with hexagon side length
-    /// `spacing`, centered at `origin`. `cols` must be even (the zigzag
-    /// vertical-spring rule needs it to stay regular to the right edge).
-    /// For a classic square lattice use [`new_square`](Self::new_square).
-    pub fn new(cols: u32, rows: u32, spacing: f32, origin: Vec2) -> Self {
-        assert!(cols >= 2 && rows >= 2, "grid must be at least 2x2");
-        assert!(cols.is_multiple_of(2), "hex grid needs an even column count");
-        Self::from_topology(cols, rows, spacing, origin, build_hex_topology(cols, rows, spacing, origin))
-    }
-
-    /// Build a `cols × rows` classic square-lattice grid with `spacing`
-    /// world units between nodes, centered at `origin`. Any `cols >= 2`
-    /// works (no even requirement). Same simulation and motion-driven
-    /// opacity as the honeycomb — only the lattice shape differs.
-    pub fn new_square(cols: u32, rows: u32, spacing: f32, origin: Vec2) -> Self {
-        assert!(cols >= 2 && rows >= 2, "grid must be at least 2x2");
-        Self::from_topology(cols, rows, spacing, origin, build_square_topology(cols, rows, spacing, origin))
-    }
-
-    fn from_topology(
-        cols: u32,
-        rows: u32,
-        spacing: f32,
-        origin: Vec2,
-        (nodes, springs): (Vec<GridNode>, Vec<Spring>),
-    ) -> Self {
+    /// The one constructor. `config` must already be normalized
+    /// (`GridBackdrop::normalized`) — asserts the lattice invariants, never clamps.
+    pub fn from_config(config: &GridBackdrop, origin: Vec2) -> Self {
+        assert!(config.cols >= 2 && config.rows >= 2, "grid must be at least 2x2");
+        if config.topology == GridTopology::Hex {
+            assert!(config.cols.is_multiple_of(2), "hex grid needs an even column count");
+        }
+        let (nodes, springs) = match config.topology {
+            GridTopology::Hex => build_hex_topology(config.cols, config.rows, config.spacing, origin),
+            GridTopology::Square => build_square_topology(config.cols, config.rows, config.spacing, origin),
+        };
         let force_scratch = vec![Vec2::ZERO; nodes.len()];
         let activity = vec![0.0; nodes.len()];
         Self {
-            cols,
-            rows,
-            spacing,
+            config: config.clone(),
             origin,
+            substeps: 4,
             nodes,
             springs,
             activity,
             line_scratch: Vec::new(),
             force_scratch,
-            color: Vec4::new(0.2, 0.5, 1.0, 0.8),
-            emissive: 0.6,
-            visible: true,
-            stiffness: 24.0,
-            damping: 0.08,
-            rest_pull: 4.0,
-            substeps: 4,
-            rest_alpha_fraction: 0.35,
-            activity_attack: 0.04,
-            activity_release: 0.6,
-            activity_displacement_ref: spacing * 0.2,
-            activity_velocity_ref: spacing * 2.0,
         }
     }
-
-    pub fn with_color(mut self, color: Vec4) -> Self { self.color = color; self }
-    pub fn with_emissive(mut self, emissive: f32) -> Self { self.emissive = emissive; self }
-    pub fn with_stiffness(mut self, stiffness: f32) -> Self { self.stiffness = stiffness; self }
-    pub fn with_damping(mut self, damping: f32) -> Self { self.damping = damping; self }
-
-    /// Builder for [`rest_pull`](Self::rest_pull). The default is 4.0
-    /// (raised from the old square-lattice 1.0 — the honeycomb's floppy
-    /// bending modes rely on this pull to settle).
-    pub fn with_rest_pull(mut self, rest_pull: f32) -> Self { self.rest_pull = rest_pull; self }
-
-    /// Builder for [`rest_alpha_fraction`](Self::rest_alpha_fraction),
-    /// clamped to 0..=1.
-    pub fn with_rest_alpha_fraction(mut self, fraction: f32) -> Self {
-        self.rest_alpha_fraction = fraction.clamp(0.0, 1.0);
-        self
-    }
-
-    /// Builder for the activity envelope time constants (seconds).
-    pub fn with_activity_response(mut self, attack: f32, release: f32) -> Self {
-        self.activity_attack = attack;
-        self.activity_release = release;
-        self
-    }
-
-    /// Builder for the activity normalization references: the displacement
-    /// (world units) and speed (world units/sec) that count as full activity.
-    pub fn with_activity_refs(mut self, displacement: f32, velocity: f32) -> Self {
-        self.activity_displacement_ref = displacement;
-        self.activity_velocity_ref = velocity;
-        self
-    }
-
-    /// Builder variant of the [`visible`](Self::visible) field. Set to false
-    /// to start the grid hidden — useful for games that toggle it on certain
-    /// events (boss fights, menus, etc.).
-    pub fn with_visible(mut self, visible: bool) -> Self { self.visible = visible; self }
 
     /// Number of mass points.
     pub fn node_count(&self) -> usize { self.nodes.len() }
@@ -228,7 +129,7 @@ impl GridMesh {
         let substeps = self.substeps.max(1);
         let h = dt / substeps as f32;
         // Per-substep damping factor so total damping doesn't depend on dt.
-        let damp = (1.0 - self.damping).clamp(0.0, 1.0).powf(h * 60.0);
+        let damp = (1.0 - self.config.damping).clamp(0.0, 1.0).powf(h * 60.0);
 
         for _ in 0..substeps {
             self.accumulate_forces();
@@ -249,10 +150,10 @@ impl GridMesh {
     /// attack/release smooths what remains. `1 - exp(-dt/tau)` keeps both
     /// time constants frame-rate independent.
     fn update_activity(&mut self, dt: f32) {
-        let d_ref = self.activity_displacement_ref.max(1e-3);
-        let v_ref = self.activity_velocity_ref.max(1e-3);
-        let attack = 1.0 - (-dt / self.activity_attack.max(1e-3)).exp();
-        let release = 1.0 - (-dt / self.activity_release.max(1e-3)).exp();
+        let d_ref = self.config.activity_displacement_ref.max(1e-3);
+        let v_ref = self.config.activity_velocity_ref.max(1e-3);
+        let attack = 1.0 - (-dt / self.config.activity_attack.max(1e-3)).exp();
+        let release = 1.0 - (-dt / self.config.activity_release.max(1e-3)).exp();
         for (node, env) in self.nodes.iter().zip(self.activity.iter_mut()) {
             let mut raw = ((node.position - node.rest).length() / d_ref
                 + node.velocity.length() / v_ref)
@@ -278,14 +179,14 @@ impl GridMesh {
             if len < 1e-6 { continue; }
             let stretch = len - s.rest_length;
             let dir = delta / len;
-            let f = dir * (stretch * self.stiffness);
+            let f = dir * (stretch * self.config.stiffness);
             self.force_scratch[s.a as usize] += f;
             self.force_scratch[s.b as usize] -= f;
         }
 
         // Pull every node back toward its rest position so excitement decays.
         for (i, node) in self.nodes.iter().enumerate() {
-            let pull = (node.rest - node.position) * self.rest_pull;
+            let pull = (node.rest - node.position) * self.config.rest_pull;
             self.force_scratch[i] += pull;
         }
     }
@@ -305,20 +206,20 @@ impl GridMesh {
     /// entirely so a hidden grid costs nothing to "render".
     pub fn build_line_vertices(&mut self) -> &[LineVertex] {
         self.line_scratch.clear();
-        if !self.visible || self.color.w <= 0.0 {
+        if !self.config.visible || self.config.color.w <= 0.0 {
             return &self.line_scratch;
         }
         // Clamp here too: the field is public, and alpha above `color.w`
         // would break the documented "color.w is the maximum" invariant.
-        let rest_a = self.color.w * self.rest_alpha_fraction.clamp(0.0, 1.0);
-        let emissive = self.emissive;
+        let rest_a = self.config.color.w * self.config.rest_alpha_fraction.clamp(0.0, 1.0);
+        let emissive = self.config.emissive;
         for s in &self.springs {
             for idx in [s.a as usize, s.b as usize] {
                 let node = &self.nodes[idx];
-                let alpha = rest_a + (self.color.w - rest_a) * self.activity[idx];
+                let alpha = rest_a + (self.config.color.w - rest_a) * self.activity[idx];
                 self.line_scratch.push(LineVertex {
                     position: node.position.to_array(),
-                    color: [self.color.x, self.color.y, self.color.z, alpha],
+                    color: [self.config.color.x, self.config.color.y, self.config.color.z, alpha],
                     emissive,
                 });
             }
@@ -342,7 +243,10 @@ mod tests {
 
     #[test]
     fn energy_decays_with_damping_and_nodes_return_to_rest_while_pinned_corners_never_move() {
-        let mut g = GridMesh::new(6, 5, 10.0, Vec2::ZERO).with_damping(0.2);
+        let mut g = GridMesh::from_config(
+            &GridBackdrop { cols: 6, rows: 5, spacing: 10.0, damping: 0.2, ..Default::default() },
+            Vec2::ZERO,
+        );
         let rest = g.nodes[CENTER].rest;
         g.apply_impulse(&GridImpulse::Point { position: rest, force: Vec2::new(0.0, 100.0), radius: 5.0 });
 
@@ -358,7 +262,10 @@ mod tests {
         assert!(final_offset < 0.1, "node should settle near rest, offset = {final_offset}");
 
         // A pinned corner ignores even a violent impulse centered on it.
-        let mut g = GridMesh::new(6, 5, 10.0, Vec2::ZERO);
+        let mut g = GridMesh::from_config(
+            &GridBackdrop { cols: 6, rows: 5, spacing: 10.0, ..Default::default() },
+            Vec2::ZERO,
+        );
         let corner_rest = g.nodes[0].rest;
         g.apply_impulse(&GridImpulse::Radial {
             position: corner_rest, strength: 1000.0, radius: 100.0, attractive: false,
@@ -371,8 +278,11 @@ mod tests {
 
     #[test]
     fn line_vertices_come_in_spring_pairs_at_node_positions_with_rest_alpha() {
-        let mut g = GridMesh::new(4, 3, 1.0, Vec2::new(2.0, 3.0));
-        let expected_alpha = g.color.w * g.rest_alpha_fraction;
+        let mut g = GridMesh::from_config(
+            &GridBackdrop { cols: 4, rows: 3, spacing: 1.0, ..Default::default() },
+            Vec2::new(2.0, 3.0),
+        );
+        let expected_alpha = g.config.color.w * g.config.rest_alpha_fraction;
 
         let verts: Vec<LineVertex> = g.build_line_vertices().to_vec();
 
@@ -382,7 +292,7 @@ mod tests {
             assert_eq!(pair[1].position, g.nodes[spring.b as usize].position.to_array());
             for v in pair {
                 assert!((v.color[3] - expected_alpha).abs() < 1e-6, "at rest every alpha is color.w * fraction");
-                assert_eq!(v.emissive, g.emissive);
+                assert_eq!(v.emissive, g.config.emissive);
             }
         }
     }
@@ -392,10 +302,20 @@ mod tests {
         // Re-enabling a hidden grid resumes from the same physics state, so
         // invisible (or fully transparent) grids keep stepping — they only
         // skip the per-spring vertex loop.
-        let mut hidden = GridMesh::new(6, 5, 10.0, Vec2::ZERO);
-        hidden.visible = false;
-        let mut transparent = GridMesh::new(6, 5, 10.0, Vec2::ZERO);
-        transparent.color.w = 0.0;
+        let mut hidden = GridMesh::from_config(
+            &GridBackdrop { cols: 6, rows: 5, spacing: 10.0, visible: false, ..Default::default() },
+            Vec2::ZERO,
+        );
+        let mut transparent = GridMesh::from_config(
+            &GridBackdrop {
+                cols: 6,
+                rows: 5,
+                spacing: 10.0,
+                color: glam::Vec4::new(0.2, 0.5, 1.0, 0.0),
+                ..Default::default()
+            },
+            Vec2::ZERO,
+        );
         for g in [&mut hidden, &mut transparent] {
             let rest = g.nodes[CENTER].rest;
             g.apply_impulse(&GridImpulse::Point { position: rest, force: Vec2::new(0.0, 100.0), radius: 5.0 });
@@ -411,7 +331,10 @@ mod tests {
     fn translate_shifts_rest_and_position_but_not_velocity() {
         // A backdrop following a scrolling camera moves without
         // resetting its simulation — the ripple travels with it.
-        let mut g = GridMesh::new(6, 5, 10.0, Vec2::ZERO);
+        let mut g = GridMesh::from_config(
+            &GridBackdrop { cols: 6, rows: 5, spacing: 10.0, ..Default::default() },
+            Vec2::ZERO,
+        );
         g.apply_impulse(&GridImpulse::Point {
             position: g.nodes[CENTER].rest, force: Vec2::new(0.0, 100.0), radius: 5.0,
         });

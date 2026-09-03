@@ -10,10 +10,9 @@
 //! game as a reactive background.
 //!
 //! The `Default` field values (stiffness, damping, color, glow, activity
-//! response) are starting points, not requirements — configure per game via
-//! the public fields or [`GridMesh::new`]. Games that prefer the classic
-//! square lattice build with [`GridMesh::new_square`] instead — same
-//! simulation and motion-driven opacity, different lattice shape.
+//! response) are on [`ecs::GridBackdrop`]. Build via
+//! [`GridMesh::from_config`](crate::grid::GridMesh::from_config) with either
+//! `GridTopology::Hex` (the default) or `GridTopology::Square`.
 //!
 //! Render path: each frame, build the line vertex buffer with
 //! [`GridMesh::build_line_vertices`] and hand it to
@@ -77,7 +76,8 @@ mod step_and_emit_tests {
         // The per-frame driver every game's render path calls: the grid's
         // two vertices per spring land in the buffer and, with collider
         // debug off, nothing else does.
-        let mut grid = GridMesh::new(4, 4, 10.0, glam::Vec2::ZERO);
+        let config = ecs::GridBackdrop { cols: 4, rows: 4, spacing: 10.0, ..Default::default() };
+        let mut grid = GridMesh::from_config(&config, glam::Vec2::ZERO);
         let world = ecs::World::new();
         let mut lines = Vec::new();
 

@@ -10,7 +10,7 @@ Core engine: Game trait, run_game(), managers, scene loading/saving, asset manag
   `InputSettings`: `ctx.players.is_active(PlayerId::P1, GameAction::Action1, ctx.input)`,
   `move_x/move_y`), assets, ui, physics, delta_time, **chaos_mode**, **time_scale**
   (read-write; scales engine-side particle stepping only — set 0.0 while paused),
-  **exit_requested** (write true → clean engine shutdown, same path as window close)
+  `request_exit()` (clean engine shutdown, same path as window close)
 - `ChaosMode` — cross-game Normal/Insane/Ridiculous/Insiculous theme (engine carries the selection, games define the meaning)
 - Managers: `GameLoopManager`, `RenderManager`, `WindowManager`
 
@@ -63,7 +63,9 @@ Core engine: Game trait, run_game(), managers, scene loading/saving, asset manag
   (load at startup, save on change via `InputSettings` dirty tracking — polled each
   `drive_frame`, failed saves retried with a once-per-streak warn — plus the
   CloseRequested save). Routes through `save_store`
-- `save_store.rs` — **the player-save persistence seam** (roadmap H6, #6/#17):
+- `save_store/` — **the player-save persistence seam** (`mod.rs`; `json_slot.rs` adds
+  `JsonSaveSlot<T>` + `MergeOnLoad` + `SaveError` + `unix_seconds`, the typed merge-on-save
+  slot both `AchievementManager` and `Scores` hold — the multi-tab protocol lives once, there):
   `read(slot)`/`write(slot, contents)` where a slot is a filesystem path natively
   (atomic tmp+rename, parents created) and a localStorage key on wasm (each persist
   dispatches the `insiculous-save` CustomEvent; storage-blocked browsers degrade to a
@@ -83,8 +85,9 @@ Core engine: Game trait, run_game(), managers, scene loading/saving, asset manag
 - `scene.rs` — Scene lifecycle / world coordination
 - `scene_loader.rs` — RON → World deserialization (`ComponentData` construction lives in `scene_loader_components.rs`); `SceneInstance` retains the prefab table and offers runtime `spawn_prefab(world, assets, name, overrides)` (Prototype pattern, override semantics; failed spawns leave no debris)
 - `scene_serializer.rs` — World → SceneData (inverse of scene_loader, used by editor save; tests in `scene_serializer/tests.rs` and `scene_serializer/dynamic_and_scripts_tests.rs`, on the shared `test_support` fixtures). NEW COMPONENT TYPES need arms in BOTH scene_loader_components.rs and scene_serializer.rs
+- `achievements/toast.rs` — `ToastQueue`/`ToastStyle`/`DEFAULT_TOAST_DURATION`: the toast timers and top-right HUD draw; `AchievementManager` forwards `tick`/`draw_toasts`/`set_toast_*` to it
 - `scene_data.rs` — SceneData / PrefabData / EntityData structs (schema incl. `ComponentData::EntityTag`, Sprite `emissive`/`tex_region`/`visible` — the latter two with NAMED serde defaults (full region / true); a plain `#[serde(default)]` would render nothing / hide every old sprite)
-- `behavior_data.rs` — `BehaviorData` + the `Behavior`↔`BehaviorData` From impl pair (re-exported via `scene_data`)
+- `scene_data::BehaviorData` is a type alias of `ecs::Behavior`, which IS the behavior wire schema (wire-frozen; its serde defaults are what old scene files rely on — guarded by `tests/behavior_fixture.rs`)
 - `script_data.rs` — `ScriptRefData`/`ScriptValueData` wire mirror of `ecs::Scripts` (#44): Entity params persist by NAME (`ensure_script_target_names` auto-names referenced unnamed targets at the editor save choke point; load defers resolution to a post-instantiate pass via the `PendingScriptTargets` resource — forward references work)
 - `texture_ref.rs` — scene texture reference resolution (`#white`, `#solid:RRGGBB`, file paths); `solid_color_path(color)` is the canonical `#solid:` writer (inverse of `parse_hex_color`, alpha byte only when translucent — what `create_solid_color` records so solids survive save/load); `TextureResolver` trait is the GPU + filesystem seam (AssetManager = production impl, tests stub it). Beyond `resolve_texture` it carries `sheet_for()` (a PNG's `.sheet.ron` → `SheetData` of grid + clips) and `clear_sidecar_cache()`, so the scene loader can re-resolve animations against their sidecar while staying headless-testable. File-path resolution consults the sidecar's `filter`, which is how scene-referenced pixel-art sheets get Nearest with no per-game code
 - `sheet_file.rs` — **THE `.sheet.ron` schema** (`SheetFile` v1: `version`, pixel `cell`, `filter` defaulting to Nearest, `clips`). `parse_sheet_file` validates version/cell/fps/frames; `into_parts(png_w, png_h)` derives the `SheetGrid` and rejects frame indices past the last cell. `sidecar_path_for` is the one place the stem + `.sheet.ron` rule lives
@@ -101,7 +104,7 @@ Core engine: Game trait, run_game(), managers, scene loading/saving, asset manag
 - `pause.rs` — `PauseMenu`/`PauseAction`/`PauseMenuLabels`: shared pause mechanism (Menu/Esc/Start
   toggles, Resume/Restart/Quit-to-Title/Exit-Game items — localizable via `draw_labeled`;
   games map actions onto their
-  own start_game/reset_to_title/`ctx.exit_requested` and skip their whole gameplay
+  own start_game/reset_to_title/`ctx.request_exit()` and skip their whole gameplay
   update while active;
   `time_scale()` feeds `ctx.time_scale` so engine particles freeze too). Takes
   `&InputSettings + &InputHandler + window_size: Vec2` (NOT GameContext) so it's

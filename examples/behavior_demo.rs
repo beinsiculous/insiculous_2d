@@ -105,5 +105,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_clear_color(0.1, 0.1, 0.12, 1.0)
         .with_asset_base_path(EXAMPLES_DIR);
 
-    run_game(BehaviorDemo::new(), config)
+    run_game(BehaviorDemo::new(), config)?;
+    Ok(())
 }

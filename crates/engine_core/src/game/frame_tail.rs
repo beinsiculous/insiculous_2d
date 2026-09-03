@@ -39,8 +39,8 @@ impl<G: Game> GameRunner<G> {
         // Draw scene-defined UI elements (labels/panels/buttons) over the
         // game's own UI; presses buffer until the next frame's event flush.
         // An editor-style host clips these tail draws to its game view via
-        // ctx.game_ui_clip (plain games leave it None — unclipped).
-        if let Some(clip) = self.pending_game_ui_clip {
+        // ctx.clip_engine_ui (plain games leave it None — unclipped).
+        if let Some(clip) = self.requests.engine_ui_clip {
             self.ui
                 .push_clip_rect(ui::Rect::new(clip.x, clip.y, clip.width, clip.height));
         }
@@ -48,7 +48,7 @@ impl<G: Game> GameRunner<G> {
             &self.scene.world,
             &mut self.ui,
             window_size,
-            &self.strings,
+            &self.localization.strings,
         );
         self.pending_ui_events.extend(ui_presses);
 
@@ -56,21 +56,21 @@ impl<G: Game> GameRunner<G> {
         self.achievements
             .draw_toasts(&mut self.ui, window_size);
         self.achievements.tick(delta_time);
-        if self.pending_game_ui_clip.take().is_some() {
+        if self.requests.engine_ui_clip.take().is_some() {
             self.ui.pop_clip_rect();
         }
 
-        // Apply a window title requested via ctx.window_title this frame
+        // Apply a window title requested via ctx.set_window_title this frame
         // (editor dirty indicator, save-as renames). At most one
         // window-system round-trip per frame, only when requested.
-        if let Some(title) = self.pending_window_title.take() {
+        if let Some(title) = self.requests.window_title.take() {
             self.window_manager.set_title(&title);
         }
 
         // The font the game set up in init() is the one locale switches
         // restore to — capture it once, before any locale font applies.
         if first_frame {
-            self.base_font = self.ui.default_font();
+            self.localization.base_font = self.ui.default_font();
         }
         // Apply a pending locale font change (from init/update set_locale).
         self.apply_locale_font();

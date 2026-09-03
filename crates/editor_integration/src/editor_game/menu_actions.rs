@@ -111,7 +111,7 @@ impl<G: Game> EditorGame<G> {
                 }
             }
             // Clean shutdown (runs GameRunner::shutdown → on_exit → prefs save)
-            "Exit" => ctx.exit_requested = true,
+            "Exit" => ctx.request_exit(),
             "Toggle Grid" => self.editor.toggle_grid(),
             "Toggle Colliders" => self.editor.toggle_colliders(),
             "Snap to Grid" => self.toggle_snap_with_feedback(),

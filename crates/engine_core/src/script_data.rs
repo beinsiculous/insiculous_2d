@@ -1,8 +1,9 @@
 //! Serialization mirror of `ecs::script::{Scripts, ScriptRef, ScriptValue}`
 //! for scene files (Stage 1).
 //!
-//! Same pattern as `behavior_data.rs`: `ComponentData::Scripts` wraps
-//! [`ScriptRefData`], and `scene_data.rs` re-exports these. The ONE
+//! `ComponentData::Scripts` wraps [`ScriptRefData`], and `scene_data.rs`
+//! re-exports these (behaviors need no mirror: `ecs::Behavior` is its own
+//! wire schema). The ONE
 //! deliberate difference from the runtime type: **entity references persist
 //! by NAME** (`ScriptValueData::Entity(String)`) — raw `EntityId`s are
 //! meaningless across save/load. On save an id maps to its target's `Name`

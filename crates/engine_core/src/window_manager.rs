@@ -59,6 +59,17 @@ impl WindowConfig {
     }
 }
 
+impl From<&crate::game_config::GameConfig> for WindowConfig {
+    fn from(config: &crate::game_config::GameConfig) -> Self {
+        Self {
+            title: config.title.clone(),
+            width: config.width,
+            height: config.height,
+            resizable: config.resizable,
+        }
+    }
+}
+
 /// Manages window creation and lifecycle.
 ///
 /// This struct encapsulates all window-related responsibilities:

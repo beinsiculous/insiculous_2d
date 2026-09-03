@@ -25,6 +25,10 @@
 //! (arbitrary OS paths work); the wasm backend renders them to the string
 //! key with `to_string_lossy` (lossless — the contract keys are ASCII).
 
+mod json_slot;
+
+pub use json_slot::{unix_seconds, JsonSaveSlot, MergeOnLoad, SaveError};
+
 use std::collections::HashMap;
 use std::io;
 use std::path::Path;

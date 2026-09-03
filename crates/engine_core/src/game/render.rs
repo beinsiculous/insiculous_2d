@@ -125,19 +125,32 @@ impl<G: Game> GameRunner<G> {
 
     /// Sort sprite batch refs by depth (min, then max, then texture handle for determinism).
     fn sort_batch_refs(batches: &mut [&SpriteBatch]) {
-        batches.sort_by(|a, b| {
-            let a_min = a.instances.iter().map(|i| i.depth).min_by(|x, y| x.total_cmp(y)).unwrap_or(0.0);
-            let b_min = b.instances.iter().map(|i| i.depth).min_by(|x, y| x.total_cmp(y)).unwrap_or(0.0);
-            a_min.total_cmp(&b_min)
-                .then_with(|| {
-                    let a_max = a.instances.iter().map(|i| i.depth).max_by(|x, y| x.total_cmp(y)).unwrap_or(0.0);
-                    let b_max = b.instances.iter().map(|i| i.depth).max_by(|x, y| x.total_cmp(y)).unwrap_or(0.0);
-                    a_max.total_cmp(&b_max)
-                })
-                .then_with(|| a.texture_handle.id.cmp(&b.texture_handle.id))
-                // Two same-texture batches can differ only by clip rect —
-                // tie-break on it for deterministic order.
-                .then_with(|| a.clip.cmp(&b.clip))
+        let mut keyed: Vec<_> = batches
+            .iter()
+            .map(|&batch| {
+                let min = batch
+                    .instances
+                    .iter()
+                    .map(|i| i.depth)
+                    .min_by(|x, y| x.total_cmp(y))
+                    .unwrap_or(0.0);
+                let max = batch
+                    .instances
+                    .iter()
+                    .map(|i| i.depth)
+                    .max_by(|x, y| x.total_cmp(y))
+                    .unwrap_or(0.0);
+                ((min, max, batch.texture_handle.id, batch.clip), batch)
+            })
+            .collect();
+        keyed.sort_by(|(a, _), (b, _)| {
+            a.0.total_cmp(&b.0)
+                .then_with(|| a.1.total_cmp(&b.1))
+                .then_with(|| a.2.cmp(&b.2))
+                .then_with(|| a.3.cmp(&b.3))
         });
+        for (slot, (_, batch)) in batches.iter_mut().zip(keyed) {
+            *slot = batch;
+        }
     }
 }

@@ -76,7 +76,7 @@ impl SceneLoader {
                     offset: Vec2::new(offset.0, offset.1),
                     rotation: *rotation,
                     scale: Vec2::new(scale.0, scale.1),
-                    color: glam::Vec4::new(color.0, color.1, color.2, color.3),
+                    color: (*color).into(),
                     depth: *depth,
                     visible: *visible,
                     emissive: *emissive,
@@ -148,7 +148,7 @@ impl SceneLoader {
                     cols: *cols,
                     rows: *rows,
                     spacing: *spacing,
-                    color: glam::Vec4::new(color.0, color.1, color.2, color.3),
+                    color: (*color).into(),
                     emissive: *emissive,
                     visible: *visible,
                     stiffness: *stiffness,
@@ -285,7 +285,7 @@ impl SceneLoader {
                     anchor: *anchor,
                     offset: Vec2::new(offset.0, offset.1),
                     font_size: *font_size,
-                    color: glam::Vec4::new(color.0, color.1, color.2, color.3),
+                    color: (*color).into(),
                     visible: *visible,
                 };
                 Self::add_component_logged(world, entity_id, label);
@@ -304,8 +304,8 @@ impl SceneLoader {
                     anchor: *anchor,
                     offset: Vec2::new(offset.0, offset.1),
                     size: Vec2::new(size.0, size.1),
-                    background: glam::Vec4::new(background.0, background.1, background.2, background.3),
-                    border: glam::Vec4::new(border.0, border.1, border.2, border.3),
+                    background: (*background).into(),
+                    border: (*border).into(),
                     border_width: *border_width,
                     visible: *visible,
                 };
@@ -324,9 +324,8 @@ impl SceneLoader {
                 Self::add_component_logged(world, entity_id, button);
             }
 
-            ComponentData::Behavior(behavior_data) => {
-                let behavior: ecs::behavior::Behavior = behavior_data.into();
-                Self::add_component_logged(world, entity_id, behavior);
+            ComponentData::Behavior(behavior) => {
+                Self::add_component_logged(world, entity_id, behavior.clone());
             }
 
             ComponentData::EntityTag { tag } => {
@@ -423,7 +422,7 @@ impl SceneLoader {
 
         if let Some(name) = autoplay {
             if animation.has_clip(name) {
-                animation.play(name);
+                let _ = animation.play(name);
             } else {
                 log::warn!(
                     "Scene load: autoplay clip '{}' does not exist for sheet {:?} \

@@ -6,7 +6,7 @@
 //! lives with the data in `ecs` (the inspector snaps through the same one);
 //! this module is where the engine's expectations of it are tested.
 
-use ecs::{GridBackdrop, GridTopology};
+use ecs::GridBackdrop;
 use glam::Vec2;
 
 use super::GridMesh;
@@ -15,17 +15,8 @@ use super::GridMesh;
 /// its lattice or simulation state — a color, visibility or stiffness edit
 /// must not snap an active ripple to rest.
 pub fn apply_grid_tunables(mesh: &mut GridMesh, config: &GridBackdrop) {
-    mesh.color = config.color;
-    mesh.emissive = config.emissive;
-    mesh.visible = config.visible;
-    mesh.stiffness = config.stiffness;
-    mesh.damping = config.damping;
-    mesh.rest_pull = config.rest_pull;
-    mesh.rest_alpha_fraction = config.rest_alpha_fraction;
-    mesh.activity_attack = config.activity_attack;
-    mesh.activity_release = config.activity_release;
-    mesh.activity_displacement_ref = config.activity_displacement_ref;
-    mesh.activity_velocity_ref = config.activity_velocity_ref;
+    debug_assert!(mesh.config.same_shape(config), "tunable apply must not change the lattice");
+    mesh.config = config.clone();
 }
 
 /// Build the mesh a [`GridBackdrop`] describes, centered at `origin`.
@@ -40,26 +31,13 @@ pub fn build_grid_mesh(config: &GridBackdrop, origin: Vec2) -> GridMesh {
             normalized.cols, normalized.rows, normalized.spacing
         );
     }
-    let mesh = match normalized.topology {
-        GridTopology::Hex => GridMesh::new(normalized.cols, normalized.rows, normalized.spacing, origin),
-        GridTopology::Square => {
-            GridMesh::new_square(normalized.cols, normalized.rows, normalized.spacing, origin)
-        }
-    };
-    mesh.with_color(normalized.color)
-        .with_emissive(normalized.emissive)
-        .with_visible(normalized.visible)
-        .with_stiffness(normalized.stiffness)
-        .with_damping(normalized.damping)
-        .with_rest_pull(normalized.rest_pull)
-        .with_rest_alpha_fraction(normalized.rest_alpha_fraction)
-        .with_activity_response(normalized.activity_attack, normalized.activity_release)
-        .with_activity_refs(normalized.activity_displacement_ref, normalized.activity_velocity_ref)
+    GridMesh::from_config(&normalized, origin)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ecs::GridTopology;
     use crate::chaos_mode::ChaosMode;
     use crate::chaos_theme::ChaosTheme;
 
@@ -72,9 +50,9 @@ mod tests {
         // springs (a negative stiffness pushes every node AWAY
         // from rest and the grid explodes to NaN within frames).
         let hex = GridBackdrop { cols: 45, ..GridBackdrop::default() };
-        assert_eq!(build_grid_mesh(&hex, Vec2::ZERO).cols, 46, "odd hex columns round up, no panic");
+        assert_eq!(build_grid_mesh(&hex, Vec2::ZERO).config.cols, 46, "odd hex columns round up, no panic");
         let square = GridBackdrop { topology: GridTopology::Square, cols: 45, ..GridBackdrop::default() };
-        assert_eq!(build_grid_mesh(&square, Vec2::ZERO).cols, 45);
+        assert_eq!(build_grid_mesh(&square, Vec2::ZERO).config.cols, 45);
 
         let tiny = GridBackdrop { cols: 1, rows: 0, spacing: 0.0, ..GridBackdrop::default() }.normalized();
         assert_eq!((tiny.cols, tiny.rows, tiny.spacing), (2, 2, GridBackdrop::MIN_SPACING));
@@ -110,19 +88,19 @@ mod tests {
         for mode in ChaosMode::ALL {
             let theme = ChaosTheme::for_mode(mode);
             let preset = super::super::default_playfield_grid(&theme);
-            assert_eq!(preset.color, theme.grid_color, "grid tint must follow {mode:?}");
+            assert_eq!(preset.config.color, theme.grid_color, "grid tint must follow {mode:?}");
         }
         let theme = ChaosTheme::for_mode(ChaosMode::Normal);
         let preset = super::super::default_playfield_grid(&theme);
         let built = build_grid_mesh(&GridBackdrop::default(), Vec2::ZERO);
         assert_eq!(built.node_count(), preset.node_count());
         assert_eq!(built.spring_count(), preset.spring_count());
-        assert_eq!(built.stiffness, preset.stiffness);
-        assert_eq!(built.damping, preset.damping);
-        assert_eq!(built.emissive, preset.emissive);
-        assert_eq!(built.rest_pull, preset.rest_pull);
-        assert_eq!(built.activity_displacement_ref, preset.activity_displacement_ref);
-        assert_eq!(built.activity_velocity_ref, preset.activity_velocity_ref);
+        assert_eq!(built.config.stiffness, preset.config.stiffness);
+        assert_eq!(built.config.damping, preset.config.damping);
+        assert_eq!(built.config.emissive, preset.config.emissive);
+        assert_eq!(built.config.rest_pull, preset.config.rest_pull);
+        assert_eq!(built.config.activity_displacement_ref, preset.config.activity_displacement_ref);
+        assert_eq!(built.config.activity_velocity_ref, preset.config.activity_velocity_ref);
         assert_eq!(GridBackdrop::default().color, theme.grid_color);
     }
 }

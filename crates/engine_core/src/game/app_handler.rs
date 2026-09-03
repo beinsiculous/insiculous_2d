@@ -13,8 +13,6 @@ use winit::{
     window::WindowId,
 };
 
-use crate::contexts::GameContext;
-
 use super::{Game, GameRunner};
 
 impl<G: Game> GameRunner<G> {
@@ -39,7 +37,7 @@ impl<G: Game> GameRunner<G> {
         }
         self.update_and_render();
         self.save_input_settings_if_dirty();
-        if self.exit_requested {
+        if self.requests.exit {
             self.shutdown(event_loop);
             return;
         }
@@ -100,7 +98,7 @@ impl<G: Game> GameRunner<G> {
 
     /// Clean shutdown: notify the game, persist input bindings, tear the
     /// scene down, and exit the event loop. Shared by the window close
-    /// button and game-requested exits (`GameContext::exit_requested`).
+    /// button and game-requested exits (`GameContext::request_exit`).
     fn shutdown(&mut self, event_loop: &ActiveEventLoop) {
         self.game.on_exit();
         // Persist input bindings (incl. runtime pad re-assignments)
@@ -210,27 +208,7 @@ impl<G: Game> ApplicationHandler<()> for GameRunner<G> {
                     // Create context and call handlers
                     let window_size = self.window_size();
                     if let Some(asset_manager) = &mut self.asset_manager {
-                        let mut ctx = GameContext {
-                            input: &self.input,
-                            players: &mut self.player_input,
-                            world: &mut self.scene.world,
-                            assets: asset_manager,
-                            audio: &mut self.audio_manager,
-                            ui: &mut self.ui,
-                            delta_time: 0.0,
-                            window_size,
-                            chaos_mode: self.config.chaos_mode,
-                            time_scale: self.time_scale,
-                            exit_requested: false,
-                            window_title: None,
-                            game_ui_clip: None,
-                            achievements: &mut self.achievements,
-                            scores: &mut self.scores,
-                            particles: &mut self.particles,
-                            lines: &mut self.lines,
-                            strings: &mut self.strings,
-                        };
-
+                        let mut ctx = super::build_context!(self, asset_manager, 0.0, window_size);
                         match event.state {
                             ElementState::Pressed => {
                                 self.game.on_key_pressed(key, &mut ctx);
@@ -239,16 +217,8 @@ impl<G: Game> ApplicationHandler<()> for GameRunner<G> {
                                 self.game.on_key_released(key, &mut ctx);
                             }
                         }
-
-                        // Persist chaos-mode/time-scale/exit changes made in
-                        // key handlers too.
-                        self.config.chaos_mode = ctx.chaos_mode;
-                        self.time_scale = ctx.time_scale;
-                        self.exit_requested |= ctx.exit_requested;
-                        if let Some(title) = ctx.window_title.take() {
-                            self.pending_window_title = Some(title);
-                        }
-                        self.pending_game_ui_clip = ctx.game_ui_clip.take();
+                        let outcome = ctx.into_outcome();
+                        self.absorb(outcome);
                     }
                 }
             }

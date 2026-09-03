@@ -68,7 +68,7 @@ struct EditorGame<G: Game> {
     /// The game's own `time_scale`, held while the editor freezes engine
     /// time outside Play mode. `None` means time is not currently frozen.
     frozen_time_scale: Option<f32>,
-    /// Last OS-window title published via `ctx.window_title`, so the
+    /// Last OS-window title published via `ctx.set_window_title`, so the
     /// title (a window-system round-trip) is only re-sent on change.
     last_window_title: Option<String>,
     /// Command-API request lines, fed by the transport
@@ -438,13 +438,13 @@ impl<G: Game> Game for EditorGame<G> {
         // Publish the scene name + dirty indicator as the OS window
         // title (title_bar_text() finally has a caller).
         // While Playing the running game owns the title (it may write
-        // ctx.window_title itself); forgetting ours makes Stop republish
+        // ctx.set_window_title itself); forgetting ours makes Stop republish
         // even if the game changed the OS title in the meantime.
         if self.editor.is_playing() {
             self.last_window_title = None;
-        } else if ctx.window_title.is_none() {
+        } else if !ctx.window_title_requested() {
             if let Some(title) = self.pending_title_update() {
-                ctx.window_title = Some(title);
+                ctx.set_window_title(title);
             }
         }
 
@@ -458,7 +458,7 @@ impl<G: Game> Game for EditorGame<G> {
             .editor
             .scene_view_bounds()
             .unwrap_or(common::Rect::new(0.0, 0.0, 0.0, 0.0));
-        ctx.game_ui_clip = Some(bounds);
+        ctx.clip_engine_ui(bounds);
     }
 
     fn render(&mut self, ctx: &mut RenderContext) {
@@ -519,7 +519,7 @@ impl<G: Game> Game for EditorGame<G> {
 /// # Minimum window size
 /// The editor needs at least 1024x720 to be usable. If the provided config
 /// specifies a smaller size, it will be enlarged.
-pub fn run_game_with_editor<G: Game>(game: G, config: GameConfig) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run_game_with_editor<G: Game>(game: G, config: GameConfig) -> Result<(), engine_core::EngineError> {
     run_game_with_editor_opts(game, config, EditorRunOptions::default())
 }
 
@@ -538,7 +538,7 @@ pub fn run_game_with_editor_opts<G: Game>(
     game: G,
     config: GameConfig,
     opts: EditorRunOptions,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), engine_core::EngineError> {
     let config = clamp_editor_window_size(config);
     let mut editor_game = EditorGame::new(game);
     editor_game.api_rx = opts.api_rx;

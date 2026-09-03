@@ -16,7 +16,7 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
   - `sheet_file.rs` - **the `.sheet.ron` schema** (`SheetFile` v1, `parse_sheet_file`, `into_parts`, `sidecar_path_for`); all sidecar validation lives here
   - `texture_filter_serde.rs` - shared serde bridge for `TextureFilter` (renderer stays serde-free); used by `GameConfig.texture_filter` and `SheetFile.filter`
   - `scene.rs` / `scene_loader.rs` / `scene_data.rs` / `scene_serializer.rs` - Scene lifecycle, RON load, schema, World→RON save (the ONLY save pipeline)
-  - `behavior_runner/` (`mod.rs` + `handlers.rs` + `camera.rs`) / `behavior_data.rs` - Behavior system + Behavior↔BehaviorData `From` pair
+  - `behavior_runner/` (`mod.rs` + `handlers.rs` + `camera.rs`) - Behavior system; `scene_data::BehaviorData` is a type alias of the wire-frozen `ecs::Behavior`
   - `chaos_mode.rs` - `ChaosMode` enum (cross-game intensity theme)
   - `menu_input.rs` - `MenuInput` shared menu navigation (read keys once, wraparound `navigate`; scans every connected gamepad)
   - `pause.rs` - `PauseMenu`/`PauseAction` shared pause mechanism (see Pause Pattern)
@@ -563,7 +563,7 @@ for pointer takeover are P1-only).
 ### Pause Pattern (universal — every game ships it)
 The engine owns the mechanism (`PauseMenu`: Menu/Esc/Start toggles, MenuInput
 navigation, Resume/Restart/Quit-to-Title/Exit-Game); games own the meaning.
-Title-screen Exit items work the same way: set `ctx.exit_requested = true`
+Title-screen Exit items work the same way: call `ctx.request_exit()`
 and the engine performs the same clean shutdown as closing the window. Gate your
 entire gameplay update on it, in pausable states only (GameOver keeps its
 direct Menu→title exit):
@@ -576,7 +576,7 @@ if matches!(self.state, GameState::Playing) {
     match action {
         PauseAction::Restart => { self.start_game(ctx); return; }
         PauseAction::QuitToTitle => { self.reset_to_title(ctx.world); return; }
-        PauseAction::ExitGame => { ctx.exit_requested = true; return; }
+        PauseAction::ExitGame => { ctx.request_exit(); return; }
         PauseAction::Resumed => return, // resume takes effect NEXT frame —
                                         // the keypress can't leak into gameplay
         PauseAction::Idle => {}

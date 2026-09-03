@@ -204,6 +204,26 @@ impl BehaviorRunner {
         }
     }
 
+    /// Shared tail of the two follow behaviors: steer toward `target_pos`
+    /// while farther away than `follow_distance`, else stop. No target = stop.
+    fn follow_target(
+        world: &World,
+        entity: EntityId,
+        target_pos: Option<Vec2>,
+        follow_distance: f32,
+        follow_speed: f32,
+        commands: &mut BehaviorCommands,
+    ) {
+        let mut velocity = Vec2::ZERO;
+        if let (Some(target_pos), Some(entity_pos)) = (target_pos, Self::get_position(world, entity)) {
+            let to_target = target_pos - entity_pos;
+            if to_target.length() > follow_distance {
+                velocity = to_target.normalize() * follow_speed;
+            }
+        }
+        commands.velocities.push((entity, velocity));
+    }
+
     /// `Behavior::FollowEntity` — move toward a named entity while farther
     /// away than `follow_distance`.
     pub(super) fn update_follow_entity(
@@ -215,19 +235,11 @@ impl BehaviorRunner {
         follow_speed: f32,
         commands: &mut BehaviorCommands,
     ) {
-        let mut vel = Vec2::ZERO;
-        if let Some(&target_entity) = self.named_entities.get(target_name) {
-            if let (Some(target_pos), Some(entity_pos)) = (
-                Self::get_position(world, target_entity),
-                Self::get_position(world, entity),
-            ) {
-                let to_target = target_pos - entity_pos;
-                if to_target.length() > follow_distance {
-                    vel = to_target.normalize() * follow_speed;
-                }
-            }
-        }
-        commands.velocities.push((entity, vel));
+        let target_pos = self
+            .named_entities
+            .get(target_name)
+            .and_then(|&target_entity| Self::get_position(world, target_entity));
+        Self::follow_target(world, entity, target_pos, follow_distance, follow_speed, commands);
     }
 
     /// `Behavior::FollowTagged` — move toward the nearest tagged entity while
@@ -240,16 +252,8 @@ impl BehaviorRunner {
         follow_speed: f32,
         commands: &mut BehaviorCommands,
     ) {
-        let mut vel = Vec2::ZERO;
-        if let Some(target_pos) = Self::find_nearest_tagged_position(world, entity, target_tag) {
-            if let Some(entity_pos) = Self::get_position(world, entity) {
-                let to_target = target_pos - entity_pos;
-                if to_target.length() > follow_distance {
-                    vel = to_target.normalize() * follow_speed;
-                }
-            }
-        }
-        commands.velocities.push((entity, vel));
+        let target_pos = Self::find_nearest_tagged_position(world, entity, target_tag);
+        Self::follow_target(world, entity, target_pos, follow_distance, follow_speed, commands);
     }
 
     /// `Behavior::Collectible` — emit a collection event (and optionally

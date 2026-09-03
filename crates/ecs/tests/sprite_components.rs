@@ -85,12 +85,12 @@ fn test_switching_to_a_shorter_clip_never_exposes_a_stale_frame() {
     let mut animation = SpriteAnimation::new(SheetGrid::new(4, 4))
         .with_clip("long", AnimationClip::new((0..10).collect::<Vec<_>>(), 10.0))
         .with_clip("short", AnimationClip::new(vec![12, 13], 10.0));
-    animation.play("long");
+    assert!(animation.play("long"));
     animation.update(0.9);
     assert_eq!(animation.current_frame, 9);
 
     // Frame 9 does not exist in the 2-frame clip: the switch must reset it.
-    animation.play("short");
+    assert!(animation.play("short"));
 
     assert_eq!(animation.current_frame, 0);
     assert_eq!(animation.current_uv(), animation.grid.uv_rect_checked(12));
@@ -99,7 +99,7 @@ fn test_switching_to_a_shorter_clip_never_exposes_a_stale_frame() {
 #[test]
 fn test_looping_clip_wraps_and_non_looping_clip_clamps_on_its_last_frame() {
     let mut animation = test_animation();
-    animation.play("walk");
+    assert!(animation.play("walk"));
 
     // Half a frame at 10 fps is not enough; the remainder carries over.
     animation.update(0.05);
@@ -114,7 +114,7 @@ fn test_looping_clip_wraps_and_non_looping_clip_clamps_on_its_last_frame() {
     animation.update(2.5);
     assert_eq!(animation.current_frame, 1);
 
-    animation.play("hit");
+    assert!(animation.play("hit"));
     animation.update(0.2);
     assert_eq!(animation.current_frame, 2);
     assert!(animation.playing);
@@ -128,7 +128,7 @@ fn test_looping_clip_wraps_and_non_looping_clip_clamps_on_its_last_frame() {
 #[test]
 fn test_pause_holds_the_frame_and_resume_continues_from_it() {
     let mut animation = test_animation();
-    animation.play("walk");
+    assert!(animation.play("walk"));
     animation.update(0.1);
 
     animation.pause();
@@ -149,7 +149,7 @@ fn test_broken_clips_and_deltas_never_panic_or_advance() {
     for fps in [0.0, -5.0, f32::INFINITY, f32::NEG_INFINITY, f32::NAN] {
         let mut animation = SpriteAnimation::new(SheetGrid::new(2, 1))
             .with_clip("broken", AnimationClip::new(vec![0, 1], fps));
-        animation.play("broken");
+        assert!(animation.play("broken"));
         animation.update(1.0);
         assert_eq!(animation.current_frame, 0, "fps {fps} must not advance");
         // The frame still resolves: only the advance is suppressed.
@@ -158,13 +158,13 @@ fn test_broken_clips_and_deltas_never_panic_or_advance() {
 
     let mut empty = SpriteAnimation::new(SheetGrid::new(2, 1))
         .with_clip("empty", AnimationClip::new(vec![], 10.0));
-    empty.play("empty");
+    assert!(empty.play("empty"));
     empty.update(1.0);
     assert_eq!(empty.current_frame, 0);
     assert_eq!(empty.current_uv(), None, "an empty clip resolves to nothing");
 
     let mut animation = test_animation();
-    animation.play("walk");
+    assert!(animation.play("walk"));
     for delta in [f32::NAN, f32::INFINITY, -1.0, 0.0] {
         animation.update(delta);
     }
@@ -177,14 +177,14 @@ fn test_current_uv_maps_the_frame_index_through_the_grid() {
     let mut animation = SpriteAnimation::new(SheetGrid::new(4, 2))
         .with_clip("walk", AnimationClip::new(vec![0, 5], 10.0))
         .with_clip("bad", AnimationClip::new(vec![99], 10.0));
-    animation.play("walk");
+    assert!(animation.play("walk"));
 
     assert_eq!(animation.current_uv(), Some([0.0, 0.0, 0.25, 0.5]));
     animation.update(0.1);
     // Cell 5 is column 1 of row 1.
     assert_eq!(animation.current_uv(), Some([0.25, 0.5, 0.25, 0.5]));
 
-    animation.play("bad");
+    assert!(animation.play("bad"));
     assert_eq!(animation.current_uv(), None, "an index past the grid resolves to nothing");
 }
 

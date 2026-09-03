@@ -528,5 +528,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create and run the game
     let game = HelloWorld::new();
-    run_game(game, game_config)
+    run_game(game, game_config)?;
+    Ok(())
 }

@@ -50,7 +50,7 @@ fn test_particles_and_animations_do_not_advance_while_editing() {
     world.add_component(&animated, Sprite::new(0)).ok();
     let mut animation = SpriteAnimation::new(common::SheetGrid::new(4, 1))
         .with_clip("walk", AnimationClip::new(vec![0, 1, 2], 10.0));
-    animation.play("walk");
+    assert!(animation.play("walk"));
     world.add_component(&animated, animation).ok();
 
     // One second of frames, exactly as the engine's frame tail runs them.
