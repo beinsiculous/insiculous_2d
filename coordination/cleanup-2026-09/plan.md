@@ -255,25 +255,36 @@ wait for batch 7; `renderer.rs:230` `arc_with_non_send_sync` stays (decided with
   loaders; `Sprite` stores `SpriteShape` (flattened only in `to_instance`); `sprite_data.rs`
   and `line_pipeline.rs` attributes via `wgpu::vertex_attr_array!` (offsets verified identical
   to the WGSL locations; add `offset_of!` tests); `PassScissor { Fullscreen, Rect, Empty }`
-  replaces `Option<Option<..>>`; extract pure `bloom_dims(width, height)` (the `.max(1)`
-  guard) and `DynamicBuffer::grown_capacity(current, needed)` so both get headless tests
-  (renderer cut review, F4 and the skipped guard).
-- physics: `push_collision` helper in `stepping.rs`; `previous_collisions` reuses its
-  allocation.
-- audio: private `start_sink(output, source, base, bus, looping)`; factor the effective
-  volume into a pure `effective_volume(base, bus, master)` so the multiplication is tested
-  without a device (audio cut review, F3).
-- common: `clamp_volume` used by the audio manager and the three `with_volume` builders in
-  `ecs/audio_components.rs` (closes #82, ticks #86 DRY-004).
-- input: fixture test FIRST (a bindings JSON written by today's code, checked in under
-  `crates/engine_core/tests/fixtures/`, must load identically after); then
+  replaces `Option<Option<..>>` (`bloom.rs:295` and the nested match at `line_pipeline.rs:219-224`;
+  plan-sequence's `CompositeScissor` name is superseded); extract pure `bloom_dims(width, height)`
+  (the `.max(1)` guard — it lives in `render_targets.rs:51-57`, not bloom.rs) and
+  `DynamicBuffer::grown_capacity(current, needed)` (`sprite_data.rs:240-241`) so both get headless
+  tests (renderer cut review, F4 and the skipped guard). Already done elsewhere, not batch-4 scope:
+  design §H3's method deletions (batch 2), §I3 and §J2 (batch 1). `bloom.rs` is 583 lines, so
+  `pipeline_builder.rs` is required, not optional.
+- physics: `push_collision` helper in `stepping.rs` for the three `CollisionEvent` constructions
+  (`:95`, `:121`, `:138`); `previous_collisions` reuses its allocation.
+- audio: private `start_sink(output, source, base, bus, looping)` behind `manager/mod.rs:270` and
+  `music.rs:68`; factor the effective volume into a pure `effective_volume(base, bus, master)` for
+  the four products (`manager/mod.rs:281`, `music.rs:72`, `:176`, `:181`) so the multiplication is
+  tested without a device (audio cut review, F3).
+- common: `clamp_volume` used by the audio manager (its private one at `manager/mod.rs:23` goes)
+  and the three `with_volume` builders in `ecs/audio_components.rs:64,183,223` (closes #82; #86 and
+  #89 are backlog issues — tick DRY-004 and DRY-006 there, do not close them).
+- input: fixture test FIRST (a bindings JSON written by today's `input_settings_io::save`, checked
+  in under `crates/engine_core/tests/fixtures/` — the directory does not exist yet — with a test
+  that loads it and compares every binding and pad; it must pass before the refactor starts and
+  after it ends); then
   `InputMapping<A, S = InputSource>` backs `PlayerBindings` (`bind`/`unbind` return `bool` to
   feed the dirty flag); one `STANDARD_PAD_LAYOUT` const with `PlayerSource::on_pad(pad)` feeds
   both `with_default_bindings` and `bind_standard_pad_layout`.
-- ui: `edit_field` core (focus/keys/commit/draw shell + `resolve_font`) under `float_input`
-  and `text_input` (fixes the font-resolution drift); delete the `typed_keys` array and drive
-  typed characters from the chronological `just_pressed_keys()` (batch 1); `TextInputStyle`
-  derives `Copy`.
+- ui: `edit_field` core (focus/keys/commit/draw shell + `resolve_font`) in a new
+  `context/edit_field.rs` (`text_input.rs` is 539 lines) under `float_input` and `text_input`
+  (fixes the drift: `text_input.rs:347` reads `default_font()` directly while `float_input` goes
+  through `field_font` at `:453`); delete the `typed_keys` array (`input_state.rs:164-181`, still
+  there) and drive typed characters from the chronological `just_pressed_keys()` that batch 1
+  shipped; `TextInputStyle` derives `Copy`. `player.rs` is 586 lines: if `STANDARD_PAD_LAYOUT`
+  and `on_pad` push it over 600, they move to a `pad_layout.rs` sibling.
 
 Extra verification: games test gate, wasm gate, and a native `hello_world` run for the vertex
 layout and shape enum (GPU-only) — Jesse's check.
