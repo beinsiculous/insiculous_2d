@@ -295,42 +295,54 @@ layout and shape enum (GPU-only) — Jesse's check.
 
 ## Batch 5 — DRY in engine_core (~500 removed, ~300 added; §A-colours, §B, §C, §D, §E, §K)
 
-- Delete `behavior_data.rs`: `pub type BehaviorData = ecs::behavior::Behavior;` keeps every
-  import path; `ecs::Behavior` already carries identical serde defaults. Guard: parse every
-  `examples/assets/scenes/*.ron`; round-trip every variant through RON in `ecs`.
+- Delete `behavior_data.rs` (240 lines, 10 `BehaviorData` uses outside it): `pub type BehaviorData =
+  ecs::behavior::Behavior;` keeps every import path; `ecs::Behavior` already carries identical
+  serde defaults. Guard, FIRST: a golden RON scene with every `Behavior` variant
+  (`Behavior::default_for_variant(i)`) written by today's serializer, checked in under
+  `crates/engine_core/tests/fixtures/`, loading to equal values and re-saving byte-identical after
+  the change; plus parse both `examples/assets/scenes/*.ron` and round-trip every variant through
+  RON in `ecs`. The `CLAUDE.md:54` SSOT row "Behavior ↔ BehaviorData" becomes "`ecs::Behavior`'s
+  serde attributes".
 - Grid, half 1: `GridMesh { config: GridBackdrop, origin, substeps, … }` with one constructor
-  `from_config`; delete the `with_*` builders and `from_topology`'s private defaults (dead in
-  production); `apply_grid_tunables` becomes one assignment. Half 2 (newtype wire variant via
+  `from_config`; delete `new`/`new_square` (`grid_mesh.rs:90,100`), the ten `with_*` builders
+  (`:139-174`) and `from_topology`'s private defaults (`:105-130`, dead in production);
+  `apply_grid_tunables` becomes one assignment and `build.rs:49-54`'s builder chain goes. Half 2 (newtype wire variant via
   RON `UNWRAP_VARIANT_NEWTYPES`, deleting `grid_defaults.rs`) only if the compatibility spike
-  test in `design-structure.md` §B passes; else a `grid_default!` macro.
-- `save_store/json_slot.rs`: `MergeOnLoad` trait + `JsonSaveSlot<T>` + `SaveError` +
+  test in `design-structure.md` §B passes (ron is 0.12; the choke points are `scene_loader.rs:94`
+  and `scene_serializer.rs:333`); else a `grid_default!` macro.
+- `save_store.rs` (196 lines) becomes `save_store/{mod,json_slot}.rs`: `MergeOnLoad` trait + `JsonSaveSlot<T>` + `SaveError` +
   `unix_seconds()` built on `common::clock` (both current call sites already are; `std::time`
   panics on wasm); `AchievementManager` and `Scores` hold a slot; `AchievementError`/
   `ScoresError` become aliases. `achievements/toast.rs` takes `ToastQueue`/`ToastStyle`/
-  `draw`. Test the slot protocol once with a tiny document.
+  `draw` (today `achievements/mod.rs:84-160` and `draw_toasts` at `:326`). Test the slot protocol
+  once with a tiny document.
 - `GameContext`: `FrameRequests { exit, window_title, engine_ui_clip }` private, with
   `request_exit()`, `set_window_title()`, `window_title_requested()`, `clip_engine_ui()`,
   `into_outcome()`; `GameRunner::build_context` + `absorb` replace the two 18-field literals
-  (`game.rs:461`, `app_handler.rs:213`). `chaos_mode`/`time_scale` stay fields. Games: twelve
+  (`game.rs:460`, `app_handler.rs:213`). `chaos_mode`/`time_scale` stay fields. Games: twelve
   `ctx.exit_requested = true` → `ctx.request_exit()` (six `menu.rs`, six `gameplay/mod.rs`);
-  editor_integration three sites; docs in `pause.rs`, `menu_panel.rs`, `CLAUDE.md`,
-  `training.md` Pause Pattern.
-- `Localization { strings, base_font, fonts_by_path }` grouped out of `GameRunner`.
-- `follow_entity`/`follow_tagged` → `follow_target(Option<Vec2>, …)`; seven colour
-  destructurings → `.into()`; `sort_batch_refs` computes its key once; `WindowConfig:
-  From<&GameConfig>`; `run_game` returns `Result<(), EngineError>` (games call `.unwrap()` /
-  `{e}` — source-compatible); `#[must_use]` on `Scores::submit`, `SpriteAnimation::play`/
+  editor_integration three sites (`menu_actions.rs:114`, `editor_game/mod.rs:445-447`, `:461`);
+  docs in `pause.rs`, `menu_panel.rs`, `CLAUDE.md`, `training.md` Pause Pattern (four
+  `exit_requested` mentions).
+- `Localization { strings, base_font, fonts_by_path }` grouped out of `GameRunner` (today's
+  fields `strings`, `base_font`, `locale_fonts` at `game.rs:264-270`; 33 fields → 28 with E).
+- `update_follow_entity`/`update_follow_tagged` (`handlers.rs:209,235`) → `follow_target(Option<Vec2>, …)`;
+  the nine hand-written colour tuple conversions (four in `scene_serializer.rs`, five in
+  `scene_loader_components.rs`) → `.into()`; `sort_batch_refs` computes its key once; `WindowConfig:
+  From<&GameConfig>` (the `AssetConfig` pattern at `assets.rs:99`); `run_game` narrows from
+  `Result<(), Box<dyn Error>>` to `Result<(), EngineError>` (`EngineError` exists at `lib.rs:131`,
+  used only by `init()`; games call `.unwrap()` on both `run_game` and `run_game_with_editor` —
+  source-compatible); `#[must_use]` on `Scores::submit`, `SpriteAnimation::play`/
   `ensure_playing` (not on `unlock`: games discard it 34 times). `run_game` returning
   `EngineError` also breaks `examples/hello_world.rs:520` and `examples/behavior_demo.rs:102`,
-  whose `main` returns `Result<(), Box<dyn Error>>` with `run_game` as the tail — change both to
-  `run_game(..)?; Ok(())` — and `crates/editor_integration/src/editor_game/mod.rs:560`, which
-  calls it as a bare statement: `run_game_with_editor` propagates `EngineError` (its return
-  type widens to match). Only the games are source-compatible.
-- `test_support.rs` behind a `test-support` feature: one `StubResolver`, `roundtrip`,
-  `test_texture_path`; engine_core takes the self dev-dependency
-  `engine_core = { path = ".", features = ["test-support"] }` so its own `tests/` see the one
-  copy, and `editor_integration` enables the feature as a dev-dependency; six copies deleted.
-  `tests/common/mod.rs` is for helpers only integration tests need.
+  whose `main` returns `Result<(), Box<dyn Error>>` with `run_game` as the tail (`hello_world.rs:531`,
+  `behavior_demo.rs:108`) — change both to `run_game(..)?; Ok(())` — and
+  `run_game_with_editor`/`run_game_with_editor_opts` (`editor_game/mod.rs:522`), whose return type
+  narrows to match; if the editor entry point has an error source `EngineError` cannot carry, say
+  so in the report rather than widening `EngineError` ad hoc. Only the games are source-compatible.
+- ALREADY DONE (landed with the engine_core test cut): `test_support.rs` behind the `test-support`
+  feature, the self dev-dependency, `editor_integration` enabling it, the six copies deleted. Not
+  batch-5 scope; `tests/common/mod.rs` stays for helpers only integration tests need.
 
 Extra verification: scene round-trip suite + new behaviour fixture; games test gate (all use
 `run_game`, twelve edited); wasm gate.
