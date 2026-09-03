@@ -163,56 +163,28 @@ mod tests {
     }
 
     #[test]
-    fn test_glyph_key() {
-        let key1 = GlyphKey::new(1, 'A', 16.0);
-        let key2 = GlyphKey::new(1, 'A', 16.0);
-        let key3 = GlyphKey::new(1, 'A', 18.0);
-        let key4 = GlyphKey::new(1, 'B', 16.0);
-
-        assert_eq!(key1, key2);
-        assert_ne!(key1, key3);
-        assert_ne!(key1, key4);
+    fn test_glyph_key_quantizes_font_size_to_tenths() {
+        // Deliberate: sizes within a tenth of a pixel share a bitmap, so
+        // an animated size does not rasterize a new glyph every frame.
+        assert_eq!(GlyphKey::new(1, 'A', 16.0), GlyphKey::new(1, 'A', 16.04));
+        assert_ne!(GlyphKey::new(1, 'A', 16.0), GlyphKey::new(1, 'A', 16.1));
+        assert_ne!(GlyphKey::new(1, 'A', 16.0), GlyphKey::new(2, 'A', 16.0));
+        assert_ne!(GlyphKey::new(1, 'A', 16.0), GlyphKey::new(1, 'B', 16.0));
     }
 
     #[test]
-    fn test_glyph_cache_evicts_when_full() {
-        let mut cache = GlyphCache::new();
-        // Fill to the limit with unique keys (size_tenths varies per entry).
-        for i in 0..MAX_CACHED_GLYPHS {
-            let key = GlyphKey::new(1, 'a', i as f32 * 0.1);
-            cache.glyphs.insert(key, dummy_glyph());
-        }
-        assert_eq!(cache.len(), MAX_CACHED_GLYPHS);
-
-        cache.evict_if_full();
-        assert_eq!(
-            cache.len(),
-            0,
-            "cache at the limit should be cleared, not grow further"
-        );
-    }
-
-    #[test]
-    fn test_glyph_cache_keeps_entries_below_limit() {
+    fn test_glyph_cache_clears_at_the_limit_and_keeps_entries_below_it() {
         let mut cache = GlyphCache::new();
         cache.glyphs.insert(GlyphKey::new(1, 'a', 16.0), dummy_glyph());
-
         cache.evict_if_full();
         assert_eq!(cache.len(), 1, "below the limit nothing is evicted");
-    }
 
-    #[test]
-    fn test_rasterized_glyph() {
-        let glyph = RasterizedGlyph {
-            bitmap: Arc::from([255u8; 16]),
-            width: 4,
-            height: 4,
-            offset_x: 0.0,
-            offset_y: -3.0,
-            advance: 5.0,
-        };
-        assert_eq!(glyph.bitmap.len(), 16);
-        assert_eq!(glyph.width, 4);
-        assert_eq!(glyph.height, 4);
+        // Fill to the limit with unique keys (size_tenths varies per entry).
+        for i in 0..MAX_CACHED_GLYPHS {
+            cache.glyphs.insert(GlyphKey::new(1, 'a', i as f32 * 0.1), dummy_glyph());
+        }
+        assert_eq!(cache.len(), MAX_CACHED_GLYPHS);
+        cache.evict_if_full();
+        assert_eq!(cache.len(), 0, "a cache at the limit is cleared, not grown further");
     }
 }

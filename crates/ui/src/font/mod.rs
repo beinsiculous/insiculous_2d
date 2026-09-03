@@ -206,9 +206,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_font_manager_metrics_no_font() {
-        let manager = FontManager::new();
-        let handle = FontHandle { id: 999 };
-        assert!(manager.metrics(handle, 16.0).is_none());
+    fn test_unknown_font_handles_are_not_found_and_garbage_bytes_fail_to_load() {
+        // The typed error paths the placeholder fallback in `UIContext`
+        // keys on: a stale handle is `NotFound`, bad bytes are `LoadError`.
+        let mut manager = FontManager::new();
+        let stale = FontHandle { id: 999 };
+
+        assert!(matches!(manager.load_font(b"not a font"), Err(FontError::LoadError(_))));
+        assert!(manager.default_font().is_none(), "a failed load registers nothing");
+        assert!(matches!(manager.measure_text(stale, "x", 16.0), Err(FontError::NotFound(_))));
+        assert!(matches!(manager.layout_text(stale, "x", 16.0), Err(FontError::NotFound(_))));
+        assert_eq!(manager.metrics(stale, 16.0), None);
     }
 }

@@ -17,13 +17,9 @@ mod widgets;
 pub use text_input::{FloatFieldOpts, FloatInputResult};
 
 #[cfg(test)]
-mod tests;
-#[cfg(test)]
-mod overlay_tests;
-#[cfg(test)]
-mod focus_tests;
-#[cfg(test)]
 mod scrub_tests;
+#[cfg(test)]
+mod tests;
 
 use glam::Vec2;
 use input::InputHandler;

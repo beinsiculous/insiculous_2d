@@ -199,167 +199,118 @@ mod tests {
     }
 
     #[test]
-    fn test_set_text_select_all_selects_everything() {
-        let mut s = TextEditState::default();
-        s.set_text_select_all("123.45");
-        assert_eq!(s.selected_range(), Some((0, 6)));
-        assert_eq!(s.cursor, 6);
+    fn test_typing_replaces_the_selection_else_inserts_at_the_cursor() {
+        // Click-to-focus seeds the buffer fully selected (cursor at the end),
+        // so the first key overwrites the old value.
+        let mut edit = TextEditState::default();
+        edit.set_text_select_all("168.40");
+        assert_eq!((edit.selected_range(), edit.cursor), (Some((0, 6)), 6));
+        edit.insert_char('5');
+        assert_eq!((edit.text.as_str(), edit.cursor, edit.selected_range()), ("5", 1, None));
+
+        let mut empty = TextEditState::default();
+        empty.set_text_select_all("");
+        assert_eq!((empty.selected_range(), empty.cursor), (None, 0), "an empty seed has nothing to select");
+
+        let mut mid = state("129", 2);
+        mid.insert_char('8');
+        assert_eq!((mid.text.as_str(), mid.cursor), ("1289", 3), "no selection: insert at the cursor");
     }
 
     #[test]
-    fn test_set_text_select_all_empty_has_no_selection() {
-        let mut s = TextEditState::default();
-        s.set_text_select_all("");
-        assert_eq!(s.selected_range(), None);
-        assert_eq!(s.cursor, 0);
-    }
-
-    #[test]
-    fn test_typing_replaces_selection() {
-        let mut s = TextEditState::default();
-        s.set_text_select_all("168.40");
-        s.insert_char('5');
-        assert_eq!(s.text, "5");
-        assert_eq!(s.cursor, 1);
-        assert_eq!(s.selected_range(), None);
-    }
-
-    #[test]
-    fn test_insert_at_cursor_middle() {
-        let mut s = state("129", 2);
-        s.insert_char('8');
-        assert_eq!(s.text, "1289");
-        assert_eq!(s.cursor, 3);
-    }
-
-    #[test]
-    fn test_backspace_at_middle_and_start() {
-        let mut s = state("123", 2);
-        s.backspace();
-        assert_eq!(s.text, "13");
-        assert_eq!(s.cursor, 1);
-
-        let mut s = state("123", 0);
-        s.backspace();
-        assert_eq!(s.text, "123");
-        assert_eq!(s.cursor, 0);
-    }
-
-    #[test]
-    fn test_backspace_deletes_selection() {
-        // Selection covers chars 2..5 ("3.4") — backspace removes exactly
+    fn test_backspace_and_delete_remove_the_selection_else_the_adjacent_char_and_stop_at_the_edges() {
+        // Selection covers chars 2..5 ("3.4"): backspace removes exactly
         // that range, not the char before the cursor.
-        let mut s = state("123.45", 5);
-        s.selection_anchor = Some(2);
-        s.backspace();
-        assert_eq!(s.text, "125");
-        assert_eq!(s.cursor, 2);
-        assert_eq!(s.selected_range(), None);
+        let mut selected = state("123.45", 5);
+        selected.selection_anchor = Some(2);
+        selected.backspace();
+        assert_eq!((selected.text.as_str(), selected.cursor, selected.selected_range()), ("125", 2, None));
+
+        let mut before = state("123", 2);
+        before.backspace();
+        assert_eq!((before.text.as_str(), before.cursor), ("13", 1));
+        let mut at_start = state("123", 0);
+        at_start.backspace();
+        assert_eq!((at_start.text.as_str(), at_start.cursor), ("123", 0), "backspace at the start is a no-op");
+
+        let mut after = state("123", 1);
+        after.delete();
+        assert_eq!((after.text.as_str(), after.cursor), ("13", 1));
+        let mut at_end = state("123", 3);
+        at_end.delete();
+        assert_eq!(at_end.text, "123", "delete at the end is a no-op");
     }
 
     #[test]
-    fn test_delete_forward_and_at_end() {
-        let mut s = state("123", 1);
-        s.delete();
-        assert_eq!(s.text, "13");
-        assert_eq!(s.cursor, 1);
+    fn test_plain_moves_collapse_the_selection_and_shift_moves_extend_it_dropping_on_anchor_return() {
+        // Plain arrows clamp at the buffer edges...
+        let mut clamped = state("12", 0);
+        clamped.move_left(false);
+        assert_eq!(clamped.cursor, 0);
+        for _ in 0..3 {
+            clamped.move_right(false);
+        }
+        assert_eq!(clamped.cursor, 2);
 
-        let mut s = state("123", 3);
-        s.delete();
-        assert_eq!(s.text, "123");
-    }
+        // ...and with a selection active collapse to its edge without moving further.
+        let mut left = state("12345", 4);
+        left.selection_anchor = Some(1);
+        left.move_left(false);
+        assert_eq!((left.cursor, left.selected_range()), (1, None), "left collapses to the selection start");
+        let mut right = state("12345", 4);
+        right.selection_anchor = Some(1);
+        right.move_right(false);
+        assert_eq!(right.cursor, 4, "right collapses to the selection end");
 
-    #[test]
-    fn test_arrow_moves_and_clamps() {
-        let mut s = state("12", 0);
-        s.move_left(false);
-        assert_eq!(s.cursor, 0);
-        s.move_right(false);
-        s.move_right(false);
-        s.move_right(false);
-        assert_eq!(s.cursor, 2);
-    }
+        // Shift extends from an anchor; landing back on the anchor drops the selection.
+        let mut shifted = state("1234", 2);
+        shifted.move_right(true);
+        shifted.move_right(true);
+        assert_eq!(shifted.selected_range(), Some((2, 4)));
+        shifted.move_left(true);
+        assert_eq!(shifted.selected_range(), Some((2, 3)));
+        shifted.move_left(true);
+        assert_eq!(shifted.selected_range(), None);
 
-    #[test]
-    fn test_plain_arrow_collapses_selection_to_edge() {
-        let mut s = state("12345", 4);
-        s.selection_anchor = Some(1);
-        s.move_left(false);
-        assert_eq!(s.cursor, 1, "left collapses to selection start");
-        assert_eq!(s.selected_range(), None);
-
-        let mut s = state("12345", 4);
-        s.selection_anchor = Some(1);
-        s.move_right(false);
-        assert_eq!(s.cursor, 4, "right collapses to selection end");
-    }
-
-    #[test]
-    fn test_shift_arrow_extends_selection() {
-        let mut s = state("1234", 2);
-        s.move_right(true);
-        assert_eq!(s.selected_range(), Some((2, 3)));
-        s.move_right(true);
-        assert_eq!(s.selected_range(), Some((2, 4)));
-        s.move_left(true);
-        assert_eq!(s.selected_range(), Some((2, 3)));
-        // Landing back on the anchor drops the selection
-        s.move_left(true);
-        assert_eq!(s.selected_range(), None);
-    }
-
-    #[test]
-    fn test_home_end_with_and_without_shift() {
-        let mut s = state("12345", 2);
-        s.home(false);
-        assert_eq!(s.cursor, 0);
-        s.end(false);
-        assert_eq!(s.cursor, 5);
-
-        let mut s = state("12345", 2);
-        s.end(true);
-        assert_eq!(s.selected_range(), Some((2, 5)));
-        s.home(true);
-        assert_eq!(s.selected_range(), Some((0, 2)));
-    }
-
-    #[test]
-    fn test_select_all_then_home_collapses() {
-        let mut s = state("999", 0);
-        s.select_all();
-        assert_eq!(s.selected_range(), Some((0, 3)));
-        s.home(false);
-        assert_eq!(s.cursor, 0);
-        assert_eq!(s.selected_range(), None);
+        // Home/End follow the same rules.
+        let mut home_end = state("12345", 2);
+        home_end.end(true);
+        assert_eq!(home_end.selected_range(), Some((2, 5)));
+        home_end.home(true);
+        assert_eq!(home_end.selected_range(), Some((0, 2)));
+        home_end.select_all();
+        assert_eq!(home_end.selected_range(), Some((0, 5)));
+        home_end.home(false);
+        assert_eq!((home_end.cursor, home_end.selected_range()), (0, None), "plain Home collapses select-all");
+        home_end.end(false);
+        assert_eq!(home_end.cursor, 5);
     }
 
     #[test]
     fn test_cursor_from_click_picks_nearest_boundary() {
-        let mut s = state("124", 0);
+        let mut edit = state("124", 0);
         // Prefix widths for "124": 0, 8, 16, 24 px
         let widths = [0.0, 8.0, 16.0, 24.0];
-        s.cursor_from_click(&widths, 3.0);
-        assert_eq!(s.cursor, 0);
-        s.cursor_from_click(&widths, 5.0);
-        assert_eq!(s.cursor, 1);
-        s.cursor_from_click(&widths, 19.0);
-        assert_eq!(s.cursor, 2);
-        s.cursor_from_click(&widths, 100.0);
-        assert_eq!(s.cursor, 3);
+        let cases = [(3.0, 0), (5.0, 1), (19.0, 2), (100.0, 3)];
+
+        for (click_x, boundary) in cases {
+            edit.selection_anchor = Some(0);
+            edit.cursor_from_click(&widths, click_x);
+            assert_eq!(edit.cursor, boundary, "click at {click_x}px");
+            assert_eq!(edit.selected_range(), None, "a click clears the selection");
+        }
     }
 
     #[test]
     fn test_empty_string_operations_are_safe() {
-        let mut s = TextEditState::default();
-        s.backspace();
-        s.delete();
-        s.move_left(true);
-        s.move_right(true);
-        s.home(false);
-        s.end(false);
-        s.select_all();
-        assert_eq!(s.text, "");
-        assert_eq!(s.cursor, 0);
-        assert_eq!(s.selected_range(), None);
+        let mut edit = TextEditState::default();
+        edit.backspace();
+        edit.delete();
+        edit.move_left(true);
+        edit.move_right(true);
+        edit.home(false);
+        edit.end(false);
+        edit.select_all();
+        assert_eq!((edit.text.as_str(), edit.cursor, edit.selected_range()), ("", 0, None));
     }
 }

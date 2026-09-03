@@ -292,123 +292,112 @@ impl KeyRepeat {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::{input_with_mouse, release_mouse};
 
     #[test]
-    fn test_keycode_to_char_digits() {
-        assert_eq!(keycode_to_char(KeyCode::Digit0, false), Some('0'));
-        assert_eq!(keycode_to_char(KeyCode::Digit9, false), Some('9'));
-        assert_eq!(keycode_to_char(KeyCode::Numpad5, false), Some('5'));
-        assert_eq!(keycode_to_char(KeyCode::Numpad5, true), Some('5')); // numpad ignores shift
+    fn test_input_state_mirrors_the_handlers_mouse_snapshot() {
+        let idle = InputState::from_input_handler(&InputHandler::new());
+        assert_eq!(idle.mouse_pos, Vec2::ZERO);
+        assert!(!idle.mouse_down && !idle.mouse_just_pressed && !idle.mouse_just_released);
+        assert_eq!(idle.scroll_delta, 0.0);
+
+        let mut input = input_with_mouse(Vec2::new(100.0, 200.0), true);
+        input.mouse_mut().update_wheel_delta(1.5);
+        let pressed = InputState::from_input_handler(&input);
+        assert_eq!(pressed.mouse_pos, Vec2::new(100.0, 200.0));
+        assert!(pressed.mouse_down && pressed.mouse_just_pressed);
+        assert!(!pressed.mouse_just_released);
+        assert_eq!(pressed.scroll_delta, 1.5);
+
+        release_mouse(&mut input);
+        let released = InputState::from_input_handler(&input);
+        assert!(!released.mouse_down && !released.mouse_just_pressed);
+        assert!(released.mouse_just_released);
+        assert_eq!(released.scroll_delta, 0.0, "the wheel delta is per frame");
     }
 
     #[test]
-    fn test_keycode_to_char_special() {
-        assert_eq!(keycode_to_char(KeyCode::Period, false), Some('.'));
-        assert_eq!(keycode_to_char(KeyCode::Minus, false), Some('-'));
-        assert_eq!(keycode_to_char(KeyCode::NumpadDecimal, false), Some('.'));
-        assert_eq!(keycode_to_char(KeyCode::NumpadSubtract, true), Some('-'));
+    fn test_keycode_to_char_maps_letters_digits_and_punctuation_with_shift_rules() {
+        let cases = [
+            (KeyCode::KeyA, false, Some('a')),
+            (KeyCode::KeyA, true, Some('A')),
+            (KeyCode::KeyZ, true, Some('Z')),
+            (KeyCode::Space, false, Some(' ')),
+            (KeyCode::Space, true, Some(' ')),
+            (KeyCode::Digit0, false, Some('0')),
+            (KeyCode::Digit9, false, Some('9')),
+            (KeyCode::Digit0, true, None), // Shift+0 = ')', not a digit
+            (KeyCode::Numpad5, false, Some('5')),
+            (KeyCode::Numpad5, true, Some('5')), // the numpad ignores shift
+            (KeyCode::Period, false, Some('.')),
+            (KeyCode::Period, true, None), // Shift+. = '>'
+            (KeyCode::NumpadDecimal, false, Some('.')),
+            (KeyCode::Minus, false, Some('-')),
+            (KeyCode::Minus, true, Some('_')),
+            (KeyCode::NumpadSubtract, true, Some('-')),
+            (KeyCode::Enter, false, None),
+            (KeyCode::Backspace, false, None),
+            (KeyCode::F1, false, None),
+        ];
+
+        for (key, shift, expected) in cases {
+            assert_eq!(keycode_to_char(key, shift), expected, "{key:?} shift={shift}");
+        }
     }
 
     #[test]
-    fn test_keycode_to_char_shift_blocks_top_row() {
-        assert_eq!(keycode_to_char(KeyCode::Digit0, true), None); // Shift+0 = ')'
-        assert_eq!(keycode_to_char(KeyCode::Period, true), None); // Shift+. = '>'
-        assert_eq!(keycode_to_char(KeyCode::Minus, true), Some('_')); // Shift+- = '_'
-    }
+    fn test_repeat_fires_on_press_then_after_the_delay_at_the_interval_and_resets_on_release() {
+        const FRAME: f32 = 0.016;
+        let mut timer = RepeatTimer::default();
+        assert!(timer.tick(true, true, FRAME), "the initial press fires");
 
-    #[test]
-    fn test_keycode_to_char_letters_and_space() {
-        assert_eq!(keycode_to_char(KeyCode::KeyA, false), Some('a'));
-        assert_eq!(keycode_to_char(KeyCode::KeyA, true), Some('A'));
-        assert_eq!(keycode_to_char(KeyCode::KeyZ, false), Some('z'));
-        assert_eq!(keycode_to_char(KeyCode::KeyZ, true), Some('Z'));
-        assert_eq!(keycode_to_char(KeyCode::Space, false), Some(' '));
-        assert_eq!(keycode_to_char(KeyCode::Space, true), Some(' '));
-    }
-
-    #[test]
-    fn test_keycode_to_char_non_character_keys() {
-        assert_eq!(keycode_to_char(KeyCode::Enter, false), None);
-        assert_eq!(keycode_to_char(KeyCode::Backspace, false), None);
-        assert_eq!(keycode_to_char(KeyCode::F1, false), None);
-    }
-
-    #[test]
-    fn test_repeat_fires_on_initial_press() {
-        let mut t = RepeatTimer::default();
-        assert!(t.tick(true, true, 0.016));
-        assert!(!t.tick(true, false, 0.016), "no repeat before the delay");
-    }
-
-    #[test]
-    fn test_repeat_fires_after_delay_then_at_interval() {
-        let mut t = RepeatTimer::default();
-        assert!(t.tick(true, true, 0.016));
-
-        // Hold for just under the delay: silent.
-        let mut fired = 0;
+        // Held for just under the delay: silent.
         let mut held_for = 0.0;
-        while held_for + 0.016 < REPEAT_DELAY {
-            held_for += 0.016;
-            if t.tick(true, false, 0.016) {
-                fired += 1;
-            }
-        }
-        assert_eq!(fired, 0);
-
-        // Crossing the delay fires once.
-        assert!(t.tick(true, false, 0.016));
-
-        // Then roughly every REPEAT_INTERVAL: over one second of holding,
-        // expect ~1/REPEAT_INTERVAL fires (within a frame of slack).
         let mut fired = 0;
-        for _ in 0..63 {
-            // 63 * 0.016 ≈ 1.0s
-            if t.tick(true, false, 0.016) {
-                fired += 1;
-            }
+        while held_for + FRAME < REPEAT_DELAY {
+            held_for += FRAME;
+            fired += usize::from(timer.tick(true, false, FRAME));
         }
+        assert_eq!(fired, 0, "no repeat before the delay");
+        assert!(timer.tick(true, false, FRAME), "crossing the delay fires once");
+
+        // Then ~1/REPEAT_INTERVAL per second of holding (a frame of slack).
+        let fired = (0..63).filter(|_| timer.tick(true, false, FRAME)).count() as i32; // 63 × 0.016 ≈ 1s
         let expected = (1.0 / REPEAT_INTERVAL) as i32;
-        assert!(
-            (fired - expected).abs() <= 2,
-            "expected ~{expected} repeats in 1s, got {fired}"
-        );
+        assert!((fired - expected).abs() <= 2, "expected ~{expected} repeats in 1s, got {fired}");
+
+        // Release resets; a fresh press fires and waits the full delay again.
+        assert!(!timer.tick(false, false, FRAME));
+        assert!(timer.tick(true, true, FRAME));
+        assert!(!timer.tick(true, false, FRAME), "the delay applies again after a re-press");
     }
 
     #[test]
-    fn test_repeat_resets_on_release() {
-        let mut t = RepeatTimer::default();
-        assert!(t.tick(true, true, 0.016));
-        // Hold past the delay so it is repeating
-        for _ in 0..40 {
-            t.tick(true, false, 0.016);
-        }
-        // Release: timer resets, nothing fires
-        assert!(!t.tick(false, false, 0.016));
-        // Press again: fires immediately (fresh press)
-        assert!(t.tick(true, true, 0.016));
-        assert!(!t.tick(true, false, 0.016), "delay applies again after re-press");
-    }
-
-    #[test]
-    fn test_up_down_arrows_repeat_after_delay() {
-        // Numeric nudge keys repeat while held, like the text-nav keys.
+    fn test_key_repeat_timers_are_independent_per_key() {
+        // `timers[key as usize]` over a hand-numbered enum: holding one key
+        // must never advance another key's slot, and each key's press flag
+        // reaches its own `InputState` field.
         let mut input = InputHandler::new();
         let mut repeat = KeyRepeat::default();
 
-        input.keyboard_mut().handle_key_press(KeyCode::ArrowUp);
+        input.keyboard_mut().handle_key_press(KeyCode::ArrowLeft);
         let state = InputState::from_input_handler_with_repeat(&input, &mut repeat, 0.016);
-        assert!(state.up_pressed, "just-pressed fires immediately");
-        assert!(!state.down_pressed);
+        assert!(state.left_pressed && !state.backspace_pressed);
 
-        // Held but before the repeat delay: silent.
         input.update();
-        let state = InputState::from_input_handler_with_repeat(&input, &mut repeat, 0.016);
-        assert!(!state.up_pressed);
+        let state = InputState::from_input_handler_with_repeat(&input, &mut repeat, REPEAT_DELAY + 0.001);
+        assert!(state.left_pressed, "held ArrowLeft repeats after the delay");
+        assert!(!state.backspace_pressed && !state.right_pressed && !state.up_pressed && !state.down_pressed && !state.delete_pressed);
 
-        // Past the delay: repeats.
-        let state =
-            InputState::from_input_handler_with_repeat(&input, &mut repeat, REPEAT_DELAY + 0.001);
-        assert!(state.up_pressed, "held key must repeat after the delay");
+        input.update();
+        input.keyboard_mut().handle_key_press(KeyCode::Backspace);
+        let state = InputState::from_input_handler_with_repeat(&input, &mut repeat, REPEAT_INTERVAL);
+        assert!(state.backspace_pressed, "the fresh Backspace press fires");
+        assert!(state.left_pressed, "ArrowLeft keeps repeating at the interval");
+
+        input.update();
+        let state = InputState::from_input_handler_with_repeat(&input, &mut repeat, REPEAT_INTERVAL);
+        assert!(state.left_pressed, "ArrowLeft is still past its delay");
+        assert!(!state.backspace_pressed, "Backspace is inside its own delay — ArrowLeft's hold did not advance it");
     }
 }

@@ -128,15 +128,86 @@ pub(super) fn measure_text(font: &Font, text: &str, font_size: f32) -> Vec2 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::FIXTURE_FONT;
+
+    const SIZE: f32 = 32.0;
+
+    fn fixture() -> Result<(Font, GlyphCache), FontError> {
+        let font = Font::from_bytes(FIXTURE_FONT, fontdue::FontSettings::default())
+            .map_err(|e| FontError::LoadError(e.to_string()))?;
+        Ok((font, GlyphCache::new()))
+    }
 
     #[test]
-    fn test_text_layout() {
-        let layout = TextLayout {
-            width: 100.0,
-            height: 16.0,
-            glyphs: vec![],
-        };
-        assert_eq!(layout.width, 100.0);
-        assert_eq!(layout.height, 16.0);
+    fn test_layout_glyph_y_is_the_top_relative_to_the_baseline_with_down_positive() -> Result<(), FontError> {
+        // The documented convention behind the "UI text y = baseline"
+        // footgun: the origin is the baseline, glyph.y is the top of the
+        // glyph relative to it, +Y down — so a capital's top is negative
+        // and its bottom (y + height) sits on the baseline, while a
+        // descender's bottom is positive.
+        let (font, mut cache) = fixture()?;
+
+        let layout = layout_text(&font, 1, &mut cache, "Hg", SIZE)?;
+
+        let capital = &layout.glyphs[0];
+        let capital_bottom = capital.y + capital.info.rasterized.height as f32;
+        assert!(capital.y < -SIZE * 0.5, "'H' top is well above the baseline: {}", capital.y);
+        assert!(capital_bottom.abs() <= 1.5, "'H' sits on the baseline, bottom at {capital_bottom}");
+        let descender = &layout.glyphs[1];
+        let descender_bottom = descender.y + descender.info.rasterized.height as f32;
+        assert!(descender_bottom > 2.0, "'g' descends below the baseline, bottom at {descender_bottom}");
+        Ok(())
     }
+
+    #[test]
+    fn test_layout_skips_spaces_but_advances_the_cursor_past_them() -> Result<(), FontError> {
+        let (font, mut cache) = fixture()?;
+
+        let layout = layout_text(&font, 1, &mut cache, "a b", SIZE)?;
+
+        let characters: Vec<char> = layout.glyphs.iter().map(|g| g.character).collect();
+        assert_eq!(characters, vec!['a', 'b'], "a space draws nothing");
+        assert!(
+            layout.glyphs[1].x > measure_text(&font, "a", SIZE).x,
+            "'b' starts past the space's advance: {} vs {}",
+            layout.glyphs[1].x,
+            measure_text(&font, "a", SIZE).x
+        );
+        assert_eq!(layout.width, measure_text(&font, "a b", SIZE).x, "the space still counts toward the width");
+        Ok(())
+    }
+
+    #[test]
+    fn test_measure_text_sums_advances_and_matches_the_laid_out_width() -> Result<(), FontError> {
+        let (font, mut cache) = fixture()?;
+
+        let word = measure_text(&font, "Hello", SIZE);
+        let per_char: f32 = "Hello".chars().map(|c| measure_text(&font, &c.to_string(), SIZE).x).sum();
+        assert!((word.x - per_char).abs() < 1e-3, "width is the sum of advances: {} vs {per_char}", word.x);
+        assert_eq!(layout_text(&font, 1, &mut cache, "Hello", SIZE)?.width, word.x, "layout and measure agree");
+        assert_eq!(measure_text(&font, "", SIZE), Vec2::new(0.0, word.y), "empty text has no width, one line of height");
+        Ok(())
+    }
+
+    #[test]
+    fn test_measured_height_matches_laid_out_height_within_a_pixel_for_descenders() -> Result<(), FontError> {
+        // A host reserves `measure_text().y` (the font's line size) for a
+        // line; layout grows to the deepest rasterized descender, which
+        // pixel rounding can push a fraction past the font's descent — so
+        // the two agree to within one pixel, never more.
+        let (font, mut cache) = fixture()?;
+
+        let laid_out = layout_text(&font, 1, &mut cache, "gjpqy", SIZE)?;
+        let measured = measure_text(&font, "gjpqy", SIZE);
+
+        assert!(
+            (laid_out.height - measured.y).abs() < 1.0,
+            "laid out {} vs measured {}",
+            laid_out.height,
+            measured.y
+        );
+        assert_eq!(layout_text(&font, 1, &mut cache, "", SIZE)?.height, measured.y, "empty text is still one line tall");
+        Ok(())
+    }
+
 }

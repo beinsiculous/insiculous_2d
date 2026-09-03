@@ -94,7 +94,9 @@ cfg-split frame drivers, rodio).
 5. `crates/ui/src/font/layout.rs`: one `text_height(font, size)` used by both `layout_text`
    and `measure_text`. The font's `new_line_size` wins (it is what `measure_text` returns and
    what centering already uses); `layout_text` stops inflating the height for descender-tall
-   glyphs. Test: measured == laid-out height for a string with descenders.
+   glyphs. Test: measured == laid-out height for a string with descenders (the ui cut's
+   `test_measured_height_matches_laid_out_height_within_a_pixel_for_descenders` asserts
+   within a pixel today and tightens to exact equality here).
 6. `crates/editor/src/inspector.rs`: `inspect_component` draws through `label_styled` with
    `InspectorStyle` colours (the read-only Play-mode inspector is currently unthemed). Test:
    header draw command carries `style.header_color`.
@@ -467,8 +469,8 @@ every test file read in full; the keep-list reframe is being appended to it):
   velocity; X1 `World` emit/read/flush and the drain-once collision footgun; P1 collision
   groups filter events; P2 `Collider.offset` collides at the offset; P3 `convert_physical_key`
   and the scroll-line normalisation; R1 vertex/instance attribute `(offset, format,
-  location)` triples; U2 `font::layout` baseline/`offset_y`/space handling with the shipped
-  DejaVu bytes; A1 an enabled audio manager's sink bookkeeping via a test-only sink seam.
+  location)` triples; U2 `font::layout` baseline/`offset_y`/space handling with the
+  `examples/assets/fonts/font.ttf` fixture (Linux Libertine; bounds are fixture-derived); A1 an enabled audio manager's sink bookkeeping via a test-only sink seam.
 - **Strengthen** (right subject, weak assert): the draw-list-length family becomes content
   asserts (grid/collider/selection overlays assert endpoints and colours; `float_input`
   asserts bounds and "42.00"; label centering asserts the x); `sort_idempotent` proves the
@@ -746,7 +748,12 @@ with them), `set_body_transform` (internal only), `CollisionEvent::involves_enti
 (test-only consumer), `SpriteInstance::new`, `TextureHandle::new`,
 `TextureError::TextureNotFound` (never constructed), and `scissor::intersect_scissor`
 becomes private; from the `audio` cut: `play_music_once`, `stop_all`, `active_sound_count`,
-`unload_all` (confirmed 0 callers). NOT `Transform2D::forward` — asteroids aims every
+`unload_all` (confirmed 0 callers); from the `ui` cut: `UIContext::{with_theme, hit_test,
+font_metrics, label_in_bounds, checkbox_labeled, slider_range, font_manager,
+font_manager_mut}`, `FontManager::{cache_stats, clear_cache, rasterize_glyph}`,
+`Theme::light`, `DrawList::{is_overlay, image_rounded, text_placeholder}`,
+`InteractionManager::{is_hot, is_active, has_focus}`, `WidgetId: From<u64>` (0 hits outside
+the crate; some used internally — keep those). NOT `Transform2D::forward` — asteroids aims every
 bullet with it (`ship.rs:122`); its test was restored (review-4 F1). Rule: show the
 workspace AND `../games` grep for every candidate in the batch-2 review before deleting it. NOT `Rect::contains`/`center`/`expand` — the keep-list called `Rect`
 dead, but `contains` decides every widget interaction and the editor uses the other two;

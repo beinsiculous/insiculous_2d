@@ -1,584 +1,429 @@
-//! Behavior tests for `UIContext` (lifecycle, text, and widget methods).
+//! Contract tests for [`UIContext`]: the placeholder text path and its
+//! measurement, the baseline-vs-box footgun, the two-frame button click,
+//! the slider, the text/float input editing lifecycle, programmatic focus,
+//! and the `begin_overlay` back-compat contract. The numeric-field UX
+//! (scrub, nudge, ranges) lives in `scrub_tests.rs`.
+
+use input::prelude::KeyCode;
 
 use super::*;
+use crate::test_support::{
+    focus_field, frame, idle, move_to, press_at, release, type_key, FIXTURE_FONT,
+};
 use crate::DrawCommand;
 
-#[test]
-fn test_ui_context_with_theme() {
-    let theme = Theme::light();
-    let ui = UIContext::with_theme(theme);
-    // Light theme has different colors
-    assert_ne!(ui.theme().button.background.r, Theme::default().button.background.r);
+const FIELD: Rect = Rect { x: 10.0, y: 10.0, width: 120.0, height: 20.0 };
+
+/// Every string the frame drew, placeholder or laid-out, in draw order.
+fn drawn_texts(ui: &UIContext) -> Vec<String> {
+    ui.draw_list()
+        .commands()
+        .iter()
+        .filter_map(|command| match command {
+            DrawCommand::TextPlaceholder { text, .. } => Some(text.clone()),
+            DrawCommand::Text { data, .. } => Some(data.text.clone()),
+            _ => None,
+        })
+        .collect()
 }
 
-#[test]
-fn test_ui_context_set_theme() {
-    let mut ui = UIContext::new();
-    let original_bg = ui.theme().button.background;
-
-    ui.set_theme(Theme::light());
-    assert_ne!(ui.theme().button.background.r, original_bg.r);
-}
-
-#[test]
-fn test_ui_context_label() {
-    let mut ui = UIContext::new();
-    ui.label("Test", Vec2::new(10.0, 20.0));
-    assert_eq!(ui.draw_list().len(), 1);
-
-    if let DrawCommand::TextPlaceholder { text, position, .. } = &ui.draw_list().commands()[0] {
-        assert_eq!(text, "Test");
-        assert_eq!(*position, Vec2::new(10.0, 20.0));
-    } else {
-        panic!("Expected TextPlaceholder command");
-    }
-}
-
-#[test]
-fn test_ui_context_panel() {
-    let mut ui = UIContext::new();
-    ui.panel(Rect::new(0.0, 0.0, 200.0, 100.0));
+fn first_placeholder(ui: &UIContext) -> (String, Vec2, Color, f32) {
     match &ui.draw_list().commands()[0] {
-        DrawCommand::Rect { bounds, .. } => {
-            assert_eq!(bounds.width, 200.0);
-            assert_eq!(bounds.height, 100.0);
+        DrawCommand::TextPlaceholder { text, position, color, font_size, .. } => {
+            (text.clone(), *position, *color, *font_size)
         }
-        other => panic!("expected panel Rect, got {other:?}"),
+        other => panic!("expected a TextPlaceholder first, got {other:?}"),
     }
 }
 
+// ================== Placeholder text and measurement ==================
+
 #[test]
-fn test_ui_context_rect() {
+fn test_label_without_a_font_emits_a_placeholder_carrying_text_position_color_and_size() {
     let mut ui = UIContext::new();
-    ui.rect(Rect::new(0.0, 0.0, 50.0, 50.0), Color::RED);
-    assert_eq!(ui.draw_list().len(), 1);
-}
+    let theme_color = ui.theme().text.color;
+    let theme_size = ui.theme().text.font_size;
+    let cases = [
+        ("Test", Vec2::new(10.0, 20.0), None),
+        ("Styled Text", Vec2::new(50.0, 60.0), Some((Color::RED, 24.0))),
+    ];
 
-#[test]
-fn test_ui_context_circle() {
-    let mut ui = UIContext::new();
-    ui.circle(Vec2::new(50.0, 50.0), 25.0, Color::BLUE);
-    assert_eq!(ui.draw_list().len(), 1);
-}
-
-#[test]
-fn test_ui_context_hit_test() {
-    let ui = UIContext::new();
-    let bounds = Rect::new(10.0, 10.0, 100.0, 100.0);
-
-    assert!(ui.hit_test(Vec2::new(50.0, 50.0), bounds));
-    assert!(!ui.hit_test(Vec2::new(5.0, 5.0), bounds));
-}
-
-#[test]
-fn test_ui_context_progress_bar() {
-    let mut ui = UIContext::new();
-    ui.progress_bar(0.5, Rect::new(0.0, 0.0, 200.0, 20.0));
-    let commands = ui.draw_list().commands();
-    assert!(commands.len() >= 2, "progress bar needs a track and a fill");
-    match &commands[0] {
-        DrawCommand::Rect { bounds, .. } => assert_eq!(bounds.width, 200.0),
-        other => panic!("expected track Rect, got {other:?}"),
-    }
-    match &commands[1] {
-        DrawCommand::Rect { bounds, .. } => {
-            assert!((bounds.width - 100.0).abs() < 0.001, "50% fill of 200px, got {}", bounds.width);
+    for (text, position, style) in cases {
+        ui.begin_frame(&input::InputHandler::new(), crate::test_support::WINDOW);
+        match style {
+            None => ui.label(text, position),
+            Some((color, size)) => ui.label_styled(text, position, color, size),
         }
-        other => panic!("expected fill Rect, got {other:?}"),
+        let (expected_color, expected_size) = style.unwrap_or((theme_color, theme_size));
+
+        let (drawn, drawn_at, color, size) = first_placeholder(&ui);
+        assert_eq!(drawn, text);
+        assert_eq!(drawn_at, position, "the baseline position passes through untouched");
+        assert_eq!(color, expected_color);
+        assert_eq!(size, expected_size);
+        assert_eq!(ui.draw_list().len(), 1, "one label is one command");
     }
 }
 
 #[test]
-fn test_ui_context_label_without_font() {
-    let mut ui = UIContext::new();
-    // Without a font loaded, label should fall back to TextPlaceholder
-    ui.label("No Font", Vec2::new(10.0, 20.0));
-    assert_eq!(ui.draw_list().len(), 1);
-
-    if let DrawCommand::TextPlaceholder { text, .. } = &ui.draw_list().commands()[0] {
-        assert_eq!(text, "No Font");
-    } else {
-        panic!("Expected TextPlaceholder command when no font is loaded");
-    }
-}
-
-#[test]
-fn test_ui_context_label_styled_without_font() {
-    let mut ui = UIContext::new();
-    ui.label_styled("Styled Text", Vec2::new(50.0, 60.0), Color::RED, 24.0);
-    assert_eq!(ui.draw_list().len(), 1);
-
-    if let DrawCommand::TextPlaceholder { text, color, font_size, .. } = &ui.draw_list().commands()[0] {
-        assert_eq!(text, "Styled Text");
-        assert_eq!(*color, Color::RED);
-        assert_eq!(*font_size, 24.0);
-    } else {
-        panic!("Expected TextPlaceholder command");
-    }
-}
-
-#[test]
-fn test_font_rendering_retry_after_font_load() {
-    let mut ui = UIContext::new();
-
-    // First frame: No font loaded, should show placeholder
-    ui.label_styled("Test Text", Vec2::new(10.0, 20.0), Color::WHITE, 16.0);
-    assert_eq!(ui.draw_list().len(), 1);
-    assert!(matches!(&ui.draw_list().commands()[0], DrawCommand::TextPlaceholder { .. }));
-
-    // Clear draw list for next frame
-    ui.end_frame();
-
-    // Simulate font loading (we can't easily load a real font in tests,
-    // but we can verify the retry logic works by checking that the
-    // static PRINTED flag is no longer preventing retries)
-    ui.begin_frame(&input::InputHandler::new(), Vec2::new(800.0, 600.0));
-
-    // Second frame: Should retry font rendering (will still show placeholder
-    // since no font is loaded, but the important thing is it retries)
-    ui.label_styled("Test Text", Vec2::new(10.0, 20.0), Color::WHITE, 16.0);
-    assert_eq!(ui.draw_list().len(), 1);
-
-    // The key test: it should still create a TextPlaceholder command,
-    // but the important fix is that it *retries* the font check every frame
-    // instead of being blocked by the static PRINTED flag
-    assert!(matches!(&ui.draw_list().commands()[0], DrawCommand::TextPlaceholder { .. }));
-}
-
-#[test]
-fn test_text_align_default() {
-    let align = TextAlign::default();
-    assert_eq!(align, TextAlign::Left);
-}
-
-#[test]
-fn test_ui_context_font_metrics_none_without_font() {
+fn test_measure_text_without_a_font_is_the_character_count_estimate() {
+    // The estimate is the same one the placeholder path draws with, so
+    // centering and alignment computed against it match what appears.
     let ui = UIContext::new();
-    // No font loaded, should return None
-    assert!(ui.font_metrics(16.0).is_none());
+    let cases = [("hello", 16.0, Vec2::new(48.0, 19.2)), ("hello", 12.0, Vec2::new(36.0, 14.4)), ("", 16.0, Vec2::new(0.0, 19.2))];
+
+    for (text, font_size, expected) in cases {
+        let measured = ui.measure_text_styled(text, font_size);
+        assert!(
+            (measured - expected).abs().max_element() < 1e-4,
+            "{text:?} at {font_size}: expected {expected}, got {measured}"
+        );
+    }
+    assert_eq!(ui.measure_text("hello"), ui.measure_text_styled("hello", ui.theme().text.font_size));
 }
 
 #[test]
-fn test_ui_context_label_in_bounds() {
+fn test_label_centered_offsets_by_half_the_measured_width() {
     let mut ui = UIContext::new();
-    let bounds = Rect::new(10.0, 10.0, 200.0, 30.0);
+    let center = Vec2::new(400.0, 300.0);
 
-    // Should not panic even without font
-    ui.label_in_bounds("Test", bounds, TextAlign::Center);
+    ui.label_centered_styled("styled", center, Color::WHITE, 24.0);
 
-    // Should generate a draw command (placeholder without font)
-    assert_eq!(ui.draw_list().len(), 1);
+    let (_, position, _, _) = first_placeholder(&ui);
+    assert_eq!(position.x, center.x - ui.measure_text_styled("styled", 24.0).x / 2.0);
+    assert_eq!(position.y, center.y, "center.y is the baseline");
 }
 
 #[test]
-fn test_ui_context_clip_rect() {
-    let mut ui = UIContext::new();
-    let bounds = Rect::new(0.0, 0.0, 100.0, 100.0);
+fn test_label_in_bounds_styled_keeps_glyphs_inside_bounds_at_every_alignment() {
+    // Known footgun: `label_styled`'s y is the BASELINE, so text in a box
+    // drawn with it straddles the border. The bounded variant centers via
+    // font metrics (estimate: ascent = 0.8 × size) — the dock panel header
+    // geometry, 24px tall.
+    let bounds = Rect::new(0.0, 100.0, 200.0, 24.0);
+    let (font_size, padding) = (14.0, 8.0);
+    let cases = [
+        (TextAlign::Left, bounds.x + padding),
+        (TextAlign::Center, bounds.x + (bounds.width - 5.0 * font_size * 0.6) / 2.0),
+        (TextAlign::Right, bounds.x + bounds.width - 5.0 * font_size * 0.6 - padding),
+    ];
 
-    ui.push_clip_rect(bounds);
-    ui.rect(Rect::new(10.0, 10.0, 50.0, 50.0), Color::RED);
-    ui.pop_clip_rect();
+    for (align, expected_x) in cases {
+        let mut ui = UIContext::new();
+        ui.label_in_bounds_styled("Hiera", bounds, align, Color::WHITE, font_size, padding);
 
-    assert_eq!(ui.draw_list().len(), 3);
+        let (_, position, _, size) = first_placeholder(&ui);
+        let glyph_top = position.y - size * 0.8;
+        assert!(
+            glyph_top >= bounds.y,
+            "{align:?}: glyph top {glyph_top} rises above the bounds top {} (border strike-through)",
+            bounds.y
+        );
+        assert!(position.y <= bounds.y + bounds.height, "{align:?}: baseline stays inside");
+        assert!((position.x - expected_x).abs() < 1e-4, "{align:?}: x {} != {expected_x}", position.x);
+    }
 }
 
 #[test]
-fn test_float_input_returns_original_without_interaction() {
-    let mut ui = UIContext::new();
-    ui.begin_frame(&input::InputHandler::new(), Vec2::new(800.0, 600.0));
-
-    let bounds = Rect::new(100.0, 100.0, 80.0, 20.0);
-    let result = ui.float_input("test_float", 2.75, crate::FloatFieldOpts::range(0.0, 10.0), bounds).value;
-
-    // Without any interaction, should return the original value
-    assert_eq!(result, 2.75);
-    // Should generate draw commands (background rect + border + text)
-    assert!(ui.draw_list().len() >= 2);
-}
-
-#[test]
-fn test_float_input_draws_box() {
-    let mut ui = UIContext::new();
-    ui.begin_frame(&input::InputHandler::new(), Vec2::new(800.0, 600.0));
-
-    let bounds = Rect::new(50.0, 50.0, 100.0, 24.0);
-    ui.float_input("float_box", 42.0, crate::FloatFieldOpts::range(0.0, 100.0), bounds);
-
-    // Should have background rect, border rect, and text placeholder
-    assert!(ui.draw_list().len() >= 3);
-}
-
-#[test]
-fn test_float_input_with_unresolvable_font_falls_back_to_placeholder() {
+fn test_float_input_with_an_unresolvable_font_still_draws_its_box_and_value() {
     // #54: a stale handle must not panic or draw nothing — the field takes
-    // the same placeholder path as a missing default font.
+    // the placeholder path a missing default font takes, box included.
     let mut ui = UIContext::new();
-    ui.begin_frame(&input::InputHandler::new(), Vec2::new(800.0, 600.0));
-
+    ui.begin_frame(&input::InputHandler::new(), crate::test_support::WINDOW);
     let bounds = Rect::new(50.0, 50.0, 100.0, 24.0);
-    let opts = crate::FloatFieldOpts::range(0.0, 100.0).with_font(Some(crate::FontHandle { id: 999 }));
+    let opts = FloatFieldOpts::range(0.0, 100.0).with_font(Some(FontHandle { id: 999 }));
+
     let result = ui.float_input("stale_font", 42.0, opts, bounds);
 
     assert_eq!(result.value, 42.0);
+    let commands = ui.draw_list().commands();
     assert!(
-        ui.draw_list().commands().iter().any(|c| matches!(c, DrawCommand::TextPlaceholder { .. })),
-        "placeholder text stands in for the unresolvable face"
+        matches!(commands[0], DrawCommand::Rect { bounds: b, .. } if b == bounds),
+        "background fills the field: {:?}",
+        commands[0]
     );
-}
-
-// === label_centered / measure_text tests ===
-
-#[test]
-fn test_label_centered_generates_draw_command() {
-    let mut ui = UIContext::new();
-    ui.begin_frame(&input::InputHandler::new(), Vec2::new(800.0, 600.0));
-
-    ui.label_centered("hello", Vec2::new(400.0, 300.0));
-
-    assert!(!ui.draw_list().is_empty());
+    assert!(
+        matches!(commands[1], DrawCommand::RectBorder { bounds: b, .. } if b == bounds),
+        "border outlines the field: {:?}",
+        commands[1]
+    );
+    assert_eq!(drawn_texts(&ui), vec!["42.00".to_string()], "the value is drawn as a placeholder");
 }
 
 #[test]
-fn test_label_centered_styled_generates_draw_command() {
-    let mut ui = UIContext::new();
-    ui.begin_frame(&input::InputHandler::new(), Vec2::new(800.0, 600.0));
+fn test_progress_bar_fill_width_is_the_fraction_of_the_track() {
+    let bounds = Rect::new(0.0, 0.0, 200.0, 20.0);
+    let cases = [(0.5, Some(100.0)), (1.5, Some(200.0)), (0.0, None)];
 
-    ui.label_centered_styled("styled", Vec2::new(400.0, 300.0), Color::WHITE, 24.0);
+    for (value, fill_width) in cases {
+        let mut ui = UIContext::new();
+        ui.progress_bar(value, bounds);
 
-    assert!(!ui.draw_list().is_empty());
-}
-
-#[test]
-fn test_measure_text_returns_nonzero_dimensions() {
-    let ui = UIContext::new();
-    let size = ui.measure_text("hello");
-    assert!(size.x > 0.0, "text width should be positive");
-    assert!(size.y > 0.0, "text height should be positive");
-}
-
-#[test]
-fn test_measure_text_larger_font_gives_wider_result() {
-    let ui = UIContext::new();
-    let small = ui.measure_text_styled("hello", 12.0);
-    let large = ui.measure_text_styled("hello", 24.0);
-    assert!(large.x > small.x, "larger font should produce wider text");
-}
-
-#[test]
-fn test_measure_text_empty_string_returns_zero_width() {
-    let ui = UIContext::new();
-    let size = ui.measure_text("");
-    assert_eq!(size.x, 0.0, "empty string should have zero width");
-}
-
-#[test]
-fn test_label_in_bounds_styled_keeps_glyphs_inside_bounds() {
-    // No font loaded — the estimate path uses ascent = 0.8 * font_size,
-    // matching the dock panel header geometry (24px tall).
-    let mut ui = UIContext::new();
-    let bounds = Rect::new(0.0, 100.0, 200.0, 24.0);
-
-    ui.label_in_bounds_styled("Hierarchy", bounds, TextAlign::Left, Color::WHITE, 14.0, 8.0);
-
-    if let DrawCommand::TextPlaceholder { position, font_size, .. } = &ui.draw_list().commands()[0] {
-        let glyph_top = position.y - font_size * 0.8; // baseline minus ascent
-        assert!(
-            glyph_top >= bounds.y,
-            "glyphs must not rise above the bounds top (no border strike-through): top {glyph_top} < {}",
-            bounds.y
-        );
-        assert!(position.y <= bounds.y + bounds.height, "baseline stays inside the bounds");
-        assert_eq!(position.x, bounds.x + 8.0, "left-aligned with padding");
-    } else {
-        panic!("Expected TextPlaceholder command");
+        let commands = ui.draw_list().commands();
+        assert!(matches!(commands[0], DrawCommand::Rect { bounds: b, .. } if b == bounds), "track spans the bounds");
+        match (fill_width, commands.get(1)) {
+            (Some(width), Some(DrawCommand::Rect { bounds: fill, .. })) => {
+                assert!((fill.width - width).abs() < 1e-4, "value {value}: fill {} != {width}", fill.width);
+                assert_eq!((fill.x, fill.height), (bounds.x, bounds.height));
+            }
+            (None, None) => {}
+            (expected, got) => panic!("value {value}: expected fill {expected:?}, got {got:?}"),
+        }
     }
 }
 
+// ================== Button and slider ==================
+
 #[test]
-fn test_wants_keyboard_follows_float_input_focus() {
-    use input::prelude::MouseButton;
+fn test_button_clicks_on_the_release_frame_and_owns_the_mouse_until_then() {
+    let mut ui = UIContext::new();
+    let mut input = input::InputHandler::new();
+    let bounds = Rect::new(100.0, 100.0, 200.0, 50.0);
+    let button = |ui: &mut UIContext| ui.button("test_button", "Click Me!", bounds);
+
+    // `wants_mouse` is read mid-frame, where a raw-input consumer would.
+    let button_and_gesture = |ui: &mut UIContext| (button(ui), ui.wants_mouse());
+
+    let (clicked, owned) = move_to(&mut ui, &mut input, bounds.center(), button_and_gesture);
+    assert!(!clicked, "hovering is not a click");
+    assert!(!owned);
+
+    let (clicked, owned) = press_at(&mut ui, &mut input, bounds.center(), button_and_gesture);
+    assert!(!clicked, "the press frame is not a click");
+    assert!(owned, "a widget press claims the gesture");
+
+    let (clicked, owned) = release(&mut ui, &mut input, button_and_gesture);
+    assert!(clicked, "the click fires on the release frame");
+    assert!(owned, "the gesture stays widget-owned on the release frame");
+
+    let (_, owned) = idle(&mut ui, &mut input, button_and_gesture);
+    assert!(!owned, "the gesture is over the frame after");
+}
+
+#[test]
+fn test_press_and_release_delivered_in_one_frame_still_click() {
+    // A fast tap on the web build delivers both edges before one frame
+    // runs: just-pressed AND just-released are true together, and the
+    // click must fire from that single frame at both levels.
+    use input::prelude::{InputEvent, InputHandler, MouseButton};
+    let bounds = Rect::new(100.0, 100.0, 200.0, 50.0);
+    let mut input = InputHandler::new();
+    input.queue_event(InputEvent::MouseMoved(200.0, 125.0));
+    input.queue_event(InputEvent::MouseButtonPressed(MouseButton::Left));
+    input.queue_event(InputEvent::MouseButtonReleased(MouseButton::Left));
+    input.process_queued_events();
+
+    let mut manager = crate::InteractionManager::new();
+    manager.begin_frame(&input);
+    assert!(manager.interact(WidgetId::from_str("tap"), bounds, true).clicked, "interact reports the click");
 
     let mut ui = UIContext::new();
-    let bounds = Rect::new(10.0, 10.0, 80.0, 20.0);
-    let mut input = input::InputHandler::new();
-
-    // Frame 1: press inside the field (click fires on release, so no focus yet)
-    input.mouse_mut().update_position(50.0, 20.0);
-    input.mouse_mut().handle_button_press(MouseButton::Left);
-    ui.begin_frame(&input, Vec2::new(800.0, 600.0));
-    ui.float_input("focus_field", 1.0, crate::FloatFieldOpts::range(0.0, 10.0), bounds);
+    ui.begin_frame(&input, crate::test_support::WINDOW);
+    assert!(ui.button("tap", "Tap", bounds), "the button clicks in the same frame");
     ui.end_frame();
+}
+
+#[test]
+fn test_button_does_not_click_when_pressed_outside_or_released_outside() {
+    let mut ui = UIContext::new();
+    let mut input = input::InputHandler::new();
+    let bounds = Rect::new(100.0, 100.0, 200.0, 50.0);
+    let outside = Vec2::new(50.0, 50.0);
+    let button = |ui: &mut UIContext| ui.button("test_button", "Click Me!", bounds);
+
+    press_at(&mut ui, &mut input, outside, button);
+    assert!(!release(&mut ui, &mut input, button), "a click that starts outside never fires");
+
+    press_at(&mut ui, &mut input, bounds.center(), button);
+    move_to(&mut ui, &mut input, outside, button);
+    assert!(!release(&mut ui, &mut input, button), "press inside, release outside cancels the click");
+}
+
+#[test]
+fn test_slider_maps_pointer_x_to_value_while_dragging_and_holds_it_after_release() {
+    let mut ui = UIContext::new();
+    let mut input = input::InputHandler::new();
+    let bounds = Rect::new(100.0, 200.0, 200.0, 30.0);
+    let y = bounds.center().y;
+    let slider = |value: f32| move |ui: &mut UIContext| ui.slider("test_slider", value, bounds);
+
+    let pressed = press_at(&mut ui, &mut input, Vec2::new(200.0, y), slider(0.2));
+    assert_eq!(pressed, 0.5, "the press frame already maps the pointer to a value");
+    let dragged = move_to(&mut ui, &mut input, Vec2::new(250.0, y), slider(pressed));
+    assert_eq!(dragged, 0.75);
+    let released = release(&mut ui, &mut input, slider(dragged));
+    assert_eq!(released, dragged, "release keeps the last dragged value");
+    let after = move_to(&mut ui, &mut input, Vec2::new(120.0, y), slider(released));
+    assert_eq!(after, released, "moving the pointer without a press does not drag");
+}
+
+#[test]
+fn test_slider_clamps_to_the_range_ends_when_dragged_past_the_track() {
+    let mut ui = UIContext::new();
+    let mut input = input::InputHandler::new();
+    let bounds = Rect::new(100.0, 200.0, 200.0, 30.0);
+    let y = bounds.center().y;
+    let slider = |value: f32| move |ui: &mut UIContext| ui.slider("edge_slider", value, bounds);
+
+    let at_right_edge = press_at(&mut ui, &mut input, Vec2::new(300.0, y), slider(0.5));
+    assert_eq!(at_right_edge, 1.0);
+    let past_right = move_to(&mut ui, &mut input, Vec2::new(1000.0, y), slider(at_right_edge));
+    assert_eq!(past_right, 1.0, "dragging past the right end clamps to 1.0");
+    let past_left = move_to(&mut ui, &mut input, Vec2::new(-50.0, y), slider(past_right));
+    assert_eq!(past_left, 0.0, "dragging past the left end clamps to 0.0");
+    let at_left_edge = move_to(&mut ui, &mut input, Vec2::new(bounds.x, y), slider(past_left));
+    assert_eq!(at_left_edge, 0.0);
+}
+
+// ================== Text input lifecycle ==================
+
+#[test]
+fn test_text_input_click_focuses_with_the_value_selected_and_typing_replaces_it_until_enter_commits() {
+    let mut ui = UIContext::new();
+    let mut input = input::InputHandler::new();
+    let field = |ui: &mut UIContext| ui.text_input("txt_sel", "old name", FIELD);
+
+    assert_eq!(press_at(&mut ui, &mut input, FIELD.center(), field), None);
+    assert!(!ui.wants_keyboard(), "the press frame does not focus yet");
+    assert_eq!(release(&mut ui, &mut input, field), None);
+    assert!(ui.wants_keyboard(), "the click focuses the field");
+
+    // The seeded value is fully selected: the first key replaces it, and
+    // the frame draws the edit buffer, not the pre-edit value.
+    assert_eq!(type_key(&mut ui, &mut input, KeyCode::KeyH, field), None);
+    assert_eq!(drawn_texts(&ui), vec!["h".to_string()]);
+    type_key(&mut ui, &mut input, KeyCode::KeyI, field);
+    input.keyboard_mut().handle_key_press(KeyCode::ShiftLeft);
+    type_key(&mut ui, &mut input, KeyCode::KeyA, field);
+    type_key(&mut ui, &mut input, KeyCode::Minus, field);
+    input.keyboard_mut().handle_key_release(KeyCode::ShiftLeft);
+    type_key(&mut ui, &mut input, KeyCode::Space, field);
+    type_key(&mut ui, &mut input, KeyCode::Digit2, field);
+    assert_eq!(drawn_texts(&ui), vec!["hiA_ 2".to_string()], "shift = uppercase and underscore");
+
+    let committed = type_key(&mut ui, &mut input, KeyCode::Enter, field);
+    assert_eq!(committed, Some("hiA_ 2".to_string()));
+    assert!(!ui.wants_keyboard(), "commit releases the keyboard");
+    assert!(ui.take_edit_commit(), "the commit flag reaches the host");
+}
+
+#[test]
+fn test_text_input_escape_cancels_and_click_away_commits() {
+    let mut ui = UIContext::new();
+    let mut input = input::InputHandler::new();
+    let field = |ui: &mut UIContext| ui.text_input("txt_field", "keep me", FIELD);
+
+    focus_field(&mut ui, &mut input, FIELD, field);
+    type_key(&mut ui, &mut input, KeyCode::KeyX, field);
+    assert_eq!(type_key(&mut ui, &mut input, KeyCode::Escape, field), None, "escape never commits");
+    assert!(!ui.wants_keyboard(), "escape drops focus");
+    assert_eq!(drawn_texts(&ui), vec!["keep me".to_string()], "the field shows the untouched value again");
+
+    focus_field(&mut ui, &mut input, FIELD, field);
+    type_key(&mut ui, &mut input, KeyCode::KeyZ, field);
+    let committed = press_at(&mut ui, &mut input, Vec2::new(500.0, 400.0), field);
+    assert_eq!(committed, Some("z".to_string()), "a press outside the field commits the buffer");
+}
+
+#[test]
+fn test_float_input_edits_at_the_cursor_and_commits_on_enter() {
+    let mut ui = UIContext::new();
+    let mut input = input::InputHandler::new();
+    let opts = FloatFieldOpts::range(-100000.0, 100000.0);
+    let field = |value: f32| move |ui: &mut UIContext| ui.float_input("float_edit", value, opts, FIELD).value;
+
+    // Click-to-focus selects the whole "168.40": typing '5' replaces it.
+    focus_field(&mut ui, &mut input, FIELD, field(168.4));
+    type_key(&mut ui, &mut input, KeyCode::Digit5, field(168.4));
+    assert_eq!(type_key(&mut ui, &mut input, KeyCode::Enter, field(168.4)), 5.0);
     assert!(!ui.wants_keyboard());
 
-    // Frame 2: release inside the field — the click focuses the input
-    input.update(); // clear just-pressed edge from frame 1
-    input.mouse_mut().handle_button_release(MouseButton::Left);
-    ui.begin_frame(&input, Vec2::new(800.0, 600.0));
-    ui.float_input("focus_field", 1.0, crate::FloatFieldOpts::range(0.0, 10.0), bounds);
-    ui.end_frame();
-    assert!(ui.wants_keyboard(), "focused float input must claim the keyboard");
-}
+    // Home collapses the selection to the start; '9' inserts before the '1'.
+    focus_field(&mut ui, &mut input, FIELD, field(12.0));
+    type_key(&mut ui, &mut input, KeyCode::Home, field(12.0));
+    type_key(&mut ui, &mut input, KeyCode::Digit9, field(12.0));
+    assert_eq!(type_key(&mut ui, &mut input, KeyCode::Enter, field(12.0)), 912.0, "insert at the cursor, not the end");
 
-#[test]
-fn test_wants_mouse_follows_button_press_through_release() {
-    use input::prelude::MouseButton;
-
-    let mut ui = UIContext::new();
-    let bounds = Rect::new(10.0, 10.0, 80.0, 20.0);
-    let mut input = input::InputHandler::new();
-
-    // Frame 1: press on the button claims the mouse gesture
-    input.mouse_mut().update_position(50.0, 20.0);
-    input.mouse_mut().handle_button_press(MouseButton::Left);
-    ui.begin_frame(&input, Vec2::new(800.0, 600.0));
-    ui.button("chrome_button", "Chrome", bounds);
-    assert!(ui.wants_mouse(), "widget press must claim the mouse");
-    ui.end_frame();
-
-    // Frame 2: release — the frame a raw-input click consumer would act on
-    input.update();
-    input.mouse_mut().handle_button_release(MouseButton::Left);
-    ui.begin_frame(&input, Vec2::new(800.0, 600.0));
-    ui.button("chrome_button", "Chrome", bounds);
-    assert!(ui.wants_mouse(), "gesture stays widget-owned on the release frame");
-    ui.end_frame();
-
-    // Frame 3: gesture over
-    input.update();
-    ui.begin_frame(&input, Vec2::new(800.0, 600.0));
-    assert!(!ui.wants_mouse());
-}
-
-// === text-input editing behavior (cursor/selection model) ===
-
-/// Click a float input (press frame + release frame) so it gains focus.
-fn wide_opts() -> crate::FloatFieldOpts {
-    crate::FloatFieldOpts::range(-100000.0, 100000.0)
-}
-
-fn focus_float_input(ui: &mut UIContext, input: &mut input::InputHandler, id: &str, bounds: Rect, value: f32) {
-    use input::prelude::MouseButton;
-    let center = Vec2::new(bounds.x + bounds.width / 2.0, bounds.y + bounds.height / 2.0);
-    input.mouse_mut().update_position(center.x, center.y);
-    input.mouse_mut().handle_button_press(MouseButton::Left);
-    ui.begin_frame(&*input, Vec2::new(800.0, 600.0));
-    ui.float_input(id, value, wide_opts(), bounds);
-    ui.end_frame();
-
-    input.update();
-    input.mouse_mut().handle_button_release(MouseButton::Left);
-    ui.begin_frame(&*input, Vec2::new(800.0, 600.0));
-    ui.float_input(id, value, wide_opts(), bounds);
-    ui.end_frame();
-    assert!(ui.wants_keyboard(), "field must be focused after a click");
-}
-
-/// Run one frame of the focused input with a single key pressed.
-fn type_key(ui: &mut UIContext, input: &mut input::InputHandler, id: &str, bounds: Rect, value: f32, key: input::prelude::KeyCode) -> f32 {
-    input.update();
-    input.keyboard_mut().handle_key_press(key);
-    ui.begin_frame(&*input, Vec2::new(800.0, 600.0));
-    let out = ui.float_input(id, value, wide_opts(), bounds);
-    ui.end_frame();
-    input.keyboard_mut().handle_key_release(key);
-    out.value
-}
-
-#[test]
-fn test_float_input_focus_selects_all_and_typing_overwrites() {
-    use input::prelude::KeyCode;
-    let mut ui = UIContext::new();
-    let mut input = input::InputHandler::new();
-    let bounds = Rect::new(10.0, 10.0, 80.0, 20.0);
-
-    focus_float_input(&mut ui, &mut input, "sel_all", bounds, 168.4);
-
-    // Typing '5' replaces the fully-selected "168.40", then Enter commits.
-    type_key(&mut ui, &mut input, "sel_all", bounds, 168.4, KeyCode::Digit5);
-    let committed = type_key(&mut ui, &mut input, "sel_all", bounds, 168.4, KeyCode::Enter);
-    assert_eq!(committed, 5.0, "click + type must overwrite the whole value");
-    assert!(!ui.wants_keyboard());
-}
-
-#[test]
-fn test_float_input_arrow_then_insert_edits_at_cursor() {
-    use input::prelude::KeyCode;
-    let mut ui = UIContext::new();
-    let mut input = input::InputHandler::new();
-    let bounds = Rect::new(10.0, 10.0, 80.0, 20.0);
-
-    focus_float_input(&mut ui, &mut input, "cursor_edit", bounds, 12.0);
-    // Buffer is "12.00" fully selected. Home collapses to the start,
-    // then typing '9' inserts before the '1'.
-    type_key(&mut ui, &mut input, "cursor_edit", bounds, 12.0, KeyCode::Home);
-    type_key(&mut ui, &mut input, "cursor_edit", bounds, 12.0, KeyCode::Digit9);
-    let committed = type_key(&mut ui, &mut input, "cursor_edit", bounds, 12.0, KeyCode::Enter);
-    assert_eq!(committed, 912.0, "insert must happen at the cursor, not the end");
-}
-
-#[test]
-fn test_float_input_backspace_deletes_before_cursor() {
-    use input::prelude::KeyCode;
-    let mut ui = UIContext::new();
-    let mut input = input::InputHandler::new();
-    let bounds = Rect::new(10.0, 10.0, 80.0, 20.0);
-
-    focus_float_input(&mut ui, &mut input, "bs_mid", bounds, 12.0);
-    // "12.00" selected; End collapses to the end, ArrowLeft x2 puts the
-    // cursor between '.'|'0', Backspace removes the '.'.
-    type_key(&mut ui, &mut input, "bs_mid", bounds, 12.0, KeyCode::End);
-    type_key(&mut ui, &mut input, "bs_mid", bounds, 12.0, KeyCode::ArrowLeft);
-    type_key(&mut ui, &mut input, "bs_mid", bounds, 12.0, KeyCode::ArrowLeft);
-    type_key(&mut ui, &mut input, "bs_mid", bounds, 12.0, KeyCode::Backspace);
-    let committed = type_key(&mut ui, &mut input, "bs_mid", bounds, 12.0, KeyCode::Enter);
-    assert_eq!(committed, 1200.0, "\"12.00\" minus its '.' is \"1200\"");
-}
-
-#[test]
-fn test_float_input_escape_cancels_edit() {
-    use input::prelude::KeyCode;
-    let mut ui = UIContext::new();
-    let mut input = input::InputHandler::new();
-    let bounds = Rect::new(10.0, 10.0, 80.0, 20.0);
-
-    focus_float_input(&mut ui, &mut input, "esc_cancel", bounds, 7.5);
-    type_key(&mut ui, &mut input, "esc_cancel", bounds, 7.5, KeyCode::Digit3);
-    let after_escape = type_key(&mut ui, &mut input, "esc_cancel", bounds, 7.5, KeyCode::Escape);
-    assert_eq!(after_escape, 7.5, "escape must discard the edit");
-    assert!(!ui.wants_keyboard());
-}
-
-// === free-form text input ===
-
-/// Click a text input (press frame + release frame) so it gains focus.
-fn focus_text_input(ui: &mut UIContext, input: &mut input::InputHandler, id: &str, bounds: Rect, value: &str) {
-    use input::prelude::MouseButton;
-    let center = Vec2::new(bounds.x + bounds.width / 2.0, bounds.y + bounds.height / 2.0);
-    input.mouse_mut().update_position(center.x, center.y);
-    input.mouse_mut().handle_button_press(MouseButton::Left);
-    ui.begin_frame(&*input, Vec2::new(800.0, 600.0));
-    ui.text_input(id, value, bounds);
-    ui.end_frame();
-
-    input.update();
-    input.mouse_mut().handle_button_release(MouseButton::Left);
-    ui.begin_frame(&*input, Vec2::new(800.0, 600.0));
-    ui.text_input(id, value, bounds);
-    ui.end_frame();
-    assert!(ui.wants_keyboard(), "text field must be focused after a click");
-}
-
-/// Run one frame of the focused text input with a single key pressed.
-fn type_key_text(
-    ui: &mut UIContext,
-    input: &mut input::InputHandler,
-    id: &str,
-    bounds: Rect,
-    value: &str,
-    key: input::prelude::KeyCode,
-) -> Option<String> {
-    input.update();
-    input.keyboard_mut().handle_key_press(key);
-    ui.begin_frame(&*input, Vec2::new(800.0, 600.0));
-    let out = ui.text_input(id, value, bounds);
-    ui.end_frame();
-    input.keyboard_mut().handle_key_release(key);
-    out
-}
-
-#[test]
-fn test_text_input_returns_none_without_interaction() {
-    let mut ui = UIContext::new();
-    ui.begin_frame(&input::InputHandler::new(), Vec2::new(800.0, 600.0));
-    let out = ui.text_input("plain_text", "hello", Rect::new(10.0, 10.0, 120.0, 20.0));
-    ui.end_frame();
-    assert_eq!(out, None);
-}
-
-#[test]
-fn test_text_input_focus_selects_all_and_typing_overwrites() {
-    use input::prelude::KeyCode;
-    let mut ui = UIContext::new();
-    let mut input = input::InputHandler::new();
-    let bounds = Rect::new(10.0, 10.0, 120.0, 20.0);
-
-    focus_text_input(&mut ui, &mut input, "txt_sel", bounds, "old name");
-    assert_eq!(type_key_text(&mut ui, &mut input, "txt_sel", bounds, "old name", KeyCode::KeyH), None);
-    assert_eq!(type_key_text(&mut ui, &mut input, "txt_sel", bounds, "old name", KeyCode::KeyI), None);
-    let committed = type_key_text(&mut ui, &mut input, "txt_sel", bounds, "old name", KeyCode::Enter);
-    assert_eq!(committed, Some("hi".to_string()));
-    assert!(!ui.wants_keyboard());
-}
-
-#[test]
-fn test_text_input_shift_types_uppercase_and_underscore() {
-    use input::prelude::KeyCode;
-    let mut ui = UIContext::new();
-    let mut input = input::InputHandler::new();
-    let bounds = Rect::new(10.0, 10.0, 120.0, 20.0);
-
-    focus_text_input(&mut ui, &mut input, "txt_upper", bounds, "");
-
-    // Hold shift while typing 'a' then '-'
-    for key in [KeyCode::KeyA, KeyCode::Minus] {
-        input.update();
-        input.keyboard_mut().handle_key_press(KeyCode::ShiftLeft);
-        input.keyboard_mut().handle_key_press(key);
-        ui.begin_frame(&input, Vec2::new(800.0, 600.0));
-        ui.text_input("txt_upper", "", bounds);
-        ui.end_frame();
-        input.keyboard_mut().handle_key_release(key);
-        input.keyboard_mut().handle_key_release(KeyCode::ShiftLeft);
+    // End, ArrowLeft ×2 puts the cursor between '.' and '0'; Backspace removes the '.'.
+    focus_field(&mut ui, &mut input, FIELD, field(12.0));
+    for key in [KeyCode::End, KeyCode::ArrowLeft, KeyCode::ArrowLeft, KeyCode::Backspace] {
+        type_key(&mut ui, &mut input, key, field(12.0));
     }
-    let committed = type_key_text(&mut ui, &mut input, "txt_upper", bounds, "", KeyCode::Enter);
-    assert_eq!(committed, Some("A_".to_string()));
-}
+    assert_eq!(type_key(&mut ui, &mut input, KeyCode::Enter, field(12.0)), 1200.0, "\"12.00\" minus its '.'");
 
-#[test]
-fn test_text_input_escape_cancels() {
-    use input::prelude::KeyCode;
-    let mut ui = UIContext::new();
-    let mut input = input::InputHandler::new();
-    let bounds = Rect::new(10.0, 10.0, 120.0, 20.0);
-
-    focus_text_input(&mut ui, &mut input, "txt_esc", bounds, "keep me");
-    type_key_text(&mut ui, &mut input, "txt_esc", bounds, "keep me", KeyCode::KeyX);
-    let after_escape = type_key_text(&mut ui, &mut input, "txt_esc", bounds, "keep me", KeyCode::Escape);
-    assert_eq!(after_escape, None, "escape must not commit");
+    // Escape discards the edit.
+    focus_field(&mut ui, &mut input, FIELD, field(7.5));
+    type_key(&mut ui, &mut input, KeyCode::Digit3, field(7.5));
+    assert_eq!(type_key(&mut ui, &mut input, KeyCode::Escape, field(7.5)), 7.5);
     assert!(!ui.wants_keyboard());
 }
 
 #[test]
-fn test_text_input_click_away_commits() {
-    use input::prelude::{KeyCode, MouseButton};
+fn test_click_inside_a_focused_field_places_the_cursor_at_the_nearest_boundary() -> Result<(), FontError> {
+    // Widget-level plumbing of `cursor_from_click`: the prefix widths come
+    // from the field's own face, so a click lands where that face drew.
     let mut ui = UIContext::new();
+    ui.load_font(FIXTURE_FONT)?;
     let mut input = input::InputHandler::new();
-    let bounds = Rect::new(10.0, 10.0, 120.0, 20.0);
+    let field = |ui: &mut UIContext| ui.text_input("cursor_field", "abcd", FIELD);
+    let (font_size, padding) = (ui.theme().text_input.font_size, ui.theme().text_input.padding);
+    let between_b_and_c = FIELD.x + padding + ui.measure_text_styled("ab", font_size).x + 0.5;
 
-    focus_text_input(&mut ui, &mut input, "txt_away", bounds, "abc");
-    type_key_text(&mut ui, &mut input, "txt_away", bounds, "abc", KeyCode::KeyZ);
+    focus_field(&mut ui, &mut input, FIELD, field);
+    press_at(&mut ui, &mut input, Vec2::new(between_b_and_c, FIELD.center().y), field);
+    release(&mut ui, &mut input, field);
+    type_key(&mut ui, &mut input, KeyCode::KeyX, field);
 
-    // Press the mouse far outside the field
-    input.update();
-    input.mouse_mut().update_position(500.0, 400.0);
-    input.mouse_mut().handle_button_press(MouseButton::Left);
-    ui.begin_frame(&input, Vec2::new(800.0, 600.0));
-    let committed = ui.text_input("txt_away", "abc", bounds);
-    ui.end_frame();
-    assert_eq!(committed, Some("z".to_string()), "click-away must commit the buffer");
+    assert_eq!(type_key(&mut ui, &mut input, KeyCode::Enter, field), Some("abxcd".to_string()));
+    Ok(())
 }
 
 #[test]
-fn test_text_input_space_types_space() {
-    use input::prelude::KeyCode;
+fn test_focus_text_input_arms_an_edit_without_a_click_until_commit_or_escape() {
+    // The F2-rename path: the host focuses the field from a shortcut.
     let mut ui = UIContext::new();
     let mut input = input::InputHandler::new();
-    let bounds = Rect::new(10.0, 10.0, 120.0, 20.0);
+    let field = |ui: &mut UIContext| ui.text_input("rename_field", "OldName", FIELD);
 
-    focus_text_input(&mut ui, &mut input, "txt_space", bounds, "");
-    type_key_text(&mut ui, &mut input, "txt_space", bounds, "", KeyCode::KeyA);
-    type_key_text(&mut ui, &mut input, "txt_space", bounds, "", KeyCode::Space);
-    type_key_text(&mut ui, &mut input, "txt_space", bounds, "", KeyCode::KeyB);
-    let committed = type_key_text(&mut ui, &mut input, "txt_space", bounds, "", KeyCode::Enter);
-    assert_eq!(committed, Some("a b".to_string()));
+    ui.focus_text_input("rename_field", "OldName");
+    assert!(ui.is_focused("rename_field"));
+    assert!(!ui.is_focused("some_other_widget"));
+    assert_eq!(frame(&mut ui, &input, field), None, "the next frame renders in edit mode");
+    assert!(ui.wants_keyboard(), "programmatic focus owns the keyboard");
+
+    // Seeded text is fully selected — typing replaces it, Enter commits.
+    type_key(&mut ui, &mut input, KeyCode::KeyZ, field);
+    assert_eq!(type_key(&mut ui, &mut input, KeyCode::Enter, field), Some("z".to_string()));
+    assert!(!ui.wants_keyboard(), "commit releases the keyboard");
+    assert!(!ui.is_focused("rename_field"));
+
+    ui.focus_text_input("rename_field", "OldName");
+    frame(&mut ui, &input, field);
+    assert_eq!(type_key(&mut ui, &mut input, KeyCode::Escape, field), None, "escape never commits");
+    assert!(!ui.is_focused("rename_field"), "escape drops focus");
+}
+
+// ================== Overlays ==================
+
+#[test]
+fn test_begin_overlay_records_floating_and_blocks_input_under_the_rect() {
+    // Back-compat contract: begin_overlay = Floating layer + input
+    // blocking, exactly as before the UiLayer bands existed.
+    let mut ui = UIContext::new();
+    let rect = Rect::new(10.0, 10.0, 100.0, 100.0);
+
+    ui.begin_overlay(rect);
+    assert_eq!(ui.draw_list().current_layer(), UiLayer::Floating);
+    ui.rect(Rect::new(20.0, 20.0, 10.0, 10.0), Color::RED);
+    ui.end_overlay();
+    assert_eq!(ui.draw_list().current_layer(), UiLayer::Content);
+
+    assert!(ui.is_input_blocked_at(Vec2::new(50.0, 50.0)));
+    assert!(!ui.is_input_blocked_at(Vec2::new(500.0, 500.0)));
+
+    ui.end_frame();
+    assert!(
+        ui.draw_list().commands().iter().any(|c| c.depth() >= UiLayer::Floating.depth_base()),
+        "the overlay command reaches the flushed stream in the Floating band"
+    );
 }

@@ -44,6 +44,8 @@ mod font;
 mod input_state;
 mod interaction;
 mod style;
+#[cfg(test)]
+mod test_support;
 mod text_edit;
 
 // Re-export main types

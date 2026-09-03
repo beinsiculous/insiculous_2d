@@ -279,15 +279,3 @@ impl Theme {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_color_reexport_works() {
-        // Verify common::Color is properly re-exported
-        let color = Color::from_hex(0xFF0000);
-        assert!((color.r - 1.0).abs() < 0.01);
-    }
-}
