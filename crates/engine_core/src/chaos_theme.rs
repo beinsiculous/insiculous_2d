@@ -107,15 +107,7 @@ mod tests {
     #[test]
     fn test_particle_density_rises_with_chaos() {
         let normal = ChaosTheme::for_mode(ChaosMode::Normal).particle_count_mult;
-        let insic = ChaosTheme::for_mode(ChaosMode::Insiculous).particle_count_mult;
-        assert!(normal < insic, "Insiculous must out-particle Normal");
-    }
-
-    #[test]
-    fn test_struct_update_override_keeps_rest_of_palette() {
-        let base = ChaosTheme::for_mode(ChaosMode::Normal);
-        let themed = ChaosTheme { bg_color: Vec4::new(0.0, 0.01, 0.04, 1.0), ..base };
-        assert_eq!(themed.grid_color, base.grid_color);
-        assert_eq!(themed.particle_count_mult, base.particle_count_mult);
+        let insiculous = ChaosTheme::for_mode(ChaosMode::Insiculous).particle_count_mult;
+        assert!(normal < insiculous, "Insiculous must out-particle Normal");
     }
 }

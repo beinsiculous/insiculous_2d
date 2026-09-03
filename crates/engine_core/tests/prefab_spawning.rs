@@ -1,7 +1,7 @@
-//! Runtime prefab spawning (PATTERNS_AUDIT.md GPP-07, the Prototype
-//! pattern's actual purpose): a loaded scene retains its prefab table and
-//! can stamp out new entities from it mid-game — with override semantics —
-//! all headless via a stub `TextureResolver`.
+//! Runtime prefab spawning (the Prototype pattern's actual purpose): a loaded
+//! scene retains its prefab table and can stamp out new entities from it
+//! mid-game with override semantics, and a spawn that fails leaves nothing
+//! behind — all headless through the `TextureResolver` seam.
 
 use std::collections::HashMap;
 
@@ -9,18 +9,10 @@ use ecs::behavior::EntityTag;
 use ecs::sprite_components::{Sprite, Transform2D};
 use ecs::World;
 use engine_core::prelude::*;
+use engine_core::test_support::StubResolver;
 use engine_core::TextureResolver;
 use glam::Vec2;
 use renderer::TextureHandle;
-
-/// GPU-free resolver: every reference resolves to the built-in white texture.
-struct StubResolver;
-
-impl TextureResolver for StubResolver {
-    fn resolve_texture(&mut self, _texture_ref: &str) -> Result<TextureHandle, SceneLoadError> {
-        Ok(TextureHandle::WHITE)
-    }
-}
 
 /// A scene with one "Ball" prefab (transform + sprite + tag) and one
 /// pre-placed entity using it.
@@ -42,7 +34,6 @@ fn ball_scene() -> SceneData {
             ComponentData::EntityTag { tag: "ball".to_string() },
         ],
     };
-
     let mut prefabs = HashMap::new();
     prefabs.insert("Ball".to_string(), ball_prefab);
 
@@ -63,83 +54,47 @@ fn ball_scene() -> SceneData {
 }
 
 #[test]
-fn test_instance_retains_prefab_table() {
+fn spawn_prefab_stamps_a_new_entity_with_overrides_applied() -> Result<(), SceneLoadError> {
     let mut world = World::new();
-    let instance = SceneLoader::instantiate(&ball_scene(), &mut world, &mut StubResolver).unwrap();
-    assert!(instance.has_prefab("Ball"));
-    assert!(!instance.has_prefab("Paddle"));
-}
+    let mut resolver = StubResolver::default();
+    let instance = SceneLoader::instantiate(&ball_scene(), &mut world, &mut resolver)?;
+    let scene_ball = instance.get_entity("first_ball").expect("the placed ball is named");
+    let overrides = [ComponentData::Transform2D { position: (200.0, 300.0), rotation: 0.0, scale: (1.0, 1.0) }];
 
-#[test]
-fn test_spawn_prefab_stamps_out_new_entity() {
-    let mut world = World::new();
-    let instance = SceneLoader::instantiate(&ball_scene(), &mut world, &mut StubResolver).unwrap();
-    let scene_ball = instance.get_entity("first_ball").unwrap();
+    let spawned = instance.spawn_prefab(&mut world, &mut resolver, "Ball", &overrides)?;
 
-    let spawned = instance
-        .spawn_prefab(&mut world, &mut StubResolver, "Ball", &[])
-        .unwrap();
-
-    assert_ne!(spawned, scene_ball, "runtime spawn is a NEW entity");
-    assert!(world.get::<Transform2D>(spawned).is_some());
-    assert!(world.get::<Sprite>(spawned).is_some());
-    assert!(world.get::<EntityTag>(spawned).unwrap().matches("ball"));
-    // The scene's own bookkeeping is untouched — the caller owns the spawn.
-    assert_eq!(instance.entity_count, 1);
-}
-
-#[test]
-fn test_spawn_prefab_applies_overrides() {
-    let mut world = World::new();
-    let instance = SceneLoader::instantiate(&ball_scene(), &mut world, &mut StubResolver).unwrap();
-
-    let overrides = [ComponentData::Transform2D {
-        position: (200.0, 300.0),
-        rotation: 0.0,
-        scale: (1.0, 1.0),
-    }];
-    let spawned = instance
-        .spawn_prefab(&mut world, &mut StubResolver, "Ball", &overrides)
-        .unwrap();
-
-    let t = world.get::<Transform2D>(spawned).unwrap();
-    assert_eq!(t.position, Vec2::new(200.0, 300.0), "override replaces the prefab transform");
-    assert!(
-        world.get::<Sprite>(spawned).is_some(),
-        "non-overridden prefab components still apply"
+    assert!(instance.has_prefab("Ball") && !instance.has_prefab("Paddle"), "the prefab table is retained");
+    assert_ne!(spawned, scene_ball, "a runtime spawn is a NEW entity");
+    assert_eq!(
+        world.get::<Transform2D>(spawned).map(|t| t.position),
+        Some(Vec2::new(200.0, 300.0)),
+        "the override replaces the prefab's transform"
     );
+    assert!(world.get::<Sprite>(spawned).is_some(), "non-overridden prefab components still apply");
+    assert!(world.get::<EntityTag>(spawned).is_some_and(|tag| tag.matches("ball")));
+    assert_eq!(instance.entity_count, 1, "the scene's own bookkeeping is untouched — the caller owns the spawn");
+    Ok(())
 }
 
 #[test]
-fn test_spawn_unknown_prefab_errors_and_leaves_world_unchanged() {
-    let mut world = World::new();
-    let instance = SceneLoader::instantiate(&ball_scene(), &mut world, &mut StubResolver).unwrap();
-    let before = world.entities().len();
-
-    let result = instance.spawn_prefab(&mut world, &mut StubResolver, "Nope", &[]);
-    assert!(matches!(result, Err(SceneLoadError::PrefabNotFound(_))));
-    assert_eq!(world.entities().len(), before, "no entity debris on failure");
-}
-
-#[test]
-fn test_spawn_prefab_failure_removes_half_built_entity() {
-    /// A resolver that always fails — simulates a missing texture file.
+fn failed_spawn_leaves_no_half_built_entity() -> Result<(), SceneLoadError> {
+    /// A resolver that always fails — a missing texture file.
     struct FailingResolver;
     impl TextureResolver for FailingResolver {
-        fn resolve_texture(&mut self, r: &str) -> Result<TextureHandle, SceneLoadError> {
-            Err(SceneLoadError::TextureLoadError(r.to_string()))
+        fn resolve_texture(&mut self, texture_ref: &str) -> Result<TextureHandle, SceneLoadError> {
+            Err(SceneLoadError::TextureLoadError(texture_ref.to_string()))
         }
     }
 
     let mut world = World::new();
-    let instance = SceneLoader::instantiate(&ball_scene(), &mut world, &mut StubResolver).unwrap();
+    let instance = SceneLoader::instantiate(&ball_scene(), &mut world, &mut StubResolver::default())?;
     let before = world.entities().len();
 
-    let result = instance.spawn_prefab(&mut world, &mut FailingResolver, "Ball", &[]);
-    assert!(result.is_err());
-    assert_eq!(
-        world.entities().len(),
-        before,
-        "a spawn that fails mid-build must not leave a half-built entity"
-    );
+    let unknown = instance.spawn_prefab(&mut world, &mut StubResolver::default(), "Nope", &[]);
+    let mid_build = instance.spawn_prefab(&mut world, &mut FailingResolver, "Ball", &[]);
+
+    assert!(matches!(unknown, Err(SceneLoadError::PrefabNotFound(_))), "{unknown:?}");
+    assert!(mid_build.is_err(), "a texture failure fails the spawn");
+    assert_eq!(world.entities().len(), before, "neither failure leaves entity debris");
+    Ok(())
 }

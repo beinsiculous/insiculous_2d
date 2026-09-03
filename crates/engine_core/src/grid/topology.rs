@@ -149,106 +149,68 @@ pub(super) fn build_square_topology(
 mod tests {
     use super::*;
 
-    #[test]
-    fn hex_springs_all_have_rest_length_equal_to_spacing() {
-        let spacing = 10.0;
-        let (nodes, springs) = build_hex_topology(6, 5, spacing, Vec2::new(3.0, -7.0));
-        assert!(!springs.is_empty());
-        for s in &springs {
-            let d = nodes[s.a as usize].rest.distance(nodes[s.b as usize].rest);
-            assert!(
-                (d - spacing).abs() < 1e-4,
-                "spring {}–{} rest distance {} != spacing",
-                s.a, s.b, d
-            );
-            assert!((s.rest_length - spacing).abs() < 1e-4);
-        }
-    }
-
-    #[test]
-    fn hex_interior_nodes_have_degree_three() {
-        let cols = 6;
-        let rows = 5;
-        let (nodes, springs) = build_hex_topology(cols, rows, 10.0, Vec2::ZERO);
+    fn degrees(nodes: &[GridNode], springs: &[Spring]) -> Vec<u32> {
         let mut degree = vec![0u32; nodes.len()];
-        for s in &springs {
+        for s in springs {
             degree[s.a as usize] += 1;
             degree[s.b as usize] += 1;
         }
-        for y in 1..rows - 1 {
-            for x in 1..cols - 1 {
-                let i = (y * cols + x) as usize;
-                assert_eq!(degree[i], 3, "interior node ({x},{y}) degree");
-            }
-        }
+        degree
     }
 
-    #[test]
-    fn hex_grid_is_centered_on_origin() {
-        let origin = Vec2::new(5.0, -3.0);
-        let (nodes, _) = build_hex_topology(8, 6, 12.0, origin);
+    fn bbox_center(nodes: &[GridNode]) -> Vec2 {
         let (mut min, mut max) = (nodes[0].rest, nodes[0].rest);
-        for n in &nodes {
+        for n in nodes {
             min = min.min(n.rest);
             max = max.max(n.rest);
         }
-        let center = (min + max) * 0.5;
-        assert!((center - origin).length() < 1e-4, "bbox center {center} != origin");
+        (min + max) * 0.5
     }
 
     #[test]
-    fn hex_spring_count_matches_formula() {
-        // (cols-1)*rows horizontal + (rows-1)*cols/2 vertical (even cols).
-        for (cols, rows, expected) in [(6u32, 4u32, 5 * 4 + 3 * 3), (8, 5, 7 * 5 + 4 * 4)] {
-            let (_, springs) = build_hex_topology(cols, rows, 10.0, Vec2::ZERO);
-            assert_eq!(springs.len(), expected as usize, "{cols}x{rows}");
-        }
-    }
-
-    #[test]
-    fn square_springs_all_have_rest_length_equal_to_spacing() {
+    fn every_spring_rests_at_the_spacing_and_the_lattices_are_regular_and_centered() {
+        // What makes a ripple propagate evenly: every spring is exactly one
+        // `spacing` long at rest, interior nodes share one degree (3 on the
+        // honeycomb, 4 on the square lattice), the spring count follows the
+        // documented formula, and the lattice is centered on its origin.
         let spacing = 10.0;
-        let (nodes, springs) = build_square_topology(5, 4, spacing, Vec2::new(3.0, -7.0));
-        // Odd column counts are legal for the square lattice.
-        assert_eq!(nodes.len(), 20);
-        assert_eq!(springs.len(), 4 * 4 + 5 * 3);
-        for s in &springs {
-            let d = nodes[s.a as usize].rest.distance(nodes[s.b as usize].rest);
-            assert!((d - spacing).abs() < 1e-4);
-            assert!((s.rest_length - spacing).abs() < 1e-4);
-        }
-    }
-
-    #[test]
-    fn square_interior_nodes_have_degree_four() {
-        let cols = 5;
-        let rows = 5;
-        let (nodes, springs) = build_square_topology(cols, rows, 10.0, Vec2::ZERO);
-        let mut degree = vec![0u32; nodes.len()];
-        for s in &springs {
-            degree[s.a as usize] += 1;
-            degree[s.b as usize] += 1;
-        }
-        for y in 1..rows - 1 {
-            for x in 1..cols - 1 {
-                assert_eq!(degree[(y * cols + x) as usize], 4, "interior node ({x},{y}) degree");
+        let origin = Vec2::new(3.0, -7.0);
+        let hex = build_hex_topology(6, 5, spacing, origin);
+        let square = build_square_topology(5, 4, spacing, origin); // odd cols are legal here
+        for (name, (nodes, springs), cols, rows, expected_springs, interior_degree) in [
+            ("hex", &hex, 6u32, 5u32, 5 * 5 + 4 * 3, 3u32),
+            ("square", &square, 5, 4, 4 * 4 + 5 * 3, 4),
+        ] {
+            assert_eq!(nodes.len(), (cols * rows) as usize, "{name} node count");
+            assert_eq!(springs.len(), expected_springs, "{name} spring count");
+            for s in springs {
+                let rest_distance = nodes[s.a as usize].rest.distance(nodes[s.b as usize].rest);
+                assert!((rest_distance - spacing).abs() < 1e-4, "{name} spring {}–{} rests at {rest_distance}", s.a, s.b);
+                assert!((s.rest_length - spacing).abs() < 1e-4, "{name} spring {}–{} rest_length", s.a, s.b);
             }
+            let degree = degrees(nodes, springs);
+            for y in 1..rows - 1 {
+                for x in 1..cols - 1 {
+                    assert_eq!(degree[(y * cols + x) as usize], interior_degree, "{name} interior ({x},{y}) degree");
+                }
+            }
+            assert!((bbox_center(nodes) - origin).length() < 1e-4, "{name} bbox center != origin");
         }
     }
 
     #[test]
-    fn hex_border_nodes_are_pinned_and_interior_free() {
-        let cols = 6;
-        let rows = 4;
-        let (nodes, _) = build_hex_topology(cols, rows, 10.0, Vec2::ZERO);
-        for y in 0..rows {
-            for x in 0..cols {
-                let border = x == 0 || y == 0 || x == cols - 1 || y == rows - 1;
-                let inv_mass = nodes[(y * cols + x) as usize].inv_mass;
-                if border {
-                    assert_eq!(inv_mass, 0.0, "border ({x},{y}) must be pinned");
-                } else {
-                    assert_eq!(inv_mass, 1.0, "interior ({x},{y}) must be free");
+    fn border_nodes_are_pinned_and_interior_nodes_are_free_on_both_lattices() {
+        let (cols, rows) = (6u32, 4u32);
+        for (name, (nodes, _)) in [
+            ("hex", build_hex_topology(cols, rows, 10.0, Vec2::ZERO)),
+            ("square", build_square_topology(cols, rows, 10.0, Vec2::ZERO)),
+        ] {
+            for y in 0..rows {
+                for x in 0..cols {
+                    let border = x == 0 || y == 0 || x == cols - 1 || y == rows - 1;
+                    let inv_mass = nodes[(y * cols + x) as usize].inv_mass;
+                    let expected = if border { 0.0 } else { 1.0 };
+                    assert_eq!(inv_mass, expected, "{name} ({x},{y}) pinned={border}");
                 }
             }
         }

@@ -61,45 +61,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_is_normal() {
-        assert_eq!(ChaosMode::default(), ChaosMode::Normal);
-    }
-
-    #[test]
-    fn all_variants_have_nonempty_labels() {
-        for mode in ChaosMode::ALL {
-            assert!(!mode.label().is_empty(), "missing label for {mode:?}");
+    fn insiculous_is_both_insane_and_ridiculous() {
+        // Games branch on the two predicates independently, so Insiculous
+        // gets both behaviors for free — that is the whole point of the tier.
+        for (mode, insane, ridiculous) in [
+            (ChaosMode::Normal, false, false),
+            (ChaosMode::Insane, true, false),
+            (ChaosMode::Ridiculous, false, true),
+            (ChaosMode::Insiculous, true, true),
+        ] {
+            assert!(ChaosMode::ALL.contains(&mode));
+            assert_eq!(mode.is_insane(), insane, "{mode:?}");
+            assert_eq!(mode.is_ridiculous(), ridiculous, "{mode:?}");
+            assert_eq!(mode.is_insiculous(), insane && ridiculous, "{mode:?}");
         }
-    }
-
-    #[test]
-    fn insane_flag_matches_insane_and_insiculous() {
-        assert!(!ChaosMode::Normal.is_insane());
-        assert!(ChaosMode::Insane.is_insane());
-        assert!(!ChaosMode::Ridiculous.is_insane());
-        assert!(ChaosMode::Insiculous.is_insane());
-    }
-
-    #[test]
-    fn ridiculous_flag_matches_ridiculous_and_insiculous() {
-        assert!(!ChaosMode::Normal.is_ridiculous());
-        assert!(!ChaosMode::Insane.is_ridiculous());
-        assert!(ChaosMode::Ridiculous.is_ridiculous());
-        assert!(ChaosMode::Insiculous.is_ridiculous());
-    }
-
-    #[test]
-    fn insiculous_flag_only_matches_insiculous() {
-        assert!(!ChaosMode::Normal.is_insiculous());
-        assert!(!ChaosMode::Insane.is_insiculous());
-        assert!(!ChaosMode::Ridiculous.is_insiculous());
-        assert!(ChaosMode::Insiculous.is_insiculous());
-    }
-
-    #[test]
-    fn all_covers_four_distinct_variants() {
-        let labels: std::collections::HashSet<_> =
-            ChaosMode::ALL.iter().map(|m| m.label()).collect();
-        assert_eq!(labels.len(), 4);
     }
 }

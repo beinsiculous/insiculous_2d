@@ -186,38 +186,71 @@ pub fn draw_colliders(
 mod tests {
     use super::*;
 
-    #[test]
-    fn box_outline_emits_four_segments() {
-        let mut lines = Vec::new();
-        push_box_outline(&mut lines, Vec2::ZERO, Vec2::new(10.0, 5.0), Vec4::ONE, 0.0);
-        // 4 segments * 2 vertices each = 8 vertices.
-        assert_eq!(lines.len(), 8);
+    fn positions(lines: &[LineVertex]) -> Vec<Vec2> {
+        lines.iter().map(|v| Vec2::from_array(v.position)).collect()
+    }
+
+    fn assert_segment(lines: &[LineVertex], index: usize, a: Vec2, b: Vec2) {
+        let pos = positions(lines);
+        assert_eq!((pos[2 * index], pos[2 * index + 1]), (a, b), "segment {index}");
     }
 
     #[test]
-    fn circle_outline_emits_one_segment_per_arc_step() {
+    fn box_outline_walks_the_four_corners_from_center_and_half_extents() {
         let mut lines = Vec::new();
-        push_circle_outline(&mut lines, Vec2::ZERO, 10.0, Vec4::ONE, 0.0);
+        push_box_outline(&mut lines, Vec2::new(100.0, 50.0), Vec2::new(10.0, 5.0), Vec4::ONE, 0.0);
+
+        assert_eq!(lines.len(), 8, "four segments, two vertices each");
+        let (tl, tr, br, bl) = (
+            Vec2::new(90.0, 55.0),
+            Vec2::new(110.0, 55.0),
+            Vec2::new(110.0, 45.0),
+            Vec2::new(90.0, 45.0),
+        );
+        assert_segment(&lines, 0, tl, tr);
+        assert_segment(&lines, 1, tr, br);
+        assert_segment(&lines, 2, br, bl);
+        assert_segment(&lines, 3, bl, tl);
+    }
+
+    #[test]
+    fn circle_outline_closes_a_ring_of_segments_on_the_radius() {
+        let center = Vec2::new(100.0, 50.0);
+        let mut lines = Vec::new();
+        push_circle_outline(&mut lines, center, 25.0, Vec4::ONE, 0.0);
+
         assert_eq!(lines.len() as u32, CIRCLE_SEGMENTS * 2);
+        let pos = positions(&lines);
+        for vertex in &pos {
+            assert!((vertex.distance(center) - 25.0).abs() < 0.01, "{vertex:?} not on radius 25");
+        }
+        // Closed: each segment starts where the previous ended, and the
+        // last ends where the first began.
+        for pair in pos.chunks(2).collect::<Vec<_>>().windows(2) {
+            assert!((pair[0][1] - pair[1][0]).length() < 1e-4, "gap between segments");
+        }
+        assert!((pos[pos.len() - 1] - pos[0]).length() < 1e-4, "ring not closed");
     }
 
     #[test]
-    fn capsule_y_outline_includes_sides_and_two_caps() {
+    fn capsule_y_outline_has_straight_sides_at_plus_minus_radius_and_round_caps() {
+        let center = Vec2::new(20.0, -10.0);
+        let (half_height, radius) = (50.0, 10.0);
         let mut lines = Vec::new();
-        push_capsule_y_outline(&mut lines, Vec2::ZERO, 50.0, 10.0, Vec4::ONE, 0.0);
-        // 2 straight sides (2 segments) + 2 caps at CIRCLE_SEGMENTS/2 each.
-        let expected = 2 + (CIRCLE_SEGMENTS / 2) * 2;
-        assert_eq!(lines.len() as u32, expected * 2);
-    }
+        push_capsule_y_outline(&mut lines, center, half_height, radius, Vec4::ONE, 0.0);
 
-    #[test]
-    fn circle_vertices_stay_on_radius() {
-        let mut lines = Vec::new();
-        push_circle_outline(&mut lines, Vec2::new(100.0, 50.0), 25.0, Vec4::ONE, 0.0);
-        for v in &lines {
-            let pos = Vec2::from_array(v.position);
-            let dist = pos.distance(Vec2::new(100.0, 50.0));
-            assert!((dist - 25.0).abs() < 0.01, "vertex {:?} not on radius 25", pos);
+        // The two straight sides span the cylindrical middle at x = ±radius.
+        assert_segment(&lines, 0, center + Vec2::new(10.0, 50.0), center + Vec2::new(10.0, -50.0));
+        assert_segment(&lines, 1, center + Vec2::new(-10.0, 50.0), center + Vec2::new(-10.0, -50.0));
+        // Every cap vertex sits on its cap center's radius: the top cap
+        // above the middle, the bottom cap below it.
+        let top_cap = center + Vec2::new(0.0, half_height);
+        let bottom_cap = center + Vec2::new(0.0, -half_height);
+        let caps = &positions(&lines)[4..];
+        assert!(!caps.is_empty());
+        for vertex in caps {
+            let cap = if vertex.y >= center.y { top_cap } else { bottom_cap };
+            assert!((vertex.distance(cap) - radius).abs() < 0.01, "{vertex:?} off its cap");
         }
     }
 }

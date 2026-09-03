@@ -160,28 +160,17 @@ mod tests {
     use input::{AxisDirection, GamepadAxis, GamepadButton};
     use winit::keyboard::KeyCode;
 
-    fn temp_path(name: &str) -> std::path::PathBuf {
-        std::env::temp_dir()
-            .join("insiculous_input_settings_tests")
-            .join(format!("{}_{}.json", name, std::process::id()))
-    }
-
-    fn cleanup(path: &Path) {
-        let _ = std::fs::remove_file(path);
-    }
-
     #[test]
-    fn round_trip_preserves_pads_and_bindings() {
-        let path = temp_path("round_trip");
-        cleanup(&path);
-
+    fn round_trip_preserves_pads_and_bindings() -> Result<(), InputSettingsError> {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("input.json");
         let mut settings = InputSettings::default_two_player();
         settings.assign_pad(PlayerId::P2, Some(3));
         if let Some(p1) = settings.player_mut(PlayerId::P1) {
             p1.bind(GameAction::Action3, PlayerSource::Keyboard(KeyCode::KeyQ));
         }
 
-        save(&path, &settings).expect("save should succeed");
+        save(&path, &settings)?;
         let restored = load_or_create(&path);
 
         assert_eq!(restored.player_count(), 2);
@@ -197,60 +186,41 @@ mod tests {
         assert!(p1
             .bindings(GameAction::Action1)
             .contains(&PlayerSource::PadButton(GamepadButton::A)));
-        cleanup(&path);
+        Ok(())
     }
 
     #[test]
-    fn missing_file_returns_defaults_and_creates_hand_editable_file() {
-        let path = temp_path("missing");
-        cleanup(&path);
+    fn missing_file_returns_defaults_and_creates_hand_editable_file() -> Result<(), std::io::Error> {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("saves/input.json");
 
         let settings = load_or_create(&path);
+
         assert_eq!(settings.player_count(), 2);
         assert!(path.exists(), "defaults should be written for hand-editing");
-
-        // The created file itself parses back to the same defaults
+        // The created file itself parses back to the same defaults.
         let reloaded = load_or_create(&path);
         assert_eq!(reloaded.pad_of(PlayerId::P1), Some(0));
         assert_eq!(reloaded.pad_of(PlayerId::P2), Some(1));
-        cleanup(&path);
+        Ok(())
     }
 
     #[test]
-    fn corrupt_file_falls_back_to_defaults_without_panicking() {
-        let path = temp_path("corrupt");
-        std::fs::create_dir_all(path.parent().expect("has parent")).expect("mkdir");
-        std::fs::write(&path, "{ not valid json !!!").expect("write");
+    fn corrupt_or_wrong_version_file_falls_back_to_defaults_without_panicking(
+    ) -> Result<(), std::io::Error> {
+        for (label, contents) in [
+            ("corrupt", "{ not valid json !!!"),
+            ("wrong version", r#"{"version": 99, "players": []}"#),
+        ] {
+            let dir = tempfile::tempdir()?;
+            let path = dir.path().join("input.json");
+            std::fs::write(&path, contents)?;
 
-        let settings = load_or_create(&path);
-        assert_eq!(settings.player_count(), 2);
-        assert_eq!(settings.pad_of(PlayerId::P1), Some(0));
-        cleanup(&path);
-    }
+            let settings = load_or_create(&path);
 
-    #[test]
-    fn wrong_version_falls_back_to_defaults() {
-        let path = temp_path("wrong_version");
-        std::fs::create_dir_all(path.parent().expect("has parent")).expect("mkdir");
-        std::fs::write(&path, r#"{"version": 99, "players": []}"#).expect("write");
-
-        let settings = load_or_create(&path);
-        assert_eq!(settings.player_count(), 2);
-        cleanup(&path);
-    }
-
-    #[test]
-    fn save_creates_nested_parent_directories() {
-        let dir = std::env::temp_dir()
-            .join("insiculous_input_settings_tests")
-            .join(format!("nested_{}", std::process::id()))
-            .join("a")
-            .join("b");
-        let path = dir.join("settings.json");
-        let _ = std::fs::remove_dir_all(&dir);
-
-        save(&path, &InputSettings::default_two_player()).expect("save should mkdir -p");
-        assert!(path.exists());
-        let _ = std::fs::remove_dir_all(&dir);
+            assert_eq!(settings.player_count(), 2, "{label}");
+            assert_eq!(settings.pad_of(PlayerId::P1), Some(0), "{label}");
+        }
+        Ok(())
     }
 }

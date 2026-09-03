@@ -190,19 +190,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_submit_orders_best_first_and_reports_qualification() {
+    fn test_full_list_rejects_non_qualifying_and_evicts_lowest() {
         let mut scores = Scores::in_memory();
         assert!(scores.submit("solo", 100));
         assert!(scores.submit("solo", 300));
         assert!(scores.submit("solo", 200));
         let top: Vec<u64> = scores.top("solo").iter().map(|e| e.score).collect();
-        assert_eq!(top, [300, 200, 100]);
+        assert_eq!(top, [300, 200, 100], "best first");
         assert_eq!(scores.best("solo"), Some(300));
         assert_eq!(scores.best("versus"), None, "unknown mode has no best");
-    }
 
-    #[test]
-    fn test_full_list_rejects_non_qualifying_and_evicts_lowest() {
+        // Modes are independent lists.
+        scores.submit("coop", 999);
+        assert_eq!(scores.best("coop"), Some(999));
+        assert_eq!(scores.best("solo"), Some(300));
+
         let mut scores = Scores::in_memory();
         for s in 1..=MAX_SCORES_PER_MODE as u64 {
             assert!(scores.submit("solo", s * 10));
@@ -213,10 +215,7 @@ mod tests {
         assert!(scores.submit("solo", 55), "mid-list score qualifies");
         assert_eq!(scores.top("solo").len(), MAX_SCORES_PER_MODE, "list stays capped");
         assert_eq!(scores.best("solo"), Some(100));
-        assert!(
-            scores.top("solo").iter().all(|e| e.score != 10),
-            "lowest entry evicted"
-        );
+        assert!(scores.top("solo").iter().all(|e| e.score != 10), "lowest entry evicted");
     }
 
     #[test]
@@ -242,17 +241,8 @@ mod tests {
     }
 
     #[test]
-    fn test_modes_are_independent() {
-        let mut scores = Scores::in_memory();
-        scores.submit("single", 10);
-        scores.submit("coop", 999);
-        assert_eq!(scores.best("single"), Some(10));
-        assert_eq!(scores.best("coop"), Some(999));
-    }
-
-    #[test]
-    fn test_persistence_round_trip() {
-        let dir = tempfile::tempdir().unwrap();
+    fn test_persistence_round_trip() -> Result<(), std::io::Error> {
+        let dir = tempfile::tempdir()?;
         let path = dir.path().join("scores.json");
         {
             let mut scores = Scores::with_save_path(&path);
@@ -260,35 +250,24 @@ mod tests {
         }
         let restored = Scores::with_save_path(&path);
         assert_eq!(restored.best("solo"), Some(42));
+        Ok(())
     }
 
     #[test]
-    fn test_non_qualifying_submit_leaves_the_file_untouched() {
-        let dir = tempfile::tempdir().unwrap();
+    fn test_corrupt_file_warns_and_starts_fresh() -> Result<(), std::io::Error> {
+        let dir = tempfile::tempdir()?;
         let path = dir.path().join("scores.json");
-        let mut scores = Scores::with_save_path(&path);
-        for s in 1..=MAX_SCORES_PER_MODE as u64 {
-            scores.submit("solo", s * 10);
-        }
-        let before = std::fs::read_to_string(&path).unwrap();
-        assert!(!scores.submit("solo", 1));
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), before);
-    }
-
-    #[test]
-    fn test_corrupt_file_warns_and_starts_fresh() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("scores.json");
-        std::fs::write(&path, "not json").unwrap();
+        std::fs::write(&path, "not json")?;
         let mut scores = Scores::with_save_path(&path);
         assert_eq!(scores.top("solo").len(), 0);
         assert!(scores.submit("solo", 7), "fresh state accepts scores");
+        Ok(())
     }
 
     #[test]
-    fn test_concurrent_stores_merge_instead_of_clobbering() {
+    fn test_concurrent_stores_merge_instead_of_clobbering() -> Result<(), std::io::Error> {
         // Two stores on the same slot = the browser's two-tabs scenario.
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir()?;
         let path = dir.path().join("scores.json");
         let mut tab_a = Scores::with_save_path(&path);
         let mut tab_b = Scores::with_save_path(&path);
@@ -298,16 +277,20 @@ mod tests {
         let restored = Scores::with_save_path(&path);
         let top: Vec<u64> = restored.top("solo").iter().map(|e| e.score).collect();
         assert_eq!(top, [200, 100], "tab A's score must survive tab B's save");
-    }
 
-    #[test]
-    fn test_reset_clears_the_save_despite_merge_on_save() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("scores.json");
-        let mut scores = Scores::with_save_path(&path);
-        scores.submit("solo", 100);
-        scores.reset();
+        // A rejected submit never touches the file ...
+        let mut full = Scores::with_save_path(&path);
+        for s in 1..=MAX_SCORES_PER_MODE as u64 {
+            full.submit("solo", 1000 + s * 10);
+        }
+        let before = std::fs::read_to_string(&path)?;
+        assert!(!full.submit("solo", 1));
+        assert_eq!(std::fs::read_to_string(&path)?, before);
+
+        // ... and an explicit reset still clears despite merge-on-save.
+        full.reset();
         let restored = Scores::with_save_path(&path);
         assert_eq!(restored.best("solo"), None, "an explicit clear must actually clear");
+        Ok(())
     }
 }

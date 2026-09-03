@@ -902,6 +902,7 @@ dependencies = [
  "console_error_panic_hook",
  "console_log",
  "ecs",
+ "engine_core",
  "gilrs",
  "glam",
  "image",

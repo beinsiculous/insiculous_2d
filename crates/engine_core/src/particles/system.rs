@@ -77,66 +77,45 @@ mod tests {
     use ecs::World;
     use glam::Vec2;
 
+    fn emitter_at(world: &mut World, position: Vec2, rate: f32) {
+        let entity = world.create_entity();
+        world.add_component(&entity, Transform2D { position, ..Default::default() }).ok();
+        let cfg = ParticleConfig::burst(1).with_speed(0.0, 0.0).with_lifetime(100.0, 100.0);
+        world.add_component(&entity, ParticleEmitter::new(rate, cfg)).ok();
+    }
+
+    #[test]
+    fn active_emitter_spawns_at_its_rate_from_its_transform_and_needs_one() {
+        let mut world = World::new();
+        let mut manager = ParticleManager::with_capacity(64);
+        emitter_at(&mut world, Vec2::new(100.0, 50.0), 10.0);
+        // An emitter without a transform has nowhere to spawn from.
+        let orphan = world.create_entity();
+        world
+            .add_component(&orphan, ParticleEmitter::new(100.0, ParticleConfig::burst(1)))
+            .ok();
+
+        // 10 emits per second, count = 1 each: half a second is 5 particles.
+        ParticleSystem::update(&mut world, &mut manager, 0.5);
+
+        assert_eq!(manager.alive_count(), 5);
+        for p in manager.iter_alive() {
+            assert_eq!(p.position, Vec2::new(100.0, 50.0), "spawned at the emitter's transform");
+        }
+    }
+
     #[test]
     fn inactive_emitter_emits_nothing() {
         let mut world = World::new();
         let mut manager = ParticleManager::with_capacity(32);
         let entity = world.create_entity();
         world.add_component(&entity, Transform2D::default()).ok();
-        let mut e = ParticleEmitter::new(100.0, ParticleConfig::burst(1));
-        e.pause();
-        world.add_component(&entity, e).ok();
+        let mut emitter = ParticleEmitter::new(100.0, ParticleConfig::burst(1));
+        emitter.pause();
+        world.add_component(&entity, emitter).ok();
 
         ParticleSystem::update(&mut world, &mut manager, 1.0);
+
         assert_eq!(manager.alive_count(), 0);
-    }
-
-    #[test]
-    fn active_emitter_spawns_at_configured_rate() {
-        let mut world = World::new();
-        let mut manager = ParticleManager::with_capacity(64);
-        let entity = world.create_entity();
-        world.add_component(&entity, Transform2D::default()).ok();
-        // 10 emits per second, each emit creates count=1 particle, infinite lifetime.
-        let cfg = ParticleConfig::burst(1).with_lifetime(100.0, 100.0);
-        world.add_component(&entity, ParticleEmitter::new(10.0, cfg)).ok();
-
-        // Half a second should produce ~5 particles.
-        ParticleSystem::update(&mut world, &mut manager, 0.5);
-        assert_eq!(manager.alive_count(), 5);
-    }
-
-    #[test]
-    fn emitter_without_transform_is_ignored() {
-        let mut world = World::new();
-        let mut manager = ParticleManager::with_capacity(8);
-        let entity = world.create_entity();
-        let cfg = ParticleConfig::burst(1).with_lifetime(100.0, 100.0);
-        world.add_component(&entity, ParticleEmitter::new(100.0, cfg)).ok();
-
-        ParticleSystem::update(&mut world, &mut manager, 0.1);
-        assert_eq!(manager.alive_count(), 0);
-    }
-
-    #[test]
-    fn particles_spawn_at_emitter_position() {
-        let mut world = World::new();
-        let mut manager = ParticleManager::with_capacity(8);
-        let entity = world.create_entity();
-        let t = Transform2D { position: Vec2::new(100.0, 50.0), ..Default::default() };
-        world.add_component(&entity, t).ok();
-        let cfg = ParticleConfig::burst(1)
-            .with_speed(0.0, 0.0)
-            .with_lifetime(100.0, 100.0);
-        world.add_component(&entity, ParticleEmitter::new(100.0, cfg)).ok();
-
-        ParticleSystem::update(&mut world, &mut manager, 0.01);
-        // At least one particle should have spawned at the emitter's position.
-        let p = manager.iter_alive().next().expect("emitter should produce a particle");
-        // Particles spawn at origin and have zero velocity in this config,
-        // so position should equal the emitter's transform position (within
-        // one dt of drift, but speed = 0).
-        assert!((p.position.x - 100.0).abs() < 1.0);
-        assert!((p.position.y - 50.0).abs() < 1.0);
     }
 }

@@ -36,20 +36,10 @@ pub mod chaos_theme;
 pub mod behavior_data;
 pub mod script_data;
 pub mod scene_data;
-#[cfg(test)]
-mod scene_data_tests;
 pub mod component_registration;
 pub mod scene_loader;
 mod scene_loader_components;
 pub mod scene_serializer;
-#[cfg(test)]
-mod scene_dynamic_tests;
-#[cfg(test)]
-mod scene_scripts_tests;
-#[cfg(test)]
-mod scene_serializer_roundtrip_tests;
-#[cfg(test)]
-mod scene_serializer_tests;
 mod texture_ref;
 pub mod sheet_file;
 pub(crate) mod texture_filter_serde;
@@ -78,6 +68,8 @@ pub mod pickups;
 pub mod particles;
 pub mod grid;
 pub mod debug;
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
 
 pub mod prelude;
 

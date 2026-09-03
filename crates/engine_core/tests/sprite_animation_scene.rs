@@ -1,37 +1,22 @@
 //! Scene chain and render-path coverage for named-clip `SpriteAnimation`.
 //!
 //! Everything here is headless: the sidecar and PNG-dimension probe live
-//! behind the `TextureResolver` seam, so the stubs below stand in for
-//! `AssetManager` without a filesystem or a GPU.
+//! behind the `TextureResolver` seam, so `test_support::StubResolver` (no
+//! sidecars) and the `SidecarResolver` below stand in for `AssetManager`
+//! without a filesystem or a GPU.
 
 use std::collections::HashMap;
 
 use common::SheetGrid;
-use ecs::sprite_components::{AnimationClip, Sprite, SpriteAnimation, Transform2D};
+use ecs::sprite_components::{AnimationClip, Name, Sprite, SpriteAnimation, Transform2D};
 use ecs::World;
-use engine_core::scene_data::SceneLoadError;
+use engine_core::prelude::{GameContext, RenderContext};
+use engine_core::scene_data::{ComponentData, SceneLoadError};
 use engine_core::scene_loader::SceneLoader;
 use engine_core::scene_serializer::world_to_scene_data;
-use engine_core::prelude::{GameContext, RenderContext};
+use engine_core::test_support::{load_ron, roundtrip, roundtrip_with, test_texture_path, StubResolver};
 use engine_core::{SheetData, TextureResolver};
 use glam::Vec2;
-
-/// Resolver with no sidecars at all — every animation falls back to the
-/// values baked into the scene.
-#[derive(Default)]
-struct BareResolver {
-    cache_clears: usize,
-}
-
-impl TextureResolver for BareResolver {
-    fn resolve_texture(&mut self, _texture_ref: &str) -> Result<renderer::TextureHandle, SceneLoadError> {
-        Ok(renderer::TextureHandle { id: 0 })
-    }
-
-    fn clear_sidecar_cache(&mut self) {
-        self.cache_clears += 1;
-    }
-}
 
 /// Resolver that serves one canned sidecar, standing in for a `.sheet.ron`
 /// the artist has since edited.
@@ -43,17 +28,13 @@ struct SidecarResolver {
 
 impl SidecarResolver {
     fn new(path: &str, data: SheetData) -> Self {
-        Self {
-            path: path.to_string(),
-            data,
-            reads: 0,
-        }
+        Self { path: path.to_string(), data, reads: 0 }
     }
 }
 
 impl TextureResolver for SidecarResolver {
     fn resolve_texture(&mut self, _texture_ref: &str) -> Result<renderer::TextureHandle, SceneLoadError> {
-        Ok(renderer::TextureHandle { id: 0 })
+        Ok(renderer::TextureHandle::WHITE)
     }
 
     fn sheet_for(&mut self, texture_ref: &str) -> Option<SheetData> {
@@ -64,126 +45,106 @@ impl TextureResolver for SidecarResolver {
     }
 }
 
+const SHEET: &str = "sprites/deion_16.png";
+
 /// A playing animation over a 4x2 sheet with one looping clip.
 fn walking_animation() -> SpriteAnimation {
     let mut animation = SpriteAnimation::new(SheetGrid::new(4, 2))
         .with_clip("walk", AnimationClip::new(vec![0, 1, 2], 12.0))
         .with_clip("idle", AnimationClip::new(vec![4], 4.0).with_looping(false));
-    animation.sheet = Some("sprites/deion_16.png".to_string());
+    animation.sheet = Some(SHEET.to_string());
     animation.play("walk");
     animation
 }
 
-/// Old-format scene data (the pre-named-clip schema) parses into the inert
-/// default — every new field is serde-defaulted, so serde ignores the old
-/// fields rather than erroring. The loader warns about the do-nothing
-/// component (adjudicated in the E3/E4 code review); this locks the
-/// no-error, no-animation outcome.
+/// A world holding one entity named "hero" with the walking animation.
+fn hero_world() -> World {
+    let mut world = World::new();
+    let hero = world.create_entity();
+    world.add_component(&hero, Name::new("hero")).ok();
+    world.add_component(&hero, walking_animation()).ok();
+    world
+}
+
 #[test]
-fn test_old_format_sprite_animation_loads_as_inert_default() {
-    let ron_string = r#"(
-        name: "Legacy",
-        entities: [(
-            name: Some("prop"),
-            components: [
-                SpriteAnimation(
+fn old_format_sprite_animation_loads_as_inert_default() {
+    // The pre-named-clip schema: every new field is serde-defaulted, so the
+    // old fields are ignored rather than erroring. The loader warns about
+    // the do-nothing component; this locks the no-error, no-animation
+    // outcome — `playing: true` must not resurrect.
+    let (world, instance) = load_ron(
+        r#"(
+            name: "Legacy",
+            entities: [(
+                name: Some("prop"),
+                components: [SpriteAnimation(
                     fps: 12.0,
                     frames: [(0.0, 0.0, 0.25, 1.0), (0.25, 0.0, 0.25, 1.0)],
                     playing: true,
                     loop_animation: true,
-                ),
-            ],
-        )],
-    )"#;
+                )],
+            )],
+        )"#,
+    );
 
-    let parsed = SceneLoader::parse(ron_string).expect("old-format scene still parses");
-    let mut world = World::new();
-    let mut resolver = BareResolver::default();
-    let instance =
-        SceneLoader::instantiate(&parsed, &mut world, &mut resolver).expect("instantiate");
-
-    let animation = world
-        .get::<SpriteAnimation>(instance.entities[0])
-        .expect("component still attaches");
-    assert!(animation.sheet.is_none());
-    assert!(animation.clips.is_empty());
-    assert!(!animation.playing, "old `playing: true` must not resurrect");
+    let animation = world.get::<SpriteAnimation>(instance.entities[0]).expect("component still attaches");
+    assert_eq!(animation.sheet, None);
+    assert_eq!(animation.clips.len(), 0);
+    assert!(!animation.playing);
     assert_eq!(animation.current_uv(), None, "inert: never touches the sprite");
 }
 
-/// Serialize a one-entity world to RON, parse it back, and instantiate it
-/// through `resolver`.
-fn roundtrip(world: &World, resolver: &mut impl TextureResolver) -> (World, ecs::EntityId) {
-    let scene = world_to_scene_data(world, "AnimRoundTrip", None, &|_| "#white".to_string());
-    let ron_string = ron::ser::to_string_pretty(&scene, ron::ser::PrettyConfig::default())
-        .expect("serialize scene");
-    let parsed = SceneLoader::parse(&ron_string).expect("parse scene");
-    let mut loaded = World::new();
-    let instance = SceneLoader::instantiate(&parsed, &mut loaded, resolver).expect("instantiate");
-    let entity = instance.entities[0];
-    (loaded, entity)
-}
-
 #[test]
-fn test_serializer_writes_the_sheet_grid_clips_and_autoplay() {
-    let mut world = World::new();
-    let entity = world.create_entity();
-    world.add_component(&entity, walking_animation()).ok();
+fn sprite_animation_round_trips_through_scene_ron() {
+    // Three entities cover the whole contract: a playing hero whose saved
+    // tex_region is a mid-animation snapshot, a static prop that keeps its
+    // authored cell and visibility (E5 — before it, a saved prop reloaded
+    // showing the whole sheet), and a paused sleeper that must not come
+    // back playing.
+    let mut world = hero_world();
+    let hero = world.entities()[0];
+    world.add_component(&hero, Sprite::new(0).with_tex_region(0.5, 0.0, 0.25, 0.5)).ok();
+    let prop = world.create_entity();
+    world.add_component(&prop, Name::new("prop")).ok();
+    world.add_component(&prop, Sprite::new(0).with_tex_region(0.25, 0.5, 0.25, 0.5).with_visible(false)).ok();
+    let sleeper = world.create_entity();
+    world.add_component(&sleeper, Name::new("sleeper")).ok();
+    let mut paused = walking_animation();
+    paused.update(0.1);
+    paused.pause();
+    world.add_component(&sleeper, paused).ok();
 
-    let scene = world_to_scene_data(&world, "AnimTest", None, &|_| "#white".to_string());
+    // The wire carries sheet, grid, clips and — only for a playing
+    // animation — autoplay.
+    let scene = world_to_scene_data(&world, "Anim", None, &test_texture_path);
+    let autoplay_of = |name: &str| {
+        let entity = scene.entities.iter().find(|e| e.name.as_deref() == Some(name)).expect("named");
+        entity
+            .components
+            .iter()
+            .find_map(|c| match c {
+                ComponentData::SpriteAnimation { sheet, grid, clips, autoplay } => {
+                    assert_eq!(sheet.as_deref(), Some(SHEET));
+                    assert_eq!((grid.cols, grid.rows), (4, 2));
+                    assert_eq!(clips.len(), 2);
+                    assert_eq!((clips[0].0.as_str(), clips[0].1.frames.clone(), clips[0].1.fps, clips[0].1.looping), ("walk", vec![0, 1, 2], 12.0, true));
+                    assert!(!clips[1].1.looping);
+                    Some(autoplay.clone())
+                }
+                _ => None,
+            })
+            .expect("SpriteAnimation row")
+    };
+    assert_eq!(autoplay_of("hero").as_deref(), Some("walk"));
+    assert_eq!(autoplay_of("sleeper"), None, "a paused animation writes no autoplay");
 
-    match &scene.entities[0].components[0] {
-        engine_core::ComponentData::SpriteAnimation {
-            sheet,
-            grid,
-            clips,
-            autoplay,
-        } => {
-            assert_eq!(sheet.as_deref(), Some("sprites/deion_16.png"));
-            assert_eq!((grid.cols, grid.rows), (4, 2));
-            assert_eq!(clips.len(), 2);
-            assert_eq!(clips[0].0, "walk");
-            assert_eq!(clips[0].1.frames, vec![0, 1, 2]);
-            assert_eq!(clips[0].1.fps, 12.0);
-            assert!(clips[0].1.looping);
-            assert!(!clips[1].1.looping);
-            assert_eq!(autoplay.as_deref(), Some("walk"));
-        }
-        other => panic!("Expected SpriteAnimation, got {other:?}"),
-    }
-}
+    let (mut loaded, instance) = roundtrip(&world);
+    let hero = instance.named_entities["hero"];
+    let prop = instance.named_entities["prop"];
+    let sleeper = instance.named_entities["sleeper"];
 
-#[test]
-fn test_serializer_omits_autoplay_for_a_paused_animation() {
-    let mut world = World::new();
-    let entity = world.create_entity();
-    let mut animation = walking_animation();
-    animation.pause();
-    world.add_component(&entity, animation).ok();
-
-    let scene = world_to_scene_data(&world, "AnimTest", None, &|_| "#white".to_string());
-
-    match &scene.entities[0].components[0] {
-        // A paused animation must not come back playing: the clip set is
-        // still written, but nothing tells the loader to start it.
-        engine_core::ComponentData::SpriteAnimation { autoplay, clips, .. } => {
-            assert_eq!(*autoplay, None);
-            assert_eq!(clips.len(), 2);
-        }
-        other => panic!("Expected SpriteAnimation, got {other:?}"),
-    }
-}
-
-#[test]
-fn test_sprite_animation_round_trips_through_scene_ron() {
-    let mut world = World::new();
-    let entity = world.create_entity();
-    world.add_component(&entity, walking_animation()).ok();
-
-    let (loaded, e) = roundtrip(&world, &mut BareResolver::default());
-    let animation = loaded.get::<SpriteAnimation>(e).expect("animation survives");
-
-    assert_eq!(animation.sheet.as_deref(), Some("sprites/deion_16.png"));
+    let animation = loaded.get::<SpriteAnimation>(hero).expect("animation survives");
+    assert_eq!(animation.sheet.as_deref(), Some(SHEET));
     assert_eq!((animation.grid.cols, animation.grid.rows), (4, 2));
     assert_eq!(
         animation.clips,
@@ -192,113 +153,54 @@ fn test_sprite_animation_round_trips_through_scene_ron() {
             ("idle".to_string(), AnimationClip::new(vec![4], 4.0).with_looping(false)),
         ]
     );
-    // autoplay restored the clip, from the top.
-    assert_eq!(animation.current_clip.as_deref(), Some("walk"));
+    assert_eq!(animation.current_clip.as_deref(), Some("walk"), "autoplay restored the clip");
     assert!(animation.playing);
-    assert_eq!(animation.current_frame, 0);
-}
+    assert_eq!(animation.current_frame, 0, "from the top");
+    let prop_sprite = loaded.get::<Sprite>(prop).expect("prop sprite survives");
+    assert_eq!(prop_sprite.tex_region, [0.25, 0.5, 0.25, 0.5]);
+    assert!(!prop_sprite.visible);
+    let sleeping = loaded.get::<SpriteAnimation>(sleeper).expect("paused animation survives");
+    assert!(!sleeping.playing);
+    assert_eq!(sleeping.current_clip, None);
+    assert_eq!(sleeping.clips.len(), 2, "only the playback state is dropped");
 
-#[test]
-fn test_static_sprite_region_and_visibility_round_trip_through_scene_ron() {
-    // A static sheet prop (no animation) keeps its authored cell and
-    // visibility across save/load — the E5 fix; before it, a saved prop
-    // reloaded showing the whole sheet.
-    let mut world = World::new();
-    let entity = world.create_entity();
-    let sprite = Sprite::new(0)
-        .with_tex_region(0.25, 0.5, 0.25, 0.5)
-        .with_visible(false);
-    world.add_component(&entity, sprite).ok();
-
-    let (loaded, e) = roundtrip(&world, &mut BareResolver::default());
-    let sprite = loaded.get::<Sprite>(e).expect("sprite survives");
-
-    assert_eq!(sprite.tex_region, [0.25, 0.5, 0.25, 0.5]);
-    assert!(!sprite.visible);
-}
-
-#[test]
-fn test_autoplaying_clip_overwrites_the_saved_region_snapshot_on_load() {
-    // A scene saved mid-animation carries a frame snapshot in the sprite's
-    // tex_region. On load the autoplaying clip is the SSOT: the animation
-    // system re-asserts its current frame (the clip start), overwriting the
-    // snapshot — the editor never shows a stale mid-animation cell.
-    let mut world = World::new();
-    let entity = world.create_entity();
-    let sprite = Sprite::new(0).with_tex_region(0.5, 0.0, 0.25, 0.5); // cell 2 snapshot
-    world.add_component(&entity, sprite).ok();
-    world.add_component(&entity, walking_animation()).ok();
-
-    let (mut loaded, e) = roundtrip(&world, &mut BareResolver::default());
+    // On load the autoplaying clip is the SSOT: one system step overwrites
+    // the saved snapshot (cell 2) with the clip start (cell 0), so the
+    // editor never shows a stale mid-animation cell. The prop is untouched.
     ecs::System::update(&mut ecs::SpriteAnimationSystem, &mut loaded, 0.0);
-
-    let sprite = loaded.get::<Sprite>(e).expect("sprite survives");
-    // "walk" restarts at frame index 0 → cell 0 of the 4x2 grid.
-    assert_eq!(sprite.tex_region, [0.0, 0.0, 0.25, 0.5]);
+    assert_eq!(loaded.get::<Sprite>(hero).expect("hero sprite").tex_region, [0.0, 0.0, 0.25, 0.5]);
+    assert_eq!(loaded.get::<Sprite>(prop).expect("prop sprite").tex_region, [0.25, 0.5, 0.25, 0.5]);
 }
 
 #[test]
-fn test_paused_animation_loads_stopped() {
-    let mut world = World::new();
-    let entity = world.create_entity();
-    let mut animation = walking_animation();
-    animation.update(0.1);
-    animation.pause();
-    world.add_component(&entity, animation).ok();
-
-    let (loaded, e) = roundtrip(&world, &mut BareResolver::default());
-    let animation = loaded.get::<SpriteAnimation>(e).expect("animation survives");
-
-    assert!(!animation.playing);
-    assert_eq!(animation.current_clip, None);
-    // Clips still round-trip — only the playback state is dropped.
-    assert_eq!(animation.clips.len(), 2);
-}
-
-#[test]
-fn test_sidecar_grid_and_clips_win_over_baked_scene_values() {
-    let mut world = World::new();
-    let entity = world.create_entity();
-    world.add_component(&entity, walking_animation()).ok();
-
+fn sidecar_grid_and_clips_win_over_baked_scene_values() {
     // The artist re-cut the sheet to 8x4 and gave "walk" four frames.
+    let world = hero_world();
     let mut resolver = SidecarResolver::new(
-        "sprites/deion_16.png",
+        SHEET,
         SheetData {
             grid: SheetGrid::new(8, 4),
             clips: vec![("walk".to_string(), AnimationClip::new(vec![0, 1, 2, 3], 16.0))],
         },
     );
 
-    let (loaded, e) = roundtrip(&world, &mut resolver);
-    let animation = loaded.get::<SpriteAnimation>(e).expect("animation survives");
+    let (loaded, instance) = roundtrip_with(&world, &mut resolver);
 
+    let animation = loaded.get::<SpriteAnimation>(instance.entities[0]).expect("animation survives");
     assert_eq!((animation.grid.cols, animation.grid.rows), (8, 4));
-    assert_eq!(animation.clips.len(), 1);
-    assert_eq!(animation.clips[0].1.frame_indices, vec![0, 1, 2, 3]);
-    assert_eq!(animation.clips[0].1.fps, 16.0);
-    // Autoplay still resolves against the sidecar's clip set.
-    assert_eq!(animation.current_clip.as_deref(), Some("walk"));
+    assert_eq!(animation.clips, vec![("walk".to_string(), AnimationClip::new(vec![0, 1, 2, 3], 16.0))]);
+    assert_eq!(animation.current_clip.as_deref(), Some("walk"), "autoplay resolves against the sidecar's clips");
 }
 
 #[test]
-fn test_missing_sidecar_falls_back_to_the_baked_values() {
-    let mut world = World::new();
-    let entity = world.create_entity();
-    world.add_component(&entity, walking_animation()).ok();
+fn missing_sidecar_falls_back_to_the_baked_values() {
+    // The resolver knows a different sheet — this one has no sidecar.
+    let world = hero_world();
+    let mut resolver = SidecarResolver::new("sprites/other.png", SheetData { grid: SheetGrid::new(1, 1), clips: Vec::new() });
 
-    // Resolver knows a different sheet — this one has no sidecar.
-    let mut resolver = SidecarResolver::new(
-        "sprites/other.png",
-        SheetData {
-            grid: SheetGrid::new(1, 1),
-            clips: Vec::new(),
-        },
-    );
+    let (loaded, instance) = roundtrip_with(&world, &mut resolver);
 
-    let (loaded, e) = roundtrip(&world, &mut resolver);
-    let animation = loaded.get::<SpriteAnimation>(e).expect("animation survives");
-
+    let animation = loaded.get::<SpriteAnimation>(instance.entities[0]).expect("animation survives");
     assert_eq!(resolver.reads, 0);
     assert_eq!((animation.grid.cols, animation.grid.rows), (4, 2));
     assert_eq!(animation.clips.len(), 2);
@@ -306,81 +208,63 @@ fn test_missing_sidecar_falls_back_to_the_baked_values() {
 }
 
 #[test]
-fn test_autoplay_naming_a_clip_the_sidecar_dropped_leaves_it_stopped() {
-    let mut world = World::new();
-    let entity = world.create_entity();
-    world.add_component(&entity, walking_animation()).ok();
-
-    // The sidecar renamed "walk" to "stroll" — the scene's autoplay is stale.
+fn autoplay_naming_a_clip_the_sidecar_dropped_leaves_it_stopped() {
+    // The sidecar renamed "walk" to "stroll" — the scene's autoplay is stale:
+    // warned and left stopped rather than guessing a clip.
+    let world = hero_world();
     let mut resolver = SidecarResolver::new(
-        "sprites/deion_16.png",
-        SheetData {
-            grid: SheetGrid::new(4, 2),
-            clips: vec![("stroll".to_string(), AnimationClip::new(vec![0, 1], 12.0))],
-        },
+        SHEET,
+        SheetData { grid: SheetGrid::new(4, 2), clips: vec![("stroll".to_string(), AnimationClip::new(vec![0, 1], 12.0))] },
     );
 
-    let (loaded, e) = roundtrip(&world, &mut resolver);
-    let animation = loaded.get::<SpriteAnimation>(e).expect("animation survives");
+    let (loaded, instance) = roundtrip_with(&world, &mut resolver);
 
-    // Warned and left stopped rather than guessing a clip.
+    let animation = loaded.get::<SpriteAnimation>(instance.entities[0]).expect("animation survives");
     assert!(!animation.playing);
     assert_eq!(animation.current_clip, None);
     assert!(animation.has_clip("stroll"));
 }
 
 #[test]
-fn test_scene_load_clears_the_sidecar_cache_first() {
-    let scene = SceneLoader::parse("SceneData(name: \"Empty\", entities: [])").expect("parse");
-    let mut resolver = BareResolver::default();
+fn scene_load_clears_the_sidecar_cache_once_per_load() {
+    // That is what makes an edited sidecar take effect on reload without a
+    // file watcher.
+    let scene = SceneLoader::parse(r#"SceneData(name: "Empty", entities: [])"#).expect("parse");
+    let mut resolver = StubResolver::default();
     let mut world = World::new();
 
     SceneLoader::instantiate(&scene, &mut world, &mut resolver).expect("instantiate");
     SceneLoader::instantiate(&scene, &mut world, &mut resolver).expect("instantiate");
 
-    // Once per load — that is what makes an edited sidecar take effect on
-    // reload without a file watcher.
     assert_eq!(resolver.cache_clears, 2);
 }
 
 #[test]
-fn test_clip_wire_format_is_stable() {
-    // Golden form: this is the shape artists and hand-written scenes rely on,
-    // and the same shape a `.sheet.ron` clip list uses.
-    let ron_text = r#"SceneData(
-    name: "Golden",
-    entities: [
-        EntityData(
-            name: Some("hero"),
-            components: [
-                SpriteAnimation(
+fn clip_wire_format_is_stable() {
+    // Golden form: the shape artists and hand-written scenes rely on, and
+    // the same shape a `.sheet.ron` clip list uses.
+    let (world, instance) = load_ron(
+        r#"SceneData(
+            name: "Golden",
+            entities: [EntityData(
+                name: Some("hero"),
+                components: [SpriteAnimation(
                     sheet: Some("sprites/deion_16.png"),
                     grid: (cols: 4, rows: 2),
                     clips: [("walk", (frames: [0, 1, 2, 3], fps: 8.0, looping: true))],
                     autoplay: Some("walk"),
-                ),
-            ],
-        ),
-    ],
-)"#;
+                )],
+            )],
+        )"#,
+    );
 
-    let scene = SceneLoader::parse(ron_text).expect("golden RON parses");
-    let mut world = World::new();
-    let instance = SceneLoader::instantiate(&scene, &mut world, &mut BareResolver::default())
-        .expect("instantiate");
-    let animation = world
-        .get::<SpriteAnimation>(instance.entities[0])
-        .expect("animation");
-
+    let animation = world.get::<SpriteAnimation>(instance.entities[0]).expect("animation");
     assert_eq!((animation.grid.cols, animation.grid.rows), (4, 2));
-    assert_eq!(animation.clips[0].0, "walk");
-    assert_eq!(animation.clips[0].1.frame_indices, vec![0, 1, 2, 3]);
-    assert_eq!(animation.clips[0].1.fps, 8.0);
-    assert!(animation.clips[0].1.looping);
+    assert_eq!(animation.clips, vec![("walk".to_string(), AnimationClip::new(vec![0, 1, 2, 3], 8.0))]);
     assert_eq!(animation.current_clip.as_deref(), Some("walk"));
 
-    // And the same fields come back out under the same names.
-    let written = world_to_scene_data(&world, "Golden", None, &|_| "#white".to_string());
+    // And the same fields come back out under the same names — no derived UVs.
+    let written = world_to_scene_data(&world, "Golden", None, &test_texture_path);
     let text = ron::ser::to_string(&written).expect("serialize");
     assert!(text.contains("frames:"), "clip frames keep their wire name: {text}");
     assert!(text.contains("looping:"), "clip looping keeps its wire name: {text}");
@@ -389,32 +273,17 @@ fn test_clip_wire_format_is_stable() {
 }
 
 #[test]
-fn test_omitted_clip_looping_defaults_to_true_in_scene_ron() {
-    let ron_text = r#"SceneData(
-    name: "Defaults",
-    entities: [
-        EntityData(
-            components: [
-                SpriteAnimation(
-                    clips: [("walk", (frames: [0, 1], fps: 8.0))],
-                ),
-            ],
-        ),
-    ],
-)"#;
+fn omitted_clip_looping_defaults_to_true_in_scene_ron() {
+    // The scene-side twin of the sidecar's `looping` default: one DTO, two
+    // wire surfaces, both deliberately pinned.
+    let (world, instance) = load_ron(
+        r#"SceneData(name: "Defaults", entities: [EntityData(components: [SpriteAnimation(clips: [("walk", (frames: [0, 1], fps: 8.0))])])])"#,
+    );
 
-    let scene = SceneLoader::parse(ron_text).expect("parses without looping");
-    let mut world = World::new();
-    let instance = SceneLoader::instantiate(&scene, &mut world, &mut BareResolver::default())
-        .expect("instantiate");
-    let animation = world
-        .get::<SpriteAnimation>(instance.entities[0])
-        .expect("animation");
-
+    let animation = world.get::<SpriteAnimation>(instance.entities[0]).expect("animation");
     assert!(animation.clips[0].1.looping);
-    // An omitted grid is the 1x1 fallback, and nothing autoplays.
-    assert_eq!(animation.grid.cell_count(), 1);
-    assert!(!animation.playing);
+    assert_eq!(animation.grid.cell_count(), 1, "an omitted grid is the 1x1 fallback");
+    assert!(!animation.playing, "nothing autoplays unless asked");
 }
 
 // === Render path ===
@@ -426,8 +295,8 @@ impl engine_core::Game for RenderProbe {
 }
 
 /// Run the engine's default render over `world` and return the built sprite
-/// instances.
-fn render_instances(world: &World) -> Vec<renderer::SpriteInstance> {
+/// instances' texture regions, sorted for order-free comparison.
+fn rendered_regions(world: &World) -> Vec<[f32; 4]> {
     use engine_core::Game;
 
     let mut sprites = renderer::SpriteBatcher::new();
@@ -445,43 +314,32 @@ fn render_instances(world: &World) -> Vec<renderer::SpriteInstance> {
     };
     RenderProbe.render(&mut ctx);
 
-    sprites
+    let mut regions: Vec<[f32; 4]> = sprites
         .batches()
         .values()
-        .flat_map(|batch| batch.instances.clone())
-        .collect()
+        .flat_map(|batch| batch.instances.iter().map(|instance| instance.tex_region))
+        .collect();
+    regions.sort_by(|a, b| a.partial_cmp(b).expect("finite regions"));
+    regions
 }
 
 #[test]
-fn test_default_region_sprite_renders_the_full_texture() {
+fn animated_sprite_region_reaches_the_renderer_and_plain_sprites_stay_full() {
     let mut world = World::new();
-    let entity = world.create_entity();
-    world.add_component(&entity, Transform2D::new(Vec2::ZERO)).ok();
-    world.add_component(&entity, Sprite::new(0)).ok();
-
-    let instances = render_instances(&world);
-
-    assert_eq!(instances.len(), 1);
-    // Every pre-existing sprite defaults to the full texture, so forwarding
-    // the region leaves their output pixel-identical.
-    assert_eq!(instances[0].tex_region, [0.0, 0.0, 1.0, 1.0]);
-}
-
-#[test]
-fn test_animated_sprite_region_reaches_the_renderer() {
-    let mut world = World::new();
-    let entity = world.create_entity();
-    world.add_component(&entity, Transform2D::new(Vec2::ZERO)).ok();
-    world.add_component(&entity, Sprite::new(0)).ok();
-    let mut animation = SpriteAnimation::new(SheetGrid::new(4, 2))
-        .with_clip("walk", AnimationClip::new(vec![5], 10.0));
+    let animated = world.create_entity();
+    world.add_component(&animated, Transform2D::new(Vec2::ZERO)).ok();
+    world.add_component(&animated, Sprite::new(0)).ok();
+    let mut animation = SpriteAnimation::new(SheetGrid::new(4, 2)).with_clip("walk", AnimationClip::new(vec![5], 10.0));
     animation.play("walk");
-    world.add_component(&entity, animation).ok();
+    world.add_component(&animated, animation).ok();
+    let plain = world.create_entity();
+    world.add_component(&plain, Transform2D::new(Vec2::new(50.0, 0.0))).ok();
+    world.add_component(&plain, Sprite::new(0)).ok();
 
-    // The system is what writes the cell region onto the sprite.
+    // The system is what writes the cell region onto the sprite; the render
+    // path forwards it, so a pre-existing plain sprite stays pixel-identical.
     ecs::System::update(&mut ecs::SpriteAnimationSystem, &mut world, 0.0);
-    let instances = render_instances(&world);
+    let regions = rendered_regions(&world);
 
-    assert_eq!(instances.len(), 1);
-    assert_eq!(instances[0].tex_region, [0.25, 0.5, 0.25, 0.5]);
+    assert_eq!(regions, vec![[0.0, 0.0, 1.0, 1.0], [0.25, 0.5, 0.25, 0.5]]);
 }

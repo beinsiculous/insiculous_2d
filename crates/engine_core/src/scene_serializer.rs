@@ -339,3 +339,8 @@ pub fn save_scene_to_file(scene: &SceneData, path: &Path) -> Result<(), String> 
     let ron_string = serialize_to_ron(scene)?;
     std::fs::write(path, ron_string).map_err(|e| format!("Failed to write scene file: {}", e))
 }
+
+#[cfg(test)]
+mod dynamic_and_scripts_tests;
+#[cfg(test)]
+mod tests;

@@ -258,21 +258,22 @@ mod tests {
         for (gilrs_button, ours) in expected {
             assert_eq!(translate_button(gilrs_button), ours, "{gilrs_button:?}");
         }
-    }
 
-    #[test]
-    fn axis_translation_maps_sticks_and_z_triggers_and_drops_hats() {
+        // Axes: sticks and Z triggers map, the hats are dpad buttons instead.
         use gilrs::Axis as A;
-        assert_eq!(translate_axis(A::LeftStickX), Some(GamepadAxis::LeftStickX));
-        assert_eq!(translate_axis(A::LeftStickY), Some(GamepadAxis::LeftStickY));
-        assert_eq!(translate_axis(A::RightStickX), Some(GamepadAxis::RightStickX));
-        assert_eq!(translate_axis(A::RightStickY), Some(GamepadAxis::RightStickY));
-        assert_eq!(translate_axis(A::LeftZ), Some(GamepadAxis::LeftTrigger));
-        assert_eq!(translate_axis(A::RightZ), Some(GamepadAxis::RightTrigger));
-        assert_eq!(translate_axis(A::DPadX), None);
-        assert_eq!(translate_axis(A::DPadY), None);
-        assert_eq!(translate_axis(A::Unknown), None);
-        // ...but the hats are recognized as hats
+        for (gilrs_axis, ours) in [
+            (A::LeftStickX, Some(GamepadAxis::LeftStickX)),
+            (A::LeftStickY, Some(GamepadAxis::LeftStickY)),
+            (A::RightStickX, Some(GamepadAxis::RightStickX)),
+            (A::RightStickY, Some(GamepadAxis::RightStickY)),
+            (A::LeftZ, Some(GamepadAxis::LeftTrigger)),
+            (A::RightZ, Some(GamepadAxis::RightTrigger)),
+            (A::DPadX, None),
+            (A::DPadY, None),
+            (A::Unknown, None),
+        ] {
+            assert_eq!(translate_axis(gilrs_axis), ours, "{gilrs_axis:?}");
+        }
         assert_eq!(hat_axis(A::DPadX), Some(HatAxis::X));
         assert_eq!(hat_axis(A::DPadY), Some(HatAxis::Y));
         assert_eq!(hat_axis(A::LeftStickX), None);
@@ -301,7 +302,7 @@ mod tests {
             vec![InputEvent::GamepadButtonPressed(0, GamepadButton::DPadRight)]
         );
         // Held right: nothing (no just-pressed retrigger)
-        assert!(hat_transition_events(0, HatAxis::X, 1.0, 1.0).is_empty());
+        assert_eq!(hat_transition_events(0, HatAxis::X, 1.0, 1.0), Vec::new());
         // Right → center: release right only — never a phantom left release
         assert_eq!(
             hat_transition_events(0, HatAxis::X, 1.0, 0.0),
@@ -320,10 +321,8 @@ mod tests {
             hat_transition_events(1, HatAxis::Y, 0.0, -1.0),
             vec![InputEvent::GamepadButtonPressed(1, GamepadButton::DPadDown)]
         );
-    }
 
-    #[test]
-    fn disabled_backend_pumps_as_a_noop() {
+        // A disabled backend (no gilrs on this machine) pumps as a no-op.
         let mut backend = GamepadBackend::disabled();
         assert!(!backend.is_enabled());
         let mut input = InputHandler::new();

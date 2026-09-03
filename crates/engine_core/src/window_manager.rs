@@ -239,17 +239,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_window_manager_resize() {
-        let config = WindowConfig::default();
-        let mut manager = WindowManager::new(config);
-        assert_eq!(manager.size(), (800, 600));
+    fn physical_size_scales_the_tracked_logical_size_by_the_scale_factor() {
+        let mut manager = WindowManager::new(WindowConfig::new("Test").with_size(800, 600));
+        manager.set_scale_factor(2.0);
 
+        // A resize event updates the logical size the UI lays out against ...
         manager.resize(1280, 720);
+
         assert_eq!(manager.size(), (1280, 720));
+        assert_eq!(manager.logical_size(), (1280.0, 720.0));
+        // ... and the physical size the surface is configured with is DPI-scaled.
+        assert_eq!(manager.physical_size(), (2560, 1440));
     }
 
     #[test]
-    fn test_set_title_without_window_updates_config_for_creation() {
+    fn set_title_without_window_updates_config_for_creation() {
         // Headless (window never created) this must not panic, and a title
         // set before the window exists must be the one creation uses.
         let mut manager = WindowManager::new(WindowConfig::new("Initial"));
@@ -257,15 +261,5 @@ mod tests {
         manager.set_title("Scene* - Insiculous Editor");
 
         assert_eq!(manager.title(), "Scene* - Insiculous Editor");
-    }
-
-    #[test]
-    fn test_window_manager_logical_physical_size() {
-        let config = WindowConfig::new("Test").with_size(800, 600);
-        let mut manager = WindowManager::new(config);
-        manager.set_scale_factor(2.0);
-
-        assert_eq!(manager.logical_size(), (800.0, 600.0));
-        assert_eq!(manager.physical_size(), (1600, 1200));
     }
 }

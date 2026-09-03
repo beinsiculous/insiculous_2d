@@ -328,35 +328,43 @@ impl SceneLoader {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_entity_tag_component_type_name() {
-        let tag = ComponentData::EntityTag { tag: "enemy".to_string() };
-        assert_eq!(SceneLoader::component_type_name(&tag), "EntityTag");
+    fn transform_at(x: f32) -> ComponentData {
+        ComponentData::Transform2D { position: (x, 0.0), rotation: 0.0, scale: (1.0, 1.0) }
+    }
+
+    fn position_of(component: &ComponentData) -> (f32, f32) {
+        match component {
+            ComponentData::Transform2D { position, .. } => *position,
+            other => panic!("expected Transform2D, got {other:?}"),
+        }
     }
 
     #[test]
-    fn test_merge_components() {
-        let base = vec![ComponentData::Transform2D {
-            position: (0.0, 0.0),
+    fn later_layers_replace_earlier_ones_by_component_type_and_append_the_rest() {
+        // prefab base < entity overrides < inline components — the same
+        // type is replaced in place, a type only one layer carries is kept.
+        let base = vec![transform_at(0.0), ComponentData::EntityTag { tag: "ball".to_string() }];
+        let overrides = vec![transform_at(100.0)];
+        let inline = vec![transform_at(500.0), ComponentData::Sprite {
+            texture: "#white".to_string(),
+            offset: (0.0, 0.0),
             rotation: 0.0,
             scale: (1.0, 1.0),
+            color: (1.0, 1.0, 1.0, 1.0),
+            depth: 0.0,
+            emissive: 0.0,
+            tex_region: (0.0, 0.0, 1.0, 1.0),
+            visible: true,
         }];
 
-        let overrides = vec![ComponentData::Transform2D {
-            position: (100.0, 200.0),
-            rotation: 0.0,
-            scale: (1.0, 1.0),
-        }];
+        let base_and_overrides = SceneLoader::merge_components(&base, &overrides, &[]);
+        let all_three = SceneLoader::merge_components(&base, &overrides, &inline);
 
-        let inline = vec![];
-
-        let merged = SceneLoader::merge_components(&base, &overrides, &inline);
-        assert_eq!(merged.len(), 1);
-
-        if let ComponentData::Transform2D { position, .. } = &merged[0] {
-            assert_eq!(*position, (100.0, 200.0));
-        } else {
-            panic!("Expected Transform2D");
-        }
+        assert_eq!(base_and_overrides.len(), 2, "override replaces, tag kept: {base_and_overrides:?}");
+        assert_eq!(position_of(&base_and_overrides[0]), (100.0, 0.0));
+        assert_eq!(all_three.len(), 3, "inline replaces the transform and appends the sprite: {all_three:?}");
+        assert_eq!(position_of(&all_three[0]), (500.0, 0.0));
+        assert!(matches!(&all_three[1], ComponentData::EntityTag { tag } if tag == "ball"));
+        assert!(matches!(&all_three[2], ComponentData::Sprite { .. }));
     }
 }

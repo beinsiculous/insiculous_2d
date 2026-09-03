@@ -753,7 +753,11 @@ font_metrics, label_in_bounds, checkbox_labeled, slider_range, font_manager,
 font_manager_mut}`, `FontManager::{cache_stats, clear_cache, rasterize_glyph}`,
 `Theme::light`, `DrawList::{is_overlay, image_rounded, text_placeholder}`,
 `InteractionManager::{is_hot, is_active, has_focus}`, `WidgetId: From<u64>` (0 hits outside
-the crate; some used internally — keep those). NOT `Transform2D::forward` — asteroids aims every
+the crate; some used internally — keep those); from the `engine_core` cut:
+`LifecycleManager::wait_for_state`, `ParticleEmitter::resume`, `GridMesh::{with_alpha,
+set_alpha}`, `Particle::t()` (plus `SceneManager` and `Timer`, already listed). The
+`test-support` feature and self dev-dependency landed with the engine_core cut, so batch 5
+only needs editor_integration to enable it. NOT `Transform2D::forward` — asteroids aims every
 bullet with it (`ship.rs:122`); its test was restored (review-4 F1). Rule: show the
 workspace AND `../games` grep for every candidate in the batch-2 review before deleting it. NOT `Rect::contains`/`center`/`expand` — the keep-list called `Rect`
 dead, but `contains` decides every widget interaction and the editor uses the other two;

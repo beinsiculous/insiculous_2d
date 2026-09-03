@@ -118,51 +118,28 @@ mod tests {
     use std::time::Duration;
 
     #[test]
-    fn test_game_loop_manager_creation() {
-        let manager = GameLoopManager::new();
-        assert_eq!(manager.delta_time(), 0.0);
-        assert_eq!(manager.total_time(), 0.0);
-        assert_eq!(manager.frame_count(), 0);
-    }
-
-    #[test]
-    fn test_game_loop_manager_update() {
-        let mut manager = GameLoopManager::new();
-        
-        sleep(Duration::from_millis(10));
-        let dt = manager.update();
-        assert!(dt > 0.0, "Delta time should be positive");
-        assert!(dt < 0.02, "Delta time should be reasonable");
-        assert_eq!(manager.frame_count(), 1);
-        assert!(manager.total_time() > 0.0);
-    }
-
-    #[test]
-    fn test_game_loop_manager_multiple_updates() {
-        let mut manager = GameLoopManager::new();
-        
-        let dt1 = manager.update();
-        sleep(Duration::from_millis(5));
-        let dt2 = manager.update();
-        
-        assert_eq!(manager.frame_count(), 2);
-        assert!(manager.total_time() > 0.0, "Total time should accumulate");
-        assert_eq!(manager.total_time(), dt1 + dt2, "Total time should equal sum of deltas");
-    }
-
-    #[test]
     fn test_delta_time_is_clamped_after_a_stall() {
         let mut manager = GameLoopManager::new();
 
-        // Simulate a stall longer than the clamp window.
+        // An ordinary frame reports the real elapsed time ...
+        sleep(Duration::from_millis(10));
+        let first = manager.update();
+        assert!((0.010..=MAX_DELTA_TIME).contains(&first), "delta {first}");
+        assert_eq!(manager.frame_count(), 1);
+
+        // ... a stall longer than the clamp window is capped, so physics
+        // never integrates a multi-second step after a window drag ...
         sleep(Duration::from_millis(120));
-        let dt = manager.update();
-        assert!(
-            dt <= MAX_DELTA_TIME,
-            "delta {} exceeds clamp {}",
-            dt,
-            MAX_DELTA_TIME
-        );
+        let stalled = manager.update();
+        assert!(stalled <= MAX_DELTA_TIME, "delta {stalled} exceeds clamp {MAX_DELTA_TIME}");
+        assert_eq!(manager.frame_count(), 2);
+        assert_eq!(manager.total_time(), first + stalled, "total is the sum of the clamped deltas");
+
+        // ... and a reset starts the count over.
+        manager.reset();
+        assert_eq!(manager.delta_time(), 0.0);
+        assert_eq!(manager.total_time(), 0.0);
+        assert_eq!(manager.frame_count(), 0);
     }
 
     #[test]
@@ -173,37 +150,17 @@ mod tests {
         manager.update();
         let frame_start = Instant::now();
         manager.throttle();
+
         assert!(
             frame_start.elapsed() >= Duration::from_millis(5),
             "throttle should sleep out most of the 10ms frame budget"
         );
-    }
 
-    #[test]
-    fn test_throttle_is_noop_when_uncapped() {
-        let mut manager = GameLoopManager::new();
+        // Uncapped: no sleep at all (vsync paces instead).
         manager.set_target_fps(0);
-
         manager.update();
         let frame_start = Instant::now();
         manager.throttle();
-        assert!(
-            frame_start.elapsed() < Duration::from_millis(5),
-            "uncapped throttle must not sleep"
-        );
-    }
-
-    #[test]
-    fn test_game_loop_manager_reset() {
-        let mut manager = GameLoopManager::new();
-        
-        manager.update();
-        manager.update();
-        assert_eq!(manager.frame_count(), 2);
-        
-        manager.reset();
-        assert_eq!(manager.delta_time(), 0.0);
-        assert_eq!(manager.total_time(), 0.0);
-        assert_eq!(manager.frame_count(), 0);
+        assert!(frame_start.elapsed() < Duration::from_millis(5), "uncapped throttle must not sleep");
     }
 }

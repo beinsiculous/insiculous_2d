@@ -113,11 +113,7 @@ mod tests {
         }
     }
 
-    fn text_command(glyphs: Vec<GlyphDrawData>) -> DrawCommand {
-        text_command_with_font(glyphs, 1)
-    }
-
-    fn text_command_with_font(glyphs: Vec<GlyphDrawData>, font_id: u32) -> DrawCommand {
+    fn text_command(glyphs: Vec<GlyphDrawData>, font_id: u32) -> DrawCommand {
         DrawCommand::Text {
             data: TextDrawData {
                 text: String::new(),
@@ -134,14 +130,12 @@ mod tests {
     }
 
     #[test]
-    fn fresh_cache_starts_empty() {
-        let cache = GlyphTextureCache::new();
-        assert!(cache.textures().is_empty());
-    }
-
-    #[test]
-    fn empty_glyphs_and_non_text_commands_need_no_textures() {
-        let cache = GlyphTextureCache::new();
+    fn same_glyph_same_size_different_fonts_needs_separate_textures() {
+        let mut cache = GlyphTextureCache::new();
+        // 'a' at 4x4 in font 1 already has a texture.
+        cache
+            .textures
+            .insert(GlyphCacheKey::new('a', 4, 4, 1), TextureHandle { id: 7 });
         let commands = vec![
             DrawCommand::Rect {
                 bounds: Rect::new(0.0, 0.0, 10.0, 10.0),
@@ -149,59 +143,28 @@ mod tests {
                 corner_radius: 0.0,
                 depth: 0.0,
             },
-            text_command(vec![
-                glyph('a', 4, 4, &[255; 16]), // renderable
-                glyph(' ', 0, 0, &[]),        // space: zero size, no bitmap
-                glyph('b', 4, 4, &[]),        // empty bitmap
-            ]),
+            text_command(
+                vec![
+                    glyph('a', 4, 4, &[255; 16]), // cached: (char, size, font) hit
+                    glyph('a', 8, 8, &[255; 64]), // same char, other size
+                    glyph(' ', 0, 0, &[]),        // space: zero size, no bitmap
+                    glyph('b', 4, 4, &[]),        // empty bitmap
+                ],
+                1,
+            ),
+            text_command(vec![glyph('a', 4, 4, &[128; 16])], 2), // same char+size, other font
         ];
 
         let missing = cache.uncached_glyphs(&commands);
-        assert_eq!(missing.len(), 1);
-        assert_eq!(missing[0].1.character, 'a');
-    }
 
-    #[test]
-    fn cached_glyphs_are_not_reported_missing() {
-        let mut cache = GlyphTextureCache::new();
-        let commands = vec![text_command(vec![
-            glyph('a', 4, 4, &[255; 16]),
-            glyph('b', 8, 8, &[255; 64]),
-        ])];
-
-        // Simulate a previously created texture for 'a'.
-        cache
-            .textures
-            .insert(GlyphCacheKey::new('a', 4, 4, 1), TextureHandle { id: 7 });
-
-        let missing = cache.uncached_glyphs(&commands);
-        assert_eq!(missing.len(), 1, "only the uncached glyph should be missing");
-        assert_eq!(missing[0].1.character, 'b');
-        assert_eq!(cache.textures().len(), 1);
-    }
-
-    #[test]
-    fn same_glyph_same_size_different_fonts_needs_separate_textures() {
-        let cache = GlyphTextureCache::new();
-        // Same character, same bitmap size — but two different fonts.
-        let commands = vec![
-            text_command_with_font(vec![glyph('a', 4, 4, &[255; 16])], 1),
-            text_command_with_font(vec![glyph('a', 4, 4, &[128; 16])], 2),
-        ];
-
-        let missing = cache.uncached_glyphs(&commands);
-        assert_eq!(missing.len(), 2, "each font is a distinct cache entry");
-    }
-
-    #[test]
-    fn same_glyph_at_different_sizes_needs_separate_textures() {
-        let cache = GlyphTextureCache::new();
-        let commands = vec![text_command(vec![
-            glyph('a', 4, 4, &[255; 16]),
-            glyph('a', 8, 8, &[255; 64]),
-        ])];
-
-        let missing = cache.uncached_glyphs(&commands);
-        assert_eq!(missing.len(), 2, "each rasterized size is a distinct cache entry");
+        // The key is (char, size, font): the cached hit and the two
+        // unrenderable glyphs are skipped, the other size and the other
+        // font each need their own texture.
+        let keys: Vec<(char, u32, u32)> = missing
+            .iter()
+            .map(|(_, glyph)| (glyph.character, glyph.width, glyph.height))
+            .collect();
+        assert_eq!(keys, [('a', 8, 8), ('a', 4, 4)]);
+        assert_eq!(cache.textures().len(), 1, "reporting does not create textures");
     }
 }

@@ -44,7 +44,8 @@ pub(crate) fn append_tilemap_sprites(world: &World, sprites: &mut SpriteBatcher)
 mod tests {
     use super::*;
 
-    fn world_with_map(anchor: Vec2) -> World {
+    #[test]
+    fn test_tilemap_expands_into_one_batch_with_correct_instances() {
         let mut world = World::new();
         let entity = world.create_entity();
         let mut map = Tilemap::new(3, 2, 40.0);
@@ -52,22 +53,18 @@ mod tests {
         map.tile_uv_size = Vec2::new(0.25, 0.25);
         map.set_tile(0, 0, 1);
         map.set_tile(2, 1, 6);
-        world.add_component(&entity, map).unwrap();
-        world.add_component(&entity, Transform2D::new(anchor)).unwrap();
-        world
-    }
-
-    #[test]
-    fn test_tilemap_expands_into_one_batch_with_correct_instances() {
-        let world = world_with_map(Vec2::new(100.0, 200.0));
+        world.add_component(&entity, map).ok();
+        world.add_component(&entity, Transform2D::new(Vec2::new(100.0, 200.0))).ok();
+        // A map with no transform has no anchor and is skipped.
+        let orphan = world.create_entity();
+        world.add_component(&orphan, Tilemap::new(2, 2, 32.0)).ok();
         let mut batcher = SpriteBatcher::new();
 
         append_tilemap_sprites(&world, &mut batcher);
 
-        let batches = batcher.batches();
-        assert_eq!(batches.len(), 1, "whole map should share one batch");
-        let batch = batcher.batch_for(TextureHandle { id: 7 }).unwrap();
-        assert_eq!(batch.instances.len(), 2);
+        assert_eq!(batcher.batches().len(), 1, "the whole map shares one batch; the orphan adds none");
+        let batch = batcher.batch_for(TextureHandle { id: 7 }).expect("tileset batch");
+        assert_eq!(batch.instances.len(), 2, "one instance per non-zero tile");
 
         // Tile (0,0): at the anchor, tileset cell 0.
         let first = &batch.instances[0];
@@ -81,16 +78,5 @@ mod tests {
         let second = &batch.instances[1];
         assert_eq!(second.position, [180.0, 160.0]);
         assert_eq!(second.tex_region, [0.25, 0.25, 0.25, 0.25]);
-    }
-
-    #[test]
-    fn test_tilemap_without_transform_is_skipped() {
-        let mut world = World::new();
-        let entity = world.create_entity();
-        world.add_component(&entity, Tilemap::new(2, 2, 32.0)).unwrap();
-
-        let mut batcher = SpriteBatcher::new();
-        append_tilemap_sprites(&world, &mut batcher);
-        assert!(batcher.batches().is_empty());
     }
 }

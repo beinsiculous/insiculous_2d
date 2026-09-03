@@ -450,54 +450,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_render_manager_new() {
-        let manager = RenderManager::new();
-        assert!(!manager.is_initialized());
-        assert!(manager.device().is_none());
-        assert!(manager.queue().is_none());
-        assert!(!manager.is_fatal());
-    }
-
-    #[test]
-    fn classify_recreates_surface_on_first_surface_error() {
-        let err = RendererError::SurfaceError("lost".to_string());
-        assert_eq!(classify_render_error(&err, 0), RenderErrorAction::RecreateSurface);
-    }
-
-    #[test]
-    fn classify_escalates_to_fatal_after_max_consecutive_surface_errors() {
-        let err = RendererError::SurfaceError("lost".to_string());
-        assert_eq!(
-            classify_render_error(&err, MAX_SURFACE_ERROR_STREAK - 1),
-            RenderErrorAction::Fatal
-        );
-    }
-
-    #[test]
     fn classify_device_lost_is_fatal_immediately_regardless_of_streak() {
-        assert_eq!(classify_render_error(&RendererError::DeviceLost, 0), RenderErrorAction::Fatal);
-    }
-
-    #[test]
-    fn classify_propagates_non_surface_errors() {
-        let err = RendererError::RenderingError("oom".to_string());
-        assert_eq!(classify_render_error(&err, 0), RenderErrorAction::Propagate);
-    }
-
-    #[test]
-    fn device_lost_error_latches_fatal() {
-        let mut manager = RenderManager::new();
-        assert_eq!(
-            manager.note_render_error(&RendererError::DeviceLost),
-            RenderErrorAction::Fatal
-        );
-        assert!(manager.is_fatal());
+        let surface = RendererError::SurfaceError("lost".to_string());
+        for (error, streak, action) in [
+            (&RendererError::DeviceLost, 0, RenderErrorAction::Fatal),
+            (&surface, 0, RenderErrorAction::RecreateSurface),
+            (&surface, MAX_SURFACE_ERROR_STREAK - 1, RenderErrorAction::Fatal),
+            (&RendererError::RenderingError("oom".to_string()), 0, RenderErrorAction::Propagate),
+        ] {
+            assert_eq!(classify_render_error(error, streak), action, "{error:?} at streak {streak}");
+        }
     }
 
     #[test]
     fn fatal_render_manager_refuses_to_render() {
         let mut manager = RenderManager::new();
-        manager.note_render_error(&RendererError::DeviceLost);
+        assert!(!manager.is_fatal());
+
+        assert_eq!(manager.note_render_error(&RendererError::DeviceLost), RenderErrorAction::Fatal);
+
+        assert!(manager.is_fatal());
+        // Never submit to a dead queue: the render call fails before any GPU work.
         let result = manager.render(&[], &[], &HashMap::new());
         assert!(matches!(result, Err(RendererError::DeviceLost)));
     }
@@ -529,71 +502,49 @@ mod tests {
         assert!(!manager.is_fatal());
     }
 
-    #[test]
-    fn test_render_manager_default() {
-        let manager = RenderManager::default();
-        assert!(!manager.is_initialized());
-    }
-
-    #[test]
-    fn test_camera_access() {
-        let mut manager = RenderManager::new();
-
-        // Test initial camera state - Camera2D::default() sets viewport to 800x600
-        assert_eq!(manager.camera().viewport_size, Vec2::new(800.0, 600.0));
-
-        // Test camera mutation
-        manager.set_viewport_size(1024.0, 768.0);
-        assert_eq!(manager.camera().viewport_size, Vec2::new(1024.0, 768.0));
-
-        // Test mutable access
-        manager.camera_mut().position = Vec2::new(100.0, 50.0);
-        assert_eq!(manager.camera().position, Vec2::new(100.0, 50.0));
-    }
-
-    #[test]
-    fn test_sync_main_camera_copies_main_camera_entity_position() {
-        let mut manager = RenderManager::new();
+    fn world_with_main_camera(zoom: f32) -> World {
         let mut world = World::new();
-
         let cam = world.create_entity();
+        world.add_component(&cam, Transform2D::new(Vec2::new(320.0, -40.0))).ok();
+        let mut camera = Camera::default().as_main_camera();
+        camera.zoom = zoom;
+        world.add_component(&cam, camera).ok();
         world
-            .add_component(&cam, Transform2D::new(Vec2::new(320.0, -40.0)))
-            .unwrap();
-        world
-            .add_component(&cam, Camera::default().as_main_camera())
-            .unwrap();
-
-        let viewport_before = manager.camera().viewport_size;
-        manager.sync_main_camera(&world);
-
-        assert_eq!(manager.camera().position, Vec2::new(320.0, -40.0));
-        // Only position syncs — viewport stays render-managed.
-        assert_eq!(manager.camera().viewport_size, viewport_before);
     }
 
     #[test]
-    fn test_sync_main_camera_is_noop_without_main_camera_entity() {
+    fn sync_main_camera_copies_position_and_sanitized_zoom_only() {
         let mut manager = RenderManager::new();
-        manager.camera_mut().position = Vec2::new(7.0, 9.0);
-
-        let mut world = World::new();
-        // Non-main camera entities must not drive the render camera.
-        let cam = world.create_entity();
-        world
-            .add_component(&cam, Transform2D::new(Vec2::new(1.0, 2.0)))
-            .unwrap();
-        world.add_component(&cam, Camera::default()).unwrap();
-
-        manager.sync_main_camera(&world);
-        assert_eq!(manager.camera().position, Vec2::new(7.0, 9.0));
-    }
-
-    #[test]
-    fn test_resize_without_renderer() {
-        let mut manager = RenderManager::new();
-        // Should not panic, just updates camera
+        // Resizing before a renderer exists only updates the camera viewport,
+        // and the game loop's own two writes are observable on the camera.
         manager.resize(1024, 768);
         assert_eq!(manager.camera().viewport_size, Vec2::new(1024.0, 768.0));
+        manager.set_viewport_size(640.0, 480.0);
+        let viewport_before = manager.camera().viewport_size;
+        assert_eq!(viewport_before, Vec2::new(640.0, 480.0));
+        manager.camera_mut().position = Vec2::new(7.0, 9.0);
+        assert_eq!(manager.camera().position, Vec2::new(7.0, 9.0));
+
+        manager.sync_main_camera(&world_with_main_camera(2.0));
+
+        assert_eq!(manager.camera().position, Vec2::new(320.0, -40.0));
+        assert_eq!(manager.camera().zoom, 2.0);
+        assert_eq!(manager.camera().viewport_size, viewport_before, "viewport stays render-managed");
+
+        // A `zoom: 0.0` (or NaN, or negative) in a scene file must never
+        // divide the projection or the editor viewport by zero.
+        for bad_zoom in [0.0, f32::NAN, -1.5, f32::INFINITY] {
+            let pose = main_camera_pose(&world_with_main_camera(bad_zoom));
+            assert_eq!(pose, Some((Vec2::new(320.0, -40.0), 1.0)), "zoom {bad_zoom}");
+        }
+
+        // Non-main camera entities never drive the render camera.
+        let mut world = World::new();
+        let cam = world.create_entity();
+        world.add_component(&cam, Transform2D::new(Vec2::new(1.0, 2.0))).ok();
+        world.add_component(&cam, Camera::default()).ok();
+        manager.sync_main_camera(&world);
+        assert_eq!(manager.camera().position, Vec2::new(320.0, -40.0));
+        assert_eq!(main_camera_pose(&world), None);
     }
 }

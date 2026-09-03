@@ -7,6 +7,10 @@ description = "Core functionality for the insiculous_2d game engine"
 [features]
 default = ["physics"]
 physics = ["dep:physics"]
+# Exposes `engine_core::test_support` (scene round-trip fixtures, the
+# input-frame helper) to this crate's integration tests and to downstream
+# crates' test builds. Never enabled by a game.
+test-support = []
 
 [dependencies]
 common = { workspace = true }
@@ -57,3 +61,5 @@ console_error_panic_hook = "0.1"
 
 [dev-dependencies]
 tempfile = "3"
+# The crate's own `tests/` see `test_support` through this self-dependency.
+engine_core = { path = ".", features = ["test-support"] }

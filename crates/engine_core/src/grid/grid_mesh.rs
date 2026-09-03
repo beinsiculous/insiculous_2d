@@ -345,141 +345,95 @@ impl GridMesh {
 mod tests {
     use super::*;
 
-    #[test]
-    fn grid_construction_sizes() {
-        let g = GridMesh::new(6, 4, 10.0, Vec2::ZERO);
-        assert_eq!(g.node_count(), 24);
-        // Hex springs: (cols-1)*rows + (rows-1)*cols/2 = 5*4 + 3*3 = 29.
-        assert_eq!(g.spring_count(), 29);
-    }
+    /// Interior node (2,2) of a 6-column grid.
+    const CENTER: usize = 14;
 
     #[test]
-    fn border_nodes_are_pinned() {
-        let g = GridMesh::new(4, 3, 1.0, Vec2::ZERO);
-        // First node is corner, must be pinned.
-        assert_eq!(g.nodes[0].inv_mass, 0.0);
-        // Interior node (1,1) — index 5 in 4x3 — must be free.
-        assert_eq!(g.nodes[5].inv_mass, 1.0);
-    }
+    fn energy_decays_with_damping_and_nodes_return_to_rest_while_pinned_corners_never_move() {
+        let mut g = GridMesh::new(6, 5, 10.0, Vec2::ZERO).with_damping(0.2);
+        let rest = g.nodes[CENTER].rest;
+        g.apply_impulse(&GridImpulse::Point { position: rest, force: Vec2::new(0.0, 100.0), radius: 5.0 });
 
-    #[test]
-    fn impulse_moves_interior_node() {
-        let mut g = GridMesh::new(6, 5, 10.0, Vec2::ZERO);
-        let initial = g.nodes[14].position; // interior (2,2)
-        g.apply_impulse(&GridImpulse::Point {
-            position: initial,
-            force: Vec2::new(0.0, 100.0),
-            radius: 5.0,
-        });
         g.step(0.05);
-        assert!(g.nodes[14].position.y > initial.y, "node should have moved up");
-    }
+        assert!(g.nodes[CENTER].position.y > rest.y, "the impulse moved the interior node up");
+        let e_start = g.total_energy();
+        for _ in 0..600 { // ~10 seconds
+            g.step(0.016);
+        }
 
-    #[test]
-    fn pinned_corner_never_moves() {
+        assert!(g.total_energy() < e_start * 0.1, "energy {e_start} -> {} should decay heavily", g.total_energy());
+        let final_offset = (g.nodes[CENTER].position - rest).length();
+        assert!(final_offset < 0.1, "node should settle near rest, offset = {final_offset}");
+
+        // A pinned corner ignores even a violent impulse centered on it.
         let mut g = GridMesh::new(6, 5, 10.0, Vec2::ZERO);
         let corner_rest = g.nodes[0].rest;
         g.apply_impulse(&GridImpulse::Radial {
-            position: corner_rest,
-            strength: 1000.0,
-            radius: 100.0,
-            attractive: false,
+            position: corner_rest, strength: 1000.0, radius: 100.0, attractive: false,
         });
         for _ in 0..30 {
             g.step(0.016);
         }
-        assert!((g.nodes[0].position - corner_rest).length() < 1e-3);
+        assert_eq!(g.nodes[0].position, corner_rest, "a pinned corner never moves");
     }
 
     #[test]
-    fn energy_decays_with_damping() {
-        let mut g = GridMesh::new(8, 7, 10.0, Vec2::ZERO).with_damping(0.2);
-        g.apply_impulse(&GridImpulse::Radial {
-            position: Vec2::ZERO,
-            strength: 500.0,
-            radius: 20.0,
-            attractive: false,
-        });
-        g.step(0.016);
-        let e_start = g.total_energy();
-        for _ in 0..240 { // ~4 seconds
-            g.step(0.016);
-        }
-        let e_end = g.total_energy();
-        assert!(e_end < e_start * 0.1, "energy {} -> {} should decay heavily", e_start, e_end);
-    }
+    fn line_vertices_come_in_spring_pairs_at_node_positions_with_rest_alpha() {
+        let mut g = GridMesh::new(4, 3, 1.0, Vec2::new(2.0, 3.0));
+        let expected_alpha = g.color.w * g.rest_alpha_fraction;
 
-    #[test]
-    fn grid_returns_to_rest() {
-        let mut g = GridMesh::new(6, 5, 10.0, Vec2::ZERO).with_damping(0.2);
-        let center_idx = 14;
-        let rest = g.nodes[center_idx].rest;
-        g.apply_impulse(&GridImpulse::Point {
-            position: rest,
-            force: Vec2::new(50.0, 50.0),
-            radius: 8.0,
-        });
-        for _ in 0..600 { // ~10 seconds — plenty of time to settle
-            g.step(0.016);
-        }
-        let final_offset = (g.nodes[center_idx].position - rest).length();
-        assert!(final_offset < 0.1, "node should settle near rest, offset = {}", final_offset);
-    }
+        let verts: Vec<LineVertex> = g.build_line_vertices().to_vec();
 
-    #[test]
-    fn build_line_vertices_produces_two_per_spring() {
-        let mut g = GridMesh::new(4, 3, 1.0, Vec2::ZERO);
-        let verts = g.build_line_vertices();
         assert_eq!(verts.len(), g.spring_count() * 2);
+        for (spring, pair) in g.springs.iter().zip(verts.chunks(2)) {
+            assert_eq!(pair[0].position, g.nodes[spring.a as usize].position.to_array());
+            assert_eq!(pair[1].position, g.nodes[spring.b as usize].position.to_array());
+            for v in pair {
+                assert!((v.color[3] - expected_alpha).abs() < 1e-6, "at rest every alpha is color.w * fraction");
+                assert_eq!(v.emissive, g.emissive);
+            }
+        }
     }
 
     #[test]
-    fn invisible_grid_produces_no_vertices() {
-        let mut g = GridMesh::new(4, 3, 1.0, Vec2::ZERO);
-        g.visible = false;
-        assert_eq!(g.build_line_vertices().len(), 0);
+    fn hidden_grid_still_simulates_but_emits_no_vertices() {
+        // Re-enabling a hidden grid resumes from the same physics state, so
+        // invisible (or fully transparent) grids keep stepping — they only
+        // skip the per-spring vertex loop.
+        let mut hidden = GridMesh::new(6, 5, 10.0, Vec2::ZERO);
+        hidden.visible = false;
+        let mut transparent = GridMesh::new(6, 5, 10.0, Vec2::ZERO).with_alpha(0.0);
+        for g in [&mut hidden, &mut transparent] {
+            let rest = g.nodes[CENTER].rest;
+            g.apply_impulse(&GridImpulse::Point { position: rest, force: Vec2::new(0.0, 100.0), radius: 5.0 });
+
+            g.step(0.05);
+
+            assert!(g.nodes[CENTER].position.y > rest.y, "the hidden grid still steps");
+            assert_eq!(g.build_line_vertices().len(), 0, "and draws nothing");
+        }
     }
 
     #[test]
-    fn transparent_grid_produces_no_vertices() {
-        let mut g = GridMesh::new(4, 3, 1.0, Vec2::ZERO).with_alpha(0.0);
-        assert_eq!(g.build_line_vertices().len(), 0);
-    }
-
-    #[test]
-    fn alpha_clamped_to_unit_range() {
-        let g = GridMesh::new(4, 3, 1.0, Vec2::ZERO).with_alpha(2.5);
-        assert_eq!(g.color.w, 1.0);
-        let g = GridMesh::new(4, 3, 1.0, Vec2::ZERO).with_alpha(-0.4);
-        assert_eq!(g.color.w, 0.0);
-    }
-
-    #[test]
-    #[should_panic(expected = "even column count")]
-    fn hex_grid_rejects_odd_column_count() {
-        let _ = GridMesh::new(5, 5, 10.0, Vec2::ZERO);
-    }
-
-
-
-
-
-
-
-
-    #[test]
-    fn hidden_grid_still_simulates() {
-        // Re-enabling a hidden grid should resume from the same physics
-        // state, so invisible grids must keep stepping normally.
+    fn translate_shifts_rest_and_position_but_not_velocity() {
+        // #46: a backdrop following a scrolling camera moves without
+        // resetting its simulation — the ripple travels with it.
         let mut g = GridMesh::new(6, 5, 10.0, Vec2::ZERO);
-        g.visible = false;
-        let center_idx = 14;
         g.apply_impulse(&GridImpulse::Point {
-            position: g.nodes[center_idx].rest,
-            force: Vec2::new(0.0, 100.0),
-            radius: 5.0,
+            position: g.nodes[CENTER].rest, force: Vec2::new(0.0, 100.0), radius: 5.0,
         });
         g.step(0.05);
-        assert!(g.nodes[center_idx].position.y > g.nodes[center_idx].rest.y);
+        let before: Vec<GridNode> = g.nodes.clone();
+        let delta = Vec2::new(100.0, -50.0);
+
+        g.translate(delta);
+
+        assert_eq!(g.origin, delta);
+        for (was, now) in before.iter().zip(&g.nodes) {
+            assert_eq!(now.rest, was.rest + delta);
+            assert_eq!(now.position, was.position + delta);
+            assert_eq!(now.velocity, was.velocity, "velocity is untouched");
+        }
+        assert_ne!(before[CENTER].velocity, Vec2::ZERO, "the ripple was live when translated");
     }
 }

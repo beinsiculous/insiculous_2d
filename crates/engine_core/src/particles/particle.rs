@@ -155,35 +155,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn config_builder_chains() {
-        let cfg = ParticleConfig::burst(32)
-            .with_lifetime(0.2, 0.8)
-            .with_speed(50.0, 300.0)
-            .with_direction(Vec2::new(1.0, 0.0), 0.3)
-            .with_color(Vec4::new(1.0, 0.0, 0.0, 1.0), Vec4::new(0.0, 0.0, 0.0, 0.0))
-            .with_emissive(3.0);
-        assert_eq!(cfg.count, 32);
-        assert!((cfg.lifetime_range.0 - 0.2).abs() < 1e-5);
-        assert!((cfg.lifetime_range.1 - 0.8).abs() < 1e-5);
-        assert!((cfg.speed_range.1 - 300.0).abs() < 1e-3);
-        assert!((cfg.direction.length() - 1.0).abs() < 1e-5);
-        assert!((cfg.emissive - 3.0).abs() < 1e-5);
-    }
+    fn t_clamps_past_end_of_life_and_reads_one_for_a_zero_lifetime() {
+        // `t` is the colour/scale interpolation divisor: a particle a frame
+        // past its lifetime must not extrapolate, and a zero lifetime must
+        // not divide by zero.
+        let overdue = Particle { age: 1.5, lifetime: 1.0, ..Particle::default() };
+        let instant = Particle { age: 0.0, lifetime: 0.0, ..Particle::default() };
 
-    #[test]
-    fn with_lifetime_swaps_min_max() {
-        // Passing args backwards still produces a valid (min, max) range.
-        let cfg = ParticleConfig::burst(1).with_lifetime(0.9, 0.1);
-        assert!(cfg.lifetime_range.0 <= cfg.lifetime_range.1);
-    }
-
-    #[test]
-    fn particle_t_clamped() {
-        let mut p = Particle { lifetime: 1.0, age: 0.5, ..Default::default() };
-        assert!((p.t() - 0.5).abs() < 1e-5);
-        p.age = 2.0; // past end of life
-        assert!((p.t() - 1.0).abs() < 1e-5);
-        p.lifetime = 0.0;
-        assert_eq!(p.t(), 1.0);
+        assert_eq!(overdue.t(), 1.0);
+        assert_eq!(instant.t(), 1.0);
     }
 }

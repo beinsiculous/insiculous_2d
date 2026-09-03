@@ -165,39 +165,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_read_missing_slot_is_none_not_error() {
-        let dir = tempfile::tempdir().unwrap();
-        let slot = dir.path().join("nope.json");
-        assert_eq!(read(&slot).unwrap(), None);
-    }
+    fn test_write_then_read_round_trips_and_leaves_no_temp_file() -> Result<(), std::io::Error> {
+        let dir = tempfile::tempdir()?;
+        // Parent directories are created on demand (`saves/` on first run).
+        let slot = dir.path().join("deep/nested/save.json");
+        assert_eq!(read(&slot)?, None, "a missing slot reads as None, not an error");
 
-    #[test]
-    fn test_write_then_read_round_trips_and_leaves_no_temp_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let slot = dir.path().join("save.json");
-        write(&slot, "{\"a\":1}").unwrap();
-        assert_eq!(read(&slot).unwrap().as_deref(), Some("{\"a\":1}"));
+        write(&slot, "{\"a\":1}")?;
+
+        assert_eq!(read(&slot)?.as_deref(), Some("{\"a\":1}"));
         assert!(
-            !dir.path().join("save.json.tmp").exists(),
+            !dir.path().join("deep/nested/save.json.tmp").exists(),
             "temp file must be renamed away"
         );
-    }
 
-    #[test]
-    fn test_write_creates_nested_parent_directories() {
-        let dir = tempfile::tempdir().unwrap();
-        let slot = dir.path().join("deep/nested/save.json");
-        write(&slot, "x").unwrap();
-        assert_eq!(read(&slot).unwrap().as_deref(), Some("x"));
-    }
-
-    #[test]
-    fn test_write_replaces_previous_contents() {
-        let dir = tempfile::tempdir().unwrap();
-        let slot = dir.path().join("save.json");
-        write(&slot, "old").unwrap();
-        write(&slot, "new").unwrap();
-        assert_eq!(read(&slot).unwrap().as_deref(), Some("new"));
+        write(&slot, "new")?;
+        assert_eq!(read(&slot)?.as_deref(), Some("new"), "a write replaces the previous contents");
+        Ok(())
     }
 
     #[test]

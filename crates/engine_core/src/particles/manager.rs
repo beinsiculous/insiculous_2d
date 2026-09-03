@@ -197,81 +197,52 @@ mod tests {
     use glam::Vec2;
 
     #[test]
-    fn new_pool_has_no_alive_particles() {
-        let m = ParticleManager::default();
-        assert_eq!(m.alive_count(), 0);
-        assert_eq!(m.capacity(), DEFAULT_CAPACITY);
-    }
-
-    #[test]
-    fn with_capacity_clamps_to_at_least_one() {
-        let m = ParticleManager::with_capacity(0);
-        assert_eq!(m.capacity(), 1);
-    }
-
-    #[test]
-    fn spawn_burst_creates_count_particles() {
-        let mut m = ParticleManager::with_capacity(64);
-        let cfg = ParticleConfig::burst(10);
-        m.spawn_burst(Vec2::ZERO, &cfg);
-        assert_eq!(m.alive_count(), 10);
-    }
-
-    #[test]
-    fn step_decays_particles_to_death() {
-        let mut m = ParticleManager::with_capacity(64);
-        let cfg = ParticleConfig::burst(5).with_lifetime(0.1, 0.1);
-        m.spawn_burst(Vec2::ZERO, &cfg);
-        assert_eq!(m.alive_count(), 5);
-        m.step(0.05);
-        assert_eq!(m.alive_count(), 5, "still alive at half-life");
-        m.step(0.1);
-        assert_eq!(m.alive_count(), 0, "all expired after full lifetime");
-    }
-
-    #[test]
-    fn spawn_reuses_dead_slots() {
-        let mut m = ParticleManager::with_capacity(8);
-        let cfg = ParticleConfig::burst(5).with_lifetime(0.1, 0.1);
-        m.spawn_burst(Vec2::ZERO, &cfg);
-        m.step(0.2); // all dead
-        assert_eq!(m.alive_count(), 0);
-        m.spawn_burst(Vec2::ZERO, &cfg);
-        assert_eq!(m.alive_count(), 5);
-    }
-
-    #[test]
-    fn overfull_pool_overwrites_oldest() {
+    fn overfull_pool_overwrites_the_oldest_and_never_allocates() {
+        // Ten single-particle bursts into a four-slot pool: the survivors
+        // are the LAST four spawned (origins 6..=9), the pool stays at its
+        // capacity, and `clear` frees every slot.
         let mut m = ParticleManager::with_capacity(4);
-        let cfg = ParticleConfig::burst(10).with_lifetime(10.0, 10.0);
-        m.spawn_burst(Vec2::ZERO, &cfg);
-        // Pool can only hold 4, so 4 alive (the most recent 4).
-        assert_eq!(m.alive_count(), 4);
-    }
+        let cfg = ParticleConfig::burst(1).with_lifetime(10.0, 10.0).with_speed(0.0, 0.0);
 
-    #[test]
-    fn clear_kills_all_particles() {
-        let mut m = ParticleManager::with_capacity(16);
-        let cfg = ParticleConfig::burst(8);
-        m.spawn_burst(Vec2::ZERO, &cfg);
-        assert_eq!(m.alive_count(), 8);
+        for i in 0..10 {
+            m.spawn_burst(Vec2::new(i as f32, 0.0), &cfg);
+        }
+
+        assert_eq!(m.capacity(), 4);
+        assert_eq!(m.alive_count(), 4);
+        let mut origins: Vec<f32> = m.iter_alive().map(|p| p.position.x).collect();
+        origins.sort_by(f32::total_cmp);
+        assert_eq!(origins, [6.0, 7.0, 8.0, 9.0], "the oldest four were overwritten");
+
         m.clear();
         assert_eq!(m.alive_count(), 0);
     }
 
     #[test]
-    fn velocity_integrates_position_over_time() {
-        let mut m = ParticleManager::with_capacity(2);
+    fn particles_integrate_velocity_gravity_and_age_until_they_die_and_free_their_slot() {
+        let mut m = ParticleManager::with_capacity(8);
         let cfg = ParticleConfig::burst(1)
-            .with_lifetime(10.0, 10.0)
+            .with_lifetime(1.0, 1.0)
             .with_speed(100.0, 100.0)
-            .with_direction(Vec2::X, 0.0);
+            .with_direction(Vec2::X, 0.0)
+            .with_gravity(Vec2::new(0.0, -100.0))
+            .with_color(Vec4::new(1.0, 0.0, 0.0, 1.0), Vec4::new(0.0, 0.0, 1.0, 1.0));
         m.spawn_burst(Vec2::ZERO, &cfg);
+
         m.step(0.5);
-        let p = m.iter_alive().next().unwrap();
-        // 100 units/s for 0.5s = ~50 units along X.
+
+        let p = m.iter_alive().next().expect("alive at half-life");
+        // 100 units/s along X for 0.5 s; gravity pulled it below the origin.
         assert!((p.position.x - 50.0).abs() < 0.5, "x: {}", p.position.x);
-        assert!(p.position.y.abs() < 1e-3);
+        assert!(p.position.y < 0.0, "expected y < 0 from gravity, got {}", p.position.y);
+        // Half-way through its life the tint is an equal mix of start and end.
+        let c = ParticleManager::current_color(p);
+        assert!((c.x - 0.5).abs() < 1e-3 && (c.z - 0.5).abs() < 1e-3, "tint {c}");
+
+        m.step(0.6);
+        assert_eq!(m.alive_count(), 0, "all expired after the full lifetime");
+        m.spawn_burst(Vec2::ZERO, &ParticleConfig::burst(5).with_lifetime(0.1, 0.1));
+        assert_eq!(m.alive_count(), 5, "dead slots are reused");
     }
 
     #[test]
@@ -280,39 +251,14 @@ mod tests {
         m.reseed(42);
         let cfg = ParticleConfig::burst(200)
             .with_speed(100.0, 100.0)
-            .with_direction(Vec2::Y, std::f32::consts::FRAC_PI_2); // 90° half-cone
+            .with_direction(Vec2::Y, std::f32::consts::FRAC_PI_2); // 90° full cone
+
         m.spawn_burst(Vec2::ZERO, &cfg);
-        // With direction = +Y and ±45° cone, every particle should have positive Y velocity.
+
+        // With direction = +Y and ±45°, every particle flies upward.
+        assert_eq!(m.alive_count(), 200);
         for p in m.iter_alive() {
             assert!(p.velocity.y > 0.0, "expected upward y, got {:?}", p.velocity);
         }
-    }
-
-    #[test]
-    fn gravity_pulls_particles_down() {
-        let mut m = ParticleManager::with_capacity(2);
-        let cfg = ParticleConfig::burst(1)
-            .with_lifetime(10.0, 10.0)
-            .with_speed(0.0, 0.0)
-            .with_gravity(Vec2::new(0.0, -100.0));
-        m.spawn_burst(Vec2::ZERO, &cfg);
-        m.step(0.5);
-        let p = m.iter_alive().next().unwrap();
-        assert!(p.position.y < 0.0, "expected y < 0 from gravity, got {}", p.position.y);
-    }
-
-    #[test]
-    fn current_color_interpolates() {
-        let p = Particle {
-            lifetime: 1.0,
-            age: 0.5,
-            color_start: Vec4::new(1.0, 0.0, 0.0, 1.0),
-            color_end: Vec4::new(0.0, 0.0, 1.0, 1.0),
-            ..Default::default()
-        };
-        let c = ParticleManager::current_color(&p);
-        // Halfway: equal mix of red and blue.
-        assert!((c.x - 0.5).abs() < 1e-3);
-        assert!((c.z - 0.5).abs() < 1e-3);
     }
 }

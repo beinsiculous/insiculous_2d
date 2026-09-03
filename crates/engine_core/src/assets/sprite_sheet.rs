@@ -274,11 +274,13 @@ mod tests {
     clips: [("walk", (frames: [0, 1, 2, 3], fps: 8.0))],
 )"#;
 
-    /// A temp asset root holding a 64x32 PNG and, optionally, a sidecar.
-    fn asset_root(sidecar: Option<&str>) -> tempfile::TempDir {
+    /// A temp asset root holding a 64x32 PNG (unless `png` is false) and,
+    /// optionally, a sidecar.
+    fn asset_root(png: bool, sidecar: Option<&str>) -> tempfile::TempDir {
         let dir = tempfile::tempdir().expect("tempdir");
-        let png = image::RgbaImage::new(64, 32);
-        png.save(dir.path().join("deion.png")).expect("write png");
+        if png {
+            image::RgbaImage::new(64, 32).save(dir.path().join("deion.png")).expect("write png");
+        }
         if let Some(text) = sidecar {
             fs::write(dir.path().join("deion.sheet.ron"), text).expect("write sidecar");
         }
@@ -286,145 +288,127 @@ mod tests {
     }
 
     #[test]
-    fn test_prepare_sheet_resolves_the_grid_and_filter() {
-        let dir = asset_root(Some(SIDECAR));
+    fn prepare_sheet_resolves_the_grid_filter_and_clips_from_the_sidecar_and_png() {
+        let dir = asset_root(true, Some(SIDECAR));
 
-        let prepared = prepare_sheet(dir.path(), "deion.png").expect("prepares");
+        let prepared = prepare_sheet(dir.path(), "deion.png").expect("a valid sheet prepares");
 
+        // 64x32 PNG over 16px cells → 4x2; the sidecar's omitted filter is
+        // the pixel-art default; the clip comes through by name.
         assert_eq!((prepared.sheet.grid.cols, prepared.sheet.grid.rows), (4, 2));
         assert_eq!(prepared.filter, TextureFilter::Nearest);
+        assert_eq!(prepared.sheet.clips.len(), 1);
         assert_eq!(prepared.sheet.clips[0].0, "walk");
         assert_eq!(prepared.sheet.clips[0].1.frame_indices, vec![0, 1, 2, 3]);
+        assert_eq!(prepared.sheet.clips[0].1.fps, 8.0);
     }
 
     #[test]
-    fn test_prepare_sheet_reads_the_same_stem_sidecar() {
-        let dir = asset_root(Some(SIDECAR));
-        // The wrong derivation would look for `deion.png.sheet.ron`.
-        fs::write(dir.path().join("deion.png.sheet.ron"), "garbage").expect("write decoy");
+    fn prepare_sheet_fails_before_any_texture_is_loaded() {
+        // `load_sprite_sheet` allocates a handle only after `prepare_sheet`
+        // succeeds, so every failure here is a load that leaves nothing
+        // behind: a clip past the 8-cell sheet, no sidecar, no PNG to size
+        // the grid.
+        let past_the_grid = r#"SheetFile(version: 1, cell: (16, 16), clips: [("walk", (frames: [99], fps: 8.0))])"#;
+        let cases = [
+            (true, Some(past_the_grid), vec!["'walk'", "99"]),
+            (true, None, vec!["deion.sheet.ron"]),
+            (false, Some(SIDECAR), vec!["dimensions"]),
+        ];
 
-        assert!(prepare_sheet(dir.path(), "deion.png").is_ok());
+        for (png, sidecar, expected) in cases {
+            let dir = asset_root(png, sidecar);
+
+            let err = prepare_sheet(dir.path(), "deion.png").expect_err("a bad sheet fails validation");
+
+            let message = err.to_string();
+            for needle in expected {
+                assert!(message.contains(needle), "png {png}, sidecar {sidecar:?}: expected {needle:?} in {message}");
+            }
+        }
     }
 
     #[test]
-    fn test_prepare_sheet_fails_before_any_texture_is_loaded() {
-        // A clip past the end of the 8-cell sheet: the error must come from
-        // validation, which runs before `load_sprite_sheet` reaches the GPU.
-        let dir = asset_root(Some(
-            r#"SheetFile(version: 1, cell: (16, 16), clips: [("walk", (frames: [99], fps: 8.0))])"#,
-        ));
-
-        let err = prepare_sheet(dir.path(), "deion.png").expect_err("invalid clip index");
-
-        let message = err.to_string();
-        assert!(message.contains("'walk'"), "{message}");
-        assert!(message.contains("99"), "{message}");
-    }
-
-    #[test]
-    fn test_prepare_sheet_reports_a_missing_sidecar() {
-        let dir = asset_root(None);
-
-        let err = prepare_sheet(dir.path(), "deion.png").expect_err("no sidecar");
-
-        assert!(err.to_string().contains("deion.sheet.ron"), "{err}");
-    }
-
-    #[test]
-    fn test_prepare_sheet_reports_a_missing_png() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        fs::write(dir.path().join("deion.sheet.ron"), SIDECAR).expect("write sidecar");
-
-        let err = prepare_sheet(dir.path(), "deion.png").expect_err("no png to size the grid");
-
-        assert!(err.to_string().contains("dimensions"), "{err}");
-    }
-
-    #[test]
-    fn test_cache_serves_a_sidecar_filter() {
-        let dir = asset_root(Some(SIDECAR));
+    fn clearing_the_cache_picks_up_an_edited_sidecar() {
+        let dir = asset_root(true, Some(SIDECAR));
         let mut cache = SidecarCache::default();
+        assert_eq!(cache.get(dir.path(), "deion.png").map(|p| p.sheet.grid.cols), Some(4));
 
-        let prepared = cache.get(dir.path(), "deion.png").expect("sidecar found");
-        assert_eq!(prepared.filter, TextureFilter::Nearest);
-    }
-
-    #[test]
-    fn test_cache_does_not_re_read_the_filesystem() {
-        let dir = asset_root(Some(SIDECAR));
-        let mut cache = SidecarCache::default();
-        assert!(cache.get(dir.path(), "deion.png").is_some());
-
-        // Delete the sidecar: a cached answer survives, a re-read could not.
+        // One read per path per load: with the file gone the cached answer
+        // survives, which a re-read could not.
         fs::remove_file(dir.path().join("deion.sheet.ron")).expect("remove sidecar");
-        assert!(cache.get(dir.path(), "deion.png").is_some());
-    }
+        assert_eq!(cache.get(dir.path(), "deion.png").map(|p| p.sheet.grid.cols), Some(4));
 
-    #[test]
-    fn test_clearing_the_cache_picks_up_an_edited_sidecar() {
-        let dir = asset_root(Some(SIDECAR));
-        let mut cache = SidecarCache::default();
-        assert_eq!(cache.get(dir.path(), "deion.png").unwrap().sheet.grid.cols, 4);
-
-        // The artist re-cut the sheet into 8px cells.
+        // The artist re-cut the sheet into 8px cells; the next load sees it.
         fs::write(
             dir.path().join("deion.sheet.ron"),
             r#"SheetFile(version: 1, cell: (8, 8), clips: [("walk", (frames: [0], fps: 8.0))])"#,
         )
         .expect("rewrite sidecar");
-
         cache.clear();
+
         let prepared = cache.get(dir.path(), "deion.png").expect("re-read");
         assert_eq!((prepared.sheet.grid.cols, prepared.sheet.grid.rows), (8, 4));
     }
 
     #[test]
-    fn test_cache_returns_nothing_for_a_texture_without_a_sidecar() {
-        let dir = asset_root(None);
+    fn cache_falls_back_quietly_on_a_malformed_or_absent_sidecar() {
+        // A half-saved file must not fail a scene load: warned once, cached
+        // as absent. No sidecar is the ordinary case for a plain image, and
+        // generated references (`#white`, `#solid:`) are never probed.
+        let malformed = asset_root(true, Some("this is not RON at all"));
+        let plain = asset_root(true, None);
         let mut cache = SidecarCache::default();
 
-        assert!(cache.get(dir.path(), "deion.png").is_none());
+        assert!(cache.get(malformed.path(), "deion.png").is_none());
+        assert!(cache.get(malformed.path(), "deion.png").is_none(), "cached as absent");
+        assert!(cache.get(plain.path(), "deion.png").is_none());
+        assert!(cache.get(plain.path(), "#white").is_none());
+        assert!(cache.get(plain.path(), "#solid:FF00FF").is_none());
     }
 
     #[test]
-    fn test_cache_falls_back_quietly_on_a_malformed_sidecar() {
-        let dir = asset_root(Some("this is not RON at all"));
+    fn unreadable_sidecar_falls_back_and_is_cached_as_absent() {
+        // A sidecar that exists but cannot be read (permissions, a directory
+        // squatting on the path) is the warn-not-quiet branch: the read
+        // fails with something other than NotFound. The warning itself is
+        // not observable headless; what is, is that the load carries on
+        // with the baked values and does not re-probe the path.
+        let dir = asset_root(true, None);
+        fs::create_dir(dir.path().join("deion.sheet.ron")).expect("directory at the sidecar path");
         let mut cache = SidecarCache::default();
 
-        // Warned, cached as absent — a half-saved file must not fail a load.
         assert!(cache.get(dir.path(), "deion.png").is_none());
+
+        // Cached as absent: a sidecar appearing afterwards is not seen until
+        // the next scene load clears the cache.
+        fs::remove_dir(dir.path().join("deion.sheet.ron")).expect("remove squatter");
+        fs::write(dir.path().join("deion.sheet.ron"), SIDECAR).expect("write sidecar");
         assert!(cache.get(dir.path(), "deion.png").is_none());
+        cache.clear();
+        assert_eq!(cache.get(dir.path(), "deion.png").map(|p| p.sheet.grid.cols), Some(4));
     }
 
     #[test]
-    fn test_cache_ignores_generated_texture_references() {
-        let dir = asset_root(Some(SIDECAR));
-        let mut cache = SidecarCache::default();
-
-        assert!(cache.get(dir.path(), "#white").is_none());
-        assert!(cache.get(dir.path(), "#solid:FF00FF").is_none());
-    }
-
-    #[test]
-    fn test_sprite_sheet_builds_components_bound_to_the_sheet() {
+    fn sheet_components_bind_to_its_texture_grid_and_clips_without_playing() {
+        // The documented Sprite Sheet Pattern's entry point: `sprite()` shows
+        // the first cell of THIS texture, `animation()` carries the grid,
+        // clips and sheet path, and nothing plays until the game or the
+        // scene says so.
         let sheet = SpriteSheet {
             texture: TextureHandle { id: 7 },
             grid: common::SheetGrid::new(4, 2),
-            clips: vec![(
-                "walk".to_string(),
-                ecs::sprite_components::AnimationClip::new(vec![0, 1], 8.0),
-            )],
+            clips: vec![("walk".to_string(), ecs::sprite_components::AnimationClip::new(vec![0, 1], 8.0))],
             path: "sprites/deion.png".to_string(),
         };
 
         let animation = sheet.animation();
+        let sprite = sheet.sprite();
+
         assert_eq!(animation.sheet.as_deref(), Some("sprites/deion.png"));
         assert_eq!((animation.grid.cols, animation.grid.rows), (4, 2));
         assert!(animation.has_clip("walk"));
-        // Nothing plays until the game or the scene says so.
         assert!(!animation.playing);
-
-        let sprite = sheet.sprite();
         assert_eq!(sprite.texture_handle, 7);
         assert_eq!(sprite.tex_region, [0.0, 0.0, 0.25, 0.5]);
     }

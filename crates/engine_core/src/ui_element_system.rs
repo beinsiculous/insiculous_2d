@@ -102,91 +102,81 @@ mod tests {
     use ecs::UiAnchor;
     use input::InputHandler;
 
+    const WINDOW: Vec2 = Vec2::new(800.0, 600.0);
+
     fn ui_frame() -> UIContext {
         let mut ui = UIContext::new();
-        ui.begin_frame(&InputHandler::new(), Vec2::new(800.0, 600.0));
+        ui.begin_frame(&InputHandler::new(), WINDOW);
         ui
+    }
+
+    /// Every text the frame drew, in draw order.
+    fn drawn_texts(ui: &UIContext) -> Vec<String> {
+        ui.draw_list()
+            .commands()
+            .iter()
+            .filter_map(|c| match c {
+                ui::DrawCommand::TextPlaceholder { text, .. } => Some(text.clone()),
+                ui::DrawCommand::Text { data, .. } => Some(data.text.clone()),
+                _ => None,
+            })
+            .collect()
     }
 
     fn world_with_elements() -> World {
         let mut world = World::new();
         let panel_entity = world.create_entity();
-        world
-            .add_component(&panel_entity, UiPanel { visible: true, ..Default::default() })
-            .ok();
+        world.add_component(&panel_entity, UiPanel { visible: true, ..Default::default() }).ok();
         let button_entity = world.create_entity();
         world
-            .add_component(
-                &button_entity,
-                UiButton { id: "play".into(), text: "Play".into(), ..Default::default() },
-            )
+            .add_component(&button_entity, UiButton { id: "play".into(), text: "Play".into(), ..Default::default() })
             .ok();
         let label_entity = world.create_entity();
-        world
-            .add_component(
-                &label_entity,
-                UiLabel { text: "Score".into(), ..Default::default() },
-            )
-            .ok();
+        world.add_component(&label_entity, UiLabel { text: "Score".into(), ..Default::default() }).ok();
         world
     }
 
     #[test]
-    fn draws_panels_buttons_and_labels() {
-        let world = world_with_elements();
-        let mut ui = ui_frame();
-        let before = ui.draw_list().len();
-        let pressed = draw_ui_elements(&world, &mut ui, Vec2::new(800.0, 600.0), &Strings::empty());
-        assert!(pressed.is_empty());
-        assert!(ui.draw_list().len() > before, "elements must emit draw commands");
-        ui.end_frame();
-    }
-
-    #[test]
-    fn hidden_resource_suppresses_everything() {
+    fn hidden_resource_and_invisible_elements_draw_nothing() {
+        // The editor inserts `UiElementsHidden` while Editing: not one
+        // command reaches the draw list. A single element with
+        // `visible: false` is skipped the same way.
         let mut world = world_with_elements();
         world.insert_resource(UiElementsHidden);
         let mut ui = ui_frame();
         let before = ui.draw_list().len();
-        let pressed = draw_ui_elements(&world, &mut ui, Vec2::new(800.0, 600.0), &Strings::empty());
+        let pressed = draw_ui_elements(&world, &mut ui, WINDOW, &Strings::empty());
         assert!(pressed.is_empty());
         assert_eq!(ui.draw_list().len(), before, "hidden marker must suppress all drawing");
         ui.end_frame();
-    }
 
-    #[test]
-    fn invisible_elements_are_skipped() {
         let mut world = World::new();
         let e = world.create_entity();
         world
             .add_component(&e, UiLabel { text: "hidden".into(), visible: false, ..Default::default() })
             .ok();
         let mut ui = ui_frame();
-        let before = ui.draw_list().len();
-        draw_ui_elements(&world, &mut ui, Vec2::new(800.0, 600.0), &Strings::empty());
-        assert_eq!(ui.draw_list().len(), before);
+        draw_ui_elements(&world, &mut ui, WINDOW, &Strings::empty());
+        assert_eq!(drawn_texts(&ui), Vec::<String>::new(), "an invisible label draws no text");
         ui.end_frame();
     }
 
     #[test]
     fn panels_draw_before_buttons_and_labels() {
         // A panel at Center and a label at Center: the panel's rect command
-        // must appear before the label's text command in the draw list.
+        // must appear before the label's text command in the draw list,
+        // whatever order the entities were created in.
         let mut world = World::new();
         let e = world.create_entity();
         world
-            .add_component(
-                &e,
-                UiLabel { text: "On top".into(), anchor: UiAnchor::Center, ..Default::default() },
-            )
+            .add_component(&e, UiLabel { text: "On top".into(), anchor: UiAnchor::Center, ..Default::default() })
             .ok();
         let p = world.create_entity();
-        world
-            .add_component(&p, UiPanel { anchor: UiAnchor::Center, ..Default::default() })
-            .ok();
-
+        world.add_component(&p, UiPanel { anchor: UiAnchor::Center, ..Default::default() }).ok();
         let mut ui = ui_frame();
-        draw_ui_elements(&world, &mut ui, Vec2::new(800.0, 600.0), &Strings::empty());
+
+        draw_ui_elements(&world, &mut ui, WINDOW, &Strings::empty());
+
         let commands = ui.draw_list().commands();
         let rect_idx = commands
             .iter()
@@ -194,46 +184,38 @@ mod tests {
             .expect("panel rect drawn");
         let text_idx = commands
             .iter()
-            .position(|c| {
-                matches!(c, ui::DrawCommand::Text { .. } | ui::DrawCommand::TextPlaceholder { .. })
-            })
+            .position(|c| matches!(c, ui::DrawCommand::Text { .. } | ui::DrawCommand::TextPlaceholder { .. }))
             .expect("label text drawn");
         assert!(rect_idx < text_idx, "panel must draw before label");
         ui.end_frame();
     }
 
     #[test]
-    fn button_click_returns_press_event() {
+    fn button_click_returns_press_event_on_release() {
         use input::prelude::MouseButton;
 
         let mut world = World::new();
         let e = world.create_entity();
         // Anchored top-left, 120x32 at origin — click its center.
         world
-            .add_component(
-                &e,
-                UiButton { id: "fire".into(), text: "Fire".into(), ..Default::default() },
-            )
+            .add_component(&e, UiButton { id: "fire".into(), text: "Fire".into(), ..Default::default() })
             .ok();
-
         let mut input = InputHandler::new();
         let mut ui = UIContext::new();
 
-        // Press frame
+        // Press frame: no click yet.
         input.mouse_mut().update_position(60.0, 16.0);
         input.mouse_mut().handle_button_press(MouseButton::Left);
-        ui.begin_frame(&input, Vec2::new(800.0, 600.0));
-        let pressed =
-            draw_ui_elements(&world, &mut ui, Vec2::new(800.0, 600.0), &Strings::empty());
+        ui.begin_frame(&input, WINDOW);
+        let pressed = draw_ui_elements(&world, &mut ui, WINDOW, &Strings::empty());
         ui.end_frame();
         assert!(pressed.is_empty(), "no click until release");
 
-        // Release frame → click fires
+        // Release frame: the press event names the button and its entity.
         input.update();
         input.mouse_mut().handle_button_release(MouseButton::Left);
-        ui.begin_frame(&input, Vec2::new(800.0, 600.0));
-        let pressed =
-            draw_ui_elements(&world, &mut ui, Vec2::new(800.0, 600.0), &Strings::empty());
+        ui.begin_frame(&input, WINDOW);
+        let pressed = draw_ui_elements(&world, &mut ui, WINDOW, &Strings::empty());
         ui.end_frame();
         assert_eq!(pressed.len(), 1);
         assert_eq!(pressed[0].id, "fire");
@@ -245,23 +227,22 @@ mod tests {
         let mut strings = Strings::empty();
         strings.insert_locale_source(
             "en",
-            r#"LocaleFile(version: 1, display_name: "English", strings: {"menu.play": "Play"})"#,
+            r#"LocaleFile(version: 1, display_name: "English", strings: {"menu.play": "Play", "hud.score": "Score"})"#,
         );
-
         let mut world = World::new();
-        let e = world.create_entity();
+        let label = world.create_entity();
+        world.add_component(&label, UiLabel { text: "@hud.score".into(), ..Default::default() }).ok();
+        let button = world.create_entity();
         world
-            .add_component(&e, UiLabel { text: "@menu.play".into(), ..Default::default() })
+            .add_component(&button, UiButton { id: "play".into(), text: "@menu.play".into(), ..Default::default() })
             .ok();
-
         let mut ui = ui_frame();
-        draw_ui_elements(&world, &mut ui, Vec2::new(800.0, 600.0), &strings);
-        let has_resolved = ui.draw_list().commands().iter().any(|c| match c {
-            ui::DrawCommand::TextPlaceholder { text, .. } => text == "Play",
-            ui::DrawCommand::Text { data, .. } => data.text == "Play",
-            _ => false,
-        });
-        assert!(has_resolved, "@menu.play must render as its translation");
+
+        draw_ui_elements(&world, &mut ui, WINDOW, &strings);
+
+        let drawn = drawn_texts(&ui);
+        assert!(drawn.contains(&"Play".to_string()), "@menu.play must render as its translation: {drawn:?}");
+        assert!(drawn.contains(&"Score".to_string()), "@hud.score must render as its translation: {drawn:?}");
         ui.end_frame();
     }
 }

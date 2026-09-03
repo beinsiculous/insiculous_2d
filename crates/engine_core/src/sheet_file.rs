@@ -173,8 +173,8 @@ mod tests {
     }
 
     #[test]
-    fn test_golden_sheet_file_round_trips() {
-        let sheet = parse(GOLDEN).expect("golden sidecar parses");
+    fn golden_sheet_file_round_trips_and_omitted_fields_take_their_defaults() -> Result<(), AssetError> {
+        let sheet = parse(GOLDEN)?;
 
         assert_eq!(sheet.version, 1);
         assert_eq!(sheet.cell, (16, 16));
@@ -184,117 +184,73 @@ mod tests {
         assert_eq!(sheet.clips[0].1.frames, vec![0, 1, 2, 3]);
         assert_eq!(sheet.clips[1].1.fps, 10.0);
         assert!(!sheet.clips[1].1.looping);
-
         // Written back out, it reads as the same file.
         let text = ron::ser::to_string(&sheet).expect("serialize");
-        assert_eq!(parse(&text).expect("re-parse"), sheet);
+        assert_eq!(parse(&text)?, sheet);
+
+        // The whole point of the pipeline: pixel art must not blur because
+        // someone left `filter` out, and a clip loops unless told otherwise.
+        let minimal = parse(r#"SheetFile(version: 1, cell: (16, 16), clips: [("idle", (frames: [0], fps: 6.0))])"#)?;
+        assert_eq!(minimal.filter, TextureFilter::Nearest);
+        assert!(minimal.clips[0].1.looping);
+        // The filter accepts the lowercase alias the config file uses.
+        assert_eq!(parse(r#"SheetFile(version: 1, cell: (8, 8), filter: linear)"#)?.filter, TextureFilter::Linear);
+        Ok(())
     }
 
     #[test]
-    fn test_omitted_filter_defaults_to_nearest() {
-        // The whole point of the sheet pipeline: pixel art must not blur
-        // because someone left the field out.
-        let sheet = parse(
-            r#"SheetFile(version: 1, cell: (16, 16), clips: [("idle", (frames: [0], fps: 6.0))])"#,
-        )
-        .expect("parses without filter");
-
-        assert_eq!(sheet.filter, TextureFilter::Nearest);
-    }
-
-    #[test]
-    fn test_omitted_clip_looping_defaults_to_true() {
-        let sheet = parse(
-            r#"SheetFile(version: 1, cell: (16, 16), clips: [("idle", (frames: [0], fps: 6.0))])"#,
-        )
-        .expect("parses without looping");
-
-        assert!(sheet.clips[0].1.looping);
-    }
-
-    #[test]
-    fn test_filter_accepts_a_lowercase_alias() {
-        let sheet = parse(r#"SheetFile(version: 1, cell: (8, 8), filter: linear)"#)
-            .expect("lowercase alias parses");
-
-        assert_eq!(sheet.filter, TextureFilter::Linear);
-    }
-
-    #[test]
-    fn test_unknown_version_is_rejected_naming_the_file() {
-        let err = parse(r#"SheetFile(version: 99, cell: (16, 16))"#)
-            .expect_err("unknown version must fail");
-
-        let message = err.to_string();
-        assert!(message.contains("deion.sheet.ron"), "{message}");
-        assert!(message.contains("99"), "{message}");
-    }
-
-    #[test]
-    fn test_zero_cell_dimension_is_rejected() {
-        let err = parse(r#"SheetFile(version: 1, cell: (0, 16))"#)
-            .expect_err("zero cell width must fail");
-
-        assert!(err.to_string().contains("cell size"), "{err}");
-    }
-
-    #[test]
-    fn test_empty_frame_list_is_rejected_naming_the_clip() {
-        let err = parse(r#"SheetFile(version: 1, cell: (16, 16), clips: [("idle", (frames: [], fps: 6.0))])"#)
-            .expect_err("empty frames must fail");
-
-        let message = err.to_string();
-        assert!(message.contains("'idle'"), "{message}");
-        assert!(message.contains("no frames"), "{message}");
-    }
-
-    #[test]
-    fn test_unusable_fps_values_are_rejected_naming_the_clip() {
+    fn authored_errors_fail_loud_naming_the_file_and_the_clip() {
         // RON parses `inf` and `NaN`, so the validator has to catch them.
+        let mut cases = vec![
+            (r#"SheetFile(version: 99, cell: (16, 16))"#.to_string(), vec!["99"]),
+            (r#"SheetFile(version: 1, cell: (0, 16))"#.to_string(), vec!["cell size"]),
+            (
+                r#"SheetFile(version: 1, cell: (16, 16), clips: [("idle", (frames: [], fps: 6.0))])"#.to_string(),
+                vec!["'idle'", "no frames"],
+            ),
+        ];
         for fps in ["0.0", "-6.0", "inf", "-inf", "NaN"] {
-            let text = format!(
-                r#"SheetFile(version: 1, cell: (16, 16), clips: [("walk", (frames: [0], fps: {fps}))])"#
-            );
+            cases.push((
+                format!(r#"SheetFile(version: 1, cell: (16, 16), clips: [("walk", (frames: [0], fps: {fps}))])"#),
+                vec!["'walk'", "fps"],
+            ));
+        }
+
+        for (text, expected) in cases {
             let Err(err) = parse(&text) else {
-                panic!("fps {fps} must be rejected at parse time");
+                panic!("{text} must be rejected at parse time");
             };
+
             let message = err.to_string();
-            assert!(message.contains("'walk'"), "fps {fps}: {message}");
-            assert!(message.contains("fps"), "fps {fps}: {message}");
+            assert!(message.contains("deion.sheet.ron"), "{text}: names the file: {message}");
+            for needle in expected {
+                assert!(message.contains(needle), "{text}: expected {needle:?} in {message}");
+            }
         }
     }
 
     #[test]
-    fn test_into_parts_derives_the_grid_from_png_dimensions() {
-        let sheet = parse(r#"SheetFile(version: 1, cell: (16, 16), clips: [("walk", (frames: [0, 7], fps: 8.0))])"#)
-            .expect("parses");
+    fn into_parts_derives_the_grid_from_png_dimensions_excluding_a_partial_trailing_cell() -> Result<(), AssetError> {
+        let exact = parse(r#"SheetFile(version: 1, cell: (16, 16), clips: [("walk", (frames: [0, 7], fps: 8.0))])"#)?;
+        let uneven = parse(r#"SheetFile(version: 1, cell: (30, 30))"#)?;
 
-        let (grid, clips, filter) = sheet
-            .into_parts("deion.sheet.ron", 64, 32)
-            .expect("resolves against a 64x32 sheet");
+        let (grid, clips, filter) = exact.into_parts("deion.sheet.ron", 64, 32)?;
+        // 100 / 30 = 3 whole cells per axis; the 10px remainder is dropped
+        // rather than stretched over, so cells stay pixel-exact.
+        let (partial, _, _) = uneven.into_parts("x.sheet.ron", 100, 100)?;
 
         assert_eq!((grid.cols, grid.rows), (4, 2));
         assert_eq!(grid.cell_count(), 8);
         assert_eq!(clips[0].1.frame_indices, vec![0, 7]);
         assert_eq!(filter, TextureFilter::Nearest);
+        assert_eq!((partial.cols, partial.rows), (3, 3));
+        assert_eq!(partial.uv_rect(1), [0.3, 0.0, 0.3, 0.3]);
+        Ok(())
     }
 
     #[test]
-    fn test_into_parts_excludes_a_partial_trailing_cell() {
-        let sheet = parse(r#"SheetFile(version: 1, cell: (30, 30))"#).expect("parses");
-
-        // 100 / 30 = 3 whole cells per axis; the 10px remainder is dropped
-        // rather than stretched over, so cells stay pixel-exact.
-        let (grid, _, _) = sheet.into_parts("x.sheet.ron", 100, 100).expect("resolves");
-
-        assert_eq!((grid.cols, grid.rows), (3, 3));
-        assert_eq!(grid.uv_rect(1), [0.3, 0.0, 0.3, 0.3]);
-    }
-
-    #[test]
-    fn test_frame_index_past_the_grid_is_rejected_naming_the_clip() {
-        let sheet = parse(r#"SheetFile(version: 1, cell: (16, 16), clips: [("walk", (frames: [0, 99], fps: 8.0))])"#)
-            .expect("parses");
+    fn frame_index_past_the_grid_is_rejected_naming_the_clip() -> Result<(), AssetError> {
+        let sheet = parse(r#"SheetFile(version: 1, cell: (16, 16), clips: [("walk", (frames: [0, 99], fps: 8.0))])"#)?;
 
         let err = sheet
             .into_parts("deion.sheet.ron", 64, 32)
@@ -304,16 +260,14 @@ mod tests {
         assert!(message.contains("'walk'"), "{message}");
         assert!(message.contains("99"), "{message}");
         assert!(message.contains("deion.sheet.ron"), "{message}");
+        Ok(())
     }
 
     #[test]
-    fn test_sidecar_path_replaces_the_extension() {
-        // The contract every call site defers to: same stem, never appended.
+    fn sidecar_path_replaces_the_extension_never_appends() {
+        // The contract every call site defers to: same stem.
         assert_eq!(sidecar_path_for("tiles.png"), PathBuf::from("tiles.sheet.ron"));
-        assert_eq!(
-            sidecar_path_for("sprites/deion_16.png"),
-            PathBuf::from("sprites/deion_16.sheet.ron")
-        );
+        assert_eq!(sidecar_path_for("sprites/deion_16.png"), PathBuf::from("sprites/deion_16.sheet.ron"));
         assert_ne!(sidecar_path_for("tiles.png"), PathBuf::from("tiles.png.sheet.ron"));
     }
 }

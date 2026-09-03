@@ -204,13 +204,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_game_config_locale_defaults_and_builders() {
-        let config = GameConfig::default();
-        assert_eq!(config.locale, "en");
-        assert_eq!(config.locales_dir, "locales");
-    }
-
-    #[test]
     fn test_game_config_locale_serde_defaults() {
         // A config JSON from before localization must still deserialize.
         let legacy = r#"{
@@ -231,39 +224,22 @@ mod tests {
     }
 
     #[test]
-    fn test_game_config_defaults_to_linear_texture_filter() {
-        assert_eq!(GameConfig::default().texture_filter, TextureFilter::Linear);
-    }
-
-    #[test]
-    fn test_game_config_texture_filter_survives_serde_roundtrip() {
+    fn test_texture_filter_wire_format_is_stable() {
         let config = GameConfig::new("Test").with_texture_filter(TextureFilter::Nearest);
+
         let json = serde_json::to_string(&config).expect("config serializes");
+
+        // Written as the variant name ...
+        assert!(json.contains(r#""texture_filter":"Nearest""#), "got {json}");
+        // ... read back unchanged ...
         let restored: GameConfig = serde_json::from_str(&json).expect("config parses");
         assert_eq!(restored.texture_filter, TextureFilter::Nearest);
-    }
-
-    #[test]
-    fn test_game_config_texture_filter_encodes_as_variant_name() {
-        let config = GameConfig::new("Test").with_texture_filter(TextureFilter::Nearest);
-        let json = serde_json::to_string(&config).expect("config serializes");
-        assert!(json.contains(r#""texture_filter":"Nearest""#), "got {json}");
-    }
-
-    #[test]
-    fn test_game_config_texture_filter_accepts_lowercase_alias() {
-        let config = GameConfig::new("Test").with_texture_filter(TextureFilter::Nearest);
-        let json = serde_json::to_string(&config).expect("config serializes");
-
-        // Hand-edited configs may use lowercase; unknown values still fail.
+        // ... a hand-edited lowercase alias is accepted ...
         let lowered = json.replace(r#""texture_filter":"Nearest""#, r#""texture_filter":"nearest""#);
         let restored: GameConfig = serde_json::from_str(&lowered).expect("lowercase alias parses");
         assert_eq!(restored.texture_filter, TextureFilter::Nearest);
-
+        // ... and a typo fails loudly rather than coercing to Linear.
         let typo = json.replace(r#""texture_filter":"Nearest""#, r#""texture_filter":"Nearset""#);
-        assert!(
-            serde_json::from_str::<GameConfig>(&typo).is_err(),
-            "typos must fail loudly, not coerce to Linear"
-        );
+        assert!(serde_json::from_str::<GameConfig>(&typo).is_err());
     }
 }

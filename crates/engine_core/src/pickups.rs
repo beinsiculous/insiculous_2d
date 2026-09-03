@@ -206,118 +206,51 @@ mod tests {
     }
 
     #[test]
-    fn test_collect_ignores_non_started_events() {
+    fn test_each_pickup_is_collected_once_on_a_started_contact_and_destroyed() {
         let mut world = World::new();
         let mut physics = PhysicsSystem::new();
-        let pickup = world.create_entity();
-        let collector = world.create_entity();
-
-        let mut pickups = Pickups::new();
-        pickups.track(pickup, Kind::Boost);
-
-        let events = vec![stopped_event(collector, pickup)];
-        let got = pickups.collect(&events, &[collector], &mut physics, &mut world);
-        assert!(got.is_empty());
-        assert_eq!(pickups.len(), 1);
-    }
-
-    #[test]
-    fn test_collect_returns_kind_and_collector_and_untracks() {
-        let mut world = World::new();
-        let mut physics = PhysicsSystem::new();
-        let pickup = world.create_entity();
-        let collector = world.create_entity();
-
-        let mut pickups = Pickups::new();
-        pickups.track(pickup, Kind::Multi);
-
-        let events = vec![started_event(pickup, collector)];
-        let got = pickups.collect(&events, &[collector], &mut physics, &mut world);
-        assert_eq!(got.len(), 1);
-        assert_eq!(got[0].0, Kind::Multi);
-        assert_eq!(got[0].1, collector);
-        assert!(pickups.is_empty());
-        // The pickup entity is destroyed from the world too
-        assert!(!world.entities().contains(&pickup));
-    }
-
-    #[test]
-    fn test_pickup_collected_once_even_with_two_collectors() {
-        let mut world = World::new();
-        let mut physics = PhysicsSystem::new();
-        let pickup = world.create_entity();
+        let boost = world.create_entity();
+        let multi = world.create_entity();
+        let spare = world.create_entity();
         let ball_a = world.create_entity();
         let ball_b = world.create_entity();
-
         let mut pickups = Pickups::new();
-        pickups.track(pickup, Kind::Boost);
+        pickups.track(boost, Kind::Boost);
+        pickups.track(multi, Kind::Multi);
+        pickups.track(spare, Kind::Boost);
 
-        // Both collectors hit the same pickup in one frame (the Pong
-        // double-apply bug this module exists to prevent).
-        let events = vec![started_event(ball_a, pickup), started_event(ball_b, pickup)];
-        let got = pickups.collect(&events, &[ball_a, ball_b], &mut physics, &mut world);
-        assert_eq!(got.len(), 1, "one pickup must grant exactly one effect");
-        assert!(pickups.is_empty());
-    }
+        // A contact that ENDS is not a collection.
+        let got = pickups.collect(&[stopped_event(ball_a, boost)], &[ball_a], &mut physics, &mut world);
+        assert!(got.is_empty());
+        assert_eq!(pickups.len(), 3);
 
-    #[test]
-    fn test_multiple_pickups_collected_in_one_frame() {
-        let mut world = World::new();
-        let mut physics = PhysicsSystem::new();
-        let p1 = world.create_entity();
-        let p2 = world.create_entity();
-        let p3 = world.create_entity();
-        let collector = world.create_entity();
-
-        let mut pickups = Pickups::new();
-        pickups.track(p1, Kind::Boost);
-        pickups.track(p2, Kind::Multi);
-        pickups.track(p3, Kind::Boost);
-
-        // p1 and p3 hit — non-adjacent indices (0 and 2), p2 survives.
-        let events = vec![started_event(collector, p3), started_event(collector, p1)];
-        let got = pickups.collect(&events, &[collector], &mut physics, &mut world);
-        assert_eq!(got.len(), 2);
+        // Both balls hit the same pickup in one frame (the Pong double-apply
+        // bug this module exists to prevent), and a second pickup at a
+        // non-adjacent index goes in the same frame: one effect each, with
+        // the kind and the collector, the entities destroyed, the third
+        // pickup untouched.
+        let events = [started_event(ball_a, boost), started_event(ball_b, boost), started_event(multi, ball_b)];
+        let mut got = pickups.collect(&events, &[ball_a, ball_b], &mut physics, &mut world);
+        got.sort_by_key(|(_, collector)| collector.value());
+        assert_eq!(got, vec![(Kind::Boost, ball_a), (Kind::Multi, ball_b)]);
         assert_eq!(pickups.len(), 1);
-        assert_eq!(pickups.entities().next(), Some(p2));
-    }
+        assert_eq!(pickups.entities().next(), Some(spare));
+        assert!(!world.entities().contains(&boost));
+        assert!(!world.entities().contains(&multi));
 
-    #[test]
-    fn test_remove_where_destroys_matching() {
-        let mut world = World::new();
-        let mut physics = PhysicsSystem::new();
-        let keep = world.create_entity();
-        let drop = world.create_entity();
-
-        let mut pickups = Pickups::new();
-        pickups.track(keep, Kind::Boost);
-        pickups.track(drop, Kind::Multi);
-
+        // Match reset paths: remove_where and clear destroy what they drop.
+        let extra = world.create_entity();
+        pickups.track(extra, Kind::Multi);
         pickups.remove_where(&mut physics, &mut world, |p| p.kind == Kind::Multi);
-        assert_eq!(pickups.len(), 1);
-        assert!(!world.entities().contains(&drop));
-        assert!(world.entities().contains(&keep));
-    }
-
-    #[test]
-    fn test_clear_empties_and_destroys() {
-        let mut world = World::new();
-        let mut physics = PhysicsSystem::new();
-        let p1 = world.create_entity();
-        let p2 = world.create_entity();
-
-        let mut pickups = Pickups::new();
-        pickups.track(p1, Kind::Boost);
-        pickups.track(p2, Kind::Multi);
-
+        assert_eq!(pickups.entities().collect::<Vec<_>>(), vec![spare]);
+        assert!(!world.entities().contains(&extra));
         pickups.clear(&mut physics, &mut world);
         assert!(pickups.is_empty());
-        assert!(!world.entities().contains(&p1));
-        assert!(!world.entities().contains(&p2));
+        assert!(!world.entities().contains(&spare));
     }
 
     #[test]
-    fn test_effect_timer_lifecycle() {
+    fn test_effect_timer_fires_exactly_once_when_crossing_zero() {
         let mut t = EffectTimer::default();
         assert!(!t.active());
         assert_eq!(t.remaining(), 0.0);
@@ -330,24 +263,17 @@ mod tests {
         assert!(t.tick(0.6), "must fire exactly when crossing zero");
         assert!(!t.active());
         assert!(!t.tick(0.1), "must not fire again after expiry");
-    }
 
-    #[test]
-    fn test_effect_timer_start_refreshes_while_active() {
-        let mut t = EffectTimer::default();
+        // Catching a second pickup refreshes to the full duration — no stacking.
         t.start(1.0);
         t.tick(0.9);
-        t.start(1.0); // caught a second pickup — refresh, no stacking
+        t.start(1.0);
         assert!((t.remaining() - 1.0).abs() < 1e-6);
-    }
 
-    #[test]
-    fn test_effect_timer_stop_deactivates_without_expiry_event() {
-        let mut t = EffectTimer::default();
-        t.start(5.0);
+        // stop() means the caller reverted the effect itself: no expiry event.
         t.stop();
         assert!(!t.active());
-        assert!(!t.tick(0.1), "stop() means the caller reverted state itself");
+        assert!(!t.tick(0.1));
     }
 
     /// End-to-end catch mechanics: a falling dynamic sensor pickup crossing a
@@ -368,11 +294,7 @@ mod tests {
         let pickup_entity = world
             .spawn()
             .with(Transform2D::new(Vec2::new(0.0, 60.0)))
-            .with(
-                RigidBody::new_dynamic()
-                    .with_gravity_scale(0.0)
-                    .with_rotation_locked(true),
-            )
+            .with(RigidBody::new_dynamic().with_gravity_scale(0.0).with_rotation_locked(true))
             .with(Collider::box_collider(18.0, 18.0).as_sensor())
             .id();
         physics.set_velocity(pickup_entity, Vec2::new(0.0, -180.0), 0.0);
@@ -390,9 +312,7 @@ mod tests {
             }
         }
 
-        assert_eq!(got.len(), 1, "falling sensor pickup must be caught by the kinematic body");
-        assert_eq!(got[0].0, Kind::Multi);
-        assert_eq!(got[0].1, paddle);
+        assert_eq!(got, vec![(Kind::Multi, paddle)], "falling sensor pickup must be caught by the kinematic body");
         assert!(pickups.is_empty());
     }
 }

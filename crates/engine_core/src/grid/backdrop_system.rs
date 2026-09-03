@@ -160,61 +160,27 @@ mod tests {
         ripple(world, GridImpulse::Radial { position: Vec2::ZERO, strength: 500.0, radius: 20.0, attractive: false });
     }
 
-    #[test]
-    fn test_component_entity_gets_a_mesh_that_draws_and_loses_it_on_removal() {
+    /// A rippling backdrop after two running frames.
+    fn rippling() -> (World, EntityId, GridBackdropSystem, Vec<LineVertex>) {
         let mut world = World::new();
         let entity = spawn(&mut world, small(), Vec2::ZERO);
         let mut system = GridBackdropSystem::default();
         let mut out = Vec::new();
-
         system.update(&mut world, 1.0 / 60.0, &mut out);
-        assert!(system.mesh(entity).is_some());
-        assert!(!out.is_empty(), "the backdrop emits line vertices");
-
-        world.remove_component::<GridBackdrop>(&entity).ok();
-        out.clear();
+        kick(&mut world);
         system.update(&mut world, 1.0 / 60.0, &mut out);
-        assert!(system.mesh(entity).is_none());
-        assert!(out.is_empty());
+        assert!(system.mesh(entity).unwrap().total_energy() > 0.0, "setup: the grid ripples");
+        (world, entity, system, out)
     }
 
     #[test]
-    fn test_shape_change_rebuilds_but_a_nan_tunable_does_not_rebuild_every_frame() {
-        let mut world = World::new();
-        let entity = spawn(&mut world, small(), Vec2::ZERO);
-        let mut system = GridBackdropSystem::default();
-        let mut out = Vec::new();
-        system.update(&mut world, 1.0 / 60.0, &mut out);
+    fn test_shape_change_rebuilds_but_other_edits_and_a_nan_tunable_leave_the_ripple_alone() {
+        let (mut world, entity, mut system, mut out) = rippling();
+        let energy = system.mesh(entity).unwrap().total_energy();
         let nodes_before = system.mesh(entity).unwrap().node_count();
 
-        world.get_mut::<GridBackdrop>(entity).unwrap().cols = 10;
-        system.update(&mut world, 1.0 / 60.0, &mut out);
-        assert!(system.mesh(entity).unwrap().node_count() > nodes_before, "more columns, more nodes");
-
-        // A NaN tunable: built once (falls back to the preset), then left alone —
-        // energy from an impulse survives the next update, proving no rebuild.
-        world.get_mut::<GridBackdrop>(entity).unwrap().stiffness = f32::NAN;
-        system.update(&mut world, 1.0 / 60.0, &mut out);
-        kick(&mut world);
-        system.update(&mut world, 1.0 / 60.0, &mut out);
-        let energy = system.mesh(entity).unwrap().total_energy();
-        assert!(energy > 0.0);
-        system.update(&mut world, 1.0 / 60.0, &mut out);
-        assert!(system.mesh(entity).unwrap().total_energy() > 0.0, "still the same simulation");
-    }
-
-    #[test]
-    fn test_cosmetic_and_tunable_edits_apply_in_place_without_resetting_a_ripple() {
-        let mut world = World::new();
-        let entity = spawn(&mut world, small(), Vec2::ZERO);
-        let mut system = GridBackdropSystem::default();
-        let mut out = Vec::new();
-        system.update(&mut world, 1.0 / 60.0, &mut out);
-        kick(&mut world);
-        system.update(&mut world, 1.0 / 60.0, &mut out);
-        let energy = system.mesh(entity).unwrap().total_energy();
-        assert!(energy > 0.0);
-
+        // Color, visibility and stiffness land on the live mesh in place —
+        // an active ripple keeps rippling (kimi #46 F3).
         {
             let config = world.get_mut::<GridBackdrop>(entity).unwrap();
             config.color = glam::Vec4::new(1.0, 0.0, 0.0, 1.0);
@@ -227,57 +193,59 @@ mod tests {
         assert_eq!(mesh.stiffness, 90.0);
         assert!(!mesh.visible);
         assert!((mesh.total_energy() - energy).abs() < 1e-3, "the ripple survives a cosmetic edit");
-    }
 
-    #[test]
-    fn test_parented_grid_follows_the_global_transform() {
-        // kimi #46 F2: a grid under a moving rig sits where the hierarchy
-        // system put it, not at its local offset.
-        let mut world = World::new();
-        let entity = spawn(&mut world, small(), Vec2::new(5.0, 5.0));
-        world
-            .add_component(
-                &entity,
-                GlobalTransform2D { position: Vec2::new(300.0, 40.0), rotation: 0.0, scale: Vec2::ONE },
-            )
-            .ok();
-        let mut system = GridBackdropSystem::default();
-        let mut out = Vec::new();
-        system.update(&mut world, 0.0, &mut out);
-        assert_eq!(system.mesh(entity).unwrap().origin, Vec2::new(300.0, 40.0));
-    }
-
-    #[test]
-    fn test_moving_the_entity_translates_the_mesh_without_a_rebuild() {
-        let mut world = World::new();
-        let entity = spawn(&mut world, small(), Vec2::ZERO);
-        let mut system = GridBackdropSystem::default();
-        let mut out = Vec::new();
+        // A NaN tunable: built once (falls back to the preset), then left
+        // alone — the energy survives the next update, proving no rebuild.
+        world.get_mut::<GridBackdrop>(entity).unwrap().stiffness = f32::NAN;
         system.update(&mut world, 1.0 / 60.0, &mut out);
+        assert!(system.mesh(entity).unwrap().total_energy() > 0.0, "still the same simulation");
+        assert_eq!(system.mesh(entity).unwrap().stiffness, GridBackdrop::default().stiffness);
+
+        // A shape change rebuilds: more columns, more nodes, at rest.
+        world.get_mut::<GridBackdrop>(entity).unwrap().cols = 10;
+        system.update(&mut world, 0.0, &mut out);
+        assert!(system.mesh(entity).unwrap().node_count() > nodes_before, "more columns, more nodes");
+        assert_eq!(system.mesh(entity).unwrap().total_energy(), 0.0);
+
+        // The editor's Stop marker rebuilds every grid at rest and is consumed.
         kick(&mut world);
         system.update(&mut world, 1.0 / 60.0, &mut out);
+        assert!(system.mesh(entity).unwrap().total_energy() > 0.0);
+        request_backdrop_reset(&mut world);
+        system.update(&mut world, 0.0, &mut out);
+        assert_eq!(system.mesh(entity).unwrap().total_energy(), 0.0);
+        assert!(!world.has_resource::<GridBackdropReset>(), "the marker is consumed");
+
+        // Losing the component drops the mesh and its vertices.
+        world.remove_component::<GridBackdrop>(&entity).ok();
+        out.clear();
+        system.update(&mut world, 1.0 / 60.0, &mut out);
+        assert!(system.mesh(entity).is_none());
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn test_moving_the_entity_translates_the_mesh_without_a_rebuild_even_while_frozen() {
+        let (mut world, entity, mut system, out) = rippling();
         let energy = system.mesh(entity).unwrap().total_energy();
         let first_vertex = out[0].position;
 
+        // Frozen time (editor, pause): the move applies, the grid still
+        // draws, the simulation state survives.
         world.get_mut::<Transform2D>(entity).unwrap().position = Vec2::new(100.0, -50.0);
-        out.clear();
-        system.update(&mut world, 0.0, &mut out); // frozen: only the move applies
+        let mut out = Vec::new();
+        system.update(&mut world, 0.0, &mut out);
         let moved = system.mesh(entity).unwrap();
         assert_eq!(moved.origin, Vec2::new(100.0, -50.0));
         assert!((moved.total_energy() - energy).abs() < 1e-3, "the simulation state survives the move");
+        assert!(!out.is_empty(), "a frozen grid is still visible");
         assert!((out[0].position[0] - (first_vertex[0] + 100.0)).abs() < 1e-3);
         assert!((out[0].position[1] - (first_vertex[1] - 50.0)).abs() < 1e-3);
-    }
 
-    #[test]
-    fn test_frozen_time_still_draws_and_drops_impulses() {
-        let mut world = World::new();
-        let entity = spawn(&mut world, small(), Vec2::ZERO);
-        let mut system = GridBackdropSystem::default();
-        let mut out = Vec::new();
+        // Impulses queued while frozen are drained, not banked: once the
+        // ripple has been rebuilt away, a frozen kick adds no energy later.
+        request_backdrop_reset(&mut world);
         system.update(&mut world, 0.0, &mut out);
-        assert!(!out.is_empty(), "a frozen grid is still visible");
-
         kick(&mut world);
         system.update(&mut world, 0.0, &mut out);
         assert!(!world.has_resource::<GridImpulses>(), "the queue is drained even when frozen");
@@ -286,26 +254,24 @@ mod tests {
     }
 
     #[test]
-    fn test_reset_marker_rebuilds_every_grid_at_rest() {
+    fn test_grids_follow_the_global_transform_and_emit_in_entity_order_ahead_of_game_lines() {
+        // kimi #46 F2: a grid under a moving rig sits where the hierarchy
+        // system put it, not at its local offset.
         let mut world = World::new();
-        let entity = spawn(&mut world, small(), Vec2::ZERO);
+        let parented = spawn(&mut world, small(), Vec2::new(5.0, 5.0));
+        world
+            .add_component(
+                &parented,
+                GlobalTransform2D { position: Vec2::new(300.0, 40.0), rotation: 0.0, scale: Vec2::ONE },
+            )
+            .ok();
         let mut system = GridBackdropSystem::default();
         let mut out = Vec::new();
-        system.update(&mut world, 1.0 / 60.0, &mut out);
-        kick(&mut world);
-        system.update(&mut world, 1.0 / 60.0, &mut out);
-        assert!(system.mesh(entity).unwrap().total_energy() > 0.0);
-
-        request_backdrop_reset(&mut world);
         system.update(&mut world, 0.0, &mut out);
-        let rebuilt = system.mesh(entity).unwrap();
-        assert_eq!(rebuilt.total_energy(), 0.0);
-        assert_eq!(rebuilt.node_count(), 6 * 4);
-        assert!(!world.has_resource::<GridBackdropReset>(), "the marker is consumed");
-    }
+        assert_eq!(system.mesh(parented).unwrap().origin, Vec2::new(300.0, 40.0));
 
-    #[test]
-    fn test_grids_emit_in_entity_order_ahead_of_the_games_lines() {
+        // Two grids: the lower entity id first, then the higher, then the
+        // game's own lines last so its wireframes stay on top.
         let mut world = World::new();
         let square = GridBackdrop { topology: GridTopology::Square, cols: 2, rows: 2, ..small() };
         let hex = GridBackdrop { cols: 2, rows: 2, ..small() };
@@ -313,7 +279,6 @@ mod tests {
         let earlier_id = spawn(&mut world, hex.clone(), Vec2::ZERO);
         assert!(earlier_id.value() > later.value(), "spawned second, sorted second");
         let mut system = GridBackdropSystem::default();
-
         let game_line = LineVertex { position: [-1.0, -1.0], color: [1.0; 4], emissive: 0.0 };
         let mut out = vec![game_line, game_line];
         system.update(&mut world, 1.0 / 60.0, &mut out);
@@ -321,7 +286,6 @@ mod tests {
         let square_vertices = build_grid_mesh(&square, Vec2::new(1000.0, 0.0)).build_line_vertices().len();
         let hex_vertices = build_grid_mesh(&hex, Vec2::ZERO).build_line_vertices().len();
         assert_eq!(out.len(), square_vertices + hex_vertices + 2);
-        // Lower entity id first (the square at x≈1000), then the hex, then the game's.
         assert!(out[0].position[0] > 900.0, "the lower-id grid comes first");
         assert!(out[square_vertices].position[0] < 100.0, "then the higher-id grid");
         assert_eq!(out[out.len() - 1].position, [-1.0, -1.0], "game lines draw last (on top)");

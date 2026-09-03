@@ -204,16 +204,12 @@ impl PauseMenu {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chaos_mode::ChaosMode;
+    use crate::chaos_theme::ChaosTheme;
+    use crate::test_support::frame;
     use input::{GamepadButton, InputEvent};
+    use winit::event::MouseButton;
     use winit::keyboard::KeyCode;
-
-    fn frame(input: &mut InputHandler, events: &[InputEvent]) {
-        input.end_frame();
-        for event in events {
-            input.queue_event(event.clone());
-        }
-        input.process_queued_events();
-    }
 
     /// Window size shared by every test — the menu window centers in it.
     const WIN: Vec2 = Vec2::new(800.0, 600.0);
@@ -222,61 +218,52 @@ mod tests {
         (PauseMenu::new(), InputSettings::default_two_player(), InputHandler::new())
     }
 
-    #[test]
-    fn default_labels_match_builtin_english() {
-        let labels = PauseMenuLabels::default();
-        assert_eq!(labels.title, "PAUSED");
-        assert_eq!(labels.items, ITEMS);
-        assert_eq!(labels.hint, HINT);
+    /// Pause with Escape and release it, so the menu is open and browsing.
+    fn open_paused(pause: &mut PauseMenu, settings: &InputSettings, input: &mut InputHandler) {
+        frame(input, &[InputEvent::KeyPressed(KeyCode::Escape)]);
+        pause.update(settings, input, WIN);
+        frame(input, &[InputEvent::KeyReleased(KeyCode::Escape)]);
+        pause.update(settings, input, WIN);
+        assert!(pause.is_active(), "setup: the menu is open");
     }
 
     #[test]
-    fn menu_press_pauses_and_same_button_resumes() {
+    fn menu_edge_pauses_and_the_same_button_resumes_from_keyboard_or_any_pad() {
+        // Escape (GameAction::Menu) is an EDGE: a held key never flaps the
+        // state, and the button that paused is the one that resumes.
         let (mut pause, settings, mut input) = setup();
-
-        // Escape edge pauses
         frame(&mut input, &[InputEvent::KeyPressed(KeyCode::Escape)]);
         assert_eq!(pause.update(&settings, &input, WIN), PauseAction::Idle);
         assert!(pause.is_active());
 
-        // Held Escape is not an edge — stays paused, no toggle-flapping
         frame(&mut input, &[]);
         assert_eq!(pause.update(&settings, &input, WIN), PauseAction::Idle);
-        assert!(pause.is_active());
+        assert!(pause.is_active(), "a held Escape is not a second edge");
 
-        // Release, press again: resumes
         frame(&mut input, &[InputEvent::KeyReleased(KeyCode::Escape)]);
         pause.update(&settings, &input, WIN);
         frame(&mut input, &[InputEvent::KeyPressed(KeyCode::Escape)]);
         assert_eq!(pause.update(&settings, &input, WIN), PauseAction::Resumed);
         assert!(!pause.is_active());
-    }
 
-    #[test]
-    fn pad_start_pauses_and_resumes_from_either_player() {
-        let (mut pause, settings, mut input) = setup();
-
-        // Player 2's pad (id 1) Start pauses...
+        // Player 2's pad Start pauses, player 1's pad Start resumes: pause
+        // belongs to every player.
+        frame(&mut input, &[InputEvent::KeyReleased(KeyCode::Escape)]);
+        pause.update(&settings, &input, WIN);
         frame(&mut input, &[InputEvent::GamepadButtonPressed(1, GamepadButton::Start)]);
         assert_eq!(pause.update(&settings, &input, WIN), PauseAction::Idle);
         assert!(pause.is_active());
-
-        // ...and player 1's pad Start resumes (any player controls pause)
-        frame(&mut input, &[
-            InputEvent::GamepadButtonReleased(1, GamepadButton::Start),
-        ]);
+        frame(&mut input, &[InputEvent::GamepadButtonReleased(1, GamepadButton::Start)]);
         pause.update(&settings, &input, WIN);
         frame(&mut input, &[InputEvent::GamepadButtonPressed(0, GamepadButton::Start)]);
         assert_eq!(pause.update(&settings, &input, WIN), PauseAction::Resumed);
-    }
 
-    #[test]
-    fn back_button_resumes() {
-        let (mut pause, settings, mut input) = setup();
-        frame(&mut input, &[InputEvent::KeyPressed(KeyCode::Escape)]);
+        // The pad's back button (B) resumes too, whatever is highlighted.
+        frame(&mut input, &[
+            InputEvent::GamepadButtonReleased(0, GamepadButton::Start),
+            InputEvent::KeyPressed(KeyCode::Escape),
+        ]);
         pause.update(&settings, &input, WIN);
-        assert!(pause.is_active());
-
         frame(&mut input, &[
             InputEvent::KeyReleased(KeyCode::Escape),
             InputEvent::GamepadButtonPressed(0, GamepadButton::B),
@@ -285,7 +272,7 @@ mod tests {
     }
 
     #[test]
-    fn confirm_executes_highlighted_item() {
+    fn confirm_executes_the_highlighted_row_wraps_and_reopens_at_resume() {
         for (downs, expected) in [
             (0, PauseAction::Resumed),
             (1, PauseAction::Restart),
@@ -293,10 +280,7 @@ mod tests {
             (3, PauseAction::ExitGame),
         ] {
             let (mut pause, settings, mut input) = setup();
-            frame(&mut input, &[InputEvent::KeyPressed(KeyCode::Escape)]);
-            pause.update(&settings, &input, WIN);
-            frame(&mut input, &[InputEvent::KeyReleased(KeyCode::Escape)]);
-            pause.update(&settings, &input, WIN);
+            open_paused(&mut pause, &settings, &mut input);
 
             for _ in 0..downs {
                 frame(&mut input, &[InputEvent::KeyPressed(KeyCode::KeyS)]);
@@ -309,74 +293,10 @@ mod tests {
             assert_eq!(pause.update(&settings, &input, WIN), expected, "{downs} downs");
             assert!(!pause.is_active(), "every confirm unpauses");
         }
-    }
 
-    #[test]
-    fn click_on_a_row_executes_it_and_hover_moves_the_highlight() {
+        // Up from the top wraps to the last row (Exit Game) ...
         let (mut pause, settings, mut input) = setup();
-        frame(&mut input, &[InputEvent::KeyPressed(KeyCode::Escape)]);
-        pause.update(&settings, &input, WIN);
-        frame(&mut input, &[InputEvent::KeyReleased(KeyCode::Escape)]);
-        pause.update(&settings, &input, WIN);
-
-        // Prime the mouse position: MouseState suppresses the first-ever
-        // move's delta (anti-startup-warp), and hover requires movement.
-        frame(&mut input, &[InputEvent::MouseMoved(0.0, 0.0)]);
-        pause.update(&settings, &input, WIN);
-
-        // Hover over "Quit to Title" (row 2) moves the highlight...
-        let panel = PauseMenu::panel("", WIN);
-        let row2 = panel.row_rect(2);
-        frame(&mut input, &[InputEvent::MouseMoved(
-            row2.x + row2.width / 2.0,
-            row2.y + row2.height / 2.0,
-        )]);
-        assert_eq!(pause.update(&settings, &input, WIN), PauseAction::Idle);
-
-        // ...so a keyboard confirm now executes the hovered row
-        frame(&mut input, &[InputEvent::KeyPressed(KeyCode::Space)]);
-        assert_eq!(pause.update(&settings, &input, WIN), PauseAction::QuitToTitle);
-
-        // Reopen; a direct click on "Restart" (row 1) executes it without
-        // any keyboard navigation
-        frame(&mut input, &[
-            InputEvent::KeyReleased(KeyCode::Space),
-            InputEvent::KeyPressed(KeyCode::Escape),
-        ]);
-        pause.update(&settings, &input, WIN);
-        let row1 = panel.row_rect(1);
-        frame(&mut input, &[
-            InputEvent::KeyReleased(KeyCode::Escape),
-            InputEvent::MouseMoved(row1.x + 4.0, row1.y + row1.height / 2.0),
-            InputEvent::MouseButtonPressed(winit::event::MouseButton::Left),
-        ]);
-        assert_eq!(pause.update(&settings, &input, WIN), PauseAction::Restart);
-        assert!(!pause.is_active());
-    }
-
-    #[test]
-    fn click_outside_the_menu_window_does_nothing() {
-        let (mut pause, settings, mut input) = setup();
-        frame(&mut input, &[InputEvent::KeyPressed(KeyCode::Escape)]);
-        pause.update(&settings, &input, WIN);
-        frame(&mut input, &[
-            InputEvent::KeyReleased(KeyCode::Escape),
-            InputEvent::MouseMoved(10.0, 10.0),
-            InputEvent::MouseButtonPressed(winit::event::MouseButton::Left),
-        ]);
-        assert_eq!(pause.update(&settings, &input, WIN), PauseAction::Idle);
-        assert!(pause.is_active(), "stray clicks don't unpause");
-    }
-
-    #[test]
-    fn selection_wraps_and_resets_on_reopen() {
-        let (mut pause, settings, mut input) = setup();
-        frame(&mut input, &[InputEvent::KeyPressed(KeyCode::Escape)]);
-        pause.update(&settings, &input, WIN);
-        frame(&mut input, &[InputEvent::KeyReleased(KeyCode::Escape)]);
-        pause.update(&settings, &input, WIN);
-
-        // Up from the top wraps to the last item (Exit Game) — confirm proves it
+        open_paused(&mut pause, &settings, &mut input);
         frame(&mut input, &[InputEvent::KeyPressed(KeyCode::KeyW)]);
         pause.update(&settings, &input, WIN);
         frame(&mut input, &[
@@ -385,7 +305,7 @@ mod tests {
         ]);
         assert_eq!(pause.update(&settings, &input, WIN), PauseAction::ExitGame);
 
-        // Reopening starts back at Resume
+        // ... and reopening starts back at Resume, never on a stale row.
         frame(&mut input, &[
             InputEvent::KeyReleased(KeyCode::Space),
             InputEvent::KeyPressed(KeyCode::Escape),
@@ -396,6 +316,55 @@ mod tests {
             InputEvent::KeyPressed(KeyCode::Space),
         ]);
         assert_eq!(pause.update(&settings, &input, WIN), PauseAction::Resumed);
+    }
+
+    #[test]
+    fn click_on_a_row_executes_it_hover_moves_the_highlight_and_stray_clicks_do_nothing() {
+        let (mut pause, settings, mut input) = setup();
+        open_paused(&mut pause, &settings, &mut input);
+
+        // Prime the mouse position: MouseState suppresses the first-ever
+        // move's delta (anti-startup-warp), and hover requires movement.
+        frame(&mut input, &[InputEvent::MouseMoved(0.0, 0.0)]);
+        pause.update(&settings, &input, WIN);
+
+        // Hover over "Quit to Title" (row 2) moves the highlight ...
+        let panel = PauseMenu::panel("", WIN);
+        let row2 = panel.row_rect(2);
+        frame(&mut input, &[InputEvent::MouseMoved(
+            row2.x + row2.width / 2.0,
+            row2.y + row2.height / 2.0,
+        )]);
+        assert_eq!(pause.update(&settings, &input, WIN), PauseAction::Idle);
+
+        // ... so a keyboard confirm executes the hovered row.
+        frame(&mut input, &[InputEvent::KeyPressed(KeyCode::Space)]);
+        assert_eq!(pause.update(&settings, &input, WIN), PauseAction::QuitToTitle);
+
+        // Reopen; a click outside the window leaves the game paused ...
+        frame(&mut input, &[
+            InputEvent::KeyReleased(KeyCode::Space),
+            InputEvent::KeyPressed(KeyCode::Escape),
+        ]);
+        pause.update(&settings, &input, WIN);
+        frame(&mut input, &[
+            InputEvent::KeyReleased(KeyCode::Escape),
+            InputEvent::MouseMoved(10.0, 10.0),
+            InputEvent::MouseButtonPressed(MouseButton::Left),
+        ]);
+        assert_eq!(pause.update(&settings, &input, WIN), PauseAction::Idle);
+        assert!(pause.is_active(), "stray clicks don't unpause");
+
+        // ... and a click on "Restart" (row 1) executes it with no
+        // keyboard navigation at all.
+        let row1 = panel.row_rect(1);
+        frame(&mut input, &[
+            InputEvent::MouseButtonReleased(MouseButton::Left),
+            InputEvent::MouseMoved(row1.x + 4.0, row1.y + row1.height / 2.0),
+            InputEvent::MouseButtonPressed(MouseButton::Left),
+        ]);
+        assert_eq!(pause.update(&settings, &input, WIN), PauseAction::Restart);
+        assert!(!pause.is_active());
     }
 
     #[test]
@@ -412,5 +381,38 @@ mod tests {
         frame(&mut input, &[InputEvent::KeyPressed(KeyCode::Escape)]);
         pause.update(&settings, &input, WIN);
         assert_eq!(pause.time_scale(), 1.0);
+    }
+
+    #[test]
+    fn draw_labeled_renders_the_supplied_title_items_and_hint_in_selection_order() {
+        // Pong's pirate locale builds a PauseMenuLabels per frame; a wired-
+        // wrong label set would ship silently without this.
+        let labels = PauseMenuLabels {
+            title: "PAUSA",
+            items: ["Continuar", "Reiniciar", "Al título", "Salir"],
+            hint: "ESC continúa",
+        };
+        let style = MenuStyle::from_theme(&ChaosTheme::for_mode(ChaosMode::Normal));
+        let mut ui = UIContext::new();
+        ui.begin_frame(&InputHandler::new(), WIN);
+
+        PauseMenu::new().draw_labeled(&mut ui, WIN, &style, &labels);
+        ui.end_frame();
+
+        let drawn: Vec<String> = ui
+            .draw_list()
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                ui::DrawCommand::TextPlaceholder { text, .. } => Some(text.clone()),
+                ui::DrawCommand::Text { data, .. } => Some(data.text.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            drawn,
+            ["PAUSA", "▶ Continuar", "Reiniciar", "Al título", "Salir", "ESC continúa"],
+            "title, the four items in selection order (the highlighted one behind the ▶ cursor), then the hint"
+        );
     }
 }

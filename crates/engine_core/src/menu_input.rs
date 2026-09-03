@@ -101,106 +101,72 @@ fn pad_down(pad: &GamepadState) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::frame;
+    use input::InputEvent;
 
     fn keys(up: bool, down: bool) -> MenuInput {
         MenuInput { up, down, confirm: false, back: false }
     }
 
     #[test]
-    fn test_navigate_wraps_both_directions() {
-        assert_eq!(keys(true, false).navigate(0, 3), 2);
-        assert_eq!(keys(false, true).navigate(2, 3), 0);
-    }
-
-    #[test]
-    fn test_navigate_holds_position_without_input() {
-        assert_eq!(keys(false, false).navigate(1, 3), 1);
-    }
-
-    #[test]
-    fn test_navigate_up_wins_over_down_on_same_frame() {
-        assert_eq!(keys(true, true).navigate(1, 3), 0);
-    }
-
-    #[test]
-    fn test_navigate_empty_list_stays_at_zero() {
-        assert_eq!(keys(true, false).navigate(0, 0), 0);
-    }
-
-    #[test]
-    fn test_read_on_idle_handler_reports_nothing() {
-        let handler = InputHandler::new();
-        let input = MenuInput::read(&handler);
-        assert_eq!(input, MenuInput { up: false, down: false, confirm: false, back: false });
-    }
-
-    use input::InputEvent;
-
-    fn frame(handler: &mut InputHandler, events: &[InputEvent]) {
-        for event in events {
-            handler.queue_event(event.clone());
+    fn navigate_wraps_prefers_up_and_survives_an_empty_list() {
+        for (up, down, current, count, expected, why) in [
+            (true, false, 0, 3, 2, "up from the top wraps to the last row"),
+            (false, true, 2, 3, 0, "down from the bottom wraps to the first row"),
+            (false, false, 1, 3, 1, "no input holds the row"),
+            (true, true, 1, 3, 0, "up wins over down on the same frame"),
+            (true, false, 0, 0, 0, "an empty list must not underflow `count - 1`"),
+            (false, true, 0, 0, 0, "an empty list must not wrap either"),
+        ] {
+            assert_eq!(keys(up, down).navigate(current, count), expected, "{why}");
         }
-        handler.process_queued_events();
     }
 
     #[test]
-    fn test_any_pads_dpad_and_buttons_navigate_menus() {
+    fn held_stick_scrolls_once_and_every_pad_drives_menus_alongside_the_keyboard() {
         let mut handler = InputHandler::new();
-        // Pad 1 (not just pad 0) drives menus too
-        frame(&mut handler, &[InputEvent::GamepadButtonPressed(1, GamepadButton::DPadDown)]);
-        assert!(MenuInput::read(&handler).down);
-        handler.end_frame();
 
+        // Frame 1: pad 1's stick pushed up — the EDGE fires (not just pad 0).
+        frame(&mut handler, &[InputEvent::GamepadAxisUpdated(1, GamepadAxis::LeftStickY, 0.9)]);
+        assert!(MenuInput::read(&handler).up);
+
+        // Frame 2: stick still held — no repeat, a menu scrolls one row per push.
+        frame(&mut handler, &[InputEvent::GamepadAxisUpdated(1, GamepadAxis::LeftStickY, 0.9)]);
+        assert!(!MenuInput::read(&handler).up);
+
+        // Frame 3: stick pushed down — the down edge fires, up stays clear.
+        frame(&mut handler, &[InputEvent::GamepadAxisUpdated(1, GamepadAxis::LeftStickY, -0.9)]);
+        let input = MenuInput::read(&handler);
+        assert_eq!((input.up, input.down), (false, true));
+
+        // Frame 4: dpad on pad 1 navigates; A on pad 0 confirms and B on pad 1
+        // backs out in the same frame — every connected pad counts.
         frame(&mut handler, &[
-            InputEvent::GamepadButtonReleased(1, GamepadButton::DPadDown),
+            InputEvent::GamepadAxisUpdated(1, GamepadAxis::LeftStickY, 0.0),
+            InputEvent::GamepadButtonPressed(1, GamepadButton::DPadDown),
             InputEvent::GamepadButtonPressed(0, GamepadButton::A),
             InputEvent::GamepadButtonPressed(1, GamepadButton::B),
         ]);
         let input = MenuInput::read(&handler);
-        assert!(input.confirm);
-        assert!(input.back);
-        assert!(!input.down, "released dpad no longer navigates");
-    }
+        assert_eq!(input, MenuInput { up: false, down: true, confirm: true, back: true });
 
-    #[test]
-    fn test_held_stick_scrolls_once_not_every_frame() {
-        let mut handler = InputHandler::new();
-
-        // Frame 1: stick pushed up — edge fires
-        frame(&mut handler, &[InputEvent::GamepadAxisUpdated(0, GamepadAxis::LeftStickY, 0.9)]);
-        assert!(MenuInput::read(&handler).up);
-        handler.end_frame();
-
-        // Frame 2: stick still held — no repeat
-        frame(&mut handler, &[InputEvent::GamepadAxisUpdated(0, GamepadAxis::LeftStickY, 0.9)]);
-        assert!(!MenuInput::read(&handler).up);
-        handler.end_frame();
-
-        // Frame 3: stick released, pushed down — down edge fires
-        frame(&mut handler, &[InputEvent::GamepadAxisUpdated(0, GamepadAxis::LeftStickY, -0.9)]);
-        let input = MenuInput::read(&handler);
-        assert!(input.down);
-        assert!(!input.up);
-    }
-
-    #[test]
-    fn test_numpad_enter_confirms_like_enter() {
-        let mut handler = InputHandler::new();
-        frame(&mut handler, &[InputEvent::KeyPressed(KeyCode::NumpadEnter)]);
-        let input = MenuInput::read(&handler);
-        assert!(input.confirm);
-        assert!(!input.up && !input.down && !input.back);
-    }
-
-    #[test]
-    fn test_keyboard_menu_behavior_unchanged_with_idle_pad_connected() {
-        let mut handler = InputHandler::new();
+        // Frame 5: released dpad no longer navigates; the numpad's Enter
+        // confirms like the main Enter, with an idle pad still connected.
         frame(&mut handler, &[
-            InputEvent::GamepadConnected(0),
+            InputEvent::GamepadButtonReleased(1, GamepadButton::DPadDown),
+            InputEvent::GamepadButtonReleased(0, GamepadButton::A),
+            InputEvent::GamepadButtonReleased(1, GamepadButton::B),
+            InputEvent::KeyPressed(KeyCode::NumpadEnter),
+        ]);
+        let input = MenuInput::read(&handler);
+        assert_eq!(input, MenuInput { up: false, down: false, confirm: true, back: false });
+
+        // Frame 6: keyboard W with the idle pad connected reads as plain up.
+        frame(&mut handler, &[
+            InputEvent::KeyReleased(KeyCode::NumpadEnter),
             InputEvent::KeyPressed(KeyCode::KeyW),
         ]);
         let input = MenuInput::read(&handler);
-        assert!(input.up);
-        assert!(!input.down && !input.confirm && !input.back);
+        assert_eq!(input, MenuInput { up: true, down: false, confirm: false, back: false });
     }
 }

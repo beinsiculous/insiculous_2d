@@ -152,61 +152,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_hex_color_6() {
-        let color = parse_hex_color("FF0000").unwrap();
-        assert_eq!(color, [255, 0, 0, 255]);
-
-        let color = parse_hex_color("00FF00").unwrap();
-        assert_eq!(color, [0, 255, 0, 255]);
-
-        let color = parse_hex_color("0000FF").unwrap();
-        assert_eq!(color, [0, 0, 255, 255]);
-    }
-
-    #[test]
-    fn test_parse_hex_color_8() {
-        let color = parse_hex_color("FF000080").unwrap();
-        assert_eq!(color, [255, 0, 0, 128]);
-    }
-
-    #[test]
-    fn test_parse_hex_color_rejects_bad_length() {
-        assert!(parse_hex_color("FFF").is_err());
-        assert!(parse_hex_color("FF00FF00FF").is_err());
-    }
-
-    #[test]
-    fn test_parse_hex_color_rejects_non_hex() {
-        assert!(parse_hex_color("GGGGGG").is_err());
-    }
-
-    #[test]
-    fn test_solid_color_path_omits_alpha_when_opaque() {
+    fn test_solid_color_path_round_trips_through_parse() {
+        // The writer omits the alpha byte only for opaque colors ...
         assert_eq!(solid_color_path([255, 0, 255, 255]), "#solid:FF00FF");
         assert_eq!(solid_color_path([0, 128, 7, 255]), "#solid:008007");
-    }
-
-    #[test]
-    fn test_solid_color_path_writes_alpha_when_translucent() {
         assert_eq!(solid_color_path([255, 0, 0, 128]), "#solid:FF000080");
         assert_eq!(solid_color_path([0, 0, 0, 0]), "#solid:00000000");
-    }
 
-    #[test]
-    fn test_solid_color_path_round_trips_through_parse() {
-        for color in [[255, 0, 255, 255], [1, 2, 3, 255], [10, 20, 30, 40]] {
+        // ... and the parser reads both forms back to the same bytes.
+        for color in [[255, 0, 255, 255], [1, 2, 3, 255], [10, 20, 30, 40], [255, 0, 0, 128]] {
             let path = solid_color_path(color);
             let hex = path.strip_prefix("#solid:").expect("canonical prefix");
-            assert_eq!(parse_hex_color(hex).unwrap(), color, "path {path}");
+            assert_eq!(parse_hex_color(hex).expect("parses"), color, "path {path}");
         }
-    }
 
-    #[test]
-    fn test_solid_color_path_is_resolvable_on_load() {
-        // The recorded path must take the `#solid:` reconstruction branch,
-        // never the degrade-to-white sentinel branch.
-        assert!(!is_unresolvable_sentinel(&solid_color_path([9, 9, 9, 255])));
-        assert!(!is_unresolvable_sentinel(&solid_color_path([9, 9, 9, 9])));
+        // Hand-written hex: 6 and 8 digits parse, anything else is a typed error.
+        assert_eq!(parse_hex_color("00FF00").expect("6 digits"), [0, 255, 0, 255]);
+        assert_eq!(parse_hex_color("FF000080").expect("8 digits"), [255, 0, 0, 128]);
+        for bad in ["FFF", "FF00FF00FF", "GGGGGG"] {
+            assert!(
+                matches!(parse_hex_color(bad), Err(SceneLoadError::InvalidTextureRef(_))),
+                "{bad}"
+            );
+        }
     }
 
     #[test]
@@ -214,9 +182,11 @@ mod tests {
         // Runtime-generated placeholders: degrade to white, never file-load.
         assert!(is_unresolvable_sentinel("#rgba"));
         assert!(is_unresolvable_sentinel("#solid"));
-        // Reconstructible schemes and real paths are not sentinels.
+        // Reconstructible schemes and real paths are not sentinels — the
+        // recorded `#solid:` path must take the rebuild branch on load.
         assert!(!is_unresolvable_sentinel("#white"));
         assert!(!is_unresolvable_sentinel("#solid:FF00FF"));
+        assert!(!is_unresolvable_sentinel(&solid_color_path([9, 9, 9, 9])));
         assert!(!is_unresolvable_sentinel("sprites/player.png"));
     }
 }

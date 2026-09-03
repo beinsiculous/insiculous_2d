@@ -348,21 +348,6 @@ mod tests {
     use super::*;
     use ecs::behavior::{BehaviorPhase, PatrolTarget};
 
-    #[test]
-    fn test_behavior_runner_creation() {
-        let runner = BehaviorRunner::new();
-        assert!(runner.named_entities.is_empty());
-    }
-
-    #[test]
-    fn test_set_named_entities() {
-        let mut runner = BehaviorRunner::new();
-        let mut named = HashMap::new();
-        named.insert("player".to_string(), EntityId::with_generation(1, 1));
-        runner.set_named_entities(named);
-        assert!(runner.named_entities.contains_key("player"));
-    }
-
     fn phase_of(world: &World, entity: EntityId) -> BehaviorPhase {
         *world
             .get::<BehaviorState>(entity)
@@ -381,20 +366,13 @@ mod tests {
         // Entity starts exactly at point A, so the first update arrives
         // immediately (< 5.0 arrival threshold) and begins the wait.
         let patroller = world.create_entity();
-        world
-            .add_component(&patroller, Transform2D::new(Vec2::ZERO))
-            .unwrap();
+        world.add_component(&patroller, Transform2D::new(Vec2::ZERO)).ok();
         world
             .add_component(
                 &patroller,
-                Behavior::Patrol {
-                    point_a: (0.0, 0.0),
-                    point_b: (100.0, 0.0),
-                    speed: 50.0,
-                    wait_time: 0.1,
-                },
+                Behavior::Patrol { point_a: (0.0, 0.0), point_b: (100.0, 0.0), speed: 50.0, wait_time: 0.1 },
             )
-            .unwrap();
+            .ok();
 
         runner.update(&mut world, &input, dt, None);
         assert_eq!(
@@ -414,13 +392,11 @@ mod tests {
             "after wait_time elapses the patrol should head for B"
         );
 
-        // Without physics the entity never moves, so it stays far from B
-        // and remains in the Patrolling phase.
+        // Without physics the velocity command writes the transform: the
+        // patroller is on its way to B and stays in the Patrolling phase.
         runner.update(&mut world, &input, dt, None);
-        assert_eq!(
-            phase_of(&world, patroller),
-            BehaviorPhase::Patrolling { toward: PatrolTarget::B }
-        );
+        assert_eq!(phase_of(&world, patroller), BehaviorPhase::Patrolling { toward: PatrolTarget::B });
+        assert!(world.get::<Transform2D>(patroller).expect("transform").position.x > 0.0);
     }
 
     #[test]
@@ -431,9 +407,7 @@ mod tests {
         let dt = 0.016;
 
         let chaser = world.create_entity();
-        world
-            .add_component(&chaser, Transform2D::new(Vec2::ZERO))
-            .unwrap();
+        world.add_component(&chaser, Transform2D::new(Vec2::ZERO)).ok();
         world
             .add_component(
                 &chaser,
@@ -444,20 +418,21 @@ mod tests {
                     lose_interest_range: 80.0,
                 },
             )
-            .unwrap();
+            .ok();
 
-        let target = world.create_entity();
-        world
-            .add_component(&target, Transform2D::new(Vec2::new(30.0, 0.0)))
-            .unwrap();
-        world.add_component(&target, EntityTag::new("player")).unwrap();
+        // No target anywhere: Idle.
+        runner.update(&mut world, &input, dt, None);
+        assert_eq!(phase_of(&world, chaser), BehaviorPhase::Idle);
 
         // Target within detection range -> Chasing.
+        let target = world.create_entity();
+        world.add_component(&target, Transform2D::new(Vec2::new(30.0, 0.0))).ok();
+        world.add_component(&target, EntityTag::new("player")).ok();
         runner.update(&mut world, &input, dt, None);
         assert_eq!(phase_of(&world, chaser), BehaviorPhase::Chasing);
 
         // Inside lose-interest range the chase persists (hysteresis band).
-        world.get_mut::<Transform2D>(target).unwrap().position = Vec2::new(70.0, 0.0);
+        world.get_mut::<Transform2D>(target).expect("target").position = Vec2::new(70.0, 0.0);
         runner.update(&mut world, &input, dt, None);
         assert_eq!(
             phase_of(&world, chaser),
@@ -466,34 +441,8 @@ mod tests {
         );
 
         // Beyond lose-interest range -> back to Idle.
-        world.get_mut::<Transform2D>(target).unwrap().position = Vec2::new(200.0, 0.0);
+        world.get_mut::<Transform2D>(target).expect("target").position = Vec2::new(200.0, 0.0);
         runner.update(&mut world, &input, dt, None);
-        assert_eq!(phase_of(&world, chaser), BehaviorPhase::Idle);
-    }
-
-    #[test]
-    fn test_chase_with_no_target_stays_idle() {
-        let mut world = World::new();
-        let mut runner = BehaviorRunner::new();
-        let input = InputHandler::new();
-
-        let chaser = world.create_entity();
-        world
-            .add_component(&chaser, Transform2D::new(Vec2::ZERO))
-            .unwrap();
-        world
-            .add_component(
-                &chaser,
-                Behavior::ChaseTagged {
-                    target_tag: "player".to_string(),
-                    detection_range: 50.0,
-                    chase_speed: 100.0,
-                    lose_interest_range: 80.0,
-                },
-            )
-            .unwrap();
-
-        runner.update(&mut world, &input, 0.016, None);
         assert_eq!(phase_of(&world, chaser), BehaviorPhase::Idle);
     }
 }

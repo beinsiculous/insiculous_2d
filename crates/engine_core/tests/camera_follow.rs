@@ -5,10 +5,10 @@
 //! no physics, so position commands write `Transform2D` directly.
 //!
 //! Input lifecycle: ONE `InputHandler` lives for the whole simulation (a
-//! fresh handler per frame would lose held-key state). Each frame ends the
-//! previous frame, queues that frame's events, and processes them before the
-//! runner update — holding a key is a single `KeyPressed` whose state
-//! persists until the matching `KeyReleased`.
+//! fresh handler per frame would lose held-key state). Holding a key is a
+//! single `KeyPressed` on the first frame whose state persists until the
+//! matching `KeyReleased` — `test_support::frame` ends the previous frame,
+//! queues that frame's events and processes them before the runner update.
 //!
 //! Exponential lerps never exactly reach their asymptote, so convergence
 //! assertions run to settle and compare within `EPS`.
@@ -17,6 +17,7 @@ use ecs::behavior::{Behavior, EntityTag};
 use ecs::sprite_components::Transform2D;
 use ecs::{EntityId, World};
 use engine_core::behavior_runner::BehaviorRunner;
+use engine_core::test_support::frame;
 use glam::Vec2;
 use input::{InputEvent, InputHandler};
 use winit::keyboard::KeyCode;
@@ -33,19 +34,12 @@ struct Follow {
     offset: (f32, f32),
     dead_zone: Option<(f32, f32)>,
     look_ahead: (f32, f32),
-    look_ahead_lerp: f32,
 }
 
 impl Follow {
     /// Plain follow at the given lerp speed: no offset, dead zone, or lead.
     fn plain(lerp_speed: f32) -> Self {
-        Self {
-            lerp_speed,
-            offset: (0.0, 0.0),
-            dead_zone: None,
-            look_ahead: (0.0, 0.0),
-            look_ahead_lerp: 0.08,
-        }
+        Self { lerp_speed, offset: (0.0, 0.0), dead_zone: None, look_ahead: (0.0, 0.0) }
     }
 
     fn with_offset(mut self, offset: (f32, f32)) -> Self {
@@ -64,369 +58,155 @@ impl Follow {
     }
 }
 
-/// Spawn a "player"-tagged target at `pos` and a camera-follow entity at the
-/// origin with the given behavior fields.
-fn setup(world: &mut World, target_pos: Vec2, follow: Follow) -> EntityId {
-    let target = world.create_entity();
-    world.add_component(&target, Transform2D::new(target_pos)).unwrap();
-    world.add_component(&target, EntityTag::new("player")).unwrap();
-
-    let camera = world.create_entity();
-    world.add_component(&camera, Transform2D::new(Vec2::ZERO)).unwrap();
-    world
-        .add_component(
-            &camera,
-            Behavior::CameraFollow {
-                target_tag: "player".to_string(),
-                lerp_speed: follow.lerp_speed,
-                offset: follow.offset,
-                dead_zone: follow.dead_zone,
-                look_ahead: follow.look_ahead,
-                look_ahead_lerp: follow.look_ahead_lerp,
-            },
-        )
-        .unwrap();
-    camera
+/// A world with a "player"-tagged target at `target_pos` (when given) and a
+/// camera-follow entity at `camera_start`, plus a runner and an input handler.
+struct Rig {
+    world: World,
+    runner: BehaviorRunner,
+    input: InputHandler,
+    camera: EntityId,
 }
 
-fn position_of(world: &World, entity: EntityId) -> Vec2 {
-    world.get::<Transform2D>(entity).unwrap().position
-}
-
-/// Advance `frames` frames with no input at all.
-fn step_frames(world: &mut World, runner: &mut BehaviorRunner, frames: usize) {
-    let input = InputHandler::new();
-    for _ in 0..frames {
-        runner.update(world, &input, DT, None);
-    }
-}
-
-/// Advance `frames` frames while `keys` stay held down on the shared handler.
-fn step_frames_holding(
-    world: &mut World,
-    runner: &mut BehaviorRunner,
-    input: &mut InputHandler,
-    keys: &[KeyCode],
-    frames: usize,
-) {
-    for frame in 0..frames {
-        input.end_frame();
-        // Press once on the first frame; the handler keeps the key held.
-        if frame == 0 {
-            for key in keys {
-                input.queue_event(InputEvent::KeyPressed(*key));
-            }
+impl Rig {
+    fn new(target_pos: Option<Vec2>, camera_start: Vec2, follow: Follow) -> Self {
+        let mut world = World::new();
+        if let Some(target_pos) = target_pos {
+            let target = world.create_entity();
+            world.add_component(&target, Transform2D::new(target_pos)).ok();
+            world.add_component(&target, EntityTag::new("player")).ok();
         }
-        input.process_queued_events();
-        runner.update(world, input, DT, None);
+        let camera = world.create_entity();
+        world.add_component(&camera, Transform2D::new(camera_start)).ok();
+        world
+            .add_component(
+                &camera,
+                Behavior::CameraFollow {
+                    target_tag: "player".to_string(),
+                    lerp_speed: follow.lerp_speed,
+                    offset: follow.offset,
+                    dead_zone: follow.dead_zone,
+                    look_ahead: follow.look_ahead,
+                    look_ahead_lerp: 0.08,
+                },
+            )
+            .ok();
+        Self { world, runner: BehaviorRunner::new(), input: InputHandler::new(), camera }
     }
-}
 
-/// Release `keys` and advance `frames` further frames.
-fn step_frames_releasing(
-    world: &mut World,
-    runner: &mut BehaviorRunner,
-    input: &mut InputHandler,
-    keys: &[KeyCode],
-    frames: usize,
-) {
-    for frame in 0..frames {
-        input.end_frame();
-        if frame == 0 {
-            for key in keys {
-                input.queue_event(InputEvent::KeyReleased(*key));
-            }
+    fn with_target(target_pos: Vec2, follow: Follow) -> Self {
+        Self::new(Some(target_pos), Vec2::ZERO, follow)
+    }
+
+    fn camera_position(&self) -> Vec2 {
+        self.world.get::<Transform2D>(self.camera).expect("camera transform").position
+    }
+
+    /// Advance `frames` frames; `first_frame_events` are queued on the first
+    /// one only (a press or release persists on the shared handler).
+    fn step(&mut self, first_frame_events: &[InputEvent], frames: usize) {
+        for index in 0..frames {
+            frame(&mut self.input, if index == 0 { first_frame_events } else { &[] });
+            self.runner.update(&mut self.world, &self.input, DT, None);
         }
-        input.process_queued_events();
-        runner.update(world, input, DT, None);
+    }
+
+    fn hold(&mut self, keys: &[KeyCode], frames: usize) {
+        let presses: Vec<InputEvent> = keys.iter().map(|key| InputEvent::KeyPressed(*key)).collect();
+        self.step(&presses, frames);
+    }
+
+    fn release(&mut self, keys: &[KeyCode], frames: usize) {
+        let releases: Vec<InputEvent> = keys.iter().map(|key| InputEvent::KeyReleased(*key)).collect();
+        self.step(&releases, frames);
     }
 }
 
 fn assert_near(actual: Vec2, expected: Vec2, what: &str) {
-    assert!(
-        (actual - expected).length() < EPS,
-        "{what}: expected ~{expected}, got {actual}"
-    );
+    assert!((actual - expected).length() < EPS, "{what}: expected ~{expected}, got {actual}");
 }
 
 #[test]
-fn test_camera_converges_within_10_frames_at_lerp_half() {
-    let mut world = World::new();
-    let mut runner = BehaviorRunner::new();
-    let target_pos = Vec2::new(400.0, 300.0);
-    let camera = setup(&mut world, target_pos, Follow::plain(0.5));
-
-    let initial_distance = target_pos.length();
-    step_frames(&mut world, &mut runner, 10);
-
+fn test_camera_converges_on_the_target_plus_offset_at_the_lerp_speed() {
     // 0.5 per frame over 10 frames leaves 0.5^10 ≈ 0.1% of the distance.
-    let remaining = (target_pos - position_of(&world, camera)).length();
+    let target_pos = Vec2::new(400.0, 300.0);
+    let mut rig = Rig::with_target(target_pos, Follow::plain(0.5));
+    rig.step(&[], 10);
+    let remaining = (target_pos - rig.camera_position()).length();
     assert!(
-        remaining < initial_distance * 0.01,
+        remaining < target_pos.length() * 0.01,
         "camera should be within 1% of target after 10 frames, {remaining} px left"
     );
-}
 
-#[test]
-fn test_lerp_speed_one_snaps_in_a_single_frame() {
-    let mut world = World::new();
-    let mut runner = BehaviorRunner::new();
-    let target_pos = Vec2::new(-250.0, 80.0);
-    let camera = setup(&mut world, target_pos, Follow::plain(1.0));
-
-    step_frames(&mut world, &mut runner, 1);
-    assert_eq!(position_of(&world, camera), target_pos);
-}
-
-#[test]
-fn test_offset_shifts_the_convergence_point() {
-    let mut world = World::new();
-    let mut runner = BehaviorRunner::new();
-    let target_pos = Vec2::new(100.0, 100.0);
-    let camera = setup(&mut world, target_pos, Follow::plain(1.0).with_offset((0.0, 50.0)));
-
-    step_frames(&mut world, &mut runner, 1);
-    assert_eq!(position_of(&world, camera), Vec2::new(100.0, 150.0));
+    // Lerp 1.0 snaps in a single frame, and the offset shifts the point it
+    // converges on.
+    let mut rig = Rig::with_target(Vec2::new(100.0, 100.0), Follow::plain(1.0).with_offset((0.0, 50.0)));
+    rig.step(&[], 1);
+    assert_eq!(rig.camera_position(), Vec2::new(100.0, 150.0));
 }
 
 #[test]
 fn test_dead_zone_ignores_targets_inside_the_box() {
-    let mut world = World::new();
-    let mut runner = BehaviorRunner::new();
     // Target 40 px away, dead zone half-extent (100, 60) — inside the box.
-    let camera = setup(
-        &mut world,
-        Vec2::new(40.0, 30.0),
-        Follow::plain(0.5).with_dead_zone((200.0, 120.0)),
-    );
-
-    step_frames(&mut world, &mut runner, 30);
-    assert_eq!(position_of(&world, camera), Vec2::ZERO);
+    let mut rig = Rig::with_target(Vec2::new(40.0, 30.0), Follow::plain(0.5).with_dead_zone((200.0, 120.0)));
+    rig.step(&[], 30);
+    assert_eq!(rig.camera_position(), Vec2::ZERO);
 }
 
 #[test]
-fn test_dead_zone_converges_with_target_on_the_box_edge() {
-    let mut world = World::new();
-    let mut runner = BehaviorRunner::new();
+fn test_dead_zone_converges_with_target_on_the_box_edge_and_no_target_stays_put() {
     // Target 400 px right of camera, dead zone 200 px wide (100 half-extent):
     // camera moves right until the target sits on the box's right edge.
-    let camera = setup(
-        &mut world,
-        Vec2::new(400.0, 0.0),
-        Follow::plain(0.5).with_dead_zone((200.0, 200.0)),
-    );
+    let mut rig = Rig::with_target(Vec2::new(400.0, 0.0), Follow::plain(0.5).with_dead_zone((200.0, 200.0)));
+    rig.step(&[], 40);
+    let pos = rig.camera_position();
+    assert!((pos - Vec2::new(300.0, 0.0)).length() < 1.0, "camera should stop with target on box edge (300, 0), got {pos}");
 
-    step_frames(&mut world, &mut runner, 40);
-    let pos = position_of(&world, camera);
-    assert!(
-        (pos - Vec2::new(300.0, 0.0)).length() < 1.0,
-        "camera should stop with target on box edge (300, 0), got {pos}"
-    );
+    // Nothing carries the tag: the camera does not drift toward the origin.
+    let mut rig = Rig::new(None, Vec2::new(5.0, 5.0), Follow::plain(0.5).with_look_ahead((220.0, 140.0)));
+    rig.step(&[], 5);
+    assert_eq!(rig.camera_position(), Vec2::new(5.0, 5.0));
 }
 
 #[test]
-fn test_camera_without_target_stays_put() {
-    let mut world = World::new();
-    let mut runner = BehaviorRunner::new();
-
-    let camera = world.create_entity();
-    world
-        .add_component(&camera, Transform2D::new(Vec2::new(5.0, 5.0)))
-        .unwrap();
-    world
-        .add_component(
-            &camera,
-            Behavior::CameraFollow {
-                target_tag: "player".to_string(),
-                lerp_speed: 0.5,
-                offset: (0.0, 0.0),
-                dead_zone: None,
-                look_ahead: (220.0, 140.0),
-                look_ahead_lerp: 0.08,
-            },
-        )
-        .unwrap();
-
-    step_frames(&mut world, &mut runner, 5);
-    assert_eq!(position_of(&world, camera), Vec2::new(5.0, 5.0));
-}
-
-#[test]
-fn test_zero_look_ahead_leaves_held_input_without_effect() {
-    let mut world = World::new();
-    let mut runner = BehaviorRunner::new();
-    let mut input = InputHandler::new();
-    let camera = setup(&mut world, Vec2::new(100.0, 0.0), Follow::plain(0.5));
-
-    step_frames_holding(&mut world, &mut runner, &mut input, &[KeyCode::KeyD], SETTLE_FRAMES);
-
-    assert_near(
-        position_of(&world, camera),
-        Vec2::new(100.0, 0.0),
-        "look_ahead (0,0) must behave exactly like plain follow",
-    );
-}
-
-#[test]
-fn test_holding_right_leads_the_camera_by_look_ahead_x() {
-    let mut world = World::new();
-    let mut runner = BehaviorRunner::new();
-    let mut input = InputHandler::new();
-    let camera = setup(
-        &mut world,
-        Vec2::ZERO,
-        Follow::plain(0.5).with_look_ahead((220.0, 140.0)),
-    );
-
-    step_frames_holding(&mut world, &mut runner, &mut input, &[KeyCode::KeyD], SETTLE_FRAMES);
-
-    assert_near(
-        position_of(&world, camera),
-        Vec2::new(220.0, 0.0),
-        "holding right should lead by look_ahead.x",
-    );
-}
-
-#[test]
-fn test_holding_up_and_down_lead_vertically() {
-    for (key, expected_y) in [(KeyCode::KeyW, 140.0), (KeyCode::KeyS, -140.0)] {
-        let mut world = World::new();
-        let mut runner = BehaviorRunner::new();
-        let mut input = InputHandler::new();
-        let camera = setup(
-            &mut world,
-            Vec2::ZERO,
-            Follow::plain(0.5).with_look_ahead((220.0, 140.0)),
-        );
-
-        step_frames_holding(&mut world, &mut runner, &mut input, &[key], SETTLE_FRAMES);
-
-        assert_near(
-            position_of(&world, camera),
-            Vec2::new(0.0, expected_y),
-            "vertical lead should follow the pressed direction (+y = up)",
-        );
+fn test_holding_a_direction_leads_the_camera_by_look_ahead_ramping_in_and_decaying_out() {
+    // Settled lead for each held direction (+y = up), including the cases
+    // that must produce no lead at all and the dead zone absorbing its
+    // half-width of it (the lead applies to the focus point BEFORE the
+    // dead-zone clamp, so a stationary player leads by 220 − 80).
+    let look_ahead = (220.0, 140.0);
+    let rows: [(&[KeyCode], Vec2, Follow, Vec2, &str); 6] = [
+        (&[KeyCode::KeyD], Vec2::ZERO, Follow::plain(0.5).with_look_ahead(look_ahead), Vec2::new(220.0, 0.0), "holding right leads by look_ahead.x"),
+        (&[KeyCode::KeyW], Vec2::ZERO, Follow::plain(0.5).with_look_ahead(look_ahead), Vec2::new(0.0, 140.0), "holding up leads by +look_ahead.y"),
+        (&[KeyCode::KeyS], Vec2::ZERO, Follow::plain(0.5).with_look_ahead(look_ahead), Vec2::new(0.0, -140.0), "holding down leads by -look_ahead.y"),
+        (&[KeyCode::KeyA, KeyCode::KeyD], Vec2::ZERO, Follow::plain(0.5).with_look_ahead(look_ahead), Vec2::ZERO, "left + right cancel"),
+        (&[KeyCode::KeyD], Vec2::new(100.0, 0.0), Follow::plain(0.5), Vec2::new(100.0, 0.0), "look_ahead (0,0) is plain follow"),
+        (&[KeyCode::KeyD], Vec2::ZERO, Follow::plain(0.5).with_dead_zone((160.0, 100.0)).with_look_ahead((220.0, 0.0)), Vec2::new(140.0, 0.0), "the dead zone absorbs its half-width of the lead"),
+    ];
+    for (keys, target_pos, follow, expected, why) in rows {
+        let mut rig = Rig::with_target(target_pos, follow);
+        rig.hold(keys, SETTLE_FRAMES);
+        assert_near(rig.camera_position(), expected, why);
     }
-}
 
-#[test]
-fn test_releasing_the_direction_decays_the_lead() {
-    let mut world = World::new();
-    let mut runner = BehaviorRunner::new();
-    let mut input = InputHandler::new();
-    let camera = setup(
-        &mut world,
-        Vec2::ZERO,
-        Follow::plain(0.5).with_look_ahead((220.0, 140.0)),
-    );
-
-    step_frames_holding(&mut world, &mut runner, &mut input, &[KeyCode::KeyD], SETTLE_FRAMES);
-    step_frames_releasing(&mut world, &mut runner, &mut input, &[KeyCode::KeyD], SETTLE_FRAMES);
-
-    assert_near(
-        position_of(&world, camera),
-        Vec2::ZERO,
-        "releasing should glide back to the plain follow position",
-    );
-}
-
-#[test]
-fn test_opposite_directions_cancel_the_lead() {
-    let mut world = World::new();
-    let mut runner = BehaviorRunner::new();
-    let mut input = InputHandler::new();
-    let camera = setup(
-        &mut world,
-        Vec2::ZERO,
-        Follow::plain(0.5).with_look_ahead((220.0, 140.0)),
-    );
-
-    step_frames_holding(
-        &mut world,
-        &mut runner,
-        &mut input,
-        &[KeyCode::KeyA, KeyCode::KeyD],
-        SETTLE_FRAMES,
-    );
-
-    assert_near(
-        position_of(&world, camera),
-        Vec2::ZERO,
-        "left + right held should produce no lead",
-    );
-}
-
-#[test]
-fn test_dead_zone_absorbs_part_of_the_lead() {
-    let mut world = World::new();
-    let mut runner = BehaviorRunner::new();
-    let mut input = InputHandler::new();
-    // Lead is applied to the focus point BEFORE the dead-zone clamp, so a
-    // stationary player leads by look_ahead.x − half-width = 220 − 80.
-    let camera = setup(
-        &mut world,
-        Vec2::ZERO,
-        Follow::plain(0.5)
-            .with_dead_zone((160.0, 100.0))
-            .with_look_ahead((220.0, 0.0)),
-    );
-
-    step_frames_holding(&mut world, &mut runner, &mut input, &[KeyCode::KeyD], SETTLE_FRAMES);
-
-    assert_near(
-        position_of(&world, camera),
-        Vec2::new(140.0, 0.0),
-        "dead zone should absorb its half-width of the lead",
-    );
-}
-
-#[test]
-fn test_lead_ramps_instead_of_snapping() {
-    let mut world = World::new();
-    let mut runner = BehaviorRunner::new();
-    let mut input = InputHandler::new();
-    let camera = setup(
-        &mut world,
-        Vec2::ZERO,
-        Follow::plain(0.5).with_look_ahead((220.0, 0.0)),
-    );
-
-    step_frames_holding(&mut world, &mut runner, &mut input, &[KeyCode::KeyD], 1);
-
-    let x = position_of(&world, camera).x;
-    assert!(
-        x > 0.0 && x < 220.0,
-        "one frame of holding right should ramp partway, got {x}"
-    );
+    // The lead ramps in rather than snapping, and glides back out on release.
+    let mut rig = Rig::with_target(Vec2::ZERO, Follow::plain(0.5).with_look_ahead((220.0, 0.0)));
+    rig.hold(&[KeyCode::KeyD], 1);
+    let x = rig.camera_position().x;
+    assert!(x > 0.0 && x < 220.0, "one frame of holding right should ramp partway, got {x}");
+    rig.hold(&[], SETTLE_FRAMES);
+    rig.release(&[KeyCode::KeyD], SETTLE_FRAMES);
+    assert_near(rig.camera_position(), Vec2::ZERO, "releasing should glide back to the plain follow position");
 }
 
 #[test]
 fn test_negative_and_nan_look_ahead_degrade_to_plain_follow() {
-    let mut world = World::new();
-    let mut runner = BehaviorRunner::new();
-    let mut input = InputHandler::new();
-    let camera = setup(
-        &mut world,
-        Vec2::new(100.0, 50.0),
-        Follow::plain(0.5).with_look_ahead((-220.0, f32::NAN)),
-    );
+    let mut rig = Rig::with_target(Vec2::new(100.0, 50.0), Follow::plain(0.5).with_look_ahead((-220.0, f32::NAN)));
 
-    for frame in 0..SETTLE_FRAMES {
-        input.end_frame();
-        if frame == 0 {
-            input.queue_event(InputEvent::KeyPressed(KeyCode::KeyD));
-        }
-        input.process_queued_events();
-        runner.update(&mut world, &input, DT, None);
-        assert!(
-            position_of(&world, camera).is_finite(),
-            "bad scene data must never produce a non-finite position"
-        );
+    for index in 0..SETTLE_FRAMES {
+        let events: &[InputEvent] = if index == 0 { &[InputEvent::KeyPressed(KeyCode::KeyD)] } else { &[] };
+        rig.step(events, 1);
+        assert!(rig.camera_position().is_finite(), "bad scene data must never produce a non-finite position");
     }
 
-    assert_near(
-        position_of(&world, camera),
-        Vec2::new(100.0, 50.0),
-        "negative/NaN look-ahead should behave as plain follow",
-    );
+    assert_near(rig.camera_position(), Vec2::new(100.0, 50.0), "negative/NaN look-ahead should behave as plain follow");
 }

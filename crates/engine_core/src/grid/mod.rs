@@ -73,31 +73,18 @@ mod step_and_emit_tests {
     use super::*;
 
     #[test]
-    fn test_step_and_emit_pushes_grid_vertices() {
+    fn test_step_and_emit_appends_exactly_the_grids_vertex_pairs_and_nothing_without_a_grid() {
+        // The per-frame driver every game's render path calls: the grid's
+        // two vertices per spring land in the buffer and, with collider
+        // debug off, nothing else does.
         let mut grid = GridMesh::new(4, 4, 10.0, glam::Vec2::ZERO);
         let world = ecs::World::new();
         let mut lines = Vec::new();
+
         step_and_emit_grid(Some(&mut grid), &world, &mut lines, 1.0 / 60.0, false);
-        assert!(!lines.is_empty(), "grid line vertices must land in the buffer");
-    }
+        assert_eq!(lines.len(), grid.spring_count() * 2);
 
-    #[test]
-    fn test_step_and_emit_without_grid_or_colliders_is_a_noop() {
-        let world = ecs::World::new();
-        let mut lines = Vec::new();
         step_and_emit_grid(None, &world, &mut lines, 1.0 / 60.0, false);
-        assert!(lines.is_empty());
-    }
-
-    #[test]
-    fn test_default_playfield_grid_adopts_theme_grid_color() {
-        use crate::chaos_mode::ChaosMode;
-        use crate::chaos_theme::ChaosTheme;
-
-        for mode in ChaosMode::ALL {
-            let theme = ChaosTheme::for_mode(mode);
-            let grid = default_playfield_grid(&theme);
-            assert_eq!(grid.color, theme.grid_color, "grid tint must follow {mode:?}");
-        }
+        assert_eq!(lines.len(), grid.spring_count() * 2, "no grid, no colliders: nothing appended");
     }
 }

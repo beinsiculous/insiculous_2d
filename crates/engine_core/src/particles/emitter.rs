@@ -62,25 +62,3 @@ impl ParticleEmitter {
         self.active = true;
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn new_emitter_is_active() {
-        let e = ParticleEmitter::new(20.0, ParticleConfig::burst(1));
-        assert!(e.active);
-        assert!((e.emission_rate - 20.0).abs() < 1e-5);
-        assert!(e.config.is_some());
-    }
-
-    #[test]
-    fn pause_resume() {
-        let mut e = ParticleEmitter::new(20.0, ParticleConfig::burst(1));
-        e.pause();
-        assert!(!e.active);
-        e.resume();
-        assert!(e.active);
-    }
-}

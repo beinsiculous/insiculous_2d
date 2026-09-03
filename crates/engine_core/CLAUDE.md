@@ -84,7 +84,7 @@ Core engine: Game trait, run_game(), managers, scene loading/saving, asset manag
 - `scene.rs` — Scene lifecycle / world coordination
 - `scene_manager.rs` — Scene loading and entity instantiation
 - `scene_loader.rs` — RON → World deserialization (`ComponentData` construction lives in `scene_loader_components.rs`); `SceneInstance` retains the prefab table and offers runtime `spawn_prefab(world, assets, name, overrides)` (Prototype pattern, override semantics; failed spawns leave no debris)
-- `scene_serializer.rs` — World → SceneData (inverse of scene_loader, used by editor save; tests in `scene_serializer_tests.rs`). NEW COMPONENT TYPES need arms in BOTH scene_loader_components.rs and scene_serializer.rs
+- `scene_serializer.rs` — World → SceneData (inverse of scene_loader, used by editor save; tests in `scene_serializer/tests.rs` and `scene_serializer/dynamic_and_scripts_tests.rs`, on the shared `test_support` fixtures). NEW COMPONENT TYPES need arms in BOTH scene_loader_components.rs and scene_serializer.rs
 - `scene_data.rs` — SceneData / PrefabData / EntityData structs (schema incl. `ComponentData::EntityTag`, Sprite `emissive`/`tex_region`/`visible` — the latter two with NAMED serde defaults (full region / true); a plain `#[serde(default)]` would render nothing / hide every old sprite)
 - `behavior_data.rs` — `BehaviorData` + the `Behavior`↔`BehaviorData` From impl pair (re-exported via `scene_data`)
 - `script_data.rs` — `ScriptRefData`/`ScriptValueData` wire mirror of `ecs::Scripts` (#44): Entity params persist by NAME (`ensure_script_target_names` auto-names referenced unnamed targets at the editor save choke point; load defers resolution to a post-instantiate pass via the `PendingScriptTargets` resource — forward references work)

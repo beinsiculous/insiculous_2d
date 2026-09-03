@@ -60,52 +60,37 @@ pub fn build_grid_mesh(config: &GridBackdrop, origin: Vec2) -> GridMesh {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chaos_mode::ChaosMode;
+    use crate::chaos_theme::ChaosTheme;
 
     #[test]
-    fn test_odd_hex_columns_round_up_and_square_keeps_them() {
+    fn test_scene_tunables_are_normalized_before_the_mesh_is_built() {
+        // Scene data is user-edited: odd hex column counts round up (the
+        // square lattice keeps them), dimensions and spacing clamp to the
+        // sane range, non-finite values fall back to the preset, and
+        // negative coefficients clamp to zero instead of inverting the
+        // springs (kimi #46 F1: a negative stiffness pushes every node AWAY
+        // from rest and the grid explodes to NaN within frames).
         let hex = GridBackdrop { cols: 45, ..GridBackdrop::default() };
-        assert_eq!(hex.normalized().cols, 46);
-        assert_eq!(build_grid_mesh(&hex, Vec2::ZERO).cols, 46, "no panic, an even grid");
-
+        assert_eq!(build_grid_mesh(&hex, Vec2::ZERO).cols, 46, "odd hex columns round up, no panic");
         let square = GridBackdrop { topology: GridTopology::Square, cols: 45, ..GridBackdrop::default() };
         assert_eq!(build_grid_mesh(&square, Vec2::ZERO).cols, 45);
-    }
 
-    #[test]
-    fn test_dimensions_and_spacing_clamp_to_the_sane_range() {
-        let tiny = GridBackdrop { cols: 1, rows: 0, spacing: 0.0, ..GridBackdrop::default() };
-        let normalized = tiny.normalized();
-        assert_eq!((normalized.cols, normalized.rows), (2, 2));
-        assert_eq!(normalized.spacing, GridBackdrop::MIN_SPACING);
+        let tiny = GridBackdrop { cols: 1, rows: 0, spacing: 0.0, ..GridBackdrop::default() }.normalized();
+        assert_eq!((tiny.cols, tiny.rows, tiny.spacing), (2, 2, GridBackdrop::MIN_SPACING));
+        let huge = GridBackdrop { cols: 10_000, rows: 10_000, ..GridBackdrop::default() }.normalized();
+        assert_eq!((huge.cols, huge.rows), (GridBackdrop::MAX_DIMENSION, GridBackdrop::MAX_DIMENSION));
 
-        let huge = GridBackdrop { cols: 10_000, rows: 10_000, ..GridBackdrop::default() };
-        let normalized = huge.normalized();
-        assert_eq!(
-            (normalized.cols, normalized.rows),
-            (GridBackdrop::MAX_DIMENSION, GridBackdrop::MAX_DIMENSION)
-        );
-    }
-
-    #[test]
-    fn test_non_finite_tunables_fall_back_to_the_preset_and_compare_equal() {
         let broken = GridBackdrop { stiffness: f32::NAN, spacing: f32::INFINITY, ..GridBackdrop::default() };
         let normalized = broken.normalized();
         assert_eq!(normalized.stiffness, GridBackdrop::default().stiffness);
         assert_eq!(normalized.spacing, GridBackdrop::default().spacing);
-        // The whole point: a NaN scene value must not read as "changed" every frame.
+        // A NaN scene value must not read as "changed" every frame.
         assert_eq!(broken.normalized(), broken.normalized());
-    }
 
-    #[test]
-    fn test_negative_coefficients_clamp_instead_of_inverting_the_springs() {
-        // kimi #46 F1: a negative stiffness or rest pull pushes every node AWAY
-        // from rest — the grid explodes to NaN within frames.
         let inverted = GridBackdrop { stiffness: -60.0, rest_pull: -4.0, damping: -1.0, ..GridBackdrop::default() };
         let normalized = inverted.normalized();
-        assert_eq!(normalized.stiffness, 0.0);
-        assert_eq!(normalized.rest_pull, 0.0);
-        assert_eq!(normalized.damping, 0.0);
-
+        assert_eq!((normalized.stiffness, normalized.rest_pull, normalized.damping), (0.0, 0.0, 0.0));
         let mut mesh = build_grid_mesh(&inverted, Vec2::ZERO);
         mesh.apply_impulse(&super::super::GridImpulse::Radial {
             position: Vec2::ZERO, strength: 500.0, radius: 20.0, attractive: false,
@@ -118,8 +103,16 @@ mod tests {
     }
 
     #[test]
-    fn test_default_backdrop_matches_the_playfield_preset() {
-        let theme = crate::chaos_theme::ChaosTheme::for_mode(crate::chaos_mode::ChaosMode::Normal);
+    fn test_default_backdrop_is_the_playfield_preset_in_every_theme() {
+        // A scene carrying a bare `GridBackdrop()` must get the exact grid
+        // the arcade games build from `default_playfield_grid`, tinted to
+        // the chaos theme — ecs cannot see the theme, so the color is pinned HERE.
+        for mode in ChaosMode::ALL {
+            let theme = ChaosTheme::for_mode(mode);
+            let preset = super::super::default_playfield_grid(&theme);
+            assert_eq!(preset.color, theme.grid_color, "grid tint must follow {mode:?}");
+        }
+        let theme = ChaosTheme::for_mode(ChaosMode::Normal);
         let preset = super::super::default_playfield_grid(&theme);
         let built = build_grid_mesh(&GridBackdrop::default(), Vec2::ZERO);
         assert_eq!(built.node_count(), preset.node_count());
@@ -130,7 +123,6 @@ mod tests {
         assert_eq!(built.rest_pull, preset.rest_pull);
         assert_eq!(built.activity_displacement_ref, preset.activity_displacement_ref);
         assert_eq!(built.activity_velocity_ref, preset.activity_velocity_ref);
-        // ecs cannot see the theme, so the default color is pinned HERE.
         assert_eq!(GridBackdrop::default().color, theme.grid_color);
     }
 }

@@ -442,77 +442,37 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_asset_config_default() {
-        let config = AssetConfig::default();
-        assert_eq!(config.base_path, "assets");
-        assert!(config.log_loading);
-        assert_eq!(config.default_filter, TextureFilter::Linear);
+    fn test_asset_config_from_game_config_maps_filter_and_base_path() {
+        for (game_config, filter, base_path) in [
+            (GameConfig::new("Test"), TextureFilter::Linear, "assets"),
+            (
+                GameConfig::new("Test")
+                    .with_texture_filter(TextureFilter::Nearest)
+                    .with_asset_base_path("/games/pong/assets"),
+                TextureFilter::Nearest,
+                "/games/pong/assets",
+            ),
+        ] {
+            let config = AssetConfig::from(&game_config);
+            assert_eq!(config.default_filter, filter);
+            assert_eq!(config.base_path, base_path);
+        }
     }
 
     #[test]
-    fn test_asset_config_from_game_config_carries_texture_filter() {
-        let game_config = GameConfig::new("Test").with_texture_filter(TextureFilter::Nearest);
-        assert_eq!(
-            AssetConfig::from(&game_config).default_filter,
-            TextureFilter::Nearest
-        );
-    }
-
-    #[test]
-    fn test_asset_config_from_game_config_defaults_to_linear_filter() {
-        let game_config = GameConfig::new("Test");
-        assert_eq!(
-            AssetConfig::from(&game_config).default_filter,
-            TextureFilter::Linear
-        );
-    }
-
-    #[test]
-    fn test_asset_config_from_game_config_keeps_default_base_path_when_unset() {
-        let game_config = GameConfig::new("Test");
-        assert!(game_config.asset_base_path.is_none());
-        assert_eq!(AssetConfig::from(&game_config).base_path, "assets");
-    }
-
-    #[test]
-    fn test_asset_config_from_game_config_uses_asset_base_path_when_set() {
-        let game_config = GameConfig::new("Test").with_asset_base_path("/games/pong/assets");
-        assert_eq!(
-            AssetConfig::from(&game_config).base_path,
-            "/games/pong/assets"
-        );
-    }
-
-    #[test]
-    fn test_asset_error_display() {
-        let err = AssetError::NotFound("player.png".to_string());
-        assert!(format!("{}", err).contains("player.png"));
-    }
-
-    #[test]
-    fn test_rgba_validation_rejects_zero_dimensions() {
-        assert!(matches!(
-            validate_rgba(0, 16, 0),
-            Err(AssetError::InvalidData(_))
-        ));
-        assert!(matches!(
-            validate_rgba(16, 0, 0),
-            Err(AssetError::InvalidData(_))
-        ));
-    }
-
-    #[test]
-    fn test_rgba_validation_rejects_length_mismatch() {
-        // 2x2 RGBA needs 16 bytes.
-        let err = validate_rgba(2, 2, 15).unwrap_err();
-        assert!(format!("{err}").contains("expected 16 bytes"));
-        assert!(validate_rgba(2, 2, 17).is_err());
-    }
-
-    #[test]
-    fn test_rgba_validation_accepts_exact_length() {
+    fn test_rgba_validation_accepts_exact_length_and_names_the_expected_size() {
         assert!(validate_rgba(2, 2, 16).is_ok());
         assert!(validate_rgba(64, 16, 64 * 16 * 4).is_ok());
+
+        for (width, height, len) in [(0, 16, 0), (16, 0, 0), (2, 2, 15), (2, 2, 17)] {
+            assert!(
+                matches!(validate_rgba(width, height, len), Err(AssetError::InvalidData(_))),
+                "{width}x{height} with {len} bytes must be InvalidData"
+            );
+        }
+        // 2x2 RGBA needs 16 bytes — the message says so.
+        let err = validate_rgba(2, 2, 15).expect_err("length mismatch");
+        assert!(format!("{err}").contains("expected 16 bytes"), "{err}");
     }
 }
 

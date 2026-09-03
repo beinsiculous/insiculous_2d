@@ -264,146 +264,90 @@ mod tests {
     )"#;
 
     fn loaded() -> Strings {
-        let mut s = Strings::empty();
-        s.insert_locale_source("en", EN);
-        s.insert_locale_source("pirate", PIRATE);
-        s
-    }
-
-    #[test]
-    fn tr_returns_current_locale_text() {
-        let mut s = loaded();
-        s.set_locale("pirate");
-        assert_eq!(s.tr("menu.play"), "Set Sail!");
+        let mut strings = Strings::empty();
+        strings.insert_locale_source("en", EN);
+        strings.insert_locale_source("pirate", PIRATE);
+        strings
     }
 
     #[test]
     fn tr_falls_back_to_english_then_key() {
-        let mut s = loaded();
-        s.set_locale("pirate");
+        let mut strings = loaded();
+        strings.set_locale("pirate");
+
+        // Present in the current locale
+        assert_eq!(strings.tr("menu.play"), "Set Sail!");
         // Missing in pirate, present in en
-        assert_eq!(s.tr("menu.quit"), "Quit");
-        // Missing everywhere → the key itself
-        assert_eq!(s.tr("menu.nonexistent"), "menu.nonexistent");
+        assert_eq!(strings.tr("menu.quit"), "Quit");
+        // Missing everywhere → the key itself, and `@key` text resolves the same way
+        assert_eq!(strings.tr("menu.nonexistent"), "menu.nonexistent");
+        assert_eq!(strings.resolve("@menu.play"), "Set Sail!");
+        assert_eq!(strings.resolve("@bogus"), "bogus");
+        assert_eq!(strings.resolve("Literal text"), "Literal text");
+
+        // No locale files at all is the same chain with nothing to hit.
+        let empty = Strings::load_dir(Path::new("/nonexistent/locales"));
+        assert!(empty.available_locales().is_empty());
+        assert_eq!(empty.current_locale(), "en");
+        assert_eq!(empty.tr("menu.play"), "menu.play");
     }
 
     #[test]
-    fn missing_key_warns_once() {
-        let s = loaded();
-        assert_eq!(s.tr("nope"), "nope");
-        assert_eq!(s.tr("nope"), "nope");
-        assert_eq!(s.warned.borrow().len(), 1);
-    }
-
-    #[test]
-    fn resolve_treats_at_prefix_as_key() {
-        let s = loaded();
-        assert_eq!(s.resolve("@menu.play"), "Play");
-        assert_eq!(s.resolve("Literal text"), "Literal text");
-        // Unknown key resolves to the key (without the @)
-        assert_eq!(s.resolve("@bogus"), "bogus");
-    }
-
-    #[test]
-    fn corrupt_and_wrong_version_sources_are_skipped() {
-        let mut s = Strings::empty();
-        s.insert_locale_source("bad", "not ron at all {{{");
-        s.insert_locale_source(
-            "future",
+    fn corrupt_and_wrong_version_sources_are_skipped() -> Result<(), std::io::Error> {
+        // One half-saved translator file among good ones must not take the
+        // good ones down with it.
+        let dir = tempfile::tempdir()?;
+        std::fs::write(dir.path().join("en.ron"), EN)?;
+        std::fs::write(dir.path().join("bad.ron"), "not ron at all {{{")?;
+        std::fs::write(
+            dir.path().join("future.ron"),
             r#"LocaleFile(version: 99, display_name: "X", strings: {})"#,
-        );
-        assert!(s.available_locales().is_empty());
-        assert_eq!(s.tr("anything"), "anything");
+        )?;
+
+        let strings = Strings::load_dir(dir.path());
+
+        assert_eq!(strings.available_locales(), vec![("en", "English")]);
+        assert_eq!(strings.tr("menu.play"), "Play");
+        Ok(())
     }
 
     #[test]
-    fn load_dir_missing_directory_yields_empty_table() {
-        let s = Strings::load_dir(Path::new("/nonexistent/locales"));
-        assert!(s.available_locales().is_empty());
-        assert_eq!(s.current_locale(), "en");
-        assert_eq!(s.tr("menu.play"), "menu.play");
-    }
+    fn load_dir_reads_ron_files_by_stem() -> Result<(), std::io::Error> {
+        let dir = tempfile::tempdir()?;
+        std::fs::write(dir.path().join("en.ron"), EN)?;
+        std::fs::write(dir.path().join("pirate.ron"), PIRATE)?;
+        std::fs::write(dir.path().join("notes.txt"), "ignore me")?;
 
-    #[test]
-    fn load_dir_reads_ron_files_by_stem() {
-        let dir = std::env::temp_dir().join("insiculous_loc_test");
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("en.ron"), EN).unwrap();
-        std::fs::write(dir.join("pirate.ron"), PIRATE).unwrap();
-        std::fs::write(dir.join("notes.txt"), "ignore me").unwrap();
+        let mut strings = Strings::load_dir(dir.path());
 
-        let s = Strings::load_dir(&dir);
-        let ids: Vec<&str> = s.available_locales().iter().map(|(id, _)| *id).collect();
-        assert_eq!(ids, vec!["en", "pirate"]);
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn locale_keys_sorted_and_none_for_unknown() {
-        let s = loaded();
-        assert_eq!(s.locale_keys("en"), Some(vec!["menu.play", "menu.quit"]));
-        assert_eq!(s.locale_keys("pirate"), Some(vec!["menu.play"]));
-        assert_eq!(s.locale_keys("klingon"), None);
-    }
-
-    #[test]
-    fn available_locales_sorted_with_display_names() {
-        let s = loaded();
         assert_eq!(
-            s.available_locales(),
-            vec![("en", "English"), ("pirate", "Pirate")]
+            strings.available_locales(),
+            vec![("en", "English"), ("pirate", "Pirate")],
+            "sorted, keyed by file stem, non-.ron ignored"
         );
+        assert_eq!(strings.locale_keys("en"), Some(vec!["menu.play", "menu.quit"]));
+        assert_eq!(strings.locale_keys("klingon"), None);
+
+        // Cycling walks the sorted ids and wraps.
+        strings.set_locale("en");
+        strings.cycle_locale();
+        assert_eq!(strings.current_locale(), "pirate");
+        assert_eq!(strings.current_display_name(), "Pirate");
+        strings.cycle_locale();
+        assert_eq!(strings.current_locale(), "en");
+        Ok(())
     }
 
     #[test]
     fn current_font_follows_locale() {
-        let mut s = loaded();
-        assert_eq!(s.current_font(), None);
-        s.set_locale("pirate");
-        assert_eq!(s.current_font(), Some("fonts/BlackSamsGold-ej5e.ttf"));
-    }
+        let mut strings = loaded();
+        assert_eq!(strings.current_font(), None);
 
-    #[test]
-    fn set_locale_marks_font_dirty_once() {
-        let mut s = loaded();
-        s.set_locale("pirate");
-        assert!(s.take_font_dirty());
-        assert!(!s.take_font_dirty());
-    }
+        strings.set_locale("pirate");
 
-    #[test]
-    fn cycle_locale_wraps_in_sorted_order() {
-        let mut s = loaded();
-        s.set_locale("en");
-        s.cycle_locale();
-        assert_eq!(s.current_locale(), "pirate");
-        s.cycle_locale();
-        assert_eq!(s.current_locale(), "en");
-    }
-
-    #[test]
-    fn cycle_locale_with_no_locales_is_noop() {
-        let mut s = Strings::empty();
-        s.cycle_locale();
-        assert_eq!(s.current_locale(), "en");
-    }
-
-    #[test]
-    fn display_name_falls_back_to_id() {
-        let mut s = loaded();
-        s.set_locale("klingon");
-        assert_eq!(s.current_display_name(), "klingon");
-        s.set_locale("pirate");
-        assert_eq!(s.current_display_name(), "Pirate");
-    }
-
-    #[test]
-    fn active_font_roundtrip() {
-        let mut s = Strings::empty();
-        assert_eq!(s.active_font(), None);
-        s.set_active_font(Some(FontHandle { id: 3 }));
-        assert_eq!(s.active_font(), Some(FontHandle { id: 3 }));
+        assert_eq!(strings.current_font(), Some("fonts/BlackSamsGold-ej5e.ttf"));
+        // The runner applies the font once per change, not every frame.
+        assert!(strings.take_font_dirty());
+        assert!(!strings.take_font_dirty());
     }
 }

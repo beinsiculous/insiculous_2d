@@ -47,22 +47,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_ui_manager_creation() {
-        let _manager = UIManager::new();
-        // Should create without errors
-    }
-
-    #[test]
-    fn test_ui_manager_frame_lifecycle() {
+    fn end_frame_returns_the_commands_drawn_during_the_frame() {
         let input = InputHandler::new();
         let mut manager = UIManager::new();
-        let window_size = glam::Vec2::new(800.0, 600.0);
 
-        manager.begin_frame(&input, window_size, 1.0 / 60.0);
-        let ctx = manager.ui_context();
-        ctx.label("Test", glam::Vec2::new(10.0, 10.0));
+        manager.begin_frame(&input, glam::Vec2::new(800.0, 600.0), 1.0 / 60.0);
+        manager.ui_context().label("Test", glam::Vec2::new(10.0, 10.0));
         let commands = manager.end_frame();
 
-        assert!(!commands.is_empty(), "Should have UI commands after frame");
+        // No font is loaded, so the label lands as a placeholder — the
+        // draw list the renderer receives must still carry it, where it was put.
+        let label = commands.iter().find_map(|command| match command {
+            DrawCommand::TextPlaceholder { text, position, .. } => Some((text.as_str(), *position)),
+            DrawCommand::Text { data, .. } => Some((data.text.as_str(), data.position)),
+            _ => None,
+        });
+        assert_eq!(label, Some(("Test", glam::Vec2::new(10.0, 10.0))));
     }
 }
