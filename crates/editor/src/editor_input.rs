@@ -111,6 +111,42 @@ pub enum EditorAction {
     /// Toggle the play-session camera follow (viewport mirrors the game
     /// camera vs. free pan/zoom)
     ToggleCameraFollow,
+
+    // ---- Menu-dispatched actions ----
+    /// Create an entity of the given archetype
+    CreateEntity(crate::archetype::Archetype),
+    /// Exit the application
+    Exit,
+    /// Toggle visibility of a dock panel
+    TogglePanel(crate::dock::PanelId),
+    /// Reset dock layout to default
+    ResetLayout,
+    /// Cycle the game locale
+    CycleGameLocale,
+}
+
+impl EditorAction {
+    /// Whether this action is permitted while a play session is running.
+    ///
+    /// Deny-list matching the menu's `if !is_playing()` guards: scene lifecycle,
+    /// entity creation/mutation, undo/redo and clipboard operations are refused
+    /// during simulation; navigation, view toggles, layout reset, and locale cycling
+    /// remain allowed.
+    pub fn allowed_while_playing(self) -> bool {
+        !matches!(
+            self,
+            Self::CreateEntity(_)
+                | Self::Cut
+                | Self::Copy
+                | Self::Paste
+                | Self::Delete
+                | Self::Duplicate
+                | Self::Undo
+                | Self::Redo
+                | Self::NewScene
+                | Self::OpenScene
+        )
+    }
 }
 
 /// One input binding in the editor's chord model.
@@ -144,6 +180,26 @@ impl EditorBinding {
     /// A Ctrl+Shift+key chord.
     pub fn ctrl_shift(key: KeyCode) -> Self {
         Self::Chord { key, ctrl: true, shift: true }
+    }
+}
+
+/// Either Ctrl / either Shift held — the editor's modifier model (Alt/Super are the OS's).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Modifiers {
+    pub ctrl: bool,
+    pub shift: bool,
+}
+
+impl Modifiers {
+    /// Read whether either Ctrl or either Shift is currently held.
+    pub fn read(input: &InputHandler) -> Self {
+        let keyboard = input.keyboard();
+        Self {
+            ctrl: keyboard.is_key_pressed(KeyCode::ControlLeft)
+                || keyboard.is_key_pressed(KeyCode::ControlRight),
+            shift: keyboard.is_key_pressed(KeyCode::ShiftLeft)
+                || keyboard.is_key_pressed(KeyCode::ShiftRight),
+        }
     }
 }
 
@@ -338,12 +394,11 @@ impl EditorInputMapping {
     /// Whether a binding is currently satisfied by the device state.
     fn binding_pressed(binding: &EditorBinding, input: &InputHandler, just: bool) -> bool {
         let kb = input.keyboard();
-        let ctrl_now = kb.is_key_pressed(KeyCode::ControlLeft) || kb.is_key_pressed(KeyCode::ControlRight);
-        let shift_now = kb.is_key_pressed(KeyCode::ShiftLeft) || kb.is_key_pressed(KeyCode::ShiftRight);
+        let modifiers = Modifiers::read(input);
         match *binding {
             EditorBinding::Chord { key, ctrl, shift } => {
                 let key_state = if just { kb.is_key_just_pressed(key) } else { kb.is_key_pressed(key) };
-                key_state && ctrl_now == ctrl && shift_now == shift
+                key_state && modifiers.ctrl == ctrl && modifiers.shift == shift
             }
             EditorBinding::KeyAnyMods(key) => {
                 if just { kb.is_key_just_pressed(key) } else { kb.is_key_pressed(key) }
@@ -512,5 +567,28 @@ mod tests {
             mapping.get_bindings(A::Pan),
             &[EditorBinding::KeyAnyMods(KeyCode::Space), EditorBinding::Mouse(MouseButton::Middle)]
         );
+    }
+
+    #[test]
+    fn test_modifiers_read_detects_left_and_right_ctrl_and_shift() {
+        let mut input = InputHandler::new();
+        assert_eq!(Modifiers::read(&input), Modifiers { ctrl: false, shift: false });
+
+        input.keyboard_mut().handle_key_press(KeyCode::ControlLeft);
+        assert_eq!(Modifiers::read(&input), Modifiers { ctrl: true, shift: false });
+
+        input.keyboard_mut().handle_key_release(KeyCode::ControlLeft);
+        input.keyboard_mut().handle_key_press(KeyCode::ControlRight);
+        assert_eq!(Modifiers::read(&input), Modifiers { ctrl: true, shift: false });
+
+        input.keyboard_mut().handle_key_press(KeyCode::ShiftLeft);
+        assert_eq!(Modifiers::read(&input), Modifiers { ctrl: true, shift: true });
+
+        input.keyboard_mut().handle_key_release(KeyCode::ControlRight);
+        assert_eq!(Modifiers::read(&input), Modifiers { ctrl: false, shift: true });
+
+        input.keyboard_mut().handle_key_release(KeyCode::ShiftLeft);
+        input.keyboard_mut().handle_key_press(KeyCode::ShiftRight);
+        assert_eq!(Modifiers::read(&input), Modifiers { ctrl: false, shift: true });
     }
 }

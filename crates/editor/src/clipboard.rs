@@ -51,25 +51,36 @@ pub fn capture_entity_tree(world: &World, root: EntityId) -> ClipboardEntity {
     }
 }
 
-/// Component type NAMES on `root`'s subtree that the editor registry does
+/// Component type names present on `entities` that the editor registry does
 /// not know — these are silently absent from a capture. Callers surface a
 /// status-bar warning (warn, never block).
-pub fn uncaptured_component_names(world: &World, root: EntityId) -> Vec<&'static str> {
-    let known: HashSet<TypeId> = registered_component_type_ids().into_iter().collect();
+pub fn uncaptured_component_names_for_entities(
+    world: &World,
+    entities: impl IntoIterator<Item = EntityId>,
+) -> Vec<&'static str> {
+    let mut known: HashSet<TypeId> = registered_component_type_ids().into_iter().collect();
+    known.insert(TypeId::of::<ecs::hierarchy::Parent>());
+    known.insert(TypeId::of::<ecs::hierarchy::Children>());
+
     let mut names: Vec<&'static str> = Vec::new();
-    let mut entities = vec![root];
-    entities.extend(world.get_descendants(root));
     for entity in entities {
         for (type_id, name) in world.component_types(entity) {
-            let is_hierarchy = type_id == TypeId::of::<ecs::hierarchy::Parent>()
-                || type_id == TypeId::of::<ecs::hierarchy::Children>();
-            if !is_hierarchy && !known.contains(&type_id) && !names.contains(&name) {
+            if !known.contains(&type_id) && !names.contains(&name) {
                 names.push(name);
             }
         }
     }
     names.sort_unstable();
     names
+}
+
+/// Find component type names present on the root or any descendant that the editor does
+/// not know — these are silently absent from a capture. Callers surface a
+/// status-bar warning (warn, never block).
+pub fn uncaptured_component_names(world: &World, root: EntityId) -> Vec<&'static str> {
+    let mut entities = vec![root];
+    entities.extend(world.get_descendants(root));
+    uncaptured_component_names_for_entities(world, entities)
 }
 
 /// Spawn a captured subtree into the world with fresh entity ids. The

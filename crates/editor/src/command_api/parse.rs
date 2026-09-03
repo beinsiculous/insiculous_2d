@@ -5,13 +5,21 @@
 //! meets the tokenizer.
 
 use super::{ApiError, EntityRef, HostedWrite, PureWrite, Query, Request, WriteCmd};
+use crate::archetype::Archetype;
 
-/// Spawnable archetypes for the `create` verb, 1:1 with the integration
-/// layer's entity factories (a drift test locks the mapping).
-pub const ARCHETYPES: [&str; 9] = [
-    "empty", "sprite", "camera", "static-body", "dynamic-body", "kinematic-body",
-    "ui-label", "ui-panel", "ui-button",
-];
+/// Spawnable archetypes for the `create` verb, derived from
+/// [`Archetype::ALL`] at compile time so the two lists cannot drift.
+pub const ARCHETYPES: [&str; ARCHETYPE_COUNT] = {
+    let mut names = [""; ARCHETYPE_COUNT];
+    let mut index = 0;
+    while index < ARCHETYPE_COUNT {
+        names[index] = Archetype::ALL[index].kebab();
+        index += 1;
+    }
+    names
+};
+
+const ARCHETYPE_COUNT: usize = Archetype::ALL.len();
 
 /// Every verb the parser accepts (queries + writes); `specs` mirrors this
 /// list for `commands` discovery — a drift test keeps them equal.
@@ -167,15 +175,15 @@ pub fn parse_line(line: &str) -> Result<Request, ApiError> {
             Request::Write(WriteCmd::Pure(PureWrite::Rename { entity: entity_ref(&entity)?, name }))
         }
         "create" => {
-            let archetype = tokens
+            let archetype_token = tokens
                 .next()
                 .ok_or_else(|| ApiError::Parse("usage: create <archetype> [name] [x y]".to_string()))?;
-            if !ARCHETYPES.contains(&archetype.as_str()) {
-                return Err(ApiError::Invalid(format!(
-                    "unknown archetype \"{archetype}\" — known: {}",
+            let archetype = Archetype::from_kebab(&archetype_token).ok_or_else(|| {
+                ApiError::Invalid(format!(
+                    "unknown archetype \"{archetype_token}\" — known: {}",
                     ARCHETYPES.join(", ")
-                )));
-            }
+                ))
+            })?;
             let mut remaining: Vec<String> = tokens.by_ref().collect();
             // A trailing `x y` numeric pair is a position; anything before
             // it (or a lone token) is the name.

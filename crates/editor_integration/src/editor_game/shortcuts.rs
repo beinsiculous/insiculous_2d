@@ -203,11 +203,8 @@ impl<G: Game> EditorGame<G> {
             return;
         }
 
-        let ctrl = ctx.input.keyboard().is_key_pressed(KeyCode::ControlLeft)
-            || ctx.input.keyboard().is_key_pressed(KeyCode::ControlRight);
-        let shift = ctx.input.keyboard().is_key_pressed(KeyCode::ShiftLeft)
-            || ctx.input.keyboard().is_key_pressed(KeyCode::ShiftRight);
-        let action = self.editor.input_mapping.resolve(key, ctrl, shift);
+        let modifiers = editor::Modifiers::read(ctx.input);
+        let action = self.editor.input_mapping.resolve(key, modifiers.ctrl, modifiers.shift);
 
         // Play-control actions (always intercepted, in any play state)
         match action {
@@ -244,7 +241,7 @@ impl<G: Game> EditorGame<G> {
         }
 
         match action {
-            Some(action) => self.dispatch_editor_action(action, shift, ctx),
+            Some(action) => self.dispatch_editor_action(action, modifiers.shift, ctx),
             None => self.inner.on_key_pressed(key, ctx),
         }
     }
@@ -257,7 +254,7 @@ impl<G: Game> EditorGame<G> {
     /// Paused by design (warn-don't-block); transform/existence-mutating
     /// actions are suppressed while a gizmo drag is live — a mid-drag nudge
     /// would be silently swallowed by the drag's start→final commit.
-    fn dispatch_editor_action(&mut self, action: EditorAction, shift: bool, ctx: &mut GameContext) {
+    pub(super) fn dispatch_editor_action(&mut self, action: EditorAction, shift: bool, ctx: &mut GameContext) {
         use EditorAction as A;
         let drag_live = self.gizmo_drag.is_some();
         let drag_guard = |game: &mut Self| {
@@ -273,17 +270,13 @@ impl<G: Game> EditorGame<G> {
                 if drag_guard(self) {
                     return;
                 }
-                if self.command_history.undo(ctx.world) {
-                    self.apply_selection_restore();
-                }
+                self.undo_with_feedback(ctx.world);
             }
             A::Redo => {
                 if drag_guard(self) {
                     return;
                 }
-                if self.command_history.redo(ctx.world) {
-                    self.apply_selection_restore();
-                }
+                self.redo_with_feedback(ctx.world);
             }
             A::Save => {
                 if let Err(e) = self.save_scene(ctx.world, ctx.assets) {
@@ -392,6 +385,52 @@ impl<G: Game> EditorGame<G> {
             | A::ToggleSelection => {}
             // Peeled off by the caller before dispatch.
             A::TogglePlayPause | A::StopPlay | A::ToggleCameraFollow => {}
+            A::CreateEntity(archetype) => {
+                let spawn_pos = self.editor.viewport.camera_position();
+                let entity = entity_ops::create_archetype(
+                    archetype,
+                    ctx.world,
+                    &mut self.editor.selection,
+                    spawn_pos,
+                    &mut self.entity_counter,
+                );
+                let cmd = editor::commands::CreateEntityCommand::already_created(ctx.world, entity);
+                self.command_history.push_already_executed(Box::new(cmd));
+            }
+            A::Exit => ctx.request_exit(),
+            A::TogglePanel(id) => self.editor.dock_area.toggle_panel_visible(id),
+            A::ResetLayout => {
+                self.editor.reset_layout();
+                self.editor.status_bar.show_message("Layout reset to defaults");
+            }
+            A::CycleGameLocale => {
+                ctx.strings.cycle_locale();
+                self.editor.status_bar.show_message(format!(
+                    "Game locale: {}",
+                    ctx.strings.current_display_name()
+                ));
+            }
+        }
+    }
+
+    /// Undo the top entry and name it on the status bar ("Undo: Delete
+    /// Entity") — Edit → Undo and Ctrl+Z share this, so both report it.
+    pub(super) fn undo_with_feedback(&mut self, world: &mut ecs::World) {
+        if let Some(name) = self.command_history.undo_name() {
+            self.editor.status_bar.show_message(format!("Undo: {name}"));
+        }
+        if self.command_history.undo(world) {
+            self.apply_selection_restore();
+        }
+    }
+
+    /// Redo counterpart of [`Self::undo_with_feedback`].
+    pub(super) fn redo_with_feedback(&mut self, world: &mut ecs::World) {
+        if let Some(name) = self.command_history.redo_name() {
+            self.editor.status_bar.show_message(format!("Redo: {name}"));
+        }
+        if self.command_history.redo(world) {
+            self.apply_selection_restore();
         }
     }
 

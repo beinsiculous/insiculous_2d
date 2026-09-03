@@ -44,7 +44,7 @@ impl<G: Game> EditorGame<G> {
             }
             let response = match parse_line(line) {
                 Err(err) => error_response(&err),
-                Ok(Request::Query(_)) => {
+                Ok(Request::Query(query)) => {
                     let ctx = command_api::QueryCtx {
                         world,
                         selection: &self.editor.selection,
@@ -52,10 +52,7 @@ impl<G: Game> EditorGame<G> {
                         dirty: self.command_history.is_dirty(),
                         play_state: self.editor.play_state(),
                     };
-                    // dispatch_line re-parses, but keeps the envelope in ONE
-                    // place for queries; a blank was filtered above.
-                    command_api::dispatch_line(line, &ctx)
-                        .unwrap_or_else(|| error_response(&ApiError::Parse("empty".into())))
+                    command_api::answer_query(&query, &ctx)
                 }
                 Ok(Request::Write(WriteCmd::Pure(write))) => {
                     let play_state = self.editor.play_state();
@@ -105,9 +102,6 @@ impl<G: Game> EditorGame<G> {
         }
         match hosted {
             HostedWrite::Create { archetype, name, position } => {
-                let action = archetype_action(archetype).ok_or_else(|| {
-                    ApiError::Invalid(format!("unknown archetype \"{archetype}\""))
-                })?;
                 // Validate the name BEFORE spawning — a rejection after the
                 // factory ran would leak an entity (same guard as `rename`).
                 let name = match name {
@@ -126,26 +120,26 @@ impl<G: Game> EditorGame<G> {
                 let spawn = position
                     .map(|(x, y)| glam::Vec2::new(x, y))
                     .unwrap_or_else(|| self.editor.viewport.camera_position());
-                let entity = entity_ops::handle_create_action(
-                    action,
+                let entity = entity_ops::create_archetype(
+                    *archetype,
                     world,
                     &mut self.editor.selection,
                     spawn,
                     &mut self.entity_counter,
-                )
-                .ok_or_else(|| ApiError::Invalid(format!("create {archetype} failed")))?;
+                );
                 // A requested Name lands BEFORE the create command captures,
                 // so create+name is ONE undo entry.
                 if let Some(name) = name {
                     world.add_component(&entity, ecs::Name::new(name)).ok();
                 }
                 let cmd = editor::commands::CreateEntityCommand::already_created(world, entity);
-                match self.api_batch.as_mut() {
-                    Some(batch) => batch.commands.push(Box::new(cmd)),
-                    None => self.command_history.push_already_executed(Box::new(cmd)),
-                }
+                command_api::write::record_executed(
+                    &mut self.command_history,
+                    &mut self.api_batch,
+                    Box::new(cmd),
+                );
                 Ok(serde_json::json!({
-                    "command": format!("create {archetype}"),
+                    "command": format!("create {}", archetype.kebab()),
                     "entity": editor::command_api::entity_record(world, entity),
                 }))
             }
@@ -218,22 +212,4 @@ impl<G: Game> EditorGame<G> {
         // waiting for a response that sits in the buffer.
         out.flush().ok();
     }
-}
-
-/// Kebab archetype name (see `editor::command_api::ARCHETYPES`) → the menu
-/// action label the entity factories dispatch on. A drift test asserts
-/// every archetype maps.
-fn archetype_action(archetype: &str) -> Option<&'static str> {
-    Some(match archetype {
-        "empty" => "Create Empty",
-        "sprite" => "Create Sprite",
-        "camera" => "Create Camera",
-        "static-body" => "Create Static Body",
-        "dynamic-body" => "Create Dynamic Body",
-        "kinematic-body" => "Create Kinematic Body",
-        "ui-label" => "Create UI Label",
-        "ui-panel" => "Create UI Panel",
-        "ui-button" => "Create UI Button",
-        _ => return None,
-    })
 }

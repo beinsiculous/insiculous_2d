@@ -277,3 +277,21 @@ fn test_copy_paste_cut_cycle_offsets_selects_removes_subtrees_and_undoes() {
     assert_eq!(world.entity_count(), 2, "undo paste removes the whole pasted subtree");
     assert!(!game.command_history.can_undo(), "copy → paste → cut was two entries");
 }
+
+#[test]
+fn test_undo_and_redo_name_the_entry_on_the_status_bar() {
+    // Edit → Undo and Ctrl+Z share one arm, so both report what they undid.
+    let mut game = editor_game();
+    let mut world = World::new();
+    let entity = spawn_at(&mut world, Vec2::ZERO);
+    game.editor.selection.select(entity);
+    game.delete_selected_entities(&mut world);
+
+    game.undo_with_feedback(&mut world);
+    assert_eq!(game.editor.status_bar.message(), Some("Undo: Delete Entity"));
+    assert!(world.get::<common::Transform2D>(entity).is_some(), "the undo ran");
+
+    game.redo_with_feedback(&mut world);
+    assert_eq!(game.editor.status_bar.message(), Some("Redo: Delete Entity"));
+    assert!(world.get::<common::Transform2D>(entity).is_none(), "the redo ran");
+}

@@ -174,13 +174,8 @@ fn render_hierarchy(
     }
     // Same modifier read AND precedence as the marquee: either Ctrl /
     // either Shift, Ctrl wins a chord.
-    use winit::keyboard::KeyCode;
-    let keyboard = ctx.input.keyboard();
-    let ctrl_held =
-        keyboard.is_key_pressed(KeyCode::ControlLeft) || keyboard.is_key_pressed(KeyCode::ControlRight);
-    let shift_held =
-        keyboard.is_key_pressed(KeyCode::ShiftLeft) || keyboard.is_key_pressed(KeyCode::ShiftRight);
-    let mode = hierarchy_click_mode(ctrl_held, shift_held);
+    let modifiers = editor::Modifiers::read(ctx.input);
+    let mode = hierarchy_click_mode(modifiers.ctrl, modifiers.shift);
     for entity_id in clicked {
         match mode {
             HierarchyClickMode::Toggle => editor.selection.toggle(entity_id),

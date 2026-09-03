@@ -105,9 +105,8 @@ impl<G: Game> EditorGame<G> {
         // game camera and reframing would fight that sync. Ctrl held skips
         // the framing poll — Ctrl+Shift+F is the follow toggle chord, and
         // the KeyAnyMods(F) poll must not also fire a frame request.
-        let ctrl_held = ctx.input.keyboard().is_key_pressed(winit::keyboard::KeyCode::ControlLeft)
-            || ctx.input.keyboard().is_key_pressed(winit::keyboard::KeyCode::ControlRight);
-        if !ctx.ui.wants_keyboard() && !ctrl_held {
+        let modifiers = editor::Modifiers::read(ctx.input);
+        if !ctx.ui.wants_keyboard() && !modifiers.ctrl {
             // Reset first so a same-frame F + Home resolves to the more
             // specific intent: framing overwrites the reset targets.
             if input_result.reset_requested {
@@ -347,7 +346,7 @@ impl<G: Game> EditorGame<G> {
         // Apply the live drag (hold-Ctrl snaps even when the pref is off —
         // the repo's Ctrl-snap convention, shared with scrub fields).
         if interaction.handle.is_some() {
-            let ctrl_held = ctrl_held(ctx.input);
+            let ctrl_held = editor::Modifiers::read(ctx.input).ctrl;
             self.apply_gizmo_drag(ctx.world, &interaction, ctrl_held);
         }
 
@@ -416,8 +415,9 @@ impl<G: Game> EditorGame<G> {
         }
     }
 
-    /// Record the finished drag as ONE undo entry: a TransformGizmoCommand
-    /// per root, plus a SetColliderCommand where the scale tool resized one,
+    /// Record the finished drag as ONE undo entry: a SetTransformCommand
+    /// under GIZMO_FIELD_HINT per root, plus a SetColliderCommand where the
+    /// scale tool resized one,
     /// wrapped in a MacroCommand when there is more than one piece. Pushes
     /// nothing when nothing changed (zero-delta click, or an Escape already
     /// rolled the drag back).
@@ -438,10 +438,11 @@ impl<G: Game> EditorGame<G> {
                 continue;
             };
             if *final_transform != entity.start {
-                commands.push(Box::new(editor::commands::TransformGizmoCommand::new(
+                commands.push(Box::new(editor::commands::SetTransformCommand::new(
                     entity.id,
                     entity.start,
                     *final_transform,
+                    editor::commands::GIZMO_FIELD_HINT,
                 )));
             }
             if let Some(old) = &entity.start_collider {
@@ -457,19 +458,7 @@ impl<G: Game> EditorGame<G> {
                 }
             }
         }
-        match commands.len() {
-            0 => {}
-            1 => {
-                if let Some(cmd) = commands.pop() {
-                    self.command_history.push_already_executed(cmd);
-                }
-            }
-            _ => {
-                self.command_history.push_already_executed(Box::new(
-                    editor::commands::MacroCommand::new("Transform Entities", commands),
-                ));
-            }
-        }
+        self.command_history.push_as_one("Transform Entities", commands);
     }
 
     /// Roll back an in-flight gizmo drag (Escape): every dragged root's
@@ -519,14 +508,6 @@ pub(super) fn scale_collider(collider: &mut physics::components::Collider, facto
             *radius *= factor.y;
         }
     }
-}
-
-/// Whether either Ctrl key is held — the hold-to-snap modifier for gizmo
-/// drags (the same Ctrl-snap convention scrub fields use).
-pub(super) fn ctrl_held(input: &input::InputHandler) -> bool {
-    use winit::keyboard::KeyCode;
-    input.keyboard().is_key_pressed(KeyCode::ControlLeft)
-        || input.keyboard().is_key_pressed(KeyCode::ControlRight)
 }
 
 /// Whether editor chrome owns the mouse this frame: an open overlay (menu

@@ -129,3 +129,19 @@ fn test_view_menu_check_marks_follow_the_host_and_missing_panels_are_disabled() 
         assert!(left.x + left.width <= right.x, "menu '{}' overlaps '{}'", pair[0].title, pair[1].title);
     }
 }
+
+#[test]
+fn test_every_enabled_action_item_maps_through_action_for_menu_label() {
+    let bar = MenuBar::editor_default();
+    for menu in &bar.menus {
+        for item in &menu.items {
+            if let MenuItem::Action { label, enabled: true, .. } = item {
+                assert!(
+                    action_for_menu_label(label).is_some(),
+                    "enabled menu item '{label}' in menu '{}' must resolve to an EditorAction",
+                    menu.title
+                );
+            }
+        }
+    }
+}

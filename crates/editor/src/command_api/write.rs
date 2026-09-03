@@ -46,14 +46,22 @@ pub struct WriteCtx<'a> {
     pub texture_known: &'a dyn Fn(u32) -> bool,
 }
 
+/// Record a command that has ALREADY been executed: append to the open
+/// batch, or push straight onto the history.
+pub fn record_executed(
+    history: &mut CommandHistory,
+    batch: &mut Option<ApiBatch>,
+    cmd: Box<dyn EditorCommand>,
+) {
+    match batch.as_mut() {
+        Some(batch) => batch.commands.push(cmd),
+        None => history.push_already_executed(cmd),
+    }
+}
+
 impl WriteCtx<'_> {
-    /// Record a command that has ALREADY been executed: append to the open
-    /// batch, or push straight onto the history.
     fn record(&mut self, cmd: Box<dyn EditorCommand>) {
-        match self.batch.as_mut() {
-            Some(batch) => batch.commands.push(cmd),
-            None => self.history.push_already_executed(cmd),
-        }
+        record_executed(self.history, self.batch, cmd);
     }
 }
 
@@ -73,6 +81,24 @@ fn reject_non_finite(value: &Value) -> Result<(), ApiError> {
     }
 }
 
+/// Build a sanitized, texture-validated `SetComponentValueCommand` from an existing
+/// component and a JSON patch.
+fn build_set_command(
+    world: &World,
+    entity: ecs::EntityId,
+    component: &str,
+    old: StoredComponent,
+    patch: &Value,
+    texture_known: &dyn Fn(u32) -> bool,
+) -> Result<SetComponentValueCommand, ApiError> {
+    let current = current_value(world, entity, component);
+    let merged = merge_patch(current, patch.clone(), component)?;
+    let new = stored_component_from_json(component, merged).map_err(ApiError::Invalid)?;
+    let new = sanitize(new);
+    validate_texture_handles(&new, texture_known)?;
+    Ok(SetComponentValueCommand::new(entity, old, new))
+}
+
 /// Build the follow-up `set` for `add <component> {patch}`: capture the
 /// just-attached default as `old`, merge the patch over it, validate and
 /// sanitize. Pure with respect to the world — the caller executes (or, on
@@ -87,12 +113,7 @@ fn build_add_patch_set(
     let old = capture_component_by_name(world, entity, component)
         .map_err(ApiError::Invalid)?
         .ok_or_else(|| ApiError::Invalid("add failed".to_string()))?;
-    let current = current_value(world, entity, component);
-    let merged = merge_patch(current, patch.clone(), component)?;
-    let new = stored_component_from_json(component, merged).map_err(ApiError::Invalid)?;
-    let new = sanitize(new);
-    validate_texture_handles(&new, texture_known)?;
-    Ok(SetComponentValueCommand::new(entity, old, new))
+    build_set_command(world, entity, component, old, patch, texture_known)
 }
 
 /// Reject a texture handle the session never issued: it would save as
@@ -168,39 +189,21 @@ fn merge_patch(current: Value, patch: Value, component: &str) -> Result<Value, A
 /// Mirror the GUI's hard physical floors so an API write can't feed rapier
 /// a zero-extent collider or break rendering/audio math (plan-review F2).
 fn sanitize(stored: StoredComponent) -> StoredComponent {
-    use glam::Vec2;
-    use physics::components::ColliderShape;
     match stored {
         StoredComponent::Transform2D(mut t) => {
-            t.scale = t.scale.max(Vec2::splat(0.01));
+            crate::physical_floors::clamp_transform(&mut t);
             StoredComponent::Transform2D(t)
         }
         StoredComponent::Sprite(mut sp) => {
-            sp.scale = sp.scale.max(Vec2::splat(0.01));
+            crate::physical_floors::clamp_sprite(&mut sp);
             StoredComponent::Sprite(sp)
         }
         StoredComponent::Collider(mut c) => {
-            c.shape = match c.shape {
-                ColliderShape::Box { half_extents } => {
-                    ColliderShape::Box { half_extents: half_extents.max(Vec2::splat(0.5)) }
-                }
-                ColliderShape::Circle { radius } => {
-                    ColliderShape::Circle { radius: radius.max(0.5) }
-                }
-                ColliderShape::CapsuleY { half_height, radius } => ColliderShape::CapsuleY {
-                    half_height: half_height.max(0.0),
-                    radius: radius.max(0.5),
-                },
-                ColliderShape::CapsuleX { half_height, radius } => ColliderShape::CapsuleX {
-                    half_height: half_height.max(0.0),
-                    radius: radius.max(0.5),
-                },
-            };
+            crate::physical_floors::clamp_collider(&mut c);
             StoredComponent::Collider(c)
         }
         StoredComponent::AudioSource(mut a) => {
-            a.volume = a.volume.clamp(0.0, 1.0);
-            a.pitch = a.pitch.max(0.1);
+            crate::physical_floors::clamp_audio_source(&mut a);
             StoredComponent::AudioSource(a)
         }
         other => other,
@@ -238,12 +241,7 @@ pub fn run(write: &PureWrite, ctx: &mut WriteCtx<'_>) -> Result<Value, ApiError>
                         "entity has no {component} — `add` it first"
                     ))
                 })?;
-            let current = current_value(ctx.world, entity, component);
-            let merged = merge_patch(current, patch.clone(), component)?;
-            let new = stored_component_from_json(component, merged).map_err(ApiError::Invalid)?;
-            let new = sanitize(new);
-            validate_texture_handles(&new, ctx.texture_known)?;
-            let mut cmd = SetComponentValueCommand::new(entity, old, new);
+            let mut cmd = build_set_command(ctx.world, entity, component, old, patch, ctx.texture_known)?;
             cmd.execute(ctx.world);
             ctx.record(Box::new(cmd));
             Ok(serde_json::json!({
@@ -290,7 +288,7 @@ pub fn run(write: &PureWrite, ctx: &mut WriteCtx<'_>) -> Result<Value, ApiError>
                     Box::new(add)
                 }
                 None => {
-                    let mut add = crate::commands::AddDynamicComponentCommand::new(
+                    let mut add = crate::commands::AddComponentCommand::dynamic(
                         entity,
                         component.to_string(),
                     );
@@ -350,7 +348,7 @@ pub fn run(write: &PureWrite, ctx: &mut WriteCtx<'_>) -> Result<Value, ApiError>
                     {
                         return Err(ApiError::Invalid(format!("entity has no {component}")));
                     }
-                    let mut cmd = crate::commands::RemoveDynamicComponentCommand::new(
+                    let mut cmd = crate::commands::RemoveComponentCommand::dynamic(
                         entity,
                         component.to_string(),
                     );

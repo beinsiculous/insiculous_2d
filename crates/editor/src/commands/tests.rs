@@ -42,12 +42,12 @@ fn test_new_command_invalidates_redo_and_drives_the_undo_redo_state() {
     history.execute(move_to(entity, Vec2::ZERO, Vec2::new(10.0, 20.0), "position"), &mut world);
     assert_eq!(position(&world, entity), Vec2::new(10.0, 20.0));
     assert_eq!((history.can_undo(), history.can_redo()), (true, false));
-    assert_eq!(history.undo_name(), Some("Set Transform"));
+    assert_eq!(history.undo_name(), Some("Set Transform2D"));
 
     assert!(history.undo(&mut world));
     assert_eq!(position(&world, entity), Vec2::ZERO, "undo restores the old value");
     assert_eq!((history.can_undo(), history.can_redo()), (false, true));
-    assert_eq!(history.redo_name(), Some("Set Transform"));
+    assert_eq!(history.redo_name(), Some("Set Transform2D"));
 
     assert!(history.redo(&mut world));
     assert_eq!(position(&world, entity), Vec2::new(10.0, 20.0), "redo re-applies the new value");
@@ -254,9 +254,9 @@ fn test_same_field_edits_and_gizmo_drags_merge_into_one_undo_entry() {
     let mid = Transform2D::new(Vec2::new(50.0, 50.0));
     let end = Transform2D::new(Vec2::new(100.0, 100.0));
     write_position(&mut world, entity, mid.position);
-    history.try_merge_or_push(Box::new(TransformGizmoCommand::new(entity, start, mid)));
+    history.try_merge_or_push(Box::new(SetTransformCommand::new(entity, start, mid, GIZMO_FIELD_HINT)));
     write_position(&mut world, entity, end.position);
-    history.try_merge_or_push(Box::new(TransformGizmoCommand::new(entity, mid, end)));
+    history.try_merge_or_push(Box::new(SetTransformCommand::new(entity, mid, end, GIZMO_FIELD_HINT)));
     assert_eq!(undo_count(&mut history, &mut world), 1, "gizmo drag frames on one entity are ONE entry");
     assert_eq!(position(&world, entity), Vec2::ZERO);
 }
@@ -312,6 +312,54 @@ fn test_mismatched_field_hints_yield_one_entry_per_gesture_frame() {
     );
 }
 
+#[test]
+fn test_distinct_component_types_never_merge_on_same_entity_and_hint() {
+    let mut world = World::new();
+    let entity = setup_entity(&mut world);
+    let mut history = CommandHistory::new();
+
+    let cmd1 = Box::new(SetTransformCommand::new(
+        entity,
+        Transform2D::new(Vec2::ZERO),
+        Transform2D::new(Vec2::ONE),
+        "test_hint",
+    ));
+    let cmd2 = Box::new(SetSpriteCommand::new(
+        entity,
+        Sprite::new(0),
+        Sprite::new(1),
+        "test_hint",
+    ));
+
+    history.try_merge_or_push(cmd1);
+    history.try_merge_or_push(cmd2);
+    assert_eq!(undo_count(&mut history, &mut world), 2);
+}
+
+#[test]
+fn test_gizmo_hint_never_merges_with_field_hint_on_same_entity() {
+    let mut world = World::new();
+    let entity = setup_entity(&mut world);
+    let mut history = CommandHistory::new();
+
+    let inspector_edit = Box::new(SetTransformCommand::new(
+        entity,
+        Transform2D::new(Vec2::ZERO),
+        Transform2D::new(Vec2::new(10.0, 0.0)),
+        "position",
+    ));
+    let gizmo_drag = Box::new(SetTransformCommand::new(
+        entity,
+        Transform2D::new(Vec2::new(10.0, 0.0)),
+        Transform2D::new(Vec2::new(20.0, 0.0)),
+        GIZMO_FIELD_HINT,
+    ));
+
+    history.try_merge_or_push(inspector_edit);
+    history.try_merge_or_push(gizmo_drag);
+    assert_eq!(undo_count(&mut history, &mut world), 2);
+}
+
 // ---------------------------------------------------------------------------
 // Name commands
 // ---------------------------------------------------------------------------
@@ -343,4 +391,55 @@ fn test_rename_adds_a_name_and_undo_removes_the_component() {
     assert_eq!(world.get::<Name>(entity).map(Name::as_str), Some("New"));
     set.undo(&mut world);
     assert_eq!(world.get::<Name>(entity).map(Name::as_str), Some("Old"));
+}
+
+#[test]
+fn test_push_as_one_and_execute_as_one_contracts() {
+    let mut world = World::new();
+    let entity1 = setup_entity(&mut world);
+    let entity2 = setup_entity(&mut world);
+    let mut history = CommandHistory::new();
+
+    // 0 commands records nothing.
+    history.push_as_one("Zero", Vec::new());
+    assert!(!history.can_undo());
+    history.execute_as_one("Zero", Vec::new(), &mut world);
+    assert!(!history.can_undo());
+
+    // 1 command is pushed or executed raw (not wrapped in MacroCommand).
+    history.push_as_one("Single Push", vec![move_to(entity1, Vec2::ZERO, Vec2::ONE, "pos")]);
+    assert_eq!(history.undo_name(), Some("Set Transform2D"));
+    history.undo(&mut world);
+
+    history.execute_as_one("Single Exec", vec![move_to(entity1, Vec2::ZERO, Vec2::ONE, "pos")], &mut world);
+    assert_eq!(history.undo_name(), Some("Set Transform2D"));
+    assert_eq!(position(&world, entity1), Vec2::ONE);
+    history.undo(&mut world);
+    assert_eq!(position(&world, entity1), Vec2::ZERO);
+
+    // Many commands become a MacroCommand with the specified name.
+    history.push_as_one(
+        "Many Push",
+        vec![
+            move_to(entity1, Vec2::ZERO, Vec2::ONE, "pos"),
+            move_to(entity2, Vec2::ZERO, Vec2::ONE, "pos"),
+        ],
+    );
+    assert_eq!(history.undo_name(), Some("Many Push"));
+    history.undo(&mut world);
+
+    history.execute_as_one(
+        "Many Exec",
+        vec![
+            move_to(entity1, Vec2::ZERO, Vec2::ONE, "pos"),
+            move_to(entity2, Vec2::ZERO, Vec2::ONE, "pos"),
+        ],
+        &mut world,
+    );
+    assert_eq!(history.undo_name(), Some("Many Exec"));
+    assert_eq!(position(&world, entity1), Vec2::ONE);
+    assert_eq!(position(&world, entity2), Vec2::ONE);
+    history.undo(&mut world);
+    assert_eq!(position(&world, entity1), Vec2::ZERO);
+    assert_eq!(position(&world, entity2), Vec2::ZERO);
 }

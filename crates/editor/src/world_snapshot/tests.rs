@@ -133,3 +133,28 @@ fn test_snapshot_reports_unregistered_types_once_and_drops_only_them_on_restore(
         vec!["game::enemy::Ai".to_string(), "game::player::Ai".to_string(), "Brain".to_string()]
     );
 }
+
+#[test]
+fn test_loss_messages_name_every_dropped_type_or_nothing() {
+    let empty: &[&'static str] = &[];
+    assert_eq!(format_loss_message(empty, |_, s| s.to_string()), None);
+
+    let one: &[&'static str] = &["game::Ai"];
+    assert_eq!(
+        format_loss_message(one, |count, s| format!("{count}:{s}")),
+        Some("1:Ai".to_string())
+    );
+
+    let three: &[&'static str] = &["game::A", "game::B", "game::C"];
+    assert_eq!(
+        format_loss_message(three, |count, s| format!("{count}:{s}")),
+        Some("3:A, B, C".to_string())
+    );
+
+    let four: &[&'static str] = &["game::A", "game::B", "game::C", "game::D"];
+    assert_eq!(
+        format_loss_message(four, |count, s| format!("{count}:{s}")),
+        Some("4:A, B, C, D".to_string()),
+        "every dropped type is named — a player must not have to guess the rest"
+    );
+}

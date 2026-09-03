@@ -184,9 +184,9 @@ fn render_inspector_editable(
 
     // --- [+ Add Component] button ---
     y += line_height;
-    let btn_bounds = ui::Rect::new(content_x, y, 160.0, 24.0);
-    let add_btn_id = FieldId::new(component_index + 50, 0, 0);
-    if ctx.ui.button(add_btn_id, "+ Add Component", btn_bounds) {
+    let button_bounds = ui::Rect::new(content_x, y, 160.0, 24.0);
+    let add_button_id = FieldId::slot(component_index, editor::WidgetSlot::AddButton);
+    if ctx.ui.button(add_button_id, "+ Add Component", button_bounds) {
         editor.toggle_add_component_popup();
     }
     y += 28.0;
@@ -220,7 +220,7 @@ fn render_inspector_editable(
             );
 
             let mut popup_y = popup_y0 + 4.0;
-            let mut popup_btn_idx: usize = 0;
+            let mut popup_button_index: usize = 0;
 
             for (category, kinds) in categorized_components() {
                 let visible: Vec<ComponentKind> = kinds.iter()
@@ -240,16 +240,16 @@ fn render_inspector_editable(
                 popup_y += 18.0;
 
                 for kind in visible {
-                    let btn_bounds = ui::Rect::new(content_x + 16.0, popup_y, 148.0, 22.0);
-                    let btn_id = FieldId::new(component_index + 60 + popup_btn_idx, 0, 0);
-                    if ctx.ui.button(btn_id, kind.display_name(), btn_bounds) {
+                    let button_bounds = ui::Rect::new(content_x + 16.0, popup_y, 148.0, 22.0);
+                    let button_id = FieldId::slot(component_index, editor::WidgetSlot::PopupRow(popup_button_index));
+                    if ctx.ui.button(button_id, kind.display_name(), button_bounds) {
                         let cmd = editor::commands::AddComponentCommand::new(entity_id, kind);
                         command_history.execute(Box::new(cmd), ctx.world);
                         editor.close_add_component_popup();
                         log::info!("Added component: {}", kind.display_name());
                     }
                     popup_y += 24.0;
-                    popup_btn_idx += 1;
+                    popup_button_index += 1;
                 }
             }
 
@@ -263,10 +263,10 @@ fn render_inspector_editable(
                 );
                 popup_y += 18.0;
                 for name in &available_dynamic {
-                    let btn_bounds = ui::Rect::new(content_x + 16.0, popup_y, 148.0, 22.0);
-                    let btn_id = FieldId::new(component_index + 60 + popup_btn_idx, 0, 0);
-                    if ctx.ui.button(btn_id, name, btn_bounds) {
-                        let cmd = editor::commands::AddDynamicComponentCommand::new(
+                    let button_bounds = ui::Rect::new(content_x + 16.0, popup_y, 148.0, 22.0);
+                    let button_id = FieldId::slot(component_index, editor::WidgetSlot::PopupRow(popup_button_index));
+                    if ctx.ui.button(button_id, name, button_bounds) {
+                        let cmd = editor::commands::AddComponentCommand::dynamic(
                             entity_id,
                             name.clone(),
                         );
@@ -275,7 +275,7 @@ fn render_inspector_editable(
                         log::info!("Added dynamic component: {}", name);
                     }
                     popup_y += 24.0;
-                    popup_btn_idx += 1;
+                    popup_button_index += 1;
                 }
             }
             ctx.ui.end_overlay();

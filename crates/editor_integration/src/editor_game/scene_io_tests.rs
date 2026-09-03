@@ -149,7 +149,7 @@ fn test_load_instantiate_failure_preserves_the_live_world() -> std::io::Result<(
     let result = editor.load_scene(&mut world, &mut StubResolver::default(), &path);
 
     let err = result.expect_err("an unknown prefab must fail the load");
-    assert!(err.contains("DoesNotExist"), "error should name the missing prefab: {err}");
+    assert!(err.to_string().contains("DoesNotExist"), "error should name the missing prefab: {err}");
     assert_session_untouched(&editor, &world, "instantiate failure");
     Ok(())
 }

@@ -206,7 +206,7 @@ fn test_apply_component_edit_records_one_entry_that_merges_by_field_hint() {
     assert_eq!(position_of(&world), Some(Vec2::new(5.0, 0.0)), "the world updates immediately");
     let second = Some(ComponentEdit { new_value: at(9.0), field_hint: "position" });
     apply_component_edit(&mut world, entity, &at(5.0), second, &mut history, make_cmd);
-    assert_eq!(history.undo_name(), Some("Set Transform"));
+    assert_eq!(history.undo_name(), Some("Set Transform2D"));
 
     // A different field starts a NEW entry.
     let mut rotated = at(9.0);

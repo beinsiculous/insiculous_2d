@@ -31,7 +31,7 @@ mod ranges {
     /// Position covers most game worlds.
     pub const POSITION: RangeInclusive<f32> = -1000.0..=1000.0;
     /// Scale prevents negative/zero values.
-    pub const SCALE: RangeInclusive<f32> = 0.01..=10.0;
+    pub const SCALE: RangeInclusive<f32> = crate::physical_floors::SCALE_FLOOR..=10.0;
     /// Damping is genuinely unbounded in rapier; the soft range covers the
     /// useful span (the old normalized widget LIED — a damping of 2.0
     /// displayed as 1.00 and was uneditable).
@@ -41,11 +41,11 @@ mod ranges {
     /// Restitution is conventionally 0..=1 (soft range).
     pub const RESTITUTION: RangeInclusive<f32> = 0.0..=1.0;
     /// Volume is conventionally 0..=1 (soft range).
-    pub const VOLUME: RangeInclusive<f32> = 0.0..=1.0;
+    pub const VOLUME: RangeInclusive<f32> = crate::physical_floors::VOLUME_MIN..=crate::physical_floors::VOLUME_MAX;
     /// Sprite/collider offsets relative to the entity.
     pub const OFFSET: RangeInclusive<f32> = -100.0..=100.0;
     /// Collider shape dimensions (half-extents, radii) in pixels.
-    pub const COLLIDER_EXTENT: RangeInclusive<f32> = 0.5..=1000.0;
+    pub const COLLIDER_EXTENT: RangeInclusive<f32> = crate::physical_floors::COLLIDER_EXTENT_FLOOR..=1000.0;
     /// Depth sorting range.
     pub const DEPTH: RangeInclusive<f32> = -100.0..=100.0;
     /// Linear velocity.
@@ -55,7 +55,7 @@ mod ranges {
     /// Gravity scale (1.0 is normal gravity).
     pub const GRAVITY_SCALE: RangeInclusive<f32> = 0.0..=2.0;
     /// Audio pitch (slow-motion to chipmunk).
-    pub const PITCH: RangeInclusive<f32> = 0.1..=3.0;
+    pub const PITCH: RangeInclusive<f32> = crate::physical_floors::PITCH_FLOOR..=3.0;
     /// Spatial audio cutoff distance.
     pub const MAX_DISTANCE: RangeInclusive<f32> = 0.0..=5000.0;
     /// Spatial audio reference distance.
@@ -144,7 +144,7 @@ pub fn edit_transform2d(
     if let EditResult::Changed(v) = inspector.vec2("Scale", transform.scale, ranges::SCALE) {
         // Hard physical floor: soft ranges let typing exceed the range, but
         // a zero/negative scale breaks rendering math.
-        new.scale = v.max(glam::Vec2::splat(0.01));
+        new.scale = v.max(glam::Vec2::splat(crate::physical_floors::SCALE_FLOOR));
         hint = Some("scale");
     }
 
@@ -171,7 +171,7 @@ pub fn edit_sprite(
         hint = Some("rotation");
     }
     if let EditResult::Changed(v) = inspector.vec2("Scale", sprite.scale, ranges::SCALE) {
-        new.scale = v.max(glam::Vec2::splat(0.01));
+        new.scale = v.max(glam::Vec2::splat(crate::physical_floors::SCALE_FLOOR));
         hint = Some("scale");
     }
     if let EditResult::Changed(v) = inspector.color("Color", sprite.color) {
@@ -281,7 +281,7 @@ pub fn edit_collider(
                 inspector.vec2("Half Extents", *half_extents, ranges::COLLIDER_EXTENT)
             {
                 // Hard floor: rapier cannot build a zero-extent collider.
-                new.shape = ColliderShape::Box { half_extents: v.max(glam::Vec2::splat(0.5)) };
+                new.shape = ColliderShape::Box { half_extents: v.max(glam::Vec2::splat(crate::physical_floors::COLLIDER_EXTENT_FLOOR)) };
                 hint = Some("half_extents");
             }
         }
@@ -289,7 +289,7 @@ pub fn edit_collider(
             if let EditResult::Changed(v) =
                 inspector.f32("Radius", *radius, ranges::COLLIDER_EXTENT)
             {
-                new.shape = ColliderShape::Circle { radius: v.max(0.5) };
+                new.shape = ColliderShape::Circle { radius: v.max(crate::physical_floors::COLLIDER_EXTENT_FLOOR) };
                 hint = Some("radius");
             }
         }
@@ -297,13 +297,13 @@ pub fn edit_collider(
             if let EditResult::Changed(v) =
                 inspector.f32("Half Height", *half_height, ranges::COLLIDER_EXTENT)
             {
-                new.shape = ColliderShape::CapsuleY { half_height: v.max(0.0), radius: *radius };
+                new.shape = ColliderShape::CapsuleY { half_height: v.max(crate::physical_floors::CAPSULE_HALF_HEIGHT_FLOOR), radius: *radius };
                 hint = Some("half_height");
             }
             if let EditResult::Changed(v) =
                 inspector.f32("Cap Radius", *radius, ranges::COLLIDER_EXTENT)
             {
-                new.shape = ColliderShape::CapsuleY { half_height: *half_height, radius: v.max(0.5) };
+                new.shape = ColliderShape::CapsuleY { half_height: *half_height, radius: v.max(crate::physical_floors::COLLIDER_EXTENT_FLOOR) };
                 hint = Some("radius");
             }
         }
@@ -311,13 +311,13 @@ pub fn edit_collider(
             if let EditResult::Changed(v) =
                 inspector.f32("Half Width", *half_height, ranges::COLLIDER_EXTENT)
             {
-                new.shape = ColliderShape::CapsuleX { half_height: v.max(0.0), radius: *radius };
+                new.shape = ColliderShape::CapsuleX { half_height: v.max(crate::physical_floors::CAPSULE_HALF_HEIGHT_FLOOR), radius: *radius };
                 hint = Some("half_height");
             }
             if let EditResult::Changed(v) =
                 inspector.f32("Cap Radius", *radius, ranges::COLLIDER_EXTENT)
             {
-                new.shape = ColliderShape::CapsuleX { half_height: *half_height, radius: v.max(0.5) };
+                new.shape = ColliderShape::CapsuleX { half_height: *half_height, radius: v.max(crate::physical_floors::COLLIDER_EXTENT_FLOOR) };
                 hint = Some("radius");
             }
         }
@@ -434,11 +434,11 @@ pub(crate) fn remove_button(
     header_y: f32,
     width: f32,
 ) -> bool {
-    let btn_size = 18.0;
-    let btn_x = crate::row_layout::remove_button_x(x, width, btn_size);
-    let btn_bounds = ui::Rect::new(btn_x, header_y, btn_size, btn_size);
-    let btn_id = crate::FieldId::new(component_index, 99, 0);
-    ui.button(btn_id, "X", btn_bounds)
+    let button_size = 18.0;
+    let button_x = crate::row_layout::remove_button_x(x, width, button_size);
+    let button_bounds = ui::Rect::new(button_x, header_y, button_size, button_size);
+    let button_id = crate::FieldId::slot(component_index, crate::field_style::WidgetSlot::Remove);
+    ui.button(button_id, "X", button_bounds)
 }
 
 #[cfg(test)]

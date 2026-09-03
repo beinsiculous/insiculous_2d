@@ -13,15 +13,10 @@
 //! them through [`WorldSnapshot::uncaptured_types`] /
 //! [`WorldSnapshot::loss_warning`], and they are lost on restore.
 
-use std::any::TypeId;
-use std::collections::HashSet;
-
 use ecs::hierarchy::{Children, Parent};
 use ecs::{EntityId, World};
 
-use crate::stored_component::{
-    capture_all_components, registered_component_type_ids, restore_components, StoredComponent,
-};
+use crate::stored_component::{capture_all_components, restore_components, StoredComponent};
 
 /// Snapshot of a single entity's components.
 struct EntitySnapshot {
@@ -78,35 +73,24 @@ impl WorldSnapshot {
     /// block — a game-defined generic component can never be registered, and
     /// refusing Play would make such games uneditable.
     pub fn capture(world: &World) -> Self {
-        let mut known: HashSet<TypeId> = registered_component_type_ids().into_iter().collect();
-        known.insert(TypeId::of::<Parent>());
-        known.insert(TypeId::of::<Children>());
-
-        let mut uncaptured: Vec<&'static str> = Vec::new();
-        let snapshots = world
-            .entities()
+        let entities = world.entities();
+        let uncaptured_types =
+            crate::clipboard::uncaptured_component_names_for_entities(world, entities.iter().copied());
+        let snapshots = entities
             .into_iter()
-            .map(|id| {
-                for (type_id, name) in world.component_types(id) {
-                    if !known.contains(&type_id) && !uncaptured.contains(&name) {
-                        uncaptured.push(name);
-                    }
-                }
-                EntitySnapshot::capture(world, id)
-            })
+            .map(|id| EntitySnapshot::capture(world, id))
             .collect();
-        uncaptured.sort_unstable();
 
-        if !uncaptured.is_empty() {
+        if !uncaptured_types.is_empty() {
             log::warn!(
                 "WorldSnapshot: {} component type(s) not in the editor registry \
                  will be lost on restore: {}",
-                uncaptured.len(),
-                uncaptured.join(", ")
+                uncaptured_types.len(),
+                uncaptured_types.join(", ")
             );
         }
 
-        Self { snapshots, uncaptured_types: uncaptured }
+        Self { snapshots, uncaptured_types }
     }
 
     /// Restore the captured state, replacing the current world contents.
@@ -134,28 +118,32 @@ impl WorldSnapshot {
     /// Player-facing warning to show when entering Play, if anything will be
     /// lost by the Play → Stop round-trip. `None` when capture was complete.
     pub fn loss_warning(&self) -> Option<String> {
-        if self.uncaptured_types.is_empty() {
-            return None;
-        }
-        Some(format!(
-            "{} component type(s) not in the editor registry will be lost on Stop: {}",
-            self.uncaptured_types.len(),
-            display_names(&self.uncaptured_types).join(", ")
-        ))
+        format_loss_message(&self.uncaptured_types, |count, types| {
+            format!("{count} component type(s) not in the editor registry will be lost on Stop: {types}")
+        })
     }
 
     /// Player-facing report to show after this snapshot has been restored,
     /// naming what was actually dropped. `None` when capture was complete.
     pub fn drop_report(&self) -> Option<String> {
-        if self.uncaptured_types.is_empty() {
-            return None;
-        }
-        Some(format!(
-            "Restored authored scene; dropped {} unregistered component type(s): {}",
-            self.uncaptured_types.len(),
-            display_names(&self.uncaptured_types).join(", ")
-        ))
+        format_loss_message(&self.uncaptured_types, |count, types| {
+            format!("Restored authored scene; dropped {count} unregistered component type(s): {types}")
+        })
     }
+}
+
+/// The one body behind `loss_warning` and `drop_report`: `None` when nothing
+/// was lost, else the caller's template filled with the count and every
+/// dropped type's short name.
+pub(crate) fn format_loss_message(
+    uncaptured: &[&'static str],
+    format_message: impl FnOnce(usize, &str) -> String,
+) -> Option<String> {
+    if uncaptured.is_empty() {
+        return None;
+    }
+    let names = display_names(uncaptured);
+    Some(format_message(uncaptured.len(), &names.join(", ")))
 }
 
 /// Shorten a full type path for display: strip generic arguments, keep the

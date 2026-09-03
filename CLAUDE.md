@@ -48,7 +48,7 @@ encode lessons already learned here — following them is cheaper than re-learni
 | `.sheet.ron` sidecar schema | `crates/engine_core/src/sheet_file.rs` — `SheetFile` + `parse_sheet_file` + `into_parts` (validation lives here too) |
 | Animation clip wire format | `ClipData` in `scene_data.rs` — ONE DTO shared by scene RON and `.sheet.ron` |
 | World → RON save | `crates/engine_core/src/scene_serializer.rs` — `extract_components()` (the ONLY save pipeline) |
-| Inspector writeback / undo merge | `apply_component_edit()` in `crates/editor/src/component_editors.rs` (called by the registry-generated `edit_all_components`); `impl_set_component_command!` in `crates/editor/src/commands/set_commands.rs` |
+| Inspector writeback / undo merge | `apply_component_edit()` in `crates/editor/src/component_editors.rs` (called by the registry-generated `edit_all_components`); `SetComponentCommand<T>` (one generic, thirteen `Set*Command` aliases, `GIZMO_FIELD_HINT` for drags) in `crates/editor/src/commands/set_commands.rs` |
 | Frame timing | `GameLoopManager` (`game_loop_manager.rs`) — there is no other frame timer |
 | Editor colors | `crates/editor/src/theme.rs` `EditorTheme` tokens — never hardcode colors in panels |
 | Behavior | `crates/ecs/src/behavior.rs` — wire-frozen contract, `engine_core::scene_data::BehaviorData` is a type alias |

@@ -8,6 +8,9 @@ use ui::{Rect, UIContext};
 
 use crate::theme::EditorTheme;
 
+mod actions;
+pub use actions::action_for_menu_label;
+
 /// Menu dropdown layout constants
 const DROPDOWN_ITEM_HEIGHT: f32 = 24.0;
 const DROPDOWN_ITEM_PADDING: f32 = 8.0;
@@ -220,22 +223,19 @@ impl MenuBar {
         );
 
         // Entity menu
-        bar.add_menu(
-            Menu::new("Entity").with_items(vec![
-                MenuItem::action("Create Empty"),
-                MenuItem::separator(),
-                MenuItem::action("Create Sprite"),
-                MenuItem::action("Create Camera"),
-                MenuItem::separator(),
-                MenuItem::action("Create Static Body"),
-                MenuItem::action("Create Dynamic Body"),
-                MenuItem::action("Create Kinematic Body"),
-                MenuItem::separator(),
-                MenuItem::action("Create UI Label"),
-                MenuItem::action("Create UI Panel"),
-                MenuItem::action("Create UI Button"),
-            ]),
-        );
+        let mut entity_items = Vec::new();
+        for archetype in crate::archetype::Archetype::ALL {
+            if matches!(
+                archetype,
+                crate::archetype::Archetype::Sprite
+                    | crate::archetype::Archetype::StaticBody
+                    | crate::archetype::Archetype::UiLabel
+            ) {
+                entity_items.push(MenuItem::separator());
+            }
+            entity_items.push(MenuItem::action(archetype.menu_label()));
+        }
+        bar.add_menu(Menu::new("Entity").with_items(entity_items));
 
         bar
     }
@@ -243,6 +243,11 @@ impl MenuBar {
     /// Add a menu to the menu bar.
     pub fn add_menu(&mut self, menu: Menu) {
         self.menus.push(menu);
+    }
+
+    /// Access all menus in the menu bar.
+    pub fn menus(&self) -> &[Menu] {
+        &self.menus
     }
 
     /// Set the check indicator on an action item, addressed by menu title

@@ -30,6 +30,8 @@
 //! ```
 
 mod asset_browser;
+pub mod archetype;
+pub use archetype::Archetype;
 pub mod command_api;
 mod behavior_editor;
 mod confirm_dialog;
@@ -53,6 +55,7 @@ mod grid;
 mod hierarchy;
 mod inspector;
 mod menu;
+pub mod physical_floors;
 mod picking;
 mod play_controls;
 mod play_state;
@@ -95,7 +98,7 @@ pub use editor_preferences::{EditorPreferences, PanelPrefs};
 pub use dock::{panel_id_for_menu_label, DockArea, DockPanel, DockPosition, PanelId};
 pub use editable_inspector::{
     component_header, cycle_step, edit_bool, edit_color, edit_f32, edit_f32_opts, edit_vec2,
-    wrap_degrees, EditableFieldStyle, EditableInspector, EditResult, FieldEdit, FieldId,
+    wrap_degrees, EditableFieldStyle, EditableInspector, EditResult, FieldEdit, FieldId, WidgetSlot,
 };
 pub use row_layout::{
     color_block_height, ellipsize, field_row, pair_slots, remove_button_x, scrub_step, PairSlot,
@@ -103,7 +106,9 @@ pub use row_layout::{
 };
 pub use text_field::{display_string, display_u32, edit_string};
 pub use ui_component_editors::{edit_ui_button, edit_ui_label, edit_ui_panel};
-pub use editor_input::{EditorAction, EditorBinding, EditorInputMapping, EditorInputState};
+pub use editor_input::{
+    EditorAction, EditorBinding, EditorInputMapping, EditorInputState, Modifiers,
+};
 pub use gizmo::{Corner, Gizmo, GizmoHandle, GizmoInteraction, GizmoMode, GizmoPalette};
 pub use hierarchy::{
     normalized_rename, HierarchyPanel, HierarchyResponse, NameResolution, SelectionRowFills,
@@ -115,7 +120,7 @@ pub use clipboard::{
 };
 pub use grid::{render_grid_overlay, GridColors, GridConfig, GridLineKind, GridRenderer, GridSegment};
 pub use inspector::{component_value, inspect_component, InspectorStyle};
-pub use menu::{Menu, MenuBar, MenuItem};
+pub use menu::{action_for_menu_label, Menu, MenuBar, MenuItem};
 pub use picking::{EntityPicker, PickResult, PickableEntity, AABB};
 pub use play_controls::{PlayControlAction, PlayControls};
 pub use play_state::EditorPlayState;
@@ -128,7 +133,7 @@ pub use status_bar::{StatusBar, StatusBarStats, STATUS_BAR_HEIGHT};
 pub use stored_component::{
     available_components, capture_all_components, categorized_components,
     edit_all_components, inspect_all_components, registered_component_type_ids,
-    restore_components, ComponentCategory, ComponentKind, StoredComponent,
+    restore_components, ComponentCategory, ComponentKind, ComponentRef, StoredComponent,
 };
 pub use theme::EditorTheme;
 pub use toolbar::{toolbar_position_for, EditorTool, Toolbar};

@@ -65,14 +65,15 @@ macro generates.
 
 ## Step 5 — Editable in inspector (only if fields should be editable, not just visible)
 
-1. `crates/editor/src/commands/set_commands.rs` — add an
-   `impl_set_component_command!` invocation (generates `SetMyComponentCommand`).
-2. `crates/editor/src/component_editors.rs` — write `edit_my_component()`
+1. `crates/editor/src/component_editors.rs` — write `edit_my_component()`
    returning `Option<ComponentEdit<MyComponent>>` (follow `edit_sprite`).
-3. Change the component's registry entry from `{ readonly }` to
-   `{ edit edit_my_component => SetMyComponentCommand }` and import both in
-   `stored_component.rs`. That's it — writeback and undo merging flow through
-   `apply_component_edit()` automatically.
+2. Change the component's registry entry from `{ readonly }` to
+   `{ edit edit_my_component }` and import the editor fn in
+   `stored_component/mod.rs`. That's it — the registry block constructs
+   `SetComponentCommand::<MyComponent>` itself, and writeback and undo
+   merging flow through `apply_component_edit()` automatically. Add a
+   `pub type SetMyComponentCommand = SetComponentCommand<MyComponent>;`
+   alias in `commands/set_commands.rs` only if a call site wants the name.
 
 ## Verify
 

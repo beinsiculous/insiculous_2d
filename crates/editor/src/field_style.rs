@@ -13,6 +13,19 @@ const COMPONENT_ID_STRIDE: u64 = 10_000;
 /// Widget-ID stride between fields (a field may use up to this many subfield IDs).
 const FIELD_ID_STRIDE: u64 = 100;
 
+/// Special widget slots for components in the inspector.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum WidgetSlot {
+    /// A regular inspector field with index `n`.
+    Field(usize),
+    /// The remove [X] button for the component.
+    Remove,
+    /// The "+ Add Component" button below the component list.
+    AddButton,
+    /// A row in the Add Component popup with row index `n`.
+    PopupRow(usize),
+}
+
 /// Unique identifier for inspector fields.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FieldId {
@@ -28,6 +41,21 @@ impl FieldId {
             component_index,
             field_index,
             subfield_index,
+        }
+    }
+
+    /// Construct a FieldId for a specific WidgetSlot within a component's ID space.
+    pub fn slot(component_index: usize, slot: WidgetSlot) -> Self {
+        match slot {
+            WidgetSlot::Field(field_index) => Self::new(component_index, field_index, 0),
+            WidgetSlot::Remove => Self::new(component_index, 97, 0),
+            WidgetSlot::AddButton => Self::new(component_index, 98, 0),
+            WidgetSlot::PopupRow(row_index) => {
+                // The row rides in the subfield slot; past the stride it would
+                // alias the next field's ids.
+                debug_assert!((row_index as u64) < FIELD_ID_STRIDE, "popup row {row_index} exceeds the id stride");
+                Self::new(component_index, 99, row_index)
+            }
         }
     }
 }
@@ -183,5 +211,41 @@ impl<T> EditResult<T> {
             EditResult::Changed(v) => v,
             EditResult::Unchanged => original,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_widget_slots_are_pairwise_distinct_and_isolated_per_component() {
+        let component = 3;
+        let mut ids = std::collections::HashSet::new();
+
+        for field_idx in 0..50 {
+            let id = ui::WidgetId::from(FieldId::slot(component, WidgetSlot::Field(field_idx)));
+            assert!(ids.insert(id), "Field({field_idx}) must be unique");
+        }
+
+        let remove_id = ui::WidgetId::from(FieldId::slot(component, WidgetSlot::Remove));
+        assert!(ids.insert(remove_id), "Remove must be unique");
+
+        let add_id = ui::WidgetId::from(FieldId::slot(component, WidgetSlot::AddButton));
+        assert!(ids.insert(add_id), "AddButton must be unique");
+
+        for popup_row in 0..50 {
+            let id = ui::WidgetId::from(FieldId::slot(component, WidgetSlot::PopupRow(popup_row)));
+            assert!(ids.insert(id), "PopupRow({popup_row}) must be unique");
+        }
+
+        // None equals any id of component + 1
+        let next_component = component + 1;
+        for field_idx in 0..50 {
+            let next_id = ui::WidgetId::from(FieldId::slot(next_component, WidgetSlot::Field(field_idx)));
+            assert!(!ids.contains(&next_id));
+        }
+        let next_remove = ui::WidgetId::from(FieldId::slot(next_component, WidgetSlot::Remove));
+        assert!(!ids.contains(&next_remove));
     }
 }

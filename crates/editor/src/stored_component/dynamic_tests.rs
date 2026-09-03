@@ -6,7 +6,7 @@ use ecs::World;
 use glam::Vec2;
 
 use super::*;
-use crate::commands::{AddDynamicComponentCommand, CommandHistory, RemoveDynamicComponentCommand};
+use crate::commands::{AddComponentCommand, CommandHistory, RemoveComponentCommand};
 use crate::world_snapshot::WorldSnapshot;
 
 ecs::define_component! {
@@ -84,7 +84,7 @@ fn test_dynamic_components_add_and_remove_through_history_with_undo_redo() {
     let entity = world.create_entity();
     let mut history = CommandHistory::new();
 
-    history.execute(Box::new(AddDynamicComponentCommand::new(entity, TYPE_NAME.to_string())), &mut world);
+    history.execute(Box::new(AddComponentCommand::dynamic(entity, TYPE_NAME)), &mut world);
     assert_eq!(power(&world, entity), Some(5.0), "the type's default attached");
     if let Some(stat) = world.get_mut::<EditorDynTestStat>(entity) {
         stat.power = 9.0; // user edit after add
@@ -94,7 +94,7 @@ fn test_dynamic_components_add_and_remove_through_history_with_undo_redo() {
     history.redo(&mut world);
     assert_eq!(power(&world, entity), Some(9.0), "redo restores the value captured at undo, not the default");
 
-    history.execute(Box::new(RemoveDynamicComponentCommand::new(entity, TYPE_NAME.to_string())), &mut world);
+    history.execute(Box::new(RemoveComponentCommand::dynamic(entity, TYPE_NAME)), &mut world);
     assert_eq!(power(&world, entity), None);
     history.undo(&mut world);
     assert_eq!(power(&world, entity), Some(9.0), "undo restores the removed value");

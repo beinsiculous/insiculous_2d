@@ -104,7 +104,7 @@ fn test_save_is_refused_mid_session_and_allowed_after_stop() -> std::io::Result<
             .save_scene_with(&mut world, &test_texture_path, path.clone())
             .expect_err("saving mid-simulation must be refused");
 
-        assert!(err.contains("stop Play"), "{label}: the error tells the user how to proceed: {err}");
+        assert!(err.to_string().contains("stop Play"), "{label}: the error tells the user how to proceed: {err}");
         assert!(!path.exists(), "{label}: a refused save must not touch the scene file");
         assert!(editor.command_history.is_dirty(), "{label}: a refused save must not read clean");
     }
@@ -213,4 +213,42 @@ fn test_stop_requests_a_grid_backdrop_reset() {
 
     editor.handle_play_action(PlayControlAction::Stop, &mut world);
     assert!(world.has_resource::<engine_core::grid::GridBackdropReset>(), "Stop queues the reset");
+}
+
+#[test]
+fn test_menu_actions_disallowed_while_playing_match_allowed_while_playing() {
+    let bar = editor::MenuBar::editor_default();
+    for menu in bar.menus() {
+        for item in &menu.items {
+            if let editor::MenuItem::Action { label, enabled: true, .. } = item {
+                let action = editor::action_for_menu_label(label.as_str()).expect("menu label maps to action");
+                let is_disallowed = matches!(
+                    label.as_str(),
+                    "New Scene"
+                        | "Open Scene..."
+                        | "Cut"
+                        | "Copy"
+                        | "Paste"
+                        | "Delete"
+                        | "Duplicate"
+                        | "Undo"
+                        | "Redo"
+                        | "Create Empty"
+                        | "Create Sprite"
+                        | "Create Camera"
+                        | "Create Static Body"
+                        | "Create Dynamic Body"
+                        | "Create Kinematic Body"
+                        | "Create UI Label"
+                        | "Create UI Panel"
+                        | "Create UI Button"
+                );
+                assert_eq!(
+                    !action.allowed_while_playing(),
+                    is_disallowed,
+                    "action for '{label}' allowed_while_playing mismatch"
+                );
+            }
+        }
+    }
 }

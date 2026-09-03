@@ -114,7 +114,7 @@ pub enum PureWrite {
 pub enum HostedWrite {
     /// Spawn an archetype (see [`ARCHETYPES`]) at the viewport center or an
     /// explicit position, optionally named — one undo entry.
-    Create { archetype: String, name: Option<String>, position: Option<(f32, f32)> },
+    Create { archetype: crate::archetype::Archetype, name: Option<String>, position: Option<(f32, f32)> },
     /// Save the scene (through the mandatory save choke point).
     Save { path: Option<String> },
 }
@@ -178,6 +178,14 @@ pub fn error_response(err: &ApiError) -> String {
     serde_json::json!({ "ok": false, "error": error }).to_string()
 }
 
+/// Run one query and format its response envelope (Ok or Err).
+pub fn answer_query(query: &Query, ctx: &QueryCtx<'_>) -> String {
+    match query::run(query, ctx) {
+        Ok(data) => ok_response(data),
+        Err(err) => error_response(&err),
+    }
+}
+
 /// Answer one request line.
 ///
 /// Returns `None` for blank input (no response owed); otherwise always
@@ -187,14 +195,12 @@ pub fn dispatch_line(line: &str, ctx: &QueryCtx<'_>) -> Option<String> {
     if line.trim().is_empty() {
         return None;
     }
-    let result = parse::parse_line(line).and_then(|request| match request {
-        Request::Query(q) => query::run(&q, ctx),
-        Request::Write(_) => Err(ApiError::Refused(
+    let result = parse::parse_line(line);
+    Some(match result {
+        Ok(Request::Query(q)) => answer_query(&q, ctx),
+        Ok(Request::Write(_)) => error_response(&ApiError::Refused(
             "write over read-only dispatch — use the editor's --api transport".to_string(),
         )),
-    });
-    Some(match result {
-        Ok(data) => ok_response(data),
         Err(err) => error_response(&err),
     })
 }

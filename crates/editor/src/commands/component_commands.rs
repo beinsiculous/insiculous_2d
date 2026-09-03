@@ -4,7 +4,7 @@ use std::any::Any;
 
 use ecs::{EntityId, World};
 
-use crate::stored_component::{ComponentKind, StoredComponent};
+use crate::stored_component::{ComponentKind, ComponentRef, StoredComponent};
 
 use super::EditorCommand;
 
@@ -15,16 +15,27 @@ use super::EditorCommand;
 /// Command for adding a default component to an entity.
 pub struct AddComponentCommand {
     entity: EntityId,
-    kind: ComponentKind,
+    target: ComponentRef,
+    display: String,
     /// Captured on undo so that redo can restore modifications made between add and undo.
     captured: Option<StoredComponent>,
 }
 
 impl AddComponentCommand {
     pub fn new(entity: EntityId, kind: ComponentKind) -> Self {
+        Self::for_ref(entity, ComponentRef::Typed(kind))
+    }
+
+    pub fn dynamic(entity: EntityId, name: impl Into<String>) -> Self {
+        Self::for_ref(entity, ComponentRef::Dynamic(name.into()))
+    }
+
+    fn for_ref(entity: EntityId, target: ComponentRef) -> Self {
+        let display = format!("Add {}", target.display_name());
         Self {
             entity,
-            kind,
+            target,
+            display,
             captured: None,
         }
     }
@@ -37,18 +48,18 @@ impl EditorCommand for AddComponentCommand {
             stored.apply_to(world, self.entity);
         } else {
             // First execute — add default.
-            self.kind.add_default(world, self.entity);
+            self.target.add_default(world, self.entity);
         }
     }
 
     fn undo(&mut self, world: &mut World) {
         // Capture the component before removing it.
-        self.captured = self.kind.capture(world, self.entity);
-        self.kind.remove(world, self.entity);
+        self.captured = self.target.capture(world, self.entity);
+        self.target.remove(world, self.entity);
     }
 
     fn display_name(&self) -> &str {
-        "Add Component"
+        &self.display
     }
 
     fn as_any(&self) -> &dyn Any { self }
@@ -62,20 +73,31 @@ impl EditorCommand for AddComponentCommand {
 /// Command for removing a component from an entity.
 pub struct RemoveComponentCommand {
     entity: EntityId,
+    target: ComponentRef,
+    display: String,
     /// Primary stored component.
     stored: Option<StoredComponent>,
     /// Extra component captured during RigidBody cascade (the Collider).
     cascade_stored: Option<StoredComponent>,
-    kind: ComponentKind,
 }
 
 impl RemoveComponentCommand {
     pub fn new(entity: EntityId, kind: ComponentKind) -> Self {
+        Self::for_ref(entity, ComponentRef::Typed(kind))
+    }
+
+    pub fn dynamic(entity: EntityId, name: impl Into<String>) -> Self {
+        Self::for_ref(entity, ComponentRef::Dynamic(name.into()))
+    }
+
+    fn for_ref(entity: EntityId, target: ComponentRef) -> Self {
+        let display = format!("Remove {}", target.display_name());
         Self {
             entity,
+            target,
+            display,
             stored: None,
             cascade_stored: None,
-            kind,
         }
     }
 }
@@ -83,16 +105,16 @@ impl RemoveComponentCommand {
 impl EditorCommand for RemoveComponentCommand {
     fn execute(&mut self, world: &mut World) {
         // Capture before removal.
-        self.stored = self.kind.capture(world, self.entity);
+        self.stored = self.target.capture(world, self.entity);
 
         // Handle RigidBody → Collider cascade (a collider without a rigid
         // body is meaningless in the physics system).
-        if self.kind == ComponentKind::RigidBody {
-            self.cascade_stored = ComponentKind::Collider.capture(world, self.entity);
-            ComponentKind::Collider.remove(world, self.entity);
+        if let Some(cascade_target) = self.target.cascade() {
+            self.cascade_stored = cascade_target.capture(world, self.entity);
+            cascade_target.remove(world, self.entity);
         }
 
-        self.kind.remove(world, self.entity);
+        self.target.remove(world, self.entity);
     }
 
     fn undo(&mut self, world: &mut World) {
@@ -105,60 +127,6 @@ impl EditorCommand for RemoveComponentCommand {
     }
 
     fn display_name(&self) -> &str {
-        "Remove Component"
-    }
-
-    fn as_any(&self) -> &dyn Any { self }
-    fn as_any_mut(&mut self) -> &mut dyn Any { self }
-}
-
-// ---------------------------------------------------------------------------
-// Dynamic-tier add/remove — string-keyed mirrors of the pair
-// above for components with no ComponentKind variant (game-registered types).
-// No cascade logic: physics types are typed-tier.
-// ---------------------------------------------------------------------------
-
-/// Add a default-constructed dynamic component to an entity.
-pub struct AddDynamicComponentCommand {
-    entity: EntityId,
-    name: String,
-    display: String,
-    /// Captured on undo so redo restores modifications made in between.
-    captured: Option<StoredComponent>,
-}
-
-impl AddDynamicComponentCommand {
-    pub fn new(entity: EntityId, name: String) -> Self {
-        let display = format!("Add {}", name);
-        Self {
-            entity,
-            name,
-            display,
-            captured: None,
-        }
-    }
-}
-
-impl EditorCommand for AddDynamicComponentCommand {
-    fn execute(&mut self, world: &mut World) {
-        if let Some(ref stored) = self.captured {
-            stored.apply_to(world, self.entity);
-        } else if let Err(e) =
-            crate::stored_component::dynamic::add_dynamic_default(world, self.entity, &self.name)
-        {
-            log::error!("add dynamic component '{}' failed: {e}", self.name);
-        }
-    }
-
-    fn undo(&mut self, world: &mut World) {
-        self.captured =
-            crate::stored_component::dynamic::capture_dynamic_by_name(world, self.entity, &self.name)
-                .ok()
-                .flatten();
-        crate::stored_component::dynamic::remove_dynamic(world, self.entity, &self.name);
-    }
-
-    fn display_name(&self) -> &str {
         &self.display
     }
 
@@ -166,49 +134,6 @@ impl EditorCommand for AddDynamicComponentCommand {
     fn as_any_mut(&mut self) -> &mut dyn Any { self }
 }
 
-/// Remove a dynamic component from an entity (undo restores the captured
-/// value).
-pub struct RemoveDynamicComponentCommand {
-    entity: EntityId,
-    name: String,
-    display: String,
-    stored: Option<StoredComponent>,
-}
-
-impl RemoveDynamicComponentCommand {
-    pub fn new(entity: EntityId, name: String) -> Self {
-        let display = format!("Remove {}", name);
-        Self {
-            entity,
-            name,
-            display,
-            stored: None,
-        }
-    }
-}
-
-impl EditorCommand for RemoveDynamicComponentCommand {
-    fn execute(&mut self, world: &mut World) {
-        self.stored =
-            crate::stored_component::dynamic::capture_dynamic_by_name(world, self.entity, &self.name)
-                .ok()
-                .flatten();
-        crate::stored_component::dynamic::remove_dynamic(world, self.entity, &self.name);
-    }
-
-    fn undo(&mut self, world: &mut World) {
-        if let Some(ref stored) = self.stored {
-            stored.apply_to(world, self.entity);
-        }
-    }
-
-    fn display_name(&self) -> &str {
-        &self.display
-    }
-
-    fn as_any(&self) -> &dyn Any { self }
-    fn as_any_mut(&mut self) -> &mut dyn Any { self }
-}
 
 // ---------------------------------------------------------------------------
 // SetComponentValueCommand

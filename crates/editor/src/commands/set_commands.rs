@@ -4,6 +4,7 @@ use std::any::Any;
 
 use ecs::audio_components::AudioSource;
 use ecs::behavior::{Behavior, EntityTag};
+use ecs::component_registry::ComponentMeta;
 use ecs::sprite_components::{Name, Sprite};
 use ecs::ui_components::{UiButton, UiLabel, UiPanel};
 use ecs::{EntityId, World};
@@ -12,155 +13,87 @@ use physics::components::{Collider, RigidBody};
 use super::EditorCommand;
 
 // ---------------------------------------------------------------------------
-// TransformGizmoCommand
+// SetComponentCommand (inspector property edits & gizmo drags)
 // ---------------------------------------------------------------------------
 
-/// Command for a transform gizmo drag operation.
-///
-/// Supports merging: consecutive gizmo drags on the same entity collapse
-/// into a single undo entry.
-pub struct TransformGizmoCommand {
+/// Whole-component write for one component type (inspector fields, gizmo drags).
+/// Consecutive edits to the same entity AND the same `field_hint` merge into one undo
+/// entry. Distinct `T`s are distinct types, so `downcast_ref::<Self>` keeps merge
+/// isolation per component exactly as the thirteen macro-generated structs did.
+pub struct SetComponentCommand<T: ecs::Component + ComponentMeta + Clone + Send + 'static> {
     entity: EntityId,
-    initial: common::Transform2D,
-    final_val: common::Transform2D,
+    old: T,
+    new: T,
+    field_hint: &'static str,
+    display: String,
 }
 
-impl TransformGizmoCommand {
-    pub fn new(entity: EntityId, initial: common::Transform2D, final_val: common::Transform2D) -> Self {
-        Self { entity, initial, final_val }
+impl<T: ecs::Component + ComponentMeta + Clone + Send + 'static> SetComponentCommand<T> {
+    pub fn new(entity: EntityId, old: T, new: T, field_hint: &'static str) -> Self {
+        Self {
+            entity,
+            old,
+            new,
+            field_hint,
+            display: format!("Set {}", <T as ComponentMeta>::type_name()),
+        }
     }
 }
 
-impl EditorCommand for TransformGizmoCommand {
+impl<T: ecs::Component + ComponentMeta + Clone + Send + 'static> EditorCommand for SetComponentCommand<T> {
     fn execute(&mut self, world: &mut World) {
-        if let Some(t) = world.get_mut::<common::Transform2D>(self.entity) {
-            *t = self.final_val;
+        if let Some(c) = world.get_mut::<T>(self.entity) {
+            *c = self.new.clone();
         }
     }
 
     fn undo(&mut self, world: &mut World) {
-        if let Some(t) = world.get_mut::<common::Transform2D>(self.entity) {
-            *t = self.initial;
+        if let Some(c) = world.get_mut::<T>(self.entity) {
+            *c = self.old.clone();
         }
     }
 
     fn display_name(&self) -> &str {
-        "Transform Gizmo"
+        &self.display
     }
 
     fn try_merge(&mut self, other: &dyn EditorCommand) -> bool {
-        if let Some(other) = other.as_any().downcast_ref::<TransformGizmoCommand>() {
-            if self.entity == other.entity {
-                self.final_val = other.final_val;
-                return true;
+        match other.as_any().downcast_ref::<Self>() {
+            Some(o) if o.entity == self.entity && o.field_hint == self.field_hint => {
+                self.new = o.new.clone();
+                true
             }
+            _ => false,
         }
-        false
     }
 
-    fn as_any(&self) -> &dyn Any { self }
-    fn as_any_mut(&mut self) -> &mut dyn Any { self }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
 }
 
-// ---------------------------------------------------------------------------
-// Set*Commands (inspector property edits)
-// ---------------------------------------------------------------------------
+/// Gizmo drags are Transform2D sets under this hint: they merge with each other and
+/// never with an inspector field edit ("position", "rotation", ...).
+pub const GIZMO_FIELD_HINT: &str = "gizmo";
 
-/// Generates a `Set*Command` for an inspector property edit on one component
-/// type. All five commands share the same shape: store old/new values plus a
-/// `field_hint`, write the value on execute/undo, and merge consecutive edits
-/// to the same field on the same entity into one undo entry.
-macro_rules! impl_set_component_command {
-    ($(#[$attr:meta])* $name:ident, $ty:ty, $display:expr) => {
-        $(#[$attr])*
-        pub struct $name {
-            entity: EntityId,
-            old: $ty,
-            new: $ty,
-            field_hint: &'static str,
-        }
+pub type SetTransformCommand = SetComponentCommand<common::Transform2D>;
+pub type SetSpriteCommand = SetComponentCommand<Sprite>;
+pub type SetRigidBodyCommand = SetComponentCommand<RigidBody>;
+pub type SetColliderCommand = SetComponentCommand<Collider>;
+pub type SetAudioSourceCommand = SetComponentCommand<AudioSource>;
+pub type SetBehaviorCommand = SetComponentCommand<Behavior>;
+pub type SetUiLabelCommand = SetComponentCommand<UiLabel>;
+pub type SetUiPanelCommand = SetComponentCommand<UiPanel>;
+pub type SetUiButtonCommand = SetComponentCommand<UiButton>;
+pub type SetEntityTagCommand = SetComponentCommand<EntityTag>;
+pub type SetScriptsCommand = SetComponentCommand<ecs::script::Scripts>;
+pub type SetGridBackdropCommand = SetComponentCommand<ecs::GridBackdrop>;
+pub type SetNameCommand = SetComponentCommand<Name>;
 
-        impl $name {
-            pub fn new(entity: EntityId, old: $ty, new: $ty, field_hint: &'static str) -> Self {
-                Self { entity, old, new, field_hint }
-            }
-        }
-
-        impl EditorCommand for $name {
-            fn execute(&mut self, world: &mut World) {
-                if let Some(c) = world.get_mut::<$ty>(self.entity) {
-                    *c = Clone::clone(&self.new);
-                }
-            }
-
-            fn undo(&mut self, world: &mut World) {
-                if let Some(c) = world.get_mut::<$ty>(self.entity) {
-                    *c = Clone::clone(&self.old);
-                }
-            }
-
-            fn display_name(&self) -> &str { $display }
-
-            fn try_merge(&mut self, other: &dyn EditorCommand) -> bool {
-                if let Some(other) = other.as_any().downcast_ref::<$name>() {
-                    if self.entity == other.entity && self.field_hint == other.field_hint {
-                        self.new = Clone::clone(&other.new);
-                        return true;
-                    }
-                }
-                false
-            }
-
-            fn as_any(&self) -> &dyn Any { self }
-            fn as_any_mut(&mut self) -> &mut dyn Any { self }
-        }
-    };
-}
-
-impl_set_component_command!(
-    /// Command for an inspector property edit on a Transform2D.
-    SetTransformCommand, common::Transform2D, "Set Transform");
-impl_set_component_command!(
-    /// Command for an inspector property edit on a Sprite.
-    SetSpriteCommand, Sprite, "Set Sprite");
-impl_set_component_command!(
-    /// Command for an inspector property edit on a RigidBody.
-    SetRigidBodyCommand, RigidBody, "Set RigidBody");
-impl_set_component_command!(
-    /// Command for an inspector property edit on a Collider.
-    SetColliderCommand, Collider, "Set Collider");
-impl_set_component_command!(
-    /// Command for an inspector property edit on an AudioSource.
-    SetAudioSourceCommand, AudioSource, "Set AudioSource");
-impl_set_component_command!(
-    /// Command for an inspector property edit on a Behavior.
-    SetBehaviorCommand, Behavior, "Set Behavior");
-impl_set_component_command!(
-    /// Command for an inspector property edit on a UiLabel.
-    SetUiLabelCommand, UiLabel, "Set UiLabel");
-impl_set_component_command!(
-    /// Command for an inspector property edit on a UiPanel.
-    SetUiPanelCommand, UiPanel, "Set UiPanel");
-impl_set_component_command!(
-    /// Command for an inspector property edit on a UiButton.
-    SetUiButtonCommand, UiButton, "Set UiButton");
-impl_set_component_command!(
-    /// Command for an inspector property edit on an EntityTag.
-    SetEntityTagCommand, EntityTag, "Set EntityTag");
-impl_set_component_command!(
-    /// Command for an inspector property edit on the Scripts component.
-    SetScriptsCommand, ecs::script::Scripts, "Set Scripts");
-impl_set_component_command!(
-    /// Command for an inspector property edit on a GridBackdrop.
-    SetGridBackdropCommand, ecs::GridBackdrop, "Set GridBackdrop");
-impl_set_component_command!(
-    /// Command for an inspector property edit on a Name. Like every
-    /// macro-generated Set command it writes through `get_mut`, so it
-    /// requires the component to already exist (a silent no-op otherwise —
-    /// the inspector only renders `edit_name` for entities that have one).
-    /// To assign a Name to an entity WITHOUT one, use
-    /// [`RenameEntityCommand`], which also undoes back to "no Name".
-    SetNameCommand, Name, "Set Name");
 
 // ---------------------------------------------------------------------------
 // RenameEntityCommand

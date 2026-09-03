@@ -14,7 +14,7 @@ use glam::{Vec2, Vec4};
 use ui::{Rect, UIContext};
 
 pub use crate::composite_rows::{edit_color, edit_vec2};
-pub use crate::field_style::{EditResult, EditableFieldStyle, FieldEdit, FieldId};
+pub use crate::field_style::{EditResult, EditableFieldStyle, FieldEdit, FieldId, WidgetSlot};
 use crate::row_layout::{color_block_height, field_row, remove_button_x, scrub_step, RowLayout};
 
 /// Fallback content width for inspectors constructed without an explicit
@@ -245,13 +245,12 @@ impl<'a> EditableInspector<'a> {
 
         if removable {
             // Right-align a small [X] button to the panel's content edge.
-            let btn_size = 18.0;
-            let btn_x = remove_button_x(self.x, self.width, btn_size);
-            let btn_bounds = Rect::new(btn_x, self.current_y, btn_size, btn_size);
+            let button_size = 18.0;
+            let button_x = remove_button_x(self.x, self.width, button_size);
+            let button_bounds = Rect::new(button_x, self.current_y, button_size, button_size);
 
-            // Use component_index + 99 to avoid ID collisions with field inputs
-            let btn_id = FieldId::new(self.component_index, 99, 0);
-            clicked = self.ui.button(btn_id, "X", btn_bounds);
+            let button_id = FieldId::slot(self.component_index, WidgetSlot::Remove);
+            clicked = self.ui.button(button_id, "X", button_bounds);
         }
 
         self.current_y += self.style.row_height + 4.0;

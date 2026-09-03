@@ -3,11 +3,42 @@
 use std::path::{Path, PathBuf};
 
 use ecs::World;
+use engine_core::scene_data::SceneLoadError;
 use engine_core::Game;
 
 use crate::constants::DEFAULT_SCENE_PATH;
 
 use super::EditorGame;
+
+/// Errors that can occur during scene save or load operations.
+#[derive(Debug)]
+pub enum SceneIoError {
+    MidSimulation,
+    CreateDirectory(std::io::Error),
+    Write(String),
+    Load(SceneLoadError),
+}
+
+impl std::fmt::Display for SceneIoError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SceneIoError::MidSimulation => write!(f, "scene is mid-simulation — stop Play first"),
+            SceneIoError::CreateDirectory(err) => write!(f, "Failed to create directory: {err}"),
+            SceneIoError::Write(err) => write!(f, "{err}"),
+            SceneIoError::Load(err) => write!(f, "Failed to load scene: {err}"),
+        }
+    }
+}
+
+impl std::error::Error for SceneIoError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            SceneIoError::CreateDirectory(err) => Some(err),
+            SceneIoError::Load(err) => Some(err),
+            _ => None,
+        }
+    }
+}
 
 /// The texture reference a scene file records for `handle`: the resolver's
 /// recorded string, `#white` for the built-in handle 0, else a `#texture_N`
@@ -27,7 +58,7 @@ impl<G: Game> EditorGame<G> {
         &mut self,
         world: &mut World,
         assets: &engine_core::assets::AssetManager,
-    ) -> Result<(), String> {
+    ) -> Result<(), SceneIoError> {
         let path = self.editor.scene_path()
             .map(|p| p.to_path_buf())
             .unwrap_or_else(|| PathBuf::from(DEFAULT_SCENE_PATH));
@@ -40,7 +71,7 @@ impl<G: Game> EditorGame<G> {
         world: &mut World,
         assets: &engine_core::assets::AssetManager,
         path: PathBuf,
-    ) -> Result<(), String> {
+    ) -> Result<(), SceneIoError> {
         let texture_path_fn =
             |handle: u32| -> String { texture_ref_for_save(handle, assets.texture_path(handle)) };
         self.save_scene_with(world, &texture_path_fn, path)
@@ -59,9 +90,9 @@ impl<G: Game> EditorGame<G> {
         world: &mut World,
         texture_path_fn: &dyn Fn(u32) -> String,
         path: PathBuf,
-    ) -> Result<(), String> {
+    ) -> Result<(), SceneIoError> {
         if self.editor.in_play_session() {
-            return Err("scene is mid-simulation — stop Play before saving".to_string());
+            return Err(SceneIoError::MidSimulation);
         }
 
         // Scripts persist Entity params by NAME: give referenced unnamed
@@ -72,7 +103,7 @@ impl<G: Game> EditorGame<G> {
         // a silent one.
         let planned = engine_core::script_data::plan_script_target_names(world);
         if !planned.is_empty() {
-            use editor::commands::{EditorCommand, MacroCommand, RenameEntityCommand};
+            use editor::commands::{EditorCommand, RenameEntityCommand};
             let commands: Vec<Box<dyn EditorCommand>> = planned
                 .iter()
                 .map(|(entity, name)| {
@@ -80,10 +111,8 @@ impl<G: Game> EditorGame<G> {
                         as Box<dyn EditorCommand>
                 })
                 .collect();
-            self.command_history.execute(
-                Box::new(MacroCommand::new("Name script targets".to_string(), commands)),
-                world,
-            );
+            self.command_history
+                .execute_as_one("Name script targets", commands, world);
             let names: Vec<String> = planned.iter().map(|(_, n)| n.clone()).collect();
             self.editor.status_bar.show_message(format!(
                 "Named {} script target(s): {} (undoable)",
@@ -104,12 +133,12 @@ impl<G: Game> EditorGame<G> {
         // Ensure parent directory exists
         if let Some(parent) = path.parent() {
             if !parent.exists() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| format!("Failed to create directory: {}", e))?;
+                std::fs::create_dir_all(parent).map_err(SceneIoError::CreateDirectory)?;
             }
         }
 
-        engine_core::scene_serializer::save_scene_to_file(&scene_data, &path)?;
+        engine_core::scene_serializer::save_scene_to_file(&scene_data, &path)
+            .map_err(SceneIoError::Write)?;
 
         self.editor.set_scene_path(Some(path.clone()));
         // The history is the dirty source of truth; the mirror is set too so
@@ -135,9 +164,9 @@ impl<G: Game> EditorGame<G> {
         world: &mut World,
         assets: &mut impl engine_core::TextureResolver,
         path: &Path,
-    ) -> Result<(), String> {
-        if let Some(msg) = self.scene_replace_refusal() {
-            return Err(msg.to_string());
+    ) -> Result<(), SceneIoError> {
+        if self.scene_replace_refusal().is_some() {
+            return Err(SceneIoError::MidSimulation);
         }
 
         if self.editor.is_dirty() {
@@ -146,17 +175,15 @@ impl<G: Game> EditorGame<G> {
 
         // Parse and dry-run BEFORE touching the world.
         let data = engine_core::scene_loader::SceneLoader::load_from_file(path)
-            .map_err(|e| format!("Failed to load scene: {}", e))?;
+            .map_err(SceneIoError::Load)?;
         let mut scratch = World::new();
         engine_core::scene_loader::SceneLoader::instantiate(&data, &mut scratch, assets)
-            .map_err(|e| format!("Failed to load scene: {}", e))?;
+            .map_err(SceneIoError::Load)?;
 
         // Known-good: replace the live world.
-        for entity in world.entities() {
-            world.remove_entity(&entity).ok();
-        }
+        world.clear();
         let scene_instance = engine_core::scene_loader::SceneLoader::instantiate(&data, world, assets)
-            .map_err(|e| format!("Failed to load scene: {}", e))?;
+            .map_err(SceneIoError::Load)?;
 
         // Store physics settings from loaded scene, and publish them as a
         // world resource so the host game (EditorApp's lazy physics preview)
@@ -176,14 +203,7 @@ impl<G: Game> EditorGame<G> {
         log::info!("Scene loaded from: {:?} ({} entities)", path, scene_instance.entity_count);
 
         self.editor.set_scene_path(Some(path.to_path_buf()));
-        self.editor.set_dirty(false);
-        self.command_history = editor::CommandHistory::new();
-        // A stale API batch would hold commands referencing the replaced
-        // world — drop it with the history.
-        self.api_batch = None;
-        self.editor.selection.clear();
-        self.gizmo_drag = None;
-        self.editor.gizmo.cancel();
+        self.reset_session();
         if let Some(first) = scene_instance.load_warnings.first() {
             // Non-fatal load diagnostics reach the user, not just the log.
             self.editor.status_bar.show_error(format!(
@@ -196,6 +216,17 @@ impl<G: Game> EditorGame<G> {
         }
 
         Ok(())
+    }
+
+    fn reset_session(&mut self) {
+        self.editor.set_dirty(false);
+        self.command_history = editor::CommandHistory::new();
+        // A stale API batch would hold commands referencing the replaced
+        // world — drop it with the history.
+        self.api_batch = None;
+        self.editor.selection.clear();
+        self.gizmo_drag = None;
+        self.editor.gizmo.cancel();
     }
 
     /// Guard shared by every scene-replacing operation (New Scene, Open
@@ -248,22 +279,13 @@ impl<G: Game> EditorGame<G> {
             log::warn!("Current scene has unsaved changes. Save first to avoid losing work.");
         }
 
-        for entity in world.entities() {
-            world.remove_entity(&entity).ok();
-        }
+        world.clear();
 
         self.editor.set_scene_path(None);
-        self.editor.set_dirty(false);
-        self.command_history = editor::CommandHistory::new();
-        // A stale API batch would hold commands referencing the replaced
-        // world — drop it with the history.
-        self.api_batch = None;
-        self.editor.selection.clear();
+        self.reset_session();
         self.entity_counter = 0;
         self.physics_settings = None;
         world.remove_resource::<engine_core::scene_data::PhysicsSettings>();
-        self.gizmo_drag = None;
-        self.editor.gizmo.cancel();
         log::info!("New scene created");
     }
 }

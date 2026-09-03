@@ -17,13 +17,11 @@ use ecs::{EntityId, World};
 use physics::components::{Collider, RigidBody};
 use ui::UIContext;
 
+pub mod component_ref;
+pub use component_ref::ComponentRef;
+
 use crate::behavior_editor::edit_behavior;
-use crate::commands::{
-    CommandHistory, RemoveComponentCommand, SetAudioSourceCommand, SetBehaviorCommand,
-    SetColliderCommand, SetEntityTagCommand, SetGridBackdropCommand, SetNameCommand,
-    SetRigidBodyCommand, SetScriptsCommand, SetSpriteCommand, SetTransformCommand,
-    SetUiButtonCommand, SetUiLabelCommand, SetUiPanelCommand,
-};
+use crate::commands::{CommandHistory, RemoveComponentCommand};
 use crate::component_editors::{
     edit_audio_source, edit_collider, edit_entity_tag, edit_grid_backdrop, edit_name,
     edit_rigid_body, edit_sprite, edit_transform2d,
@@ -40,7 +38,7 @@ use crate::{EditableFieldStyle, EditableInspector};
 /// a remove button plus the serde-based read-only display.
 macro_rules! registry_edit_block {
     // Editable, NOT removable (builtin): the editor fn renders its own header.
-    (@fixed $name:ident, $ty:ty, (edit $edit_fn:ident => $cmd:ident),
+    (@fixed $name:ident, $ty:ty, (edit $edit_fn:ident),
      $ui:ident, $world:ident, $entity:ident, $history:ident, $x:ident, $width:ident, $y:ident,
      $inspect_style:ident, $field_style:ident, $gap:ident, $idx:ident, $removals:ident,
      $extras:ident) => {
@@ -54,13 +52,13 @@ macro_rules! registry_edit_block {
             $extras.warnings.append(&mut inspector.take_warnings());
             $y = inspector.y();
             crate::component_editors::apply_component_edit($world, $entity, &value, edit, $history, |e, old, new, hint| {
-                Box::new($cmd::new(e, old, new, hint))
+                Box::new(crate::commands::SetComponentCommand::<$ty>::new(e, old, new, hint))
             });
             $idx += 1;
         }
     };
     // Editable + removable: overlay the [X] at the header the editor fn drew.
-    (@removable $name:ident, $ty:ty, (edit $edit_fn:ident => $cmd:ident),
+    (@removable $name:ident, $ty:ty, (edit $edit_fn:ident),
      $ui:ident, $world:ident, $entity:ident, $history:ident, $x:ident, $width:ident, $y:ident,
      $inspect_style:ident, $field_style:ident, $gap:ident, $idx:ident, $removals:ident,
      $extras:ident) => {
@@ -78,7 +76,7 @@ macro_rules! registry_edit_block {
                 $removals.push(ComponentKind::$name);
             }
             crate::component_editors::apply_component_edit($world, $entity, &value, edit, $history, |e, old, new, hint| {
-                Box::new($cmd::new(e, old, new, hint))
+                Box::new(crate::commands::SetComponentCommand::<$ty>::new(e, old, new, hint))
             });
             $idx += 1;
         }
@@ -335,7 +333,7 @@ macro_rules! editor_component_registry {
             }
             for name in dynamic_removals {
                 log::info!("Removed dynamic component: {}", name);
-                let cmd = crate::commands::RemoveDynamicComponentCommand::new(entity, name);
+                let cmd = RemoveComponentCommand::dynamic(entity, name);
                 history.execute(Box::new(cmd), world);
             }
 
@@ -480,25 +478,25 @@ editor_component_registry! {
         BehaviorState     => BehaviorState,
     ],
     builtin: [
-        Name        => Name { edit edit_name => SetNameCommand },
-        Transform2D => common::Transform2D { edit edit_transform2d => SetTransformCommand },
+        Name        => Name { edit edit_name },
+        Transform2D => common::Transform2D { edit edit_transform2d },
     ],
     removable: [
         Camera          => common::Camera : Core { readonly },
-        Sprite          => Sprite : Rendering { edit edit_sprite => SetSpriteCommand },
+        Sprite          => Sprite : Rendering { edit edit_sprite },
         SpriteAnimation => SpriteAnimation : Rendering { readonly },
         Tilemap         => Tilemap : Rendering { readonly },
-        GridBackdrop    => GridBackdrop : Rendering { edit edit_grid_backdrop => SetGridBackdropCommand },
-        RigidBody       => RigidBody : Physics { edit edit_rigid_body => SetRigidBodyCommand },
-        Collider        => Collider : Physics { edit edit_collider => SetColliderCommand },
-        AudioSource     => AudioSource : Audio { edit edit_audio_source => SetAudioSourceCommand },
+        GridBackdrop    => GridBackdrop : Rendering { edit edit_grid_backdrop },
+        RigidBody       => RigidBody : Physics { edit edit_rigid_body },
+        Collider        => Collider : Physics { edit edit_collider },
+        AudioSource     => AudioSource : Audio { edit edit_audio_source },
         AudioListener   => AudioListener : Audio { readonly },
-        Behavior        => Behavior : Gameplay { edit edit_behavior => SetBehaviorCommand },
-        Scripts         => ecs::script::Scripts : Gameplay { edit edit_scripts => SetScriptsCommand },
-        EntityTag       => EntityTag : Gameplay { edit edit_entity_tag => SetEntityTagCommand },
-        UiLabel         => UiLabel : Ui { edit edit_ui_label => SetUiLabelCommand },
-        UiPanel         => UiPanel : Ui { edit edit_ui_panel => SetUiPanelCommand },
-        UiButton        => UiButton : Ui { edit edit_ui_button => SetUiButtonCommand },
+        Behavior        => Behavior : Gameplay { edit edit_behavior },
+        Scripts         => ecs::script::Scripts : Gameplay { edit edit_scripts },
+        EntityTag       => EntityTag : Gameplay { edit edit_entity_tag },
+        UiLabel         => UiLabel : Ui { edit edit_ui_label },
+        UiPanel         => UiPanel : Ui { edit edit_ui_panel },
+        UiButton        => UiButton : Ui { edit edit_ui_button },
     ],
 }
 
@@ -509,7 +507,7 @@ pub use dynamic::available_dynamic_components;
 /// Render the read-only edit blocks for every dynamic-tier component on the
 /// entity: registry-name header with a remove [X] plus the serde value
 /// display. Removals are returned by name for the caller to execute as
-/// `RemoveDynamicComponentCommand`s.
+/// `RemoveComponentCommand::dynamic`s.
 #[allow(clippy::too_many_arguments)]
 fn render_dynamic_edit_blocks(
     ui: &mut UIContext,

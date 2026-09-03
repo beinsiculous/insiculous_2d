@@ -31,107 +31,22 @@ impl<G: Game> EditorGame<G> {
         self.editor.menu_bar.set_checked("View", "Snap to Grid", snap);
     }
 
-    /// Render the menu bar and dispatch any selected action.
+    /// Render the menu bar and dispatch the chosen label as an editor
+    /// action through the one dispatcher; while Playing only the actions
+    /// that allow it run, the rest are dropped silently.
     pub(super) fn handle_menu_bar(&mut self, ctx: &mut GameContext, window_size: Vec2) {
         self.sync_view_menu_checks();
-        let Some(action) = self.editor.menu_bar.render(ctx.ui, window_size.x, &self.editor.theme) else {
+        let Some(label) = self.editor.menu_bar.render(ctx.ui, window_size.x, &self.editor.theme) else {
             return;
         };
-        log::info!("Menu action: {}", action);
+        log::info!("Menu action: {}", label);
 
-        match action.as_str() {
-            "Create Empty" | "Create Sprite" | "Create Camera"
-            | "Create Static Body" | "Create Dynamic Body" | "Create Kinematic Body"
-            | "Create UI Label" | "Create UI Panel" | "Create UI Button"
-                if !self.editor.is_playing() =>
-            {
-                // Spawn at the center of the current view — a hardcoded
-                // world origin lands off-screen whenever the camera has
-                // panned (users read that as "the button does nothing").
-                let spawn_pos = self.editor.viewport.camera_position();
-                if let Some(entity) = entity_ops::handle_create_action(
-                    &action,
-                    ctx.world,
-                    &mut self.editor.selection,
-                    spawn_pos,
-                    &mut self.entity_counter,
-                ) {
-                    let cmd = editor::commands::CreateEntityCommand::already_created(ctx.world, entity);
-                    self.command_history.push_already_executed(Box::new(cmd));
-                }
+        match editor::action_for_menu_label(&label) {
+            Some(action) if !self.editor.is_playing() || action.allowed_while_playing() => {
+                self.dispatch_editor_action(action, false, ctx);
             }
-            "Cut" if !self.editor.is_playing() => self.cut_selection(ctx.world),
-            "Copy" if !self.editor.is_playing() => self.copy_selection(ctx.world),
-            "Paste" if !self.editor.is_playing() => self.paste_clipboard(ctx.world),
-            "Delete" if !self.editor.is_playing() => {
-                self.delete_selected_entities(ctx.world);
-            }
-            "Duplicate" if !self.editor.is_playing() => {
-                self.duplicate_selected_entities(ctx.world);
-            }
-            "Undo" if !self.editor.is_playing() => {
-                if let Some(name) = self.command_history.undo_name() {
-                    self.editor.status_bar.show_message(format!("Undo: {}", name));
-                }
-                if self.command_history.undo(ctx.world) {
-                    self.apply_selection_restore();
-                }
-            }
-            "Redo" if !self.editor.is_playing() => {
-                if let Some(name) = self.command_history.redo_name() {
-                    self.editor.status_bar.show_message(format!("Redo: {}", name));
-                }
-                if self.command_history.redo(ctx.world) {
-                    self.apply_selection_restore();
-                }
-            }
-            "New Scene" if !self.editor.is_playing() => {
-                if self.request_scene_replace(super::scene_confirm::PendingSceneAction::NewScene) {
-                    self.new_scene(ctx.world);
-                }
-            }
-            "Open Scene..." if !self.editor.is_playing() => {
-                let path = self.default_scene_path();
-                let action = super::scene_confirm::PendingSceneAction::OpenScene(path);
-                if self.request_scene_replace(action.clone()) {
-                    self.perform_scene_action(ctx, action);
-                }
-            }
-            "Save" => {
-                if let Err(e) = self.save_scene(ctx.world, ctx.assets) {
-                    self.editor.status_bar.show_error(format!("Save failed: {}", e));
-                    log::error!("Failed to save: {}", e);
-                }
-            }
-            "Save As..." => {
-                let path = self.default_scene_path();
-                if let Err(e) = self.save_scene_as(ctx.world, ctx.assets, path) {
-                    self.editor.status_bar.show_error(format!("Save failed: {}", e));
-                    log::error!("Failed to save: {}", e);
-                }
-            }
-            // Clean shutdown (runs GameRunner::shutdown → on_exit → prefs save)
-            "Exit" => ctx.request_exit(),
-            "Toggle Grid" => self.editor.toggle_grid(),
-            "Toggle Colliders" => self.editor.toggle_colliders(),
-            "Snap to Grid" => self.toggle_snap_with_feedback(),
-            "Inspector" | "Hierarchy" | "Asset Browser" => {
-                if let Some(id) = editor::panel_id_for_menu_label(&action) {
-                    self.editor.dock_area.toggle_panel_visible(id);
-                }
-            }
-            "Reset Layout" => {
-                self.editor.reset_layout();
-                self.editor.status_bar.show_message("Layout reset to defaults");
-            }
-            "Cycle Game Locale" => {
-                ctx.strings.cycle_locale();
-                self.editor.status_bar.show_message(format!(
-                    "Game locale: {}",
-                    ctx.strings.current_display_name()
-                ));
-            }
-            _ => log::info!("Unhandled action: {}", action),
+            Some(_) => {}
+            None => log::info!("Unhandled action: {}", label),
         }
     }
 
@@ -153,16 +68,11 @@ impl<G: Game> EditorGame<G> {
         if selected.is_empty() {
             return;
         }
-        if selected.len() == 1 {
-            let cmd = editor::commands::DeleteEntityCommand::new(selected[0]);
-            self.command_history.execute(Box::new(cmd), world);
-        } else {
-            let cmds: Vec<Box<dyn editor::EditorCommand>> = selected.iter()
-                .map(|&e| Box::new(editor::commands::DeleteEntityCommand::new(e)) as Box<dyn editor::EditorCommand>)
-                .collect();
-            let cmd = editor::commands::MacroCommand::new("Delete Entities", cmds);
-            self.command_history.execute(Box::new(cmd), world);
-        }
+        let commands: Vec<Box<dyn editor::EditorCommand>> = selected
+            .iter()
+            .map(|&entity| Box::new(editor::commands::DeleteEntityCommand::new(entity)) as Box<dyn editor::EditorCommand>)
+            .collect();
+        self.command_history.execute_as_one("Delete Entities", commands, world);
         self.editor.selection.clear();
     }
 
@@ -235,18 +145,7 @@ impl<G: Game> EditorGame<G> {
             commands.push(Box::new(cmd));
         }
         let count = commands.len();
-        match commands.len() {
-            1 => {
-                if let Some(cmd) = commands.pop() {
-                    self.command_history.push_already_executed(cmd);
-                }
-            }
-            _ => {
-                self.command_history.push_already_executed(Box::new(
-                    editor::commands::MacroCommand::new("Paste", commands),
-                ));
-            }
-        }
+        self.command_history.push_as_one("Paste", commands);
         self.editor.selection.select_multiple(new_roots);
         self.editor
             .status_bar
@@ -270,18 +169,7 @@ impl<G: Game> EditorGame<G> {
             commands.push(Box::new(cmd));
         }
         let count = commands.len();
-        match commands.len() {
-            1 => {
-                if let Some(cmd) = commands.pop() {
-                    self.command_history.push_already_executed(cmd);
-                }
-            }
-            _ => {
-                self.command_history.push_already_executed(Box::new(
-                    editor::commands::MacroCommand::new("Cut", commands),
-                ));
-            }
-        }
+        self.command_history.push_as_one("Cut", commands);
         self.editor.selection.clear();
         self.editor
             .status_bar

@@ -133,28 +133,25 @@ pub fn create_ui_button(
     create_ui_entity(world, selection, "UiButton", button, counter)
 }
 
-/// Dispatch a menu action string to the appropriate create function.
-///
-/// Returns `Some(entity_id)` if an entity was created, `None` if the action
-/// is not recognized as a create action.
-pub fn handle_create_action(
-    action: &str,
+/// Create an entity from an archetype. Every variant produces an entity.
+pub fn create_archetype(
+    archetype: editor::Archetype,
     world: &mut World,
     selection: &mut Selection,
     position: Vec2,
     counter: &mut u32,
-) -> Option<EntityId> {
-    match action {
-        "Create Empty" => Some(create_empty_entity(world, selection, position, counter)),
-        "Create Sprite" => Some(create_sprite_entity(world, selection, position, counter)),
-        "Create Camera" => Some(create_camera_entity(world, selection, position, counter)),
-        "Create Static Body" => Some(create_physics_body(world, selection, position, RigidBodyType::Static, counter)),
-        "Create Dynamic Body" => Some(create_physics_body(world, selection, position, RigidBodyType::Dynamic, counter)),
-        "Create Kinematic Body" => Some(create_physics_body(world, selection, position, RigidBodyType::Kinematic, counter)),
-        "Create UI Label" => Some(create_ui_label(world, selection, counter)),
-        "Create UI Panel" => Some(create_ui_panel(world, selection, counter)),
-        "Create UI Button" => Some(create_ui_button(world, selection, counter)),
-        _ => None,
+) -> EntityId {
+    use editor::Archetype;
+    match archetype {
+        Archetype::Empty => create_empty_entity(world, selection, position, counter),
+        Archetype::Sprite => create_sprite_entity(world, selection, position, counter),
+        Archetype::Camera => create_camera_entity(world, selection, position, counter),
+        Archetype::StaticBody => create_physics_body(world, selection, position, RigidBodyType::Static, counter),
+        Archetype::DynamicBody => create_physics_body(world, selection, position, RigidBodyType::Dynamic, counter),
+        Archetype::KinematicBody => create_physics_body(world, selection, position, RigidBodyType::Kinematic, counter),
+        Archetype::UiLabel => create_ui_label(world, selection, counter),
+        Archetype::UiPanel => create_ui_panel(world, selection, counter),
+        Archetype::UiButton => create_ui_button(world, selection, counter),
     }
 }
 
@@ -252,43 +249,50 @@ mod tests {
 
     #[test]
     fn test_world_factories_place_name_and_select_the_new_entity() {
-        // Every archetype the Create menu and the command API spawn, keyed
-        // by the menu label they dispatch on.
+        use editor::Archetype;
         let (mut world, mut selection, mut counter) = (World::new(), Selection::new(), 0);
         let position = Vec2::new(100.0, -50.0);
-        let expectations: [(&str, bool, bool, Option<RigidBodyType>); 6] = [
-            ("Create Empty", false, false, None),
-            ("Create Sprite", true, false, None),
-            ("Create Camera", false, true, None),
-            ("Create Static Body", true, false, Some(RigidBodyType::Static)),
-            ("Create Dynamic Body", true, false, Some(RigidBodyType::Dynamic)),
-            ("Create Kinematic Body", true, false, Some(RigidBodyType::Kinematic)),
-        ];
         let mut names = std::collections::HashSet::new();
 
-        for (action, has_sprite, has_camera, body_type) in expectations {
-            let entity = handle_create_action(action, &mut world, &mut selection, position, &mut counter)
-                .unwrap_or_else(|| panic!("{action} is a create action"));
+        for archetype in Archetype::ALL {
+            let entity = create_archetype(archetype, &mut world, &mut selection, position, &mut counter);
 
-            assert_eq!(selection.primary(), Some(entity), "{action}: the new entity is selected");
-            assert_eq!(
-                world.get::<common::Transform2D>(entity).map(|t| t.position),
-                Some(position),
-                "{action}: spawned where asked"
-            );
-            assert!(world.get::<GlobalTransform2D>(entity).is_some(), "{action}: pickable from frame one");
-            assert_eq!(world.get::<Sprite>(entity).is_some(), has_sprite, "{action}: Sprite");
-            assert_eq!(world.get::<common::Camera>(entity).is_some(), has_camera, "{action}: Camera");
-            assert_eq!(world.get::<RigidBody>(entity).map(|b| b.body_type), body_type, "{action}: body");
-            assert_eq!(world.get::<Collider>(entity).is_some(), body_type.is_some(), "{action}: Collider");
+            assert_eq!(selection.primary(), Some(entity), "{:?}: selected", archetype);
             let name = world.get::<Name>(entity).map(|n| n.as_str().to_string()).expect("auto-named");
             assert!(names.insert(name.clone()), "auto-names are unique: {name}");
+
+            let is_ui = matches!(archetype, Archetype::UiLabel | Archetype::UiPanel | Archetype::UiButton);
+            if is_ui {
+                assert!(world.get::<common::Transform2D>(entity).is_none(), "{:?}: no world transform", archetype);
+                assert!(world.get::<GlobalTransform2D>(entity).is_none(), "{:?}: not pickable", archetype);
+            } else {
+                assert_eq!(
+                    world.get::<common::Transform2D>(entity).map(|t| t.position),
+                    Some(position),
+                    "{:?}: spawned where asked",
+                    archetype
+                );
+                assert!(world.get::<GlobalTransform2D>(entity).is_some(), "{:?}: pickable from frame one", archetype);
+            }
+
+            let has_sprite = matches!(
+                archetype,
+                Archetype::Sprite | Archetype::StaticBody | Archetype::DynamicBody | Archetype::KinematicBody
+            );
+            assert_eq!(world.get::<Sprite>(entity).is_some(), has_sprite, "{:?}: Sprite", archetype);
+
+            let has_camera = matches!(archetype, Archetype::Camera);
+            assert_eq!(world.get::<common::Camera>(entity).is_some(), has_camera, "{:?}: Camera", archetype);
+
+            let body_type = match archetype {
+                Archetype::StaticBody => Some(RigidBodyType::Static),
+                Archetype::DynamicBody => Some(RigidBodyType::Dynamic),
+                Archetype::KinematicBody => Some(RigidBodyType::Kinematic),
+                _ => None,
+            };
+            assert_eq!(world.get::<RigidBody>(entity).map(|b| b.body_type), body_type, "{:?}: body", archetype);
+            assert_eq!(world.get::<Collider>(entity).is_some(), body_type.is_some(), "{:?}: Collider", archetype);
         }
-        assert_eq!(
-            handle_create_action("Create Nonsense", &mut world, &mut selection, position, &mut counter),
-            None,
-            "an unknown label creates nothing"
-        );
     }
 
     #[test]

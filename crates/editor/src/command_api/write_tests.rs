@@ -403,7 +403,7 @@ fn test_create_parses_to_a_hosted_write_and_refuses_unknown_archetypes() {
     else {
         panic!("expected hosted create, got {parsed:?}");
     };
-    assert_eq!(archetype, "sprite");
+    assert_eq!(archetype, crate::archetype::Archetype::Sprite);
     assert_eq!(name.as_deref(), Some("Crate"));
     assert_eq!(position, Some((100.0, 40.0)));
     assert!(matches!(parse_line("create flying-toaster"), Err(ApiError::Invalid(_))));

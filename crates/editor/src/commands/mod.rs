@@ -12,15 +12,14 @@ mod entity_commands;
 mod set_commands;
 
 pub use component_commands::{
-    AddComponentCommand, AddDynamicComponentCommand, RemoveComponentCommand,
-    RemoveDynamicComponentCommand, SetComponentValueCommand,
+    AddComponentCommand, RemoveComponentCommand, SetComponentValueCommand,
 };
 pub use entity_commands::{CreateEntityCommand, DeleteEntityCommand, MacroCommand};
 pub use set_commands::{
     NudgeCommand, RenameEntityCommand, SetAudioSourceCommand, SetBehaviorCommand, SetColliderCommand,
-    SetEntityTagCommand, SetGridBackdropCommand, SetNameCommand, SetRigidBodyCommand,
-    SetScriptsCommand, SetSpriteCommand, SetTransformCommand, SetUiButtonCommand, SetUiLabelCommand,
-    SetUiPanelCommand, TransformGizmoCommand,
+    SetComponentCommand, SetEntityTagCommand, SetGridBackdropCommand, SetNameCommand,
+    SetRigidBodyCommand, SetScriptsCommand, SetSpriteCommand, SetTransformCommand,
+    SetUiButtonCommand, SetUiLabelCommand, SetUiPanelCommand, GIZMO_FIELD_HINT,
 };
 
 // The registry-generated ComponentKind is re-exported here so existing
@@ -282,6 +281,40 @@ impl CommandHistory {
         let saved = std::mem::replace(&mut self.pending_selection, selection_before);
         self.push_entry(cmd);
         self.pending_selection = saved;
+    }
+
+    /// Record already-applied commands as ONE undo entry: none = nothing, one = itself,
+    /// many = a `MacroCommand` named `name`.
+    pub fn push_as_one(&mut self, name: &str, mut commands: Vec<Box<dyn EditorCommand>>) {
+        match commands.len() {
+            0 => {}
+            1 => {
+                if let Some(cmd) = commands.pop() {
+                    self.push_already_executed(cmd);
+                }
+            }
+            _ => self.push_already_executed(Box::new(MacroCommand::new(name, commands))),
+        }
+    }
+
+    /// `execute` counterpart for commands not yet applied.
+    /// None records nothing, one executes and records raw, many execute and record
+    /// as a `MacroCommand` named `name`.
+    pub fn execute_as_one(
+        &mut self,
+        name: &str,
+        mut commands: Vec<Box<dyn EditorCommand>>,
+        world: &mut World,
+    ) {
+        match commands.len() {
+            0 => {}
+            1 => {
+                if let Some(cmd) = commands.pop() {
+                    self.execute(cmd, world);
+                }
+            }
+            _ => self.execute(Box::new(MacroCommand::new(name, commands)), world),
+        }
     }
 
     /// Try to merge `cmd` with the last undo command. If merging fails, execute normally.
