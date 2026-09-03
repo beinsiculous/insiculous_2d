@@ -72,7 +72,12 @@ cfg-split frame drivers, rodio).
   batch's change is reinstated and adjudicated with Jesse before the change commits.
 - Anything deferred is filed with `/file-issue` before the effort reports done.
 
-## Batch 1 — correctness fixes, each with a regression test (~300 lines)
+## Batch 1 — correctness fixes, each with a regression test — DONE Sep 3 2026 (2188b9a)
+
+Authored by gemini, reviewed by kimi and Claude (`review/cleanup-2026-09/review-13*.md`,
+`rebuttal-13.md`); the tap-edge ruling was revised during review (both edges fire).
+
+### Original brief
 
 1. `crates/input/src/button_tracker.rs`: `release` records `just_released` only when
    `pressed.remove` returned true; add `previous: HashSet<T>` snapshotted in
