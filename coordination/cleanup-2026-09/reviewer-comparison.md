@@ -30,6 +30,8 @@ from launch to file.
 | batch 2 (gemini authored) | kimi | 4 | 3 | 0 | 1 | grepped every removed API for callers incl. `read_events::<CollisionData>`; found the stale hello_world comment; proposed scripting the games gate; the policy rebut asked to keep the ruled-out bus mirror | ~14 min |
 | batch 2 (gemini authored) | claude | 3 | 3 | 0 | 0 | the batch was half done — the dead-API additions from the cut reviews were missed because the plan filed them under the wrong section (planner's error, fixed in the plan) | — |
 | handoff-loop skill (plan-mode review of the workflow doc) | kimi | 10 | 10 | 0 | 0 | critical: "a pathspec commit takes the working tree, not the index the reviewers read" — a real hole in the planner's own commit step; plus untracked-file blindness, abandoned-batch reclaim, filename collisions, detached-review failure signals | ~12 min |
+| batch 2 pass 2 (gemini authored) | kimi | 3 | 3 | 0 | 0 (one scoped: the retired ANALYSIS.md family is a batch-10 line) | "the per-crate CLAUDE.md files are supposed to be the accurate map of the trimmed API" — three crate guides still documented `Time`, `just_deactivated`/`is_active_any`, `reset_forces`/`raycast`/`pushable`/`bouncy`/`apply_force`; also caught that the new games gate silently dropped clippy | ~15 min (22:17 → 22:32) |
+| batch 2 pass 2 (gemini authored) | claude | 3 | 3 | 0 | 0 | unexplained `PartialOrd, Ord` derive added to `EntityId` in a pure-deletion batch; `QueryPipeline` maintained but never read after `raycast` went; missed the crate-guide drift kimi found (checked only the three lines the fixes named) | — |
 
 ## Verdict (Sep 3 2026, after three diffs reviewed by both)
 

@@ -36,13 +36,8 @@ cfg-split frame drivers, rodio).
   --all-targets` (0 warnings), every touched file ≤ 600 lines, no new `#[allow]`, no
   `unwrap()` outside tests. `/finish-task` is the checklist.
 - Games gate whenever a public item of `engine_core`, `ecs`, `physics`, `input`, `common` or
-  `renderer` changes:
-  ```sh
-  for g in pong snake breakout frogger asteroids space_invaders; do
-    cargo check --manifest-path ../games/$g/Cargo.toml &&
-    cargo clippy --manifest-path ../games/$g/Cargo.toml --all-targets; done
-  ```
-  Batches 1, 4, 5 also run `cargo test` per game (they change behaviour game tests exercise).
+  `renderer` changes: `scripts/check_games.sh` (check + clippy; or `scripts/check_games.sh --test` for batches
+  that change behaviour game tests exercise, e.g. 1, 4, 5).
 - Wasm gate `scripts/check_wasm.sh` whenever `engine_core`, `renderer`, `audio`, `input`,
   `common` change.
 - Review: the commit hook (`scripts/commit-review-hook.sh`, threshold 100 changed lines)
@@ -113,7 +108,7 @@ Authored by gemini, reviewed by kimi and Claude (`review/cleanup-2026-09/review-
 Extra verification: games `cargo test` gate (every `just_activated` rides on item 1), wasm gate,
 and a visual glance at `hello_world` and `editor_demo` for the text-height change (Jesse).
 
-## Batch 2 — pure deletions and workspace hygiene (~900 removed, ~60 added)
+## Batch 2 — pure deletions and workspace hygiene — DONE Sep 3 2026 (cc31078; three passes, reviews 14 and 16)
 
 - engine_core: delete `scene_manager.rs` (zero callers) and its re-export; delete
   `ui_manager.rs` (three-method forwarder; `GameRunner` holds `UIContext`); delete
@@ -146,6 +141,58 @@ and a visual glance at `hello_world` and `editor_demo` for the text-height chang
   the three shipped plans in `docs/plans/`. Keep `coordination/*` (referenced by the ruleset).
 - Docs in-batch: root `CLAUDE.md` manager list, `training.md` directory map and Manager
   Pattern snippet, `crates/engine_core/CLAUDE.md` manager line.
+- **Additions from the test-cut reviews (Sep 2–3), each grep-shown in the batch review before
+  deletion.** `common::Time` (also unwind its re-exports, e.g. `crates/renderer/src/lib.rs`),
+`common::Camera::world_bounds`/`contains_point` (the editor uses its own `AABB` and
+`visible_world_bounds`), `Transform2D::lerp`, `Color::lerp`, `Rect::intersects`/
+`intersection`, `EventBus::type_count`/`count`/`has_events` (+ `World::has_events`),
+`ResourceStorage::contains`, `StateMachine::just_left`/`force_transition_to`,
+`HierarchicalStateMachine::in_group`, `SpriteAnimation::is_complete`, `Tilemap::tile`,
+`GlobalTransform2D::transform_point`/`from_transform`, `Children::is_empty`/`len`/`contains`,
+`Parent::new`/`entity`, `SimpleSystem`, `ecs::init()`, and the whole `ecs::generation` module
+(`EntityGeneration`, `EntityIdGenerator`, `EntityReference`) — all reported caller-free by the
+`ecs` cut review (review-5 F5); from the `input` cut: `GamepadManager::connected_ids`,
+`get_gamepad_mut`, `InputHandler::gamepads_mut`, `GamepadState::prev_axis_value`,
+`InputMapping::{unbind_source, unbind_action, actions_for, has_binding, clear,
+just_deactivated}`, `InputSettings::{just_deactivated, is_active_any, axis_value}` (some
+carry keeper assertions that go with them); from the `physics` cut: `PhysicsSystem::raycast`
+and `PhysicsWorld::raycast`, `apply_force`/`reset_forces` (the one-update-force guard goes
+with them), `set_body_transform` (internal only), `CollisionEvent::involves_entity`,
+`Collider::with_collision_groups` (fields stay: inspector + RON read them),
+`tracked_entities`/`rigid_body_count`/`collider_count`/`pixels_to_meters*`/
+`meters_to_pixels*`/`with_iterations`/`with_fixed_timestep`/`set_gravity`/`gravity()` —
+0 callers outside physics; and NINE unused presets (`player_top_down`, `pushable`,
+`physics_prop`, `small_box`, `pushable_box`, `bouncy`, `slippery`, `low_gravity`,
+`high_gravity`), not the four the audit counted; from the `renderer` cut:
+`SpriteBatch::add_instances`, `SpriteBatcher::add_sprites`/`batches_mut`/`sprite_count`
+(test-only consumer), `SpriteInstance::new`, `TextureHandle::new`,
+`TextureError::TextureNotFound` (never constructed), and `scissor::intersect_scissor`
+becomes private; from the `audio` cut: `play_music_once`, `stop_all`, `active_sound_count`,
+`unload_all` (confirmed 0 callers); from the `ui` cut: `UIContext::{with_theme, hit_test,
+font_metrics, label_in_bounds, checkbox_labeled, slider_range, font_manager,
+font_manager_mut}`, `FontManager::{cache_stats, clear_cache, rasterize_glyph}`,
+`Theme::light`, `DrawList::{is_overlay, image_rounded, text_placeholder}`,
+`InteractionManager::{is_hot, is_active, has_focus}`, `WidgetId: From<u64>` (0 hits outside
+the crate; some used internally — keep those); from the `engine_core` cut:
+`LifecycleManager::wait_for_state`, `ParticleEmitter::resume`, `GridMesh::{with_alpha,
+set_alpha}`, `Particle::t()` (plus `SceneManager` and `Timer`, already listed). The
+`test-support` feature and self dev-dependency landed with the engine_core cut, so batch 5
+only needs editor_integration to enable it; from the `editor` cut: `Selection::set_primary`,
+`CommandHistory::try_merge_or_execute` (and note: on a successful merge it never writes the
+merged value to the world — fix or delete in batch 6), `WorldSnapshot::entity_count`,
+`ComponentKind::category()`, `ViewportInputHandler::{with_config, is_selecting, reset}`,
+`ViewportInputConfig` (only built via Default), `Gizmo::{set_axis_length, set_rotation,
+set_scale}`, `GizmoMode::name`, `GridRenderer::set_axes_visible`, `EditorContext::pan_camera`,
+`SceneViewport::{focus_on, set_interpolation_speed}`, `EntityPicker::with_pick_margin`,
+`Menu::visible_item_count`, `MenuBar::close_all`, `StatusBar::set_version`,
+`HierarchyPanel::{collapse, expand}`. Batch 6 decision: two edits with an EMPTY `field_hint`
+currently merge (string equality); decide whether an empty hint refuses to merge and pin it.
+NOT `Transform2D::forward` — asteroids aims every
+bullet with it (`ship.rs:122`); its test was restored (review-4 F1). Rule: show the
+workspace AND `../games` grep for every candidate in the batch-2 review before deleting it. NOT `Rect::contains`/`center`/`expand` — the keep-list called `Rect`
+dead, but `contains` decides every widget interaction and the editor uses the other two;
+their tests were restored (review-3 F1). Likewise the `Color ↔ Vec4` conversion test stays,
+strengthened to all four channels: it is the live scene-save path (review-3 F2).
 
 Extra verification: games check gate, wasm gate, `cargo run --example hello_world` smoke for
 the UIManager removal (frame path is not headless).
@@ -745,58 +792,7 @@ strengthen with an assert). ecs_macros keeps the field-order test.
 line number re-derived from the tree) is the authority over the per-cluster outputs quoted
 above where they differ.** Batch 0 below copies it somewhere durable.
 
-More dead API it surfaced (add to batch 2 after a workspace + games grep each):
-`common::Time` (also unwind its re-exports, e.g. `crates/renderer/src/lib.rs`),
-`common::Camera::world_bounds`/`contains_point` (the editor uses its own `AABB` and
-`visible_world_bounds`), `Transform2D::lerp`, `Color::lerp`, `Rect::intersects`/
-`intersection`, `EventBus::type_count`/`count`/`has_events` (+ `World::has_events`),
-`ResourceStorage::contains`, `StateMachine::just_left`/`force_transition_to`,
-`HierarchicalStateMachine::in_group`, `SpriteAnimation::is_complete`, `Tilemap::tile`,
-`GlobalTransform2D::transform_point`/`from_transform`, `Children::is_empty`/`len`/`contains`,
-`Parent::new`/`entity`, `SimpleSystem`, `ecs::init()`, and the whole `ecs::generation` module
-(`EntityGeneration`, `EntityIdGenerator`, `EntityReference`) — all reported caller-free by the
-`ecs` cut review (review-5 F5); from the `input` cut: `GamepadManager::connected_ids`,
-`get_gamepad_mut`, `InputHandler::gamepads_mut`, `GamepadState::prev_axis_value`,
-`InputMapping::{unbind_source, unbind_action, actions_for, has_binding, clear,
-just_deactivated}`, `InputSettings::{just_deactivated, is_active_any, axis_value}` (some
-carry keeper assertions that go with them); from the `physics` cut: `PhysicsSystem::raycast`
-and `PhysicsWorld::raycast`, `apply_force`/`reset_forces` (the one-update-force guard goes
-with them), `set_body_transform` (internal only), `CollisionEvent::involves_entity`,
-`Collider::with_collision_groups` (fields stay: inspector + RON read them),
-`tracked_entities`/`rigid_body_count`/`collider_count`/`pixels_to_meters*`/
-`meters_to_pixels*`/`with_iterations`/`with_fixed_timestep`/`set_gravity`/`gravity()` —
-0 callers outside physics; and NINE unused presets (`player_top_down`, `pushable`,
-`physics_prop`, `small_box`, `pushable_box`, `bouncy`, `slippery`, `low_gravity`,
-`high_gravity`), not the four the audit counted; from the `renderer` cut:
-`SpriteBatch::add_instances`, `SpriteBatcher::add_sprites`/`batches_mut`/`sprite_count`
-(test-only consumer), `SpriteInstance::new`, `TextureHandle::new`,
-`TextureError::TextureNotFound` (never constructed), and `scissor::intersect_scissor`
-becomes private; from the `audio` cut: `play_music_once`, `stop_all`, `active_sound_count`,
-`unload_all` (confirmed 0 callers); from the `ui` cut: `UIContext::{with_theme, hit_test,
-font_metrics, label_in_bounds, checkbox_labeled, slider_range, font_manager,
-font_manager_mut}`, `FontManager::{cache_stats, clear_cache, rasterize_glyph}`,
-`Theme::light`, `DrawList::{is_overlay, image_rounded, text_placeholder}`,
-`InteractionManager::{is_hot, is_active, has_focus}`, `WidgetId: From<u64>` (0 hits outside
-the crate; some used internally — keep those); from the `engine_core` cut:
-`LifecycleManager::wait_for_state`, `ParticleEmitter::resume`, `GridMesh::{with_alpha,
-set_alpha}`, `Particle::t()` (plus `SceneManager` and `Timer`, already listed). The
-`test-support` feature and self dev-dependency landed with the engine_core cut, so batch 5
-only needs editor_integration to enable it; from the `editor` cut: `Selection::set_primary`,
-`CommandHistory::try_merge_or_execute` (and note: on a successful merge it never writes the
-merged value to the world — fix or delete in batch 6), `WorldSnapshot::entity_count`,
-`ComponentKind::category()`, `ViewportInputHandler::{with_config, is_selecting, reset}`,
-`ViewportInputConfig` (only built via Default), `Gizmo::{set_axis_length, set_rotation,
-set_scale}`, `GizmoMode::name`, `GridRenderer::set_axes_visible`, `EditorContext::pan_camera`,
-`SceneViewport::{focus_on, set_interpolation_speed}`, `EntityPicker::with_pick_margin`,
-`Menu::visible_item_count`, `MenuBar::close_all`, `StatusBar::set_version`,
-`HierarchyPanel::{collapse, expand}`. Batch 6 decision: two edits with an EMPTY `field_hint`
-currently merge (string equality); decide whether an empty hint refuses to merge and pin it.
-NOT `Transform2D::forward` — asteroids aims every
-bullet with it (`ship.rs:122`); its test was restored (review-4 F1). Rule: show the
-workspace AND `../games` grep for every candidate in the batch-2 review before deleting it. NOT `Rect::contains`/`center`/`expand` — the keep-list called `Rect`
-dead, but `contains` decides every widget interaction and the editor uses the other two;
-their tests were restored (review-3 F1). Likewise the `Color ↔ Vec4` conversion test stays,
-strengthened to all four channels: it is the live scene-save path (review-3 F2).
+The dead-API additions from the cut reviews now live under Batch 2 (moved Sep 3 — gemini's first batch-2 pass missed them here).
 
 ## Batch 0 — before any code
 
