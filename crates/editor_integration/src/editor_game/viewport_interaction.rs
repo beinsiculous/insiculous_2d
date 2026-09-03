@@ -16,7 +16,7 @@ impl<G: Game> EditorGame<G> {
     /// Handle viewport input: pan/zoom plus click and rectangle selection.
     pub(super) fn handle_viewport_picking(&mut self, ctx: &mut GameContext) {
         if self.editor.is_playing() {
-            // While Playing only the CAMERA is live (issue #42): pan/zoom to
+            // While Playing only the CAMERA is live: pan/zoom to
             // inspect anywhere, which breaks the game-camera follow. The
             // explicit return is load-bearing — picking, marquee, asset
             // drops, and framing must never run against a live simulation.
@@ -43,7 +43,7 @@ impl<G: Game> EditorGame<G> {
         self.handle_shared_viewport_input(ctx);
     }
 
-    /// Play-mode viewport input (issue #42): pan/zoom ONLY — no picking, no
+    /// Play-mode viewport input: pan/zoom ONLY — no picking, no
     /// marquee, no framing, no asset drops. Any camera input the viewport
     /// consumes breaks the game-camera follow so the user can inspect
     /// anywhere while the simulation runs.
@@ -88,7 +88,7 @@ impl<G: Game> EditorGame<G> {
         );
         // A manual pan/zoom while Paused breaks the camera follow, exactly
         // like one while Playing — otherwise Resume snaps the view back to
-        // the game camera and discards where the user just looked (#42).
+        // the game camera and discards where the user just looked.
         if input_result.consumed && self.editor.in_play_session() {
             self.break_camera_follow();
         }
@@ -426,7 +426,7 @@ impl<G: Game> EditorGame<G> {
             return;
         };
         // A drag ending is a gesture boundary regardless of whether it
-        // moved anything (#56): mergeable commands (nudges, field-hint
+        // moved anything: mergeable commands (nudges, field-hint
         // Set*Commands) on either side of a drag must never collapse into
         // one undo entry across it.
         self.command_history.break_merge();
@@ -479,7 +479,7 @@ impl<G: Game> EditorGame<G> {
         let Some(drag) = self.gizmo_drag.take() else {
             return false;
         };
-        // An Escape-cancelled drag is still a gesture boundary (#56).
+        // An Escape-cancelled drag is still a gesture boundary.
         self.command_history.break_merge();
         for entity in &drag.entities {
             if let Some(transform) =

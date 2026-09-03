@@ -335,7 +335,7 @@ impl SceneLoader {
 
             ComponentData::Scripts(refs) => {
                 // Entity params defer to a post-instantiate pass — the
-                // target may not exist yet (issue #44). The pending list
+                // target may not exist yet. The pending list
                 // rides a scene-load-scoped World resource that
                 // `resolve_pending_script_targets` drains.
                 let mut pending = world
@@ -356,7 +356,7 @@ impl SceneLoader {
             }
 
             ComponentData::Dynamic { component_type, data } => {
-                // The dynamic tier (issue #43): deserialize + attach through
+                // The dynamic tier: deserialize + attach through
                 // the global registry. An UNREGISTERED name is a hard load
                 // error — fail loud, never silently drop authored data.
                 // Game-specific components require the game's own binary

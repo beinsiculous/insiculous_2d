@@ -11,24 +11,24 @@ const FAR_AWAY: Vec2 = Vec2::new(300.0, 300.0);
 
 #[test]
 fn test_widget_id_is_stable_and_indexed_variants_do_not_collide() {
-    assert_eq!(WidgetId::from_str("button_1"), WidgetId::from_str("button_1"));
-    assert_ne!(WidgetId::from_str("button_1"), WidgetId::from_str("button_2"));
+    assert_eq!(WidgetId::hashed("button_1"), WidgetId::hashed("button_1"));
+    assert_ne!(WidgetId::hashed("button_1"), WidgetId::hashed("button_2"));
 
     // List rows: the same base string with different indices are distinct
     // widgets, and distinct from the bare string.
     assert_ne!(WidgetId::from_str_index("item", 0), WidgetId::from_str_index("item", 1));
-    assert_ne!(WidgetId::from_str_index("item", 0), WidgetId::from_str("item"));
+    assert_ne!(WidgetId::from_str_index("item", 0), WidgetId::hashed("item"));
 
     let from_tuple: WidgetId = ("list", 5).into();
     assert_eq!(from_tuple, WidgetId::from_str_index("list", 5));
     let from_str: WidgetId = "test".into();
-    assert_eq!(from_str, WidgetId::from_str("test"));
+    assert_eq!(from_str, WidgetId::hashed("test"));
 }
 
 #[test]
 fn test_widget_gesture_runs_hovered_active_then_clicks_on_the_release_frame() {
     let mut manager = InteractionManager::new();
-    let id = WidgetId::from_str("test_button");
+    let id = WidgetId::hashed("test_button");
 
     let mut input = input_with_mouse(OVER_BUTTON, false);
     manager.begin_frame(&input);
@@ -60,7 +60,7 @@ fn test_wants_mouse_holds_from_widget_press_through_release_frame() {
     // `wants_mouse`, not on `WidgetState::Active` — the release frame,
     // where their own click handlers fire, is Hovered.
     let mut manager = InteractionManager::new();
-    let id = WidgetId::from_str("toolbar_button");
+    let id = WidgetId::hashed("toolbar_button");
 
     let mut input = input_with_mouse(OVER_BUTTON, true);
     manager.begin_frame(&input);
@@ -87,7 +87,7 @@ fn test_wants_mouse_holds_from_widget_press_through_release_frame() {
     // A press that lands on no widget belongs to the viewport.
     let input = input_with_mouse(FAR_AWAY, true);
     manager.begin_frame(&input);
-    manager.interact(WidgetId::from_str("far_widget"), BUTTON, true);
+    manager.interact(WidgetId::hashed("far_widget"), BUTTON, true);
     assert!(!manager.wants_mouse(), "a press outside every widget is not widget-owned");
 }
 
@@ -96,7 +96,7 @@ fn test_missed_release_event_frees_the_mouse_gesture() {
     let mut manager = InteractionManager::new();
     let input = input_with_mouse(OVER_BUTTON, true);
     manager.begin_frame(&input);
-    manager.interact(WidgetId::from_str("widget"), BUTTON, true);
+    manager.interact(WidgetId::hashed("widget"), BUTTON, true);
     assert!(manager.wants_mouse());
     manager.end_frame();
 
@@ -115,13 +115,13 @@ fn test_blocking_rect_makes_widgets_under_it_inert_except_in_overlay_scope() {
     manager.begin_frame(&input);
     manager.push_blocking_rect(dropdown);
 
-    let under = manager.interact(WidgetId::from_str("widget_under_dropdown"), BUTTON, true);
+    let under = manager.interact(WidgetId::hashed("widget_under_dropdown"), BUTTON, true);
     assert_eq!(under.state, WidgetState::Normal, "no hover under a blocking rect");
     assert!(!under.clicked && !under.dragging);
     assert!(manager.active_widget.is_none(), "the press must not activate a blocked widget");
 
     manager.set_overlay_scope(true);
-    let item = manager.interact(WidgetId::from_str("dropdown_item"), BUTTON, true);
+    let item = manager.interact(WidgetId::hashed("dropdown_item"), BUTTON, true);
     assert_eq!(item.state, WidgetState::Active, "an overlay widget receives the press");
     assert!(item.dragging);
     manager.set_overlay_scope(false);
@@ -130,7 +130,7 @@ fn test_blocking_rect_makes_widgets_under_it_inert_except_in_overlay_scope() {
     let mut manager = InteractionManager::new();
     manager.begin_frame(&input_with_mouse(FAR_AWAY, false));
     manager.push_blocking_rect(dropdown);
-    let far = manager.interact(WidgetId::from_str("far_widget"), Rect::new(280.0, 280.0, 50.0, 50.0), true);
+    let far = manager.interact(WidgetId::hashed("far_widget"), Rect::new(280.0, 280.0, 50.0, 50.0), true);
     assert_eq!(far.state, WidgetState::Hovered);
 
     // ...and only for the frame that registered it.
@@ -144,9 +144,9 @@ fn test_blocking_rect_makes_widgets_under_it_inert_except_in_overlay_scope() {
 #[test]
 fn test_unseen_widget_state_is_collected_unless_focused_or_blocked() {
     let mut manager = InteractionManager::new();
-    let transient = WidgetId::from_str("transient");
-    let editing = WidgetId::from_str("text_input");
-    let blocked = WidgetId::from_str("blocked_text_input");
+    let transient = WidgetId::hashed("transient");
+    let editing = WidgetId::hashed("text_input");
+    let blocked = WidgetId::hashed("blocked_text_input");
 
     manager.get_state(transient).edit.text = "data".to_string();
     manager.get_state(editing).edit.text = "editing".to_string();

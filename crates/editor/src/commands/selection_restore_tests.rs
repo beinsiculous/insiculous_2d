@@ -1,4 +1,4 @@
-//! Selection restore on undo/redo (#59): undoing a destructive command
+//! Selection restore on undo/redo: undoing a destructive command
 //! brings back the selection that existed before it — platform convention —
 //! and redo restores what was selected at undo time. The mechanism lives in
 //! `CommandHistory`, not in any one command.

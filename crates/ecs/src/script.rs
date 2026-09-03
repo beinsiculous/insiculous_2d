@@ -1,4 +1,4 @@
-//! The scripting seam, Stage 1 (issue #44, audit §6.3–§6.5): scripts as
+//! The scripting seam, Stage 1: scripts as
 //! INERT DATA. `Scripts` is one component holding N string-keyed
 //! [`ScriptRef`]s — attach, edit, save, reload, undo, duplicate — and
 //! nothing here executes anything. The runtime registry/runner and
@@ -39,7 +39,7 @@ impl ScriptValue {
     pub const VARIANT_NAMES: &'static [&'static str] =
         &["F32", "I32", "Bool", "Str", "Vec2", "Entity", "Color"];
 
-    /// The "no target chosen yet" Entity placeholder (kimi #44 F3): a fresh
+    /// The "no target chosen yet" Entity placeholder: a fresh
     /// Entity param must NEVER alias a real entity (id 0 exists in most
     /// worlds), so the default is this sentinel — the editor shows it as
     /// unset and save drops it silently.

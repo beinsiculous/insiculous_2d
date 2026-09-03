@@ -111,7 +111,7 @@ impl Selection {
     }
 
     /// The inspector's heading for the primary entity, saying how many
-    /// others are selected with it (#51): `Entity: 7` alone, `Entity: 7
+    /// others are selected with it: `Entity: 7` alone, `Entity: 7
     /// (1 of 5 selected)` in a multi-selection.
     pub fn inspector_heading(&self) -> Option<String> {
         let primary = self.primary()?;

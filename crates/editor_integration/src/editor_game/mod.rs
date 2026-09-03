@@ -71,18 +71,18 @@ struct EditorGame<G: Game> {
     /// Last OS-window title published via `ctx.window_title`, so the
     /// title (a window-system round-trip) is only re-sent on change.
     last_window_title: Option<String>,
-    /// Command-API request lines (audit §9 Stage A), fed by the transport
+    /// Command-API request lines, fed by the transport
     /// (the `--api` stdin thread in the editor binary). Drained once per
     /// frame in `update()`; `None` = API not enabled.
     api_rx: Option<std::sync::mpsc::Receiver<String>>,
     /// A scene-replacing action (New/Open) awaiting the unsaved-changes
-    /// confirm dialog (#52). While set, a modal blocks the frame's input.
+    /// confirm dialog. While set, a modal blocks the frame's input.
     pending_scene_action: Option<scene_confirm::PendingSceneAction>,
     /// Enter pressed while the confirm dialog is up — consumed by the next
-    /// dialog render as the primary (Save) action (#52 kimi F4).
+    /// dialog render as the primary (Save) action.
     pending_dialog_choice: Option<editor::ConfirmChoice>,
     /// Scene to open through the editor load path right after `init`
-    /// (#53 — the standalone binary passes it via `EditorRunOptions` so
+    /// (the standalone binary passes it via `EditorRunOptions` so
     /// scene_path/physics/dirty-state are recorded like any other load).
     initial_scene: Option<std::path::PathBuf>,
     /// Open command-API batch (Stage B): commands collected between `batch
@@ -149,7 +149,7 @@ impl<G: Game> EditorGame<G> {
     }
 
     /// While Playing WITH camera-follow armed, mirror the game's main-camera
-    /// entity — position AND zoom (issue #42) — onto the editor viewport so
+    /// entity — position AND zoom — onto the editor viewport so
     /// the rendered view (derived from the viewport in `render`) follows the
     /// game camera. Free camera (follow broken by a manual pan/zoom) and
     /// Paused keep the user's view — picking stays truthful either way,
@@ -161,7 +161,7 @@ impl<G: Game> EditorGame<G> {
         if let Some((pos, zoom)) = engine_core::main_camera_pose(world) {
             self.editor.viewport.set_camera_position(pos);
             // adopt_ skips the interactive zoom clamp: parity with the
-            // shipped game even at extreme authored zooms (kimi F2).
+            // shipped game even at extreme authored zooms.
             self.editor.viewport.adopt_camera_zoom(zoom);
         }
     }
@@ -308,11 +308,10 @@ impl<G: Game> Game for EditorGame<G> {
         // fonts layer on top of it during play (see update_inner_game).
         // Captured BEFORE the editor faces load: the game's font is the
         // first loaded and therefore the auto-claimed default — loading
-        // DejaVu first would poison this capture and reskin the game view
-        // (kimi round 6 F1).
+        // DejaVu first would poison this capture and reskin the game view.
         self.game_base_font = ctx.ui.default_font();
 
-        // The editor's chrome faces ship with the editor crate (audit §5.6)
+        // The editor's chrome faces ship with the editor crate
         // — the old search started at the GAME's assets/fonts/font.ttf, so
         // an opened project's serif skinned the whole editor.
         let load = |ui: &mut ui::UIContext, name: &str, bytes: &[u8]| match ui.load_font(bytes) {
@@ -337,7 +336,7 @@ impl<G: Game> Game for EditorGame<G> {
             log::warn!("No editor font loaded. Text will render as placeholders.");
         }
 
-        // Open the initial scene through the REAL editor load path (#53):
+        // Open the initial scene through the REAL editor load path:
         // dry-run guard, scene_path, physics settings + resource, history
         // reset — the old EditorApp bypass load recorded none of those, so
         // the title stayed "Untitled" and a save silently dropped physics.
@@ -349,50 +348,50 @@ impl<G: Game> Game for EditorGame<G> {
     fn update(&mut self, ctx: &mut GameContext) {
         let window_size = ctx.window_size;
 
-        // 0. Freeze engine-side time unless we're Playing. Set before the
+        // Freeze engine-side time unless we're Playing. Set before the
         // inner game runs so a Playing game's own write to `time_scale`
         // (a pause menu, say) is the value that survives the frame.
         ctx.time_scale = self.editor_time_scale(ctx.time_scale);
 
-        // 0b. Editor chrome always renders in the editor font — re-asserted
+        // Editor chrome always renders in the editor font — re-asserted
         // every frame because the engine applies locale fonts after update.
         if let Some(editor_font) = self.editor_font {
             ctx.ui.set_default_font(editor_font);
         }
 
-        // 0c. Interpolate the viewport camera toward its targets — this is
+        // Interpolate the viewport camera toward its targets — this is
         // what makes scroll zoom, pan, Home, and focus_on actually move the
         // view (every setter writes target_* only). Runs before the play-mode
         // camera sync, which sets camera and target together, so while
         // Playing this is a no-op and the game camera stays authoritative.
         self.editor.update_viewport(ctx.delta_time);
 
-        // 0d. Mirror the dirty flag from its source of truth: a command was
-        // recorded in the history ⇒ the scene changed (issue #24). Editor-
+        // Mirror the dirty flag from its source of truth: a command was
+        // recorded in the history ⇒ the scene changed. Editor-
         // crate renderers (title bar, status) read the EditorContext mirror.
         self.editor.set_dirty(self.command_history.is_dirty());
         // Note the selection BEFORE any handler this frame mutates it: every
         // command recorded later this frame carries it as the before-image
-        // undo restores (#59). Delete/Cut clear the selection before
+        // undo restores. Delete/Cut clear the selection before
         // pushing, which is exactly why the note happens here.
         self.command_history.note_selection(&self.editor.selection);
 
-        // 1. Run transform hierarchy system
+        // Run transform hierarchy system
         self.transform_system.update(ctx.world, ctx.delta_time);
 
-        // 1b. While Playing, the game's main camera drives the viewport
+        // While Playing, the game's main camera drives the viewport
         self.sync_viewport_from_main_camera(ctx.world);
 
-        // 2. Editor layout
+        // Editor layout
         self.editor.update_layout(window_size);
 
-        // 2b. Unsaved-changes confirm dialog (#52) — FIRST of the early
-        // overlays (kimi F2): its full-window scrim must be in place before
+        // Unsaved-changes confirm dialog — FIRST of the early
+        // overlays: its full-window scrim must be in place before
         // the drag ghost (or anything else) evaluates, so no widget can arm
         // a gesture under a modal.
         self.render_scene_confirm_dialog(ctx);
 
-        // 2c. Drag-and-drop state machine + ghost. Runs before panels so the
+        // Drag-and-drop state machine + ghost. Runs before panels so the
         // ghost's overlay blocking rect makes widgets under the cursor inert
         // for the whole frame (the overlay depth band keeps it on top).
         self.editor.drag_drop.begin_frame(
@@ -402,42 +401,42 @@ impl<G: Game> Game for EditorGame<G> {
         );
         panel_renderer::render_drag_ghost(&mut self.editor, ctx);
 
-        // 3. Menu bar + action dispatch
+        // Menu bar + action dispatch
         self.handle_menu_bar(ctx, window_size);
 
-        // 4. Toolbar + play controls
+        // Toolbar + play controls
         self.render_toolbar_and_play_controls(ctx);
 
-        // 4b. Command-API requests (audit §9 Stage A): answered here, with
+        // Command-API requests: answered here, with
         // pre-panel state settled and before any per-frame widget mutation;
         // skipped (left queued) while a gizmo drag is live.
         self.drain_api_requests(ctx);
 
-        // 5. Dock panels + content
+        // Dock panels + content
         let content_areas = self.render_panels(ctx);
 
-        // 6. Viewport input (pan, zoom, click, rectangle selection)
+        // Viewport input (pan, zoom, click, rectangle selection)
         self.handle_viewport_picking(ctx);
 
-        // 7. Gizmo interaction for the selected entity
+        // Gizmo interaction for the selected entity
         self.handle_gizmo(ctx, &content_areas);
 
         // (Q/W/E/R tool switching moved to the event path — one shortcut
         // system, resolved through EditorInputMapping in handle_editor_key.)
 
-        // 9. Delegate to inner game (only when Playing)
+        // Delegate to inner game (only when Playing)
         self.update_inner_game(ctx);
 
-        // 9b. Re-sync the dirty mirror: menu actions, panel edits, and gizmo
-        // releases above recorded commands AFTER the 0d sync — the status
+        // Re-sync the dirty mirror: menu actions, panel edits, and gizmo
+        // releases above recorded commands AFTER the dirty sync — the status
         // bar and title below must show this frame's state, not last frame's.
         self.editor.set_dirty(self.command_history.is_dirty());
 
-        // 10. Status bar
+        // Status bar
         self.render_status_bar(ctx, window_size);
 
-        // 11. Publish the scene name + dirty indicator as the OS window
-        // title (audit §1.4 — title_bar_text() finally has a caller).
+        // Publish the scene name + dirty indicator as the OS window
+        // title (title_bar_text() finally has a caller).
         // While Playing the running game owns the title (it may write
         // ctx.window_title itself); forgetting ours makes Stop republish
         // even if the game changed the OS title in the meantime.
@@ -449,13 +448,12 @@ impl<G: Game> Game for EditorGame<G> {
             }
         }
 
-        // 12. Clip the ENGINE's post-update draws (the frame tail's
-        // UiLabel/UiPanel/UiButton pass and toasts run AFTER this method
-        // returns and painted over editor chrome — the last incarnation of
-        // the §4.1 bleed, caught by the Sprint 5 screenshot pass). A plain
+        // Clip the engine's post-update draws (the frame tail's
+        // UiLabel/UiPanel/UiButton pass and toasts run after this method
+        // returns and painted over editor chrome). A plain
         // trailing push_clip_rect would poison later-flushed UI layers
         // (Floating menus, the Modal dialog — bands reorder at end_frame),
-        // so the engine wraps ONLY its own tail draws in this rect.
+        // so the engine wraps only its own tail draws in this rect.
         let bounds = self
             .editor
             .scene_view_bounds()
@@ -472,7 +470,7 @@ impl<G: Game> Game for EditorGame<G> {
         // are overridden here — the supported path inside the editor is a
         // main-camera entity (mirrored onto the viewport while Playing).
         *ctx.camera = self.editor.viewport.to_window_render_camera(ctx.window_size);
-        // Bound the game-world passes to the scene panel (issue #41): the
+        // Bound the game-world passes to the scene panel: the
         // game stops painting over editor chrome and the GPU stops shading
         // the whole window. A hidden/collapsed panel yields a zero-size
         // rect — no game world at all — never None (full window).
@@ -531,7 +529,7 @@ pub struct EditorRunOptions {
     /// Command-API request channel.
     pub api_rx: Option<std::sync::mpsc::Receiver<String>>,
     /// A scene to open through the editor's load path right after init —
-    /// how the standalone binary hands over its project's first scene (#53).
+    /// how the standalone binary hands over its project's first scene.
     pub initial_scene: Option<std::path::PathBuf>,
 }
 

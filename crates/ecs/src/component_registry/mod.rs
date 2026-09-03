@@ -1,6 +1,6 @@
 //! Component registry for unified component definitions.
 //!
-//! This is THE dynamic component tier (widened ARCH-006, issue #43): a
+//! The dynamic component tier: a
 //! name-keyed table of fn pointers — monomorphized at [`ComponentRegistry::register`]
 //! time — that can create, insert, extract, remove, and default-construct a
 //! component on a [`World`](crate::World) without the caller knowing its
@@ -285,13 +285,13 @@ impl Default for ComponentRegistry {
 }
 
 /// Global registry of component types, behind an RwLock so downstream
-/// crates (physics, games) can register at startup — ecs GPP-16.
+/// crates (physics, games) can register at startup.
 static COMPONENT_REGISTRY: OnceLock<RwLock<ComponentRegistry>> = OnceLock::new();
 
 thread_local! {
     /// Re-entrancy guard: `std::sync::RwLock` deadlocks on same-thread
     /// read→write (and may on read→read); catch it with a clear panic
-    /// instead of a hang (kimi round-2 F9/F1).
+    /// instead of a hang.
     static REGISTRY_LOCK_HELD: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
@@ -343,17 +343,17 @@ fn global() -> &'static RwLock<ComponentRegistry> {
         registry.register::<UiButton>();
         // Registered so a GAME reusing these names hits the collision panic
         // at startup instead of the scene serializer's concrete/skip arms
-        // silently eating its data (kimi #43 F1). Behavior/EntityTag persist
+        // silently eating its data. Behavior/EntityTag persist
         // through their concrete wire arms; GlobalTransform2D is
         // system-computed and never persisted.
         registry.register::<crate::behavior::Behavior>();
         registry.register::<crate::behavior::EntityTag>();
         registry.register_transient::<crate::hierarchy::GlobalTransform2D>();
-        // The scripting seam Stage 1 (#44): inert data, persisted through
+        // The scripting seam Stage 1: inert data, persisted through
         // its concrete ComponentData::Scripts wire arm (name-mapped Entity
         // params), so the serializer's skip list covers it like Behavior.
         registry.register::<crate::script::Scripts>();
-        // The playfield spring grid as scene data (#46) — persisted through
+        // The playfield spring grid as scene data — persisted through
         // its concrete ComponentData::GridBackdrop wire arm.
         registry.register::<crate::grid_backdrop::GridBackdrop>();
 

@@ -1,4 +1,4 @@
-//! The editor's bridge to the ecs dynamic component registry (issue #43).
+//! The editor's bridge to the ecs dynamic component registry.
 //!
 //! Everything the typed `editor_component_registry!` macro does NOT cover
 //! falls through to here by name: game-registered components (and the audio
@@ -164,7 +164,7 @@ pub fn available_dynamic_components(world: &World, entity: EntityId) -> Vec<Stri
 }
 
 /// The "unknown component" error. `settable_component_names` already lists
-/// typed AND dynamic names (kimi #43 F3 — no double-append).
+/// typed AND dynamic names (no double-append).
 pub fn unknown_component_error(name: &str) -> String {
     let known: Vec<String> = super::settable_component_names()
         .iter()

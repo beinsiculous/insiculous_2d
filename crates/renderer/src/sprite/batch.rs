@@ -17,7 +17,7 @@ pub struct SpriteBatch {
     pub sorted: bool,
     /// GPU scissor rect (`[x, y, w, h]` in physical surface pixels) applied
     /// when drawing this batch, or `None` for the pass default. Set by the
-    /// UI batcher from `PushClipRect`/`PopClipRect` (issue #41); game
+    /// UI batcher from `PushClipRect`/`PopClipRect`; game
     /// batches never carry a clip.
     pub clip: Option<[u32; 4]>,
 }
@@ -73,7 +73,7 @@ impl SpriteBatch {
 /// the active clip rect merge into one draw. Game rendering never sets a
 /// clip, so its batching is identical to the old by-texture map; the UI
 /// integration drives [`set_clip`](Self::set_clip) from its clip-rect
-/// stack so clipped UI regions scissor on the GPU (issue #41).
+/// stack so clipped UI regions scissor on the GPU.
 #[derive(Default)]
 pub struct SpriteBatcher {
     batches: HashMap<(TextureHandle, Option<[u32; 4]>), SpriteBatch>,
@@ -245,7 +245,7 @@ mod tests {
         }
     }
 
-    /// Clipped UI (issue #41): the same texture under two clip states is two
+    /// Clipped UI: the same texture under two clip states is two
     /// draws, each carrying its own scissor.
     #[test]
     fn test_same_texture_under_two_clip_states_splits_into_two_batches() {

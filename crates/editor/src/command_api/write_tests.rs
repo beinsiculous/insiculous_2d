@@ -65,7 +65,7 @@ impl Rig {
 }
 
 ecs::define_component! {
-    /// Stand-in game component for the dynamic-tier API tests (#43).
+    /// Stand-in game component for the dynamic-tier API tests.
     pub struct ApiDynTestBuff {
         pub strength: f32 = 1.0,
         pub active: bool = true,
@@ -265,7 +265,7 @@ fn test_delete_drops_the_selection_and_undo_resurrects_both() -> Result<(), ApiE
     rig.run("undo")?;
     assert!(rig.world.get_entity(&e).is_ok(), "undo resurrects");
     assert_eq!(rig.world.get::<Name>(e).map(Name::as_str), Some("Player"));
-    assert!(rig.selection.contains(e), "undoing the delete restores the pre-delete selection (#59)");
+    assert!(rig.selection.contains(e), "undoing the delete restores the pre-delete selection");
     Ok(())
 }
 
@@ -409,7 +409,7 @@ fn test_create_parses_to_a_hosted_write_and_refuses_unknown_archetypes() {
     assert!(matches!(parse_line("create flying-toaster"), Err(ApiError::Invalid(_))));
 }
 
-// ==================== dynamic tier (#43) ====================
+// ==================== dynamic tier ====================
 
 #[test]
 fn test_add_set_remove_reach_game_registered_components() -> Result<(), ApiError> {

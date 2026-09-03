@@ -1,4 +1,4 @@
-//! Change detection for sprite instance uploads (PATTERNS_AUDIT.md GPP-15).
+//! Change detection for sprite instance uploads.
 //!
 //! Flattening batches and uploading the instance buffer every frame is pure
 //! waste when nothing on screen moved. [`InstanceCache`] stages the flattened

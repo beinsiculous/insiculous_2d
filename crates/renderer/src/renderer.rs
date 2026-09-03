@@ -1,18 +1,4 @@
-//! WGPU renderer implementation.
-//!
-//! # Design Decisions
-//!
-//! The [`Renderer`] struct handles both initialization and rendering. While this
-//! could be split into separate concerns (initialization vs rendering), the current
-//! design is intentional:
-//!
-//! - **Initialization** (`new()`) creates the WGPU context (instance, surface, adapter,
-//!   device, queue) which is inherently tied to the renderer's lifetime.
-//! - **Rendering** (`render()`, `render_with_sprites()`) uses those resources.
-//! - These concerns are tightly coupled in WGPU - the surface, device, and queue are
-//!   all needed together and share lifetimes.
-//!
-//! Splitting them would add complexity without clear benefit for a 2D game engine.
+//! WGPU renderer implementation managing surface configuration, passes, and device lifecycle.
 
 use std::sync::Arc;
 use wgpu::{
@@ -75,7 +61,7 @@ pub struct Renderer {
     /// (the default; shipped games never set it). A zero-size rect draws no
     /// game world at all (the editor's "scene panel hidden" case). Set every
     /// frame via [`set_viewport_scissor`](Self::set_viewport_scissor);
-    /// the UI pass is never affected (issue #41).
+    /// the UI pass is never affected.
     viewport_scissor: Option<[u32; 4]>,
     /// One-way flag set by wgpu's device-lost callback. Every queue/surface
     /// touchpoint checks it first — submitting to a dead queue is what
@@ -143,7 +129,7 @@ impl Renderer {
         // outside the render loop (glyph-cache uploads, asset loads) stay
         // unguarded on purpose: the frame loop halts one frame after the
         // latch sets, so they can run at most once against a dead device —
-        // accepted (review F3) over threading the latch through AssetManager.
+        // accepted over threading the latch through AssetManager.
         let device_lost = crate::device_status::DeviceLossLatch::new();
         let loss_latch = device_lost.clone();
         device.set_device_lost_callback(move |reason, message| {
@@ -226,7 +212,7 @@ impl Renderer {
         // public API (`device()`/`queue()` feed engine_core's RenderManager
         // and AssetManager across 4+ signatures), the web build is
         // single-threaded, and unwinding the Arc there isn't worth one
-        // wasm-only lint. Decided with H8 (issue #7).
+        // wasm-only lint.
         #[allow(clippy::arc_with_non_send_sync)]
         let device = Arc::new(device);
         let queue = Arc::new(queue);
@@ -384,7 +370,7 @@ impl Renderer {
 
         // Viewport scissor bounds every game-world pass; the UI pass is
         // exempt (its chrome must fill the window) but honors per-batch
-        // clip rects (issue #41).
+        // clip rects.
         let viewport_scissor = self.viewport_scissor;
 
         // Pass 1: sprites -> HDR color (+ depth).
@@ -421,7 +407,7 @@ impl Renderer {
         );
 
         // Final pass: UI straight to the swapchain, after (and exempt from)
-        // the tonemap — authored UI colors display exactly (issue #26).
+        // the tonemap — authored UI colors display exactly.
         ui_pipeline.draw_ui(
             &mut encoder,
             texture_resources,

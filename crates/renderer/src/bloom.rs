@@ -66,7 +66,7 @@ struct BloomParams {
 /// The composite pass's destination: the swapchain view plus whether its
 /// format is sRGB (non-sRGB targets — WebGPU canvases — get gamma-encoded
 /// in the shader instead of by the hardware), plus an optional scissor
-/// bounding the composite draw (issue #41 — the tonemapped game image and
+/// bounding the composite draw (the tonemapped game image and
 /// its glow stay inside the editor's scene panel; `None` = fullscreen).
 pub struct SwapchainTarget<'a> {
     pub view: &'a TextureView,
@@ -211,7 +211,7 @@ impl BloomPipeline {
     ///
     /// `swapchain.composite_scissor` bounds the composite draw only
     /// (extract/blur are offscreen and untouched): the tonemapped game image
-    /// and its glow stay inside the editor's scene panel (issue #41). The
+    /// and its glow stay inside the editor's scene panel. The
     /// composite pass itself always runs — its `LoadOp::Clear` blanks the
     /// whole swapchain, which is what keeps regions outside the scissor
     /// defined.

@@ -24,7 +24,7 @@ const CAP_SEGMENTS: usize = 12;
 const OUTLINE_WIDTH: f32 = 1.5;
 /// Outline width for the primary selected entity's collider, in screen pixels.
 const OUTLINE_WIDTH_SELECTED: f32 = 2.5;
-/// Outline width for every other selected entity's collider (#51) — between
+/// Outline width for every other selected entity's collider — between
 /// the primary and the unselected, the same three-way split the viewport
 /// selection outline draws.
 const OUTLINE_WIDTH_SECONDARY: f32 = 2.0;
@@ -304,7 +304,7 @@ mod tests {
         }
 
         // Sensors draw in the sensor colour; selection wins over sensor, the
-        // primary draws widest and other selected entities in between (#51).
+        // primary draws widest and other selected entities in between.
         assert_eq!(lines.iter().filter(|line| line.2 == colors.sensor && line.3 == OUTLINE_WIDTH).count(), 4);
         assert_eq!(lines.iter().filter(|line| line.2 == colors.selected && line.3 == OUTLINE_WIDTH_SELECTED).count(), 4);
         assert_eq!(lines.iter().filter(|line| line.2 == colors.selected && line.3 == OUTLINE_WIDTH_SECONDARY).count(), 4);

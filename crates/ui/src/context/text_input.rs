@@ -37,7 +37,7 @@ pub struct FloatFieldOpts {
     /// Face to draw AND measure the value in (`None` = the default font).
     /// Every measurement — caret, selection band, click-to-cursor — uses
     /// the same face, so a monospace numeric field never mis-places its
-    /// caret (#54).
+    /// caret.
     pub font: Option<FontHandle>,
 }
 
@@ -276,16 +276,16 @@ impl UIContext {
         }
 
         if input.mouse_down {
-            let dx = input.mouse_pos.x - scrub.press_x;
+            let pointer_travel_x = input.mouse_pos.x - scrub.press_x;
             let mut scrub = scrub;
-            if !scrub.active && dx.abs() >= SCRUB_THRESHOLD_PX {
+            if !scrub.active && pointer_travel_x.abs() >= SCRUB_THRESHOLD_PX {
                 scrub.active = true;
             }
             self.interaction.get_state(id).scrub = Some(scrub);
             if scrub.active {
                 let step = opts.step * if input.shift_down { 0.1 } else { 1.0 };
-                let mut scrubbed = scrub.start_value + dx * step;
-                // Ctrl snaps the scrub to whole steps (#56) — applied to
+                let mut scrubbed = scrub.start_value + pointer_travel_x * step;
+                // Ctrl snaps the scrub to whole steps — applied to
                 // whatever value the modifiers produced (Shift fine mode
                 // included), then clamped: snap first, clamp last.
                 if input.ctrl_down && opts.step != 0.0 {
@@ -524,10 +524,10 @@ impl UIContext {
     /// Draw a text input box (shared by unfocused and committed states).
     fn draw_text_input_box(&mut self, bounds: Rect, text: &str, highlighted: bool, font: Option<FontHandle>) {
         let style = self.theme.text_input.clone();
-        let bg = if highlighted { style.background_focused } else { style.background };
+        let background = if highlighted { style.background_focused } else { style.background };
         let border = if highlighted { style.border_focused } else { style.border };
 
-        self.draw_list.rect_rounded(bounds, bg, style.corner_radius);
+        self.draw_list.rect_rounded(bounds, background, style.corner_radius);
         self.draw_list
             .rect_border_rounded(bounds, border, style.border_width, style.corner_radius);
 

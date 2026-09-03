@@ -1,4 +1,4 @@
-//! The camera split (#42): while Playing the viewport follows the game's
+//! The camera split: while Playing the viewport follows the game's
 //! main camera — position and zoom, never rotation — manual input breaks
 //! the follow, the toggle re-arms it, and Stop restores the editing view.
 
@@ -9,7 +9,7 @@ use glam::Vec2;
 use super::test_support::editor_game;
 
 /// Zoom on the fixture camera — beyond the viewport's interactive clamp,
-/// so an adopted zoom proves it is taken unclamped (kimi #42 F2).
+/// so an adopted zoom proves it is taken unclamped.
 const GAME_ZOOM: f32 = 20.0;
 const GAME_POSITION: Vec2 = Vec2::new(320.0, -75.0);
 
@@ -121,7 +121,7 @@ fn test_sync_copies_pose_only_while_playing_and_following() {
 
 #[test]
 fn test_pause_resume_preserves_a_broken_follow_and_refollow_snaps_back() {
-    // kimi R2-F8: re-arm happens at SESSION START only — resuming from
+    // Re-arm happens at SESSION START only — resuming from
     // pause must not override the user's explicit free-camera choice.
     let mut editor_game = editor_game();
     let mut world = world_with_zoomed_camera();
@@ -173,7 +173,7 @@ fn test_stop_restores_editing_view_and_rearms_follow() {
 
 #[test]
 fn test_play_transition_cancels_pending_viewport_gesture() {
-    // kimi #42 F5: handle_input runs during Play too, so a button held
+    // Handle_input runs during Play too, so a button held
     // across a play-state transition must not complete a phantom
     // click/marquee in the new state.
     let mut editor_game = editor_game();

@@ -1,4 +1,4 @@
-//! Editable inspector for the `Scripts` component (issue #44, Stage 1).
+//! Editable inspector for the `Scripts` component (Stage 1).
 //!
 //! Widgets are inferred from the [`ScriptValue`] variant — no per-script
 //! Rust anywhere in this crate, which is the entire point of the seam.
@@ -168,7 +168,7 @@ fn edit_one_param(
         }
         ScriptValue::Entity(id) => {
             // Read-only in Stage 1 (no entity picker yet). The unset
-            // sentinel never aliases a real entity (kimi #44 F3).
+            // sentinel never aliases a real entity.
             if value.is_unset_entity() {
                 inspector.string("  value", "Entity (unset)");
             } else {
@@ -196,13 +196,13 @@ fn edit_one_param(
 
 /// First `param_N` not already taken on this script.
 fn unique_param_name(script: &ScriptRef) -> String {
-    let mut n = 1usize;
+    let mut candidate_index = 1usize;
     loop {
-        let candidate = format!("param_{n}");
+        let candidate = format!("param_{candidate_index}");
         if !script.params.contains_key(&candidate) {
             return candidate;
         }
-        n += 1;
+        candidate_index += 1;
     }
 }
 

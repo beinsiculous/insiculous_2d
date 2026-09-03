@@ -1,12 +1,8 @@
 //! Gamepad input handling.
 //!
-//! # Backend Status
-//!
-//! This module tracks gamepad *state* but the engine currently has no gamepad
-//! backend (e.g. gilrs) producing [`crate::InputEvent`] gamepad events. Until a
-//! backend is wired up, gamepad state only changes if events are queued manually
-//! via [`crate::InputHandler::queue_event`]. Gamepads are auto-registered when
-//! their first event is processed.
+//! Tracks gamepad state (buttons, axes) driven by incoming events from the
+//! hardware backend (`engine_core::gamepad_backend`). Gamepads are
+//! auto-registered when their first event is processed.
 
 use crate::button_tracker::ButtonTracker;
 use std::collections::HashMap;

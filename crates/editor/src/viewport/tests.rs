@@ -63,7 +63,7 @@ fn test_interactive_zoom_clamps_to_the_ux_range_but_a_followed_game_camera_does_
     viewport.set_camera_zoom(100.0);
     assert_eq!(viewport.camera_zoom(), 10.0, "clamped to the maximum");
 
-    // The play-session follow adopts the game's zoom exactly (#42), but
+    // The play-session follow adopts the game's zoom exactly, but
     // never a value the world↔screen division cannot survive.
     viewport.adopt_camera_zoom(25.0);
     assert_eq!(viewport.camera_zoom(), 25.0);
@@ -114,7 +114,7 @@ fn test_overlay_matches_gpu_camera_at_a_panel_offset_and_the_play_follow_pose() 
     viewport.set_camera_zoom(2.0);
     assert_overlay_matches_render_camera(&viewport, window);
 
-    // Issue #42: following the game camera adopts its position AND zoom,
+    // Following the game camera adopts its position AND zoom,
     // past the interactive clamp — picking stays truthful there too.
     viewport.set_camera_position(Vec2::new(320.0, -75.0));
     viewport.adopt_camera_zoom(12.5);

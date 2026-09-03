@@ -41,7 +41,7 @@ pub struct AssetBrowserState {
     pub entries: Vec<AssetEntry>,
     /// Whether an initial scan has run
     pub scanned: bool,
-    /// Vertical scroll (shared panel pattern — audit §3.3)
+    /// Vertical scroll (shared panel pattern)
     pub scroll: crate::ScrollState,
 }
 

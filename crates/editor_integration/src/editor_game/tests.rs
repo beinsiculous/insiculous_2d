@@ -130,7 +130,7 @@ fn test_render_derives_the_gpu_camera_and_scissor_from_the_dock() {
     // The viewport is the single source of truth for the view: the GPU
     // camera must come from it every frame so sprites land where the
     // overlay (gizmo/picking/grid) expects them, and the game-world passes
-    // are bounded to the scene panel (#41).
+    // are bounded to the scene panel.
     let mut editor_game = editor_game();
     let window_size = Vec2::new(1600.0, 900.0);
     editor_game.editor.update_layout(window_size);

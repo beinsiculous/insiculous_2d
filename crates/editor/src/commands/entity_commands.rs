@@ -42,7 +42,7 @@ impl EditorCommand for CreateEntityCommand {
             // First execute — entity already exists. Nothing to do.
             self.captured = false;
         } else {
-            // Redo — resurrect the entity under its ORIGINAL id (GPP-14):
+            // Redo — resurrect the entity under its ORIGINAL id:
             // ids are never recycled, so the slot is guaranteed free, and
             // selections / later commands referencing it stay valid.
             world.create_entity_with_id(self.entity);
@@ -116,7 +116,7 @@ impl EditorCommand for DeleteEntityCommand {
     }
 
     fn undo(&mut self, world: &mut World) {
-        // Resurrect the entity under its ORIGINAL id (GPP-14): ids are never
+        // Resurrect the entity under its ORIGINAL id: ids are never
         // recycled, so the slot is guaranteed free, and selections / later
         // commands referencing it stay valid across the undo.
         world.create_entity_with_id(self.entity);

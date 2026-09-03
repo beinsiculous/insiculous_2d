@@ -65,11 +65,11 @@ impl<G: Game> EditorGame<G> {
         }
 
         // Scripts persist Entity params by NAME: give referenced unnamed
-        // targets one now (auto-name, kimi #44 plan F4) instead of silently
+        // targets one now (auto-name) instead of silently
         // dropping the binding on save. Executed THROUGH CommandHistory so
         // the naming is undoable and dirty-tracked like every other editor
         // mutation, and a failed write leaves an undoable entry rather than
-        // a silent one (kimi #44 code F1/F2).
+        // a silent one.
         let planned = engine_core::script_data::plan_script_target_names(world);
         if !planned.is_empty() {
             use editor::commands::{EditorCommand, MacroCommand, RenameEntityCommand};
@@ -125,7 +125,7 @@ impl<G: Game> EditorGame<G> {
     ///
     /// The current world is only touched once the file is known-good: the
     /// scene is parsed first, then instantiated into a scratch world as a
-    /// dry run (issue #50 — a corrupt file, unknown prefab, or missing
+    /// dry run (a corrupt file, unknown prefab, or missing
     /// texture must not cost the user's unsaved scene). The price is
     /// instantiating twice; `AssetManager` deduplicates texture loads by
     /// (path, filter), so the dry run warms the cache and the real
@@ -159,12 +159,12 @@ impl<G: Game> EditorGame<G> {
             .map_err(|e| format!("Failed to load scene: {}", e))?;
 
         // Store physics settings from loaded scene, and publish them as a
-        // world resource so the host game (EditorApp's lazy physics preview,
-        // #53) can build its PhysicsSystem without reaching into EditorGame.
+        // world resource so the host game (EditorApp's lazy physics preview)
+        // can build its PhysicsSystem without reaching into EditorGame.
         // Resources deliberately survive the play snapshot restore — so if
         // physics settings ever become EDITABLE, route edits through
         // `self.physics_settings` (reset on load/new), NOT this resource: a
-        // runtime write to it would outlive Stop and get saved (kimi #53 F2).
+        // runtime write to it would outlive Stop and get saved.
         self.physics_settings = scene_instance.physics.clone();
         match scene_instance.physics.clone() {
             Some(settings) => world.insert_resource(settings),
@@ -185,8 +185,7 @@ impl<G: Game> EditorGame<G> {
         self.gizmo_drag = None;
         self.editor.gizmo.cancel();
         if let Some(first) = scene_instance.load_warnings.first() {
-            // Non-fatal load diagnostics reach the user, not just the log
-            // (kimi #44 F5).
+            // Non-fatal load diagnostics reach the user, not just the log.
             self.editor.status_bar.show_error(format!(
                 "Loaded with {} warning(s): {}",
                 scene_instance.load_warnings.len(),
@@ -222,15 +221,10 @@ impl<G: Game> EditorGame<G> {
         }
     }
 
-    /// Create a new empty scene, clearing the world.
-    ///
-    /// Refused during a play session (Playing or Paused): clearing the world
-    /// under a pending play snapshot would make the next Stop resurrect the
-    /// old scene's entities into the new one.
     /// Where "Open Scene…"/"Save As…" default to: a `scene.ron` next to the
-    /// currently open scene, else the legacy cwd-relative default (#53 —
-    /// the old hardcoded default wrote into the WRONG directory after
-    /// opening a project elsewhere).
+    /// currently open scene, else the legacy cwd-relative default (the old
+    /// hardcoded default wrote into the wrong directory after opening a project
+    /// elsewhere).
     pub(super) fn default_scene_path(&self) -> PathBuf {
         self.editor
             .scene_path()
@@ -238,6 +232,11 @@ impl<G: Game> EditorGame<G> {
             .unwrap_or_else(|| PathBuf::from(crate::constants::DEFAULT_SCENE_PATH))
     }
 
+    /// Create a new empty scene, clearing the world.
+    ///
+    /// Refused during a play session (Playing or Paused): clearing the world
+    /// under a pending play snapshot would make the next Stop resurrect the
+    /// old scene's entities into the new one.
     pub(super) fn new_scene(&mut self, world: &mut World) {
         if let Some(msg) = self.scene_replace_refusal() {
             self.editor.status_bar.show_error(msg);
@@ -249,7 +248,6 @@ impl<G: Game> EditorGame<G> {
             log::warn!("Current scene has unsaved changes. Save first to avoid losing work.");
         }
 
-        // Clear existing world
         for entity in world.entities() {
             world.remove_entity(&entity).ok();
         }

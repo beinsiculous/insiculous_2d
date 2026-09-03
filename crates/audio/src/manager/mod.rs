@@ -157,7 +157,7 @@ impl AudioManager {
     /// manager is unchanged: still disabled, still fully functional as a
     /// no-op, and any pending music request is retained for a later attempt.
     ///
-    /// This is the web (H7) upgrade path: browsers refuse an `AudioContext`
+    /// This is the web upgrade path: browsers refuse an `AudioContext`
     /// created outside a user gesture, so the engine calls this from the
     /// first activation gesture. A successful `OutputStream::try_default()`
     /// at startup does NOT prove the context is running — only construction

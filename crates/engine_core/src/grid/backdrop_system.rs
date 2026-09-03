@@ -1,4 +1,4 @@
-//! The runtime behind [`GridBackdrop`] components (#46): the engine owns one
+//! The runtime behind [`GridBackdrop`] components: the engine owns one
 //! simulated [`GridMesh`] per component entity, rebuilds it when the
 //! component's (normalized) data changes, translates it when the entity
 //! moves, drains queued impulses, steps it with the engine's time-scaled
@@ -99,7 +99,7 @@ impl GridBackdropSystem {
     /// on a SHAPE change, apply other edits to the live mesh, translate on a
     /// move. The origin is the world-space position: `GlobalTransform2D`
     /// when the hierarchy system has written one (a grid parented to a
-    /// moving rig follows it — kimi #46 F2), else the local `Transform2D`.
+    /// moving rig follows it), else the local `Transform2D`.
     fn sync_entries(&mut self, world: &World) {
         let live: Vec<(EntityId, GridBackdrop, Vec2)> = world
             .entities()
@@ -180,7 +180,7 @@ mod tests {
         let nodes_before = system.mesh(entity).unwrap().node_count();
 
         // Color, visibility and stiffness land on the live mesh in place —
-        // an active ripple keeps rippling (kimi #46 F3).
+        // an active ripple keeps rippling.
         {
             let config = world.get_mut::<GridBackdrop>(entity).unwrap();
             config.color = glam::Vec4::new(1.0, 0.0, 0.0, 1.0);
@@ -255,7 +255,7 @@ mod tests {
 
     #[test]
     fn test_grids_follow_the_global_transform_and_emit_in_entity_order_ahead_of_game_lines() {
-        // kimi #46 F2: a grid under a moving rig sits where the hierarchy
+        // A grid under a moving rig sits where the hierarchy
         // system put it, not at its local offset.
         let mut world = World::new();
         let parented = spawn(&mut world, small(), Vec2::new(5.0, 5.0));

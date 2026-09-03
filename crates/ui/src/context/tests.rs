@@ -215,7 +215,7 @@ fn test_press_and_release_delivered_in_one_frame_still_click() {
 
     let mut manager = crate::InteractionManager::new();
     manager.begin_frame(&input);
-    assert!(manager.interact(WidgetId::from_str("tap"), bounds, true).clicked, "interact reports the click");
+    assert!(manager.interact(WidgetId::hashed("tap"), bounds, true).clicked, "interact reports the click");
 
     let mut ui = UIContext::new();
     ui.begin_frame(&input, crate::test_support::WINDOW);

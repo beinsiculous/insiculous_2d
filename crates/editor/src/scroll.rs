@@ -1,4 +1,4 @@
-//! Shared per-panel vertical scroll state (audit §3.3), hoisted from the
+//! Shared per-panel vertical scroll state, hoisted from the
 //! asset browser's ad-hoc offset so the inspector and hierarchy scroll
 //! the same way.
 //!
@@ -17,9 +17,9 @@
 //! viewport zoom) must gate on its own mouse-in-bounds check, and dock
 //! panel bounds are disjoint, so exactly one consumer reacts per notch.
 //!
-//! Clipping note: the renderer culls only fully-outside commands (no GPU
-//! scissor yet — issue #41), so a partially-visible row bleeds up to one
-//! row height past the panel edge while scrolled.
+//! Clipping note: the renderer culls only fully-outside commands, so a
+//! partially-visible row bleeds up to one row height past the panel edge
+//! while scrolled.
 
 use glam::Vec2;
 

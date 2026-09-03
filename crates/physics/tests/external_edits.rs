@@ -1,4 +1,4 @@
-//! External ECS-side edit detection (GPP-09), through the public API:
+//! External ECS-side edit detection, through the public API:
 //! live `Transform2D` edits teleport rapier bodies, live `Collider` edits
 //! rebuild rapier colliders, and the physics writeback is never mistaken
 //! for an external edit.

@@ -1,4 +1,4 @@
-//! Unified-shortcut behavior (#40): arrow nudge (merge + seal), the Escape
+//! Unified-shortcut behavior: arrow nudge (merge + seal), the Escape
 //! cancel cascade, selection roots, and the production Delete/Duplicate
 //! paths — driven headlessly against the real `EditorGame` state.
 

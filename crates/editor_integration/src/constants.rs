@@ -35,7 +35,7 @@ pub(crate) const DUPLICATE_OFFSET: Vec2 = Vec2::new(20.0, -20.0);
 
 /// First `.ron` scene in a directory, in SORTED order — `read_dir`'s order
 /// is platform-nondeterministic, and "which scene opens on launch" must not
-/// depend on it (#53). Byte-wise sort (Rust `str` order): deterministic on
+/// depend on it. Byte-wise sort (Rust `str` order): deterministic on
 /// every platform, never locale-dependent.
 pub fn find_first_scene(scenes_dir: &std::path::Path) -> Option<std::path::PathBuf> {
     let entries = std::fs::read_dir(scenes_dir).ok()?;

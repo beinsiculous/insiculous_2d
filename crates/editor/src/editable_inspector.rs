@@ -55,7 +55,7 @@ pub fn edit_f32(
     edit_f32_opts(ui, id, label, value, opts, layout, style)
 }
 
-/// The status-bar line for a typed value outside its soft range (#55).
+/// The status-bar line for a typed value outside its soft range.
 pub(crate) fn out_of_range_warning(label: &str, value: f32, opts: &ui::FloatFieldOpts) -> String {
     format!(
         "{label} = {value:.2}{} is outside the usual {}..{}",
@@ -173,8 +173,8 @@ pub struct EditableInspector<'a> {
     current_y: f32,
     x: f32,
     width: f32,
-    /// Soft-range warnings raised by this component's fields this frame
-    /// (#55); drained by the registry block into `InspectorExtras`.
+    /// Soft-range warnings raised by this component's fields this frame;
+    /// drained by the registry block into `InspectorExtras`.
     warnings: Vec<String>,
 }
 
@@ -338,7 +338,7 @@ impl<'a> EditableInspector<'a> {
             .with_suffix("°");
         // Display wraps too, so the field always operates in the canonical
         // ±180° space — a rotation stored as 270° shows (and scrubs) as
-        // −90° instead of sitting outside its own range (kimi F2).
+        // −90° instead of sitting outside its own range.
         let edit = edit_f32_opts(
             self.ui,
             id,

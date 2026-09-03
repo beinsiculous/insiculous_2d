@@ -69,8 +69,8 @@ fn test_resolve_by_name_inverse_of_display_name() {
     }
 }
 
-/// Audit §3.3: past ~30 entities rows were invisible AND the panel ignored
-/// the wheel. Wheel input inside the panel bounds scrolls the rows; wheel
+/// Past ~30 entities the rows were invisible and the panel ignored the
+/// wheel. Wheel input inside the panel bounds scrolls the rows; wheel
 /// input outside is not the panel's.
 #[test]
 fn test_hierarchy_scrolls_rows_with_wheel_in_bounds() {

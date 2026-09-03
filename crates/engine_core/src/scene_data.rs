@@ -9,14 +9,14 @@ use common::SheetGrid;
 use ecs::sprite_components::AnimationClip;
 use serde::{Deserialize, Serialize};
 
-/// `GridBackdrop` wire defaults (#46), hoisted for file size.
+/// `GridBackdrop` wire defaults, hoisted for file size.
 mod grid_defaults;
 
 // BehaviorData (+ its Behavior conversions) lives in `behavior_data.rs` for
 // file-size reasons; re-exported here so the scene schema stays one import.
 pub use crate::behavior_data::BehaviorData;
 // ScriptRefData/ScriptValueData (+ their Scripts conversions) live in
-// `script_data.rs` (issue #44); re-exported so `scene_data::ScriptRefData`
+// `script_data.rs`; re-exported so `scene_data::ScriptRefData`
 // stays the canonical import path, mirroring BehaviorData.
 pub use crate::script_data::{ScriptRefData, ScriptValueData};
 
@@ -261,7 +261,7 @@ pub enum ComponentData {
         depth: f32,
     },
     /// Spring-grid backdrop the engine simulates and draws beneath the
-    /// game's lines (#46). `GridBackdrop()` = the arcade playfield preset;
+    /// game's lines. `GridBackdrop()` = the arcade playfield preset;
     /// the entity's `Transform2D.position` is the grid's center.
     GridBackdrop {
         #[serde(default)]
@@ -345,7 +345,7 @@ pub enum ComponentData {
     },
     /// Behavior component - defines how an entity responds to input/events
     Behavior(BehaviorData),
-    /// The scripting seam Stage 1 (issue #44): inert, editor-editable
+    /// The scripting seam Stage 1: inert, editor-editable
     /// script bindings. Entity params persist by NAME (`ScriptValueData`).
     Scripts(Vec<ScriptRefData>),
     /// Tag component for entity identification (targeted by behaviors)
@@ -354,7 +354,7 @@ pub enum ComponentData {
         tag: String,
     },
     /// Dynamic component: any type registered in the ecs `ComponentRegistry`
-    /// that has no concrete variant above (issue #43). This is how
+    /// that has no concrete variant above. This is how
     /// game-defined components and the audio components reach scene files.
     ///
     /// Concrete variants remain reserved for types with load-time resolve

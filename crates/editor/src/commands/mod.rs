@@ -1,9 +1,4 @@
-//! Undo/redo command system for the editor.
-//!
-//! Implements the Command pattern: each user action is represented as an
-//! `EditorCommand` that can be executed, undone, and redone. The `CommandHistory`
-//! manages undo/redo stacks with optional command merging for continuous edits
-//! (e.g., dragging a gizmo or scrubbing a slider).
+//! Undo/redo command system managing action stacks and command merging.
 
 use std::any::Any;
 use std::collections::VecDeque;
@@ -68,7 +63,7 @@ pub trait EditorCommand: Send {
 
 /// Manages undo/redo stacks for editor commands.
 ///
-/// Also the **source of truth for whether the scene is dirty** (issue #24):
+/// Also the **source of truth for whether the scene is dirty**:
 /// every recorded mutation carries a unique id, and [`is_dirty`] compares
 /// the id on top of the undo stack against the id captured at the last
 /// [`mark_saved`]. Undoing back to the saved command reads clean again;
@@ -78,7 +73,7 @@ pub trait EditorCommand: Send {
 /// [`is_dirty`]: CommandHistory::is_dirty
 /// [`mark_saved`]: CommandHistory::mark_saved
 /// One recorded mutation plus the selection context needed to make
-/// undo/redo restore what the user had selected (#59).
+/// undo/redo restore what the user had selected.
 struct HistoryEntry {
     id: u64,
     cmd: Box<dyn EditorCommand>,
@@ -104,7 +99,7 @@ pub struct CommandHistory {
     /// boundary) — see [`Self::break_merge`].
     merge_sealed: bool,
     /// The selection as of the host's last [`note_selection`] — stamped
-    /// onto every NEW entry as its before-image (#59).
+    /// onto every NEW entry as its before-image.
     pending_selection: Vec<EntityId>,
     /// Selection to restore after the last undo/redo — collected by the
     /// host via [`take_selection_restore`].
@@ -130,7 +125,7 @@ impl CommandHistory {
     }
 
     /// Note the CURRENT selection as the before-image for any commands
-    /// recorded from now on (#59). Hosts call this before their handlers
+    /// recorded from now on. Hosts call this before their handlers
     /// mutate selection: once per frame at the top of the editor update,
     /// and per line on the command-API write path.
     pub fn note_selection(&mut self, selection: &Selection) {
@@ -192,10 +187,10 @@ impl CommandHistory {
 
     /// Undo the most recent command. Returns `true` if a command was applied.
     ///
-    /// Ordering is load-bearing (#59): the CURRENT selection (the host's
+    /// Ordering is load-bearing: the CURRENT selection (the host's
     /// last [`note_selection`]) is stamped as the entry's after-image, THEN
     /// the command undoes, THEN the before-image (pruned to entities alive
-    /// in the restored world — undo is id-exact per GPP-14, pruning only
+    /// in the restored world — undo is id-exact, pruning only
     /// defends cross-entry staleness) becomes the restore target.
     ///
     /// [`note_selection`]: Self::note_selection
@@ -262,8 +257,7 @@ impl CommandHistory {
         self.redo_stack.clear();
         self.saved_id = 0;
         // A cleared history must be FULLY clean — stale selection state
-        // would stamp wrong before-images onto the next commands (#59
-        // kimi F2).
+        // would stamp wrong before-images onto the next commands.
         self.pending_selection.clear();
         self.selection_restore = None;
     }
@@ -277,8 +271,7 @@ impl CommandHistory {
     /// [`push_already_executed`] with an EXPLICIT before-image, bypassing
     /// the noted pending selection — for commands whose gesture began long
     /// before the push (a cross-frame API batch: the macro must carry the
-    /// selection from `batch begin`, not from the last frame's note — #59
-    /// kimi F1).
+    /// selection from `batch begin`, not from the last frame's note).
     ///
     /// [`push_already_executed`]: Self::push_already_executed
     pub fn push_already_executed_with_before(
@@ -305,7 +298,7 @@ impl CommandHistory {
         if let Some(entry) = self.undo_stack.back_mut() {
             if entry.cmd.try_merge(cmd.as_ref()) {
                 // Merged state = new id + no redo;
-                // selection_before keeps the FIRST before-image (#59).
+                // selection_before keeps the FIRST before-image.
                 entry.id = self.next_id;
                 self.next_id += 1;
                 self.redo_stack.clear();

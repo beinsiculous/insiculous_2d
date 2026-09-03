@@ -161,7 +161,7 @@ macro_rules! editor_component_registry {
         ///
         /// Typed variants store a cloned concrete component; `Dynamic` holds
         /// a registry-name + serde value for any component the dynamic tier
-        /// covers (game-registered types — issue #43).
+        /// covers (game-registered types).
         #[derive(Debug, Clone)]
         pub enum StoredComponent {
             $( $h($h_ty), )+
@@ -217,7 +217,7 @@ macro_rules! editor_component_registry {
         }
 
         /// The `TypeId` of every component type this registry captures and
-        /// restores — typed entries PLUS the dynamic tier (issue #43).
+        /// restores — typed entries PLUS the dynamic tier.
         /// Snapshot code diffs an entity's actual components
         /// (`World::component_types`) against this set to detect component
         /// types that would be silently lost by a capture/restore round-trip.
@@ -320,7 +320,7 @@ macro_rules! editor_component_registry {
 
             // Dynamic-tier components render read-only (serde display) with
             // a remove [X] — typed field editors are the opt-in overlay this
-            // registry provides, and game types don't have one (issue #43).
+            // registry provides, and game types don't have one.
             let mut dynamic_removals: Vec<String> = Vec::new();
             y = render_dynamic_edit_blocks(
                 ui, world, entity, x, width, y,

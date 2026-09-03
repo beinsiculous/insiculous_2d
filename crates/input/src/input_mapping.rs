@@ -1,10 +1,9 @@
-//! Input mapping system for binding inputs to game-defined actions.
+//! Input mapping system for binding input sources to game-defined actions.
 //!
-//! # Binding Model
-//!
-//! [`InputMapping`] is generic over the action type: **games define their own
-//! action enums** and the engine never dictates what actions exist. Any
-//! `Copy + Eq + Hash` type works:
+//! [`InputMapping`] maps arbitrary `Copy + Eq + Hash` action types to bound
+//! [`InputSource`]s, evaluated against an [`InputHandler`]'s device state.
+//! Games define their own action enums; a new mapping is empty, and the
+//! engine's [`GameAction`] preset comes from [`InputMapping::with_default_bindings`].
 //!
 //! ```
 //! use input::{InputMapping, InputSource, InputHandler};
@@ -23,23 +22,6 @@
 //! let input = InputHandler::new();
 //! assert!(!actions.is_active(MyAction::Jump, &input));
 //! ```
-//!
-//! The mapping stores one source of truth: action → bound input sources.
-//! One action can have many sources, and one source may be bound to many
-//! actions (just call `bind` for each action).
-//!
-//! A new mapping is **empty** — no bindings are applied implicitly. For the
-//! engine's built-in [`GameAction`] preset (WASD/arrows movement, etc.), use
-//! [`InputMapping::with_default_bindings`].
-//!
-//! # Activation Semantics
-//!
-//! Action state is evaluated against an [`InputHandler`]'s device state:
-//!
-//! - [`InputMapping::is_active`] — any bound source is currently pressed
-//! - [`InputMapping::just_activated`] — a bound source was pressed this frame
-//!   and the action was not active at the end of the previous frame (pressing
-//!   a second source while one is already held does **not** re-trigger)
 
 use crate::gamepad::{AxisDirection, GamepadAxis, GamepadButton};
 use crate::input_handler::InputHandler;

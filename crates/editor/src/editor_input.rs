@@ -109,7 +109,7 @@ pub enum EditorAction {
     /// Stop the play session
     StopPlay,
     /// Toggle the play-session camera follow (viewport mirrors the game
-    /// camera vs. free pan/zoom — issue #42)
+    /// camera vs. free pan/zoom)
     ToggleCameraFollow,
 }
 

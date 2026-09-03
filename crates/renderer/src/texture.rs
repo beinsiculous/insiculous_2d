@@ -159,12 +159,12 @@ impl TextureManager {
         let bytes = common::vfs::read(path).map_err(|e| {
             TextureError::ImageLoadError(format!("Failed to load {:?}: {}", path, e))
         })?;
-        let img = image::load_from_memory(&bytes).map_err(|e| {
+        let image = image::load_from_memory(&bytes).map_err(|e| {
             TextureError::ImageLoadError(format!("Failed to load {:?}: {}", path, e))
         })?;
 
         // Get image dimensions
-        let (width, height) = img.dimensions();
+        let (width, height) = image.dimensions();
 
         // Validate dimensions
         if width > self.max_texture_dimension || height > self.max_texture_dimension {
@@ -176,7 +176,7 @@ impl TextureManager {
         }
 
         // Convert to RGBA8
-        let rgba = img.to_rgba8();
+        let rgba = image.to_rgba8();
         let data = rgba.as_raw();
 
         // Create handle and texture
@@ -199,11 +199,11 @@ impl TextureManager {
         bytes: &[u8],
         config: TextureLoadConfig,
     ) -> Result<TextureHandle, TextureError> {
-        let img = image::load_from_memory(bytes).map_err(|e| {
+        let image = image::load_from_memory(bytes).map_err(|e| {
             TextureError::ImageLoadError(format!("Failed to decode image: {}", e))
         })?;
 
-        let (width, height) = img.dimensions();
+        let (width, height) = image.dimensions();
 
         if width > self.max_texture_dimension || height > self.max_texture_dimension {
             return Err(TextureError::TextureTooLarge {
@@ -213,7 +213,7 @@ impl TextureManager {
             });
         }
 
-        let rgba = img.to_rgba8();
+        let rgba = image.to_rgba8();
         let data = rgba.as_raw();
 
         let handle = TextureHandle { id: self.next_handle };

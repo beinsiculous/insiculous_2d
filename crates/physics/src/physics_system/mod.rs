@@ -15,40 +15,15 @@
 //! physics system is held while reacting, so handlers can freely call
 //! `set_velocity` / `destroy_entity` / etc.
 //!
-//! # API Design: Pass-Through Methods
+//! # API
 //!
-//! [`PhysicsSystem`] provides several methods that delegate directly to [`PhysicsWorld`]:
-//! - `set_velocity()` — the single, universal "launch / move this body at
-//!   velocity V" API. Safe on bodies spawned this frame (defers until synced).
-//! - `take_collision_events()`
-//! - `destroy_entity()`
-//! - `reset_body()`
+//! [`PhysicsSystem`] provides pass-through methods (`set_velocity`,
+//! `take_collision_events`, `destroy_entity`, `reset_body`) delegating to
+//! [`PhysicsWorld`]. `set_velocity` safely buffers on bodies spawned in the
+//! current frame until synchronized with Rapier.
 //!
-//! These pass-through methods exist intentionally for **API ergonomics**:
-//!
-//! ```
-//! # use physics::PhysicsSystem;
-//! # use ecs::World;
-//! # use glam::Vec2;
-//! # let mut world = World::new();
-//! # let entity = world.create_entity();
-//! # let mut physics_system = PhysicsSystem::new();
-//! // With pass-through (cleaner):
-//! physics_system.set_velocity(entity, Vec2::new(0.0, 100.0), 0.0);
-//!
-//! // Without pass-through:
-//! physics_system.physics_world_mut().set_velocity(entity, Vec2::new(0.0, 100.0), 0.0);
-//! ```
-//!
-//! Note: the legacy `apply_impulse` pass-through was removed — every callsite
-//! in the workspace was semantically "start this body at velocity V" rather
-//! than a mass-aware momentum delta, and having two functions for the same
-//! intent was a footgun (impulse silently no-ops on same-frame spawns).
-//! `PhysicsWorld::apply_impulse` remains for the rare case that genuinely
-//! needs mass-aware impulse semantics on a live body.
-//!
-//! Users who need advanced physics operations can still access the underlying
-//! [`PhysicsWorld`] via [`physics_world()`](PhysicsSystem::physics_world) and
+//! Direct access to the underlying [`PhysicsWorld`] remains available via
+//! [`physics_world()`](PhysicsSystem::physics_world) and
 //! [`physics_world_mut()`](PhysicsSystem::physics_world_mut).
 
 mod sync;
@@ -80,7 +55,7 @@ enum DeferredBodyOp {
 
 /// The state last pushed into (or read back from) rapier for a live entity.
 ///
-/// The GPP-09 dirty-flag baseline: during sync, the current ECS components
+/// The dirty-flag baseline: during sync, the current ECS components
 /// are value-compared against this; a mismatch means game/editor code edited
 /// them externally, and the edit is pushed into rapier (teleport the body /
 /// rebuild the collider). The physics writeback updates the baseline too, so

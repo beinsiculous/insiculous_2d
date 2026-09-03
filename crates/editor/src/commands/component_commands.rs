@@ -96,11 +96,9 @@ impl EditorCommand for RemoveComponentCommand {
     }
 
     fn undo(&mut self, world: &mut World) {
-        // Restore primary component.
         if let Some(ref stored) = self.stored {
             stored.apply_to(world, self.entity);
         }
-        // Restore cascaded component.
         if let Some(ref stored) = self.cascade_stored {
             stored.apply_to(world, self.entity);
         }
@@ -115,7 +113,7 @@ impl EditorCommand for RemoveComponentCommand {
 }
 
 // ---------------------------------------------------------------------------
-// Dynamic-tier add/remove (issue #43) — string-keyed mirrors of the pair
+// Dynamic-tier add/remove — string-keyed mirrors of the pair
 // above for components with no ComponentKind variant (game-registered types).
 // No cascade logic: physics types are typed-tier.
 // ---------------------------------------------------------------------------

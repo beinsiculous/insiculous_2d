@@ -1,4 +1,4 @@
-//! The editor's command API — Stage A queries + Stage B writes (audit §9).
+//! The editor's command API — Stage A queries + Stage B writes.
 //!
 //! Line-oriented text in, single-line JSON out. This module is pure
 //! dispatch: no I/O, no threads, no `cfg` — a transport (today the

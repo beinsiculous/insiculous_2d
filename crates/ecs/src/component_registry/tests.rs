@@ -1,5 +1,5 @@
 // NOTE: the global registry is PROCESS-WIDE and never reset (there is no
-// prod reset, so tests get none either — kimi #43 F4 adjudication). Every
+// prod reset, so tests get none either). Every
 // test-registered type across all crates must use a globally unique name;
 // a collision panics loudly by design.
 use super::*;
@@ -83,7 +83,7 @@ fn test_dynamic_operations_reject_unknown_names_and_malformed_json() {
 #[should_panic(expected = "component name collision")]
 fn test_same_name_different_type_registration_panics() {
     // Two different Rust types under one name would deserialize saved
-    // scenes into the wrong type — fail fast at registration (kimi R2-F3).
+    // scenes into the wrong type — fail fast at registration.
     mod imposter {
         crate::define_component! {
             /// Same NAME as the outer TestComponent, different type.
@@ -130,7 +130,7 @@ fn test_persistent_names_are_sorted_for_stable_scene_diffs() {
 
 #[test]
 fn test_late_registration_into_global_is_visible() -> Result<(), String> {
-    // GPP-16: the global registry accepts registrations AFTER init, which
+    // The global registry accepts registrations after init, which
     // is how games register their own components in main().
     register_components(|r| r.register::<GameHealth>());
     assert!(with_global_registry(|r| r.is_registered("GameHealth")));
@@ -165,7 +165,7 @@ fn test_global_registry_has_builtin_components() {
         ("GridBackdrop", true),
         // Behavior/EntityTag are registered so a GAME reusing those names
         // panics at startup instead of the scene serializer's skip arms
-        // silently eating its data (kimi #43 F1).
+        // silently eating its data.
         ("Behavior", true),
         ("EntityTag", true),
         // PlaySoundEffect is a one-shot request: editable, never saved.
@@ -210,7 +210,7 @@ fn test_every_persistent_builtin_round_trips_through_its_json_wire() -> Result<(
 
 #[test]
 fn test_reentrant_global_access_panics_with_clear_message() {
-    // kimi R2-F9: a nested lock acquisition must panic loudly instead of
+    // A nested lock acquisition must panic loudly instead of
     // deadlocking the RwLock.
     let result = std::panic::catch_unwind(|| {
         with_global_registry(|_| with_global_registry(|r| r.is_registered("Transform2D")))
@@ -226,7 +226,7 @@ fn test_reentrant_global_access_panics_with_clear_message() {
 
 #[test]
 fn test_global_registry_recovers_from_a_poisoned_lock() {
-    // kimi R2-F1: a panic inside a registry closure must not brick every
+    // A panic inside a registry closure must not brick every
     // later scene load in the process. Poison the lock deliberately...
     let _ = std::panic::catch_unwind(|| {
         register_components(|_| panic!("boom during registration"));

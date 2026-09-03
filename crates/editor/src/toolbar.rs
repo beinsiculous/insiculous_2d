@@ -12,7 +12,7 @@ pub enum EditorTool {
     /// Select and click entities
     Select,
     /// Move/translate entities — the default, so a fresh editor shows a
-    /// gizmo the moment something is selected (audit §4.5)
+    /// gizmo the moment something is selected.
     #[default]
     Move,
     /// Rotate entities

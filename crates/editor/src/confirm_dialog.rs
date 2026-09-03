@@ -1,5 +1,5 @@
-//! A modal confirm dialog on the [`ui::UiLayer::Modal`] band (issue #52,
-//! audit §1.4/§6.7(7)): an input-blocking scrim, a centered panel, and up
+//! A modal confirm dialog on the [`ui::UiLayer::Modal`] band: an
+//! input-blocking scrim, a centered panel, and up
 //! to three buttons. Deliberately GENERIC — the unsaved-changes prompt is
 //! the first consumer; scripting Stage 5's build prompts reuse it.
 
@@ -63,11 +63,11 @@ impl ConfirmDialog {
     pub fn button_rects(window_size: Vec2) -> (Rect, Rect, Rect) {
         let panel = Self::panel_rect(window_size);
         let y = panel.y + panel.height - PADDING - BUTTON_HEIGHT;
-        let w = 88.0;
+        let button_width = 88.0;
         let gap = 10.0;
-        let cancel = Rect::new(panel.x + panel.width - PADDING - w, y, w, BUTTON_HEIGHT);
-        let alt = Rect::new(cancel.x - gap - w, y, w, BUTTON_HEIGHT);
-        let confirm = Rect::new(alt.x - gap - w, y, w, BUTTON_HEIGHT);
+        let cancel = Rect::new(panel.x + panel.width - PADDING - button_width, y, button_width, BUTTON_HEIGHT);
+        let alt = Rect::new(cancel.x - gap - button_width, y, button_width, BUTTON_HEIGHT);
+        let confirm = Rect::new(alt.x - gap - button_width, y, button_width, BUTTON_HEIGHT);
         (confirm, alt, cancel)
     }
 

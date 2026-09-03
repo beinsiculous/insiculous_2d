@@ -91,7 +91,7 @@ pub fn spawn_entity_tree(
 /// The one spawn recursion. `reuse_ids` (preorder: root, then each child
 /// subtree) resurrects entities under specific ids via
 /// `create_entity_with_id` — how redo and Cut-undo keep selections and
-/// later history commands valid (the GPP-14 contract). Every spawned id is
+/// later history commands valid. Every spawned id is
 /// appended to `spawned` in the same preorder, and `spawned.len()` doubles
 /// as the index into `reuse_ids`.
 fn spawn_tree_inner(
@@ -149,7 +149,7 @@ fn tree_entity_ids(world: &World, root: EntityId) -> Vec<EntityId> {
 /// (`remove_entity_hierarchy` — depth-safe); redo resurrects every entity
 /// under the SAME ids the first execute allocated, so the selection and any
 /// later history command referencing the spawned entities stay valid
-/// across undo/redo cycles (the GPP-14 contract).
+/// across undo/redo cycles.
 pub struct SpawnTreeCommand {
     tree: ClipboardEntity,
     parent: Option<EntityId>,
@@ -385,7 +385,7 @@ mod tests {
 
     #[test]
     fn test_paste_redo_resurrects_the_same_ids_for_root_and_children() {
-        // GPP-14: the selection and any later history command referencing
+        // The selection and any later history command referencing
         // the pasted entities must stay valid across undo/redo.
         let mut world = World::new();
         let source = named_entity(&mut world, "Parent", Vec2::ZERO);

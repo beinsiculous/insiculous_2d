@@ -122,7 +122,7 @@ impl SceneViewport {
     }
 
     /// Adopt a zoom from the GAME's main camera without the interactive
-    /// [0.1, 10.0] UX clamp (issue #42, kimi F2): the follow view must match
+    /// [0.1, 10.0] UX clamp: the follow view must match
     /// the shipped game exactly, even at extreme authored zooms. Non-finite
     /// or non-positive values fall back to 1.0 — the viewport's world↔screen
     /// math divides by zoom and must never see 0 or NaN.
@@ -254,10 +254,10 @@ impl SceneViewport {
     /// coordinates, so sprites land exactly where the editor overlay
     /// (gizmo, picking, grid) expects them.
     pub fn to_window_render_camera(&self, window_size: Vec2) -> Camera {
-        let pc = self.viewport_center();
+        let viewport_center = self.viewport_center();
         let offset = Vec2::new(
-            (window_size.x * 0.5 - pc.x) / self.camera_zoom,
-            (pc.y - window_size.y * 0.5) / self.camera_zoom,
+            (window_size.x * 0.5 - viewport_center.x) / self.camera_zoom,
+            (viewport_center.y - window_size.y * 0.5) / self.camera_zoom,
         );
         Camera::new(self.camera_position + offset, window_size).with_zoom(self.camera_zoom)
     }

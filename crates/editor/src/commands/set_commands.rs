@@ -148,10 +148,10 @@ impl_set_component_command!(
     /// Command for an inspector property edit on an EntityTag.
     SetEntityTagCommand, EntityTag, "Set EntityTag");
 impl_set_component_command!(
-    /// Command for an inspector property edit on the Scripts component (#44).
+    /// Command for an inspector property edit on the Scripts component.
     SetScriptsCommand, ecs::script::Scripts, "Set Scripts");
 impl_set_component_command!(
-    /// Command for an inspector property edit on a GridBackdrop (#46).
+    /// Command for an inspector property edit on a GridBackdrop.
     SetGridBackdropCommand, ecs::GridBackdrop, "Set GridBackdrop");
 impl_set_component_command!(
     /// Command for an inspector property edit on a Name. Like every

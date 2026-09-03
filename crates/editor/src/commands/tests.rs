@@ -83,7 +83,7 @@ fn test_history_cap_drops_the_oldest_entry_and_undo_runs_newest_first() {
 }
 
 // ---------------------------------------------------------------------------
-// Entity commands — ids stay stable across undo/redo (GPP-14)
+// Entity commands — ids stay stable across undo/redo
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -313,7 +313,7 @@ fn test_mismatched_field_hints_yield_one_entry_per_gesture_frame() {
 }
 
 // ---------------------------------------------------------------------------
-// Name commands (#32)
+// Name commands
 // ---------------------------------------------------------------------------
 
 #[test]

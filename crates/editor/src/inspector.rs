@@ -39,7 +39,7 @@ impl Default for InspectorStyle {
 }
 
 /// Read a component's state as a serde value — the read half of the
-/// inspector, split from rendering (audit §9.2): the command API's
+/// inspector, split from rendering: the command API's
 /// `describe` query and the pixel inspector consume the same data.
 pub fn component_value<T: Serialize>(component: &T) -> Result<Value, serde_json::Error> {
     serde_json::to_value(component)

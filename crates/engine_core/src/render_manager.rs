@@ -35,7 +35,7 @@ pub struct RenderManager {
     /// The sprite rendering pipeline
     sprite_pipeline: Option<SpritePipeline>,
     /// Post-tonemap UI pipeline: targets the swapchain format directly so
-    /// authored UI colors display exactly (issue #26).
+    /// authored UI colors display exactly.
     ui_pipeline: Option<SpritePipeline>,
     /// The 2D camera for orthographic projection
     camera: Camera,
@@ -142,7 +142,7 @@ impl RenderManager {
 
         // Create sprite pipeline with max 1000 sprites per batch
         let sprite_pipeline = SpritePipeline::new(renderer.device(), 1000);
-        // UI draws post-tonemap straight to the swapchain (issue #26).
+        // UI draws post-tonemap straight to the swapchain.
         let ui_pipeline =
             SpritePipeline::new_ui(renderer.device(), 1000, renderer.surface_format());
 
@@ -311,7 +311,7 @@ impl RenderManager {
             min_depth(a)
                 .total_cmp(&min_depth(b))
                 .then_with(|| a.texture_handle.id.cmp(&b.texture_handle.id))
-                // Same-texture batches can differ only by clip (issue #41).
+                // Same-texture batches can differ only by clip.
                 .then_with(|| a.clip.cmp(&b.clip))
         });
         self.render(&batch_refs, &[], textures)
@@ -343,7 +343,7 @@ impl RenderManager {
     /// Rotation and viewport_size stay render-managed (viewport_size tracks
     /// window resizes; the editor viewport's world↔screen math has no
     /// rotation term, so syncing rotation would break its overlay/GPU
-    /// agreement — issue #42's documented limitation). Worlds without a
+    /// agreement). Worlds without a
     /// main-camera entity are untouched, and games can still override
     /// `ctx.camera` in `render()` afterwards.
     pub fn sync_main_camera(&mut self, world: &World) {
@@ -394,7 +394,7 @@ impl RenderManager {
 
     /// Bound the game-world passes to a scissor rect in physical surface
     /// pixels (`None` = full window). Per-frame state, forwarded to the
-    /// renderer like `set_lines` (issue #41).
+    /// renderer like `set_lines`.
     pub fn set_viewport_scissor(&mut self, scissor: Option<[u32; 4]>) {
         if let Some(renderer) = &mut self.renderer {
             renderer.set_viewport_scissor(scissor);

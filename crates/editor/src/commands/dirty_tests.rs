@@ -1,4 +1,4 @@
-//! `CommandHistory` as the dirty-state source of truth (issue #24): a
+//! `CommandHistory` as the dirty-state source of truth: a
 //! command was recorded ⇒ the scene changed. The watermark contract:
 //! undoing back to the last-saved command reads clean; merging into a
 //! post-save command reassigns its id so no history position reads clean

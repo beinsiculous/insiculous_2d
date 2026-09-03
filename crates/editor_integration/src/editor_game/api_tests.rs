@@ -35,7 +35,7 @@ fn test_answer_api_lines_answers_each_non_blank_line_in_order_from_live_state() 
 
 #[test]
 fn test_api_script_builds_scene_and_gui_undo_reverts_each_step() {
-    // THE ship point (audit §9 Stage B): a script builds a scene; each step
+    // A script builds a scene; each step
     // is one entry on the same CommandHistory the GUI uses, so N undos
     // return the world to empty.
     let mut editor = editor_game();
@@ -82,7 +82,7 @@ fn test_api_create_archetypes_all_map_to_factories() {
 
 #[test]
 fn test_create_with_empty_name_is_rejected_without_spawning() {
-    // Kimi F4: the guard runs BEFORE the factory — a rejection must not
+    // The guard runs BEFORE the factory — a rejection must not
     // leak a half-created entity.
     let mut editor = editor_game();
     let mut world = World::new();
@@ -180,7 +180,7 @@ fn test_play_commits_an_open_batch_as_one_entry_and_stop_discards_a_paused_one()
     assert!(world.entities().is_empty());
     assert!(!editor.command_history.can_undo());
 
-    // Kimi F2: a batch opened while Paused references the mid-simulation
+    // A batch opened while Paused references the mid-simulation
     // world the restore discards — Stop drops it with the runtime state.
     assert_ok(&api_line(&mut editor, &mut world, "create empty Marker"));
     editor.handle_play_action(PlayControlAction::Play, &mut world);

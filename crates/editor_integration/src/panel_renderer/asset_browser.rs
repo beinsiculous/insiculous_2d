@@ -82,7 +82,7 @@ pub(super) fn render_asset_browser(
         }
     }
 
-    // ── Scroll (shared ScrollState — audit §3.3) ────────────────────
+    // ── Scroll (shared ScrollState) ────────────────────────────────
     let grid_origin = Vec2::new(bounds.x + PADDING, bounds.y + HEADER_HEIGHT + PADDING);
     let columns = (((bounds.width - PADDING * 2.0) / (TILE_SIZE + TILE_GAP)) as usize).max(1);
     let rows = editor.asset_browser.entries.len().div_ceil(columns);

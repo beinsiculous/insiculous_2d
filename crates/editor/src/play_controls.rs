@@ -18,7 +18,7 @@ pub enum PlayControlAction {
     Pause,
     /// Stop the game and restore the pre-play snapshot.
     Stop,
-    /// Toggle whether the viewport follows the game camera (issue #42).
+    /// Toggle whether the viewport follows the game camera.
     ToggleCameraFollow,
 }
 
@@ -123,9 +123,9 @@ impl PlayControls {
 
         match state {
             EditorPlayState::Editing => {
-                let btn = Rect::new(x, y, self.first_button_width(state), self.button_size);
-                ui.rect_rounded(btn, theme.play_button_bg, 4.0);
-                if ui.button("play_ctrl_play", "Play", btn) {
+                let button = Rect::new(x, y, self.first_button_width(state), self.button_size);
+                ui.rect_rounded(button, theme.play_button_bg, 4.0);
+                if ui.button("play_ctrl_play", "Play", button) {
                     action = Some(PlayControlAction::Play);
                 }
             }
@@ -156,7 +156,7 @@ impl PlayControls {
             }
         }
 
-        // Camera-follow toggle, play sessions only (issue #42): highlighted
+        // Camera-follow toggle, play sessions only: highlighted
         // while the viewport mirrors the game camera; plain while free.
         if Self::has_stop_button(state) {
             let follow_btn =

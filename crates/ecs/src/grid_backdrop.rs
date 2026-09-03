@@ -1,4 +1,4 @@
-//! `GridBackdrop` — the playfield spring grid as scene data (#46).
+//! `GridBackdrop` — the playfield spring grid as scene data.
 //!
 //! The component carries the grid's *configuration*: topology, dimensions,
 //! color and the simulation tunables. The engine owns the simulated mesh

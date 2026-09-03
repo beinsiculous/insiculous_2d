@@ -195,13 +195,13 @@ impl AchievementManager {
     /// Missing file is treated as "nothing unlocked yet" (not an error).
     pub fn with_save_path(path: impl Into<PathBuf>) -> Self {
         let path = path.into();
-        let mut mgr = Self::in_memory();
-        mgr.save_path = Some(path.clone());
+        let mut manager = Self::in_memory();
+        manager.save_path = Some(path.clone());
         // Absence is queried through the save_store seam, not Path::exists() — the
         // latter is always false on wasm, where the slot is a localStorage key.
         match save_store::read(&path) {
             Ok(Some(_)) => {
-                if let Err(e) = mgr.load() {
+                if let Err(e) = manager.load() {
                     log::warn!("Failed to load achievements from {}: {}", path.display(), e);
                 }
             }
@@ -210,7 +210,7 @@ impl AchievementManager {
                 log::warn!("Failed to load achievements from {}: {}", path.display(), e);
             }
         }
-        mgr
+        manager
     }
 
     /// Override the toast duration (seconds).

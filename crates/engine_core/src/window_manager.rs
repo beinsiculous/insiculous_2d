@@ -120,8 +120,8 @@ impl WindowManager {
                 // above is logical, and on HiDPI the surface (configured
                 // from inner_size) is scale× larger. Without this, every
                 // window_size consumer — UI layout, the render camera, the
-                // #41 viewport scissor — runs one frame (or more) at the
-                // wrong scale until the first Resized event (kimi #41 F1).
+                // viewport scissor — runs one frame (or more) at the
+                // wrong scale until the first Resized event.
                 // Skip a 0×0 report (web canvas before its first layout —
                 // the real size arrives via resize()).
                 let physical = window.inner_size();

@@ -1,7 +1,7 @@
 //! Scene I/O through the editor: the mandatory save choke point (file
 //! written, parses back, dirty cleared, script targets auto-named through
-//! the history), the load dry-run that never costs the live world (#50),
-//! the physics block reaching the world as a resource (#53), and New Scene
+//! the history), the load dry-run that never costs the live world,
+//! the physics block reaching the world as a resource, and New Scene
 //! resetting every piece of session state.
 
 use std::path::PathBuf;
@@ -86,7 +86,7 @@ fn test_save_writes_a_file_that_parses_back_and_clears_dirty() -> std::io::Resul
 
 #[test]
 fn test_save_auto_names_script_targets_through_command_history() -> std::io::Result<()> {
-    // kimi #44 code F1/F2: the save-time auto-naming must be an UNDOABLE
+    // The save-time auto-naming must be an UNDOABLE
     // CommandHistory entry, never a silent world mutation.
     use ecs::script::{ScriptRef, ScriptValue, Scripts};
     let dir = tempfile::tempdir()?;

@@ -20,9 +20,9 @@ impl<G: Game> EditorGame<G> {
     /// so the caller can notify the inner game via `on_play_stopped`.
     pub(super) fn handle_play_action(&mut self, action: PlayControlAction, world: &mut ecs::World) -> bool {
         // Any play-state transition kills an in-flight viewport gesture:
-        // handle_input runs in BOTH play and edit modes since #42, so a
+        // handle_input runs in BOTH play and edit modes, so a
         // button held across a transition could otherwise complete a
-        // phantom click/marquee in the new state (kimi #42 F5).
+        // phantom click/marquee in the new state.
         if !matches!(action, PlayControlAction::ToggleCameraFollow) {
             self.editor.viewport_input.cancel_marquee();
         }
@@ -37,8 +37,8 @@ impl<G: Game> EditorGame<G> {
                     // Defensive: entering Play drops a pending confirm —
                     // unreachable through the blocked UI, cheap insurance.
                     self.pending_scene_action = None;
-                    // Dropping a live drag is a gesture boundary too (#56
-                    // kimi F1): pre-Play and post-Stop nudges must not merge
+                    // Dropping a live drag is a gesture boundary too:
+                    // pre-Play and post-Stop nudges must not merge
                     // into one undo entry across the discarded drag.
                     self.command_history.break_merge();
                     // An open command-API batch commits NOW: its commands
@@ -48,7 +48,7 @@ impl<G: Game> EditorGame<G> {
                     if let Some(batch) = self.api_batch.take() {
                         if !batch.commands.is_empty() {
                             // The macro carries the batch's own pre-batch
-                            // selection snapshot (#59 kimi F1).
+                            // selection snapshot.
                             self.command_history.push_already_executed_with_before(
                                 Box::new(editor::commands::MacroCommand::new(
                                     batch.name,
@@ -69,10 +69,10 @@ impl<G: Game> EditorGame<G> {
                     self.world_snapshot = Some(snapshot);
                     // Save the editing pan/zoom and adopt the game camera's
                     // pose — position AND zoom (the ecs Camera carries zoom;
-                    // issue #42 stopped dropping it). No main-camera entity:
+                    // the runtime stopped dropping it). No main-camera entity:
                     // zoom 1.0, parity with how such a game renders outside
                     // the editor. Follow re-arms at every SESSION START only
-                    // (kimi R2-F8: pause→resume preserves a user's toggle).
+                    // (pause→resume preserves a user's toggle).
                     self.editing_camera = Some((
                         self.editor.viewport.camera_position(),
                         self.editor.viewport.camera_zoom(),
@@ -112,7 +112,7 @@ impl<G: Game> EditorGame<G> {
                     // referencing the mid-simulation world the restore below
                     // discards — a later `batch end` would push a macro that
                     // undoes against the wrong world. Drop it with the
-                    // runtime state (kimi F2).
+                    // runtime state.
                     if let Some(batch) = self.api_batch.take() {
                         if !batch.commands.is_empty() {
                             self.editor
@@ -151,7 +151,7 @@ impl<G: Game> EditorGame<G> {
                     world.insert_resource(engine_core::UiElementsHidden);
                     // Spring-grid backdrops rebuild at rest: entity ids survive
                     // the restore, so without this a grid stopped mid-ripple
-                    // would stay deformed and frozen (#46, kimi plan F7).
+                    // would stay deformed and frozen.
                     engine_core::grid::request_backdrop_reset(world);
                     self.editor.set_play_state(EditorPlayState::Editing);
                     true
@@ -174,7 +174,7 @@ impl<G: Game> EditorGame<G> {
         }
     }
 
-    /// Apply the selection undo/redo wants restored (#59): platform
+    /// Apply the selection undo/redo wants restored: platform
     /// convention is that undoing a Delete/Cut brings the selection back.
     pub(super) fn apply_selection_restore(&mut self) {
         if let Some(ids) = self.command_history.take_selection_restore() {
@@ -184,7 +184,7 @@ impl<G: Game> EditorGame<G> {
     }
 
     /// Top-level key handler: every editor shortcut resolves through the
-    /// ONE rebindable table (`EditorInputMapping::resolve` — audit §4.9).
+    /// ONE rebindable table (`EditorInputMapping::resolve`).
     /// Play controls always work; while Playing the raw key forwards to the
     /// game WITHOUT resolving editor actions (Q must reach the playtested
     /// game); unresolved keys forward to the game while Editing too.
@@ -193,7 +193,7 @@ impl<G: Game> EditorGame<G> {
         // Delete/Backspace edit the buffer, they must not delete the entity.
         // Enter/Tab/Escape are handled by the widget itself, which clears focus.
         // A pending confirm dialog owns the keyboard — checked BEFORE the
-        // text-focus gate (#52 kimi F1: a focused field must not swallow
+        // text-focus gate (a focused field must not swallow
         // the modal's keys): Escape cancels, Enter saves, everything else
         // is swallowed.
         if self.confirm_dialog_consumes_key(key) {

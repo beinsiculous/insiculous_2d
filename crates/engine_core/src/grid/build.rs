@@ -1,4 +1,4 @@
-//! Build a [`GridMesh`] from a scene-authored [`GridBackdrop`] (#46).
+//! Build a [`GridMesh`] from a scene-authored [`GridBackdrop`].
 //!
 //! Scene data is user-edited, so instead of the constructors' asserts this
 //! path builds from [`GridBackdrop::normalized`] — dimensions clamped, odd
@@ -13,7 +13,7 @@ use super::GridMesh;
 
 /// Apply a (normalized) config's tunables to a live mesh without touching
 /// its lattice or simulation state — a color, visibility or stiffness edit
-/// must not snap an active ripple to rest (kimi #46 F3).
+/// must not snap an active ripple to rest.
 pub fn apply_grid_tunables(mesh: &mut GridMesh, config: &GridBackdrop) {
     mesh.color = config.color;
     mesh.emissive = config.emissive;
@@ -69,7 +69,7 @@ mod tests {
         // square lattice keeps them), dimensions and spacing clamp to the
         // sane range, non-finite values fall back to the preset, and
         // negative coefficients clamp to zero instead of inverting the
-        // springs (kimi #46 F1: a negative stiffness pushes every node AWAY
+        // springs (a negative stiffness pushes every node AWAY
         // from rest and the grid explodes to NaN within frames).
         let hex = GridBackdrop { cols: 45, ..GridBackdrop::default() };
         assert_eq!(build_grid_mesh(&hex, Vec2::ZERO).cols, 46, "odd hex columns round up, no panic");

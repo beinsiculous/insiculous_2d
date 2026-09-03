@@ -17,7 +17,7 @@ use crate::scene_data::*;
 /// original path strings (e.g., `"#white"`, `"player.png"`). Callers with
 /// access to an `AssetManager` can use `assets.texture_path(handle)`;
 /// tests can provide a simple default.
-/// NOTE (#44): `Scripts` Entity params persist by target NAME — a caller
+/// NOTE: `Scripts` Entity params persist by target NAME — a caller
 /// whose world may hold scripts referencing UNNAMED entities should run
 /// `script_data::ensure_script_target_names(world)` first, or those params
 /// are dropped with a warning (the editor's save choke point does this,
@@ -50,7 +50,7 @@ fn entity_to_entity_data(
     entity: EntityId,
     texture_path_fn: &dyn Fn(u32) -> String,
 ) -> EntityData {
-    let name = world.get::<Name>(entity).map(|n| n.as_str().to_string());
+    let name = world.get::<Name>(entity).map(|name| name.as_str().to_string());
     let components = extract_components(world, entity, texture_path_fn);
 
     let children_ids = world.get_children(entity).unwrap_or(&[]);
@@ -75,8 +75,8 @@ fn entity_to_entity_data(
 /// The `Name` component is handled separately as `EntityData.name`. After
 /// the concrete variants, every OTHER registry-persisted type present on the
 /// entity (audio components, game-registered types) is emitted as
-/// `ComponentData::Dynamic` — name-sorted for stable scene diffs (issue #43;
-/// this ended the AudioSource/AudioListener silent drop).
+/// `ComponentData::Dynamic` — name-sorted for stable scene diffs (this
+/// ended the AudioSource/AudioListener silent drop).
 fn extract_components(
     world: &World,
     entity: EntityId,
@@ -85,80 +85,80 @@ fn extract_components(
     let mut components = Vec::new();
 
     // Transform2D
-    if let Some(t) = world.get::<Transform2D>(entity) {
+    if let Some(transform) = world.get::<Transform2D>(entity) {
         components.push(ComponentData::Transform2D {
-            position: (t.position.x, t.position.y),
-            rotation: t.rotation,
-            scale: (t.scale.x, t.scale.y),
+            position: (transform.position.x, transform.position.y),
+            rotation: transform.rotation,
+            scale: (transform.scale.x, transform.scale.y),
         });
     }
 
     // Sprite
-    if let Some(s) = world.get::<Sprite>(entity) {
+    if let Some(sprite) = world.get::<Sprite>(entity) {
         components.push(ComponentData::Sprite {
-            texture: texture_path_fn(s.texture_handle),
-            offset: (s.offset.x, s.offset.y),
-            rotation: s.rotation,
-            scale: (s.scale.x, s.scale.y),
-            color: (s.color.x, s.color.y, s.color.z, s.color.w),
-            depth: s.depth,
-            emissive: s.emissive,
-            tex_region: (s.tex_region[0], s.tex_region[1], s.tex_region[2], s.tex_region[3]),
-            visible: s.visible,
+            texture: texture_path_fn(sprite.texture_handle),
+            offset: (sprite.offset.x, sprite.offset.y),
+            rotation: sprite.rotation,
+            scale: (sprite.scale.x, sprite.scale.y),
+            color: (sprite.color.x, sprite.color.y, sprite.color.z, sprite.color.w),
+            depth: sprite.depth,
+            emissive: sprite.emissive,
+            tex_region: (sprite.tex_region[0], sprite.tex_region[1], sprite.tex_region[2], sprite.tex_region[3]),
+            visible: sprite.visible,
         });
     }
 
     // Camera
-    if let Some(c) = world.get::<Camera>(entity) {
+    if let Some(camera) = world.get::<Camera>(entity) {
         components.push(ComponentData::Camera2D {
-            position: (c.position.x, c.position.y),
-            rotation: c.rotation,
-            zoom: c.zoom,
-            viewport_size: (c.viewport_size.x, c.viewport_size.y),
-            is_main_camera: c.is_main_camera,
+            position: (camera.position.x, camera.position.y),
+            rotation: camera.rotation,
+            zoom: camera.zoom,
+            viewport_size: (camera.viewport_size.x, camera.viewport_size.y),
+            is_main_camera: camera.is_main_camera,
         });
     }
 
     // Tilemap
-    if let Some(tm) = world.get::<ecs::Tilemap>(entity) {
+    if let Some(tilemap) = world.get::<ecs::Tilemap>(entity) {
         components.push(ComponentData::Tilemap {
-            tileset: texture_path_fn(tm.tileset),
-            width: tm.width,
-            height: tm.height,
-            tile_size: tm.tile_size,
-            tiles: tm.tiles.clone(),
-            tile_uv_size: (tm.tile_uv_size.x, tm.tile_uv_size.y),
-            depth: tm.depth,
+            tileset: texture_path_fn(tilemap.tileset),
+            width: tilemap.width,
+            height: tilemap.height,
+            tile_size: tilemap.tile_size,
+            tiles: tilemap.tiles.clone(),
+            tile_uv_size: (tilemap.tile_uv_size.x, tilemap.tile_uv_size.y),
+            depth: tilemap.depth,
         });
     }
 
-    // GridBackdrop (#46)
-    if let Some(g) = world.get::<ecs::GridBackdrop>(entity) {
+    // GridBackdrop
+    if let Some(grid) = world.get::<ecs::GridBackdrop>(entity) {
         components.push(ComponentData::GridBackdrop {
-            topology: g.topology,
-            cols: g.cols,
-            rows: g.rows,
-            spacing: g.spacing,
-            color: g.color.into(),
-            emissive: g.emissive,
-            visible: g.visible,
-            stiffness: g.stiffness,
-            damping: g.damping,
-            rest_pull: g.rest_pull,
-            rest_alpha_fraction: g.rest_alpha_fraction,
-            activity_attack: g.activity_attack,
-            activity_release: g.activity_release,
-            activity_displacement_ref: g.activity_displacement_ref,
-            activity_velocity_ref: g.activity_velocity_ref,
+            topology: grid.topology,
+            cols: grid.cols,
+            rows: grid.rows,
+            spacing: grid.spacing,
+            color: grid.color.into(),
+            emissive: grid.emissive,
+            visible: grid.visible,
+            stiffness: grid.stiffness,
+            damping: grid.damping,
+            rest_pull: grid.rest_pull,
+            rest_alpha_fraction: grid.rest_alpha_fraction,
+            activity_attack: grid.activity_attack,
+            activity_release: grid.activity_release,
+            activity_displacement_ref: grid.activity_displacement_ref,
+            activity_velocity_ref: grid.activity_velocity_ref,
         });
     }
 
     // SpriteAnimation
-    if let Some(a) = world.get::<SpriteAnimation>(entity) {
+    if let Some(animation) = world.get::<SpriteAnimation>(entity) {
         components.push(ComponentData::SpriteAnimation {
-            sheet: a.sheet.clone(),
-            grid: a.grid.into(),
-            clips: a
+            sheet: animation.sheet.clone(),
+            grid: animation.grid.into(),
+            clips: animation
                 .clips
                 .iter()
                 .map(|(name, clip)| (name.clone(), ClipData::from(clip.clone())))
@@ -166,34 +166,34 @@ fn extract_components(
             // Only a running animation names an autoplay clip: a paused one
             // must not come back playing. Frame position is runtime state and
             // is never written, so playback always restarts from the top.
-            autoplay: a.playing.then(|| a.current_clip.clone()).flatten(),
+            autoplay: animation.playing.then(|| animation.current_clip.clone()).flatten(),
         });
     }
 
     // RigidBody (behind physics feature)
     #[cfg(feature = "physics")]
-    if let Some(rb) = world.get::<physics::components::RigidBody>(entity) {
-        let body_type = match rb.body_type {
+    if let Some(rigid_body) = world.get::<physics::components::RigidBody>(entity) {
+        let body_type = match rigid_body.body_type {
             physics::components::RigidBodyType::Dynamic => RigidBodyTypeData::Dynamic,
             physics::components::RigidBodyType::Static => RigidBodyTypeData::Static,
             physics::components::RigidBodyType::Kinematic => RigidBodyTypeData::Kinematic,
         };
         components.push(ComponentData::RigidBody {
             body_type,
-            velocity: (rb.velocity.x, rb.velocity.y),
-            angular_velocity: rb.angular_velocity,
-            gravity_scale: rb.gravity_scale,
-            linear_damping: rb.linear_damping,
-            angular_damping: rb.angular_damping,
-            can_rotate: rb.can_rotate,
-            ccd_enabled: rb.ccd_enabled,
+            velocity: (rigid_body.velocity.x, rigid_body.velocity.y),
+            angular_velocity: rigid_body.angular_velocity,
+            gravity_scale: rigid_body.gravity_scale,
+            linear_damping: rigid_body.linear_damping,
+            angular_damping: rigid_body.angular_damping,
+            can_rotate: rigid_body.can_rotate,
+            ccd_enabled: rigid_body.ccd_enabled,
         });
     }
 
     // Collider (behind physics feature)
     #[cfg(feature = "physics")]
-    if let Some(col) = world.get::<physics::components::Collider>(entity) {
-        let shape = match &col.shape {
+    if let Some(collider) = world.get::<physics::components::Collider>(entity) {
+        let shape = match &collider.shape {
             physics::components::ColliderShape::Box { half_extents } => {
                 ColliderShapeData::Box {
                     half_extents: (half_extents.x, half_extents.y),
@@ -217,61 +217,61 @@ fn extract_components(
         };
         components.push(ComponentData::Collider {
             shape,
-            offset: (col.offset.x, col.offset.y),
-            is_sensor: col.is_sensor,
-            friction: col.friction,
-            restitution: col.restitution,
+            offset: (collider.offset.x, collider.offset.y),
+            is_sensor: collider.is_sensor,
+            friction: collider.friction,
+            restitution: collider.restitution,
         });
     }
 
     // UI elements (screen-space, anchor-placed)
-    if let Some(l) = world.get::<ecs::UiLabel>(entity) {
+    if let Some(label) = world.get::<ecs::UiLabel>(entity) {
         components.push(ComponentData::UiLabel {
-            text: l.text.clone(),
-            anchor: l.anchor,
-            offset: (l.offset.x, l.offset.y),
-            font_size: l.font_size,
-            color: (l.color.x, l.color.y, l.color.z, l.color.w),
-            visible: l.visible,
+            text: label.text.clone(),
+            anchor: label.anchor,
+            offset: (label.offset.x, label.offset.y),
+            font_size: label.font_size,
+            color: (label.color.x, label.color.y, label.color.z, label.color.w),
+            visible: label.visible,
         });
     }
-    if let Some(p) = world.get::<ecs::UiPanel>(entity) {
+    if let Some(panel) = world.get::<ecs::UiPanel>(entity) {
         components.push(ComponentData::UiPanel {
-            anchor: p.anchor,
-            offset: (p.offset.x, p.offset.y),
-            size: (p.size.x, p.size.y),
-            background: (p.background.x, p.background.y, p.background.z, p.background.w),
-            border: (p.border.x, p.border.y, p.border.z, p.border.w),
-            border_width: p.border_width,
-            visible: p.visible,
+            anchor: panel.anchor,
+            offset: (panel.offset.x, panel.offset.y),
+            size: (panel.size.x, panel.size.y),
+            background: (panel.background.x, panel.background.y, panel.background.z, panel.background.w),
+            border: (panel.border.x, panel.border.y, panel.border.z, panel.border.w),
+            border_width: panel.border_width,
+            visible: panel.visible,
         });
     }
-    if let Some(b) = world.get::<ecs::UiButton>(entity) {
+    if let Some(button) = world.get::<ecs::UiButton>(entity) {
         components.push(ComponentData::UiButton {
-            text: b.text.clone(),
-            id: b.id.clone(),
-            anchor: b.anchor,
-            offset: (b.offset.x, b.offset.y),
-            size: (b.size.x, b.size.y),
-            visible: b.visible,
+            text: button.text.clone(),
+            id: button.id.clone(),
+            anchor: button.anchor,
+            offset: (button.offset.x, button.offset.y),
+            size: (button.size.x, button.size.y),
+            visible: button.visible,
         });
     }
 
     // Behavior — conversion lives on `From<&Behavior> for BehaviorData` in scene_data.rs
-    if let Some(b) = world.get::<ecs::behavior::Behavior>(entity) {
-        components.push(ComponentData::Behavior(BehaviorData::from(b)));
+    if let Some(behavior) = world.get::<ecs::behavior::Behavior>(entity) {
+        components.push(ComponentData::Behavior(BehaviorData::from(behavior)));
     }
 
     // EntityTag
-    if let Some(t) = world.get::<ecs::behavior::EntityTag>(entity) {
-        components.push(ComponentData::EntityTag { tag: t.0.clone() });
+    if let Some(tag) = world.get::<ecs::behavior::EntityTag>(entity) {
+        components.push(ComponentData::EntityTag { tag: tag.0.clone() });
     }
 
-    // Scripts — Entity params persist by target Name (issue #44); the
+    // Scripts — Entity params persist by target Name; the
     // editor's save choke point auto-names referenced unnamed targets first.
-    if let Some(s) = world.get::<ecs::Scripts>(entity) {
+    if let Some(scripts) = world.get::<ecs::Scripts>(entity) {
         components.push(ComponentData::Scripts(crate::script_data::scripts_to_data(
-            world, s,
+            world, scripts,
         )));
     }
 

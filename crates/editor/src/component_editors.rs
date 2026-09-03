@@ -12,7 +12,7 @@
 //! `Some` with the full new value and a `field_hint` naming the changed
 //! field (used to merge continuous slider drags into one undo entry).
 
-/// The `GridBackdrop` editor (#46), a child module for file size.
+/// The `GridBackdrop` editor, a child module for file size.
 pub mod grid_backdrop;
 pub use grid_backdrop::edit_grid_backdrop;
 
@@ -363,7 +363,7 @@ pub fn edit_audio_source(
 
     // Volume/pitch are HARD ranges: the audio runtime clamps playback to
     // volume 0..=1 and speed >= 0.1, so an unclamped inspector value would
-    // display parameters that are not actually taking effect (kimi F1).
+    // display parameters that are not actually taking effect.
     if let EditResult::Changed(v) = inspector.f32_hard("Volume", source.volume, ranges::VOLUME) {
         new.volume = v;
         hint = Some("volume");

@@ -1,4 +1,4 @@
-//! Inspector editor for `GridBackdrop` (#46): topology cycle, dimensions
+//! Inspector editor for `GridBackdrop`: topology cycle, dimensions
 //! that snap through the same rule the engine builds with (an odd hex
 //! column count shows as the even count that renders), and the simulation
 //! tunables as soft-range rows.

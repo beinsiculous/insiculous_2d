@@ -5,39 +5,49 @@
 
 use glam::Vec2;
 
-use ecs::behavior::{BehaviorPhase, BehaviorState, PatrolTarget};
+use ecs::behavior::{Behavior, BehaviorPhase, BehaviorState, PatrolTarget};
 use ecs::{EntityId, World};
 use input::{GameAction, InputHandler};
 use physics::PhysicsSystem;
 
 use super::{BehaviorCommands, BehaviorRunner, EntityCollected};
 
+/// The read-only per-frame inputs every `&Behavior` handler reads: built once
+/// per `BehaviorRunner::update` and shared by every entity in that frame.
+pub(super) struct HandlerFrame<'a> {
+    pub input: &'a InputHandler,
+    pub delta_time: f32,
+    pub physics: Option<&'a PhysicsSystem>,
+}
+
 impl BehaviorRunner {
     /// `Behavior::PlayerPlatformer` — input-driven horizontal movement plus a
     /// cooldown-gated jump impulse; Y velocity stays with physics (gravity).
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn update_player_platformer(
         &self,
         entity: EntityId,
-        input: &InputHandler,
-        delta_time: f32,
-        physics: Option<&PhysicsSystem>,
-        move_speed: f32,
-        jump_impulse: f32,
-        jump_cooldown: f32,
-        tag: &str,
+        frame: &HandlerFrame,
+        behavior: &Behavior,
         state: &mut BehaviorState,
         commands: &mut BehaviorCommands,
     ) {
+        let Behavior::PlayerPlatformer { move_speed, jump_impulse, jump_cooldown, tag } = behavior
+        else {
+            log::error!("update_player_platformer dispatched for {behavior:?}");
+            return;
+        };
+        let (move_speed, jump_impulse, jump_cooldown) = (*move_speed, *jump_impulse, *jump_cooldown);
+        let HandlerFrame { input, delta_time, physics } = *frame;
+
         // Update cooldown timer
         if state.timer > 0.0 {
             state.timer -= delta_time;
         }
 
         // Calculate horizontal velocity only - let physics handle Y (gravity + jumps)
-        let mut vel_x = 0.0;
-        if self.actions.is_active(GameAction::MoveLeft, input) { vel_x = -move_speed; }
-        if self.actions.is_active(GameAction::MoveRight, input) { vel_x = move_speed; }
+        let mut velocity_x = 0.0;
+        if self.actions.is_active(GameAction::MoveLeft, input) { velocity_x = -move_speed; }
+        if self.actions.is_active(GameAction::MoveRight, input) { velocity_x = move_speed; }
 
         // For platformers, only set X velocity - preserve Y for physics
         if let Some(physics) = physics {
@@ -46,8 +56,8 @@ impl BehaviorRunner {
                 .map(|(v, _)| v)
                 .unwrap_or(Vec2::ZERO);
             // Set X to input, keep Y from physics (gravity/jumps)
-            let vel = Vec2::new(vel_x, current_vel.y);
-            commands.velocities.push((entity, vel));
+            let velocity = Vec2::new(velocity_x, current_vel.y);
+            commands.velocities.push((entity, velocity));
         }
 
         // Jump - collect impulse to apply AFTER velocity commands.
@@ -92,19 +102,28 @@ impl BehaviorRunner {
     ///
     /// Phase FSM: `Idle` ⇄ `Chasing` — enter on `distance < detection_range`,
     /// leave on `distance > lose_interest_range` or when no target exists.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn update_chase_tagged(
         world: &World,
         entity: EntityId,
-        delta_time: f32,
-        target_tag: &str,
-        detection_range: f32,
-        chase_speed: f32,
-        lose_interest_range: f32,
+        frame: &HandlerFrame,
+        behavior: &Behavior,
         state: &mut BehaviorState,
         commands: &mut BehaviorCommands,
     ) {
-        state.phase.tick(delta_time);
+        let Behavior::ChaseTagged {
+            target_tag,
+            detection_range,
+            chase_speed,
+            lose_interest_range,
+        } = behavior
+        else {
+            log::error!("update_chase_tagged dispatched for {behavior:?}");
+            return;
+        };
+        let (detection_range, chase_speed, lose_interest_range) =
+            (*detection_range, *chase_speed, *lose_interest_range);
+
+        state.phase.tick(frame.delta_time);
 
         if let Some(target_pos) = Self::find_nearest_tagged_position(world, entity, target_tag) {
             if let Some(entity_pos) = Self::get_position(world, entity) {
@@ -118,8 +137,8 @@ impl BehaviorRunner {
                 }
 
                 if state.phase.is(&BehaviorPhase::Chasing) {
-                    let vel = (target_pos - entity_pos).normalize_or_zero() * chase_speed;
-                    commands.velocities.push((entity, vel));
+                    let velocity = (target_pos - entity_pos).normalize_or_zero() * chase_speed;
+                    commands.velocities.push((entity, velocity));
                 } else {
                     commands.velocities.push((entity, Vec2::ZERO));
                 }
@@ -136,19 +155,24 @@ impl BehaviorRunner {
     /// Phase FSM: `Idle` → `Patrolling { toward }` → (on arrival)
     /// `Waiting { then_toward }` → (after `wait_time`, via the machine's
     /// `elapsed()` clock) → `Patrolling` toward the other endpoint.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn update_patrol(
         world: &World,
         entity: EntityId,
-        delta_time: f32,
-        point_a: Vec2,
-        point_b: Vec2,
-        speed: f32,
-        wait_time: f32,
+        frame: &HandlerFrame,
+        behavior: &Behavior,
         state: &mut BehaviorState,
         commands: &mut BehaviorCommands,
     ) {
-        state.phase.tick(delta_time);
+        let Behavior::Patrol { point_a, point_b, speed, wait_time } = behavior
+        else {
+            log::error!("update_patrol dispatched for {behavior:?}");
+            return;
+        };
+        let point_a = Vec2::new(point_a.0, point_a.1);
+        let point_b = Vec2::new(point_b.0, point_b.1);
+        let (speed, wait_time) = (*speed, *wait_time);
+
+        state.phase.tick(frame.delta_time);
 
         if let BehaviorPhase::Waiting { then_toward } = *state.phase.current() {
             if state.phase.elapsed() >= wait_time {
@@ -174,8 +198,8 @@ impl BehaviorRunner {
                 state.phase.transition_to(BehaviorPhase::Waiting { then_toward: toward.other() });
                 commands.velocities.push((entity, Vec2::ZERO));
             } else {
-                let vel = (target - entity_pos).normalize() * speed;
-                commands.velocities.push((entity, vel));
+                let velocity = (target - entity_pos).normalize() * speed;
+                commands.velocities.push((entity, velocity));
             }
         }
     }

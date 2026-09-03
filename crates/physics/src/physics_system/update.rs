@@ -16,7 +16,7 @@ impl System for PhysicsSystem {
 
     fn update(&mut self, world: &mut World, delta_time: f32) {
         // Clamp delta time to prevent instability
-        let dt = delta_time.min(self.max_delta_time);
+        let clamped_delta_time = delta_time.min(self.max_delta_time);
 
         // Get all entities, garbage-collect physics state for entities no
         // longer in the ECS, sync new ones to physics, and push any external
@@ -47,7 +47,7 @@ impl System for PhysicsSystem {
 
         // Fixed timestep physics updates, capped to avoid a death spiral
         // where catch-up steps make the frame even slower.
-        self.time_accumulator += dt;
+        self.time_accumulator += clamped_delta_time;
 
         // Clear last frame's events once, before stepping. Each step()
         // APPENDS its events, so multiple sub-steps all contribute and a

@@ -1,7 +1,7 @@
 //! Scene round-trips for the two by-name wire tiers: `ComponentData::Dynamic`
-//! (issue #43 — game-registered components, and the audio components the
-//! serializer used to drop silently) and `ComponentData::Scripts` (issue #44
-//! — Entity params persist by NAME).
+//! (game-registered components, and the audio components the
+//! serializer used to drop silently) and `ComponentData::Scripts`
+//! (Entity params persist by NAME).
 
 use std::collections::BTreeMap;
 

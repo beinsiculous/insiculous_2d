@@ -1,6 +1,6 @@
 //! Wire defaults for `ComponentData::GridBackdrop` = the component's
 //! `Default` (the playfield preset), so `GridBackdrop()` in RON and the
-//! editor's "Add Component" agree (#46). A child module of `scene_data`
+//! editor's "Add Component" agree. A child module of `scene_data`
 //! purely for file size.
 
 pub(super) fn default_grid_cols() -> u32 {

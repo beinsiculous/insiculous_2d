@@ -22,7 +22,7 @@ impl<G: Game> GameRunner<G> {
     /// and re-arm the next redraw. Called from `about_to_wait` natively and
     /// from `RedrawRequested` on the web.
     fn drive_frame(&mut self, event_loop: &ActiveEventLoop) {
-        // The page has been left (navigation/bfcache — issue #58): the
+        // The page has been left (navigation/bfcache): the
         // browser may have already dropped the WebGPU device behind us, and
         // resuming would submit to a dead queue. Same fail-stop as device
         // loss.

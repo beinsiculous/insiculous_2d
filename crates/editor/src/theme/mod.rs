@@ -1,24 +1,4 @@
 //! Centralized editor theme with design system color tokens.
-//!
-//! All editor colors and visual constants are defined here so that a single
-//! change propagates across the entire editor. Derived from the target
-//! mockup (`crates/editor/IdealEditor.png`).
-//!
-//! # Usage
-//! ```
-//! use editor::EditorTheme;
-//!
-//! let theme = EditorTheme::default();
-//!
-//! // Reference color tokens directly when drawing panel chrome...
-//! let header_color = theme.accent_cyan;
-//! let panel_bg = theme.bg_primary;
-//!
-//! // ...and use the converter methods for subsystem style bundles.
-//! let inspector_style = theme.inspector_style();
-//! let grid_colors = theme.grid_colors();
-//! # let _ = (header_color, panel_bg, inspector_style, grid_colors);
-//! ```
 
 use ui::Color;
 
@@ -29,9 +9,7 @@ use ui::Color;
 /// hardcoded literal.
 #[derive(Debug, Clone)]
 pub struct EditorTheme {
-    // ── Backgrounds ─────────────────────────────────────────────
-    /// Main panel backgrounds (`#1e1e1e`)
-    // ── Surface elevation ladder (audit §5.2) ──────────────────────
+    // ── Surface elevation ladder ──────────────────────────────────
     // surface_0 (lowest: viewport well) .. surface_4 (floating popups).
     // Adjacent steps hold ≥1.35:1 WCAG contrast — the guard test in
     // theme/tests.rs is the spec; tune values only with it green.
@@ -46,13 +24,14 @@ pub struct EditorTheme {
     /// Elevation 4: floating surfaces (dropdowns, popups, future modals).
     pub surface_4: Color,
     /// Border for floating surfaces — ≥3:1 against surface_4 so popups
-    /// read as bounded objects (audit §5.3).
+    /// read as bounded objects.
     pub popup_border: Color,
 
+    /// Main panel backgrounds (`#2a2a2a`)
     pub bg_primary: Color,
-    /// Viewport / canvas area (`#000000`)
+    /// Viewport / canvas area (`#0a0a0a`)
     pub bg_viewport: Color,
-    /// Input fields, dropdowns (`#2d2d2d`)
+    /// Input fields, dropdowns (`#545454`)
     pub bg_input: Color,
     /// Panel header background — LIGHTER than bg_primary (surface_2 over
     /// surface_1; the old doc claimed darker and the old value was neither)
@@ -200,7 +179,7 @@ pub struct EditorTheme {
 
 impl Default for EditorTheme {
     fn default() -> Self {
-        // The elevation ladder (audit §5.2). WCAG contrast is dominated by
+        // The elevation ladder. WCAG contrast is dominated by
         // the +0.05 flare term near black, so honest ≥1.35:1 steps need
         // bigger jumps than classic editor themes use — that is the point:
         // adjacent surfaces must actually be distinguishable.
@@ -374,7 +353,7 @@ impl EditorTheme {
         theme.button.background = self.bg_input;
         theme.button.background_hovered = self.bg_input.lighten(0.12);
         theme.button.background_pressed = self.bg_input.darken(0.25);
-        // Distinct from pressed (audit §5.8): a disabled button must not
+        // Distinct from pressed: a disabled button must not
         // look like a held one — flatten toward the panel body instead.
         theme.button.background_disabled = self.bg_primary;
         theme.button.border = self.border_subtle;
@@ -443,7 +422,7 @@ impl EditorTheme {
         }
     }
 
-    /// Fills for selected hierarchy rows (#51). Derivation contract: the
+    /// Fills for selected hierarchy rows. Derivation contract: the
     /// primary row keeps `selection_fill`, every other selected row is the
     /// same fill at half its alpha, and the primary's accent bar is the
     /// viewport's `selection_outline` — one selection color in both places.

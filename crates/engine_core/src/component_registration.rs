@@ -1,5 +1,5 @@
 //! One-shot registration of engine-side components into the ecs dynamic
-//! registry (issue #43, ecs GPP-16).
+//! registry.
 //!
 //! The ecs crate registers its own builtins at first access; physics is
 //! DOWNSTREAM of ecs and cannot self-register, so the engine wires it here.

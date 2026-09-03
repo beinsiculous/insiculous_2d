@@ -7,7 +7,7 @@ use super::*;
 /// Adjacent surfaces on the elevation ladder are distinguishable (≥1.35:1)
 /// and elevation gets lighter, and the panel header reads against the
 /// panel body the same way (the old theme documented it darker and shipped
-/// it 0.6/255 lighter — neither readable nor honest, audit §5.2).
+/// it 0.6/255 lighter — neither readable nor honest).
 #[test]
 fn test_adjacent_surfaces_are_distinguishable() {
     let theme = EditorTheme::default();

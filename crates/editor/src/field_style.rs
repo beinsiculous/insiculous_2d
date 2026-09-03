@@ -96,7 +96,7 @@ pub struct EditableFieldStyle {
     pub channel_font: f32,
     /// Face for numeric inputs (f32, Vec2 axes, RGBA channels) — the editor
     /// hands in its monospace handle so digits line up and a scrub never
-    /// jitters the caret (#54). `None` = the default font.
+    /// jitters the caret. `None` = the default font.
     pub numeric_font: Option<ui::FontHandle>,
 }
 

@@ -145,15 +145,15 @@ impl UIContext {
         };
 
         // Draw slider
-        self.draw_list.slider(
+        self.draw_list.slider(crate::draw::SliderVisual {
             track_bounds,
             thumb_center,
-            style.thumb_radius,
-            style.track_background,
-            style.track_fill,
+            thumb_radius: style.thumb_radius,
+            track_background: style.track_background,
+            track_fill: style.track_fill,
             thumb_color,
-            normalized,
-        );
+            fill_amount: normalized,
+        });
 
         // Calculate new value if dragging
         if result.dragging {

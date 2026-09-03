@@ -211,25 +211,25 @@ impl ColliderShape {
             _ => {}
         }
         // The current shape reduced to a bounding half-width/half-height.
-        let (hw, hh) = match *self {
+        let (half_width, half_height) = match *self {
             ColliderShape::Box { half_extents } => (half_extents.x, half_extents.y),
             ColliderShape::Circle { radius } => (radius, radius),
             ColliderShape::CapsuleY { half_height, radius } => (radius, half_height + radius),
             ColliderShape::CapsuleX { half_height, radius } => (half_height + radius, radius),
         };
         match variant_index {
-            0 => ColliderShape::Box { half_extents: Vec2::new(hw, hh) },
-            1 => ColliderShape::Circle { radius: hw.max(hh) },
+            0 => ColliderShape::Box { half_extents: Vec2::new(half_width, half_height) },
+            1 => ColliderShape::Circle { radius: half_width.max(half_height) },
             // A zero cylinder section is a valid capsule (= a ball) and is
             // what keeps Circle → Capsule → Circle exact instead of
-            // accumulating a floor's worth of drift per lap (kimi F2).
+            // accumulating a floor's worth of drift per lap.
             2 => ColliderShape::CapsuleY {
-                half_height: (hh - hw).max(0.0),
-                radius: hw,
+                half_height: (half_height - half_width).max(0.0),
+                radius: half_width,
             },
             3 => ColliderShape::CapsuleX {
-                half_height: (hw - hh).max(0.0),
-                radius: hh,
+                half_height: (half_width - half_height).max(0.0),
+                radius: half_height,
             },
             _ => self.clone(),
         }

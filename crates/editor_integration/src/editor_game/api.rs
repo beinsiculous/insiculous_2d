@@ -1,7 +1,7 @@
-//! Command-API frame hook (audit §9): drain queued request lines once per
+//! Command-API frame hook: drain queued request lines once per
 //! frame and answer them on stdout. The pure half
 //! ([`EditorGame::answer_api_lines`]) is headless-testable; only the
-//! stdout write lives in the frame hook. Stage B: writes route per line —
+//! stdout write lives in the frame hook. Writes route per line —
 //! pure writes through `editor::command_api::write` (always via
 //! `CommandHistory`), hosted writes (create/save) through the same entity
 //! factories and save choke point the GUI uses.
@@ -26,7 +26,7 @@ impl<G: Game> EditorGame<G> {
     /// the editor crate; hosted writes (create/save) run here.
     ///
     /// `texture_path` is the session resolver's inverse (`None` = never
-    /// issued): pure writes use it to refuse unissued handles (#66), hosted
+    /// issued): pure writes use it to refuse unissued handles, hosted
     /// saves to write the reference back.
     pub(super) fn answer_api_lines(
         &mut self,
@@ -98,7 +98,7 @@ impl<G: Game> EditorGame<G> {
             ));
         }
         // Hosted creates mutate the selection BEFORE their command is
-        // recorded — note the pre-action selection first (#59). Skipped
+        // recorded — note the pre-action selection first. Skipped
         // while a batch is open (the macro keeps the pre-batch image).
         if self.api_batch.is_none() {
             self.command_history.note_selection(&self.editor.selection);
@@ -109,8 +109,7 @@ impl<G: Game> EditorGame<G> {
                     ApiError::Invalid(format!("unknown archetype \"{archetype}\""))
                 })?;
                 // Validate the name BEFORE spawning — a rejection after the
-                // factory ran would leak an entity (same guard as `rename`,
-                // kimi F4).
+                // factory ran would leak an entity (same guard as `rename`).
                 let name = match name {
                     Some(raw) => {
                         let trimmed = raw.trim();
@@ -207,8 +206,7 @@ impl<G: Game> EditorGame<G> {
         let responses = self.answer_api_lines(&lines, ctx.world, &texture_path);
         // An API line may have changed the selection (`select`, `create`);
         // GUI commands recorded LATER this frame must see the current
-        // selection as their before-image, not the frame-start note (#59
-        // kimi F3).
+        // selection as their before-image, not the frame-start note.
         self.command_history.note_selection(&self.editor.selection);
         let stdout = std::io::stdout();
         let mut out = stdout.lock();

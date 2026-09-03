@@ -1,5 +1,5 @@
-//! Contracts of the dirty-flagged transform hierarchy propagation
-//! (PATTERNS_AUDIT.md GPP-04): clean frames recompute nothing, changes
+//! Contracts of the dirty-flagged transform hierarchy propagation:
+//! clean frames recompute nothing, changes
 //! recompute exactly the affected subtree, and the baseline cache stays
 //! consistent through reparenting, deletion, disable/enable, and reset.
 

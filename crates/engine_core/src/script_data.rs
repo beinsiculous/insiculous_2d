@@ -1,5 +1,5 @@
 //! Serialization mirror of `ecs::script::{Scripts, ScriptRef, ScriptValue}`
-//! for scene files (issue #44, Stage 1).
+//! for scene files (Stage 1).
 //!
 //! Same pattern as `behavior_data.rs`: `ComponentData::Scripts` wraps
 //! [`ScriptRefData`], and `scene_data.rs` re-exports these. The ONE
@@ -108,7 +108,7 @@ pub fn script_ref_from_data(
 
 /// Resolve every queued Entity param against the scene's name table.
 /// Unresolved names leave the param absent (never a dangling id) and come
-/// back as warnings the caller can surface (kimi #44 F5 — a typo in a
+/// back as warnings the caller can surface (a typo in a
 /// hand-edited scene must reach the status bar, not just a log line).
 pub fn resolve_pending_script_targets(
     world: &mut World,
@@ -162,7 +162,7 @@ pub fn scripts_to_data(world: &World, scripts: &Scripts) -> Vec<ScriptRefData> {
                     ScriptValue::Color(c) => ScriptValueData::Color((c[0], c[1], c[2], c[3])),
                     ScriptValue::Entity(id) if *id == ScriptValue::unset_entity() => {
                         // Placeholder — never chosen; dropping it is not
-                        // data loss (kimi #44 F3).
+                        // data loss.
                         continue;
                     }
                     ScriptValue::Entity(id) => match world.get::<Name>(*id) {
@@ -187,10 +187,9 @@ pub fn scripts_to_data(world: &World, scripts: &Scripts) -> Vec<ScriptRefData> {
 
 /// Plan a `Name` for every LIVE, unnamed entity referenced by a script's
 /// Entity param — save persists entity references by name, and silently
-/// dropping a binding the user authored would be data loss (kimi plan
-/// round-2 F4, decided: auto-name). PURE: mutates nothing; the editor
+/// dropping a binding the user authored would be data loss. PURE: mutates nothing; the editor
 /// executes the plan through `CommandHistory` so the naming is undoable
-/// and dirty-tracked (kimi #44 F1/F2), while headless callers apply it via
+/// and dirty-tracked, while headless callers apply it via
 /// [`ensure_script_target_names`].
 pub fn plan_script_target_names(world: &World) -> Vec<(EntityId, String)> {
     use std::collections::HashSet;
@@ -239,7 +238,7 @@ pub fn plan_script_target_names(world: &World) -> Vec<(EntityId, String)> {
 /// Apply [`plan_script_target_names`] directly (headless/tooling path — the
 /// editor routes the plan through `CommandHistory` instead). Callers of the
 /// raw `world_to_scene_data` serializer should run this first when their
-/// worlds may hold `Scripts` referencing unnamed entities (kimi #44 F4).
+/// worlds may hold `Scripts` referencing unnamed entities.
 pub fn ensure_script_target_names(world: &mut World) -> Vec<(EntityId, String)> {
     let assigned = plan_script_target_names(world);
     for (target, name) in &assigned {

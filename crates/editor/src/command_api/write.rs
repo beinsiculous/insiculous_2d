@@ -1,6 +1,6 @@
 //! Stage B write execution: every [`PureWrite`] runs here against a mutable
 //! [`WriteCtx`], ALWAYS through `CommandHistory` — an API write that is not
-//! undoable in the GUI is a trap (audit §9.7(1)). Batches collect commands
+//! undoable in the GUI is a trap. Batches collect commands
 //! after executing them and land as one `MacroCommand`; they are NOT
 //! transactions (a mid-batch error leaves earlier effects applied — `batch
 //! abort` is the recovery).
@@ -29,7 +29,7 @@ pub struct ApiBatch {
     pub commands: Vec<Box<dyn EditorCommand>>,
     /// The selection when `batch begin` ran — the macro's before-image.
     /// Frame-start notes overwrite the history's pending selection while a
-    /// batch spans frames, so the snapshot lives HERE (#59 kimi F1).
+    /// batch spans frames, so the snapshot lives HERE.
     pub selection_before: Vec<ecs::EntityId>,
 }
 
@@ -41,7 +41,7 @@ pub struct WriteCtx<'a> {
     pub play_state: EditorPlayState,
     pub batch: &'a mut Option<ApiBatch>,
     /// Whether the session's texture resolver ever issued this handle.
-    /// `set`/`add` refuse a handle nothing can resolve on save (#66) — the
+    /// `set`/`add` refuse a handle nothing can resolve on save — the
     /// editor crate cannot see the resolver, so the host answers by closure.
     pub texture_known: &'a dyn Fn(u32) -> bool,
 }
@@ -96,7 +96,7 @@ fn build_add_patch_set(
 }
 
 /// Reject a texture handle the session never issued: it would save as
-/// `#texture_N` and fail loud only on the next load (#66). `Sprite.texture_handle`
+/// `#texture_N` and fail loud only on the next load. `Sprite.texture_handle`
 /// and `Tilemap.tileset` share one id space.
 fn validate_texture_handles(
     stored: &StoredComponent,
@@ -142,7 +142,7 @@ fn is_externally_tagged_enum(value: &serde_json::Map<String, Value>) -> bool {
 /// objects, validating that every patch key exists on the component. An
 /// externally-tagged enum (like `Behavior`) and any non-object
 /// serialization are a whole-value replace — that is how a variant is
-/// switched (kimi F1).
+/// switched.
 fn merge_patch(current: Value, patch: Value, component: &str) -> Result<Value, ApiError> {
     match (current, patch) {
         (Value::Object(base), Value::Object(overlay)) if is_externally_tagged_enum(&base) => {
@@ -215,7 +215,7 @@ pub fn run(write: &PureWrite, ctx: &mut WriteCtx<'_>) -> Result<Value, ApiError>
             "writes are refused while Playing — pause or stop first".to_string(),
         ));
     }
-    // Per-line before-image for undo's selection restore (#59). While a
+    // Per-line before-image for undo's selection restore. While a
     // batch is open the note is skipped: the eventual MacroCommand must
     // carry the PRE-BATCH selection (noted at BatchBegin).
     if ctx.batch.is_none() {
@@ -260,7 +260,7 @@ pub fn run(write: &PureWrite, ctx: &mut WriteCtx<'_>) -> Result<Value, ApiError>
                 .iter()
                 .copied()
                 .find(|k| k.display_name() == component);
-            // Typed miss falls through to the dynamic tier (issue #43):
+            // Typed miss falls through to the dynamic tier:
             // game-registered components are addable by name too.
             let dynamic = kind.is_none();
             if dynamic && !crate::stored_component::dynamic::is_dynamic_component(component) {
@@ -301,7 +301,7 @@ pub fn run(write: &PureWrite, ctx: &mut WriteCtx<'_>) -> Result<Value, ApiError>
             if let Some(patch) = value {
                 // An error after the attach must not leave an unrecorded
                 // component behind — roll the add back so the world matches
-                // the error response exactly (kimi #43 F2).
+                // the error response exactly.
                 match build_add_patch_set(ctx.world, entity, component, patch, ctx.texture_known) {
                     Ok(mut set) => {
                         set.execute(ctx.world);
@@ -328,7 +328,7 @@ pub fn run(write: &PureWrite, ctx: &mut WriteCtx<'_>) -> Result<Value, ApiError>
                 .iter()
                 .copied()
                 .find(|k| k.display_name() == component);
-            // Typed miss falls through to the dynamic tier (issue #43).
+            // Typed miss falls through to the dynamic tier.
             if kind.is_none()
                 && !crate::stored_component::dynamic::is_dynamic_component(component)
             {

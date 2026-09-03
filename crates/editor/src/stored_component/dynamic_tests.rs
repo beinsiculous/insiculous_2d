@@ -1,4 +1,4 @@
-//! The dynamic component tier (issue #43): a game-registered component with
+//! The dynamic component tier: a game-registered component with
 //! no typed editor registry entry still survives every editor copy path
 //! (snapshot, clipboard, undo/redo) and reaches the command API's JSON seam.
 

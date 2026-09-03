@@ -1,6 +1,6 @@
 //! The play session: Play captures ONE snapshot, Stop restores the authored
 //! world, and everything that would corrupt that contract is refused or
-//! reported — saves and scene replacement mid-simulation (#22), uncapturable
+//! reported — saves and scene replacement mid-simulation, uncapturable
 //! components, a stale propagation baseline, and the resources the session
 //! toggles (`UiElementsHidden`, `GridBackdropReset`).
 
@@ -204,7 +204,7 @@ fn test_scene_authored_ui_is_hidden_outside_play() {
 #[test]
 fn test_stop_requests_a_grid_backdrop_reset() {
     // Entity ids survive the restore, so a spring grid stopped mid-ripple
-    // would stay deformed and frozen without the reset request (#46).
+    // would stay deformed and frozen without the reset request.
     let mut editor = editor_game();
     let mut world = World::new();
 

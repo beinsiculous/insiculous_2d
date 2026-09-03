@@ -33,18 +33,17 @@ pub(super) fn render_inspector(
     };
 
     // A different entity starts at the top — a leaked offset would open
-    // entity B scrolled to wherever entity A was (kimi round 6 F2).
+    // entity B scrolled to wherever entity A was.
     if editor.inspector_scroll_entity != Some(entity_id) {
         editor.inspector_scroll = Default::default();
         editor.inspector_scroll_entity = Some(entity_id);
     }
 
-    // Panel scroll (audit §3.3): offset the whole walk; content height is
-    // measured at the end (partial rows bleed one row past the panel edge
-    // until #41 lands GPU scissoring — clipping today is cull-only).
+    // Panel scroll: offset the whole walk; content height is
+    // measured at the end (partial rows bleed one row past the panel edge;
+    // clipping today is cull-only).
     // While the add-component popup is open the wheel is NOT ours: the
-    // window-anchored popup would detach from its scrolling button
-    // (kimi round 7 F2).
+    // window-anchored popup would detach from its scrolling button.
     let wheel = if editor.is_add_component_popup_open() {
         0.0
     } else {
@@ -59,7 +58,7 @@ pub(super) fn render_inspector(
     let top = bounds.y + padding - offset;
     let mut y = top;
 
-    // "Entity: 7  (1 of 5 selected)" in a multi-selection (#51) — the
+    // "Entity: 7  (1 of 5 selected)" in a multi-selection — the
     // inspector shows the primary, and says so.
     let heading = editor
         .selection
@@ -117,7 +116,7 @@ fn render_inspector_editable(
 ) -> f32 {
     let line_height = 20.0;
     let inspect_style = editor.theme.inspector_style();
-    // Numeric inputs render in the crate-shipped monospace face (#54).
+    // Numeric inputs render in the crate-shipped monospace face.
     let field_style = editor.theme.editable_field_style().with_numeric_font(editor.fonts.mono);
 
     // Resolve the sprite texture's display path up front (the editor crate
@@ -134,7 +133,7 @@ fn render_inspector_editable(
     };
 
     // A Name edit landing this frame must trigger the same ambiguity
-    // warning as a hierarchy F2 rename (kimi batch-2 F1) — snapshot before,
+    // warning as a hierarchy F2 rename — snapshot before,
     // compare after.
     let name_before = ctx
         .world
@@ -175,7 +174,7 @@ fn render_inspector_editable(
     if let Some(new_name) = name_after.filter(|after| Some(after) != name_before.as_ref()) {
         warnings.extend(super::name_ambiguity_warning(ctx.world, &new_name));
     }
-    // Soft-range warnings (#55): typed values beyond a field's usual range
+    // Soft-range warnings: typed values beyond a field's usual range
     // are accepted by design. Every warning raised this frame — name
     // ambiguity included — lands in ONE transient status message, so none
     // overwrites another.
@@ -196,7 +195,7 @@ fn render_inspector_editable(
     if editor.is_add_component_popup_open() {
         let available = available_components(ctx.world, entity_id);
         // Dynamic-tier (game-registered) components get their own popup
-        // section (issue #43).
+        // section.
         let available_dynamic =
             editor::stored_component::available_dynamic_components(ctx.world, entity_id);
         if available.is_empty() && available_dynamic.is_empty() {
@@ -254,7 +253,7 @@ fn render_inspector_editable(
                 }
             }
 
-            // "Game" section: dynamic-tier components (issue #43).
+            // "Game" section: dynamic-tier components.
             if !available_dynamic.is_empty() {
                 ctx.ui.label_styled(
                     "Game",

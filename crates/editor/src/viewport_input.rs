@@ -394,7 +394,7 @@ mod tests {
         assert!((viewport.target_camera_zoom() - 1.0 / 1.1).abs() < 1e-6, "invert_zoom flips the direction");
     }
 
-    // ---- Marquee state machine (issue #39) ----
+    // ---- Marquee state machine ----
 
     #[test]
     fn test_marquee_from_screen_origin_is_real_and_a_sub_threshold_press_is_a_click() {
@@ -445,7 +445,7 @@ mod tests {
         assert_eq!(fresh.marquee_active, Some((Vec2::new(10.0, 10.0), Vec2::new(60.0, 60.0))), "latch must clear on release");
     }
 
-    // ---- Camera shortcut requests (issue #21) ----
+    // ---- Camera shortcut requests ----
 
     #[test]
     fn test_camera_shortcuts_are_requests_the_caller_consumes() {

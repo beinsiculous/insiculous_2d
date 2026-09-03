@@ -1,7 +1,4 @@
-//! Prelude module for the engine_core crate.
-//!
-//! This module re-exports the most commonly used items from the crate
-//! for ergonomic imports.
+//! Prelude re-exporting the most commonly used engine_core types.
 
 pub use crate::{
     // Simple game API (recommended)

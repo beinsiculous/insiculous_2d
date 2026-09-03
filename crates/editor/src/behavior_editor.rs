@@ -193,8 +193,7 @@ pub fn edit_behavior(
                 hint = Some("offset");
             }
             // Read-only until the ui crate grows an Option/toggle widget —
-            // this is an Option<(f32, f32)>, not a string (issue #34 scope
-            // note).
+            // this is an Option<(f32, f32)>, not a string.
             let dead_zone_label = match dead_zone {
                 Some((w, h)) => format!("{w:.0} x {h:.0}"),
                 None => "None".to_string(),
@@ -224,8 +223,8 @@ pub fn edit_behavior(
 mod tests {
     use super::*;
 
-    /// The soft ranges steer the scrub step and the typed-commit warning
-    /// (#55): each must be a real interval and must admit the values the
+    /// The soft ranges steer the scrub step and the typed-commit warning:
+    /// each must be a real interval and must admit the values the
     /// engine's own defaults and demo scenes use, or every fresh Behavior
     /// warns the moment it is typed into.
     #[test]

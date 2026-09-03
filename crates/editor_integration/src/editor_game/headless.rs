@@ -1,7 +1,7 @@
-//! Headless command-API mode (issue #45, audit §9 Stage C): the full
+//! Headless command-API mode: the full
 //! authoring loop — query → mutate → save — with NO window, GPU, or frame
 //! loop. `--headless` in the editor binary routes here; CI drives it with
-//! piped stdin/stdout, and the future web transport (Stage D) reuses the
+//! piped stdin/stdout, and the future web transport reuses the
 //! same `answer_api_lines` dispatch over a WebSocket.
 //!
 //! Deliberately NOT a headless engine runner: `GameContext`/`AssetManager`/
@@ -34,7 +34,7 @@ use super::EditorGame;
 ///
 /// Limits (documented in `docs/EDITOR_COMMAND_API.md`): texture FILES are
 /// not validated. `.sheet.ron` sidecars ARE consulted when an asset base
-/// path is given (pure file I/O — kimi #45 F1), so a headless save bakes
+/// path is given (pure file I/O), so a headless save bakes
 /// the CURRENT sidecar snapshot, same as the windowed editor.
 pub struct HeadlessAssets {
     /// ref string → handle (dedup).
@@ -135,8 +135,7 @@ pub fn run_headless_editor_api(
     let mut assets = HeadlessAssets::with_asset_base(asset_base);
 
     if initial_scene.is_none() {
-        // An agent must know it is authoring against an empty world
-        // (kimi #45 F4).
+        // An agent must know it is authoring against an empty world.
         log::info!("headless: no scene to open — starting with an empty scene");
     }
     if let Some(path) = initial_scene {

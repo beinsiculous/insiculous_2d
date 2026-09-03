@@ -18,7 +18,7 @@ fn run_session(scene: Option<PathBuf>, script: &str) -> Vec<serde_json::Value> {
 }
 
 ecs::define_component! {
-    /// Stand-in game component for the headless dynamic-tier test (#45).
+    /// Stand-in game component for the headless dynamic-tier test.
     pub struct HeadlessDynTestMarker {
         pub level: f32 = 1.0,
     }
@@ -27,7 +27,7 @@ ecs::define_component! {
 #[test]
 fn test_full_authoring_loop_survives_a_reload() -> std::io::Result<()> {
     // Dynamic components must be registered by the hosting process — the
-    // headless session sees whatever main() registered (kimi R1-F1).
+    // headless session sees whatever main() registered.
     ecs::register_components(|r| r.register::<HeadlessDynTestMarker>());
     let dir = tempfile::tempdir()?;
     let path = dir.path().join("ship_point.ron");

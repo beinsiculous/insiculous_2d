@@ -9,6 +9,7 @@
 
 mod camera;
 mod handlers;
+use handlers::HandlerFrame;
 
 use std::collections::HashMap;
 
@@ -130,6 +131,7 @@ impl BehaviorRunner {
         // Commands are collected during iteration and applied afterwards
         // (avoids borrow conflicts with the world).
         let mut commands = BehaviorCommands::default();
+        let frame = HandlerFrame { input, delta_time, physics: physics.as_deref() };
 
         // Process all entities with behaviors directly - avoid cloning
         for entity in world.entities() {
@@ -143,12 +145,8 @@ impl BehaviorRunner {
                 .unwrap_or_default();
 
             match behavior {
-                Behavior::PlayerPlatformer { move_speed, jump_impulse, jump_cooldown, tag } => {
-                    self.update_player_platformer(
-                        entity, input, delta_time, physics.as_deref(),
-                        *move_speed, *jump_impulse, *jump_cooldown, tag,
-                        &mut state, &mut commands,
-                    );
+                Behavior::PlayerPlatformer { .. } => {
+                    self.update_player_platformer(entity, &frame, behavior, &mut state, &mut commands);
                     Self::update_state(world, entity, state);
                 }
 
@@ -156,22 +154,13 @@ impl BehaviorRunner {
                     self.update_player_top_down(entity, input, *move_speed, tag, &mut commands);
                 }
 
-                Behavior::ChaseTagged { target_tag, detection_range, chase_speed, lose_interest_range } => {
-                    Self::update_chase_tagged(
-                        world, entity, delta_time, target_tag,
-                        *detection_range, *chase_speed, *lose_interest_range,
-                        &mut state, &mut commands,
-                    );
+                Behavior::ChaseTagged { .. } => {
+                    Self::update_chase_tagged(world, entity, &frame, behavior, &mut state, &mut commands);
                     Self::update_state(world, entity, state);
                 }
 
-                Behavior::Patrol { point_a, point_b, speed, wait_time } => {
-                    Self::update_patrol(
-                        world, entity, delta_time,
-                        Vec2::new(point_a.0, point_a.1), Vec2::new(point_b.0, point_b.1),
-                        *speed, *wait_time,
-                        &mut state, &mut commands,
-                    );
+                Behavior::Patrol { .. } => {
+                    Self::update_patrol(world, entity, &frame, behavior, &mut state, &mut commands);
                     Self::update_state(world, entity, state);
                 }
 

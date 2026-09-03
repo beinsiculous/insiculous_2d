@@ -329,7 +329,7 @@ pub fn render_ui_commands(
 /// The innermost active clip as a GPU scissor rect. UI coordinates are
 /// already physical surface pixels (`window_size` is winit's PhysicalSize),
 /// so no DPI conversion applies — the old `logical_to_physical_rect` helper
-/// double-scaled on HiDPI and was deleted with issue #41.
+/// double-scaled on HiDPI.
 fn active_clip_scissor(clip_stack: &[Rect]) -> [u32; 4] {
     // Safe: callers only invoke this with a non-empty stack.
     let r = clip_stack.last().copied().unwrap_or(Rect::new(0.0, 0.0, 0.0, 0.0));

@@ -52,7 +52,7 @@ pub struct InputState {
     /// Whether either Shift key is held (extends selections)
     pub shift_down: bool,
     /// Whether either Ctrl key is held (snaps scrub gestures to whole
-    /// steps — issue #56)
+    /// steps)
     pub ctrl_down: bool,
 }
 
@@ -149,16 +149,16 @@ impl InputState {
     pub fn from_input_handler_with_repeat(
         input: &InputHandler,
         repeat: &mut KeyRepeat,
-        dt: f32,
+        delta_time: f32,
     ) -> Self {
         let mouse = input.mouse();
-        let pos = mouse.position();
-        let kb = input.keyboard();
+        let mouse_position = mouse.position();
+        let keyboard = input.keyboard();
 
-        let shift = kb.is_key_pressed(KeyCode::ShiftLeft)
-            || kb.is_key_pressed(KeyCode::ShiftRight);
-        let ctrl = kb.is_key_pressed(KeyCode::ControlLeft)
-            || kb.is_key_pressed(KeyCode::ControlRight);
+        let shift = keyboard.is_key_pressed(KeyCode::ShiftLeft)
+            || keyboard.is_key_pressed(KeyCode::ShiftRight);
+        let ctrl = keyboard.is_key_pressed(KeyCode::ControlLeft)
+            || keyboard.is_key_pressed(KeyCode::ControlRight);
 
         // Collect typed characters from just-pressed keys (no char repeat)
         let typed_keys = [
@@ -182,7 +182,7 @@ impl InputState {
 
         let mut typed_chars = Vec::new();
         for &key in &typed_keys {
-            if kb.is_key_just_pressed(key) {
+            if keyboard.is_key_just_pressed(key) {
                 if let Some(ch) = keycode_to_char(key, shift) {
                     typed_chars.push(ch);
                 }
@@ -190,7 +190,7 @@ impl InputState {
         }
 
         let mut repeating = |slot: RepeatKey, key: KeyCode| {
-            repeat.tick(slot, kb.is_key_pressed(key), kb.is_key_just_pressed(key), dt)
+            repeat.tick(slot, keyboard.is_key_pressed(key), keyboard.is_key_just_pressed(key), delta_time)
         };
         let left_pressed = repeating(RepeatKey::Left, KeyCode::ArrowLeft);
         let right_pressed = repeating(RepeatKey::Right, KeyCode::ArrowRight);
@@ -200,21 +200,21 @@ impl InputState {
         let down_pressed = repeating(RepeatKey::Down, KeyCode::ArrowDown);
 
         Self {
-            mouse_pos: Vec2::new(pos.x, pos.y),
+            mouse_pos: Vec2::new(mouse_position.x, mouse_position.y),
             mouse_down: mouse.is_button_pressed(MouseButton::Left),
             mouse_just_pressed: mouse.is_button_just_pressed(MouseButton::Left),
             mouse_just_released: mouse.is_button_just_released(MouseButton::Left),
             scroll_delta: mouse.wheel_delta(),
             typed_chars,
-            enter_pressed: kb.is_key_just_pressed(KeyCode::Enter)
-                || kb.is_key_just_pressed(KeyCode::NumpadEnter),
-            escape_pressed: kb.is_key_just_pressed(KeyCode::Escape),
+            enter_pressed: keyboard.is_key_just_pressed(KeyCode::Enter)
+                || keyboard.is_key_just_pressed(KeyCode::NumpadEnter),
+            escape_pressed: keyboard.is_key_just_pressed(KeyCode::Escape),
             backspace_pressed,
-            tab_pressed: kb.is_key_just_pressed(KeyCode::Tab),
+            tab_pressed: keyboard.is_key_just_pressed(KeyCode::Tab),
             left_pressed,
             right_pressed,
-            home_pressed: kb.is_key_just_pressed(KeyCode::Home),
-            end_pressed: kb.is_key_just_pressed(KeyCode::End),
+            home_pressed: keyboard.is_key_just_pressed(KeyCode::Home),
+            end_pressed: keyboard.is_key_just_pressed(KeyCode::End),
             delete_pressed,
             up_pressed,
             down_pressed,

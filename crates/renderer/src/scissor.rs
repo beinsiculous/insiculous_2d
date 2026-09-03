@@ -1,4 +1,4 @@
-//! Pure scissor-rect math for viewport and per-batch UI clipping (issue #41).
+//! Pure scissor-rect math for viewport and per-batch UI clipping.
 //!
 //! All functions are CPU-only and headless-testable. Rects are
 //! `[x, y, width, height]` in physical surface pixels, matching

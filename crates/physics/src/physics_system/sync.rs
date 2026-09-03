@@ -4,7 +4,7 @@
 //! `sync_physics_to_ecs` writes body positions/velocities back into the ECS
 //! components every frame. In the other direction, `sync_entity_to_physics`
 //! adds missing bodies/colliders AND pushes **external ECS-side edits** into
-//! rapier (GPP-09): components are value-compared against the last-pushed
+//! rapier: components are value-compared against the last-pushed
 //! baseline, so editing `Transform2D` teleports the live body and editing
 //! `Collider` rebuilds its rapier collider. The writeback refreshes the
 //! baseline, so rapier-driven motion is never mistaken for an edit.
@@ -44,16 +44,14 @@ impl PhysicsSystem {
     ///
     /// Adds missing bodies/colliders, and detects **external ECS-side edits**
     /// on live entities by value-comparing the components against the
-    /// last-pushed baseline (GPP-09): a changed `Transform2D` teleports the
+    /// last-pushed baseline: a changed `Transform2D` teleports the
     /// body (velocity preserved), a changed `Collider` rebuilds the rapier
     /// collider, a removed `Collider` removes it. The physics writeback in
     /// `sync_physics_to_ecs` refreshes the baseline, so rapier-driven motion
     /// is never mistaken for an edit.
     pub(super) fn sync_entity_to_physics(&mut self, world: &mut World, entity: EntityId) {
-        // Get transform for position
         let transform = world.get::<Transform2D>(entity).cloned();
 
-        // Check if entity has rigid body component
         if let Some(mut rigid_body) = world.get::<RigidBody>(entity).cloned() {
             let (position, rotation) = transform
                 .as_ref()

@@ -57,16 +57,16 @@ fn chevron_bounds(panel: &DockPanel) -> Rect {
 /// Draw the collapse chevron with line primitives (no font-coverage risk):
 /// ▾ when expanded (click to collapse), ▸ when collapsed (click to expand).
 fn draw_chevron(ui: &mut UIContext, bounds: Rect, collapsed: bool, theme: &EditorTheme) {
-    let c = bounds.center();
+    let center = bounds.center();
     let color = theme.accent_cyan;
     if collapsed {
         // Pointing right
-        ui.line(Vec2::new(c.x - 2.0, c.y - 4.0), Vec2::new(c.x + 2.0, c.y), color, 2.0);
-        ui.line(Vec2::new(c.x + 2.0, c.y), Vec2::new(c.x - 2.0, c.y + 4.0), color, 2.0);
+        ui.line(Vec2::new(center.x - 2.0, center.y - 4.0), Vec2::new(center.x + 2.0, center.y), color, 2.0);
+        ui.line(Vec2::new(center.x + 2.0, center.y), Vec2::new(center.x - 2.0, center.y + 4.0), color, 2.0);
     } else {
         // Pointing down
-        ui.line(Vec2::new(c.x - 4.0, c.y - 2.0), Vec2::new(c.x, c.y + 2.0), color, 2.0);
-        ui.line(Vec2::new(c.x, c.y + 2.0), Vec2::new(c.x + 4.0, c.y - 2.0), color, 2.0);
+        ui.line(Vec2::new(center.x - 4.0, center.y - 2.0), Vec2::new(center.x, center.y + 2.0), color, 2.0);
+        ui.line(Vec2::new(center.x, center.y + 2.0), Vec2::new(center.x + 4.0, center.y - 2.0), color, 2.0);
     }
 }
 
@@ -250,31 +250,31 @@ fn render_chevron_button(ui: &mut UIContext, panel: &DockPanel, theme: &EditorTh
 /// Draw the resize grabber: a 2px accent line along the resizable edge with
 /// three center dots.
 fn draw_resize_grabber(ui: &mut UIContext, panel: &DockPanel, theme: &EditorTheme) {
-    let b = panel.bounds;
+    let bounds = panel.bounds;
     let color = theme.accent_cyan;
     let (start, end, center, along_y) = match panel.position {
         DockPosition::Left => (
-            Vec2::new(b.x + b.width, b.y),
-            Vec2::new(b.x + b.width, b.y + b.height),
-            Vec2::new(b.x + b.width, b.y + b.height / 2.0),
+            Vec2::new(bounds.x + bounds.width, bounds.y),
+            Vec2::new(bounds.x + bounds.width, bounds.y + bounds.height),
+            Vec2::new(bounds.x + bounds.width, bounds.y + bounds.height / 2.0),
             true,
         ),
         DockPosition::Right => (
-            Vec2::new(b.x, b.y),
-            Vec2::new(b.x, b.y + b.height),
-            Vec2::new(b.x, b.y + b.height / 2.0),
+            Vec2::new(bounds.x, bounds.y),
+            Vec2::new(bounds.x, bounds.y + bounds.height),
+            Vec2::new(bounds.x, bounds.y + bounds.height / 2.0),
             true,
         ),
         DockPosition::Top => (
-            Vec2::new(b.x, b.y + b.height),
-            Vec2::new(b.x + b.width, b.y + b.height),
-            Vec2::new(b.x + b.width / 2.0, b.y + b.height),
+            Vec2::new(bounds.x, bounds.y + bounds.height),
+            Vec2::new(bounds.x + bounds.width, bounds.y + bounds.height),
+            Vec2::new(bounds.x + bounds.width / 2.0, bounds.y + bounds.height),
             false,
         ),
         DockPosition::Bottom => (
-            Vec2::new(b.x, b.y),
-            Vec2::new(b.x + b.width, b.y),
-            Vec2::new(b.x + b.width / 2.0, b.y),
+            Vec2::new(bounds.x, bounds.y),
+            Vec2::new(bounds.x + bounds.width, bounds.y),
+            Vec2::new(bounds.x + bounds.width / 2.0, bounds.y),
             false,
         ),
         _ => return,
@@ -310,12 +310,12 @@ fn draw_panel_chrome(ui: &mut UIContext, header_bounds: &Rect, theme: &EditorThe
     // Corner ticks (two small accent dashes per top corner)
     let tick_len = 10.0;
     let tick_w = 2.0;
-    let c = theme.accent_cyan;
+    let accent = theme.accent_cyan;
     // Top-left: horizontal + vertical tick
-    ui.rect(Rect::new(header_bounds.x, header_bounds.y, tick_len, tick_w), c);
-    ui.rect(Rect::new(header_bounds.x, header_bounds.y, tick_w, tick_len), c);
+    ui.rect(Rect::new(header_bounds.x, header_bounds.y, tick_len, tick_w), accent);
+    ui.rect(Rect::new(header_bounds.x, header_bounds.y, tick_w, tick_len), accent);
     // Top-right
     let right = header_bounds.x + header_bounds.width;
-    ui.rect(Rect::new(right - tick_len, header_bounds.y, tick_len, tick_w), c);
-    ui.rect(Rect::new(right - tick_w, header_bounds.y, tick_w, tick_len), c);
+    ui.rect(Rect::new(right - tick_len, header_bounds.y, tick_len, tick_w), accent);
+    ui.rect(Rect::new(right - tick_w, header_bounds.y, tick_w, tick_len), accent);
 }

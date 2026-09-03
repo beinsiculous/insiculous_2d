@@ -7,7 +7,7 @@ fn test_camera() -> Camera {
 }
 
 /// All white-texture instances regardless of clip batch (clipped UI
-/// splits same-texture sprites into per-clip batches since issue #41).
+/// splits same-texture sprites into per-clip batches).
 fn white_instances(batcher: &SpriteBatcher) -> Vec<renderer::sprite_data::SpriteInstance> {
     let mut keys: Vec<_> = batcher.batches().keys().filter(|(h, _)| h.id == 0).copied().collect();
     keys.sort_by_key(|(_, clip)| *clip);
@@ -35,7 +35,7 @@ fn test_ui_stays_at_screen_position_with_its_authored_color_under_moved_zoomed_c
     // zooms (regression: the editor's panel-derived camera used to shift
     // the entire editor UI off screen) — and the authored color reaches
     // the instance untouched, which is what the post-tonemap UI pass
-    // (issue #26) displays byte for byte.
+    // displays byte for byte.
     let screen_bounds = Rect::new(10.0, 10.0, 100.0, 40.0);
     let screen_center = Vec2::new(60.0, 30.0);
     let authored = Color::new(0.25, 0.5, 0.75, 0.5);
@@ -106,7 +106,7 @@ fn test_sdf_shapes_carry_their_kind_and_params_on_one_sprite_each() {
 
 #[test]
 fn test_clipped_commands_land_in_a_clip_tagged_batch_and_axis_aligned_lines_survive_the_clip() {
-    // Issue #41: commands drawn between Push/PopClipRect carry the clip on
+    // Commands drawn between Push/PopClipRect carry the clip on
     // their batch so the GPU scissors them; commands outside stay
     // unclipped. Regression folded in: a horizontal line has a zero-height
     // bbox (vertical: zero-width), and a degenerate bbox never overlaps

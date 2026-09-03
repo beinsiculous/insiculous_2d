@@ -46,7 +46,7 @@ impl Game for EditorApp {
     fn update(&mut self, ctx: &mut GameContext) {
         // Physics preview during play mode. Built LAZILY from the loaded
         // scene's settings — published as a world resource by the editor's
-        // load path (#53, kimi F4: read the resource FIRST; the platformer
+        // load path (read the resource FIRST; the platformer
         // default applies only when the scene declares none). update() only
         // runs while Playing, so the first Playing frame builds it.
         if self.physics.is_none() {
@@ -76,7 +76,7 @@ impl Game for EditorApp {
     }
 }
 
-/// Spawn the stdin reader feeding the command API (audit §9 Stage A).
+/// Spawn the stdin reader feeding the command API.
 /// The thread only moves bytes; dispatch happens on the frame thread.
 /// Ends on stdin EOF/error or when the editor side drops the receiver.
 fn spawn_api_stdin_reader() -> std::sync::mpsc::Receiver<String> {
@@ -145,7 +145,7 @@ fn main() {
         .with_size(1280, 720)
         .with_clear_color(0.1, 0.1, 0.15, 1.0);
 
-    // First scene in SORTED order (#53): opened by EditorGame through its
+    // First scene in SORTED order: opened by EditorGame through its
     // real load path, so the title, physics block, and Ctrl+S target are
     // right from frame one.
     let initial_scene = find_first_scene(&project_path.join("assets").join("scenes"));

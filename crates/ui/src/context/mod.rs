@@ -1,14 +1,4 @@
-//! Immediate-mode UI context.
-//!
-//! The UIContext is the main entry point for creating UI elements.
-//! It follows an immediate-mode paradigm where you describe the UI every frame.
-//!
-//! Split by responsibility:
-//! - `mod.rs` — UIContext struct, construction, frame lifecycle, fonts, core state
-//! - `text.rs` — label/measure family and shared text-drawing helpers
-//! - `widgets.rs` — interactive widgets (button, slider, checkbox)
-//!   and container/shape drawing
-//! - `text_input.rs` — the float/text input widget (cursor, selection, caret)
+//! Immediate-mode UI context managing frame lifecycle, layout, and widget interactions.
 
 mod text;
 mod text_input;
@@ -232,7 +222,7 @@ impl UIContext {
     /// Drop keyboard focus from whatever text input holds it. A modal
     /// dialog calls this while it is up: the focused field must neither
     /// swallow the modal's keys nor keep receiving typed characters
-    /// underneath it (#52).
+    /// underneath it.
     pub fn clear_text_focus(&mut self) {
         self.interaction.clear_focus();
     }

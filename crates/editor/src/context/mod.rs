@@ -52,7 +52,7 @@ pub struct EditorContext {
     /// Current play state (Editing / Playing / Paused)
     play_state: EditorPlayState,
     /// Whether the viewport follows the game's main camera during a play
-    /// session (issue #42). Manual pan/zoom during Play/Paused breaks the
+    /// session. Manual pan/zoom during Play/Paused breaks the
     /// follow; the toolbar button / Ctrl+Shift+F re-arms it. Reset to true
     /// at session start (Editing→Playing) and on Stop — pause→resume
     /// preserves the user's choice.
@@ -76,7 +76,7 @@ pub struct EditorContext {
     /// The editor's own UI faces (regular/bold/mono), loaded at init from
     /// the crate-shipped bytes — never from the opened project's assets.
     pub fonts: crate::fonts::EditorFonts,
-    /// Vertical scroll for the inspector panel (audit §3.3). Lives here
+    /// Vertical scroll for the inspector panel. Lives here
     /// because the inspector has no panel struct of its own.
     pub inspector_scroll: crate::ScrollState,
     /// The entity the inspector scroll belongs to — a selection change
@@ -327,7 +327,7 @@ impl EditorContext {
         self.camera_follow
     }
 
-    /// Arm or break the play-session camera follow (issue #42).
+    /// Arm or break the play-session camera follow.
     pub fn set_camera_follow(&mut self, follow: bool) {
         self.camera_follow = follow;
     }

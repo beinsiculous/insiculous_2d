@@ -653,3 +653,7 @@ Closed as part of the universal controller/2-player feature:
   Scripts seam). Dynamic components must not store raw `EntityId`s (documented).
 - The standalone editor binary cannot see game-registered types; such scenes refuse
   to load there with a clear error (edit from the game's binary instead).
+
+## Physics System Pass-Through and Velocity Semantics (recorded Sep 2026; the `apply_impulse` removal itself predates this entry and was moved here from the `physics_system` module doc)
+
+`PhysicsSystem` provides pass-through methods (`set_velocity`, `take_collision_events`, `destroy_entity`, `reset_body`) delegating to `PhysicsWorld` for ergonomics. `set_velocity` is the single, universal launch/movement API, buffering operations on bodies spawned in the current frame until they are synchronized with Rapier. The legacy `apply_impulse` pass-through was removed because all call sites across the workspace intended "start this body at velocity V" rather than a mass-aware momentum delta, creating a footgun where impulse silently no-oped on same-frame spawns. `PhysicsWorld::apply_impulse` remains available for cases requiring mass-aware momentum changes on live bodies.

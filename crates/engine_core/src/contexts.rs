@@ -95,7 +95,7 @@ pub struct GameContext<'a> {
     /// scene-authored UiLabel/UiPanel/UiButton pass and achievement toasts)
     /// to this rect. `None` (the default) draws unclipped — shipped games
     /// never touch this; the editor sets its scene-panel bounds so tail
-    /// draws stay inside the game view (issue #41/#52 screenshot pass).
+    /// draws stay inside the game view.
     pub game_ui_clip: Option<common::Rect>,
     /// Achievement / trophy manager. Register achievements in `init()`, then
     /// call `ctx.achievements.unlock("id")` from gameplay code.
@@ -139,7 +139,7 @@ pub struct RenderContext<'a> {
     /// this rect in **physical surface pixels** (the same space as
     /// `window_size`). `None` (the default) renders full-window — shipped
     /// games never touch this. The editor writes its scene-panel bounds so
-    /// the game stops painting over editor chrome (issue #41); a zero-size
+    /// the game stops painting over editor chrome; a zero-size
     /// rect draws no game world at all (hidden scene panel). The UI pass is
     /// unaffected.
     pub viewport_scissor: &'a mut Option<common::Rect>,

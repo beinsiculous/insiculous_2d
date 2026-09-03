@@ -335,7 +335,7 @@ fn test_pick_hits_sprite_at_rendered_size_with_offset_panel() {
 }
 
 // ---------------------------------------------------------------------------
-// Marquee (#39)
+// Marquee
 // ---------------------------------------------------------------------------
 
 /// An EditorGame with a laid-out viewport and one pickable sprite at

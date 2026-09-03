@@ -28,7 +28,7 @@ pub struct SpritePipeline {
     /// Cached texture bind groups (keyed by TextureHandle)
     texture_bind_group_cache: HashMap<TextureHandle, wgpu::BindGroup>,
     /// Change detector + staging buffer: skips the instance upload when
-    /// nothing on screen changed (GPP-15)
+    /// nothing on screen changed
     instance_cache: super::InstanceCache,
     /// Device reference for creating bind groups and growing buffers.
     /// A plain clone — wgpu's `Device` is internally reference-counted, so
@@ -48,7 +48,7 @@ impl SpritePipeline {
         Self::new_with_target(device, initial_sprite_capacity, HDR_FORMAT, "fs_main")
     }
 
-    /// Create a sprite pipeline for the post-tonemap UI pass (issue #26):
+    /// Create a sprite pipeline for the post-tonemap UI pass:
     /// targets the swapchain format directly so authored UI colors display
     /// exactly, choosing the fragment entry point by whether the surface
     /// encodes sRGB in hardware.
@@ -372,7 +372,7 @@ impl SpritePipeline {
     }
 
     /// Draw UI batches straight to the swapchain view (post-tonemap UI
-    /// pass, issue #26). The color target is loaded (composite output
+    /// pass). The color target is loaded (composite output
     /// underneath survives); the depth buffer is cleared so UI depth
     /// bands order among themselves, ignoring game depth leftovers.
     ///
@@ -417,7 +417,7 @@ impl SpritePipeline {
         });
 
         // No pass default: chrome must fill the window; only batches
-        // carrying a clip rect get scissored (issue #41).
+        // carrying a clip rect get scissored.
         self.record_batches(&mut render_pass, batches, None, surface_size);
     }
 
@@ -496,7 +496,7 @@ impl SpritePipeline {
     /// Prepare sprite data for rendering by updating the instance buffer.
     ///
     /// The upload happens only when the flattened instances or batch layout
-    /// actually changed since the last upload (GPP-15) — a static scene
+    /// actually changed since the last upload — a static scene
     /// re-renders from the buffer already on the GPU.
     pub fn prepare_sprites(&mut self, queue: &Queue, batches: &[&SpriteBatch]) {
         if self.instance_cache.stage(batches) {

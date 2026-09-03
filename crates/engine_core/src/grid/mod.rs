@@ -39,7 +39,7 @@ pub use impulse::GridImpulse;
 /// sides (≈1117×825px), tinted to the chaos theme, sized to cover an
 /// ~800×600 window with overscan. Every arcade game uses this exact preset;
 /// it IS `ecs::GridBackdrop::default()` with the theme's color — a scene
-/// carrying `GridBackdrop()` gets the same grid from the engine (#46).
+/// carrying `GridBackdrop()` gets the same grid from the engine.
 pub fn default_playfield_grid(theme: &crate::chaos_theme::ChaosTheme) -> GridMesh {
     let config = ecs::GridBackdrop { color: theme.grid_color, ..ecs::GridBackdrop::default() };
     build_grid_mesh(&config, glam::Vec2::ZERO)

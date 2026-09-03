@@ -24,9 +24,8 @@ impl WidgetId {
         Self(id)
     }
 
-    /// Create a widget ID from a string.
-    #[allow(clippy::should_implement_trait)]
-    pub fn from_str(s: &str) -> Self {
+    /// Create a widget ID by hashing a string.
+    pub fn hashed(s: &str) -> Self {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         s.hash(&mut hasher);
         Self(hasher.finish())
@@ -48,7 +47,7 @@ impl WidgetId {
 
 impl From<&str> for WidgetId {
     fn from(s: &str) -> Self {
-        Self::from_str(s)
+        Self::hashed(s)
     }
 }
 

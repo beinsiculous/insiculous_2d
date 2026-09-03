@@ -293,21 +293,32 @@ impl DrawList {
     }
 
     /// Draw a slider track and thumb.
-    #[allow(clippy::too_many_arguments)]
-    pub fn slider(&mut self, track_bounds: Rect, thumb_center: Vec2, thumb_radius: f32, track_background: Color, track_fill: Color, thumb_color: Color, fill_amount: f32) {
+    pub fn slider(&mut self, visual: SliderVisual) {
         // Draw track background
-        self.rect_rounded(track_bounds, track_background, track_bounds.height / 2.0);
+        self.rect_rounded(visual.track_bounds, visual.track_background, visual.track_bounds.height / 2.0);
 
         // Draw filled portion
-        if fill_amount > 0.0 {
-            let fill_width = track_bounds.width * fill_amount;
-            let fill_bounds = Rect::new(track_bounds.x, track_bounds.y, fill_width, track_bounds.height);
-            self.rect_rounded(fill_bounds, track_fill, track_bounds.height / 2.0);
+        if visual.fill_amount > 0.0 {
+            let fill_width = visual.track_bounds.width * visual.fill_amount;
+            let fill_bounds = Rect::new(visual.track_bounds.x, visual.track_bounds.y, fill_width, visual.track_bounds.height);
+            self.rect_rounded(fill_bounds, visual.track_fill, visual.track_bounds.height / 2.0);
         }
 
         // Draw thumb
-        self.circle(thumb_center, thumb_radius, thumb_color);
+        self.circle(visual.thumb_center, visual.thumb_radius, visual.thumb_color);
     }
+}
+
+/// Visual parameters for drawing a slider track and thumb.
+#[derive(Debug, Clone, Copy)]
+pub struct SliderVisual {
+    pub track_bounds: Rect,
+    pub thumb_center: Vec2,
+    pub thumb_radius: f32,
+    pub track_background: Color,
+    pub track_fill: Color,
+    pub thumb_color: Color,
+    pub fill_amount: f32,
 }
 
 #[cfg(test)]

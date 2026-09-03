@@ -31,7 +31,7 @@ pub struct SceneInstance {
     /// [`spawn_prefab`](Self::spawn_prefab).
     pub prefabs: HashMap<String, PrefabData>,
     /// Non-fatal load diagnostics worth showing the user (e.g. a script
-    /// Entity param naming a missing entity — kimi #44 F5). Empty on a
+    /// Entity param naming a missing entity). Empty on a
     /// clean load.
     pub load_warnings: Vec<String>,
 }
@@ -106,7 +106,7 @@ impl SceneLoader {
     ) -> Result<SceneInstance, SceneLoadError> {
         // Engine components (physics) must be in the dynamic registry before
         // any ComponentData::Dynamic loads — idempotent, covers headless
-        // scene tests that never call run_game (issue #43).
+        // scene tests that never call run_game.
         crate::component_registration::register_engine_components();
         // Sidecar reads are cached for the duration of a load; start each one
         // from disk so an artist's `.sheet.ron` edit — including fixing a file
@@ -163,7 +163,7 @@ impl SceneLoader {
         }
 
         // Script Entity params were deferred until every entity existed —
-        // resolve them against the finished name table (issue #44).
+        // resolve them against the finished name table.
         let load_warnings =
             crate::script_data::resolve_pending_script_targets(world, &named_entities);
 

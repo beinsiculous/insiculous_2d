@@ -119,36 +119,36 @@ fn render_scene_view(editor: &EditorContext, ctx: &mut GameContext, bounds: comm
 
     // Play-state border tint
     let border_color = theme.play_state_border(editor.play_state());
-    let w = if editor.in_play_session() { 3.0 } else { 1.0 };
+    let outline_width = if editor.in_play_session() { 3.0 } else { 1.0 };
 
     // Top
     ctx.ui.line(
         Vec2::new(bounds.x, bounds.y),
         Vec2::new(bounds.x + bounds.width, bounds.y),
-        border_color, w,
+        border_color, outline_width,
     );
     // Bottom
     ctx.ui.line(
         Vec2::new(bounds.x, bounds.y + bounds.height),
         Vec2::new(bounds.x + bounds.width, bounds.y + bounds.height),
-        border_color, w,
+        border_color, outline_width,
     );
     // Left
     ctx.ui.line(
         Vec2::new(bounds.x, bounds.y),
         Vec2::new(bounds.x, bounds.y + bounds.height),
-        border_color, w,
+        border_color, outline_width,
     );
     // Right
     ctx.ui.line(
         Vec2::new(bounds.x + bounds.width, bounds.y),
         Vec2::new(bounds.x + bounds.width, bounds.y + bounds.height),
-        border_color, w,
+        border_color, outline_width,
     );
 }
 
 /// Hierarchy — tree view with click-to-select, Ctrl toggle, Shift range
-/// select (#51), and F2 inline rename (committed renames are undo-recorded
+/// select, and F2 inline rename (committed renames are undo-recorded
 /// here).
 fn render_hierarchy(
     editor: &mut EditorContext,
@@ -173,7 +173,7 @@ fn render_hierarchy(
         editor.close_add_component_popup();
     }
     // Same modifier read AND precedence as the marquee: either Ctrl /
-    // either Shift, Ctrl wins a chord (kimi #51 F1).
+    // either Shift, Ctrl wins a chord.
     use winit::keyboard::KeyCode;
     let keyboard = ctx.input.keyboard();
     let ctrl_held =
@@ -206,7 +206,7 @@ fn render_hierarchy(
 
 /// Apply a committed inline rename as one undoable command. An empty or
 /// unchanged commit is a no-op (an entity is never stranded with a blank
-/// Name — kimi F6); a name now shared by several entities gets a status-bar
+/// Name); a name now shared by several entities gets a status-bar
 /// warning because it stops being a usable command-API address.
 fn apply_hierarchy_rename(
     editor: &mut EditorContext,
@@ -258,7 +258,7 @@ pub(super) fn hierarchy_click_mode(ctrl_held: bool, shift_held: bool) -> Hierarc
 /// entities — it stops being a usable command-API address. Both rename
 /// paths raise it: the hierarchy F2 commit (via [`warn_if_name_ambiguous`])
 /// and the inspector Name field, which folds it into the frame's field
-/// warnings so neither overwrites the other (kimi batch-2 F1, #55 F2).
+/// warnings so neither overwrites the other.
 pub(super) fn name_ambiguity_warning(world: &ecs::World, name: &str) -> Option<String> {
     match HierarchyPanel::resolve_by_name(world, name) {
         editor::NameResolution::Ambiguous(matches) => Some(format!(

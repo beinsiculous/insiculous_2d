@@ -6,8 +6,7 @@
 //!
 //! The pipeline declares its own camera bind-group layout (identical in shape
 //! to the sprite pipeline's) and owns its own camera uniform buffer, so the
-//! camera is uploaded once per pipeline per frame. Extracting a shared
-//! `CameraBinding` is tracked on the Studio Board (issue #89, DRY-006).
+//! camera is uploaded once per pipeline per frame.
 
 
 use wgpu::{
@@ -203,7 +202,7 @@ impl LinePipeline {
     /// composite on top of the sprite frame).
     ///
     /// `viewport_scissor` bounds the pass (lines are game geometry — the
-    /// editor clips them to the scene panel, issue #41); an empty effective
+    /// editor clips them to the scene panel); an empty effective
     /// scissor skips the pass entirely (both attachments are `Load`, so
     /// skipping changes nothing).
     pub fn draw(

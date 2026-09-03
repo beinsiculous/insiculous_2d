@@ -1,5 +1,5 @@
-//! The unsaved-changes confirm flow for scene-replacing actions (issue #52,
-//! audit §1.4): New Scene / Open Scene on a dirty world raise a real
+//! The unsaved-changes confirm flow for scene-replacing actions:
+//! New Scene / Open Scene on a dirty world raise a real
 //! Save / Discard / Cancel modal instead of a status-bar warning.
 //!
 //! State machine: [`request_scene_replace`] either proceeds immediately
@@ -61,10 +61,10 @@ impl<G: Game> EditorGame<G> {
         };
         // A modal is keyboard-modal: whatever text field held focus loses
         // it, so it neither swallows the dialog's keys nor keeps receiving
-        // typed characters underneath (#52 kimi F1).
+        // typed characters underneath.
         ctx.ui.clear_text_focus();
         let dialog = ConfirmDialog::unsaved_changes(action.phrase());
-        // Enter pressed since last frame = the primary action (kimi F4);
+        // Enter pressed since last frame = the primary action;
         // mouse clicks come from the rendered buttons.
         let key_choice = self.pending_dialog_choice.take();
         match dialog.render(ctx.ui, ctx.window_size, &self.editor.theme).or(key_choice) {
@@ -110,7 +110,7 @@ impl<G: Game> EditorGame<G> {
     /// (Save — routed through the next render, which owns the GameContext),
     /// and EVERY other key is swallowed — Ctrl+S or Delete acting under a
     /// modal would mutate state the user is being asked about. Tab cycling
-    /// is deliberately out of scope for now (mouse-first, kimi F4).
+    /// is deliberately out of scope for now (mouse-first).
     /// Returns whether the key was consumed.
     pub(super) fn confirm_dialog_consumes_key(&mut self, key: winit::keyboard::KeyCode) -> bool {
         if self.pending_scene_action.is_none() {

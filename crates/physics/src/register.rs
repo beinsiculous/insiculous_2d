@@ -1,4 +1,4 @@
-//! Dynamic-registry wiring for the physics components (issue #43, ecs GPP-16).
+//! Dynamic-registry wiring for the physics components.
 //!
 //! physics is downstream of ecs, so it cannot appear in the registry's
 //! builtin list — the engine calls [`register_components`] at startup

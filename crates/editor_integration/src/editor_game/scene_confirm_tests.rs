@@ -1,4 +1,4 @@
-//! The unsaved-changes confirm state machine (#52): a clean world proceeds,
+//! The unsaved-changes confirm state machine: a clean world proceeds,
 //! a dirty world parks the action for the modal, a play session refuses
 //! outright, and while the dialog shows it owns the keyboard.
 
@@ -52,7 +52,7 @@ fn test_dialog_swallows_keys_enter_queues_save_and_escape_cancels() {
     assert_eq!(editor.pending_dialog_choice, None, "swallowed keys choose nothing");
 
     // Enter = the primary (Save) action, queued for the next render, which
-    // owns the GameContext (kimi F4).
+    // owns the GameContext.
     assert!(editor.confirm_dialog_consumes_key(KeyCode::Enter));
     assert_eq!(editor.pending_dialog_choice, Some(editor::ConfirmChoice::Confirm));
 

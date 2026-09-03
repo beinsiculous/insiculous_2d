@@ -152,7 +152,7 @@ pub trait Game: Sized + 'static {
 /// ```
 pub fn run_game<G: Game>(game: G, config: GameConfig) -> Result<(), Box<dyn std::error::Error>> {
     // Engine components reach the dynamic registry before any scene loads
-    // or editor capture runs (idempotent — issue #43).
+    // or editor capture runs (idempotent).
     crate::component_registration::register_engine_components();
     let event_loop = EventLoop::new()?;
     let runner = GameRunner::new(game, config);
@@ -168,7 +168,7 @@ pub fn run_game<G: Game>(game: G, config: GameConfig) -> Result<(), Box<dyn std:
     #[cfg(target_arch = "wasm32")]
     {
         use winit::platform::web::EventLoopExtWebSys;
-        // Stop-for-good on pagehide/bfcache restore (issue #58) — must be
+        // Stop-for-good on pagehide/bfcache restore — must be
         // installed before the browser owns the loop.
         crate::web::install_page_exit_guard();
         event_loop.spawn_app(runner);
@@ -253,10 +253,10 @@ struct GameRunner<G: Game> {
     /// uploads to the renderer. Cleared before every `update()`.
     lines: Vec<renderer::line_pipeline::LineVertex>,
     /// Scene-authored spring grids (`ecs::GridBackdrop`), simulated here and
-    /// drawn beneath the game's own lines (#46).
+    /// drawn beneath the game's own lines.
     grid_backdrops: crate::grid::GridBackdropSystem,
     /// Persistent sprite batchers, cleared (capacity retained) each frame —
-    /// no per-frame HashMap/Vec churn (GPP-15). Game and UI sprites batch
+    /// no per-frame HashMap/Vec churn. Game and UI sprites batch
     /// separately so UI never shares a batch with (and paints over) sprites.
     game_batcher: SpriteBatcher,
     ui_batcher: SpriteBatcher,

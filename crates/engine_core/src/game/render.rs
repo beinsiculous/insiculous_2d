@@ -42,16 +42,15 @@ fn append_particle_sprites(
 impl<G: Game> GameRunner<G> {
     /// Render complete frame with sprites and UI
     pub(super) fn render_frame(&mut self, window_size: Vec2, ui_commands: &[DrawCommand]) {
-        // Prepare glyph textures for text rendering
         if let Some(asset_manager) = &mut self.asset_manager {
             self.glyph_textures.prepare(ui_commands, asset_manager);
         }
 
-        // Phase 1: Game sprites — render into their own batcher so they never
+        // Game sprites — render into their own batcher so they never
         // share a batch with UI elements (which would cause UI panel backgrounds
         // to paint over game sprites due to painter's algorithm). The batchers
         // are persistent fields: clear() retains capacity, so a steady-state
-        // frame allocates nothing here (GPP-15).
+        // frame allocates nothing here.
         self.game_batcher.clear();
         // A main-camera entity (Camera { is_main_camera } + Transform2D)
         // drives the render camera; games can still override ctx.camera below.
@@ -82,9 +81,9 @@ impl<G: Game> GameRunner<G> {
         // but below UI.
         append_particle_sprites(&mut self.game_batcher, &self.particles);
 
-        // Phase 2: UI sprites — separate batcher. Conversion is
-        // camera-relative so UI stays at fixed screen pixels even when the
-        // game (or editor) moves/zooms the camera during Phase 1.
+        // UI sprites — separate batcher. Conversion is camera-relative so UI
+        // stays at fixed screen pixels even when the game (or editor) moves/zooms
+        // the camera.
         self.ui_batcher.clear();
         render_ui_commands(
             &mut self.ui_batcher,
@@ -103,12 +102,11 @@ impl<G: Game> GameRunner<G> {
             self.game_batcher.batches().values().filter(|b| !b.instances.is_empty()).collect();
         Self::sort_batch_refs(&mut batch_refs);
         // UI batches stay separate: they draw in their own post-tonemap
-        // pass so authored UI colors display exactly (issue #26).
+        // pass so authored UI colors display exactly.
         let mut ui_batch_refs: Vec<&SpriteBatch> =
             self.ui_batcher.batches().values().filter(|b| !b.instances.is_empty()).collect();
         Self::sort_batch_refs(&mut ui_batch_refs);
 
-        // Get textures from asset manager (need to reborrow after RenderContext)
         if let Some(asset_manager) = &self.asset_manager {
             let textures = asset_manager.textures();
             if let Err(e) = self.render_manager.render(&batch_refs, &ui_batch_refs, textures) {
@@ -137,8 +135,8 @@ impl<G: Game> GameRunner<G> {
                     a_max.total_cmp(&b_max)
                 })
                 .then_with(|| a.texture_handle.id.cmp(&b.texture_handle.id))
-                // Two same-texture batches can differ only by clip rect
-                // (issue #41) — tie-break on it for deterministic order.
+                // Two same-texture batches can differ only by clip rect —
+                // tie-break on it for deterministic order.
                 .then_with(|| a.clip.cmp(&b.clip))
         });
     }

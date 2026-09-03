@@ -1,9 +1,9 @@
-//! The editor's own UI faces, shipped with the crate (audit §5.6).
+//! The editor's own UI faces, shipped with the crate.
 //!
 //! The chrome font must never depend on the opened project — the old
 //! search started at the GAME's `assets/fonts/font.ttf`, so Pong's serif
 //! skinned the entire editor. `include_bytes!` also works unchanged on
-//! wasm32 (no VFS boot-ordering involved), which the web editor (#48)
+//! wasm32 (no VFS boot-ordering involved), which the web editor
 //! inherits for free.
 //!
 //! DejaVu fonts are free (Bitstream Vera + public-domain extensions —
@@ -18,8 +18,8 @@ use ui::FontHandle;
 pub const EDITOR_FONT_REGULAR: &[u8] = include_bytes!("../assets/fonts/DejaVuSans.ttf");
 /// Bold face for headings and panel titles.
 pub const EDITOR_FONT_BOLD: &[u8] = include_bytes!("../assets/fonts/DejaVuSans-Bold.ttf");
-/// Monospace face for numeric inspector fields (`EditableFieldStyle::numeric_font`,
-/// #54): digits line up and a scrub never jitters the caret.
+/// Monospace face for numeric inspector fields (`EditableFieldStyle::numeric_font`):
+/// digits line up and a scrub never jitters the caret.
 pub const EDITOR_FONT_MONO: &[u8] = include_bytes!("../assets/fonts/DejaVuSansMono.ttf");
 
 /// Handles to the loaded editor faces, populated at editor init.

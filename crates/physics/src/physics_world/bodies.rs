@@ -16,14 +16,14 @@ impl PhysicsWorld {
         self.remove_rigid_body(entity);
 
         // Convert position from pixels to meters
-        let pos = self.pixels_to_meters(position);
-        let vel = self.pixels_to_meters(body.velocity);
+        let position_meters = self.pixels_to_meters(position);
+        let velocity_meters = self.pixels_to_meters(body.velocity);
 
         // Per-body-type builder setup; shared translation/rotation applied once below.
         let builder = match body.body_type {
             RigidBodyType::Dynamic => {
                 let mut builder = RigidBodyBuilder::dynamic()
-                    .linvel(vector![vel.x, vel.y])
+                    .linvel(vector![velocity_meters.x, velocity_meters.y])
                     .angvel(body.angular_velocity)
                     .gravity_scale(body.gravity_scale)
                     .linear_damping(body.linear_damping)
@@ -43,7 +43,7 @@ impl PhysicsWorld {
             }
         };
         let rigid_body = builder
-            .translation(vector![pos.x, pos.y])
+            .translation(vector![position_meters.x, position_meters.y])
             .rotation(rotation)
             .build();
 
@@ -69,8 +69,8 @@ impl PhysicsWorld {
         // Create rapier shape (converting from pixels to meters)
         let shape: SharedShape = match &collider.shape {
             ColliderShape::Box { half_extents } => {
-                let he = self.pixels_to_meters(*half_extents);
-                SharedShape::cuboid(he.x, he.y)
+                let half_extents_meters = self.pixels_to_meters(*half_extents);
+                SharedShape::cuboid(half_extents_meters.x, half_extents_meters.y)
             }
             ColliderShape::Circle { radius } => {
                 SharedShape::ball(self.pixels_to_meters_scalar(*radius))
@@ -209,10 +209,10 @@ impl PhysicsWorld {
 
     /// Set the position and rotation of a rigid body
     pub(crate) fn set_body_transform(&mut self, entity: EntityId, position: Vec2, rotation: f32) {
-        let pos = self.pixels_to_meters(position);
+        let position_meters = self.pixels_to_meters(position);
 
         if let Some(body) = self.body_mut(entity) {
-            body.set_translation(vector![pos.x, pos.y], true);
+            body.set_translation(vector![position_meters.x, position_meters.y], true);
             body.set_rotation(nalgebra::UnitComplex::new(rotation), true);
         }
     }
@@ -223,10 +223,10 @@ impl PhysicsWorld {
     /// The body will move to this position during the next physics step,
     /// properly interacting with other bodies along the way.
     pub fn set_kinematic_target(&mut self, entity: EntityId, position: Vec2, rotation: f32) {
-        let pos = self.pixels_to_meters(position);
+        let position_meters = self.pixels_to_meters(position);
 
         if let Some(body) = self.body_mut(entity) {
-            body.set_next_kinematic_translation(vector![pos.x, pos.y]);
+            body.set_next_kinematic_translation(vector![position_meters.x, position_meters.y]);
             body.set_next_kinematic_rotation(nalgebra::UnitComplex::new(rotation));
         }
     }
@@ -240,20 +240,20 @@ impl PhysicsWorld {
     ///
     /// [`PhysicsSystem::set_velocity`]: crate::PhysicsSystem::set_velocity
     pub fn set_velocity(&mut self, entity: EntityId, linear: Vec2, angular: f32) {
-        let vel = self.pixels_to_meters(linear);
+        let velocity_meters = self.pixels_to_meters(linear);
 
         if let Some(body) = self.body_mut(entity) {
-            body.set_linvel(vector![vel.x, vel.y], true);
+            body.set_linvel(vector![velocity_meters.x, velocity_meters.y], true);
             body.set_angvel(angular, true);
         }
     }
 
     /// Apply an impulse to a rigid body
     pub fn apply_impulse(&mut self, entity: EntityId, impulse: Vec2) {
-        let imp = self.pixels_to_meters(impulse);
+        let impulse_meters = self.pixels_to_meters(impulse);
 
         if let Some(body) = self.body_mut(entity) {
-            body.apply_impulse(vector![imp.x, imp.y], true);
+            body.apply_impulse(vector![impulse_meters.x, impulse_meters.y], true);
         }
     }
 

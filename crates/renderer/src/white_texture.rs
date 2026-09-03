@@ -12,7 +12,6 @@ pub(crate) fn create_white_texture_resource(device: &Device, queue: &Queue) -> T
 
     log::info!("Creating white texture resource for colored sprites");
 
-    // Create a 1x1 white texture
     let texture = Arc::new(device.create_texture(&wgpu::TextureDescriptor {
         label: Some("White Texture"),
         size: wgpu::Extent3d {
@@ -28,10 +27,8 @@ pub(crate) fn create_white_texture_resource(device: &Device, queue: &Queue) -> T
         view_formats: &[],
     }));
 
-    // Create white pixel data (1, 1, 1, 1) - RGBA all 255 for white
     let white_pixel: [u8; 4] = [255, 255, 255, 255];
 
-    // Write the white pixel data to the texture using the queue
     queue.write_texture(
         texture.as_image_copy(),
         &white_pixel,
@@ -46,8 +43,6 @@ pub(crate) fn create_white_texture_resource(device: &Device, queue: &Queue) -> T
             depth_or_array_layers: 1,
         },
     );
-
-    log::info!("White texture created successfully with pixel data (255,255,255,255)");
 
     TextureResource::new(device, texture)
 }

@@ -178,11 +178,11 @@ impl TextEditState {
     pub fn cursor_from_click(&mut self, prefix_widths: &[f32], click_x: f32) {
         let mut best = 0usize;
         let mut best_dist = f32::MAX;
-        for (i, w) in prefix_widths.iter().enumerate() {
-            let d = (click_x - w).abs();
-            if d < best_dist {
-                best_dist = d;
-                best = i;
+        for (index, &prefix_width) in prefix_widths.iter().enumerate() {
+            let distance_to_click = (click_x - prefix_width).abs();
+            if distance_to_click < best_dist {
+                best_dist = distance_to_click;
+                best = index;
             }
         }
         self.cursor = best.min(self.char_len());

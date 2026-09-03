@@ -39,7 +39,7 @@ pub enum NameResolution {
 
 /// Normalize a rename commit: whitespace-trimmed, with empty and unchanged
 /// results rejected — an entity can never be stranded with a blank `Name`,
-/// and a no-op commit records no undo entry (kimi F6).
+/// and a no-op commit records no undo entry.
 pub fn normalized_rename(current: Option<&str>, raw: &str) -> Option<String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() || Some(trimmed) == current {
@@ -53,7 +53,7 @@ pub fn normalized_rename(current: Option<&str>, raw: &str) -> Option<String> {
 pub const PRIMARY_ACCENT_WIDTH: f32 = 3.0;
 
 /// Row fills for selected hierarchy rows, derived from the editor theme via
-/// `EditorTheme::selection_row_fills()` (#51). The primary row — the one the
+/// `EditorTheme::selection_row_fills()`. The primary row — the one the
 /// inspector shows and gizmos pivot on — reads differently from the rest.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SelectionRowFills {
@@ -70,13 +70,13 @@ pub struct SelectionRowFills {
 pub struct HierarchyPanel {
     /// Entities that are collapsed (all expanded by default).
     collapsed: HashSet<EntityId>,
-    /// Vertical scroll for long entity lists (audit §3.3).
+    /// Vertical scroll for long entity lists.
     pub scroll: crate::ScrollState,
     /// Row currently in inline-rename mode (F2), if any.
     renaming: Option<EntityId>,
     /// Every row of the last render pass in draw order — collapsed
     /// subtrees excluded, off-panel rows included. Shift-click ranges are
-    /// computed over it (#51).
+    /// computed over it.
     visible_order: Vec<EntityId>,
 }
 
@@ -123,7 +123,7 @@ impl HierarchyPanel {
     /// The rows a Shift-click on `target` selects, anchor first: from the
     /// primary when it is a visible row, else from the LAST visible selected
     /// row (a primary hidden under a collapsed parent must not silently
-    /// collapse the selection to one row — kimi plan-round F4). `None` when
+    /// collapse the selection to one row). `None` when
     /// no selected row is visible; the host then adds `target` instead.
     pub fn shift_click_range(&self, selection: &Selection, target: EntityId) -> Option<Vec<EntityId>> {
         let index_of = |entity: EntityId| self.visible_order.iter().position(|&row| row == entity);
@@ -181,8 +181,8 @@ impl HierarchyPanel {
         format!("Entity {}", entity.value())
     }
 
-    /// Inverse of [`entity_display_name`], for name-first entity addressing
-    /// (audit §9.3b): exact match on the `Name` component only — synthesized
+    /// Inverse of [`entity_display_name`], for name-first entity addressing:
+    /// exact match on the `Name` component only — synthesized
     /// display names ("Sprite (Entity 5)") are addressable by id instead.
     /// Nothing enforces name uniqueness, so ambiguity is reported, never
     /// silently resolved to the first match.
@@ -241,7 +241,7 @@ impl HierarchyPanel {
 
         // A renamed entity that no longer exists (deleted mid-rename, or a
         // scene swap) must not leave the panel armed — a recycled id could
-        // otherwise open a brand-new entity in rename mode (kimi F2).
+        // otherwise open a brand-new entity in rename mode.
         if let Some(renaming) = self.renaming {
             if world.get_entity(&renaming).is_err() {
                 self.renaming = None;
@@ -318,7 +318,7 @@ impl HierarchyPanel {
         let is_expanded = self.is_expanded(entity);
 
         // Row background for selection (full width); the primary row gets
-        // its own fill plus a left accent bar (#51).
+        // its own fill plus a left accent bar.
         let row_rect = common::Rect::new(bounds.x, y, bounds.width, ROW_HEIGHT);
         if is_primary {
             ctx.ui.rect(row_rect, ctx.fills.primary);
@@ -330,7 +330,7 @@ impl HierarchyPanel {
 
         // Check arrow interaction FIRST for entities with children. The
         // arrow goes inert while this row is being renamed — collapsing the
-        // tree under an active text field would reflow it mid-edit (kimi F3).
+        // tree under an active text field would reflow it mid-edit.
         let mut arrow_clicked = false;
         if has_children {
             if self.renaming != Some(entity) {

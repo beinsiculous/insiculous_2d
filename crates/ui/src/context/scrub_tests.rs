@@ -158,7 +158,7 @@ fn test_float_typed_commit_soft_range_accepts_and_flags_while_hard_range_clamps_
     let nines = [KeyCode::Digit9, KeyCode::Digit9];
 
     // Soft range 0..=10: a typed 99 is ACCEPTED — the audit's "type 1500,
-    // get 1000" silent clamp is gone — and reported so the host can warn (#55).
+    // get 1000" silent clamp is gone — and reported so the host can warn.
     let soft = type_and_commit(&mut ui, &mut input, 5.0, FloatFieldOpts::range(0.0, 10.0), &nines);
     assert!(soft.committed && soft.changed);
     assert_eq!(soft.value, 99.0, "a soft range must not clamp typed commits");

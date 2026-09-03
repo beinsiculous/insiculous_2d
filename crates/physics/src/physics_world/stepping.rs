@@ -52,9 +52,6 @@ impl PhysicsWorld {
         let gravity_meters = self.pixels_to_meters(self.config.gravity);
         let gravity = vector![gravity_meters.x, gravity_meters.y];
 
-        // Create event handler
-        let event_handler = ();
-
         // Step physics
         self.physics_pipeline.step(
             &gravity,
@@ -69,7 +66,7 @@ impl PhysicsWorld {
             &mut self.ccd_solver,
             None,
             &(),
-            &event_handler,
+            &(),
         );
 
         // Build current collision set and process collision events
