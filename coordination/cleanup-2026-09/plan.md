@@ -821,6 +821,9 @@ The dead-API additions from the cut reviews now live under Batch 2 (moved Sep 3 
   SSOT table row "Behavior ↔ BehaviorData From pair" → "`ecs::Behavior` serde attributes",
   "arms in BOTH loader and serializer" → "a builder, an extractor, and a table row".
 - `log_archive.md`: the physics pass-through changelog, the deleted `docs/plans` note, lessons.
+- The nine `crates/*/ANALYSIS.md` (retired family, `continue.md` §3.1) still teach deleted API —
+  `common::Time`, `play_music_once`/`stop_all`/`unload_all`, `SceneManager`, `device_ref` (kimi's
+  review-16 F2, deferred here in rebuttal-16): delete the family or sweep it; decide, don't leave it.
 - Issue bookkeeping: close #82, #89; tick items on #84, #86, #90, #91; file the deferred issues.
 
 ## Deliberately not doing (filed as issues in batch 10)
