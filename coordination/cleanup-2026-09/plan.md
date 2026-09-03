@@ -217,26 +217,34 @@ Comment policy:
   function name.
 - Fix the misattached doc comments (`theme/mod.rs:33-40`, `scene_io.rs:225-239`) and three
   stale hex values; rewrite the false "no gamepad backend" module doc in `input/src/gamepad.rs`;
-  delete the `PATTERNS_AUDIT.md` reference in `renderer/src/sprite/instance_cache.rs:1`.
+  delete the `PATTERNS_AUDIT.md` reference in `renderer/src/sprite/instance_cache.rs:1`. The
+  three stale hex values (audit-editor.md:442): `bg_primary` documented `#1e1e1e` but is
+  `surface_1 = 0x2a2a2a`, `bg_input` says `#2d2d2d` but is `0x545454`, `bg_viewport` says
+  `#000000` but is `0x0a0a0a` — the doc line follows the value, not the reverse.
+- Evidence for the lists above: `audit-systems.md` §4–5, `audit-editor.md` §4–5, `audit-core.md`
+  §3.5 and §4 (all in this directory). Out of scope, left as they are: the two `dead_code`
+  allows in `ecs/benches/ecs_benchmark.rs` (a bench, not production code).
 - Gate: this returns nothing afterwards:
   ```sh
   grep -riEn "kimi|issue #[0-9]+|GPP-[0-9]+|audit §|\(#[0-9]+\)|Sprint [0-9]" crates src examples --include=*.rs
   ```
   (case-insensitive, no blanket exclusions — a match inside an attribute or hex literal is
-  inspected by hand; the gate runs in every later batch too)
-  ```sh
-  ```
+  inspected by hand; the gate runs in every later batch too). Baseline Sep 3 2026, after
+  batch 2: 276 matches across the workspace, heaviest in `editor_integration/src/editor_game/`
+  and `editor/src/{hierarchy,commands,command_api}/`.
 
 Names (production code; tight math in `common` stays; WGSL untouched — no headless check):
 physics `bodies.rs` `he/f/imp/pos/vel` → `half_extents_meters/force_meters/impulse_meters/
 position_meters/velocity_meters`, `components.rs:214` `hw/hh`, `update.rs:19` `dt` →
-`clamped_delta_time`, `queries.rs` `toi`, `stepping.rs:56` `let event_handler = ();` deleted;
+`clamped_delta_time`, `stepping.rs:56` `let event_handler = ();` deleted (`queries.rs` and its
+`toi` went with `raycast` in batch 2);
 ui `kb/pos/dx/bg/d`; renderer `img`; engine_core `mgr`, `scene_serializer.rs` single-letter
 component bindings (`b` bound to two types), handlers `vel_x/vel`; editor `c/b/w/n/pc/btn`.
 
 Allows: `behavior_runner/handlers.rs` handlers take `&Behavior` and destructure (three
 `too_many_arguments` go, and no more swappable `f32` positional pairs); `WidgetId::from_str` →
-`WidgetId::hashed` (23 sites); `slider` takes a `SliderVisual` struct; the three editor allows
+`WidgetId::hashed` (19 sites after batch 2; drops the `should_implement_trait` allow);
+`DrawList::slider` (`ui/src/draw/mod.rs:296`, seven params) takes a `SliderVisual` struct; the three editor allows
 wait for batch 7; `renderer.rs:230` `arc_with_non_send_sync` stays (decided with H8).
 
 ## Batch 4 — DRY in the systems crates (~700 lines; design-structure.md §H, §I, §J)
