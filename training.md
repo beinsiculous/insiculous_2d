@@ -109,6 +109,49 @@ Use descriptive names that clearly communicate purpose:
 - Boolean methods should be questions: `is_running()`, `has_component()`
 - Getters should use noun form: `device()`, `keyboard()`
 - Mutable getters should use `_mut` suffix: `keyboard_mut()`
+- **No abbreviations**, loop variables and closure parameters included:
+  `keyboard` not `kb`, `image` not `img`, `manager` not `mgr`, `button` not
+  `btn`, `delta_time` not `dt`, `center` not `c`. One-letter bindings are
+  for tight math in `common` only.
+- **A converted value names its unit**: `position_meters`, `half_extents_meters`,
+  `clamped_delta_time` — the reader must not have to find the conversion.
+- **A binding names one thing.** Never reuse `b` for a button and then a
+  behavior in the same function.
+
+### Comment Policy
+A comment earns its line by saying something the code cannot.
+- `///` states the contract in a few lines: what the caller may rely on, what
+  it must not do. Module docs describe the module's responsibility, not its
+  history. A compiled doc example is a test and stays when it is the only
+  executable pin on a public API.
+- `//` survives only as a **pitfall**, an **invariant**, or a **failed approach**
+  (the Firefox WebGPU crash rationale, the two-batcher painter's reason, the
+  `Box<dyn Component>` downcast trap, the RwLock re-entrancy guard, the tie
+  rule in `scores.rs`). Narration that restates the next line is deleted;
+  numbered section headers (`// 3. Menu bar`) become function names.
+- **Keep the reason, drop the tag.** Issue numbers, reviewer tags (`kimi F3`),
+  audit sections, sprint names and pattern codes (`GPP-15`) never appear in
+  source; the sentence that explains the decision does. A comment that is
+  only a tag is deleted. The gate (bare `#42` counts — a match inside a hex
+  literal or a string is inspected by hand, not excluded):
+  ```sh
+  grep -riEn "kimi|issue #[0-9]+|GPP-[0-9]+|audit §|\(#[0-9]+\)|#[0-9]+\b|Sprint [0-9]" crates src examples --include=*.rs
+  ```
+  prints nothing. Nothing runs it at commit time: it is `/finish-task` Gate 3
+  and part of every batch gate, run by hand.
+- Changelog prose belongs in `log_archive.md`, dated, not in a module doc.
+
+### No `#[allow]`
+A lint is a design signal, not noise to silence.
+- `too_many_arguments`: bundle the per-call inputs into a context struct
+  built once by the caller (`HandlerFrame { input, delta_time, physics }`)
+  or pass the owning value (`&Behavior`) and destructure inside. Never a
+  tuple parameter — that is the allow in another costume.
+- `should_implement_trait`: rename (`WidgetId::hashed`, not `from_str`).
+- A destructure that cannot fail by construction still logs before an early
+  return; a silent `let … else { return }` hides a dispatch bug.
+- The one standing exception, `arc_with_non_send_sync` in `renderer.rs`,
+  carries its reason in the comment above it.
 
 ### Rust Idioms
 - Prefer `impl From<T>` over custom conversion functions

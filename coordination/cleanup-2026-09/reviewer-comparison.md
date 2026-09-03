@@ -34,6 +34,7 @@ from launch to file.
 | batch 2 pass 2 (gemini authored) | claude | 3 | 3 | 0 | 0 | unexplained `PartialOrd, Ord` derive added to `EntityId` in a pure-deletion batch; `QueryPipeline` maintained but never read after `raycast` went; missed the crate-guide drift kimi found (checked only the three lines the fixes named) | — |
 | batch 3 (gemini authored) | kimi | 3 | 2 | 1 | 0 | "four compiling, running doctests are deleted — weakened checks beyond the stated comment-hygiene intent" (the crates' only public-API usage pins); also caught the log_archive entry mis-dating the apply_impulse removal; the false one asked for a games gate that had already run | ~7 min (07:48 → 07:55) |
 | batch 3 (gemini authored) | claude | 4 | 4 | 0 | 0 | "the tuple is the too_many_arguments allow in another costume" — one handler ducked the lint with `(state, commands): (&mut _, &mut _)`; the silent `let … else { return }` fallbacks; two reasons dropped with their tags; fixes applied by Claude per Jesse's ruling, no second round | — |
+| handoff-loop skill v3 + comment/naming policy in the guides (code-mode review of the doc diff) | kimi | 5 | 5 | 0 | 0 | "Step 7 still claims the committed bytes are the reviewed bytes after step 6 makes that false by design" — the planner-applies-fixes ruling had broken the loop's central assertion; also: no hook runs the tag gate the guides said ran at every commit, and bare `#42` slipped the gate (45 in the tree) | ~7 min (08:34 → 08:41) |
 
 ## Verdict (Sep 3 2026, after three diffs reviewed by both)
 

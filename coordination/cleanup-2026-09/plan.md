@@ -61,7 +61,11 @@ cfg-split frame drivers, rodio).
   `review/draft.diff` and full-tree commits).
 - `scripts/check_wasm.sh` is a compile-time gate; wasm runtime behaviour is guaranteed by
   construction through the `common::clock` and `common::vfs` seams, never by the gate.
-- The comment-tag gate (batch 3) is part of EVERY batch's gate list.
+- The comment-tag gate (batch 3) is part of EVERY batch's gate list. Widened Sep 3 2026 (review-18
+  F5): bare `#42` counts too — `grep -riEn "kimi|issue #[0-9]+|GPP-[0-9]+|audit §|\(#[0-9]+\)|#[0-9]+\b|Sprint [0-9]" crates src examples --include=*.rs`.
+  Batch 3 ran with the narrower pattern and left 45 bare-`#N` matches; the planner sweeps them in
+  a comment-only commit right after batch 4 lands (under the review threshold), and batch 4's
+  executor is held to the pattern it was handed.
 - Per crate, the keep-list test cut is its own commit and lands BEFORE any behaviour change
   in that crate (review round 1, F4); a deleted-by-list test that would have failed under the
   batch's change is reinstated and adjudicated with Jesse before the change commits.

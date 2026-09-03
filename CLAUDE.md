@@ -20,10 +20,22 @@ encode lessons already learned here — following them is cheaper than re-learni
 4. **Do only what was asked.** No opportunistic refactors, no new dependencies, no
    `#[allow(...)]`, no `unwrap()` outside tests. Files stay under 600 lines — split
    instead of growing.
-5. **When stuck after 2 attempts, stop thrashing.** Consult the Godot oracle (below),
+5. **Comments carry reasons, names carry meaning** (`training.md` § Comment Policy,
+   § Explicit Naming and § No `#[allow]` are the rules; the Sep 2026 cleanup is why).
+   `///` states the contract in a few lines. `//` survives only as a pitfall, an
+   invariant, or a failed approach — never narration of the next line, never a
+   numbered section header. Say why, not where it was decided: no issue numbers,
+   reviewer tags, audit sections or sprint names in source. The gate is a grep,
+   part of `/finish-task` Gate 3 and of every batch gate — nothing runs it at commit
+   time, so run it yourself:
+   `grep -riEn "kimi|issue #[0-9]+|GPP-[0-9]+|audit §|\(#[0-9]+\)|#[0-9]+\b|Sprint [0-9]" crates src examples --include=*.rs`
+   must print nothing (a match inside a hex literal or a string is inspected by hand). No abbreviations, loop variables included; a value in
+   converted units says so (`position_meters`). Too many parameters means a
+   context struct, never a tuple parameter or an `#[allow]`.
+6. **When stuck after 2 attempts, stop thrashing.** Consult the Godot oracle (below),
    write findings to `coordination/BLOCKERS.md`, and report to the user with what you
    tried. A clear blocker report beats a wrong "fix".
-6. **Use the project skills** for recurring tasks: `/add-component` (wire a new ECS
+7. **Use the project skills** for recurring tasks: `/add-component` (wire a new ECS
    component through registry + editor), `/new-game` (20-games-challenge scaffold),
    `/finish-task` (definition-of-done verification).
 
