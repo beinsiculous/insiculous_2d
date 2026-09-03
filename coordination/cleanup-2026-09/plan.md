@@ -251,7 +251,7 @@ Allows: `behavior_runner/handlers.rs` handlers take `&Behavior` and destructure 
 `DrawList::slider` (`ui/src/draw/mod.rs:296`, seven params) takes a `SliderVisual` struct; the three editor allows
 wait for batch 7; `renderer.rs:230` `arc_with_non_send_sync` stays (decided with H8).
 
-## Batch 4 — DRY in the systems crates (~700 lines; design-structure.md §H, §I, §J)
+## Batch 4 — DRY in the systems crates — DONE Sep 3 2026 (168dadd; review 19, fixes applied by Claude per Jesse)
 
 - renderer: `camera_binding.rs` `CameraBinding { buffer, layout, bind_group }` composed by the
   sprite and line pipelines (closes #89); `pipeline_builder.rs` `build_render_pipeline(device,
