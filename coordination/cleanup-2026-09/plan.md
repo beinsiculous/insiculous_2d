@@ -197,7 +197,7 @@ strengthened to all four channels: it is the live scene-save path (review-3 F2).
 Extra verification: games check gate, wasm gate, `cargo run --example hello_world` smoke for
 the UIManager removal (frame path is not headless).
 
-## Batch 3 — mechanical sweep: comments, names, allows (~700 lines, ~110 files, no code gained)
+## Batch 3 — mechanical sweep: comments, names, allows — DONE Sep 3 2026 (4d6c715; review 17, fixes applied by Claude per Jesse)
 
 Comment policy:
 - `///` stays but states the contract in a few lines. Cut the module-doc essays to that:
