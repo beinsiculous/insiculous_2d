@@ -25,3 +25,7 @@ winit = { workspace = true }
 # Already a workspace dependency everywhere else; needed here only so tests
 # can `define_component!` game-style types for the dynamic-tier ship point.
 serde = { workspace = true }
+# The engine's GPU-free scene fixtures (`StubResolver`, `test_texture_path`)
+# — one copy, shared with every downstream test build.
+engine_core = { path = "../engine_core", features = ["test-support"] }
+tempfile = "3"

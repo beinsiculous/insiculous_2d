@@ -291,9 +291,6 @@ mod inspector;
 use inspector::render_inspector;
 
 #[cfg(test)]
-mod tests;
-
-#[cfg(test)]
 mod click_mode_tests {
     use super::{hierarchy_click_mode, HierarchyClickMode};
 

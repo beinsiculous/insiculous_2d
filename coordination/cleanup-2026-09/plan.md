@@ -343,6 +343,15 @@ modulo root order — before check-in, so batch 8's own bug cannot be blessed); 
 - `shortcuts.rs`: `handle_play_action` and `dispatch_editor_action` grouped by category.
 - `viewport_interaction.rs`: `PickableCache` built once per frame, shared with
   `panel_renderer` (today up to four `build_pickable_entities` per frame).
+- Test seams (editor_integration cut, Sep 3): `drain_api_requests`, `handle_editor_key`,
+  `handle_viewport_picking` and `render_inspector` take a `&mut GameContext` they only partly
+  use, so their guards (mid-drag API skip and the 256-line cap, `wants_keyboard` gating,
+  no picking during Play, read-only inspector while Playing) cannot be written headlessly;
+  narrow each to the fields it uses — as `delete_selected_entities`/`duplicate_selected_entities`
+  and the clipboard trio already were (`&mut World`) — and write those guards here. The
+  dirty mirror (`EditorContext.is_dirty` following `CommandHistory`) is synced only inside
+  `update`; give it a world-only entry point and pin it (the deleted tests had reconstructed
+  the mirror in the test body).
 - `behavior_editor.rs`: per-variant editors; `render_inspector_editable`,
   `render_asset_browser`, `render_node` split at their visible seams;
   `stored_component/kind.rs` takes `ComponentKind`, `ComponentCategory`,

@@ -561,22 +561,20 @@ pub fn run_game_with_editor_opts<G: Game>(
 }
 
 #[cfg(test)]
+mod test_support;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
-mod api_write_tests;
+mod api_tests;
 #[cfg(test)]
 mod camera_follow_tests;
 #[cfg(test)]
+mod play_session_tests;
+#[cfg(test)]
 mod scene_confirm_tests;
-#[cfg(test)]
-mod gizmo_drag_tests;
-#[cfg(test)]
-mod shortcuts_tests;
-#[cfg(test)]
-mod picking_tests;
-#[cfg(test)]
-mod play_guard_tests;
 #[cfg(test)]
 mod scene_io_tests;
 #[cfg(test)]
-mod time_freeze_tests;
+mod shortcuts_tests;
+#[cfg(test)]
+mod viewport_interaction_tests;

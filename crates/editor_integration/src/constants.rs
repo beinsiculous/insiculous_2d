@@ -51,3 +51,38 @@ pub fn find_first_scene(scenes_dir: &std::path::Path) -> Option<std::path::PathB
     scenes.sort();
     scenes.into_iter().next()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_editor_window_is_enlarged_to_the_usable_minimum_and_never_shrunk() {
+        let cases = [
+            ((640, 480), (1024, 720)),
+            ((1920, 1080), (1920, 1080)),
+            ((1100, 600), (1100, 720)),
+        ];
+        for ((width, height), expected) in cases {
+            let config = clamp_editor_window_size(GameConfig::new("Test").with_size(width, height));
+            assert_eq!((config.width, config.height), expected, "requested {width}x{height}");
+        }
+    }
+
+    #[test]
+    fn test_first_scene_is_the_byte_wise_first_ron_file_whatever_the_dir_order() -> std::io::Result<()> {
+        // #53: which scene opens on launch must not depend on `read_dir`.
+        let dir = tempfile::tempdir()?;
+        std::fs::write(dir.path().join("zeta.ron"), "x")?;
+        std::fs::write(dir.path().join("alpha.RON"), "x")?;
+        std::fs::write(dir.path().join("aaa.txt"), "x")?;
+
+        let first = find_first_scene(dir.path()).expect("a scene exists");
+        assert_eq!(first.file_name().and_then(|n| n.to_str()), Some("alpha.RON"));
+
+        let empty = tempfile::tempdir()?;
+        assert_eq!(find_first_scene(empty.path()), None, "no .ron file, no scene");
+        assert_eq!(find_first_scene(&dir.path().join("missing")), None, "unreadable dir, no scene");
+        Ok(())
+    }
+}

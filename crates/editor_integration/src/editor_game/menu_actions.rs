@@ -60,14 +60,14 @@ impl<G: Game> EditorGame<G> {
                     self.command_history.push_already_executed(Box::new(cmd));
                 }
             }
-            "Cut" if !self.editor.is_playing() => self.cut_selection(ctx),
-            "Copy" if !self.editor.is_playing() => self.copy_selection(ctx),
-            "Paste" if !self.editor.is_playing() => self.paste_clipboard(ctx),
+            "Cut" if !self.editor.is_playing() => self.cut_selection(ctx.world),
+            "Copy" if !self.editor.is_playing() => self.copy_selection(ctx.world),
+            "Paste" if !self.editor.is_playing() => self.paste_clipboard(ctx.world),
             "Delete" if !self.editor.is_playing() => {
-                self.delete_selected_entities(ctx);
+                self.delete_selected_entities(ctx.world);
             }
             "Duplicate" if !self.editor.is_playing() => {
-                self.duplicate_selected_entities(ctx);
+                self.duplicate_selected_entities(ctx.world);
             }
             "Undo" if !self.editor.is_playing() => {
                 if let Some(name) = self.command_history.undo_name() {
@@ -148,20 +148,20 @@ impl<G: Game> EditorGame<G> {
     }
 
     /// Delete all selected entities as a single undoable action.
-    pub(super) fn delete_selected_entities(&mut self, ctx: &mut GameContext) {
+    pub(super) fn delete_selected_entities(&mut self, world: &mut ecs::World) {
         let selected: Vec<ecs::EntityId> = self.editor.selection.selected().collect();
         if selected.is_empty() {
             return;
         }
         if selected.len() == 1 {
             let cmd = editor::commands::DeleteEntityCommand::new(selected[0]);
-            self.command_history.execute(Box::new(cmd), ctx.world);
+            self.command_history.execute(Box::new(cmd), world);
         } else {
             let cmds: Vec<Box<dyn editor::EditorCommand>> = selected.iter()
                 .map(|&e| Box::new(editor::commands::DeleteEntityCommand::new(e)) as Box<dyn editor::EditorCommand>)
                 .collect();
             let cmd = editor::commands::MacroCommand::new("Delete Entities", cmds);
-            self.command_history.execute(Box::new(cmd), ctx.world);
+            self.command_history.execute(Box::new(cmd), world);
         }
         self.editor.selection.clear();
     }
@@ -169,16 +169,16 @@ impl<G: Game> EditorGame<G> {
     /// Duplicate the primary selected entity (and its subtree), recording
     /// undo via `SpawnTreeCommand` — its undo removes the WHOLE duplicated
     /// subtree (the old per-root `CreateEntityCommand` orphaned children).
-    pub(super) fn duplicate_selected_entities(&mut self, ctx: &mut GameContext) {
+    pub(super) fn duplicate_selected_entities(&mut self, world: &mut ecs::World) {
         use ecs::WorldHierarchyExt;
         let Some(primary) = self.editor.selection.primary() else {
             return;
         };
-        let parent = ctx.world.get_parent(primary);
-        let tree = editor::capture_entity_tree(ctx.world, primary);
+        let parent = world.get_parent(primary);
+        let tree = editor::capture_entity_tree(world, primary);
         let mut cmd =
             editor::SpawnTreeCommand::duplicate(tree, parent, crate::constants::DUPLICATE_OFFSET);
-        editor::EditorCommand::execute(&mut cmd, ctx.world);
+        editor::EditorCommand::execute(&mut cmd, world);
         if let Some(root) = cmd.spawned_root() {
             self.editor.selection.select(root);
         }
@@ -187,8 +187,8 @@ impl<G: Game> EditorGame<G> {
 
     /// Copy the selection roots to the entity clipboard (no world change).
     /// Unregistered component types can't be captured — warn, never block.
-    pub(super) fn copy_selection(&mut self, ctx: &mut GameContext) {
-        let roots = entity_ops::selection_roots(ctx.world, &self.editor.selection);
+    pub(super) fn copy_selection(&mut self, world: &mut ecs::World) {
+        let roots = entity_ops::selection_roots(world, &self.editor.selection);
         if roots.is_empty() {
             return;
         }
@@ -196,12 +196,12 @@ impl<G: Game> EditorGame<G> {
         self.clipboard = roots
             .iter()
             .map(|&root| {
-                for name in editor::uncaptured_component_names(ctx.world, root) {
+                for name in editor::uncaptured_component_names(world, root) {
                     if !lost.contains(&name) {
                         lost.push(name);
                     }
                 }
-                editor::capture_entity_tree(ctx.world, root)
+                editor::capture_entity_tree(world, root)
             })
             .collect();
         if lost.is_empty() {
@@ -219,7 +219,7 @@ impl<G: Game> EditorGame<G> {
 
     /// Paste the entity clipboard as new root entities (one undo entry),
     /// offset like a duplicate, and select the pasted roots.
-    pub(super) fn paste_clipboard(&mut self, ctx: &mut GameContext) {
+    pub(super) fn paste_clipboard(&mut self, world: &mut ecs::World) {
         if self.clipboard.is_empty() {
             return;
         }
@@ -228,7 +228,7 @@ impl<G: Game> EditorGame<G> {
         for tree in self.clipboard.clone() {
             let mut cmd =
                 editor::SpawnTreeCommand::paste(tree, None, crate::constants::DUPLICATE_OFFSET);
-            editor::EditorCommand::execute(&mut cmd, ctx.world);
+            editor::EditorCommand::execute(&mut cmd, world);
             if let Some(root) = cmd.spawned_root() {
                 new_roots.push(root);
             }
@@ -257,16 +257,16 @@ impl<G: Game> EditorGame<G> {
     /// Delete's reparent-the-children semantics would be wrong here — the
     /// clipboard holds the full subtree, so leaving promoted children
     /// behind would duplicate them on paste.
-    pub(super) fn cut_selection(&mut self, ctx: &mut GameContext) {
-        let roots = entity_ops::selection_roots(ctx.world, &self.editor.selection);
+    pub(super) fn cut_selection(&mut self, world: &mut ecs::World) {
+        let roots = entity_ops::selection_roots(world, &self.editor.selection);
         if roots.is_empty() {
             return;
         }
-        self.copy_selection(ctx);
+        self.copy_selection(world);
         let mut commands: Vec<Box<dyn editor::EditorCommand>> = Vec::new();
         for &root in &roots {
-            let mut cmd = editor::DeleteTreeCommand::new(ctx.world, root);
-            editor::EditorCommand::execute(&mut cmd, ctx.world);
+            let mut cmd = editor::DeleteTreeCommand::new(world, root);
+            editor::EditorCommand::execute(&mut cmd, world);
             commands.push(Box::new(cmd));
         }
         let count = commands.len();

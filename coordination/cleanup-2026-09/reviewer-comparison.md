@@ -23,6 +23,28 @@ from launch to file.
 | engine_core cut | gemini | 4 | 4 | 0 | 0 | Camera/Tilemap/Behavior extraction arms unpinned (unique); 3 of 4 overlap kimi; cited file:line links; static | ~6 min |
 | editor cut | kimi | 4 | 4 | 0 | 0 | font load incl. bold + two #54 locks; Behavior defaults-within-ranges; a sweep of small pins; verified every called API against the tree (no compile break) | ~24 min |
 | editor cut | gemini | 5 | 5 | 0 | 0 | same two blocking locks as kimi; unique: `type_key` release asymmetry in the new harness, scroll clamp bounds | ~12 min |
+| editor_integration cut | kimi | 5 | 3 | 0 | 2 | verified every deleted guard against surviving coverage in other crates (zoom guard, shortcut table, rename refusal); the two rebuts asked for the mirror test in the reconstructed form | ~16 min |
+| editor_integration cut | gemini | 6 | 6 | 0 | 0 | unique: the `dirty_editor` fixture desync (a real harness fidelity bug), pure-write refusal plumbing, clipboard trio narrowing; verdict 'reject pending minor revisions' for minors | ~7 min |
+
+## Verdict (Sep 3 2026, after three diffs reviewed by both)
+
+Totals over the three shared diffs (engine_core, editor, editor_integration): kimi 15 findings,
+12 real, 0 false, 3 policy; gemini 15 findings, 15 real, 0 false, 0 policy. Neither reviewer
+produced a false claim at code level. Overlap: 8 of 15 findings were found by both; kimi's
+unique catches were the prefab RON wire, the toast draw path and the `commands` discovery keys;
+gemini's were the Camera/Tilemap/Behavior extraction arms, the `type_key` release asymmetry,
+the `dirty_editor` fixture desync and the pure-write refusal plumbing. Kimi is the more
+thorough verifier (it re-runs the suite and greps callers across crates, and once rebutted its
+own suspicions after checking); gemini is roughly twice as fast, cites file:line links, and
+found more harness-fidelity bugs — the class of defect only a second reader catches. Gemini's
+verdicts skew stricter ("reject pending minor revisions" for minors) while kimi's are
+calibrated to severity.
+
+Recommendation: keep **kimi as the default single reviewer** (its verification discipline is
+what made it trustworthy on the 3,000-to-12,000-line diffs, and the plan-level flaws it caught
+were the expensive ones), and **run both on any diff that changes a test harness, a fixture, or
+a public seam** — every gemini-only finding was in that class. For small, single-crate diffs
+one reviewer is enough; alternate them so neither's blind spots become the default's.
 
 Observations to weigh at the end: every kimi review verified claims by running the suite and
 grepping callers, and each round found at least one contract the keep-list had wrongly

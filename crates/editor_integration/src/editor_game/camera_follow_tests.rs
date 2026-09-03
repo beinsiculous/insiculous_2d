@@ -1,65 +1,84 @@
-//! Camera-split tests (issue #42): the viewport follows the game camera —
-//! position AND zoom — during Play, manual input breaks the follow, the
-//! toggle re-arms it, and Stop restores the editing view.
+//! The camera split (#42): while Playing the viewport follows the game's
+//! main camera — position and zoom, never rotation — manual input breaks
+//! the follow, the toggle re-arms it, and Stop restores the editing view.
 
 use ecs::World;
 use editor::PlayControlAction;
-use engine_core::contexts::GameContext;
-use engine_core::Game;
 use glam::Vec2;
 
-use super::EditorGame;
+use super::test_support::editor_game;
 
-struct DummyGame;
-impl Game for DummyGame {
-    fn update(&mut self, _ctx: &mut GameContext) {}
-}
+/// Zoom on the fixture camera — beyond the viewport's interactive clamp,
+/// so an adopted zoom proves it is taken unclamped (kimi #42 F2).
+const GAME_ZOOM: f32 = 20.0;
+const GAME_POSITION: Vec2 = Vec2::new(320.0, -75.0);
 
-/// World with a main camera at (320, -75) zoomed to 2.5.
+/// World with a rotated main camera at [`GAME_POSITION`] zoomed to
+/// [`GAME_ZOOM`].
 fn world_with_zoomed_camera() -> World {
     let mut world = World::new();
     let entity = world.create_entity();
     world
-        .add_component(&entity, common::Camera::default().as_main_camera().with_zoom(2.5))
+        .add_component(
+            &entity,
+            common::Camera::default().as_main_camera().with_zoom(GAME_ZOOM).with_rotation(0.7),
+        )
         .ok();
     world
-        .add_component(&entity, common::Transform2D::new(Vec2::new(320.0, -75.0)))
+        .add_component(&entity, common::Transform2D::from_parts(GAME_POSITION, 0.7, Vec2::ONE))
         .ok();
     world
 }
 
 #[test]
-fn test_play_adopts_game_camera_pose_including_zoom() {
-    let mut editor_game = EditorGame::new(DummyGame);
+fn test_play_adopts_the_game_camera_pose_unclamped_or_zoom_one_without_a_camera() {
+    let mut editor_game = editor_game();
     let mut world = world_with_zoomed_camera();
     editor_game.editor.viewport.set_camera_position(Vec2::new(-500.0, 40.0));
     editor_game.editor.viewport.set_camera_zoom(0.5);
 
     editor_game.handle_play_action(PlayControlAction::Play, &mut world);
 
-    // The old behavior forced zoom 1.0; the game camera's real zoom now
-    // renders in the editor exactly as it does outside it.
-    assert_eq!(editor_game.editor.viewport.camera_position(), Vec2::new(320.0, -75.0));
-    assert_eq!(editor_game.editor.viewport.camera_zoom(), 2.5);
+    // The game camera's real zoom renders in the editor exactly as it does
+    // outside it — the interactive [0.1, 10] scroll clamp must not apply.
+    assert_eq!(editor_game.editor.viewport.camera_position(), GAME_POSITION);
+    assert_eq!(editor_game.editor.viewport.camera_zoom(), GAME_ZOOM);
     assert!(editor_game.editor.is_camera_following(), "follow armed at session start");
-}
-
-#[test]
-fn test_play_without_main_camera_keeps_zoom_one_parity() {
-    let mut editor_game = EditorGame::new(DummyGame);
-    let mut world = World::new();
-    editor_game.editor.viewport.set_camera_zoom(3.0);
-
-    editor_game.handle_play_action(PlayControlAction::Play, &mut world);
 
     // No camera entity = the game renders unzoomed outside the editor too.
+    let mut editor_game = super::test_support::editor_game();
+    let mut empty = World::new();
+    editor_game.editor.viewport.set_camera_zoom(3.0);
+    editor_game.handle_play_action(PlayControlAction::Play, &mut empty);
     assert_eq!(editor_game.editor.viewport.camera_zoom(), 1.0);
 }
 
 #[test]
-fn test_sync_copies_zoom_only_while_playing_and_following() {
-    let mut editor_game = EditorGame::new(DummyGame);
+fn test_main_camera_rotation_is_never_mirrored_onto_the_viewport() {
+    // The viewport math has no rotation term, so a rotated game camera
+    // must render unrotated in the editor rather than skewing picking.
+    let mut editor_game = editor_game();
     let mut world = world_with_zoomed_camera();
+    let window = Vec2::new(1280.0, 720.0);
+
+    editor_game.handle_play_action(PlayControlAction::Play, &mut world);
+    editor_game.sync_viewport_from_main_camera(&world);
+
+    let rendered = editor_game.editor.viewport.to_window_render_camera(window);
+    assert_eq!(rendered.rotation, 0.0, "rotation is deliberately not synced");
+    assert_eq!(rendered.zoom, GAME_ZOOM, "position and zoom still are");
+}
+
+#[test]
+fn test_sync_copies_pose_only_while_playing_and_following() {
+    let mut editor_game = editor_game();
+    let mut world = world_with_zoomed_camera();
+
+    // Editing: the game camera must NOT move the editing view.
+    editor_game.sync_viewport_from_main_camera(&world);
+    assert_eq!(editor_game.editor.viewport.camera_position(), Vec2::ZERO);
+    assert_eq!(editor_game.editor.viewport.camera_zoom(), 1.0);
+
     editor_game.handle_play_action(PlayControlAction::Play, &mut world);
 
     // Move the game camera mid-play; sync mirrors position AND zoom.
@@ -74,6 +93,15 @@ fn test_sync_copies_zoom_only_while_playing_and_following() {
     editor_game.sync_viewport_from_main_camera(&world);
     assert_eq!(editor_game.editor.viewport.camera_position(), Vec2::new(1000.0, 5.0));
     assert_eq!(editor_game.editor.viewport.camera_zoom(), 4.0);
+
+    // A degenerate authored zoom must never reach the divide-by-zoom math.
+    for e in world.entities() {
+        if let Some(c) = world.get_mut::<common::Camera>(e) {
+            c.zoom = 0.0;
+        }
+    }
+    editor_game.sync_viewport_from_main_camera(&world);
+    assert_eq!(editor_game.editor.viewport.camera_zoom(), 1.0, "zoom 0 is sanitized to 1");
 
     // Follow broken: the sync must leave the user's view alone entirely.
     editor_game.editor.set_camera_follow(false);
@@ -92,33 +120,21 @@ fn test_sync_copies_zoom_only_while_playing_and_following() {
 }
 
 #[test]
-fn test_refollow_snaps_back_to_game_pose() {
-    let mut editor_game = EditorGame::new(DummyGame);
-    let mut world = world_with_zoomed_camera();
-    editor_game.handle_play_action(PlayControlAction::Play, &mut world);
-
-    // Free-move somewhere else...
-    editor_game.editor.set_camera_follow(false);
-    editor_game.editor.viewport.set_camera_position(Vec2::new(-999.0, 999.0));
-    editor_game.editor.viewport.set_camera_zoom(0.1);
-
-    // ...then re-arm the follow: next sync snaps to the game pose.
-    editor_game.handle_play_action(PlayControlAction::ToggleCameraFollow, &mut world);
-    assert!(editor_game.editor.is_camera_following());
-    editor_game.sync_viewport_from_main_camera(&world);
-    assert_eq!(editor_game.editor.viewport.camera_position(), Vec2::new(320.0, -75.0));
-    assert_eq!(editor_game.editor.viewport.camera_zoom(), 2.5);
-}
-
-#[test]
-fn test_pause_resume_preserves_a_broken_follow() {
+fn test_pause_resume_preserves_a_broken_follow_and_refollow_snaps_back() {
     // kimi R2-F8: re-arm happens at SESSION START only — resuming from
     // pause must not override the user's explicit free-camera choice.
-    let mut editor_game = EditorGame::new(DummyGame);
+    let mut editor_game = editor_game();
     let mut world = world_with_zoomed_camera();
+
+    // Outside a play session the toggle is a no-op: there is nothing to follow.
+    editor_game.handle_play_action(PlayControlAction::ToggleCameraFollow, &mut world);
+    assert!(editor_game.editor.is_camera_following(), "toggling while Editing changes nothing");
+
     editor_game.handle_play_action(PlayControlAction::Play, &mut world);
     editor_game.handle_play_action(PlayControlAction::ToggleCameraFollow, &mut world);
     assert!(!editor_game.editor.is_camera_following());
+    editor_game.editor.viewport.set_camera_position(Vec2::new(-999.0, 999.0));
+    editor_game.editor.viewport.set_camera_zoom(0.1);
 
     editor_game.handle_play_action(PlayControlAction::Pause, &mut world);
     editor_game.handle_play_action(PlayControlAction::Play, &mut world); // resume
@@ -126,11 +142,21 @@ fn test_pause_resume_preserves_a_broken_follow() {
         !editor_game.editor.is_camera_following(),
         "resume must not re-arm a follow the user broke"
     );
+    editor_game.sync_viewport_from_main_camera(&world);
+    assert_eq!(editor_game.editor.viewport.camera_position(), Vec2::new(-999.0, 999.0));
+
+    // Re-arming (Follow button / Ctrl+Shift+F): the next sync snaps to the
+    // game pose.
+    editor_game.handle_play_action(PlayControlAction::ToggleCameraFollow, &mut world);
+    assert!(editor_game.editor.is_camera_following());
+    editor_game.sync_viewport_from_main_camera(&world);
+    assert_eq!(editor_game.editor.viewport.camera_position(), GAME_POSITION);
+    assert_eq!(editor_game.editor.viewport.camera_zoom(), GAME_ZOOM);
 }
 
 #[test]
 fn test_stop_restores_editing_view_and_rearms_follow() {
-    let mut editor_game = EditorGame::new(DummyGame);
+    let mut editor_game = editor_game();
     let mut world = world_with_zoomed_camera();
     editor_game.editor.viewport.set_camera_position(Vec2::new(77.0, -33.0));
     editor_game.editor.viewport.set_camera_zoom(1.5);
@@ -146,22 +172,11 @@ fn test_stop_restores_editing_view_and_rearms_follow() {
 }
 
 #[test]
-fn test_toggle_is_a_noop_outside_a_play_session() {
-    let mut editor_game = EditorGame::new(DummyGame);
-    let mut world = World::new();
-    editor_game.handle_play_action(PlayControlAction::ToggleCameraFollow, &mut world);
-    assert!(
-        editor_game.editor.is_camera_following(),
-        "toggling while Editing changes nothing"
-    );
-}
-
-#[test]
 fn test_play_transition_cancels_pending_viewport_gesture() {
-    // kimi #42 F5: handle_input runs during Play too now, so a button held
+    // kimi #42 F5: handle_input runs during Play too, so a button held
     // across a play-state transition must not complete a phantom
     // click/marquee in the new state.
-    let mut editor_game = EditorGame::new(DummyGame);
+    let mut editor_game = editor_game();
     let mut world = World::new();
     editor_game
         .editor
@@ -183,49 +198,5 @@ fn test_play_transition_cancels_pending_viewport_gesture() {
     assert!(
         !editor_game.editor.viewport_input.has_pending_marquee(),
         "a play-state transition kills the in-flight gesture"
-    );
-}
-
-#[test]
-fn test_follow_adopts_extreme_zoom_unclamped() {
-    // kimi #42 F2: the follow view must match the shipped game exactly —
-    // the interactive [0.1, 10] scroll clamp must not apply to an adopted
-    // game-camera zoom.
-    let mut editor_game = EditorGame::new(DummyGame);
-    let mut world = World::new();
-    let entity = world.create_entity();
-    world
-        .add_component(&entity, common::Camera::default().as_main_camera().with_zoom(20.0))
-        .ok();
-    world
-        .add_component(&entity, common::Transform2D::new(Vec2::ZERO))
-        .ok();
-
-    editor_game.handle_play_action(PlayControlAction::Play, &mut world);
-    assert_eq!(editor_game.editor.viewport.camera_zoom(), 20.0);
-
-    // A degenerate authored zoom must never reach the divide-by-zoom math.
-    for e in world.entities() {
-        if let Some(c) = world.get_mut::<common::Camera>(e) {
-            c.zoom = 0.0;
-        }
-    }
-    editor_game.sync_viewport_from_main_camera(&world);
-    assert_eq!(editor_game.editor.viewport.camera_zoom(), 1.0);
-}
-
-#[test]
-fn test_follow_toggle_chord_resolves_over_focus_binding() {
-    // Ctrl+Shift+F = ToggleCameraFollow (exact chord); F alone still frames.
-    use winit::keyboard::KeyCode;
-    let editor_game = EditorGame::new(DummyGame);
-    let mapping = &editor_game.editor.input_mapping;
-    assert_eq!(
-        mapping.resolve(KeyCode::KeyF, true, true),
-        Some(editor::EditorAction::ToggleCameraFollow)
-    );
-    assert_eq!(
-        mapping.resolve(KeyCode::KeyF, false, false),
-        Some(editor::EditorAction::FocusSelection)
     );
 }

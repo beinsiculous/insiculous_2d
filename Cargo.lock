@@ -865,6 +865,7 @@ dependencies = [
  "renderer",
  "serde",
  "serde_json",
+ "tempfile",
  "ui",
  "winit",
 ]

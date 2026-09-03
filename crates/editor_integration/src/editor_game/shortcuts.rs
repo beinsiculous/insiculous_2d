@@ -314,26 +314,26 @@ impl<G: Game> EditorGame<G> {
                 if drag_guard(self) {
                     return;
                 }
-                self.duplicate_selected_entities(ctx);
+                self.duplicate_selected_entities(ctx.world);
             }
             A::Delete => {
                 if drag_guard(self) {
                     return;
                 }
-                self.delete_selected_entities(ctx);
+                self.delete_selected_entities(ctx.world);
             }
-            A::Copy => self.copy_selection(ctx),
+            A::Copy => self.copy_selection(ctx.world),
             A::Paste => {
                 if drag_guard(self) {
                     return;
                 }
-                self.paste_clipboard(ctx);
+                self.paste_clipboard(ctx.world);
             }
             A::Cut => {
                 if drag_guard(self) {
                     return;
                 }
-                self.cut_selection(ctx);
+                self.cut_selection(ctx.world);
             }
             A::SelectAll => {
                 let all = entity_ops::selectable_entities(ctx.world);

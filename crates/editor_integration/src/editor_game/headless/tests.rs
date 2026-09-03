@@ -25,13 +25,12 @@ ecs::define_component! {
 }
 
 #[test]
-fn test_full_authoring_loop_survives_a_reload() {
+fn test_full_authoring_loop_survives_a_reload() -> std::io::Result<()> {
     // Dynamic components must be registered by the hosting process — the
     // headless session sees whatever main() registered (kimi R1-F1).
     ecs::register_components(|r| r.register::<HeadlessDynTestMarker>());
-
-    let path = std::env::temp_dir().join("test_45_headless_ship_point.ron");
-    let _ = std::fs::remove_file(&path);
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("ship_point.ron");
 
     // Session 1: author a scene from nothing and save it.
     let script = format!(
@@ -52,28 +51,22 @@ fn test_full_authoring_loop_survives_a_reload() {
     assert!(path.exists(), "save wrote the file");
 
     // Session 2: a fresh headless session opens the saved file — the
-    // mutation AND the dynamic component survived the round trip.
-    let responses = run_session(Some(path.clone()), "scene\ndescribe Hero\n");
+    // mutation AND the dynamic component survived the round trip, and an
+    // unknown verb is one error line that does not end the session.
+    let responses = run_session(Some(path.clone()), "scene\nfrobnicate\ndescribe Hero\n");
     assert_eq!(responses[0]["ok"], true);
     assert!(
         responses[0]["data"]["path"]
             .as_str()
-            .is_some_and(|p| p.ends_with("test_45_headless_ship_point.ron")),
+            .is_some_and(|p| p.ends_with("ship_point.ron")),
         "the opened scene's path is reported (the #53 seam): {}",
         responses[0]
     );
-    let hero = &responses[1]["data"];
+    assert_eq!(responses[1]["ok"], false, "unknown verb is one error line");
+    let hero = &responses[2]["data"];
     assert_eq!(hero["components"]["Transform2D"]["rotation"], 0.5);
     assert_eq!(hero["components"]["HeadlessDynTestMarker"]["level"], 7.0);
-
-    let _ = std::fs::remove_file(&path);
-}
-
-#[test]
-fn test_unknown_verb_errors_and_the_session_continues() {
-    let responses = run_session(None, "frobnicate\nscene\n");
-    assert_eq!(responses[0]["ok"], false, "unknown verb is one error line");
-    assert_eq!(responses[1]["ok"], true, "the session keeps answering");
+    Ok(())
 }
 
 #[test]
@@ -81,52 +74,54 @@ fn test_unreadable_startup_scene_fails_fast() {
     // An agent must never silently author against an empty world it
     // believes is the scene.
     let missing = std::env::temp_dir().join("test_45_no_such_scene.ron");
+
     let result = run_headless_editor_api(
         None,
         Some(missing),
         Cursor::new(String::new()),
         &mut Vec::new(),
     );
+
     let err = result.expect_err("missing scene refuses the session");
     assert!(err.contains("test_45_no_such_scene"), "error names the file: {err}");
 }
 
 #[test]
-fn test_unissued_texture_handle_is_refused_and_never_reaches_the_file() {
+fn test_unissued_texture_handle_is_refused_and_never_reaches_the_file() -> std::io::Result<()> {
     // #66: only handles the session's resolver issued may be written. The
     // refusal is an ordinary error line; the session continues and the
     // built-in #white (handle 0) still saves.
-    let dir = std::env::temp_dir().join(format!("insiculous_66_{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("temp dir");
-    let scene = dir.join("refused.scene.ron");
+    let dir = tempfile::tempdir()?;
+    let scene = dir.path().join("refused.scene.ron");
     let script = format!(
         "create sprite Hero\nset Hero Sprite {{\"texture_handle\": 999}}\nset Hero Sprite {{\"texture_handle\": 0}}\nsave {}\n",
         scene.display()
     );
+
     let responses = run_session(None, &script);
+
     assert_eq!(responses.len(), 4, "{responses:?}");
     assert_eq!(responses[0]["ok"], true, "create: {}", responses[0]);
     assert_eq!(responses[1]["ok"], false, "unissued handle: {}", responses[1]);
     assert_eq!(responses[1]["error"]["kind"], "invalid", "{}", responses[1]);
     assert_eq!(responses[2]["ok"], true, "#white is always issued: {}", responses[2]);
     assert_eq!(responses[3]["ok"], true, "save: {}", responses[3]);
-
-    let saved = std::fs::read_to_string(&scene).expect("scene written");
+    let saved = std::fs::read_to_string(&scene)?;
     assert!(!saved.contains("#texture_"), "no placeholder ref may be saved: {saved}");
-    std::fs::remove_dir_all(&dir).ok();
+    Ok(())
 }
 
 #[test]
 fn test_headless_assets_round_trip_references_verbatim() {
     let mut assets = HeadlessAssets::new();
-    let white = assets.resolve_texture("#white").unwrap();
-    assert_eq!(white.id, 0, "#white is the built-in handle 0");
 
-    let solid = assets.resolve_texture("#solid:FF00FF").unwrap();
-    let png = assets.resolve_texture("sprites/deion_16.png").unwrap();
+    let white = assets.resolve_texture("#white").expect("built-in resolves");
+    let solid = assets.resolve_texture("#solid:FF00FF").expect("solid resolves");
+    let png = assets.resolve_texture("sprites/deion_16.png").expect("a path resolves");
+
+    assert_eq!(white.id, 0, "#white is the built-in handle 0");
     assert_ne!(solid.id, png.id);
-    // Dedup: the same ref yields the same handle.
-    assert_eq!(assets.resolve_texture("#solid:FF00FF").unwrap().id, solid.id);
+    assert_eq!(assets.resolve_texture("#solid:FF00FF").map(|h| h.id).ok(), Some(solid.id), "same ref, same handle");
     // The serializer's inverse returns the ref VERBATIM.
     assert_eq!(assets.texture_path(solid.id), Some("#solid:FF00FF"));
     assert_eq!(assets.texture_path(png.id), Some("sprites/deion_16.png"));

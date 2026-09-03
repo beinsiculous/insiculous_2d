@@ -11,9 +11,6 @@ use editor::Selection;
 use glam::Vec2;
 use physics::components::{Collider, RigidBody, RigidBodyType};
 
-#[cfg(test)]
-use crate::constants::DUPLICATE_OFFSET;
-
 // Component add/remove and the add-component popup are driven by
 // `editor::ComponentKind` — the registry in editor/src/stored_component.rs
 // is the single source of truth for editor-visible component types.
@@ -208,45 +205,6 @@ pub fn create_sprite_entity_with_texture(
     entity
 }
 
-/// Delete all selected entities, reparenting their children.
-///
-/// For each deleted entity:
-/// - Children are reparented to the deleted entity's parent (or made roots).
-/// - The entity and all its components are removed.
-/// - Selection is cleared afterward.
-///
-/// Used in tests; production code uses command system (`DeleteEntityCommand`).
-#[cfg(test)]
-pub fn delete_selected_entities(world: &mut World, selection: &mut Selection) {
-    let selected: Vec<EntityId> = selection.selected().collect();
-    if selected.is_empty() {
-        return;
-    }
-
-    for &entity in &selected {
-        // Get this entity's parent (before removing)
-        let parent_id = world.get_parent(entity);
-
-        // Reparent children to grandparent (or make roots)
-        if let Some(children) = world.get_children(entity) {
-            let child_ids: Vec<EntityId> = children.to_vec();
-            for child in child_ids {
-                if let Some(new_parent) = parent_id {
-                    world.set_parent(child, new_parent).ok();
-                } else {
-                    world.remove_parent(child).ok();
-                }
-            }
-        }
-
-        // Remove hierarchy links then entity
-        world.remove_parent(entity).ok();
-        world.remove_entity(&entity).ok();
-    }
-
-    selection.clear();
-}
-
 /// Every entity Ctrl+A selects — today all world entities, matching what
 /// the hierarchy shows. This helper is the single place a future
 /// editor-only-entity filter would go.
@@ -287,27 +245,124 @@ pub fn selection_roots(world: &World, selection: &Selection) -> Vec<EntityId> {
     roots
 }
 
-/// Duplicate the primary selected entity (and its descendants) through the
-/// shared clipboard machinery: the duplicate is offset by `(20, -20)`,
-/// every copied `Name` gets " (Copy)" appended, hierarchy is preserved, and
-/// the new top-level entity is selected afterward.
-///
-/// The undoable production path is `EditorGame::duplicate_selected_entities`
-/// (a `SpawnTreeCommand`, whose undo removes the whole subtree); this free
-/// function is the same spawn without the command wrapper — like
-/// `delete_selected_entities` above, it exists for the behavior tests.
 #[cfg(test)]
-pub fn duplicate_selected_entities(world: &mut World, selection: &mut Selection) {
-    let Some(primary) = selection.primary() else {
-        return;
-    };
-    let parent_id = world.get_parent(primary);
-    let tree = editor::capture_entity_tree(world, primary);
-    let new_entity =
-        editor::spawn_entity_tree(world, &tree, parent_id, DUPLICATE_OFFSET, Some(" (Copy)"));
-    selection.select(new_entity);
-}
+mod tests {
+    use super::*;
+    use editor::CommandHistory;
 
-#[cfg(test)]
-#[path = "entity_ops_tests.rs"]
-mod tests_file;
+    #[test]
+    fn test_world_factories_place_name_and_select_the_new_entity() {
+        // Every archetype the Create menu and the command API spawn, keyed
+        // by the menu label they dispatch on.
+        let (mut world, mut selection, mut counter) = (World::new(), Selection::new(), 0);
+        let position = Vec2::new(100.0, -50.0);
+        let expectations: [(&str, bool, bool, Option<RigidBodyType>); 6] = [
+            ("Create Empty", false, false, None),
+            ("Create Sprite", true, false, None),
+            ("Create Camera", false, true, None),
+            ("Create Static Body", true, false, Some(RigidBodyType::Static)),
+            ("Create Dynamic Body", true, false, Some(RigidBodyType::Dynamic)),
+            ("Create Kinematic Body", true, false, Some(RigidBodyType::Kinematic)),
+        ];
+        let mut names = std::collections::HashSet::new();
+
+        for (action, has_sprite, has_camera, body_type) in expectations {
+            let entity = handle_create_action(action, &mut world, &mut selection, position, &mut counter)
+                .unwrap_or_else(|| panic!("{action} is a create action"));
+
+            assert_eq!(selection.primary(), Some(entity), "{action}: the new entity is selected");
+            assert_eq!(
+                world.get::<common::Transform2D>(entity).map(|t| t.position),
+                Some(position),
+                "{action}: spawned where asked"
+            );
+            assert!(world.get::<GlobalTransform2D>(entity).is_some(), "{action}: pickable from frame one");
+            assert_eq!(world.get::<Sprite>(entity).is_some(), has_sprite, "{action}: Sprite");
+            assert_eq!(world.get::<common::Camera>(entity).is_some(), has_camera, "{action}: Camera");
+            assert_eq!(world.get::<RigidBody>(entity).map(|b| b.body_type), body_type, "{action}: body");
+            assert_eq!(world.get::<Collider>(entity).is_some(), body_type.is_some(), "{action}: Collider");
+            let name = world.get::<Name>(entity).map(|n| n.as_str().to_string()).expect("auto-named");
+            assert!(names.insert(name.clone()), "auto-names are unique: {name}");
+        }
+        assert_eq!(
+            handle_create_action("Create Nonsense", &mut world, &mut selection, position, &mut counter),
+            None,
+            "an unknown label creates nothing"
+        );
+    }
+
+    #[test]
+    fn test_ui_factories_give_a_name_but_no_world_transform() {
+        // Screen-space elements place themselves by anchor + offset; a
+        // Transform2D would suggest the gizmo and world position matter.
+        let (mut world, mut selection, mut counter) = (World::new(), Selection::new(), 0);
+
+        let label = create_ui_label(&mut world, &mut selection, &mut counter);
+        let panel = create_ui_panel(&mut world, &mut selection, &mut counter);
+        let button = create_ui_button(&mut world, &mut selection, &mut counter);
+
+        assert!(world.get::<UiLabel>(label).is_some());
+        assert!(world.get::<UiPanel>(panel).is_some());
+        assert!(world.get::<UiButton>(button).is_some());
+        for entity in [label, panel, button] {
+            assert!(world.get::<Name>(entity).is_some(), "UI entities are named");
+            assert!(world.get::<common::Transform2D>(entity).is_none(), "no world transform");
+            assert!(world.get::<GlobalTransform2D>(entity).is_none(), "never pickable in the viewport");
+        }
+        assert_eq!(selection.primary(), Some(button), "the last created is selected");
+    }
+
+    #[test]
+    fn test_select_all_reaches_every_entity_sprite_or_not() {
+        // Ctrl+A matches what the hierarchy shows: a camera-like entity
+        // without a sprite is still selectable.
+        let (mut world, mut selection, mut counter) = (World::new(), Selection::new(), 0);
+        let sprite = create_sprite_entity(&mut world, &mut selection, Vec2::ZERO, &mut counter);
+        let camera = create_camera_entity(&mut world, &mut selection, Vec2::ZERO, &mut counter);
+        let bare = world.create_entity();
+
+        let all = selectable_entities(&world);
+
+        assert_eq!(all.len(), 3);
+        for entity in [sprite, camera, bare] {
+            assert!(all.contains(&entity), "{entity:?} is selectable");
+        }
+    }
+
+    #[test]
+    fn test_texture_assignment_records_one_undo_entry_and_skips_no_ops() {
+        let (mut world, mut selection, mut counter) = (World::new(), Selection::new(), 0);
+        let sprite = create_sprite_entity(&mut world, &mut selection, Vec2::ZERO, &mut counter);
+        let bare = create_empty_entity(&mut world, &mut selection, Vec2::ZERO, &mut counter);
+        let mut history = CommandHistory::new();
+
+        assert!(assign_sprite_texture(&mut world, sprite, 7, &mut history));
+        assert_eq!(world.get::<Sprite>(sprite).map(|s| s.texture_handle), Some(7));
+        assert!(history.undo(&mut world));
+        assert_eq!(world.get::<Sprite>(sprite).map(|s| s.texture_handle), Some(0), "undo restores the old texture");
+
+        assert!(!assign_sprite_texture(&mut world, sprite, 0, &mut history), "same handle is a no-op");
+        assert!(!assign_sprite_texture(&mut world, bare, 7, &mut history), "no Sprite is a no-op");
+        assert!(!history.can_undo(), "no-ops record nothing");
+    }
+
+    #[test]
+    fn test_texture_dropped_on_empty_space_spawns_an_undoable_named_sprite() {
+        let (mut world, mut selection, mut counter) = (World::new(), Selection::new(), 0);
+        let mut history = CommandHistory::new();
+
+        let entity = create_sprite_entity_with_texture(
+            &mut world, &mut selection, Vec2::new(50.0, -20.0), 9, "crate", &mut counter, &mut history,
+        );
+
+        assert_eq!(world.get::<Sprite>(entity).map(|s| s.texture_handle), Some(9));
+        assert_eq!(world.get::<common::Transform2D>(entity).map(|t| t.position), Some(Vec2::new(50.0, -20.0)));
+        assert!(
+            world.get::<Name>(entity).is_some_and(|n| n.as_str().starts_with("crate")),
+            "named after the asset's file stem"
+        );
+        assert_eq!(selection.primary(), Some(entity));
+        assert!(history.undo(&mut world));
+        assert!(world.get::<Sprite>(entity).is_none(), "undo deletes the spawned entity");
+    }
+}
