@@ -160,34 +160,12 @@ impl InputState {
         let ctrl = keyboard.is_key_pressed(KeyCode::ControlLeft)
             || keyboard.is_key_pressed(KeyCode::ControlRight);
 
-        // Collect typed characters from just-pressed keys (no char repeat)
-        let typed_keys = [
-            KeyCode::Digit0, KeyCode::Digit1, KeyCode::Digit2, KeyCode::Digit3,
-            KeyCode::Digit4, KeyCode::Digit5, KeyCode::Digit6, KeyCode::Digit7,
-            KeyCode::Digit8, KeyCode::Digit9,
-            KeyCode::Numpad0, KeyCode::Numpad1, KeyCode::Numpad2, KeyCode::Numpad3,
-            KeyCode::Numpad4, KeyCode::Numpad5, KeyCode::Numpad6, KeyCode::Numpad7,
-            KeyCode::Numpad8, KeyCode::Numpad9,
-            KeyCode::Period, KeyCode::NumpadDecimal,
-            KeyCode::Minus, KeyCode::NumpadSubtract,
-            KeyCode::Space,
-            KeyCode::KeyA, KeyCode::KeyB, KeyCode::KeyC, KeyCode::KeyD,
-            KeyCode::KeyE, KeyCode::KeyF, KeyCode::KeyG, KeyCode::KeyH,
-            KeyCode::KeyI, KeyCode::KeyJ, KeyCode::KeyK, KeyCode::KeyL,
-            KeyCode::KeyM, KeyCode::KeyN, KeyCode::KeyO, KeyCode::KeyP,
-            KeyCode::KeyQ, KeyCode::KeyR, KeyCode::KeyS, KeyCode::KeyT,
-            KeyCode::KeyU, KeyCode::KeyV, KeyCode::KeyW, KeyCode::KeyX,
-            KeyCode::KeyY, KeyCode::KeyZ,
-        ];
-
-        let mut typed_chars = Vec::new();
-        for &key in &typed_keys {
-            if keyboard.is_key_just_pressed(key) {
-                if let Some(ch) = keycode_to_char(key, shift) {
-                    typed_chars.push(ch);
-                }
-            }
-        }
+        // Collect typed characters from just-pressed keys in chronological order
+        let typed_chars = keyboard
+            .just_pressed_keys()
+            .iter()
+            .filter_map(|&key| keycode_to_char(key, shift))
+            .collect();
 
         let mut repeating = |slot: RepeatKey, key: KeyCode| {
             repeat.tick(slot, keyboard.is_key_pressed(key), keyboard.is_key_just_pressed(key), delta_time)
@@ -343,6 +321,16 @@ mod tests {
         for (key, shift, expected) in cases {
             assert_eq!(keycode_to_char(key, shift), expected, "{key:?} shift={shift}");
         }
+    }
+
+    #[test]
+    fn test_typed_chars_keep_press_order_within_a_frame() {
+        let mut input = InputHandler::new();
+        input.keyboard_mut().handle_key_press(KeyCode::KeyB);
+        input.keyboard_mut().handle_key_press(KeyCode::KeyA);
+        input.keyboard_mut().handle_key_press(KeyCode::Digit1);
+        let state = InputState::from_input_handler(&input);
+        assert_eq!(state.typed_chars, vec!['b', 'a', '1'], "two keys in one frame type in the order they were pressed");
     }
 
     #[test]

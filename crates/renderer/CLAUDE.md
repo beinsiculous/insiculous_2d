@@ -10,7 +10,7 @@ Renderer (WGPU device, queue, surface, RendererConfig{vsync})
 │   ├── Vertex/index buffers (quad geometry)
 │   ├── Instance buffer (DynamicBuffer — grows on demand, never panics)
 │   ├── InstanceCache — skips the instance upload when nothing changed (GPP-15)
-│   ├── Camera uniform buffer + bind group (cached)
+│   ├── CameraBinding (buffer + bind-group layout + bind group)
 │   └── Texture bind groups (cached per handle; TextureHandle::WHITE = built-in 1x1 white)
 ├── LinePipeline (line-list geometry -> HDR target, e.g. spring-mass grid)
 └── BloomPipeline (extract -> H/V blur ping-pong -> composite to swapchain)
@@ -20,7 +20,7 @@ Renderer (WGPU device, queue, surface, RendererConfig{vsync})
 ## Rendering Flow (one frame)
 1. Sprites + lines draw into the HDR target (Rgba16Float) with depth
 2. Bloom extracts bright pixels (half-res), blurs H+V × iterations, composites to the sRGB swapchain
-3. Camera uniforms uploaded once per pipeline per frame
+3. Camera uniforms uploaded once per pipeline per frame via `CameraBinding`
 
 ## File Map
 - `renderer.rs` — WGPU device/queue/surface lifecycle, `RendererConfig`, frame orchestration.
@@ -30,23 +30,28 @@ Renderer (WGPU device, queue, surface, RendererConfig{vsync})
   reconfigure after a skipped zero-size request (hidden web canvas round trip).
   `set_viewport_scissor(Option<[u32;4]>)` (per-frame, like `set_lines`) bounds the
   game-world passes — sprites, lines, bloom composite — to a rect; the UI pass is exempt
+- `camera_binding.rs` — `CameraBinding`: unified camera uniform buffer, bind group layout,
+  and bind group with `new`, `update`, and `bind` (composed by SpritePipeline and LinePipeline; ticks DRY-006)
+- `pipeline_builder.rs` — `PipelineSpec`, `build_render_pipeline`, and `depth_state` helper
 - `scissor.rs` — pure scissor math (issue #41): `quantize_rect` (outward rounding,
   NaN-safe), `clamp_scissor` (`None` = empty ⇒ skip draw), `intersect_scissor`,
-  `batch_scissor` (per-batch decision: clip ∩ pass default, clamped). All headless-tested
+  `batch_scissor` (per-batch decision: clip ∩ pass default, clamped), `PassScissor` enum
+  (`Fullscreen`, `Rect`, `Empty`). All headless-tested
 - `white_texture.rs` — the built-in 1x1 white texture resource (extracted from renderer.rs)
 - `device_status.rs` — `DeviceLossLatch` (one-way Arc<AtomicBool> set by the lost callback,
   polled before all queue/surface work) + pure `resize_action` guard. Fail-stop by design:
   no auto-recovery (the device/queue Arcs fan out into every pipeline)
-- `sprite.rs` — `Sprite` data type; parent of the sprite submodules
+- `sprite.rs` — `Sprite` data type storing `shape: SpriteShape`, `corner_radius`, and `border_width`
+  (flattened in `to_instance()`); parent of the sprite submodules
 - `sprite/batch.rs` — `SpriteBatch` (carries `clip: Option<[u32;4]>`), `SpriteBatcher`
   (CPU-side grouping keyed by `(texture, clip)`; `set_clip` cursor drives per-batch GPU
   scissoring for clipped UI — game paths never set a clip and batch exactly as before;
   `batch_for(texture)` = the unclipped batch)
 - `sprite/pipeline.rs` — `SpritePipeline` (GPU pipeline, bind group caches, draw)
-- `sprite_data.rs` — GPU data structures (`SpriteVertex`, `SpriteInstance` incl. `shape: [f32;4]` SDF params [kind, corner_radius, border_width, _] — kind 0=quad/1=rounded rect/2=circle, 76-byte stride, attr @10; fragment masks with sdRoundedBox + 1.5px AA), `DynamicBuffer`
-- `texture.rs` — `TextureManager`, `TextureHandle` (incl. `WHITE`), `SamplerConfig`
+- `sprite_data.rs` — GPU data structures (`SpriteVertex`, `SpriteInstance` incl. `shape: [f32;4]` SDF params [kind, corner_radius, border_width, _] — kind 0=quad/1=rounded rect/2=circle, 76-byte stride, attr @10; fragment masks with sdRoundedBox + 1.5px AA), `DynamicBuffer` with `grown_capacity`
+- `texture.rs` — `TextureManager` (with shared `insert_rgba`), `TextureHandle` (incl. `WHITE`), `SamplerConfig`
 - `texture_filter.rs` — `TextureFilter` (Linear/Nearest → `SamplerConfig` via `From`; the pixel-art knob engine_core plumbs from `GameConfig` and `.sheet.ron` sidecars); public path is still `renderer::TextureFilter`
-- `render_targets.rs` — HDR/depth/bloom textures, resize handling
+- `render_targets.rs` — HDR/depth/bloom textures, resize handling, `bloom_dims`
 - `bloom.rs` — bloom passes + `BloomConfig` (runtime-tunable); composite takes
   a `SwapchainTarget { view, is_srgb }` — non-sRGB swapchains (WebGPU canvases
   expose NO sRGB formats) get gamma-encoded in the shader via
@@ -70,9 +75,9 @@ Renderer (WGPU device, queue, surface, RendererConfig{vsync})
 - All tests run headless (GPU-dependent doc examples are compile-only `no_run`)
 
 ## Known Tech Debt
-Tracked on the Studio Board: issue #89 (shared camera binding DRY-006;
-cross-batch transparency vs depth writes ARCH-006 — still OPEN, will be
-closed by E7 alpha-cutoff #10 once it lands). Deferred **by design** (not debt): no mipmap generation (the old flag
+Tracked on the Studio Board: cross-batch transparency vs depth writes ARCH-006 — still OPEN, will be
+closed by E7 alpha-cutoff #10 once it lands. DRY-006 (shared camera binding) closed via `CameraBinding`.
+Deferred **by design** (not debt): no mipmap generation (the old flag
 allocated a mip chain and never filled it — re-add only with real mip
 generation); `RendererConfig` stays vsync-only until a game needs more
 (power preference / MSAA / bloom downsample).

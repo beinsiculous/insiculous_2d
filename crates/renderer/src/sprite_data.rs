@@ -32,29 +32,15 @@ impl SpriteVertex {
 
     /// Get the vertex buffer layout
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
+        const ATTRIBUTES: &[wgpu::VertexAttribute] = &wgpu::vertex_attr_array![
+            0 => Float32x3,
+            1 => Float32x2,
+            2 => Float32x4,
+        ];
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<SpriteVertex>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &[
-                // Position
-                wgpu::VertexAttribute {
-                    offset: 0,
-                    shader_location: 0,
-                    format: wgpu::VertexFormat::Float32x3,
-                },
-                // Texture coordinates
-                wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
-                    shader_location: 1,
-                    format: wgpu::VertexFormat::Float32x2,
-                },
-                // Color
-                wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 5]>() as wgpu::BufferAddress,
-                    shader_location: 2,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
-            ],
+            attributes: ATTRIBUTES,
         }
     }
 }
@@ -114,59 +100,20 @@ impl SpriteInstance {
 
     /// Get the instance buffer layout
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
+        const ATTRIBUTES: &[wgpu::VertexAttribute] = &wgpu::vertex_attr_array![
+            3 => Float32x2,
+            4 => Float32,
+            5 => Float32x2,
+            6 => Float32x4,
+            7 => Float32x4,
+            8 => Float32,
+            9 => Float32,
+            10 => Float32x4,
+        ];
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<SpriteInstance>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &[
-                // Position
-                wgpu::VertexAttribute {
-                    offset: 0,
-                    shader_location: 3,
-                    format: wgpu::VertexFormat::Float32x2,
-                },
-                // Rotation
-                wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
-                    shader_location: 4,
-                    format: wgpu::VertexFormat::Float32,
-                },
-                // Scale
-                wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
-                    shader_location: 5,
-                    format: wgpu::VertexFormat::Float32x2,
-                },
-                // Texture region
-                wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 5]>() as wgpu::BufferAddress,
-                    shader_location: 6,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
-                // Color
-                wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 9]>() as wgpu::BufferAddress,
-                    shader_location: 7,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
-                // Depth
-                wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 13]>() as wgpu::BufferAddress,
-                    shader_location: 8,
-                    format: wgpu::VertexFormat::Float32,
-                },
-                // Emissive intensity
-                wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 14]>() as wgpu::BufferAddress,
-                    shader_location: 9,
-                    format: wgpu::VertexFormat::Float32,
-                },
-                // SDF shape params [kind, corner_radius, border_width, reserved]
-                wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 15]>() as wgpu::BufferAddress,
-                    shader_location: 10,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
-            ],
+            attributes: ATTRIBUTES,
         }
     }
 }
@@ -235,10 +182,20 @@ impl<T: bytemuck::Pod> DynamicBuffer<T> {
         })
     }
 
+    /// Compute the new capacity when `needed` elements exceed `current`.
+    /// Returns `current` if `needed <= current`, else `needed.next_power_of_two()`.
+    pub fn grown_capacity(current: usize, needed: usize) -> usize {
+        if needed > current {
+            needed.next_power_of_two()
+        } else {
+            current
+        }
+    }
+
     /// Update buffer data, growing the GPU buffer if `data` exceeds capacity
     pub fn update(&mut self, device: &Device, queue: &Queue, data: &[T]) {
-        if data.len() > self.capacity {
-            let new_capacity = data.len().next_power_of_two();
+        let new_capacity = Self::grown_capacity(self.capacity, data.len());
+        if new_capacity > self.capacity {
             log::debug!(
                 "Growing Dynamic Buffer<{}> from {} to {} elements",
                 std::any::type_name::<T>(),
@@ -319,5 +276,13 @@ mod tests {
 
         assert_eq!(SpriteVertex::desc().attributes, &expected_vertex[..]);
         assert_eq!(SpriteInstance::desc().attributes, &expected_instance[..]);
+    }
+
+    #[test]
+    fn test_dynamic_buffer_grown_capacity() {
+        assert_eq!(DynamicBuffer::<SpriteInstance>::grown_capacity(16, 10), 16);
+        assert_eq!(DynamicBuffer::<SpriteInstance>::grown_capacity(16, 16), 16);
+        assert_eq!(DynamicBuffer::<SpriteInstance>::grown_capacity(16, 17), 32);
+        assert_eq!(DynamicBuffer::<SpriteInstance>::grown_capacity(16, 33), 64);
     }
 }

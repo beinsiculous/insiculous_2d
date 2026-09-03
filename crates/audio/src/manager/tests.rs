@@ -407,3 +407,11 @@ fn test_bus_volumes_multiply_into_every_live_sink_and_reapply_on_change() -> Aud
     );
     Ok(())
 }
+
+#[test]
+fn test_effective_volume_combines_base_bus_and_master() {
+    assert_eq!(effective_volume(1.0, 1.0, 1.0), 1.0);
+    assert_eq!(effective_volume(0.5, 0.5, 0.5), 0.125);
+    assert_eq!(effective_volume(0.0, 1.0, 1.0), 0.0);
+    assert_eq!(effective_volume(0.8, 0.5, 0.25), 0.1);
+}

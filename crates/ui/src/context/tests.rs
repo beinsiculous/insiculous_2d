@@ -125,6 +125,33 @@ fn test_label_in_bounds_styled_keeps_glyphs_inside_bounds_at_every_alignment() {
 }
 
 #[test]
+fn test_float_input_and_text_input_resolve_a_stale_font_to_the_same_default_face() {
+    // The shared `resolve_font` is what closed the drift: the numeric field
+    // used to fall back to the default font while the text field did not.
+    let mut ui = UIContext::new();
+    let default = ui.load_font(FIXTURE_FONT).expect("fixture font loads");
+    let stale = FontHandle { id: 999 };
+    assert_eq!(ui.resolve_font(Some(stale)), Some(default), "a stale handle resolves to the default face");
+    assert_eq!(ui.resolve_font(None), Some(default), "no request resolves to the default face");
+
+    let bounds = Rect::new(50.0, 50.0, 100.0, 24.0);
+    ui.begin_frame(&input::InputHandler::new(), crate::test_support::WINDOW);
+    ui.float_input("stale_numeric", 42.0, FloatFieldOpts::range(0.0, 100.0).with_font(Some(stale)), bounds);
+    ui.text_input("plain", "abc", Rect::new(50.0, 100.0, 100.0, 24.0));
+    let faces: Vec<Option<u32>> = ui
+        .draw_list()
+        .commands()
+        .iter()
+        .filter_map(|command| match command {
+            DrawCommand::Text { data, .. } => Some(Some(data.font_id)),
+            DrawCommand::TextPlaceholder { .. } => Some(None),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(faces, vec![Some(default.id), Some(default.id)], "both fields draw real text in the default face");
+}
+
+#[test]
 fn test_float_input_with_an_unresolvable_font_still_draws_its_box_and_value() {
     // #54: a stale handle must not panic or draw nothing — the field takes
     // the placeholder path a missing default font takes, box included.

@@ -1,5 +1,6 @@
 //! Immediate-mode UI context managing frame lifecycle, layout, and widget interactions.
 
+mod edit_field;
 mod text;
 mod text_input;
 mod widgets;

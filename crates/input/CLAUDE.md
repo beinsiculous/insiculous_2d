@@ -6,18 +6,23 @@ player-aware settings layer (the universal mapping games consume).
 ## Key Types
 - `InputHandler` — raw device state: keyboard, mouse, gamepads + event queue
 - `InputSettings` (player.rs) — **the layer games use**: one `PlayerBindings`
-  per local player (`PlayerId::P1/P2`), device-relative sources
-  (`PlayerSource::PadButton/PadAxis` resolve against the player's single
-  `pad: Option<u32>` at query time — `assign_pad` never rewrites bindings).
+  per local player (`PlayerId::P1/P2`), backed by `InputMapping<GameAction, PlayerSource>`,
+  with device-relative sources (`PlayerSource::PadButton/PadAxis` resolve against the player's single
+  `pad: Option<u32>` via `PlayerSource::on_pad(pad)` at query time — `assign_pad` never rewrites bindings).
   Queries: `is_active / just_activated (player, GameAction, &input)`,
   `just_activated_any`, and `move_x/move_y(player, &input) -> f32` (digital
   merged with left stick, clamped −1..1, +y = up).
   `default_two_player()`: P1 = WASD+Space+mouse+pad 0, P2 = arrows+Enter+pad 1.
+  Pad bindings are built from `STANDARD_PAD_LAYOUT` (`pad_layout.rs`).
   Persisted via engine_core `input_settings_io` (JSON; `GameConfig::input_settings_path`).
   Dirty tracking: real mutations (`set_pad` change, new `bind`, effective `unbind`)
   flag the settings; the engine polls `take_dirty()` each frame and saves on change
   (`mark_dirty()` re-queues a failed save). Constructors/`from_players` start clean.
-- `InputMapping<A>` — generic action bindings; games may define private enums:
+- `pad_layout.rs` — `STANDARD_PAD_LAYOUT`: the standard 14-entry `[(GameAction, PadSource)]` table
+  shared by default gamepad bindings and player gamepad assignment.
+- `InputMapping<A, S = InputSource>` — generic action bindings; `bind` and `unbind` return
+  `bool` indicating whether the binding was inserted or removed; `iter()` inspects bindings.
+  Games may define private enums:
   `mapping.bind(MyAction::Jump, InputSource::Keyboard(KeyCode::Space))`
 - `GameAction` — the fixed engine action vocabulary (MoveUp/Down/Left/Right,
   Action1..4, Menu, Cancel, Select, Custom); also usable as an `InputMapping`

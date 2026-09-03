@@ -122,7 +122,7 @@ impl Default for SliderStyle {
 }
 
 /// Style configuration for text input fields (e.g. `float_input`).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct TextInputStyle {
     /// Background color in normal state
     pub background: Color,

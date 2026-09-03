@@ -69,6 +69,28 @@ pub fn batch_scissor(
     clamp_scissor(rect, surface.0, surface.1)
 }
 
+/// A pass-level scissor decision: `Fullscreen` = no scissor call, `Rect` = set it,
+/// `Empty` = nothing visible (clear-only passes still run, draws are skipped).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PassScissor {
+    Fullscreen,
+    Rect([u32; 4]),
+    Empty,
+}
+
+impl PassScissor {
+    /// Resolve a requested scissor against the surface dimensions.
+    pub fn resolve(request: Option<[u32; 4]>, surface: (u32, u32)) -> Self {
+        match request {
+            None => Self::Fullscreen,
+            Some(rect) => match clamp_scissor(rect, surface.0, surface.1) {
+                Some((x, y, w, h)) => Self::Rect([x, y, w, h]),
+                None => Self::Empty,
+            },
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -135,5 +157,19 @@ mod tests {
             assert_eq!(batch_scissor(clip, default, surface), expected, "{why}");
         }
         assert_eq!(batch_scissor(None, None, (0, 0)), None, "a zero surface draws nothing");
+    }
+
+    #[test]
+    fn test_pass_scissor_resolve_resolves_all_variants() {
+        let surface = (800, 600);
+        assert_eq!(PassScissor::resolve(None, surface), PassScissor::Fullscreen);
+        assert_eq!(
+            PassScissor::resolve(Some([10, 20, 100, 200]), surface),
+            PassScissor::Rect([10, 20, 100, 200])
+        );
+        assert_eq!(
+            PassScissor::resolve(Some([900, 700, 10, 10]), surface),
+            PassScissor::Empty
+        );
     }
 }

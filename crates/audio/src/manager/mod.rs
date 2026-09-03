@@ -11,6 +11,8 @@ use std::sync::Arc;
 
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
 
+use common::clamp_volume;
+
 use crate::error::{AudioError, AudioResult};
 use crate::sound::{SoundHandle, SoundSettings};
 
@@ -19,9 +21,9 @@ mod music;
 #[cfg(test)]
 mod tests;
 
-/// Clamp a volume value to the valid 0.0..=1.0 range.
-fn clamp_volume(volume: f32) -> f32 {
-    volume.clamp(0.0, 1.0)
+/// Pure multiplication for a sound's effective playback volume.
+pub(crate) fn effective_volume(base: f32, bus: f32, master: f32) -> f32 {
+    base * bus * master
 }
 
 /// Floor a playback speed at 0.1 (rodio misbehaves at zero/negative speeds).
@@ -58,7 +60,7 @@ struct PendingMusic {
 }
 
 /// Live connection to an audio output device.
-struct AudioOutput {
+pub(super) struct AudioOutput {
     /// Audio output stream (must be kept alive).
     _stream: OutputStream,
     /// Handle to the output stream for creating sinks.
@@ -267,9 +269,6 @@ impl AudioManager {
             return Ok(());
         };
 
-        let sink = Sink::try_new(&output.handle)
-            .map_err(|e| AudioError::StreamError(e.to_string()))?;
-
         // Decode straight from the shared cached bytes — no buffer copy.
         let cursor = Cursor::new(Arc::clone(&sound_data.bytes));
         let source = Decoder::new(cursor)
@@ -278,14 +277,8 @@ impl AudioManager {
         // Clamp at point of use: SoundSettings fields are public, so builder
         // clamps can be bypassed.
         let base_volume = clamp_volume(settings.volume);
-        sink.set_volume(base_volume * self.sfx_volume * self.master_volume);
+        let sink = self.start_sink(output, source, base_volume, self.sfx_volume, settings.looping)?;
         sink.set_speed(clamp_speed(settings.speed));
-
-        if settings.looping {
-            sink.append(source.repeat_infinite());
-        } else {
-            sink.append(source);
-        }
 
         self.active_sounds.push(ActiveSound {
             sink,
@@ -294,6 +287,31 @@ impl AudioManager {
         });
 
         Ok(())
+    }
+
+    /// Create and configure a sink for playback under the given bus volume.
+    pub(super) fn start_sink<S>(
+        &self,
+        output: &AudioOutput,
+        source: S,
+        base: f32,
+        bus: f32,
+        looping: bool,
+    ) -> AudioResult<Sink>
+    where
+        S: Source + Send + 'static,
+        S::Item: rodio::Sample + Send + Sync,
+        f32: rodio::cpal::FromSample<S::Item>,
+    {
+        let sink = Sink::try_new(&output.handle)
+            .map_err(|e| AudioError::StreamError(e.to_string()))?;
+        sink.set_volume(effective_volume(base, bus, self.master_volume));
+        if looping {
+            sink.append(source.repeat_infinite());
+        } else {
+            sink.append(source);
+        }
+        Ok(sink)
     }
 
     /// Stop all currently playing instances of the given sound.

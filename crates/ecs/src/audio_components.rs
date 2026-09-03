@@ -62,7 +62,7 @@ impl AudioSource {
 
     /// Set the volume.
     pub fn with_volume(mut self, volume: f32) -> Self {
-        self.volume = volume.clamp(0.0, 1.0);
+        self.volume = common::clamp_volume(volume);
         self
     }
 
@@ -181,7 +181,7 @@ impl AudioListener {
 
     /// Set the listener volume.
     pub fn with_volume(mut self, volume: f32) -> Self {
-        self.volume = volume.clamp(0.0, 1.0);
+        self.volume = common::clamp_volume(volume);
         self
     }
 }
@@ -221,7 +221,7 @@ impl PlaySoundEffect {
 
     /// Set the volume.
     pub fn with_volume(mut self, volume: f32) -> Self {
-        self.volume = volume.clamp(0.0, 1.0);
+        self.volume = common::clamp_volume(volume);
         self
     }
 

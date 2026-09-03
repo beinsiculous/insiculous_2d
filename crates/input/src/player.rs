@@ -28,8 +28,8 @@
 
 use crate::gamepad::{AxisDirection, GamepadAxis, GamepadButton};
 use crate::input_handler::InputHandler;
-use crate::input_mapping::{source_was_pressed, GameAction, InputSource};
-use std::collections::HashMap;
+use crate::input_mapping::{source_was_pressed, GameAction, InputMapping, InputSource};
+use crate::pad_layout::STANDARD_PAD_LAYOUT;
 use winit::event::MouseButton;
 use winit::keyboard::KeyCode;
 
@@ -65,6 +65,20 @@ pub enum PlayerSource {
     PadAxis(GamepadAxis, AxisDirection),
 }
 
+impl PlayerSource {
+    /// Concrete source on `pad`; keyboard/mouse pass through.
+    pub fn on_pad(self, pad: u32) -> InputSource {
+        match self {
+            PlayerSource::Keyboard(key) => InputSource::Keyboard(key),
+            PlayerSource::Mouse(button) => InputSource::Mouse(button),
+            PlayerSource::PadButton(button) => InputSource::Gamepad(pad, button),
+            PlayerSource::PadAxis(axis, direction) => {
+                InputSource::GamepadAxis(pad, axis, direction)
+            }
+        }
+    }
+}
+
 /// One player's device assignment and action bindings.
 #[derive(Debug, Clone, Default)]
 pub struct PlayerBindings {
@@ -72,7 +86,7 @@ pub struct PlayerBindings {
     /// `None` makes every `PadButton`/`PadAxis` binding inert.
     pad: Option<u32>,
     /// Action → bound sources
-    bindings: HashMap<GameAction, Vec<PlayerSource>>,
+    mapping: InputMapping<GameAction, PlayerSource>,
     /// True when a mutation actually changed state since the last
     /// [`InputSettings::take_dirty`] — drives the engine's save-on-change.
     dirty: bool,
@@ -99,38 +113,22 @@ impl PlayerBindings {
 
     /// Bind a source to an action. Binding the same pair twice is a no-op.
     pub fn bind(&mut self, action: GameAction, source: PlayerSource) {
-        let sources = self.bindings.entry(action).or_default();
-        if !sources.contains(&source) {
-            sources.push(source);
-            self.dirty = true;
-        }
+        self.dirty |= self.mapping.bind(action, source);
     }
 
     /// Remove one source from an action's bindings
     pub fn unbind(&mut self, action: GameAction, source: &PlayerSource) {
-        if let Some(sources) = self.bindings.get_mut(&action) {
-            let before = sources.len();
-            sources.retain(|s| s != source);
-            if sources.len() != before {
-                self.dirty = true;
-            }
-            if sources.is_empty() {
-                self.bindings.remove(&action);
-            }
-        }
+        self.dirty |= self.mapping.unbind(action, source);
     }
 
     /// All sources bound to an action
     pub fn bindings(&self, action: GameAction) -> &[PlayerSource] {
-        self.bindings
-            .get(&action)
-            .map(|v| v.as_slice())
-            .unwrap_or(&[])
+        self.mapping.bindings(action)
     }
 
     /// All (action, sources) pairs, for persistence and inspection
     pub fn all_bindings(&self) -> impl Iterator<Item = (GameAction, &[PlayerSource])> {
-        self.bindings.iter().map(|(a, s)| (*a, s.as_slice()))
+        self.mapping.iter()
     }
 
     /// Resolve a device-relative source to a concrete [`InputSource`].
@@ -139,12 +137,9 @@ impl PlayerBindings {
         match source {
             PlayerSource::Keyboard(key) => Some(InputSource::Keyboard(key)),
             PlayerSource::Mouse(button) => Some(InputSource::Mouse(button)),
-            PlayerSource::PadButton(button) => {
-                self.pad.map(|id| InputSource::Gamepad(id, button))
+            PlayerSource::PadButton(..) | PlayerSource::PadAxis(..) => {
+                self.pad.map(|id| source.on_pad(id))
             }
-            PlayerSource::PadAxis(axis, direction) => self
-                .pad
-                .map(|id| InputSource::GamepadAxis(id, axis, direction)),
         }
     }
 
@@ -382,32 +377,9 @@ impl InputSettings {
 /// The shared pad layout both default players get: dpad + left stick →
 /// movement, A/B/X/Y → Action1-4, Start → Menu, Select → Select.
 fn bind_standard_pad_layout(bindings: &mut PlayerBindings) {
-    bindings.bind(GameAction::MoveUp, PlayerSource::PadButton(GamepadButton::DPadUp));
-    bindings.bind(GameAction::MoveDown, PlayerSource::PadButton(GamepadButton::DPadDown));
-    bindings.bind(GameAction::MoveLeft, PlayerSource::PadButton(GamepadButton::DPadLeft));
-    bindings.bind(GameAction::MoveRight, PlayerSource::PadButton(GamepadButton::DPadRight));
-    bindings.bind(
-        GameAction::MoveUp,
-        PlayerSource::PadAxis(GamepadAxis::LeftStickY, AxisDirection::Positive),
-    );
-    bindings.bind(
-        GameAction::MoveDown,
-        PlayerSource::PadAxis(GamepadAxis::LeftStickY, AxisDirection::Negative),
-    );
-    bindings.bind(
-        GameAction::MoveLeft,
-        PlayerSource::PadAxis(GamepadAxis::LeftStickX, AxisDirection::Negative),
-    );
-    bindings.bind(
-        GameAction::MoveRight,
-        PlayerSource::PadAxis(GamepadAxis::LeftStickX, AxisDirection::Positive),
-    );
-    bindings.bind(GameAction::Action1, PlayerSource::PadButton(GamepadButton::A));
-    bindings.bind(GameAction::Action2, PlayerSource::PadButton(GamepadButton::B));
-    bindings.bind(GameAction::Action3, PlayerSource::PadButton(GamepadButton::X));
-    bindings.bind(GameAction::Action4, PlayerSource::PadButton(GamepadButton::Y));
-    bindings.bind(GameAction::Menu, PlayerSource::PadButton(GamepadButton::Start));
-    bindings.bind(GameAction::Select, PlayerSource::PadButton(GamepadButton::Select));
+    for &(action, source) in STANDARD_PAD_LAYOUT {
+        bindings.bind(action, source);
+    }
 }
 
 #[cfg(test)]

@@ -25,6 +25,7 @@
 
 use crate::gamepad::{AxisDirection, GamepadAxis, GamepadButton};
 use crate::input_handler::InputHandler;
+use crate::pad_layout::STANDARD_PAD_LAYOUT;
 use std::collections::HashMap;
 use std::hash::Hash;
 use winit::event::MouseButton;
@@ -80,18 +81,18 @@ pub enum GameAction {
 ///
 /// See the [module documentation](self) for the binding model and semantics.
 #[derive(Debug, Clone)]
-pub struct InputMapping<A: Copy + Eq + Hash> {
+pub struct InputMapping<A: Copy + Eq + Hash, S: Copy + Eq + Hash = InputSource> {
     /// Action → bound input sources (single source of truth)
-    bindings: HashMap<A, Vec<InputSource>>,
+    bindings: HashMap<A, Vec<S>>,
 }
 
-impl<A: Copy + Eq + Hash> Default for InputMapping<A> {
+impl<A: Copy + Eq + Hash, S: Copy + Eq + Hash> Default for InputMapping<A, S> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<A: Copy + Eq + Hash> InputMapping<A> {
+impl<A: Copy + Eq + Hash, S: Copy + Eq + Hash> InputMapping<A, S> {
     /// Create a new, empty input mapping (no implicit default bindings)
     pub fn new() -> Self {
         Self {
@@ -103,25 +104,36 @@ impl<A: Copy + Eq + Hash> InputMapping<A> {
     ///
     /// An action can have multiple sources, and a source can be bound to
     /// multiple actions. Binding the same (action, source) pair twice is a no-op.
-    pub fn bind(&mut self, action: A, source: InputSource) {
+    /// Returns true when a new binding was inserted.
+    pub fn bind(&mut self, action: A, source: S) -> bool {
         let sources = self.bindings.entry(action).or_default();
         if !sources.contains(&source) {
             sources.push(source);
+            true
+        } else {
+            false
         }
     }
 
-    /// Remove one source from an action's bindings
-    pub fn unbind(&mut self, action: A, source: &InputSource) {
+    /// Remove one source from an action's bindings.
+    ///
+    /// Returns true when an existing binding was removed.
+    pub fn unbind(&mut self, action: A, source: &S) -> bool {
         if let Some(sources) = self.bindings.get_mut(&action) {
+            let before = sources.len();
             sources.retain(|s| s != source);
+            let removed = sources.len() != before;
             if sources.is_empty() {
                 self.bindings.remove(&action);
             }
+            removed
+        } else {
+            false
         }
     }
 
     /// Get all input sources bound to an action
-    pub fn bindings(&self, action: A) -> &[InputSource] {
+    pub fn bindings(&self, action: A) -> &[S] {
         self.bindings
             .get(&action)
             .map(|v| v.as_slice())
@@ -133,6 +145,13 @@ impl<A: Copy + Eq + Hash> InputMapping<A> {
         self.bindings.is_empty()
     }
 
+    /// Iterate over all (action, sources) pairs.
+    pub fn iter(&self) -> impl Iterator<Item = (A, &[S])> {
+        self.bindings.iter().map(|(a, s)| (*a, s.as_slice()))
+    }
+}
+
+impl<A: Copy + Eq + Hash> InputMapping<A, InputSource> {
     // ================== Action State Evaluation ==================
 
     /// Check if an action is currently active (any bound source is pressed)
@@ -167,14 +186,14 @@ pub(crate) fn source_was_pressed(source: &InputSource, input: &InputHandler) -> 
     input.was_source_pressed(source)
 }
 
-impl InputMapping<GameAction> {
+impl InputMapping<GameAction, InputSource> {
     /// Create a mapping pre-populated with the engine's default [`GameAction`]
     /// bindings (WASD + arrows movement, Space/Enter/Shift/Ctrl actions,
     /// Escape menu, Tab select, gamepad 0 equivalents).
     pub fn with_default_bindings() -> Self {
         let mut mapping = Self::new();
 
-        // Movement
+        // Movement (keyboard)
         mapping.bind(GameAction::MoveUp, InputSource::Keyboard(KeyCode::KeyW));
         mapping.bind(GameAction::MoveUp, InputSource::Keyboard(KeyCode::ArrowUp));
         mapping.bind(GameAction::MoveDown, InputSource::Keyboard(KeyCode::KeyS));
@@ -184,49 +203,26 @@ impl InputMapping<GameAction> {
         mapping.bind(GameAction::MoveRight, InputSource::Keyboard(KeyCode::KeyD));
         mapping.bind(GameAction::MoveRight, InputSource::Keyboard(KeyCode::ArrowRight));
 
-        // Gamepad 0 movement: dpad + left stick (stick Y positive = up)
-        mapping.bind(GameAction::MoveUp, InputSource::Gamepad(0, GamepadButton::DPadUp));
-        mapping.bind(GameAction::MoveDown, InputSource::Gamepad(0, GamepadButton::DPadDown));
-        mapping.bind(GameAction::MoveLeft, InputSource::Gamepad(0, GamepadButton::DPadLeft));
-        mapping.bind(GameAction::MoveRight, InputSource::Gamepad(0, GamepadButton::DPadRight));
-        mapping.bind(
-            GameAction::MoveUp,
-            InputSource::GamepadAxis(0, GamepadAxis::LeftStickY, AxisDirection::Positive),
-        );
-        mapping.bind(
-            GameAction::MoveDown,
-            InputSource::GamepadAxis(0, GamepadAxis::LeftStickY, AxisDirection::Negative),
-        );
-        mapping.bind(
-            GameAction::MoveLeft,
-            InputSource::GamepadAxis(0, GamepadAxis::LeftStickX, AxisDirection::Negative),
-        );
-        mapping.bind(
-            GameAction::MoveRight,
-            InputSource::GamepadAxis(0, GamepadAxis::LeftStickX, AxisDirection::Positive),
-        );
-
-        // Actions
+        // Actions (keyboard / mouse)
         mapping.bind(GameAction::Action1, InputSource::Keyboard(KeyCode::Space));
         mapping.bind(GameAction::Action1, InputSource::Mouse(MouseButton::Left));
-        mapping.bind(GameAction::Action1, InputSource::Gamepad(0, GamepadButton::A));
 
         mapping.bind(GameAction::Action2, InputSource::Keyboard(KeyCode::Enter));
         mapping.bind(GameAction::Action2, InputSource::Mouse(MouseButton::Right));
-        mapping.bind(GameAction::Action2, InputSource::Gamepad(0, GamepadButton::B));
 
         mapping.bind(GameAction::Action3, InputSource::Keyboard(KeyCode::ShiftLeft));
-        mapping.bind(GameAction::Action3, InputSource::Gamepad(0, GamepadButton::X));
 
         mapping.bind(GameAction::Action4, InputSource::Keyboard(KeyCode::ControlLeft));
-        mapping.bind(GameAction::Action4, InputSource::Gamepad(0, GamepadButton::Y));
 
-        // UI
+        // UI (keyboard)
         mapping.bind(GameAction::Menu, InputSource::Keyboard(KeyCode::Escape));
-        mapping.bind(GameAction::Menu, InputSource::Gamepad(0, GamepadButton::Start));
 
         mapping.bind(GameAction::Select, InputSource::Keyboard(KeyCode::Tab));
-        mapping.bind(GameAction::Select, InputSource::Gamepad(0, GamepadButton::Select));
+
+        // Gamepad 0 movement and actions via the standard pad layout
+        for &(action, source) in STANDARD_PAD_LAYOUT {
+            mapping.bind(action, source.on_pad(0));
+        }
 
         mapping
     }

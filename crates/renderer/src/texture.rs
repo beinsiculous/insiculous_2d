@@ -163,31 +163,10 @@ impl TextureManager {
             TextureError::ImageLoadError(format!("Failed to load {:?}: {}", path, e))
         })?;
 
-        // Get image dimensions
         let (width, height) = image.dimensions();
-
-        // Validate dimensions
-        if width > self.max_texture_dimension || height > self.max_texture_dimension {
-            return Err(TextureError::TextureTooLarge {
-                width,
-                height,
-                max_dimension: self.max_texture_dimension,
-            });
-        }
-
-        // Convert to RGBA8
         let rgba = image.to_rgba8();
-        let data = rgba.as_raw();
-
-        // Create handle and texture
-        let handle = TextureHandle { id: self.next_handle };
-        self.next_handle += 1;
-
-        let texture = self.create_texture_from_rgba(width, height, data, config)?;
-        self.textures.insert(handle, texture);
-
+        let handle = self.insert_rgba(width, height, rgba.as_raw(), config)?;
         log::info!("Loaded texture {:?}: {}x{} (handle {})", path, width, height, handle.id);
-
         Ok(handle)
     }
 
@@ -204,7 +183,19 @@ impl TextureManager {
         })?;
 
         let (width, height) = image.dimensions();
+        let rgba = image.to_rgba8();
+        let handle = self.insert_rgba(width, height, rgba.as_raw(), config)?;
+        log::info!("Loaded texture from bytes: {}x{} (handle {})", width, height, handle.id);
+        Ok(handle)
+    }
 
+    fn insert_rgba(
+        &mut self,
+        width: u32,
+        height: u32,
+        data: &[u8],
+        config: TextureLoadConfig,
+    ) -> Result<TextureHandle, TextureError> {
         if width > self.max_texture_dimension || height > self.max_texture_dimension {
             return Err(TextureError::TextureTooLarge {
                 width,
@@ -213,16 +204,18 @@ impl TextureManager {
             });
         }
 
-        let rgba = image.to_rgba8();
-        let data = rgba.as_raw();
+        // Dimensions first, so an oversized image reports TextureTooLarge even
+        // when its buffer is also the wrong length (or would overflow the count).
+        let byte_count = checked_rgba_byte_count(width, height)?;
+        if data.len() != byte_count {
+            return Err(TextureError::InvalidFormat);
+        }
 
         let handle = TextureHandle { id: self.next_handle };
         self.next_handle += 1;
 
         let texture = self.create_texture_from_rgba(width, height, data, config)?;
         self.textures.insert(handle, texture);
-
-        log::info!("Loaded texture from bytes: {}x{} (handle {})", width, height, handle.id);
 
         Ok(handle)
     }
@@ -250,27 +243,7 @@ impl TextureManager {
         if width == 0 || height == 0 {
             return Err(TextureError::InvalidFormat);
         }
-
-        if width > self.max_texture_dimension || height > self.max_texture_dimension {
-            return Err(TextureError::TextureTooLarge {
-                width,
-                height,
-                max_dimension: self.max_texture_dimension,
-            });
-        }
-
-        let byte_count = checked_rgba_byte_count(width, height)?;
-        if data.len() != byte_count {
-            return Err(TextureError::InvalidFormat);
-        }
-
-        let handle = TextureHandle { id: self.next_handle };
-        self.next_handle += 1;
-
-        let texture = self.create_texture_from_rgba(width, height, data, config)?;
-        self.textures.insert(handle, texture);
-
-        Ok(handle)
+        self.insert_rgba(width, height, data, config)
     }
 
     /// Create a solid color texture

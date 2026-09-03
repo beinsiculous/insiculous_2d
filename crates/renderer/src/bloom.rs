@@ -14,10 +14,11 @@
 
 use wgpu::{
     util::DeviceExt, BindGroup, BindGroupLayout, Buffer, CommandEncoder, Device, FilterMode,
-    PipelineLayout, Queue, RenderPipeline, Sampler, ShaderModule, TextureFormat, TextureView,
+    Queue, RenderPipeline, Sampler, ShaderModule, TextureFormat, TextureView,
 };
 
 use crate::render_targets::{RenderTargets, HDR_FORMAT};
+use crate::scissor::PassScissor;
 
 /// Tunables for the bloom pipeline. Mutate at runtime via
 /// [`Renderer::bloom_config_mut`](crate::Renderer::bloom_config_mut).
@@ -277,22 +278,20 @@ impl BloomPipeline {
         // surface-sized, so their size is the clamp bound. An empty
         // effective scissor still runs the pass (the Clear must blank the
         // swapchain) but skips the fullscreen draw.
-        let composite_scissor = swapchain.composite_scissor.map(|rect| {
-            crate::scissor::clamp_scissor(rect, targets.width(), targets.height())
-        });
+        let composite_scissor = PassScissor::resolve(
+            swapchain.composite_scissor,
+            (targets.width(), targets.height()),
+        );
         self.run_composite_pass(encoder, &cached.composite, swapchain.view, composite_scissor);
     }
 
-    /// The composite pass with optional scissoring. `scissor` semantics:
-    /// `None` = fullscreen draw; `Some(Some(rect))` = draw under that
-    /// scissor; `Some(None)` = empty scissor — clear the target, draw
-    /// nothing.
+    /// The composite pass with optional scissoring.
     fn run_composite_pass(
         &self,
         encoder: &mut CommandEncoder,
         bind_group: &BindGroup,
         target: &TextureView,
-        scissor: Option<Option<(u32, u32, u32, u32)>>,
+        scissor: PassScissor,
     ) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Bloom Composite"),
@@ -311,9 +310,9 @@ impl BloomPipeline {
             multiview_mask: None,
         });
         match scissor {
-            Some(None) => return, // empty scissor: clear only, no draw
-            Some(Some((x, y, w, h))) => pass.set_scissor_rect(x, y, w, h),
-            None => {}
+            PassScissor::Empty => return, // empty scissor: clear only, no draw
+            PassScissor::Rect([x, y, w, h]) => pass.set_scissor_rect(x, y, w, h),
+            PassScissor::Fullscreen => {}
         }
         pass.set_pipeline(&self.composite_pipeline);
         pass.set_bind_group(0, bind_group, &[]);
@@ -498,47 +497,30 @@ fn build_fullscreen_pipeline(
     color_format: TextureFormat,
     label: &str,
 ) -> RenderPipeline {
-    let pipeline_layout: PipelineLayout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some(label),
         bind_group_layouts: &[bind_layout],
         ..Default::default()
     });
 
-    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some(label),
-        layout: Some(&pipeline_layout),
-        vertex: wgpu::VertexState {
-            module: shader,
-            entry_point: Some("vs_main"),
+    crate::pipeline_builder::build_render_pipeline(
+        device,
+        &crate::pipeline_builder::PipelineSpec {
+            label,
+            layout: &pipeline_layout,
+            shader,
+            vertex_entry: "vs_main",
+            fragment_entry: "fs_main",
             buffers: &[],
-            compilation_options: Default::default(),
-        },
-        fragment: Some(wgpu::FragmentState {
-            module: shader,
-            entry_point: Some("fs_main"),
-            targets: &[Some(wgpu::ColorTargetState {
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            target: wgpu::ColorTargetState {
                 format: color_format,
                 blend: None,
                 write_mask: wgpu::ColorWrites::ALL,
-            })],
-            compilation_options: Default::default(),
-        }),
-        primitive: wgpu::PrimitiveState {
-            topology: wgpu::PrimitiveTopology::TriangleList,
-            strip_index_format: None,
-            front_face: wgpu::FrontFace::Ccw,
-            cull_mode: None,
-            ..Default::default()
+            },
+            depth: None,
         },
-        depth_stencil: None,
-        multisample: wgpu::MultisampleState {
-            count: 1,
-            mask: !0,
-            alpha_to_coverage_enabled: false,
-        },
-        cache: None,
-        multiview_mask: None,
-    })
+    )
 }
 
 #[cfg(test)]

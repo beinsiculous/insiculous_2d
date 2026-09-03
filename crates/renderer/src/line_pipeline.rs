@@ -3,18 +3,13 @@
 //! Used by the engine's spring-mass grid to draw glowing lines on top of the
 //! HDR target. Bloom picks up emissive lines automatically — that's the
 //! signature Geometry Wars look.
-//!
-//! The pipeline declares its own camera bind-group layout (identical in shape
-//! to the sprite pipeline's) and owns its own camera uniform buffer, so the
-//! camera is uploaded once per pipeline per frame.
 
+use wgpu::{CommandEncoder, Device, Queue, RenderPipeline};
 
-use wgpu::{
-    util::DeviceExt, BindGroup, Buffer, CommandEncoder, Device, Queue, RenderPipeline,
-};
-
-use crate::render_targets::{DEPTH_FORMAT, HDR_FORMAT, RenderTargets};
-use crate::sprite_data::{Camera, CameraUniform, DynamicBuffer};
+use crate::camera_binding::CameraBinding;
+use crate::render_targets::{HDR_FORMAT, RenderTargets};
+use crate::scissor::PassScissor;
+use crate::sprite_data::{Camera, DynamicBuffer};
 
 /// One vertex of a line segment.
 ///
@@ -37,26 +32,15 @@ impl LineVertex {
     }
 
     fn desc() -> wgpu::VertexBufferLayout<'static> {
+        const ATTRIBUTES: &[wgpu::VertexAttribute] = &wgpu::vertex_attr_array![
+            0 => Float32x2,
+            1 => Float32x4,
+            2 => Float32,
+        ];
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Self>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &[
-                wgpu::VertexAttribute {
-                    offset: 0,
-                    shader_location: 0,
-                    format: wgpu::VertexFormat::Float32x2,
-                },
-                wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
-                    shader_location: 1,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
-                wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 6]>() as wgpu::BufferAddress,
-                    shader_location: 2,
-                    format: wgpu::VertexFormat::Float32,
-                },
-            ],
+            attributes: ATTRIBUTES,
         }
     }
 }
@@ -65,8 +49,7 @@ impl LineVertex {
 pub struct LinePipeline {
     pipeline: RenderPipeline,
     vertex_buffer: DynamicBuffer<LineVertex>,
-    camera_buffer: Buffer,
-    camera_bind_group: BindGroup,
+    camera: CameraBinding,
     /// Used to grow the vertex buffer when an upload exceeds its capacity.
     /// A plain clone — wgpu's `Device` is internally reference-counted, so
     /// wrapping it in an `Arc` was a redundant refcount (and `Arc<Device>`
@@ -82,24 +65,11 @@ impl LinePipeline {
     pub const DEFAULT_CAPACITY: usize = 16_384;
 
     pub fn new(device: &Device, capacity: usize) -> Self {
-
-        let camera_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Line Camera Bind Group Layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
+        let camera = CameraBinding::new(device, "Line");
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Line Pipeline Layout"),
-            bind_group_layouts: &[&camera_bind_group_layout],
+            bind_group_layouts: &[camera.layout()],
             ..Default::default()
         });
 
@@ -108,81 +78,38 @@ impl LinePipeline {
             source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!("shaders/line.wgsl"))),
         });
 
-        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Line Camera Buffer"),
-            contents: bytemuck::cast_slice(&[CameraUniform::from_camera(&Camera::default())]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-
-        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Line Camera Bind Group"),
-            layout: &camera_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: camera_buffer.as_entire_binding(),
-            }],
-        });
-
         let vertex_buffer = DynamicBuffer::new(device, capacity, wgpu::BufferUsages::VERTEX);
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Line Pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
+        let pipeline = crate::pipeline_builder::build_render_pipeline(
+            device,
+            &crate::pipeline_builder::PipelineSpec {
+                label: "Line Pipeline",
+                layout: &pipeline_layout,
+                shader: &shader,
+                vertex_entry: "vs_main",
+                fragment_entry: "fs_main",
                 buffers: &[LineVertex::desc()],
-                compilation_options: Default::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
+                topology: wgpu::PrimitiveTopology::LineList,
+                target: wgpu::ColorTargetState {
                     format: HDR_FORMAT,
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: Default::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::LineList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: None,
-                ..Default::default()
+                },
+                depth: Some(crate::pipeline_builder::depth_state(false)),
             },
-            // Test against the depth buffer the sprite pipeline wrote into,
-            // but don't write — lines are 2D background and shouldn't occlude
-            // each other.
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: DEPTH_FORMAT,
-                depth_write_enabled: false,
-                depth_compare: wgpu::CompareFunction::LessEqual,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            cache: None,
-            multiview_mask: None,
-        });
+        );
 
         Self {
             pipeline,
             vertex_buffer,
-            camera_buffer,
-            camera_bind_group,
+            camera,
             device: device.clone(),
         }
     }
 
     /// Push the camera uniform to the GPU. Call once per frame.
     pub fn update_camera(&self, queue: &Queue, camera: &Camera) {
-        let uniform = CameraUniform::from_camera(camera);
-        queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[uniform]));
+        self.camera.update(queue, camera);
     }
 
     /// Upload a fresh vertex set. Pairs of vertices form line segments.
@@ -215,14 +142,11 @@ impl LinePipeline {
         if vertex_count == 0 {
             return;
         }
-        let surface = (targets.width(), targets.height());
-        let scissor = match viewport_scissor {
-            None => None,
-            Some(rect) => match crate::scissor::clamp_scissor(rect, surface.0, surface.1) {
-                Some(clamped) => Some(clamped),
-                // Empty scissor: nothing visible, skip the whole pass.
-                None => return,
-            },
+        let scissor = PassScissor::resolve(viewport_scissor, (targets.width(), targets.height()));
+        let scissor_rect = match scissor {
+            PassScissor::Empty => return,
+            PassScissor::Fullscreen => None,
+            PassScissor::Rect(rect) => Some(rect),
         };
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Line Render Pass"),
@@ -249,11 +173,11 @@ impl LinePipeline {
             multiview_mask: None,
         });
 
-        if let Some((x, y, w, h)) = scissor {
-            pass.set_scissor_rect(x, y, w, h);
+        if let Some(rect) = scissor_rect {
+            pass.set_scissor_rect(rect[0], rect[1], rect[2], rect[3]);
         }
         pass.set_pipeline(&self.pipeline);
-        pass.set_bind_group(0, &self.camera_bind_group, &[]);
+        self.camera.bind(&mut pass, 0);
         pass.set_vertex_buffer(0, self.vertex_buffer.slice());
         pass.draw(0..vertex_count, 0..1);
     }
@@ -267,8 +191,7 @@ mod tests {
     use wgpu::{VertexFormat, VertexStepMode};
 
     /// `shaders/line.wgsl` reads a 28-byte vertex at locations 0–2; the
-    /// offsets are hand-written as `size_of::<[f32; N]>()`, so each is
-    /// pinned to the struct field that feeds it.
+    /// offsets are pinned to the struct field that feeds it.
     #[test]
     fn test_line_vertex_matches_shader_layout() {
         let desc = LineVertex::desc();

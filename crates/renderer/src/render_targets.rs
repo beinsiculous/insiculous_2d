@@ -45,6 +45,16 @@ pub struct RenderTargets {
     height: u32,
 }
 
+/// Compute the half-resolution bloom texture dimensions from surface dimensions,
+/// clamped to at least 1x1.
+pub const fn bloom_dims(width: u32, height: u32) -> (u32, u32) {
+    let w = width / BLOOM_DOWNSAMPLE;
+    let h = height / BLOOM_DOWNSAMPLE;
+    let w = if w > 0 { w } else { 1 };
+    let h = if h > 0 { h } else { 1 };
+    (w, h)
+}
+
 impl RenderTargets {
     /// Build a fresh set of render targets sized for the given surface.
     pub fn new(device: &Device, width: u32, height: u32) -> Self {
@@ -53,8 +63,7 @@ impl RenderTargets {
 
         let (hdr_color, hdr_view) = create_hdr_color(device, width, height);
         let (depth, depth_view) = create_depth(device, width, height);
-        let bloom_w = (width / BLOOM_DOWNSAMPLE).max(1);
-        let bloom_h = (height / BLOOM_DOWNSAMPLE).max(1);
+        let (bloom_w, bloom_h) = bloom_dims(width, height);
         let (bloom_ping, bloom_ping_view) = create_bloom_tex(device, bloom_w, bloom_h, "Bloom Ping");
         let (bloom_pong, bloom_pong_view) = create_bloom_tex(device, bloom_w, bloom_h, "Bloom Pong");
 
@@ -85,9 +94,9 @@ impl RenderTargets {
     pub fn height(&self) -> u32 { self.height }
 
     /// Width of the bloom textures (half of the surface width).
-    pub fn bloom_width(&self) -> u32 { (self.width / BLOOM_DOWNSAMPLE).max(1) }
+    pub fn bloom_width(&self) -> u32 { bloom_dims(self.width, self.height).0 }
     /// Height of the bloom textures (half of the surface height).
-    pub fn bloom_height(&self) -> u32 { (self.height / BLOOM_DOWNSAMPLE).max(1) }
+    pub fn bloom_height(&self) -> u32 { bloom_dims(self.width, self.height).1 }
 }
 
 fn create_hdr_color(device: &Device, width: u32, height: u32) -> (Texture, TextureView) {
@@ -134,4 +143,17 @@ fn create_bloom_tex(device: &Device, width: u32, height: u32, label: &str) -> (T
     });
     let view = texture.create_view(&TextureViewDescriptor::default());
     (texture, view)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_bloom_dims_halves_and_clamps_to_one() {
+        assert_eq!(bloom_dims(800, 600), (400, 300));
+        assert_eq!(bloom_dims(1920, 1080), (960, 540));
+        assert_eq!(bloom_dims(1, 1), (1, 1));
+        assert_eq!(bloom_dims(0, 0), (1, 1));
+    }
 }

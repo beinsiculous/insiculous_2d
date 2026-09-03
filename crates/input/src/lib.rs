@@ -10,6 +10,7 @@ mod input_handler;
 mod input_mapping;
 mod keyboard;
 mod mouse;
+mod pad_layout;
 mod player;
 
 pub mod prelude;
@@ -21,4 +22,5 @@ pub use input_handler::*;
 pub use input_mapping::*;
 pub use keyboard::*;
 pub use mouse::*;
+pub use pad_layout::*;
 pub use player::*;

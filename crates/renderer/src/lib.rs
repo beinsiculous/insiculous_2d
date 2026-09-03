@@ -6,9 +6,11 @@ use std::sync::Arc;
 use winit::window::Window;
 
 pub mod bloom;
+pub mod camera_binding;
 pub mod device_status;
 mod error;
 pub mod line_pipeline;
+pub(crate) mod pipeline_builder;
 pub mod render_targets;
 mod renderer;
 pub mod scissor;
@@ -28,15 +30,17 @@ pub mod prelude;
 pub use wgpu;
 
 // Re-export for convenience
+pub use camera_binding::CameraBinding;
 pub use device_status::DeviceLossLatch;
 pub use error::*;
 pub use renderer::*;
+pub use scissor::PassScissor;
 pub use sprite_data::*;
 pub use window::*;
 
 // Selective re-exports to avoid conflicts
 // TextureHandle is the canonical definition in texture.rs
-pub use sprite::{Sprite, SpriteBatch, SpriteBatcher, SpritePipeline};
+pub use sprite::{Sprite, SpriteBatch, SpriteBatcher, SpritePipeline, SpriteShape};
 pub use texture::{TextureManager, TextureLoadConfig, SamplerConfig, TextureError, TextureHandle};
 pub use texture_filter::TextureFilter;
 

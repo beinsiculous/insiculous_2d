@@ -4,9 +4,10 @@ use std::collections::HashMap;
 use wgpu::{Device, Queue, RenderPipeline, BindGroupLayout, Buffer, CommandEncoder};
 use wgpu::util::DeviceExt;
 
-use crate::render_targets::{DEPTH_FORMAT, HDR_FORMAT, RenderTargets};
+use crate::camera_binding::CameraBinding;
+use crate::render_targets::{HDR_FORMAT, RenderTargets};
 use crate::sprite::SpriteBatch;
-use crate::sprite_data::{Camera, CameraUniform, DynamicBuffer, SpriteInstance, SpriteVertex, TextureResource};
+use crate::sprite_data::{Camera, DynamicBuffer, SpriteInstance, SpriteVertex, TextureResource};
 use crate::texture::TextureHandle;
 
 /// Enhanced sprite pipeline with camera support and proper batching
@@ -19,12 +20,10 @@ pub struct SpritePipeline {
     instance_buffer: DynamicBuffer<SpriteInstance>,
     /// Index buffer for quad geometry
     index_buffer: Buffer,
-    /// Camera uniform buffer
-    camera_buffer: Buffer,
+    /// Camera uniform binding
+    camera: CameraBinding,
     /// Texture bind group layout
     texture_bind_group_layout: BindGroupLayout,
-    /// Cached camera bind group (created once, updated via buffer writes)
-    camera_bind_group: wgpu::BindGroup,
     /// Cached texture bind groups (keyed by TextureHandle)
     texture_bind_group_cache: HashMap<TextureHandle, wgpu::BindGroup>,
     /// Change detector + staging buffer: skips the instance upload when
@@ -36,6 +35,51 @@ pub struct SpritePipeline {
     /// trips clippy's `arc_with_non_send_sync` on wasm, where `Device` is
     /// not `Send`).
     device: Device,
+}
+
+fn texture_bind_group_layout(device: &Device) -> BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("Sprite Texture Bind Group Layout"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+        ],
+    })
+}
+
+fn quad_buffers(device: &Device) -> (Buffer, Buffer) {
+    let vertices = [
+        SpriteVertex::new(glam::Vec3::new(-0.5, 0.5, 0.0), glam::Vec2::new(0.0, 0.0), glam::Vec4::ONE),
+        SpriteVertex::new(glam::Vec3::new(0.5, 0.5, 0.0), glam::Vec2::new(1.0, 0.0), glam::Vec4::ONE),
+        SpriteVertex::new(glam::Vec3::new(0.5, -0.5, 0.0), glam::Vec2::new(1.0, 1.0), glam::Vec4::ONE),
+        SpriteVertex::new(glam::Vec3::new(-0.5, -0.5, 0.0), glam::Vec2::new(0.0, 1.0), glam::Vec4::ONE),
+    ];
+    let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Sprite Vertex Buffer"),
+        contents: bytemuck::cast_slice(&vertices),
+        usage: wgpu::BufferUsages::VERTEX,
+    });
+    let indices: [u16; 6] = [0, 1, 2, 0, 2, 3];
+    let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Sprite Index Buffer"),
+        contents: bytemuck::cast_slice(&indices),
+        usage: wgpu::BufferUsages::INDEX,
+    });
+    (vertex_buffer, index_buffer)
 }
 
 impl SpritePipeline {
@@ -71,178 +115,56 @@ impl SpritePipeline {
         target_format: wgpu::TextureFormat,
         fragment_entry: &str,
     ) -> Self {
+        let texture_bind_group_layout = texture_bind_group_layout(device);
+        let camera = CameraBinding::new(device, "Sprite");
 
-        // Create texture bind group layout
-        let texture_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Sprite Texture Bind Group Layout"),
-            entries: &[
-                // Texture
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                // Sampler
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
-
-        // Create camera bind group layout
-        let camera_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Sprite Camera Bind Group Layout"),
-            entries: &[
-                // Camera uniform
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-            ],
-        });
-
-        // Create pipeline layout
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Sprite Pipeline Layout"),
-            bind_group_layouts: &[&camera_bind_group_layout, &texture_bind_group_layout],
+            bind_group_layouts: &[camera.layout(), &texture_bind_group_layout],
             ..Default::default()
         });
 
-        // Create quad vertices (full texture coordinates)
-        let vertices = [
-            // Top-left
-            SpriteVertex::new(glam::Vec3::new(-0.5, 0.5, 0.0), glam::Vec2::new(0.0, 0.0), glam::Vec4::ONE),
-            // Top-right
-            SpriteVertex::new(glam::Vec3::new(0.5, 0.5, 0.0), glam::Vec2::new(1.0, 0.0), glam::Vec4::ONE),
-            // Bottom-right
-            SpriteVertex::new(glam::Vec3::new(0.5, -0.5, 0.0), glam::Vec2::new(1.0, 1.0), glam::Vec4::ONE),
-            // Bottom-left
-            SpriteVertex::new(glam::Vec3::new(-0.5, -0.5, 0.0), glam::Vec2::new(0.0, 1.0), glam::Vec4::ONE),
-        ];
-
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Sprite Vertex Buffer"),
-            contents: bytemuck::cast_slice(&vertices),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-
-        // Create index buffer for quad (2 triangles, 6 indices)
-        let indices: [u16; 6] = [
-            0, 1, 2, // First triangle
-            0, 2, 3, // Second triangle
-        ];
-
-        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Sprite Index Buffer"),
-            contents: bytemuck::cast_slice(&indices),
-            usage: wgpu::BufferUsages::INDEX,
-        });
-
-        // Create instance buffer
+        let (vertex_buffer, index_buffer) = quad_buffers(device);
         let instance_buffer = DynamicBuffer::new(
             device,
             initial_sprite_capacity,
             wgpu::BufferUsages::VERTEX,
         );
 
-        // Create camera uniform buffer
-        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Sprite Camera Buffer"),
-            contents: bytemuck::cast_slice(&[CameraUniform::from_camera(&Camera::default())]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-
-        // Create camera bind group once (will be reused, buffer updated via write_buffer)
-        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Sprite Camera Bind Group"),
-            layout: &camera_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: camera_buffer.as_entire_binding(),
-            }],
-        });
-
-        // Create shader module
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Sprite Shader"),
             source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!("../shaders/sprite_instanced.wgsl"))),
         });
 
-        // Create the render pipeline
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Sprite Pipeline"),
-            layout: Some(&layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
+        let pipeline = crate::pipeline_builder::build_render_pipeline(
+            device,
+            &crate::pipeline_builder::PipelineSpec {
+                label: "Sprite Pipeline",
+                layout: &layout,
+                shader: &shader,
+                vertex_entry: "vs_main",
+                fragment_entry,
                 buffers: &[
-                    SpriteVertex::desc(),     // Vertex buffer
-                    SpriteInstance::desc(),   // Instance buffer
+                    SpriteVertex::desc(),
+                    SpriteInstance::desc(),
                 ],
-                compilation_options: Default::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some(fragment_entry),
-                targets: &[Some(wgpu::ColorTargetState {
-                    // HDR offscreen target for game sprites (the bloom
-                    // composite writes the swapchain), or the swapchain
-                    // format itself for the post-tonemap UI pass.
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                target: wgpu::ColorTargetState {
                     format: target_format,
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: Default::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: None, // Don't cull sprites
-                ..Default::default()
+                },
+                depth: Some(crate::pipeline_builder::depth_state(true)),
             },
-            // Real depth buffer. depth_write_enabled=true plus alpha blending
-            // means the user still needs to sort transparent sprites
-            // back-to-front, but opaque depth ordering Just Works once any
-            // 3D-ish features arrive.
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: DEPTH_FORMAT,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::LessEqual,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            cache: None,
-            multiview_mask: None,
-        });
+        );
 
         Self {
             pipeline,
             vertex_buffer,
             instance_buffer,
             index_buffer,
-            camera_buffer,
+            camera,
             texture_bind_group_layout,
-            camera_bind_group,
             texture_bind_group_cache: HashMap::new(),
             instance_cache: super::InstanceCache::new(),
             device: device.clone(),
@@ -251,8 +173,7 @@ impl SpritePipeline {
 
     /// Update camera uniform
     pub fn update_camera(&self, queue: &Queue, camera: &Camera) {
-        let uniform = CameraUniform::from_camera(camera);
-        queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[uniform]));
+        self.camera.update(queue, camera);
     }
 
     /// Update texture bind group cache for new textures
@@ -429,9 +350,9 @@ impl SpritePipeline {
     /// a batch's `clip` intersects with it. A batch whose effective scissor
     /// is empty is skipped entirely. Instance offsets still advance for
     /// skipped batches — the instance buffer was flattened over ALL batches.
-    fn record_batches(
-        &self,
-        render_pass: &mut wgpu::RenderPass<'_>,
+    fn record_batches<'a>(
+        &'a self,
+        render_pass: &mut wgpu::RenderPass<'a>,
         batches: &[&SpriteBatch],
         default_scissor: Option<[u32; 4]>,
         surface_size: (u32, u32),
@@ -444,7 +365,7 @@ impl SpritePipeline {
         render_pass.set_vertex_buffer(1, self.instance_buffer.slice());
 
         // Use cached camera bind group (set 0)
-        render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+        self.camera.bind(render_pass, 0);
 
         // A fresh render pass starts with a full-attachment scissor; only
         // emit set_scissor_rect when the effective rect changes.

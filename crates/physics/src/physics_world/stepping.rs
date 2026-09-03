@@ -1,7 +1,5 @@
 //! Simulation stepping and collision event extraction.
 
-use std::collections::HashSet;
-
 use glam::Vec2;
 use rapier2d::prelude::*;
 
@@ -37,6 +35,25 @@ impl CollisionPair {
     }
 }
 
+fn push_collision(
+    events: &mut Vec<CollisionData>,
+    entity_a: EntityId,
+    entity_b: EntityId,
+    started: bool,
+    stopped: bool,
+    contacts: Vec<ContactPoint>,
+) {
+    events.push(CollisionData {
+        event: CollisionEvent {
+            entity_a,
+            entity_b,
+            started,
+            stopped,
+        },
+        contacts,
+    });
+}
+
 impl PhysicsWorld {
     /// Step the physics simulation.
     ///
@@ -70,7 +87,7 @@ impl PhysicsWorld {
         );
 
         // Build current collision set and process collision events
-        let mut current_collisions = HashSet::new();
+        self.current_collisions.clear();
 
         // Process collision events from narrow phase
         for contact_pair in self.narrow_phase.contact_pairs() {
@@ -85,21 +102,13 @@ impl PhysicsWorld {
 
                 if has_contact {
                     let pair = CollisionPair::new(entity_a, entity_b);
-                    current_collisions.insert(pair);
+                    self.current_collisions.insert(pair);
 
                     // Check if this is a new collision (started)
                     let started = !self.previous_collisions.contains(&pair);
                     let contacts = self.get_contact_points_from_pair(contact_pair);
 
-                    self.collision_events.push(CollisionData {
-                        event: CollisionEvent {
-                            entity_a,
-                            entity_b,
-                            started,
-                            stopped: false,
-                        },
-                        contacts,
-                    });
+                    push_collision(&mut self.collision_events, entity_a, entity_b, started, false, contacts);
                 }
             }
         }
@@ -114,40 +123,24 @@ impl PhysicsWorld {
                 let pair = CollisionPair::new(entity_a, entity_b);
 
                 if intersecting {
-                    current_collisions.insert(pair);
+                    self.current_collisions.insert(pair);
 
                     let started = !self.previous_collisions.contains(&pair);
-                    self.collision_events.push(CollisionData {
-                        event: CollisionEvent {
-                            entity_a,
-                            entity_b,
-                            started,
-                            stopped: false,
-                        },
-                        contacts: Vec::new(), // Sensors have no contact points
-                    });
+                    push_collision(&mut self.collision_events, entity_a, entity_b, started, false, Vec::new());
                 }
             }
         }
 
         // Find collisions that ended (were in previous but not in current)
         for pair in &self.previous_collisions {
-            if !current_collisions.contains(pair) {
+            if !self.current_collisions.contains(pair) {
                 let (entity_a, entity_b) = pair.entities();
-                self.collision_events.push(CollisionData {
-                    event: CollisionEvent {
-                        entity_a,
-                        entity_b,
-                        started: false,
-                        stopped: true,
-                    },
-                    contacts: Vec::new(), // No contacts for ended collisions
-                });
+                push_collision(&mut self.collision_events, entity_a, entity_b, false, true, Vec::new());
             }
         }
 
-        // Update previous collisions for next step
-        self.previous_collisions = current_collisions;
+        // Update previous collisions for next step, reusing the allocation
+        std::mem::swap(&mut self.previous_collisions, &mut self.current_collisions);
     }
 
     /// Get contact points from a contact pair, in world space (pixels).

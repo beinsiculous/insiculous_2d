@@ -6,11 +6,11 @@
 use std::io::Cursor;
 use std::path::Path;
 
-use rodio::{Decoder, Sink, Source};
+use rodio::Decoder;
 
 use crate::error::{AudioError, AudioResult};
 
-use super::{clamp_volume, AudioManager, PendingMusic};
+use super::{clamp_volume, effective_volume, AudioManager, PendingMusic};
 
 impl AudioManager {
     /// Play background music from a file, looping forever.
@@ -65,16 +65,8 @@ impl AudioManager {
             return Ok(());
         };
 
-        let sink = Sink::try_new(&output.handle)
-            .map_err(|e| AudioError::StreamError(e.to_string()))?;
-
         let base_volume = clamp_volume(volume);
-        sink.set_volume(base_volume * self.music_volume * self.master_volume);
-        if looping {
-            sink.append(source.repeat_infinite());
-        } else {
-            sink.append(source);
-        }
+        let sink = self.start_sink(output, source, base_volume, self.music_volume, looping)?;
 
         self.music_sink = Some(sink);
         self.music_base_volume = base_volume;
@@ -173,12 +165,12 @@ impl AudioManager {
     /// instance from `base * bus * master`.
     fn update_all_volumes(&mut self) {
         if let Some(ref sink) = self.music_sink {
-            sink.set_volume(self.music_base_volume * self.music_volume * self.master_volume);
+            sink.set_volume(effective_volume(self.music_base_volume, self.music_volume, self.master_volume));
         }
         for active in &self.active_sounds {
             active
                 .sink
-                .set_volume(active.base_volume * self.sfx_volume * self.master_volume);
+                .set_volume(effective_volume(active.base_volume, self.sfx_volume, self.master_volume));
         }
     }
 }

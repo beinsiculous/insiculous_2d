@@ -136,6 +136,8 @@ pub struct PhysicsWorld {
     collision_events: Vec<CollisionData>,
     /// Active collision pairs from the previous step (for detecting start/stop)
     previous_collisions: HashSet<CollisionPair>,
+    /// Scratch set for collision pairs in the current step, swapped to reuse allocation
+    current_collisions: HashSet<CollisionPair>,
 }
 
 impl Default for PhysicsWorld {
@@ -178,6 +180,7 @@ impl PhysicsWorld {
             collider_to_entity: HashMap::new(),
             collision_events: Vec::new(),
             previous_collisions: HashSet::new(),
+            current_collisions: HashSet::new(),
         }
     }
 
@@ -201,6 +204,7 @@ impl PhysicsWorld {
         self.collider_to_entity.clear();
         self.collision_events.clear();
         self.previous_collisions.clear();
+        self.current_collisions.clear();
     }
 
     /// Get the physics configuration
