@@ -66,6 +66,11 @@ Before modifying code, for non-trivial tasks:
 - Note any risks or open questions there — the issue thread is the durable
   record (ANALYSIS.md files are retired; do not create them)
 - For risky or architectural changes, consider `/adversarial-review` (plan mode)
+- More than one commit of work (a sprint batch, a multi-crate change)? Plan it
+  with `/handoff-loop` in plan mode: the plan lands at a tracked
+  `coordination/<effort>/plan.md`, kimi and gemini settle it, then each batch
+  goes to the executor by handoff prompt and comes back through kimi and you
+  for review before it is committed
 
 ### 3.2 Consider Context Isolation
 For complex changes that might clutter the main context:
