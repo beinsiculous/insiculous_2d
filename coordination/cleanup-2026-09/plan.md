@@ -495,7 +495,7 @@ tests, `editor_game/{api_tests,shortcuts_tests,scene_io_tests,play_session_tests
 headless `--api` transcript against `../games/pong` exercising create, set (a scale of 0 must
 come back 0.01), add, remove, undo and save to a path under `target/`, pasted into the report.
 
-## Batch 7 — DRY in the editor UI (~400 removed, ~200 added; this section is the whole spec)
+## Batch 7 — DRY in the editor UI (~400 removed, ~200 added; this section is the whole spec) — DONE Sep 3 2026 (367fc5f; reviews 24 and 24-claude, fixes applied by Claude per Jesse's standing ruling; the editor_demo visual pass is Jesse's, after the commit)
 
 Re-verified against the tree on Sep 3 2026 after batch 6 (`b25eeb7`); every line number below is
 from that tree. No `design-structure.md` section covers this batch — the target shapes are here,
