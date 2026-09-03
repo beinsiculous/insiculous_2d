@@ -360,7 +360,15 @@ modulo root order — before check-in, so batch 8's own bug cannot be blessed); 
 Extra verification: all editor suites, headless API tests, and an `editor_demo` manual pass
 (play/pause/stop, undo merge, marquee, gizmo) — Jesse's check.
 
-## Batch T — test suite: keep-list, not trim-list (runs per crate inside batches 1–9)
+## Batch T — test suite: keep-list, not trim-list — DONE Sep 3 2026
+
+Landed on `jesse` as one reviewed commit per crate (common 98898e0, ecs 6db8d96, input
+1601d96, physics 6f8ec4b, audio 528fb62, renderer 19b2faf, ui 5dc0331, engine_core 18eb6dd,
+editor 5630436, editor_integration 28be855; docs counts b4e2aae). 1,657 → 633 `#[test]`
+functions; every gate green; every review round adjudicated in
+`review/cleanup-2026-09/rebuttal-*.md`. Batches 1–10 follow.
+
+### Original brief
 
 Jesse's framing (Sep 2 2026): "200 really good tests that keep critical functionality certain"
 beat 1,600 that only buy coverage, plus tests that catch footguns and antipatterns being
