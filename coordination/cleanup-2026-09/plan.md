@@ -293,7 +293,9 @@ wait for batch 7; `renderer.rs:230` `arc_with_non_send_sync` stays (decided with
 Extra verification: games test gate, wasm gate, and a native `hello_world` run for the vertex
 layout and shape enum (GPU-only) — Jesse's check.
 
-## Batch 5 — DRY in engine_core (~500 removed, ~300 added; §A-colours, §B, §C, §D, §E, §K)
+## Batch 5 — DRY in engine_core (~500 removed, ~300 added; §A-colours, §B, §C, §D, §E, §K) — DONE Sep 3 2026 (21b743d; review 20, fixes applied by Claude per Jesse; the six game repos each carry the twelve-site migration on a new `jesse` branch)
+
+Outcome notes for later batches: the § B half-2 spike **failed** — ron's `UNWRAP_VARIANT_NEWTYPES` also unwraps `Option::Some`, so `physics: Some(PhysicsSettings(..))` stops parsing; the `grid_default!` macro fallback landed and `tests/grid_spike.rs` is the tripwire. The § E `build_context` is a `macro_rules!`, not a method: a `&mut self` builder returning `GameContext<'_>` borrows all of `*self`, so `self.game.update(&mut ctx)` cannot follow it — the design's "disjoint fields" claim was wrong. `#[must_use]` on `Scores::submit` put seven `let _ =` sites in the games; Jesse kept it (they mark where a new-record banner goes).
 
 - Delete `behavior_data.rs` (240 lines, 10 `BehaviorData` uses outside it): `pub type BehaviorData =
   ecs::behavior::Behavior;` keeps every import path; `ecs::Behavior` already carries identical
