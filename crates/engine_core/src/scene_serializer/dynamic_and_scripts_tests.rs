@@ -215,3 +215,59 @@ fn save_auto_names_referenced_unnamed_targets_skipping_taken_names() {
     assert_eq!(params["target"], ScriptValue::Entity(fresh_target));
     assert_eq!(params["named"], ScriptValue::Entity(fresh_squatter));
 }
+
+#[test]
+fn exclusion_list_drift_guard_saves_every_persistent_type_exactly_once() {
+    // Register all engine components (including physics)
+    crate::component_registration::register_engine_components();
+    let mut world = World::new();
+    let entity = world.create_entity();
+
+    let persistent_names = ecs::with_global_registry(|registry| {
+        for name in registry.persistent_names() {
+            registry
+                .insert_default(&mut world, entity, name)
+                .unwrap_or_else(|e| panic!("failed inserting default for {name}: {e}"));
+        }
+        registry.persistent_names()
+    });
+
+    let scene = world_to_scene_data(&world, "DriftGuard", None, &test_texture_path);
+    assert_eq!(scene.entities.len(), 1);
+    let entity_data = &scene.entities[0];
+
+    // Name is emitted on EntityData.name, not in components
+    assert!(entity_data.name.is_some(), "Name must be recorded on EntityData");
+
+    let mut seen_types = std::collections::HashMap::<String, usize>::new();
+    seen_types.insert("Name".to_string(), 1);
+
+    for comp in &entity_data.components {
+        let name = match comp {
+            ComponentData::Transform2D { .. } => "Transform2D",
+            ComponentData::Sprite { .. } => "Sprite",
+            ComponentData::Camera2D { .. } => "Camera",
+            ComponentData::SpriteAnimation { .. } => "SpriteAnimation",
+            ComponentData::Tilemap { .. } => "Tilemap",
+            ComponentData::GridBackdrop { .. } => "GridBackdrop",
+            ComponentData::UiLabel { .. } => "UiLabel",
+            ComponentData::UiPanel { .. } => "UiPanel",
+            ComponentData::UiButton { .. } => "UiButton",
+            ComponentData::Behavior { .. } => "Behavior",
+            ComponentData::Scripts { .. } => "Scripts",
+            ComponentData::EntityTag { .. } => "EntityTag",
+            #[cfg(feature = "physics")]
+            ComponentData::RigidBody { .. } => "RigidBody",
+            #[cfg(feature = "physics")]
+            ComponentData::Collider { .. } => "Collider",
+            ComponentData::Dynamic { component_type, .. } => component_type.as_str(),
+        };
+        *seen_types.entry(name.to_string()).or_default() += 1;
+    }
+
+    // Every persistent type in registry must appear exactly once
+    for name in &persistent_names {
+        let count = seen_types.get(*name).copied().unwrap_or(0);
+        assert_eq!(count, 1, "persistent type {name} must appear exactly once, got {count}");
+    }
+}

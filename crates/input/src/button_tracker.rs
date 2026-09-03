@@ -22,8 +22,10 @@ use std::hash::Hash;
 pub struct ButtonTracker<T: Copy + Eq + Hash> {
     /// Currently held buttons
     pressed: HashSet<T>,
-    /// Buttons that transitioned to pressed this frame
-    just_pressed: HashSet<T>,
+    /// Buttons held at the end of the previous frame
+    previous: HashSet<T>,
+    /// Buttons that transitioned to pressed this frame, in chronological order
+    just_pressed: Vec<T>,
     /// Buttons that transitioned to released this frame
     just_released: HashSet<T>,
 }
@@ -32,7 +34,8 @@ impl<T: Copy + Eq + Hash> Default for ButtonTracker<T> {
     fn default() -> Self {
         Self {
             pressed: HashSet::new(),
-            just_pressed: HashSet::new(),
+            previous: HashSet::new(),
+            just_pressed: Vec::new(),
             just_released: HashSet::new(),
         }
     }
@@ -47,14 +50,16 @@ impl<T: Copy + Eq + Hash> ButtonTracker<T> {
     /// Record a press event. Repeated presses while held do not re-trigger "just pressed".
     pub fn press(&mut self, button: T) {
         if self.pressed.insert(button) {
-            self.just_pressed.insert(button);
+            self.just_pressed.push(button);
         }
     }
 
-    /// Record a release event
+    /// Record a release event. A release of a button that is not held records
+    /// no edge (focus-loss or synthetic releases must not fake a `just_released`).
     pub fn release(&mut self, button: T) {
-        self.pressed.remove(&button);
-        self.just_released.insert(button);
+        if self.pressed.remove(&button) {
+            self.just_released.insert(button);
+        }
     }
 
     /// Check if a button is currently held
@@ -72,8 +77,20 @@ impl<T: Copy + Eq + Hash> ButtonTracker<T> {
         self.just_released.contains(&button)
     }
 
-    /// Clear the one-shot just-pressed / just-released sets for the next frame
+    /// Check if a button was held as of the end of the previous frame
+    pub fn was_pressed(&self, button: T) -> bool {
+        self.previous.contains(&button)
+    }
+
+    /// Buttons that transitioned to pressed this frame, in chronological order
+    pub fn just_pressed_buttons(&self) -> &[T] {
+        &self.just_pressed
+    }
+
+    /// Clear the one-shot just-pressed / just-released sets for the next frame;
+    /// also snapshots the held set into `previous` (what `was_pressed` reads).
     pub fn clear_frame_state(&mut self) {
+        self.previous.clone_from(&self.pressed);
         self.just_pressed.clear();
         self.just_released.clear();
     }
@@ -95,6 +112,7 @@ mod tests {
         // End of frame: the edge clears, the hold does not
         tracker.clear_frame_state();
         assert!(tracker.is_pressed(1));
+        assert!(tracker.was_pressed(1));
         assert!(!tracker.is_just_pressed(1));
         assert!(!tracker.is_just_released(1));
 
@@ -117,7 +135,52 @@ mod tests {
 
         tracker.clear_frame_state();
         assert!(!tracker.is_pressed(1));
+        assert!(!tracker.was_pressed(1));
         assert!(!tracker.is_just_released(1));
         assert!(tracker.is_pressed(2));
+        assert!(tracker.was_pressed(2));
+    }
+
+    #[test]
+    fn test_release_without_prior_press_records_no_release_edge() {
+        let mut tracker = ButtonTracker::new();
+
+        // Synthetic release without preceding press
+        tracker.release(42u32);
+
+        assert!(!tracker.is_pressed(42));
+        assert!(!tracker.is_just_pressed(42));
+        assert!(!tracker.is_just_released(42));
+        assert!(!tracker.was_pressed(42));
+    }
+
+    #[test]
+    fn test_press_and_release_within_one_frame_records_both_edges_and_no_residual_hold() {
+        let mut tracker = ButtonTracker::new();
+
+        tracker.press(10u32);
+        tracker.release(10u32);
+
+        assert!(!tracker.is_pressed(10));
+        assert!(tracker.is_just_pressed(10));
+        assert!(tracker.is_just_released(10));
+        assert!(!tracker.was_pressed(10));
+
+        tracker.clear_frame_state();
+        assert!(!tracker.is_pressed(10));
+        assert!(!tracker.is_just_pressed(10));
+        assert!(!tracker.is_just_released(10));
+        assert!(!tracker.was_pressed(10));
+    }
+
+    #[test]
+    fn test_just_pressed_buttons_preserves_chronological_press_order() {
+        let mut tracker = ButtonTracker::new();
+
+        tracker.press(7u32);
+        tracker.press(2u32);
+        tracker.press(9u32);
+
+        assert_eq!(tracker.just_pressed_buttons(), &[7, 2, 9]);
     }
 }

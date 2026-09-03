@@ -144,14 +144,14 @@ impl Color {
         [self.r, self.g, self.b, self.a]
     }
 
-    /// Convert to 8-bit RGBA array.
+    /// Convert to 8-bit RGBA array, rounded and clamped to [0, 255].
     #[inline]
     pub fn to_rgba8(self) -> [u8; 4] {
         [
-            (self.r * 255.0) as u8,
-            (self.g * 255.0) as u8,
-            (self.b * 255.0) as u8,
-            (self.a * 255.0) as u8,
+            (self.r.clamp(0.0, 1.0) * 255.0).round() as u8,
+            (self.g.clamp(0.0, 1.0) * 255.0).round() as u8,
+            (self.b.clamp(0.0, 1.0) * 255.0).round() as u8,
+            (self.a.clamp(0.0, 1.0) * 255.0).round() as u8,
         ]
     }
 
@@ -277,5 +277,26 @@ mod tests {
         assert_eq!(as_array, [0.1, 0.2, 0.3, 0.4]);
         assert_eq!(from_vec4, color, "Color -> Vec4 -> Color must be lossless");
         assert_eq!(from_array, color, "Color -> [f32; 4] -> Color must be lossless");
+    }
+
+    #[test]
+    fn test_to_rgba8_round_trips_all_256_byte_values_and_preserves_solid_color_refs() {
+        // Rounding ensures every byte value 0..=255 converts losslessly
+        // through Color::from_rgba8 -> to_rgba8 without truncation drift.
+        for b in 0..=255u8 {
+            let color = Color::from_rgba8(b, b, b, b);
+            assert_eq!(color.to_rgba8(), [b, b, b, b]);
+        }
+
+        // A #solid:RRGGBB ref survives ref -> color -> ref
+        let original_ref = "#solid:FF8000";
+        let hex = original_ref.strip_prefix("#solid:").expect("prefix");
+        let r = u8::from_str_radix(&hex[0..2], 16).expect("r byte");
+        let g = u8::from_str_radix(&hex[2..4], 16).expect("g byte");
+        let b = u8::from_str_radix(&hex[4..6], 16).expect("b byte");
+        let color = Color::from_rgb8(r, g, b);
+        let [r2, g2, b2, _] = color.to_rgba8();
+        let reconstructed_ref = format!("#solid:{r2:02X}{g2:02X}{b2:02X}");
+        assert_eq!(reconstructed_ref, original_ref);
     }
 }

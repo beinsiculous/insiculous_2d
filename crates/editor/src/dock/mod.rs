@@ -167,8 +167,6 @@ pub struct DockArea {
     panels: Vec<DockPanel>,
     /// Available area for docking
     bounds: Rect,
-    /// Header height for panels
-    header_height: f32,
     /// Resize handle size
     resize_handle_size: f32,
 }
@@ -185,7 +183,6 @@ impl DockArea {
         Self {
             panels: Vec::new(),
             bounds: Rect::default(),
-            header_height: HEADER_HEIGHT,
             resize_handle_size: RESIZE_HANDLE_SIZE,
         }
     }

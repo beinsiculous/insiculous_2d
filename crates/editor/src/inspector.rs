@@ -77,18 +77,21 @@ pub fn inspect_component<T: Serialize>(
     style: &InspectorStyle,
 ) -> f32 {
     let mut current_y = y;
+    let font_size = ui.theme().text.font_size;
 
     // Render component type header
-    ui.label(type_name, Vec2::new(x, current_y));
+    ui.label_styled(type_name, Vec2::new(x, current_y), style.header_color, font_size);
     current_y += style.line_height;
 
     // Serialize to JSON value for field extraction
     let value = match component_value(component) {
         Ok(v) => v,
         Err(e) => {
-            ui.label(
+            ui.label_styled(
                 &format!("  (serialization error: {})", e),
                 Vec2::new(x, current_y),
+                style.value_color,
+                font_size,
             );
             return current_y + style.line_height;
         }
@@ -110,6 +113,7 @@ fn render_value(
     depth: usize,
 ) -> f32 {
     let mut current_y = y;
+    let font_size = ui.theme().text.font_size;
 
     match value {
         Value::Object(map) => {
@@ -119,21 +123,23 @@ fn render_value(
         }
         Value::Array(arr) => {
             // For arrays, show count and elements
-            ui.label(&format!("[{} items]", arr.len()), Vec2::new(x, current_y));
+            ui.label_styled(&format!("[{} items]", arr.len()), Vec2::new(x, current_y), style.value_color, font_size);
             current_y += style.line_height;
 
             // Show first few elements if small array
             if arr.len() <= 4 {
                 for (i, elem) in arr.iter().enumerate() {
-                    let formatted = format_simple_value(elem);
-                    ui.label(&format!("  [{}]: {}", i, formatted), Vec2::new(x, current_y));
+                    let idx_label = format!("  [{}]: ", i);
+                    let idx_width = ui.measure_text_styled(&idx_label, font_size).x;
+                    ui.label_styled(&idx_label, Vec2::new(x, current_y), style.label_color, font_size);
+                    ui.label_styled(&format_simple_value(elem), Vec2::new(x + idx_width, current_y), style.value_color, font_size);
                     current_y += style.line_height;
                 }
             }
         }
         _ => {
             // Simple value at top level (shouldn't happen for components)
-            ui.label(&format_simple_value(value), Vec2::new(x, current_y));
+            ui.label_styled(&format_simple_value(value), Vec2::new(x, current_y), style.value_color, font_size);
             current_y += style.line_height;
         }
     }
@@ -152,18 +158,21 @@ fn render_field(
     depth: usize,
 ) -> f32 {
     let mut current_y = y;
+    let font_size = ui.theme().text.font_size;
 
     match value {
         // For nested objects, show header and recurse
         Value::Object(map) if !map.is_empty() => {
             // Check if it's a simple "vec-like" object (x, y or x, y, z, w)
             if is_vec_like(map) {
-                let formatted = format_vec_like(map);
-                ui.label(&format!("{}: {}", key, formatted), Vec2::new(x, current_y));
+                let key_label = format!("{}: ", key);
+                let key_width = ui.measure_text_styled(&key_label, font_size).x;
+                ui.label_styled(&key_label, Vec2::new(x, current_y), style.label_color, font_size);
+                ui.label_styled(&format_vec_like(map), Vec2::new(x + key_width, current_y), style.value_color, font_size);
                 current_y += style.line_height;
             } else {
                 // Complex nested object
-                ui.label(&format!("{}:", key), Vec2::new(x, current_y));
+                ui.label_styled(&format!("{}:", key), Vec2::new(x, current_y), style.label_color, font_size);
                 current_y += style.line_height;
                 current_y = render_value(ui, value, x + style.indent, current_y, style, depth + 1);
             }
@@ -172,20 +181,30 @@ fn render_field(
         Value::Array(arr) => {
             if arr.len() <= 4 && arr.iter().all(is_simple_value) {
                 let formatted: Vec<String> = arr.iter().map(format_simple_value).collect();
-                ui.label(
-                    &format!("{}: [{}]", key, formatted.join(", ")),
-                    Vec2::new(x, current_y),
+                let key_label = format!("{}: ", key);
+                let key_width = ui.measure_text_styled(&key_label, font_size).x;
+                ui.label_styled(&key_label, Vec2::new(x, current_y), style.label_color, font_size);
+                ui.label_styled(
+                    &format!("[{}]", formatted.join(", ")),
+                    Vec2::new(x + key_width, current_y),
+                    style.value_color,
+                    font_size,
                 );
                 current_y += style.line_height;
             } else {
-                ui.label(&format!("{}: [{} items]", key, arr.len()), Vec2::new(x, current_y));
+                let key_label = format!("{}: ", key);
+                let key_width = ui.measure_text_styled(&key_label, font_size).x;
+                ui.label_styled(&key_label, Vec2::new(x, current_y), style.label_color, font_size);
+                ui.label_styled(&format!("[{} items]", arr.len()), Vec2::new(x + key_width, current_y), style.value_color, font_size);
                 current_y += style.line_height;
             }
         }
         // Simple values
         _ => {
-            let formatted = format_simple_value(value);
-            ui.label(&format!("{}: {}", key, formatted), Vec2::new(x, current_y));
+            let key_label = format!("{}: ", key);
+            let key_width = ui.measure_text_styled(&key_label, font_size).x;
+            ui.label_styled(&key_label, Vec2::new(x, current_y), style.label_color, font_size);
+            ui.label_styled(&format_simple_value(value), Vec2::new(x + key_width, current_y), style.value_color, font_size);
             current_y += style.line_height;
         }
     }
@@ -286,5 +305,34 @@ mod tests {
         for (value, expected) in cases {
             assert_eq!(format_simple_value(&value), expected, "{value}");
         }
+    }
+
+    #[test]
+    fn test_inspect_component_header_draw_command_carries_header_color() {
+        let mut ui = UIContext::new();
+        let style = InspectorStyle {
+            header_color: Color::new(0.95, 0.85, 0.25, 1.0),
+            ..InspectorStyle::default()
+        };
+        let component = serde_json::json!({ "speed": 10.0 });
+
+        inspect_component(&mut ui, "PhysicsBody", &component, 8.0, 12.0, &style);
+
+        let commands = ui.draw_list().commands();
+        let header_cmd = commands.iter().find(|cmd| match cmd {
+            ui::DrawCommand::TextPlaceholder { text, color, .. } => {
+                text == "PhysicsBody" && *color == style.header_color
+            }
+            ui::DrawCommand::Text { data, .. } => {
+                data.text == "PhysicsBody" && data.color == style.header_color
+            }
+            _ => false,
+        });
+
+        assert!(
+            header_cmd.is_some(),
+            "inspect_component header must carry style.header_color ({:?})",
+            style.header_color
+        );
     }
 }

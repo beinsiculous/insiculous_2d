@@ -80,10 +80,12 @@ cfg-split frame drivers, rodio).
    `InputHandler::was_source_pressed` dispatches over keyboard/mouse/gamepad (gamepad axes use
    the existing `prev_axis_values`); `source_was_pressed` in `input_mapping.rs:226` becomes a
    call to it. Both edges are defined from the snapshot: `just_activated` = a bound source is
-   `just_pressed` this frame AND the action was not active last frame; `just_deactivated` = the
-   action was active last frame AND no bound source is pressed now. Tests: release-without-press is no edge; press+release inside one frame fires
-   `just_activated` once and never `just_deactivated`; the existing second-key-while-held test
-   stays.
+   `just_pressed` this frame AND the action was not active last frame; `just_deactivated` = no
+   bound source is pressed now AND (the action was active last frame OR a bound source was
+   released this frame). A sub-frame tap therefore fires BOTH edges in one frame (Jesse,
+   Sep 3, on kimi's batch-1 F1: latch-style consumers must not stick after a tap). Tests: release-without-press is no edge; press+release inside one frame fires
+   `just_activated` and `just_deactivated` in that frame and nothing the next; the existing
+   second-key-while-held test stays.
 2. `crates/common/src/color.rs:149` `to_rgba8` rounds and clamps. Test: byte round-trip
    identity for all 256 values; a `#solid:RRGGBB` ref survives ref → colour → ref.
 3. `crates/renderer/src/texture.rs:257,277,290`: multiply in `usize` (check whether

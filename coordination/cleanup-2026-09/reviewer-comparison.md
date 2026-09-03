@@ -25,6 +25,8 @@ from launch to file.
 | editor cut | gemini | 5 | 5 | 0 | 0 | same two blocking locks as kimi; unique: `type_key` release asymmetry in the new harness, scroll clamp bounds | ~12 min |
 | editor_integration cut | kimi | 5 | 3 | 0 | 2 | verified every deleted guard against surviving coverage in other crates (zoom guard, shortcut table, rename refusal); the two rebuts asked for the mirror test in the reconstructed form | ~16 min |
 | editor_integration cut | gemini | 6 | 6 | 0 | 0 | unique: the `dirty_editor` fixture desync (a real harness fidelity bug), pure-write refusal plumbing, clipboard trio narrowing; verdict 'reject pending minor revisions' for minors | ~7 min |
+| batch 1 (gemini authored) | kimi | 5 | 4 | 0 | 1 | major: the plan's own tap ruling leaves latch consumers stuck — led Jesse to revise the ruling; checked-mul overflow; docs; verified callers of `just_activated` and `TextDrawData.height` | ~11 min |
+| batch 1 (gemini authored) | claude | 4 | 3 | 0 | 0 | redundant literal list in the drift guard, missing equality tests, formatting churn; F3 superseded by kimi's better fix | — |
 
 ## Verdict (Sep 3 2026, after three diffs reviewed by both)
 

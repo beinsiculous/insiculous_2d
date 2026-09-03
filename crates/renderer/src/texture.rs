@@ -233,7 +233,19 @@ impl TextureManager {
 
         Ok(handle)
     }
+}
 
+/// Validate and compute the expected RGBA byte count for a `width x height` texture,
+/// returning `Err(TextureError::InvalidFormat)` on multiplication or `usize` overflow.
+fn checked_rgba_byte_count(width: u32, height: u32) -> Result<usize, TextureError> {
+    width
+        .checked_mul(height)
+        .and_then(|p| p.checked_mul(4))
+        .and_then(|b| usize::try_from(b).ok())
+        .ok_or(TextureError::InvalidFormat)
+}
+
+impl TextureManager {
     /// Load a texture from raw RGBA data
     pub fn load_texture_from_rgba(
         &mut self,
@@ -254,7 +266,8 @@ impl TextureManager {
             });
         }
 
-        if data.len() != (width * height * 4) as usize {
+        let byte_count = checked_rgba_byte_count(width, height)?;
+        if data.len() != byte_count {
             return Err(TextureError::InvalidFormat);
         }
 
@@ -274,7 +287,8 @@ impl TextureManager {
         height: u32,
         color: [u8; 4],
     ) -> Result<TextureHandle, TextureError> {
-        let data = vec![color; (width * height) as usize];
+        let byte_count = checked_rgba_byte_count(width, height)?;
+        let data = vec![color; byte_count / 4];
         self.load_texture_from_rgba(width, height, bytemuck::cast_slice(&data), TextureLoadConfig::default())
     }
 
@@ -287,7 +301,8 @@ impl TextureManager {
         color2: [u8; 4],
         check_size: u32,
     ) -> Result<TextureHandle, TextureError> {
-        let mut data = Vec::with_capacity((width * height * 4) as usize);
+        let byte_count = checked_rgba_byte_count(width, height)?;
+        let mut data = Vec::with_capacity(byte_count);
         
         for y in 0..height {
             for x in 0..width {

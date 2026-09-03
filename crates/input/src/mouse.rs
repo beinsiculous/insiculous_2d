@@ -98,6 +98,11 @@ impl MouseState {
         self.buttons.is_just_released(button)
     }
 
+    /// Check if a button was held at the end of the previous frame
+    pub fn was_button_pressed(&self, button: MouseButton) -> bool {
+        self.buttons.was_pressed(button)
+    }
+
     /// Clear per-frame state (just pressed/released, movement and wheel deltas)
     pub fn clear_frame_state(&mut self) {
         self.buttons.clear_frame_state();

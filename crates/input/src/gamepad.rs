@@ -113,6 +113,11 @@ impl GamepadState {
         self.buttons.is_just_released(button)
     }
 
+    /// Check if a button was held at the end of the previous frame
+    pub fn was_button_pressed(&self, button: GamepadButton) -> bool {
+        self.buttons.was_pressed(button)
+    }
+
     /// Get the value of an axis
     pub fn axis_value(&self, axis: GamepadAxis) -> f32 {
         *self.axis_values.get(&axis).unwrap_or(&0.0)
@@ -128,6 +133,11 @@ impl GamepadState {
         axis_past_threshold(self.axis_value(axis), direction, threshold)
     }
 
+    /// Check if an axis was past `threshold` in `direction` at the end of the previous frame
+    pub fn axis_was_active(&self, axis: GamepadAxis, direction: AxisDirection, threshold: f32) -> bool {
+        axis_past_threshold(self.prev_axis_value(axis), direction, threshold)
+    }
+
     /// Check if an axis crossed `threshold` in `direction` this frame
     /// (active now, was not active at the end of the previous frame)
     pub fn axis_just_activated(
@@ -137,7 +147,7 @@ impl GamepadState {
         threshold: f32,
     ) -> bool {
         self.axis_active(axis, direction, threshold)
-            && !axis_past_threshold(self.prev_axis_value(axis), direction, threshold)
+            && !self.axis_was_active(axis, direction, threshold)
     }
 
     /// Check if an axis dropped back inside `threshold` in `direction` this
@@ -149,7 +159,7 @@ impl GamepadState {
         threshold: f32,
     ) -> bool {
         !self.axis_active(axis, direction, threshold)
-            && axis_past_threshold(self.prev_axis_value(axis), direction, threshold)
+            && self.axis_was_active(axis, direction, threshold)
     }
 
     /// Clear per-frame state for the next frame: just-pressed/just-released

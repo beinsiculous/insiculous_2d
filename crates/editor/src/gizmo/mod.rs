@@ -116,7 +116,7 @@ impl Default for GizmoInteraction {
 ///
 /// Defaults match the editor's dark theme; `EditorTheme::gizmo_palette()`
 /// produces a themed instance.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GizmoPalette {
     /// X axis line and handle
     pub x: Color,
@@ -144,19 +144,7 @@ pub struct GizmoPalette {
 
 impl Default for GizmoPalette {
     fn default() -> Self {
-        Self {
-            x: Color::new(0.9, 0.2, 0.2, 1.0),      // Red
-            y: Color::new(0.2, 0.9, 0.2, 1.0),      // Green
-            center: Color::new(0.9, 0.9, 0.2, 1.0), // Yellow
-            x_hover: Color::new(1.0, 0.4, 0.4, 1.0),
-            y_hover: Color::new(0.4, 1.0, 0.4, 1.0),
-            center_hover: Color::new(1.0, 1.0, 0.4, 1.0),
-            ring: Color::new(0.3, 0.3, 0.9, 1.0),
-            rotation_indicator: Color::new(0.9, 0.9, 0.9, 1.0),
-            scale_outline: Color::new(0.6, 0.6, 0.6, 1.0),
-            scale_handle: Color::new(0.7, 0.7, 0.7, 1.0),
-            scale_handle_hover: Color::new(0.9, 0.9, 0.4, 1.0),
-        }
+        crate::theme::EditorTheme::default().gizmo_palette()
     }
 }
 

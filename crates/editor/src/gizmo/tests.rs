@@ -163,3 +163,8 @@ fn test_outside_the_scene_panel_the_gizmo_draws_but_grabs_nothing() {
     assert!(!ui.wants_mouse());
     assert!(handle_rects > 0, "handles draw even when not interactive");
 }
+
+#[test]
+fn test_gizmo_palette_default_matches_editor_theme_palette() {
+    assert_eq!(GizmoPalette::default(), crate::theme::EditorTheme::default().gizmo_palette());
+}

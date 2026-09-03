@@ -156,6 +156,22 @@ impl InputHandler {
         }
     }
 
+    /// Check if an input source was pressed at the end of the previous frame
+    pub fn was_source_pressed(&self, source: &InputSource) -> bool {
+        match source {
+            InputSource::Keyboard(key) => self.keyboard.was_key_pressed(*key),
+            InputSource::Mouse(button) => self.mouse.was_button_pressed(*button),
+            InputSource::Gamepad(id, button) => self
+                .gamepads
+                .get_gamepad(*id)
+                .is_some_and(|g| g.was_button_pressed(*button)),
+            InputSource::GamepadAxis(id, axis, direction) => self
+                .gamepads
+                .get_gamepad(*id)
+                .is_some_and(|g| g.axis_was_active(*axis, *direction, AXIS_ACTIVATION_THRESHOLD)),
+        }
+    }
+
     // ================== Event Queue ==================
 
     /// Queue an input event for later processing

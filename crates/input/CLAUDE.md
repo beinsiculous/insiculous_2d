@@ -38,8 +38,8 @@ player-aware settings layer (the universal mapping games consume).
 - `is_key_pressed(key)` / `is_key_just_pressed(key)` / `is_key_just_released(key)`
 - `is_source_pressed(&source)` family — works for any `InputSource`
 - `mapping.is_active(action, &input)` — any bound source held
-- `mapping.just_activated(action, &input)` — strict edge: was inactive last frame
-- `mapping.just_deactivated(action, &input)` — strict edge: no source still held
+- `mapping.just_activated(action, &input)` — a bound source was pressed this frame and the action was not active at the end of the previous frame
+- `mapping.just_deactivated(action, &input)` — no bound source is held now and either the action was active last frame or a bound source was released this frame; a sub-frame tap fires both in one frame
 - `mouse_movement_delta()` — accumulated over the frame, zero when mouse idle
 
 ## Design Notes

@@ -5,7 +5,7 @@ use ui::{Rect, UIContext, WidgetState};
 
 use crate::theme::EditorTheme;
 
-use super::{DockArea, DockPanel, DockPosition, PanelId};
+use super::{DockArea, DockPanel, DockPosition, PanelId, HEADER_HEIGHT};
 
 /// Size of the square collapse-chevron hit area inside a header.
 const CHEVRON_SIZE: f32 = 16.0;
@@ -104,7 +104,7 @@ impl DockArea {
                 panel.bounds.x,
                 panel.bounds.y,
                 panel.bounds.width,
-                self.header_height,
+                HEADER_HEIGHT,
             );
             ui.rect_rounded(header_bounds, theme.bg_header, 0.0);
 

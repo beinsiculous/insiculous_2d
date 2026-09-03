@@ -165,6 +165,16 @@ impl PlayerBindings {
             .any(|source| input.is_source_pressed(&source))
     }
 
+    fn is_just_pressed(&self, action: GameAction, input: &InputHandler) -> bool {
+        self.resolved_sources(action, |_| true)
+            .any(|source| input.is_source_just_pressed(&source))
+    }
+
+    fn any_just_released(&self, action: GameAction, input: &InputHandler) -> bool {
+        self.resolved_sources(action, |_| true)
+            .any(|source| input.is_source_just_released(&source))
+    }
+
     fn was_active(&self, action: GameAction, input: &InputHandler) -> bool {
         self.resolved_sources(action, |_| true)
             .any(|source| source_was_pressed(&source, input))
@@ -306,7 +316,7 @@ impl InputSettings {
         input: &InputHandler,
     ) -> bool {
         self.player(player)
-            .is_some_and(|b| b.is_active(action, input) && !b.was_active(action, input))
+            .is_some_and(|b| b.is_just_pressed(action, input) && !b.was_active(action, input))
     }
 
     /// Check if a player's action became inactive this frame
@@ -316,8 +326,10 @@ impl InputSettings {
         action: GameAction,
         input: &InputHandler,
     ) -> bool {
-        self.player(player)
-            .is_some_and(|b| !b.is_active(action, input) && b.was_active(action, input))
+        self.player(player).is_some_and(|b| {
+            !b.is_active(action, input)
+                && (b.was_active(action, input) || b.any_just_released(action, input))
+        })
     }
 
     /// Check if the action is active for **any** player (shared pause,

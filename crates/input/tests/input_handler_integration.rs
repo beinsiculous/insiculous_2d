@@ -232,3 +232,38 @@ fn test_default_preset_drives_menu_select_actions_and_movement_from_keys_and_pad
     assert!(actions.is_active(GameAction::MoveRight, &input));
     assert!(!actions.is_active(GameAction::MoveUp, &input));
 }
+
+#[test]
+fn test_press_and_release_within_one_frame_fires_both_edges_in_that_frame_and_nothing_the_next() {
+    let mut input = InputHandler::new();
+    let actions = InputMapping::with_default_bindings();
+    let settings = InputSettings::default_two_player();
+
+    // Key press and release queued and processed within the same frame
+    frame(&mut input, &[
+        InputEvent::KeyPressed(KeyCode::Space),
+        InputEvent::KeyReleased(KeyCode::Space),
+    ]);
+
+    // InputMapping: sub-frame tap fires both edges, not active
+    assert!(!actions.is_active(GameAction::Action1, &input));
+    assert!(actions.just_activated(GameAction::Action1, &input));
+    assert!(actions.just_deactivated(GameAction::Action1, &input));
+
+    // InputSettings: same semantics
+    assert!(!settings.is_active(PlayerId::P1, GameAction::Action1, &input));
+    assert!(settings.just_activated(PlayerId::P1, GameAction::Action1, &input));
+    assert!(settings.just_deactivated(PlayerId::P1, GameAction::Action1, &input));
+
+    // Next frame: edge has cleared, no trailing deactivation
+    input.end_frame();
+    frame(&mut input, &[]);
+
+    assert!(!actions.is_active(GameAction::Action1, &input));
+    assert!(!actions.just_activated(GameAction::Action1, &input));
+    assert!(!actions.just_deactivated(GameAction::Action1, &input));
+
+    assert!(!settings.is_active(PlayerId::P1, GameAction::Action1, &input));
+    assert!(!settings.just_activated(PlayerId::P1, GameAction::Action1, &input));
+    assert!(!settings.just_deactivated(PlayerId::P1, GameAction::Action1, &input));
+}

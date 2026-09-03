@@ -40,6 +40,16 @@ impl KeyboardState {
         self.keys.is_just_released(key)
     }
 
+    /// Check if a key was held at the end of the previous frame
+    pub fn was_key_pressed(&self, key: KeyCode) -> bool {
+        self.keys.was_pressed(key)
+    }
+
+    /// Keys that transitioned to pressed this frame, in chronological order
+    pub fn just_pressed_keys(&self) -> &[KeyCode] {
+        self.keys.just_pressed_buttons()
+    }
+
     /// Clear the just pressed and just released sets for the next frame
     pub fn clear_frame_state(&mut self) {
         self.keys.clear_frame_state();

@@ -33,6 +33,14 @@ pub struct LayoutGlyph {
     pub info: GlyphInfo,
 }
 
+/// The line height a font reports at `font_size` (`new_line_size`), with the one
+/// shared fallback when the font has no metrics. Both layout and measurement use it.
+pub(super) fn text_height(font: &Font, font_size: f32) -> f32 {
+    font.horizontal_line_metrics(font_size)
+        .map(|m| m.new_line_size)
+        .unwrap_or(font_size * 1.2)
+}
+
 /// Layout a string of text, returning positions and glyph info for each character.
 ///
 /// Glyphs are pulled from (and inserted into) `cache` so repeated layout of
@@ -49,16 +57,8 @@ pub(super) fn layout_text(
     text: &str,
     font_size: f32,
 ) -> Result<TextLayout, FontError> {
-    let line_metrics = font.horizontal_line_metrics(font_size).unwrap_or_else(|| fontdue::LineMetrics {
-        ascent: font_size * 0.8,
-        descent: font_size * -0.2,
-        line_gap: 0.0,
-        new_line_size: font_size * 1.2,
-    });
-
     let mut glyphs = Vec::new();
     let mut cursor_x = 0.0f32;
-    let mut max_descent = 0.0f32;
 
     for character in text.chars() {
         // Handle special characters
@@ -78,13 +78,6 @@ pub(super) fn layout_text(
             // offset_y (ymin) from fontdue is already this: negative = above baseline
             let glyph_y = glyph_info.rasterized.offset_y;
 
-            // Track max descent to calculate total text height
-            // Descent is how far below baseline the glyph extends
-            let glyph_bottom_from_baseline = glyph_y + glyph_info.rasterized.height as f32;
-            if glyph_bottom_from_baseline > max_descent {
-                max_descent = glyph_bottom_from_baseline;
-            }
-
             glyphs.push(LayoutGlyph {
                 character,
                 x: cursor_x + glyph_info.rasterized.offset_x,
@@ -96,14 +89,9 @@ pub(super) fn layout_text(
         cursor_x += advance;
     }
 
-    // Text height is from top of highest ascender to bottom of lowest descender
-    // ascent = distance from baseline to top of line
-    // max_descent = distance from baseline to bottom of lowest glyph
-    let text_height = line_metrics.ascent + max_descent.max(-line_metrics.descent);
-
     Ok(TextLayout {
         width: cursor_x,
-        height: text_height.max(line_metrics.new_line_size),
+        height: text_height(font, font_size),
         glyphs,
     })
 }
@@ -114,8 +102,7 @@ pub(super) fn layout_text(
 /// without the expensive bitmap generation step.
 pub(super) fn measure_text(font: &Font, text: &str, font_size: f32) -> Vec2 {
     let mut width = 0.0f32;
-    let line_metrics = font.horizontal_line_metrics(font_size);
-    let height = line_metrics.map(|m| m.new_line_size).unwrap_or(font_size * 1.2);
+    let height = text_height(font, font_size);
 
     for character in text.chars() {
         let metrics = font.metrics(character, font_size);
@@ -191,17 +178,16 @@ mod tests {
 
     #[test]
     fn test_measured_height_matches_laid_out_height_within_a_pixel_for_descenders() -> Result<(), FontError> {
-        // A host reserves `measure_text().y` (the font's line size) for a
-        // line; layout grows to the deepest rasterized descender, which
-        // pixel rounding can push a fraction past the font's descent — so
-        // the two agree to within one pixel, never more.
+        // Both layout and measurement share `text_height`, so laid-out height
+        // equals measured height exactly, even for descender-tall glyphs.
         let (font, mut cache) = fixture()?;
 
         let laid_out = layout_text(&font, 1, &mut cache, "gjpqy", SIZE)?;
         let measured = measure_text(&font, "gjpqy", SIZE);
 
-        assert!(
-            (laid_out.height - measured.y).abs() < 1.0,
+        assert_eq!(
+            laid_out.height,
+            measured.y,
             "laid out {} vs measured {}",
             laid_out.height,
             measured.y

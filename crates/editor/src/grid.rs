@@ -12,7 +12,7 @@ use ui::{Color, Rect, UIContext};
 use crate::viewport::SceneViewport;
 
 /// Colors for grid rendering.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GridColors {
     /// Primary grid line color
     pub primary: Color,
@@ -26,12 +26,7 @@ pub struct GridColors {
 
 impl Default for GridColors {
     fn default() -> Self {
-        Self {
-            primary: Color::new(0.3, 0.3, 0.3, 0.5),
-            secondary: Color::new(0.25, 0.25, 0.25, 0.3),
-            axis_x: Color::new(0.8, 0.2, 0.2, 0.8),
-            axis_y: Color::new(0.2, 0.8, 0.2, 0.8),
-        }
+        crate::theme::EditorTheme::default().grid_colors()
     }
 }
 
@@ -467,5 +462,10 @@ mod tests {
         let mut hidden = UIContext::new();
         render_grid_overlay(&mut hidden, &grid, &viewport, &colors, bounds);
         assert!(hidden.draw_list().commands().is_empty(), "a hidden grid draws nothing, not even its clip");
+    }
+
+    #[test]
+    fn test_grid_colors_default_matches_editor_theme_grid_colors() {
+        assert_eq!(GridColors::default(), crate::theme::EditorTheme::default().grid_colors());
     }
 }

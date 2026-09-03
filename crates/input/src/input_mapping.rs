@@ -37,12 +37,12 @@
 //! Action state is evaluated against an [`InputHandler`]'s device state:
 //!
 //! - [`InputMapping::is_active`] — any bound source is currently pressed
-//! - [`InputMapping::just_activated`] — the action is active this frame and
-//!   was inactive last frame (pressing a second source while one is already
-//!   held does **not** re-trigger)
-//! - [`InputMapping::just_deactivated`] — the action is inactive this frame
-//!   and was active last frame (releasing one source while another is still
-//!   held does **not** trigger)
+//! - [`InputMapping::just_activated`] — a bound source was pressed this frame
+//!   and the action was not active at the end of the previous frame (pressing
+//!   a second source while one is already held does **not** re-trigger)
+//! - [`InputMapping::just_deactivated`] — no bound source is held now and either
+//!   the action was active last frame or a bound source was released this frame;
+//!   a sub-frame tap fires both in one frame
 
 use crate::gamepad::{AxisDirection, GamepadAxis, GamepadButton};
 use crate::input_handler::InputHandler;
@@ -200,15 +200,24 @@ impl<A: Copy + Eq + Hash> InputMapping<A> {
     /// Returns `false` if the action was already active last frame (e.g.
     /// pressing W while ArrowUp is held does not re-trigger MoveUp).
     pub fn just_activated(&self, action: A, input: &InputHandler) -> bool {
-        self.is_active(action, input) && !self.was_active(action, input)
+        self.bindings(action)
+            .iter()
+            .any(|source| input.is_source_just_pressed(source))
+            && !self.was_active(action, input)
     }
 
     /// Check if an action became inactive this frame.
     ///
     /// Returns `false` if another bound source is still held (e.g. releasing
-    /// W while ArrowUp is held keeps MoveUp active).
+    /// W while ArrowUp is held keeps MoveUp active). Fires `true` when the
+    /// action drops from active to inactive, or on a sub-frame tap.
     pub fn just_deactivated(&self, action: A, input: &InputHandler) -> bool {
-        !self.is_active(action, input) && self.was_active(action, input)
+        !self.is_active(action, input)
+            && (self.was_active(action, input)
+                || self
+                    .bindings(action)
+                    .iter()
+                    .any(|source| input.is_source_just_released(source)))
     }
 
     /// Whether the action was active on the previous frame.
@@ -219,13 +228,10 @@ impl<A: Copy + Eq + Hash> InputMapping<A> {
     }
 }
 
-/// Whether a source was pressed on the previous frame, reconstructed from the
-/// current frame's state: currently pressed but not just-pressed, or just
-/// released this frame. Shared by [`InputMapping`] and the player-aware
-/// settings layer so edge semantics never diverge.
+/// Whether a source was pressed on the previous frame. Shared by [`InputMapping`]
+/// and the player-aware settings layer so edge semantics never diverge.
 pub(crate) fn source_was_pressed(source: &InputSource, input: &InputHandler) -> bool {
-    (input.is_source_pressed(source) && !input.is_source_just_pressed(source))
-        || input.is_source_just_released(source)
+    input.was_source_pressed(source)
 }
 
 impl InputMapping<GameAction> {
