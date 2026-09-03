@@ -27,6 +27,9 @@ from launch to file.
 | editor_integration cut | gemini | 6 | 6 | 0 | 0 | unique: the `dirty_editor` fixture desync (a real harness fidelity bug), pure-write refusal plumbing, clipboard trio narrowing; verdict 'reject pending minor revisions' for minors | ~7 min |
 | batch 1 (gemini authored) | kimi | 5 | 4 | 0 | 1 | major: the plan's own tap ruling leaves latch consumers stuck — led Jesse to revise the ruling; checked-mul overflow; docs; verified callers of `just_activated` and `TextDrawData.height` | ~11 min |
 | batch 1 (gemini authored) | claude | 4 | 3 | 0 | 0 | redundant literal list in the drift guard, missing equality tests, formatting churn; F3 superseded by kimi's better fix | — |
+| batch 2 (gemini authored) | kimi | 4 | 3 | 0 | 1 | grepped every removed API for callers incl. `read_events::<CollisionData>`; found the stale hello_world comment; proposed scripting the games gate; the policy rebut asked to keep the ruled-out bus mirror | ~14 min |
+| batch 2 (gemini authored) | claude | 3 | 3 | 0 | 0 | the batch was half done — the dead-API additions from the cut reviews were missed because the plan filed them under the wrong section (planner's error, fixed in the plan) | — |
+| handoff-loop skill (plan-mode review of the workflow doc) | kimi | 10 | 10 | 0 | 0 | critical: "a pathspec commit takes the working tree, not the index the reviewers read" — a real hole in the planner's own commit step; plus untracked-file blindness, abandoned-batch reclaim, filename collisions, detached-review failure signals | ~12 min |
 
 ## Verdict (Sep 3 2026, after three diffs reviewed by both)
 
