@@ -6,10 +6,8 @@
 //! - `mod.rs` — configuration, world struct, construction, unit conversion
 //! - `bodies.rs` — body/collider add/remove and per-body accessors
 //! - `stepping.rs` — simulation stepping and collision event extraction
-//! - `queries.rs` — spatial queries (raycast)
 
 mod bodies;
-mod queries;
 mod stepping;
 
 #[cfg(test)]
@@ -73,7 +71,7 @@ impl PhysicsConfig {
     }
 
     /// Set solver iterations (solver and additional friction iterations)
-    pub fn with_iterations(mut self, solver: usize, friction: usize) -> Self {
+    pub(crate) fn with_iterations(mut self, solver: usize, friction: usize) -> Self {
         self.solver_iterations = solver;
         self.friction_iterations = friction;
         self
@@ -122,8 +120,6 @@ pub struct PhysicsWorld {
     multibody_joint_set: MultibodyJointSet,
     /// CCD solver
     ccd_solver: CCDSolver,
-    /// Query pipeline for raycasts and shape casts
-    query_pipeline: QueryPipeline,
     /// Integration parameters
     integration_parameters: IntegrationParameters,
     /// Configuration
@@ -174,7 +170,6 @@ impl PhysicsWorld {
             impulse_joint_set: ImpulseJointSet::new(),
             multibody_joint_set: MultibodyJointSet::new(),
             ccd_solver: CCDSolver::new(),
-            query_pipeline: QueryPipeline::new(),
             integration_parameters,
             config,
             entity_to_body: HashMap::new(),
@@ -200,7 +195,6 @@ impl PhysicsWorld {
         self.impulse_joint_set = ImpulseJointSet::new();
         self.multibody_joint_set = MultibodyJointSet::new();
         self.ccd_solver = CCDSolver::new();
-        self.query_pipeline = QueryPipeline::new();
         self.entity_to_body.clear();
         self.body_to_entity.clear();
         self.entity_to_collider.clear();
@@ -215,32 +209,27 @@ impl PhysicsWorld {
     }
 
     /// Get gravity
-    pub fn gravity(&self) -> Vec2 {
+    pub(crate) fn gravity(&self) -> Vec2 {
         self.config.gravity
     }
 
-    /// Set gravity
-    pub fn set_gravity(&mut self, gravity: Vec2) {
-        self.config.gravity = gravity;
-    }
-
     /// Convert pixels to meters (vector)
-    pub fn pixels_to_meters(&self, pixels: Vec2) -> Vec2 {
+    pub(crate) fn pixels_to_meters(&self, pixels: Vec2) -> Vec2 {
         pixels / self.config.pixels_per_meter
     }
 
     /// Convert a scalar from pixels to meters
-    pub fn pixels_to_meters_scalar(&self, pixels: f32) -> f32 {
+    pub(crate) fn pixels_to_meters_scalar(&self, pixels: f32) -> f32 {
         pixels / self.config.pixels_per_meter
     }
 
     /// Convert meters to pixels (vector)
-    pub fn meters_to_pixels(&self, meters: Vec2) -> Vec2 {
+    pub(crate) fn meters_to_pixels(&self, meters: Vec2) -> Vec2 {
         meters * self.config.pixels_per_meter
     }
 
     /// Convert a scalar from meters to pixels
-    pub fn meters_to_pixels_scalar(&self, meters: f32) -> f32 {
+    pub(crate) fn meters_to_pixels_scalar(&self, meters: f32) -> f32 {
         meters * self.config.pixels_per_meter
     }
 }

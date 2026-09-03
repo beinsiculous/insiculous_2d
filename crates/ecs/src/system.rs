@@ -34,7 +34,7 @@ pub trait System: Any + Send + Sync {
 }
 
 /// A simple system that can be created from a closure
-pub struct SimpleSystem<F>
+pub(crate) struct SimpleSystem<F>
 where
     F: FnMut(&mut World, f32) + Send + Sync + 'static,
 {
@@ -49,7 +49,7 @@ where
     F: FnMut(&mut World, f32) + Send + Sync + 'static,
 {
     /// Create a new simple system
-    pub fn new(name: impl Into<String>, update_fn: F) -> Self {
+    pub(crate) fn new(name: impl Into<String>, update_fn: F) -> Self {
         Self {
             name: name.into(),
             update_fn,

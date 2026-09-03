@@ -328,6 +328,6 @@ mod tests {
         let mut input = InputHandler::new();
         backend.pump(&mut input);
         input.process_queued_events();
-        assert!(input.gamepads().connected_ids().is_empty());
+        assert_eq!(input.gamepads().iter().count(), 0);
     }
 }

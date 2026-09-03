@@ -100,13 +100,6 @@ impl UIContext {
         }
     }
 
-    /// Create a new UI context with a custom theme.
-    pub fn with_theme(theme: Theme) -> Self {
-        let mut ctx = Self::new();
-        ctx.theme = theme;
-        ctx
-    }
-
     // ================== Font Methods ==================
 
     /// Load a font from file bytes.
@@ -127,25 +120,6 @@ impl UIContext {
     /// Set the default font.
     pub fn set_default_font(&mut self, handle: FontHandle) {
         self.font_manager.set_default_font(handle);
-    }
-
-    /// Get the font manager for advanced operations.
-    pub fn font_manager(&self) -> &FontManager {
-        &self.font_manager
-    }
-
-    /// Get the font manager mutably.
-    pub fn font_manager_mut(&mut self) -> &mut FontManager {
-        &mut self.font_manager
-    }
-
-    /// Get font metrics for the default font at the given size.
-    ///
-    /// Returns None if no font is loaded or metrics are unavailable.
-    /// Use this for calculating text positions with baseline alignment.
-    pub fn font_metrics(&self, font_size: f32) -> Option<crate::FontMetrics> {
-        let font = self.font_manager.default_font()?;
-        self.font_manager.metrics(font, font_size)
     }
 
     // ================== Frame Lifecycle ==================
@@ -365,11 +339,6 @@ impl UIContext {
     }
 
     // ================== Custom Widget Hooks ==================
-
-    /// Check if a point is inside a rectangle (for custom hit testing).
-    pub fn hit_test(&self, point: Vec2, bounds: Rect) -> bool {
-        bounds.contains(point)
-    }
 
     /// Get raw interaction result for custom widgets.
     pub fn interact(&mut self, id: impl Into<WidgetId>, bounds: Rect, enabled: bool) -> InteractionResult {

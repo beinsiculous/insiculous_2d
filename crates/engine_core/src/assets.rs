@@ -235,30 +235,6 @@ impl AssetManager {
         Ok(handle)
     }
 
-    /// Load a texture with custom configuration
-    pub fn load_texture_with_config<P: AsRef<Path>>(
-        &mut self,
-        path: P,
-        config: TextureLoadConfig,
-    ) -> Result<TextureHandle, AssetError> {
-        let path = path.as_ref();
-        let original_path_string = path.to_string_lossy().to_string();
-        let full_path = if path.is_relative() {
-            Path::new(&self.config.base_path).join(path)
-        } else {
-            path.to_path_buf()
-        };
-
-        if self.config.log_loading {
-            log::info!("Loading texture with config: {:?}", full_path);
-        }
-
-        let handle = self.texture_manager.load_texture(&full_path, config)?;
-        self.handle_to_path.insert(handle.id, original_path_string);
-
-        Ok(handle)
-    }
-
     /// Load a texture from raw bytes (file contents)
     ///
     /// Useful for loading textures from embedded assets or network resources.

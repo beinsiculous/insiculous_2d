@@ -72,21 +72,6 @@ impl Children {
         self.entities.retain(|e| e != child);
     }
 
-    /// Check if an entity is a child
-    pub fn contains(&self, child: &EntityId) -> bool {
-        self.entities.contains(child)
-    }
-
-    /// Get the number of children
-    pub fn len(&self) -> usize {
-        self.entities.len()
-    }
-
-    /// Check if there are no children
-    pub fn is_empty(&self) -> bool {
-        self.entities.is_empty()
-    }
-
     /// Iterate over children
     pub fn iter(&self) -> impl Iterator<Item = &EntityId> {
         self.entities.iter()
@@ -198,17 +183,6 @@ impl GlobalTransform2D {
             rotation,
             scale,
         }
-    }
-
-    /// Transform a point from local to world space
-    pub fn transform_point(&self, point: Vec2) -> Vec2 {
-        let cos_r = self.rotation.cos();
-        let sin_r = self.rotation.sin();
-        let rotated = Vec2::new(
-            point.x * cos_r - point.y * sin_r,
-            point.x * sin_r + point.y * cos_r,
-        );
-        self.position + rotated * self.scale
     }
 
     /// Get the inverse transformation matrix

@@ -9,7 +9,7 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
   - `game_config.rs` - `GameConfig` (window, clear color, target FPS, chaos mode, asset base path, input settings path)
   - `input_settings_io.rs` - JSON load/save for player input bindings (defaults written when missing; never panics on bad files)
   - `game_loop_manager.rs` - Game loop timing and frame delta management (the only frame timer)
-  - `ui_manager.rs` / `render_manager.rs` / `window_manager.rs` / `scene_manager.rs` - Focused managers (UI lifecycle, renderer lifecycle, window creation, scene stack)
+  - `render_manager.rs` / `window_manager.rs` - Focused managers (renderer lifecycle, window creation)
   - `contexts.rs` - `GameContext` / `RenderContext` passed to Game methods
   - `assets.rs` - Asset loading and caching (tracks handle→path for scene save)
   - `assets/sprite_sheet.rs` - `AssetManager::load_sprite_sheet` (PNG + sidecar → `SpriteSheet`), `SidecarCache` (one sidecar read per path per scene load, cleared at the top of every load)
@@ -30,7 +30,7 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
   - `texture_ref.rs` - Scene texture references (`#white`, `#solid:RRGGBB`, paths); the `TextureResolver` trait is the GPU/filesystem seam — also `sheet_for()` (sidecar → `SheetData`) and `clear_sidecar_cache()`
   - `tilemap_render.rs` - Tilemap → sprite-batch expansion (default `Game::render` calls it; one batch per tileset)
   - `ui_integration.rs` - UI-to-renderer bridge; `debug.rs` - collider outline drawing
-  - `lifecycle.rs` - FSM for scene lifecycle; `timing.rs` - Timer utilities
+  - `lifecycle.rs` - FSM for scene lifecycle
 
 - **crates/renderer/** - WGPU-based rendering system with instancing, batching, HDR + bloom
   - `renderer.rs` - WGPU device/queue/surface lifecycle, `RendererConfig`
@@ -132,11 +132,6 @@ Extracts responsibilities from monolithic classes into focused managers followin
 let mut loop_mgr = GameLoopManager::new();
 let delta_time = loop_mgr.update();
 
-// UIManager - UI lifecycle and draw commands  
-let mut ui_mgr = UIManager::new();
-ui_mgr.begin_frame(&input, window_size);
-let commands = ui_mgr.end_frame();
-
 // RenderManager - Renderer lifecycle
 let mut render_mgr = RenderManager::new();
 render_mgr.init(&window, clear_color)?;
@@ -147,7 +142,7 @@ let mut win_mgr = WindowManager::new(config);
 let window = win_mgr.create(event_loop)?;
 ```
 
-**Files:** `game_loop_manager.rs`, `ui_manager.rs`, `render_manager.rs`, `window_manager.rs`
+**Files:** `game_loop_manager.rs`, `render_manager.rs`, `window_manager.rs`
 
 ### Simple Game API Pattern
 The primary way to create games. Implement the `Game` trait:
@@ -425,16 +420,14 @@ world.add_component(&entity, RigidBody::player_platformer()).ok();
 world.add_component(&entity, Collider::player_box(80.0, 80.0)).ok();
 
 // Physics presets for common scenarios
-RigidBody::player_platformer()      // Dynamic with damping
-RigidBody::pushable()               // Dynamic, can be pushed
-Collider::platform(width, height)   // Static ground/platform
-Collider::bouncy()                  // High restitution
+RigidBody::player_platformer()        // Dynamic with damping
+Collider::player_box(width, height)   // Player box with high friction
+Collider::platform(width, height)     // Static ground/platform
 
 // Collision events: after each update, drain the frame's events ONCE and
 // share the Vec among all consumers (gameplay reactions, pickups, ...).
 // The Vec is owned — no borrow of physics is held, so handlers can freely
-// call set_velocity / destroy_entity while iterating. Events also reach the
-// world event bus (world.read_events::<CollisionData>()) for systems.
+// call set_velocity / destroy_entity while iterating.
 physics_system.update(&mut world, delta_time);
 let collisions = physics_system.take_collision_events();
 for c in &collisions {

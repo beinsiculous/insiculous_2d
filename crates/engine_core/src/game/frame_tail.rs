@@ -43,13 +43,12 @@ impl<G: Game> GameRunner<G> {
         // An editor-style host clips these tail draws to its game view via
         // ctx.game_ui_clip (plain games leave it None — unclipped).
         if let Some(clip) = self.pending_game_ui_clip {
-            self.ui_manager
-                .ui_context()
+            self.ui
                 .push_clip_rect(ui::Rect::new(clip.x, clip.y, clip.width, clip.height));
         }
         let ui_presses = crate::ui_element_system::draw_ui_elements(
             &self.scene.world,
-            self.ui_manager.ui_context(),
+            &mut self.ui,
             window_size,
             &self.strings,
         );
@@ -57,10 +56,10 @@ impl<G: Game> GameRunner<G> {
 
         // Draw achievement toasts on top of whatever the game drew.
         self.achievements
-            .draw_toasts(self.ui_manager.ui_context(), window_size);
+            .draw_toasts(&mut self.ui, window_size);
         self.achievements.tick(delta_time);
         if self.pending_game_ui_clip.take().is_some() {
-            self.ui_manager.ui_context().pop_clip_rect();
+            self.ui.pop_clip_rect();
         }
 
         // Apply a window title requested via ctx.window_title this frame
@@ -73,7 +72,7 @@ impl<G: Game> GameRunner<G> {
         // The font the game set up in init() is the one locale switches
         // restore to — capture it once, before any locale font applies.
         if first_frame {
-            self.base_font = self.ui_manager.ui_context().default_font();
+            self.base_font = self.ui.default_font();
         }
         // Apply a pending locale font change (from init/update set_locale).
         self.apply_locale_font();

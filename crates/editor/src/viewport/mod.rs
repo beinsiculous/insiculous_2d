@@ -5,8 +5,6 @@
 
 use common::{Camera, Rect};
 use glam::Vec2;
-use renderer::sprite::{Sprite, SpriteBatcher};
-use renderer::texture::TextureHandle;
 
 /// Manages rendering the game world within the scene view panel.
 ///
@@ -262,50 +260,6 @@ impl SceneViewport {
             (pc.y - window_size.y * 0.5) / self.camera_zoom,
         );
         Camera::new(self.camera_position + offset, window_size).with_zoom(self.camera_zoom)
-    }
-
-    // ================== Entity Rendering ==================
-
-    /// Generate sprites for entities within the viewport.
-    ///
-    /// Takes entity positions and sizes in world coordinates and generates
-    /// sprites positioned correctly for rendering within the viewport.
-    pub fn generate_entity_sprite(
-        &self,
-        world_position: Vec2,
-        world_scale: Vec2,
-        rotation: f32,
-        texture_handle: TextureHandle,
-        color: glam::Vec4,
-        depth: f32,
-    ) -> Sprite {
-        // Sprites are positioned in world coordinates - the renderer handles
-        // the camera transform. We just need to create sprites with world positions.
-        Sprite::new(texture_handle)
-            .with_position(world_position)
-            .with_scale(world_scale)
-            .with_rotation(rotation)
-            .with_color(color)
-            .with_depth(depth)
-    }
-
-    /// Add entity sprites to a batcher for entities with Transform2D and Sprite components.
-    ///
-    /// This is a convenience method that iterates entity data and generates sprites.
-    pub fn batch_entities(
-        &self,
-        batcher: &mut SpriteBatcher,
-        entities: &[(Vec2, Vec2, f32, TextureHandle, glam::Vec4, f32)], // (pos, scale, rot, tex, color, depth)
-    ) {
-        for (pos, scale, rot, tex, color, depth) in entities {
-            let sprite = self.generate_entity_sprite(*pos, *scale, *rot, *tex, *color, *depth);
-            batcher.add_sprite(&sprite);
-        }
-    }
-
-    /// Focus the camera on a world position.
-    pub fn focus_on(&mut self, world_pos: Vec2) {
-        self.target_camera_position = world_pos;
     }
 
     /// Focus the camera on multiple positions (center of bounding box).

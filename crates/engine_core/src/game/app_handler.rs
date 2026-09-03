@@ -216,7 +216,7 @@ impl<G: Game> ApplicationHandler<()> for GameRunner<G> {
                             world: &mut self.scene.world,
                             assets: asset_manager,
                             audio: &mut self.audio_manager,
-                            ui: self.ui_manager.ui_context(),
+                            ui: &mut self.ui,
                             delta_time: 0.0,
                             window_size,
                             chaos_mode: self.config.chaos_mode,

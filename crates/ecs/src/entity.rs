@@ -1,12 +1,13 @@
 //! Entity management for the ECS.
 
-use crate::generation::{EntityGeneration, EntityIdGenerator, EntityReference, GenerationError};
+use crate::generation::{EntityGeneration, EntityIdGenerator, GenerationError};
 use serde::{Deserialize, Serialize};
+use std::sync::LazyLock;
 
 /// A unique identifier for an entity with generation tracking
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct EntityId {
-    /// The raw ID value
+    /// The numeric ID of the entity
     id: u64,
     /// The generation for this entity ID
     generation: u64,
@@ -15,7 +16,6 @@ pub struct EntityId {
 impl EntityId {
     /// Create a new entity ID with generation 1
     pub fn new() -> Self {
-        use std::sync::LazyLock;
         static GENERATOR: LazyLock<EntityIdGenerator> = LazyLock::new(EntityIdGenerator::new);
         Self {
             id: GENERATOR.generate_id(),
@@ -28,7 +28,7 @@ impl EntityId {
         Self { id, generation }
     }
 
-    /// Get the raw ID value
+    /// Get the numeric ID value
     pub fn value(&self) -> u64 {
         self.id
     }
@@ -36,11 +36,6 @@ impl EntityId {
     /// Get the generation
     pub fn generation(&self) -> u64 {
         self.generation
-    }
-
-    /// Create an entity reference for this ID
-    pub fn to_reference(&self) -> EntityReference {
-        EntityReference::new(self.id, self.generation)
     }
 
     /// Validate this entity ID against a generation
@@ -113,11 +108,6 @@ impl Entity {
     /// Deactivate the entity (mark as not alive)
     pub fn deactivate(&mut self) {
         self.active = false;
-    }
-
-    /// Check if this entity matches a reference
-    pub fn matches_reference(&self, reference: &EntityReference) -> bool {
-        self.id.value() == reference.id() && self.id.generation() == reference.generation()
     }
 }
 

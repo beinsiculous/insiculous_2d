@@ -156,11 +156,6 @@ impl GridRenderer {
         self.visible = !self.visible;
     }
 
-    /// Set axes visibility.
-    pub fn set_axes_visible(&mut self, visible: bool) {
-        self.axes_visible = visible;
-    }
-
     /// Set primary grid size.
     pub fn set_grid_size(&mut self, size: f32) {
         self.config.primary_size = size.max(1.0);

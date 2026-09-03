@@ -82,13 +82,6 @@ impl Tilemap {
         }
     }
 
-    /// Tile value at `(col, row)`, or `None` outside the grid.
-    pub fn tile(&self, col: u32, row: u32) -> Option<u32> {
-        (col < self.width && row < self.height)
-            .then(|| self.tiles.get((row * self.width + col) as usize).copied())
-            .flatten()
-    }
-
     /// Set the tile value at `(col, row)`; out-of-grid coordinates are ignored.
     pub fn set_tile(&mut self, col: u32, row: u32, value: u32) {
         if col < self.width && row < self.height {

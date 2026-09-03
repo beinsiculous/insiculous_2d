@@ -196,7 +196,7 @@ fn test_visible_order_follows_draw_order_and_skips_collapsed_subtrees() -> Resul
     render_frame(&mut panel, &mut ui, &input, &world, &mut selection);
     assert_eq!(panel.visible_order(), &[a, a_child, b, b_child]);
 
-    panel.collapse(a);
+    panel.toggle_expanded(a);
     render_frame(&mut panel, &mut ui, &input, &world, &mut selection);
     assert_eq!(panel.visible_order(), &[a, b, b_child], "a collapsed subtree has no rows");
     assert!(panel.is_expanded(b), "collapsing one subtree leaves the others alone");
@@ -226,7 +226,7 @@ fn test_shift_click_range_runs_anchor_first_in_either_direction() -> Result<(), 
     assert_eq!(panel.shift_click_range(&selection, a), Some(vec![a_child, a]), "upwards, anchor still first");
 
     selection.add(b);
-    panel.collapse(a); // hides the primary
+    panel.toggle_expanded(a); // hides the primary
     render_frame(&mut panel, &mut ui, &input, &world, &mut selection);
     assert_eq!(
         panel.shift_click_range(&selection, b_child),

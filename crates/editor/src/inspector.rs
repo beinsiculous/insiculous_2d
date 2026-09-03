@@ -98,7 +98,7 @@ pub fn inspect_component<T: Serialize>(
     };
 
     // Render fields
-    current_y = render_value(ui, &value, x + style.indent, current_y, style, 0);
+    current_y = render_value(ui, &value, x + style.indent, current_y, style);
 
     current_y
 }
@@ -110,7 +110,6 @@ fn render_value(
     x: f32,
     y: f32,
     style: &InspectorStyle,
-    depth: usize,
 ) -> f32 {
     let mut current_y = y;
     let font_size = ui.theme().text.font_size;
@@ -118,7 +117,7 @@ fn render_value(
     match value {
         Value::Object(map) => {
             for (key, val) in map {
-                current_y = render_field(ui, key, val, x, current_y, style, depth);
+                current_y = render_field(ui, key, val, x, current_y, style);
             }
         }
         Value::Array(arr) => {
@@ -155,7 +154,6 @@ fn render_field(
     x: f32,
     y: f32,
     style: &InspectorStyle,
-    depth: usize,
 ) -> f32 {
     let mut current_y = y;
     let font_size = ui.theme().text.font_size;
@@ -174,7 +172,7 @@ fn render_field(
                 // Complex nested object
                 ui.label_styled(&format!("{}:", key), Vec2::new(x, current_y), style.label_color, font_size);
                 current_y += style.line_height;
-                current_y = render_value(ui, value, x + style.indent, current_y, style, depth + 1);
+                current_y = render_value(ui, value, x + style.indent, current_y, style);
             }
         }
         // For arrays, show inline if small

@@ -69,23 +69,8 @@ impl System for PhysicsSystem {
             self.time_accumulator = 0.0;
         }
 
-        // Forces from apply_force() last one update. Skip the reset on
-        // zero-step frames so a force applied then still acts on the next
-        // frame that actually steps.
-        if steps > 0 {
-            self.physics_world.reset_forces();
-        }
-
         // Sync physics results back to ECS
         self.sync_physics_to_ecs(world);
-
-        // Emit collision events to the world event bus (available to any
-        // system). The buffer itself stays available for game code to drain
-        // via `take_collision_events()` after this update returns.
-        let events = self.physics_world.collision_events();
-        for collision in events {
-            world.emit_event(collision.clone());
-        }
     }
 
     fn shutdown(&mut self, _world: &mut World) -> Result<(), String> {

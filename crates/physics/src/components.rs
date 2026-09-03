@@ -156,8 +156,8 @@ impl RigidBody {
     // Note: there are intentionally no `apply_impulse`/`apply_force` methods
     // here. The `velocity` field is only read when the rapier body is first
     // created, so mutating it on a live body silently does nothing. Use
-    // `PhysicsSystem::set_velocity` / `apply_force`, or
-    // `PhysicsWorld::apply_impulse` for mass-aware impulses.
+    // `PhysicsSystem::set_velocity` or `PhysicsWorld::apply_impulse` for
+    // mass-aware impulses.
 }
 
 /// Collider shape types
@@ -353,13 +353,6 @@ impl Collider {
         self.restitution = restitution.clamp(0.0, 1.0);
         self
     }
-
-    /// Set collision groups
-    pub fn with_collision_groups(mut self, groups: u32, filter: u32) -> Self {
-        self.collision_groups = groups;
-        self.collision_filter = filter;
-        self
-    }
 }
 
 /// Collision event data
@@ -380,11 +373,6 @@ impl CollisionEvent {
     pub fn involves(&self, a: ecs::EntityId, b: ecs::EntityId) -> bool {
         (self.entity_a == a && self.entity_b == b)
             || (self.entity_a == b && self.entity_b == a)
-    }
-
-    /// Check if a specific entity is part of this collision.
-    pub fn involves_entity(&self, entity: ecs::EntityId) -> bool {
-        self.entity_a == entity || self.entity_b == entity
     }
 
     /// Get the other entity in the collision, if the given entity is involved.
@@ -462,8 +450,6 @@ mod tests {
 
         assert!(event.involves(a, b) && event.involves(b, a), "both orders name the same pair");
         assert!(!event.involves(a, stranger) && !event.involves(stranger, b));
-        assert!(event.involves_entity(a) && event.involves_entity(b));
-        assert!(!event.involves_entity(stranger));
     }
 
     #[test]

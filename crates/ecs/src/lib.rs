@@ -30,7 +30,7 @@ pub mod behavior;
 pub mod lifetime;
 pub mod component_registry;
 pub mod event;
-pub mod generation;
+mod generation;
 pub mod grid_backdrop;
 pub mod hierarchy;
 pub mod hierarchy_extension;
@@ -61,7 +61,6 @@ pub use ecs_macros::ComponentMeta as DeriveComponentMeta;
 pub use entity::*;
 pub use entity_builder::*;
 pub use event::EventBus;
-pub use generation::*;
 pub use grid_backdrop::{GridBackdrop, GridTopology};
 pub use hierarchy::*;
 pub use hierarchy_extension::*;
@@ -76,12 +75,6 @@ pub use tilemap::{TileInstance, Tilemap};
 pub use ui_components::{resolve_anchored_pos, UiAnchor, UiButton, UiLabel, UiPanel};
 pub use world::*;
 
-/// Initialize the ECS
-pub fn init() -> Result<World, EcsError> {
-    log::info!("ECS initialized");
-    Ok(World::new())
-}
-
 /// Errors that can occur in the ECS
 #[derive(Debug, thiserror::Error)]
 pub enum EcsError {
@@ -95,7 +88,7 @@ pub enum EcsError {
     SystemError(String),
 
     #[error("Entity generation error: {0}")]
-    GenerationError(#[from] GenerationError),
+    GenerationError(#[from] generation::GenerationError),
 
     #[error("World not initialized")]
     NotInitialized,

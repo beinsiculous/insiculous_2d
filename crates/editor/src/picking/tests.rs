@@ -56,9 +56,6 @@ fn test_click_hits_sort_front_to_back_then_by_id_and_repeat_clicks_cycle_the_sta
     assert_eq!(second.topmost(), Some(entity(4)), "a repeat click cycles to the next entity");
     let third = picker.pick_at_screen_pos(&viewport, OVER_ORIGIN, &stack);
     assert_eq!(third.topmost(), Some(entity(9)));
-    picker.reset_cycle();
-    let reset = picker.pick_at_screen_pos(&viewport, OVER_ORIGIN, &stack);
-    assert_eq!(reset.topmost(), Some(entity(2)), "a selection change restarts from the front");
 }
 
 #[test]

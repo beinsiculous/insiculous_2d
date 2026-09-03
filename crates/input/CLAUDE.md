@@ -9,9 +9,9 @@ player-aware settings layer (the universal mapping games consume).
   per local player (`PlayerId::P1/P2`), device-relative sources
   (`PlayerSource::PadButton/PadAxis` resolve against the player's single
   `pad: Option<u32>` at query time — `assign_pad` never rewrites bindings).
-  Queries: `is_active / just_activated / just_deactivated (player, GameAction,
-  &input)`, `is_active_any / just_activated_any`, and `move_x/move_y(player,
-  &input) -> f32` (digital merged with left stick, clamped −1..1, +y = up).
+  Queries: `is_active / just_activated (player, GameAction, &input)`,
+  `just_activated_any`, and `move_x/move_y(player, &input) -> f32` (digital
+  merged with left stick, clamped −1..1, +y = up).
   `default_two_player()`: P1 = WASD+Space+mouse+pad 0, P2 = arrows+Enter+pad 1.
   Persisted via engine_core `input_settings_io` (JSON; `GameConfig::input_settings_path`).
   Dirty tracking: real mutations (`set_pad` change, new `bind`, effective `unbind`)
@@ -39,7 +39,6 @@ player-aware settings layer (the universal mapping games consume).
 - `is_source_pressed(&source)` family — works for any `InputSource`
 - `mapping.is_active(action, &input)` — any bound source held
 - `mapping.just_activated(action, &input)` — a bound source was pressed this frame and the action was not active at the end of the previous frame
-- `mapping.just_deactivated(action, &input)` — no bound source is held now and either the action was active last frame or a bound source was released this frame; a sub-frame tap fires both in one frame
 - `mouse_movement_delta()` — accumulated over the frame, zero when mouse idle
 
 ## Design Notes

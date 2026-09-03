@@ -1,5 +1,5 @@
 //! Tests for the PhysicsWorld wrapper: body lifecycle, the collision event
-//! state machine, sensors, unit conversion and raycasts.
+//! state machine, sensors, and unit conversion.
 
 use glam::Vec2;
 
@@ -150,24 +150,4 @@ fn test_contact_points_are_in_world_space() {
             contact.point
         );
     }
-}
-
-// === Raycast ===
-
-#[test]
-fn test_raycast_normalizes_direction_so_distance_is_in_pixels() {
-    let mut world = PhysicsWorld::default();
-    let target = add_body(&mut world, Vec2::new(200.0, 0.0), RigidBody::new_static(), Collider::box_collider(100.0, 100.0));
-    world.step(0.0); // refresh the query pipeline
-
-    let (hit, _, distance_unit) = world.raycast(Vec2::ZERO, Vec2::new(1.0, 0.0), 500.0).expect("unit-direction ray hits");
-    let (_, _, distance_long) = world.raycast(Vec2::ZERO, Vec2::new(100.0, 0.0), 500.0).expect("unnormalized ray hits");
-
-    assert_eq!(hit, target);
-    assert!((distance_unit - 150.0).abs() < 1.0, "the box edge is at x=150, got {distance_unit}");
-    assert!(
-        (distance_unit - distance_long).abs() < 0.01,
-        "distance is independent of the direction's magnitude ({distance_unit} vs {distance_long})"
-    );
-    assert_eq!(world.raycast(Vec2::ZERO, Vec2::ZERO, 500.0), None, "a zero direction cannot be normalized");
 }

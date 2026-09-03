@@ -383,7 +383,7 @@ impl Game for HelloWorld {
             self.reset_player(ctx);
         }
 
-        // Step physics simulation (also emits CollisionData events to the world event bus)
+        // Step physics simulation (drain collisions via take_collision_events())
         if let Some(physics) = &mut self.physics {
             physics.update(ctx.world, ctx.delta_time);
         }

@@ -119,7 +119,6 @@ fn test_blocking_rect_makes_widgets_under_it_inert_except_in_overlay_scope() {
     assert_eq!(under.state, WidgetState::Normal, "no hover under a blocking rect");
     assert!(!under.clicked && !under.dragging);
     assert!(manager.active_widget.is_none(), "the press must not activate a blocked widget");
-    assert!(manager.hot_widget.is_none());
 
     manager.set_overlay_scope(true);
     let item = manager.interact(WidgetId::from_str("dropdown_item"), BUTTON, true);

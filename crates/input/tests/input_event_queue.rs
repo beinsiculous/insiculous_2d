@@ -8,8 +8,7 @@ use input::prelude::*;
 #[test]
 fn test_queued_events_apply_only_on_process_and_in_queue_order() {
     let mut input = InputHandler::new();
-    input.gamepads_mut().register_gamepad(0);
-
+    input.queue_event(InputEvent::GamepadConnected(0));
     input.queue_event(InputEvent::KeyPressed(KeyCode::KeyA));
     input.queue_event(InputEvent::KeyPressed(KeyCode::KeyB));
     input.queue_event(InputEvent::KeyReleased(KeyCode::KeyA));
@@ -23,9 +22,7 @@ fn test_queued_events_apply_only_on_process_and_in_queue_order() {
     assert!(!input.is_key_pressed(KeyCode::KeyB));
     assert!(!input.is_mouse_button_pressed(MouseButton::Left));
     assert_eq!(input.mouse_position(), MousePosition { x: 0.0, y: 0.0 });
-    let pad = input.gamepads().get_gamepad(0).expect("registered above");
-    assert!(!pad.is_button_pressed(GamepadButton::A));
-    assert_eq!(pad.axis_value(GamepadAxis::LeftStickX), 0.0);
+    assert!(input.gamepads().get_gamepad(0).is_none());
 
     input.process_queued_events();
 

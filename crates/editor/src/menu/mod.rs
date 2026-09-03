@@ -133,11 +133,6 @@ impl Menu {
         self.items = items;
         self
     }
-
-    /// Get the number of visible items (excluding separators for sizing).
-    pub fn visible_item_count(&self) -> usize {
-        self.items.iter().filter(|i| !matches!(i, MenuItem::Separator)).count()
-    }
 }
 
 /// The main menu bar at the top of the editor.
@@ -469,11 +464,6 @@ impl MenuBar {
         }
 
         None
-    }
-
-    /// Close any open menus.
-    pub fn close_all(&mut self) {
-        self.open_menu = None;
     }
 }
 

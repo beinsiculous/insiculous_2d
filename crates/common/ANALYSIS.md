@@ -11,7 +11,7 @@
 ### Summary
 - Shared types and utilities used across the engine (`Color`, `Transform2D`, `Camera`, `Rect`, `Time`).
 - Keeps base math and data structures centralized to reduce duplication.
-- Minimal dependency set with `glam`, `serde`, `thiserror`, and `bytemuck`.
+- Minimal dependency set with `glam`, `serde`, and `bytemuck`.
 - `macros` provides a lightweight `with_fields!` helper for builder-style setters.
 
 ### Strengths

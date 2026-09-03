@@ -11,7 +11,6 @@ pub mod transform;
 pub mod camera;
 pub mod rect;
 pub mod macros;
-pub mod time;
 pub mod sheet_grid;
 
 pub mod prelude {
@@ -23,7 +22,6 @@ pub mod prelude {
     pub use crate::transform::Transform2D;
     pub use crate::camera::Camera;
     pub use crate::rect::Rect;
-    pub use crate::time::Time;
     pub use crate::sheet_grid::SheetGrid;
 }
 
@@ -33,5 +31,4 @@ pub use hash::{hash_f32, hash_u32};
 pub use transform::Transform2D;
 pub use camera::Camera;
 pub use rect::Rect;
-pub use time::Time;
 pub use sheet_grid::SheetGrid;

@@ -33,7 +33,7 @@ pub struct Particle {
 
 impl Particle {
     /// Interpolation parameter `t` in [0, 1] across the particle's lifetime.
-    pub fn t(&self) -> f32 {
+    pub(crate) fn t(&self) -> f32 {
         if self.lifetime <= 0.0 { 1.0 } else { (self.age / self.lifetime).clamp(0.0, 1.0) }
     }
 }

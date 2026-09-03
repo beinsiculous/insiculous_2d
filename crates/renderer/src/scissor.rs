@@ -41,7 +41,7 @@ pub fn clamp_scissor(
 }
 
 /// Intersection of two rects (empty result has zero width and/or height).
-pub fn intersect_scissor(a: [u32; 4], b: [u32; 4]) -> [u32; 4] {
+fn intersect_scissor(a: [u32; 4], b: [u32; 4]) -> [u32; 4] {
     let x0 = a[0].max(b[0]);
     let y0 = a[1].max(b[1]);
     let x1 = a[0].saturating_add(a[2]).min(b[0].saturating_add(b[2]));

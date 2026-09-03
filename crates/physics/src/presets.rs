@@ -16,29 +16,6 @@ impl RigidBody {
             .with_rotation_locked(true)
             .with_ccd(true)
     }
-
-    /// Create a player body optimized for top-down games
-    pub fn player_top_down() -> Self {
-        Self::new_dynamic()
-            .with_linear_damping(8.0) // quick stops for top-down movement
-            .with_rotation_locked(true)
-            .with_ccd(true)
-    }
-
-    /// Create a pushable object (crate, barrel, etc.)
-    pub fn pushable() -> Self {
-        Self::new_dynamic()
-            .with_linear_damping(5.0)
-            .with_ccd(true)
-    }
-
-    /// Create a physics prop that can tumble and roll
-    pub fn physics_prop() -> Self {
-        Self::new_dynamic()
-            .with_linear_damping(2.0)
-            .with_angular_damping(1.0)
-            .with_ccd(true)
-    }
 }
 
 /// Preset collider configurations
@@ -49,36 +26,10 @@ impl Collider {
             .with_friction(0.8)
     }
 
-    /// Create a small box collider (40x40)
-    pub fn small_box() -> Self {
-        Self::box_collider(40.0, 40.0)
-            .with_friction(0.5)
-    }
-
-    /// Create a pushable object collider with low friction
-    pub fn pushable_box(width: f32, height: f32) -> Self {
-        Self::box_collider(width, height)
-            .with_friction(0.3)
-            .with_restitution(0.2)
-    }
-
     /// Create a ground/platform collider
     pub fn platform(width: f32, height: f32) -> Self {
         Self::box_collider(width, height)
             .with_friction(0.8)
-    }
-
-    /// Create a bouncy collider (for trampolines, bumpers, etc.)
-    pub fn bouncy(width: f32, height: f32) -> Self {
-        Self::box_collider(width, height)
-            .with_friction(0.3)
-            .with_restitution(0.9)
-    }
-
-    /// Create a slippery collider (ice, oil, etc.)
-    pub fn slippery(width: f32, height: f32) -> Self {
-        Self::box_collider(width, height)
-            .with_friction(0.05)
     }
 }
 
@@ -90,35 +41,18 @@ impl PhysicsConfig {
     pub fn platformer() -> Self {
         Self::new(Vec2::new(0.0, -980.0))
             .with_iterations(16, 8)
-            .with_scale(100.0)
     }
 
     /// Top-down game physics (no gravity)
     pub fn top_down() -> Self {
         Self::new(Vec2::ZERO)
             .with_iterations(8, 4)
-            .with_scale(100.0)
-    }
-
-    /// Low gravity (moon-like, floaty jumps)
-    pub fn low_gravity() -> Self {
-        Self::new(Vec2::new(0.0, -300.0))
-            .with_iterations(12, 6)
-            .with_scale(100.0)
-    }
-
-    /// High gravity (heavy, impactful movement)
-    pub fn high_gravity() -> Self {
-        Self::new(Vec2::new(0.0, -1500.0))
-            .with_iterations(16, 8)
-            .with_scale(100.0)
     }
 
     /// Space physics (no gravity, low iterations)
     pub fn space() -> Self {
         Self::new(Vec2::ZERO)
             .with_iterations(4, 2)
-            .with_scale(100.0)
     }
 }
 
@@ -137,7 +71,6 @@ mod tests {
         );
         assert_eq!(Collider::player_box(80.0, 80.0).friction, 0.8);
         assert_eq!(Collider::platform(800.0, 40.0).friction, 0.8);
-        assert_eq!(Collider::bouncy(50.0, 50.0).restitution, 0.9);
 
         // The examples and the standalone editor default to platformer();
         // breakout / space_invaders run on top_down(), asteroids on space().

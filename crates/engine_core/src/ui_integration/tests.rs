@@ -127,7 +127,7 @@ fn test_clipped_commands_land_in_a_clip_tagged_batch_and_axis_aligned_lines_surv
 
     render_ui_commands(&mut batcher, &cmds, &test_camera(), &HashMap::new());
 
-    let white = TextureHandle { id: 0 };
+    let white = TextureHandle::WHITE;
     assert_eq!(batcher.batches().len(), 2, "unclipped + clipped batches");
     assert_eq!(batcher.batch_for(white).expect("unclipped batch").len(), 1);
     let clipped = batcher
@@ -151,7 +151,7 @@ fn test_nested_clips_intersect_on_the_batch() {
 
     render_ui_commands(&mut batcher, &cmds, &test_camera(), &HashMap::new());
 
-    let white = TextureHandle { id: 0 };
+    let white = TextureHandle::WHITE;
     let clipped = batcher
         .batches()
         .get(&(white, Some([100, 100, 100, 100])))
@@ -173,7 +173,7 @@ fn test_pop_restores_parent_clip_for_later_commands() {
 
     render_ui_commands(&mut batcher, &cmds, &test_camera(), &HashMap::new());
 
-    let white = TextureHandle { id: 0 };
+    let white = TextureHandle::WHITE;
     let outer_batch = batcher
         .batches()
         .get(&(white, Some([0, 0, 300, 300])))

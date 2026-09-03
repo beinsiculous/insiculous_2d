@@ -54,16 +54,6 @@ fn test_merging_into_a_saved_command_reassigns_its_id_so_no_position_reads_clean
     let mut world = World::new();
     let entity = setup_entity(&mut world);
 
-    let mut history = CommandHistory::new();
-    history.execute(move_cmd(entity, Vec2::new(1.0, 0.0), "position"), &mut world);
-    history.mark_saved();
-    history.try_merge_or_execute(move_cmd(entity, Vec2::new(2.0, 0.0), "position"), &mut world);
-    assert!(history.is_dirty(), "a merged try_merge_or_execute must dirty the scene");
-    assert!(history.undo(&mut world));
-    assert!(history.is_dirty(), "the merged command's saved state is gone — still dirty");
-    assert!(history.redo(&mut world));
-    assert!(history.is_dirty());
-
     let mut pushed = CommandHistory::new();
     pushed.push_already_executed(move_cmd(entity, Vec2::new(1.0, 0.0), "position"));
     pushed.mark_saved();

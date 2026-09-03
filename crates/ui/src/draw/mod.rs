@@ -125,11 +125,6 @@ impl DrawList {
         self.pop_layer();
     }
 
-    /// Whether commands currently record above the Content band.
-    pub fn is_overlay(&self) -> bool {
-        self.current_layer() > UiLayer::Content
-    }
-
     /// Append the elevated layers to the Content stream, in [`UiLayer`]
     /// order. Called by `UIContext::end_frame`; idempotent. After this,
     /// [`commands`](Self::commands) is the complete frame in the exact
@@ -231,13 +226,13 @@ impl DrawList {
     }
 
     /// Add a textured image with rounded corners.
-    pub fn image_rounded(&mut self, bounds: Rect, texture_id: u32, tint: Color, corner_radius: f32) {
+    pub(crate) fn image_rounded(&mut self, bounds: Rect, texture_id: u32, tint: Color, corner_radius: f32) {
         let depth = self.next_depth();
         self.push(DrawCommand::Image { bounds, texture_id, tint, corner_radius, depth });
     }
 
     /// Add text placeholder (renders as approximate rectangle without font).
-    pub fn text_placeholder(&mut self, text: impl Into<String>, position: Vec2, color: Color, font_size: f32) {
+    pub(crate) fn text_placeholder(&mut self, text: impl Into<String>, position: Vec2, color: Color, font_size: f32) {
         let depth = self.next_depth();
         self.push(DrawCommand::TextPlaceholder {
             text: text.into(),

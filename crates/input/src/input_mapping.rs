@@ -40,9 +40,6 @@
 //! - [`InputMapping::just_activated`] — a bound source was pressed this frame
 //!   and the action was not active at the end of the previous frame (pressing
 //!   a second source while one is already held does **not** re-trigger)
-//! - [`InputMapping::just_deactivated`] — no bound source is held now and either
-//!   the action was active last frame or a bound source was released this frame;
-//!   a sub-frame tap fires both in one frame
 
 use crate::gamepad::{AxisDirection, GamepadAxis, GamepadButton};
 use crate::input_handler::InputHandler;
@@ -141,19 +138,6 @@ impl<A: Copy + Eq + Hash> InputMapping<A> {
         }
     }
 
-    /// Remove all bindings for an action
-    pub fn unbind_action(&mut self, action: A) {
-        self.bindings.remove(&action);
-    }
-
-    /// Remove a source from every action it is bound to
-    pub fn unbind_source(&mut self, source: &InputSource) {
-        self.bindings.retain(|_, sources| {
-            sources.retain(|s| s != source);
-            !sources.is_empty()
-        });
-    }
-
     /// Get all input sources bound to an action
     pub fn bindings(&self, action: A) -> &[InputSource] {
         self.bindings
@@ -162,28 +146,9 @@ impl<A: Copy + Eq + Hash> InputMapping<A> {
             .unwrap_or(&[])
     }
 
-    /// Get all actions a source is bound to
-    pub fn actions_for(&self, source: &InputSource) -> Vec<A> {
-        self.bindings
-            .iter()
-            .filter(|(_, sources)| sources.contains(source))
-            .map(|(action, _)| *action)
-            .collect()
-    }
-
-    /// Check if an action has at least one bound source
-    pub fn has_binding(&self, action: A) -> bool {
-        self.bindings.contains_key(&action)
-    }
-
     /// Check if the mapping has no bindings at all
     pub fn is_empty(&self) -> bool {
         self.bindings.is_empty()
-    }
-
-    /// Clear all bindings
-    pub fn clear(&mut self) {
-        self.bindings.clear();
     }
 
     // ================== Action State Evaluation ==================
@@ -204,20 +169,6 @@ impl<A: Copy + Eq + Hash> InputMapping<A> {
             .iter()
             .any(|source| input.is_source_just_pressed(source))
             && !self.was_active(action, input)
-    }
-
-    /// Check if an action became inactive this frame.
-    ///
-    /// Returns `false` if another bound source is still held (e.g. releasing
-    /// W while ArrowUp is held keeps MoveUp active). Fires `true` when the
-    /// action drops from active to inactive, or on a sub-frame tap.
-    pub fn just_deactivated(&self, action: A, input: &InputHandler) -> bool {
-        !self.is_active(action, input)
-            && (self.was_active(action, input)
-                || self
-                    .bindings(action)
-                    .iter()
-                    .any(|source| input.is_source_just_released(source)))
     }
 
     /// Whether the action was active on the previous frame.

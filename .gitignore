@@ -25,3 +25,7 @@ review/*.md
 review/*.diff
 !review/.gitkeep
 review/.request-prompt.*
+review/*/*
+
+# Local editor preferences
+editor_prefs.json

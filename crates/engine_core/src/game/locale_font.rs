@@ -25,7 +25,7 @@ impl<G: Game> GameRunner<G> {
                         .unwrap_or_else(|| "assets".to_string());
                     let full = std::path::Path::new(&base).join(&rel);
                     let full = full.to_string_lossy();
-                    match self.ui_manager.ui_context().load_font_file(&full) {
+                    match self.ui.load_font_file(&full) {
                         Ok(handle) => {
                             self.locale_fonts.insert(rel, handle);
                             Some(handle)
@@ -42,12 +42,12 @@ impl<G: Game> GameRunner<G> {
 
         match handle {
             Some(handle) => {
-                self.ui_manager.ui_context().set_default_font(handle);
+                self.ui.set_default_font(handle);
                 self.strings.set_active_font(Some(handle));
             }
             None => {
                 if let Some(base) = self.base_font {
-                    self.ui_manager.ui_context().set_default_font(base);
+                    self.ui.set_default_font(base);
                 }
                 self.strings.set_active_font(None);
             }

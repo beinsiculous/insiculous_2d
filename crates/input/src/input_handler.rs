@@ -351,11 +351,6 @@ impl InputHandler {
         &self.gamepads
     }
 
-    /// Get a mutable reference to the gamepad manager
-    pub fn gamepads_mut(&mut self) -> &mut GamepadManager {
-        &mut self.gamepads
-    }
-
     // ================== Convenience Queries ==================
 
     /// Check if a specific key is currently pressed

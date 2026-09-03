@@ -255,20 +255,6 @@ impl LifecycleManager {
         }
         Ok(())
     }
-
-    /// Wait until the system reaches a specific state (with timeout)
-    pub fn wait_for_state(&self, target: LifecycleState, timeout: std::time::Duration) -> Result<(), String> {
-        let start = common::clock::Instant::now();
-        
-        while self.current_state() != target {
-            if start.elapsed() > timeout {
-                return Err(format!("Timeout waiting for state {:?}", target));
-            }
-            std::thread::sleep(std::time::Duration::from_millis(10));
-        }
-        
-        Ok(())
-    }
 }
 
 /// A trait for objects that have a managed lifecycle

@@ -141,10 +141,10 @@ impl RenderManager {
         );
 
         // Create sprite pipeline with max 1000 sprites per batch
-        let sprite_pipeline = SpritePipeline::new(renderer.device_ref(), 1000);
+        let sprite_pipeline = SpritePipeline::new(renderer.device(), 1000);
         // UI draws post-tonemap straight to the swapchain (issue #26).
         let ui_pipeline =
-            SpritePipeline::new_ui(renderer.device_ref(), 1000, renderer.surface_format());
+            SpritePipeline::new_ui(renderer.device(), 1000, renderer.surface_format());
 
         self.renderer = Some(renderer);
         self.sprite_pipeline = Some(sprite_pipeline);
@@ -320,17 +320,12 @@ impl RenderManager {
 
     /// Get the GPU device if the renderer is initialized.
     pub fn device(&self) -> Option<Arc<Device>> {
-        self.renderer.as_ref().map(|r| r.device())
+        self.renderer.as_ref().map(|r| Arc::clone(r.device()))
     }
 
     /// Get the GPU queue if the renderer is initialized.
     pub fn queue(&self) -> Option<Arc<Queue>> {
-        self.renderer.as_ref().map(|r| r.queue())
-    }
-
-    /// Get a reference to the device (for pipeline creation).
-    pub fn device_ref(&self) -> Option<&Device> {
-        self.renderer.as_ref().map(|r| r.device_ref())
+        self.renderer.as_ref().map(|r| Arc::clone(r.queue()))
     }
 
     /// Get a reference to the camera.

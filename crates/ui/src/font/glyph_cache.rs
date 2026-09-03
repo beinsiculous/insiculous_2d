@@ -132,12 +132,7 @@ impl GlyphCache {
         }
     }
 
-    /// Clear all cached glyphs to free memory.
-    pub(super) fn clear(&mut self) {
-        self.glyphs.clear();
-    }
-
-    /// Number of cached glyphs.
+    #[cfg(test)]
     pub(super) fn len(&self) -> usize {
         self.glyphs.len()
     }

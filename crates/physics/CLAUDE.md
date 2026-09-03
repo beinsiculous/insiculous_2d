@@ -10,7 +10,7 @@ PhysicsSystem
 │   ├── IntegrationParameters
 │   └── PhysicsPipeline
 └── ECS sync: one-way per direction (see Update Flow)
-    Collision events: world event bus + take_collision_events() drain
+    Collision events: take_collision_events() drain
 ```
 
 ## Update Flow
@@ -20,15 +20,13 @@ PhysicsSystem
    ECS-side edits** (GPP-09, value-compare vs a last-pushed baseline):
    editing `Transform2D` teleports the live body (velocity preserved),
    editing `Collider` rebuilds its rapier collider, removing `Collider`
-   drops it. `set_body_transform` / `set_velocity` / `reset_body` remain the
+   drops it. `set_velocity` / `reset_body` remain the
    explicit APIs. `RigidBody` config edits still require body recreation.
 4. Flush deferred resets/velocities (for entities spawned the same frame)
 5. Clear the collision event buffer, then run 0..=8 fixed-timestep sub-steps
    (each `step()` APPENDS its events)
-6. Reset one-update forces (`apply_force`) if any steps ran
-7. Sync rapier body positions/velocities → ECS components (Dynamic/Kinematic)
-8. Emit collision events to the world event bus (game code drains its copy
-   afterwards via `take_collision_events()`)
+6. Sync rapier body positions/velocities → ECS components (Dynamic/Kinematic);
+   game code drains collisions via `take_collision_events()`
 
 ## Collision Event Contract
 - Game-facing API: **`PhysicsSystem::take_collision_events()`** — drain once
@@ -56,9 +54,8 @@ Pinned by `test_parented_entity_with_rigid_body_is_treated_as_world_space`.
 - `prelude.rs` — convenience re-exports
 - `physics_world/` — Rapier2d world wrapper
   - `mod.rs` — `PhysicsConfig` (validated scale), struct, construction, unit conversion
-  - `bodies.rs` — add/remove bodies & colliders, per-body accessors, `reset_forces`
+  - `bodies.rs` — add/remove bodies & colliders, per-body accessors
   - `stepping.rs` — `step()`, collision event extraction, `clear_collision_events`
-  - `queries.rs` — `raycast` (direction normalized internally)
   - `tests.rs`
 - `physics_system/` — ECS driver
   - `mod.rs` — struct, builders, deferred-op queue, pass-through API
@@ -71,11 +68,10 @@ Pinned by `test_parented_entity_with_rigid_body_is_treated_as_world_space`.
 ## Key Patterns
 - All rapier types stay inside `PhysicsWorld` — ECS components are our own types
 - Body handles stored in RigidBody component for rapier lookup
-- Presets: `player_platformer()`, `pushable()`, `platform(w, h)`, `bouncy(w, h)`, `player_box(w, h)`
+- Presets: `player_platformer()`, `platform(w, h)`, `player_box(w, h)`
 - `PhysicsSystem::set_velocity` is the universal "launch this body" API
   (deferred-safe for same-frame spawns); `PhysicsWorld::apply_impulse` exists
   for genuine mass-aware impulses (used by engine_core's behavior_runner)
-- `apply_force` lasts one update (forces are reset after the step loop)
 - `PhysicsConfig.solver_iterations` / `.friction_iterations` map to rapier's
   `num_solver_iterations` / `num_additional_friction_iterations`
 

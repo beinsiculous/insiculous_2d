@@ -148,16 +148,6 @@ impl Transform2D {
     pub fn rotate(&mut self, angle: f32) {
         self.rotation += angle;
     }
-
-    /// Interpolate between two transforms.
-    #[inline]
-    pub fn lerp(self, other: Transform2D, t: f32) -> Transform2D {
-        Transform2D {
-            position: self.position.lerp(other.position, t),
-            rotation: self.rotation + (other.rotation - self.rotation) * t,
-            scale: self.scale.lerp(other.scale, t),
-        }
-    }
 }
 
 #[cfg(test)]

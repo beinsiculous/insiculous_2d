@@ -40,9 +40,6 @@ pub use sprite::{Sprite, SpriteBatch, SpriteBatcher, SpritePipeline};
 pub use texture::{TextureManager, TextureLoadConfig, SamplerConfig, TextureError, TextureHandle};
 pub use texture_filter::TextureFilter;
 
-// Re-export Time from common crate (moved from renderer for proper placement)
-pub use common::Time;
-
 /// Simplified renderer initialization - no tokio required
 pub async fn init(window: Arc<Window>) -> Result<Renderer, RendererError> {
     init_with_config(window, RendererConfig::default()).await

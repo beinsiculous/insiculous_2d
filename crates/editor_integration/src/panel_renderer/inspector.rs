@@ -283,7 +283,6 @@ fn render_inspector_editable(
         }
     }
 
-    let _ = component_index;
     y
 }
 

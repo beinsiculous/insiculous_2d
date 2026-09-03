@@ -280,12 +280,10 @@ games that set the mode once at startup via `GameConfig::with_chaos_mode()`.
 ## Architecture
 
 ### Manager Pattern (engine_core)
-`GameRunner` is a thin orchestrator (`game.rs`, ~594 lines) over five focused managers:
+`GameRunner` is a thin orchestrator (`game.rs`) over three focused managers (holding `UIContext` directly):
 - `GameLoopManager` - Frame timing (the ONLY frame timer)
-- `UIManager` - UI lifecycle and draw-command collection
 - `RenderManager` - Renderer/sprite pipeline lifecycle
 - `WindowManager` - Window creation and size tracking
-- `SceneManager` - Scene loading and stack management
 
 Supporting modules: `game_config.rs`, `contexts.rs` (GameContext/RenderContext), `ui_integration.rs` (UI→renderer bridge), `glyph_texture_cache.rs`, `behavior_runner.rs`. (Refactoring history: `log_archive.md`.)
 
@@ -319,6 +317,8 @@ cargo clippy --workspace             # Lint check
 cargo run --example hello_world      # Run platformer demo
 cargo run --example editor_demo --features editor  # Run editor demo
 cargo run --bin editor --features editor -- ../games/pong  # Standalone editor on a project
+scripts/check_games.sh               # Check all six games (default + editor features)
+scripts/check_games.sh --test        # Test all six games (default + editor features)
 ```
 
 **Key Files:**

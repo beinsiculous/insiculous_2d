@@ -56,9 +56,4 @@ impl ParticleEmitter {
     pub fn pause(&mut self) {
         self.active = false;
     }
-
-    /// Resume emission.
-    pub fn resume(&mut self) {
-        self.active = true;
-    }
 }

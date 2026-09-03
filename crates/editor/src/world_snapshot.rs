@@ -124,11 +124,6 @@ impl WorldSnapshot {
         }
     }
 
-    /// Number of entities in the snapshot.
-    pub fn entity_count(&self) -> usize {
-        self.snapshots.len()
-    }
-
     /// Full type paths of component types that were present at capture time
     /// but could not be captured (not in the editor registry). Restoring
     /// this snapshot loses them.

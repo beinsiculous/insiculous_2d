@@ -4,7 +4,7 @@
 **Basis:** full read of `crates/editor` + `crates/editor_integration` at HEAD, plus six live screenshots of the Pong and Editor Demo instances taken 2026-08-27 08:17–08:29.
 **Purpose:** input for a Claude Code planning session. Every item has a file:line anchor, an observable symptom, and a concrete fix.
 
-> **Note on `examples/pong_editor_screenshot.png`:** it is stale. It renders `"(Asset browser not yet implemented)"`, a string that no longer exists in the tree. Don't plan against it. The 2026-08-27 screenshots are ground truth, and they show real progress: semantic entity names, a working asset browser, 60 FPS.
+> **Note on `examples/pong_editor_screenshot.png`:** deleted as stale. It rendered `"(Asset browser not yet implemented)"`, a string that no longer exists in the tree. Don't plan against it. The 2026-08-27 screenshots are ground truth, and they show real progress: semantic entity names, a working asset browser, 60 FPS.
 
 ---
 
@@ -739,7 +739,7 @@ Secondary payoffs that arrive with it, all of which you'd otherwise build separa
 |---|---|
 | Reversible action abstraction | `EditorCommand` trait, `commands/mod.rs:34` |
 | Ordering, undo/redo, history cap | `CommandHistory`, `:64-177` |
-| Coalescing for continuous edits | `try_merge_or_execute` / `try_merge_or_push`, `:148-170` |
+| Coalescing for continuous edits | `try_merge_or_push`, `:148-170` |
 | Concrete commands | `Create`/`Delete`/`Macro` (`entity_commands.rs`), `Add`/`RemoveComponent` (`component_commands.rs`), 10 × `Set*Command` (`set_commands.rs`) |
 | Entity factories | `entity_ops.rs` — 9 create functions |
 | **Generic read path** | `inspect_all_components` (`stored_component.rs:287-305`) → `inspector.rs:64`, which already renders *any* `Serialize` component without per-type code |

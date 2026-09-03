@@ -198,11 +198,6 @@ impl GamepadManager {
         self.gamepad_states.get(&id)
     }
 
-    /// Get a mutable reference to a gamepad state
-    pub fn get_gamepad_mut(&mut self, id: u32) -> Option<&mut GamepadState> {
-        self.gamepad_states.get_mut(&id)
-    }
-
     /// Get a gamepad state, registering it if not yet known.
     ///
     /// Used by event processing so events for a new gamepad are never
@@ -214,11 +209,6 @@ impl GamepadManager {
     /// Iterate over all connected gamepads as `(id, state)` pairs
     pub fn iter(&self) -> impl Iterator<Item = (u32, &GamepadState)> {
         self.gamepad_states.iter().map(|(id, state)| (*id, state))
-    }
-
-    /// Ids of all currently connected gamepads
-    pub fn connected_ids(&self) -> Vec<u32> {
-        self.gamepad_states.keys().copied().collect()
     }
 
     /// Clear per-frame state on all gamepads
@@ -281,14 +271,14 @@ mod tests {
         manager.register_gamepad(1);
 
         // `MenuInput` scans every connected pad through `iter`
-        let mut ids = manager.connected_ids();
+        let mut ids: Vec<u32> = manager.iter().map(|(id, _)| id).collect();
         ids.sort_unstable();
         assert_eq!(ids, vec![0, 1]);
         assert_eq!(manager.iter().count(), 2);
 
         // One end-of-frame call on the manager reaches every pad
         for id in [0, 1] {
-            let pad = manager.get_gamepad_mut(id).expect("registered above");
+            let pad = manager.get_or_register(id);
             pad.handle_button_press(GamepadButton::A);
         }
         manager.clear_frame_state();
@@ -298,7 +288,7 @@ mod tests {
         }
 
         manager.unregister_gamepad(0);
-        assert_eq!(manager.connected_ids(), vec![1]);
+        assert_eq!(manager.iter().map(|(id, _)| id).collect::<Vec<_>>(), vec![1]);
         assert!(manager.get_gamepad(0).is_none());
     }
 }

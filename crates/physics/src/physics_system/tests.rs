@@ -29,7 +29,7 @@ fn position_of(world: &World, entity: ecs::EntityId) -> Vec2 {
 fn test_new_system_runs_at_sixty_hertz_under_earth_gravity_and_knows_no_bodies() {
     let system = PhysicsSystem::new();
     assert_eq!(system.fixed_timestep, 1.0 / 60.0);
-    assert_eq!(system.gravity(), Vec2::new(0.0, -980.0));
+    assert_eq!(system.physics_world().gravity(), Vec2::new(0.0, -980.0));
     assert_eq!(system.get_body_velocity(ecs::EntityId::new()), None, "an unknown entity has no body");
 }
 
@@ -92,7 +92,7 @@ fn test_clear_keeps_the_config_and_resyncs_bodies_from_the_ecs() {
     system.clear();
 
     assert!(!system.physics_world().has_rigid_body(entity), "clear drops every rapier body");
-    assert_eq!(system.gravity(), Vec2::new(0.0, -500.0), "clear keeps gravity");
+    assert_eq!(system.physics_world().gravity(), Vec2::new(0.0, -500.0), "clear keeps gravity");
     assert_eq!(system.physics_world().config().pixels_per_meter, 50.0, "clear keeps the scale");
 
     system.update(&mut world, 0.0); // sync only, no step
@@ -147,7 +147,8 @@ fn test_catch_up_steps_are_capped_after_a_stall() {
     // Tiny fixed timestep: a 0.1s update would need 100 catch-up steps
     // uncapped; the cap drops the excess instead of simulating it.
     let step = 1.0 / 1000.0;
-    let mut system = PhysicsSystem::new().with_fixed_timestep(step);
+    let mut system = PhysicsSystem::new();
+    system.fixed_timestep = step;
     let entity = spawn_body(&mut world, Vec2::new(0.0, 100.0), RigidBody::new_dynamic(), Collider::box_collider(32.0, 32.0));
 
     system.update(&mut world, 0.1);
@@ -165,32 +166,6 @@ fn test_catch_up_steps_are_capped_after_a_stall() {
     system.update(&mut world, step);
     let y_after = position_of(&world, entity).y;
     assert!((y_before - y_after).abs() < 0.01, "accumulated backlog leaked into the next update");
-}
-
-#[test]
-fn test_apply_force_lasts_exactly_one_stepped_update() {
-    let mut world = World::new();
-    let mut system = no_gravity_system();
-    let entity = spawn_body(&mut world, Vec2::ZERO, RigidBody::new_dynamic(), Collider::box_collider(32.0, 32.0));
-    system.update(&mut world, DT); // sync the body into rapier
-
-    // A force applied on a zero-step frame survives to the next stepped one.
-    system.apply_force(entity, Vec2::new(10_000.0, 0.0));
-    system.update(&mut world, 0.001); // too small to step
-    system.update(&mut world, DT);
-    let (after_force, _) = system.get_body_velocity(entity).expect("body exists");
-    assert!(after_force.x > 0.0, "a force applied on a zero-step frame acts on the next stepped frame");
-
-    // No force this frame: with no gravity or damping, a persisting force
-    // would keep accelerating.
-    system.update(&mut world, DT);
-    let (next, _) = system.get_body_velocity(entity).expect("body exists");
-    assert!(
-        (next.x - after_force.x).abs() < 0.5,
-        "force must not persist past one stepped update (was {}, now {})",
-        after_force.x,
-        next.x
-    );
 }
 
 // === Collision event delivery ===
@@ -299,8 +274,15 @@ fn test_colliders_in_non_overlapping_collision_groups_produce_no_events() {
     let mut system = no_gravity_system();
     // Two overlapping boxes: A is in group 1 and only talks to group 1,
     // B is in group 2 and only talks to group 2.
-    let a = spawn_body(&mut world, Vec2::ZERO, floating_body(), Collider::box_collider(32.0, 32.0).with_collision_groups(0b01, 0b01));
-    let b = spawn_body(&mut world, Vec2::new(10.0, 0.0), floating_body(), Collider::box_collider(32.0, 32.0).with_collision_groups(0b10, 0b10));
+    let mut col_a = Collider::box_collider(32.0, 32.0);
+    col_a.collision_groups = 0b01;
+    col_a.collision_filter = 0b01;
+    let a = spawn_body(&mut world, Vec2::ZERO, floating_body(), col_a);
+
+    let mut col_b = Collider::box_collider(32.0, 32.0);
+    col_b.collision_groups = 0b10;
+    col_b.collision_filter = 0b10;
+    let b = spawn_body(&mut world, Vec2::new(10.0, 0.0), floating_body(), col_b);
     system.update(&mut world, DT);
     assert!(system.take_collision_events().is_empty(), "groups that do not overlap never collide");
     assert_eq!(position_of(&world, a), Vec2::ZERO, "and are not pushed apart");

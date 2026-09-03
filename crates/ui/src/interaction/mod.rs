@@ -52,12 +52,6 @@ impl From<&str> for WidgetId {
     }
 }
 
-impl From<u64> for WidgetId {
-    fn from(id: u64) -> Self {
-        Self::new(id)
-    }
-}
-
 impl From<(&str, usize)> for WidgetId {
     fn from((s, index): (&str, usize)) -> Self {
         Self::from_str_index(s, index)
@@ -86,8 +80,6 @@ pub struct InteractionResult {
     pub clicked: bool,
     /// True if the widget is currently being dragged
     pub dragging: bool,
-    /// Mouse position relative to widget bounds
-    pub local_mouse: Vec2,
 }
 
 impl Default for InteractionResult {
@@ -96,7 +88,6 @@ impl Default for InteractionResult {
             state: WidgetState::Normal,
             clicked: false,
             dragging: false,
-            local_mouse: Vec2::ZERO,
         }
     }
 }
@@ -128,8 +119,6 @@ pub struct ScrubState {
 
 /// Tracks interaction state for all widgets in the UI.
 pub struct InteractionManager {
-    /// Currently hot widget (mouse hovering)
-    hot_widget: Option<WidgetId>,
     /// Currently active widget (being pressed/dragged)
     active_widget: Option<WidgetId>,
     /// Input state snapshot for this frame
@@ -158,7 +147,6 @@ impl InteractionManager {
     /// Create a new interaction manager.
     pub fn new() -> Self {
         Self {
-            hot_widget: None,
             active_widget: None,
             input: InputState::default(),
             persistent_state: HashMap::new(),
@@ -179,9 +167,6 @@ impl InteractionManager {
     /// frame) paces held-key repeat for text inputs.
     pub fn begin_frame_dt(&mut self, input: &InputHandler, dt: f32) {
         self.input = InputState::from_input_handler_with_repeat(input, &mut self.key_repeat, dt);
-
-        // Clear hot widget at start of frame (will be set by widgets that are hovered)
-        self.hot_widget = None;
 
         // Blocking regions are re-registered each frame by whatever overlay is open
         self.blocking_rects.clear();
@@ -229,23 +214,13 @@ impl InteractionManager {
         self.input.mouse_pos
     }
 
-    /// Check if a widget is the hot (hovered) widget.
-    pub fn is_hot(&self, id: WidgetId) -> bool {
-        self.hot_widget == Some(id)
-    }
-
-    /// Check if a widget is the active (pressed/dragged) widget.
-    pub fn is_active(&self, id: WidgetId) -> bool {
-        self.active_widget == Some(id)
-    }
-
     /// Check if a widget has keyboard focus.
     pub fn is_focused(&self, id: WidgetId) -> bool {
         self.focus_widget == Some(id)
     }
 
     /// Check if any widget has keyboard focus (e.g. a text input being edited).
-    pub fn has_focus(&self) -> bool {
+    pub(crate) fn has_focus(&self) -> bool {
         self.focus_widget.is_some()
     }
 
@@ -319,16 +294,10 @@ impl InteractionManager {
         }
 
         let mouse_in_bounds = bounds.contains(self.input.mouse_pos);
-        let local_mouse = self.input.mouse_pos - bounds.position();
 
         // Check if this widget should become active
         if mouse_in_bounds && self.input.mouse_just_pressed && self.active_widget.is_none() {
             self.active_widget = Some(id);
-        }
-
-        // Update hot widget
-        if mouse_in_bounds && self.active_widget.is_none() {
-            self.hot_widget = Some(id);
         }
 
         // Determine state and interactions
@@ -350,7 +319,6 @@ impl InteractionManager {
             state,
             clicked,
             dragging: is_active && self.input.mouse_down,
-            local_mouse,
         }
     }
 

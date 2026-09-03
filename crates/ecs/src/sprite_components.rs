@@ -384,19 +384,6 @@ impl SpriteAnimation {
         let cell = *clip.frame_indices.get(self.current_frame)?;
         self.grid.uv_rect_checked(cell)
     }
-
-    /// Whether a non-looping clip has finished on its last frame.
-    pub fn is_complete(&self) -> bool {
-        match self.active_clip() {
-            Some(clip) => {
-                !clip.looping
-                    && !self.playing
-                    && !clip.frame_indices.is_empty()
-                    && self.current_frame + 1 >= clip.frame_indices.len()
-            }
-            None => false,
-        }
-    }
 }
 
 // Note: Sprite and SpriteAnimation use #[derive(ComponentMeta)]

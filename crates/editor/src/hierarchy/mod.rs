@@ -154,16 +154,6 @@ impl HierarchyPanel {
         }
     }
 
-    /// Set an entity to be collapsed.
-    pub fn collapse(&mut self, entity: EntityId) {
-        self.collapsed.insert(entity);
-    }
-
-    /// Set an entity to be expanded.
-    pub fn expand(&mut self, entity: EntityId) {
-        self.collapsed.remove(&entity);
-    }
-
     /// Get the display name for an entity.
     ///
     /// Resolution order:

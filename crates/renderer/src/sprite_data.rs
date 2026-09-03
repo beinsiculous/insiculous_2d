@@ -84,18 +84,6 @@ pub struct SpriteInstance {
 }
 
 impl SpriteInstance {
-    /// Create a new sprite instance with no emission
-    pub fn new(
-        position: Vec2,
-        rotation: f32,
-        scale: Vec2,
-        tex_region: [f32; 4],
-        color: Vec4,
-        depth: f32,
-    ) -> Self {
-        Self::with_emissive(position, rotation, scale, tex_region, color, depth, 0.0)
-    }
-
     /// Create a new sprite instance with explicit emissive intensity
     pub fn with_emissive(
         position: Vec2,

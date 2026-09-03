@@ -98,12 +98,6 @@ impl Toolbar {
         self.position = position;
     }
 
-    /// Set the button size.
-    pub fn with_button_size(mut self, size: f32) -> Self {
-        self.button_size = size;
-        self
-    }
-
     /// Get the currently selected tool.
     pub fn current_tool(&self) -> EditorTool {
         self.current_tool

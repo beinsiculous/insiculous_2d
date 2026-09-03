@@ -20,7 +20,6 @@
 //! # let _ = (header_color, panel_bg, inspector_style, grid_colors);
 //! ```
 
-use glam::Vec4;
 use ui::Color;
 
 /// Centralized design-system theme for the entire editor.
@@ -326,16 +325,6 @@ impl Default for EditorTheme {
 }
 
 impl EditorTheme {
-    /// Create the default dark editor theme (matches the design mockup).
-    pub fn dark() -> Self {
-        Self::default()
-    }
-
-    /// Convert a theme `Color` to a `Vec4` for the renderer sprite pipeline.
-    pub fn color_to_vec4(color: Color) -> Vec4 {
-        Vec4::new(color.r, color.g, color.b, color.a)
-    }
-
     /// Create `GridColors` from this theme.
     pub fn grid_colors(&self) -> crate::GridColors {
         crate::GridColors {

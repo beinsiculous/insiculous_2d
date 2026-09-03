@@ -12,7 +12,7 @@ Core engine: Game trait, run_game(), managers, scene loading/saving, asset manag
   (read-write; scales engine-side particle stepping only — set 0.0 while paused),
   **exit_requested** (write true → clean engine shutdown, same path as window close)
 - `ChaosMode` — cross-game Normal/Insane/Ridiculous/Insiculous theme (engine carries the selection, games define the meaning)
-- Managers: `GameLoopManager`, `UIManager`, `RenderManager`, `WindowManager`, `SceneManager`
+- Managers: `GameLoopManager`, `RenderManager`, `WindowManager`
 
 ## File Map
 - `game.rs` — Game trait, run_game(), GameRunner orchestration (~530 lines; the render
@@ -77,12 +77,10 @@ Core engine: Game trait, run_game(), managers, scene loading/saving, asset manag
 - `glyph_texture_cache.rs` — GlyphTextureCache: UI glyph bitmap → GPU texture cache (extracted from GameRunner)
 - `game_config.rs` — GameConfig struct (incl. `input_settings_path`)
 - `game_loop_manager.rs` — Frame timing and delta
-- `ui_manager.rs` — UI lifecycle and draw commands
 - `render_manager.rs` — Renderer lifecycle; `sync_main_camera(world)` copies the main-camera entity's pose — position AND zoom (`main_camera_pose`; non-finite/≤0 zoom sanitized to 1.0; rotation deliberately excluded — the editor viewport math has no rotation term, issue #42) — onto the render camera each frame (no-op without a `Camera { is_main_camera: true }` entity). Device-loss fail-stop: `note_render_error` state machine (surface-error streak, `MAX_SURFACE_ERROR_STREAK = 10` → fatal; `DeviceLost` → fatal immediately), `is_fatal()` makes `render()` refuse GPU work; `GameRunner.render_fatal` + `app_handler::handle_render_fatal` stop the frame loop (web: "reload the page" boot status, rAF simply not re-armed, key dispatch gated; native: clean shutdown) — never submit to a dead queue (the Firefox parent-process WebGPU crash, Aug 2026)
 - `tilemap_render.rs` — expands `Tilemap` + `Transform2D` entities into the game sprite batcher (called at the top of the default `Game::render`; one batch per tileset)
 - `window_manager.rs` — Window creation
 - `scene.rs` — Scene lifecycle / world coordination
-- `scene_manager.rs` — Scene loading and entity instantiation
 - `scene_loader.rs` — RON → World deserialization (`ComponentData` construction lives in `scene_loader_components.rs`); `SceneInstance` retains the prefab table and offers runtime `spawn_prefab(world, assets, name, overrides)` (Prototype pattern, override semantics; failed spawns leave no debris)
 - `scene_serializer.rs` — World → SceneData (inverse of scene_loader, used by editor save; tests in `scene_serializer/tests.rs` and `scene_serializer/dynamic_and_scripts_tests.rs`, on the shared `test_support` fixtures). NEW COMPONENT TYPES need arms in BOTH scene_loader_components.rs and scene_serializer.rs
 - `scene_data.rs` — SceneData / PrefabData / EntityData structs (schema incl. `ComponentData::EntityTag`, Sprite `emissive`/`tex_region`/`visible` — the latter two with NAMED serde defaults (full region / true); a plain `#[serde(default)]` would render nothing / hide every old sprite)
@@ -97,7 +95,6 @@ Core engine: Game trait, run_game(), managers, scene loading/saving, asset manag
   application), `handlers.rs` (player/AI/collectible handlers), `camera.rs` (`CameraFollow`
   incl. input-driven look-ahead)
 - `lifecycle.rs` — FSM for scene lifecycle
-- `timing.rs` — Timer utilities
 - `contexts.rs` — GameContext, RenderContext (incl. `viewport_scissor` writeback: an editor-style host bounds the game-world passes to a sub-rect in physical pixels; plain games leave it `None`)
 - `chaos_mode.rs` — `ChaosMode` enum + helpers (`ALL`, `is_insane`, `is_ridiculous`, `label`)
 - `chaos_theme.rs` — `ChaosTheme` per-mode presentation tokens (bg/structure/accent/grid colors, banner, particle mult); engine owns structure + default palette, games override via struct-update syntax

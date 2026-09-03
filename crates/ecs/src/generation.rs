@@ -66,8 +66,6 @@ impl Default for EntityGeneration {
 pub struct EntityIdGenerator {
     /// Counter for generating entity IDs
     counter: AtomicU64,
-    /// Counter for entity generations
-    generation_counter: AtomicU64,
 }
 
 impl EntityIdGenerator {
@@ -75,7 +73,6 @@ impl EntityIdGenerator {
     pub fn new() -> Self {
         Self {
             counter: AtomicU64::new(1),
-            generation_counter: AtomicU64::new(1),
         }
     }
 
@@ -83,52 +80,11 @@ impl EntityIdGenerator {
     pub fn generate_id(&self) -> u64 {
         self.counter.fetch_add(1, Ordering::Relaxed)
     }
-
-    /// Generate a new generation number
-    pub fn generate_generation(&self) -> u64 {
-        self.generation_counter.fetch_add(1, Ordering::Relaxed)
-    }
-
-    /// Get the current generation counter
-    pub fn current_generation(&self) -> u64 {
-        self.generation_counter.load(Ordering::Relaxed)
-    }
 }
 
 impl Default for EntityIdGenerator {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-/// Combines entity ID with generation for safe entity references
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct EntityReference {
-    /// The entity ID
-    id: u64,
-    /// The generation when this reference was created
-    generation: u64,
-}
-
-impl EntityReference {
-    /// Create a new entity reference
-    pub fn new(id: u64, generation: u64) -> Self {
-        Self { id, generation }
-    }
-
-    /// Get the entity ID
-    pub fn id(&self) -> u64 {
-        self.id
-    }
-
-    /// Get the generation
-    pub fn generation(&self) -> u64 {
-        self.generation
-    }
-
-    /// Check if this reference is still valid given current generation
-    pub fn is_valid(&self, current_generation: u64) -> bool {
-        self.generation == current_generation
     }
 }
 

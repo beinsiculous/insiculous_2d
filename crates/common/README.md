@@ -6,7 +6,7 @@ and avoid duplication.
 
 ## What Belongs Here
 - Fundamental math/data types used across **multiple** crates (e.g. `Color`,
-  `Transform2D`, `Camera`, `Rect`, `Time`).
+  `Transform2D`, `Camera`, `Rect`).
 - Small, stable utilities that are **crate-agnostic** and unlikely to change
   with engine features.
 - Lightweight macros that reduce boilerplate without introducing domain logic.

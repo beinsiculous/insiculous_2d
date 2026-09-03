@@ -149,26 +149,6 @@ impl Camera {
         )
     }
 
-    /// Get the visible world bounds (min_x, min_y, max_x, max_y).
-    pub fn world_bounds(&self) -> (f32, f32, f32, f32) {
-        let half_w = self.viewport_size.x * 0.5 / self.zoom;
-        let half_h = self.viewport_size.y * 0.5 / self.zoom;
-
-        (
-            self.position.x - half_w,
-            self.position.y - half_h,
-            self.position.x + half_w,
-            self.position.y + half_h,
-        )
-    }
-
-    /// Check if a point is visible in the camera's view.
-    #[inline]
-    pub fn contains_point(&self, point: Vec2) -> bool {
-        let (min_x, min_y, max_x, max_y) = self.world_bounds();
-        point.x >= min_x && point.x <= max_x && point.y >= min_y && point.y <= max_y
-    }
-
     /// Update viewport size (call on window resize).
     #[inline]
     pub fn set_viewport_size(&mut self, width: f32, height: f32) {

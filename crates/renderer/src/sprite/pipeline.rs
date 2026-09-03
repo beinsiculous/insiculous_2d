@@ -23,8 +23,6 @@ pub struct SpritePipeline {
     camera_buffer: Buffer,
     /// Texture bind group layout
     texture_bind_group_layout: BindGroupLayout,
-    /// Camera bind group layout
-    camera_bind_group_layout: BindGroupLayout,
     /// Cached camera bind group (created once, updated via buffer writes)
     camera_bind_group: wgpu::BindGroup,
     /// Cached texture bind groups (keyed by TextureHandle)
@@ -244,7 +242,6 @@ impl SpritePipeline {
             index_buffer,
             camera_buffer,
             texture_bind_group_layout,
-            camera_bind_group_layout,
             camera_bind_group,
             texture_bind_group_cache: HashMap::new(),
             instance_cache: super::InstanceCache::new(),
@@ -256,20 +253,6 @@ impl SpritePipeline {
     pub fn update_camera(&self, queue: &Queue, camera: &Camera) {
         let uniform = CameraUniform::from_camera(camera);
         queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[uniform]));
-    }
-
-    /// Update instance buffer with sprite data and return the number of instances.
-    ///
-    /// The instance buffer grows automatically when the sprite count exceeds
-    /// its current capacity.
-    pub fn update_instance_buffer(&mut self, queue: &Queue, instances: &[SpriteInstance]) -> usize {
-        if instances.is_empty() {
-            return 0;
-        }
-
-        self.instance_buffer.update(&self.device, queue, instances);
-
-        instances.len()
     }
 
     /// Update texture bind group cache for new textures
@@ -309,16 +292,6 @@ impl SpritePipeline {
 
         self.texture_bind_group_cache.insert(handle, bind_group);
         log::debug!("Cached bind group for texture {:?}", handle);
-    }
-
-    /// Clear a texture from the bind group cache (e.g., when texture is unloaded)
-    pub fn invalidate_texture_cache(&mut self, handle: &TextureHandle) {
-        self.texture_bind_group_cache.remove(handle);
-    }
-
-    /// Clear all cached texture bind groups
-    pub fn clear_texture_cache(&mut self) {
-        self.texture_bind_group_cache.clear();
     }
 
     /// Draw sprites into the HDR target.
@@ -518,21 +491,6 @@ impl SpritePipeline {
             // Update offset for next batch
             instance_offset += instance_count;
         }
-    }
-
-    /// Get the render pipeline
-    pub fn pipeline(&self) -> &RenderPipeline {
-        &self.pipeline
-    }
-
-    /// Get the camera bind group layout
-    pub fn camera_bind_group_layout(&self) -> &BindGroupLayout {
-        &self.camera_bind_group_layout
-    }
-
-    /// Get the texture bind group layout
-    pub fn texture_bind_group_layout(&self) -> &BindGroupLayout {
-        &self.texture_bind_group_layout
     }
 
     /// Prepare sprite data for rendering by updating the instance buffer.

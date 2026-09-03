@@ -361,30 +361,6 @@ impl Renderer {
         sprite_pipeline.prepare_sprites(&self.queue, sprite_batches);
         ui_pipeline.prepare_sprites(&self.queue, ui_batches);
 
-        self.render_with_sprites_internal(
-            sprite_pipeline,
-            ui_pipeline,
-            camera,
-            texture_resources,
-            sprite_batches,
-            ui_batches,
-        )
-    }
-
-    /// Internal method to render sprites with the combined texture resources.
-    ///
-    /// Sprite pass draws into the HDR offscreen target. The bloom pipeline
-    /// then extracts bright pixels, blurs them, and composites the result
-    /// to the swapchain.
-    fn render_with_sprites_internal(
-        &mut self,
-        sprite_pipeline: &mut crate::sprite::SpritePipeline,
-        ui_pipeline: &mut crate::sprite::SpritePipeline,
-        camera: &crate::sprite_data::Camera,
-        texture_resources: &std::collections::HashMap<crate::texture::TextureHandle, crate::sprite_data::TextureResource>,
-        sprite_batches: &[&crate::sprite::SpriteBatch],
-        ui_batches: &[&crate::sprite::SpriteBatch],
-    ) -> Result<(), RendererError> {
         // Get a frame (returns None if we should skip this frame)
         let frame = match self.acquire_frame()? {
             Some(frame) => frame,
@@ -466,35 +442,13 @@ impl Renderer {
         &self.window
     }
 
-    /// Get a shared reference to the device (clones the Arc).
-    ///
-    /// Use this when you need to store the device or pass ownership to another struct.
-    /// For temporary usage within a function, prefer `device_ref()` instead.
-    pub fn device(&self) -> Arc<Device> {
-        Arc::clone(&self.device)
-    }
-
-    /// Get a shared reference to the queue (clones the Arc).
-    ///
-    /// Use this when you need to store the queue or pass ownership to another struct.
-    /// For temporary usage within a function, prefer `queue_ref()` instead.
-    pub fn queue(&self) -> Arc<Queue> {
-        Arc::clone(&self.queue)
-    }
-
-    /// Get a borrowed reference to the device.
-    ///
-    /// Use this for temporary access within a function without cloning the Arc.
-    /// For storing or sharing ownership, use `device()` instead.
-    pub fn device_ref(&self) -> &Device {
+    /// Get a reference to the GPU device.
+    pub fn device(&self) -> &Arc<Device> {
         &self.device
     }
 
-    /// Get a borrowed reference to the queue.
-    ///
-    /// Use this for temporary access within a function without cloning the Arc.
-    /// For storing or sharing ownership, use `queue()` instead.
-    pub fn queue_ref(&self) -> &Queue {
+    /// Get a reference to the GPU queue.
+    pub fn queue(&self) -> &Arc<Queue> {
         &self.queue
     }
 

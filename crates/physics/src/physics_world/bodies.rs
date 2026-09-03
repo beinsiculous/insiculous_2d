@@ -165,7 +165,7 @@ impl PhysicsWorld {
     ///
     /// Used by `PhysicsSystem` to garbage-collect physics state for entities
     /// that were removed from the ECS without going through `destroy_entity`.
-    pub fn tracked_entities(&self) -> Vec<EntityId> {
+    pub(crate) fn tracked_entities(&self) -> Vec<EntityId> {
         let mut entities: Vec<EntityId> = self.entity_to_body.keys().copied().collect();
         for entity in self.entity_to_collider.keys() {
             if !self.entity_to_body.contains_key(entity) {
@@ -208,7 +208,7 @@ impl PhysicsWorld {
     }
 
     /// Set the position and rotation of a rigid body
-    pub fn set_body_transform(&mut self, entity: EntityId, position: Vec2, rotation: f32) {
+    pub(crate) fn set_body_transform(&mut self, entity: EntityId, position: Vec2, rotation: f32) {
         let pos = self.pixels_to_meters(position);
 
         if let Some(body) = self.body_mut(entity) {
@@ -257,30 +257,6 @@ impl PhysicsWorld {
         }
     }
 
-    /// Apply a force to a rigid body.
-    ///
-    /// The force lasts for one update: `PhysicsSystem::update()` resets all
-    /// forces after its physics steps run, so a continuous push must call
-    /// this every frame. (Rapier itself would otherwise persist the force
-    /// until explicitly reset.)
-    pub fn apply_force(&mut self, entity: EntityId, force: Vec2) {
-        let f = self.pixels_to_meters(force);
-
-        if let Some(body) = self.body_mut(entity) {
-            body.add_force(vector![f.x, f.y], true);
-        }
-    }
-
-    /// Reset all accumulated external forces on every rigid body.
-    ///
-    /// Called by `PhysicsSystem::update()` after stepping so that
-    /// [`apply_force`](Self::apply_force) behaves as a one-update force.
-    pub fn reset_forces(&mut self) {
-        for (_, body) in self.rigid_body_set.iter_mut() {
-            body.reset_forces(true);
-        }
-    }
-
     /// Check if an entity has a rigid body
     pub fn has_rigid_body(&self, entity: EntityId) -> bool {
         self.entity_to_body.contains_key(&entity)
@@ -292,11 +268,13 @@ impl PhysicsWorld {
     }
 
     /// Get the number of rigid bodies
+    #[cfg(test)]
     pub fn rigid_body_count(&self) -> usize {
         self.rigid_body_set.len()
     }
 
     /// Get the number of colliders
+    #[cfg(test)]
     pub fn collider_count(&self) -> usize {
         self.collider_set.len()
     }

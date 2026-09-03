@@ -69,20 +69,11 @@ impl<S: Clone + PartialEq + Debug + Send + Sync + 'static> StateMachine<S> {
     /// Transition to a new state.
     ///
     /// If the new state equals the current state (by PartialEq), this is
-    /// a no-op — the transition flag is NOT set. Use `force_transition_to`
-    /// to re-enter the same state.
+    /// a no-op — the transition flag is NOT set.
     pub fn transition_to(&mut self, new_state: S) {
         if self.current == new_state {
             return;
         }
-        self.previous = Some(std::mem::replace(&mut self.current, new_state));
-        self.just_transitioned = true;
-        self.elapsed = 0.0;
-    }
-
-    /// Force a transition even if the new state equals the current state.
-    /// Useful for "restart this state" scenarios.
-    pub fn force_transition_to(&mut self, new_state: S) {
         self.previous = Some(std::mem::replace(&mut self.current, new_state));
         self.just_transitioned = true;
         self.elapsed = 0.0;
@@ -109,11 +100,6 @@ impl<S: Clone + PartialEq + Debug + Send + Sync + 'static> StateMachine<S> {
     /// Check if the current state matches a value.
     pub fn is(&self, state: &S) -> bool {
         self.current == *state
-    }
-
-    /// Check if the state machine just transitioned from a specific state.
-    pub fn just_left(&self, state: &S) -> bool {
-        self.just_transitioned && self.previous.as_ref() == Some(state)
     }
 }
 
@@ -159,10 +145,10 @@ where
     ///     PlayerState::Idle | PlayerState::Running => PlayerGroup::OnGround,
     ///     PlayerState::Jumping | PlayerState::Falling => PlayerGroup::InAir,
     /// });
-    /// assert!(sm.in_group(&PlayerGroup::OnGround));
+    /// assert_eq!(sm.parent(), &PlayerGroup::OnGround);
     ///
     /// sm.transition_to(PlayerState::Jumping);
-    /// assert!(sm.in_group(&PlayerGroup::InAir));
+    /// assert_eq!(sm.parent(), &PlayerGroup::InAir);
     /// ```
     pub fn new(initial: S, parent_map: fn(&S) -> P) -> Self {
         let parent_state = parent_map(&initial);
@@ -228,11 +214,6 @@ where
     /// Check if the current leaf state matches.
     pub fn is(&self, state: &S) -> bool {
         self.inner.is(state)
-    }
-
-    /// Check if the current parent state matches.
-    pub fn in_group(&self, group: &P) -> bool {
-        self.parent_state == *group
     }
 }
 

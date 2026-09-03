@@ -311,25 +311,12 @@ impl AudioManager {
         });
     }
 
-    /// Stop all currently playing sounds (music is unaffected).
-    pub fn stop_all(&mut self) {
-        for active in self.active_sounds.drain(..) {
-            active.sink.stop();
-        }
-    }
-
     /// Clean up finished sound instances.
     ///
     /// Call this periodically (e.g., once per frame) to free resources
     /// from sounds that have finished playing.
     pub fn update(&mut self) {
         self.active_sounds.retain(|active| !active.sink.empty());
-    }
-
-    /// Get the number of currently active sounds.
-    #[must_use]
-    pub fn active_sound_count(&self) -> usize {
-        self.active_sounds.len()
     }
 
     /// Unload a sound from the cache.
@@ -339,12 +326,5 @@ impl AudioManager {
     /// `play` calls with this handle will fail.
     pub fn unload(&mut self, handle: SoundHandle) {
         self.sounds.remove(&handle.id);
-    }
-
-    /// Unload all cached sounds.
-    ///
-    /// As with [`AudioManager::unload`], already-playing instances continue.
-    pub fn unload_all(&mut self) {
-        self.sounds.clear();
     }
 }

@@ -292,33 +292,6 @@ impl CommandHistory {
     }
 
     /// Try to merge `cmd` with the last undo command. If merging fails, execute normally.
-    ///
-    /// Used for continuous edits like gizmo drags or slider scrubs to avoid
-    /// flooding the undo history with one entry per frame.
-    pub fn try_merge_or_execute(&mut self, cmd: Box<dyn EditorCommand>, world: &mut World) {
-        if std::mem::take(&mut self.merge_sealed) {
-            self.execute(cmd, world);
-            return;
-        }
-        if let Some(entry) = self.undo_stack.back_mut() {
-            if entry.cmd.try_merge(cmd.as_ref()) {
-                // Merged into existing command — no new push, but the
-                // command's resulting state changed, so it gets a fresh id
-                // (a post-save merge must read dirty even after undo) and,
-                // like any other new mutation, invalidates redo history
-                // (redoing an old command on top of the merged state could
-                // land on the saved id with a different world). The entry's
-                // selection_before deliberately stays untouched — a merged
-                // gesture keeps its FIRST before-image (#59).
-                entry.id = self.next_id;
-                self.next_id += 1;
-                self.redo_stack.clear();
-                return;
-            }
-        }
-        self.execute(cmd, world);
-    }
-
     /// Try to merge `cmd` with the last undo command, or push without executing if merge fails.
     ///
     /// Use when the change was already applied to the world manually (e.g., inspector
@@ -331,7 +304,7 @@ impl CommandHistory {
         }
         if let Some(entry) = self.undo_stack.back_mut() {
             if entry.cmd.try_merge(cmd.as_ref()) {
-                // See try_merge_or_execute: merged state = new id + no redo;
+                // Merged state = new id + no redo;
                 // selection_before keeps the FIRST before-image (#59).
                 entry.id = self.next_id;
                 self.next_id += 1;

@@ -56,11 +56,6 @@ impl StatusBar {
         }
     }
 
-    /// Set the version string displayed on the right.
-    pub fn set_version(&mut self, version: impl Into<String>) {
-        self.version = version.into();
-    }
-
     /// Show a temporary status message (auto-clears after 3 seconds).
     pub fn show_message(&mut self, message: impl Into<String>) {
         self.message = Some(message.into());

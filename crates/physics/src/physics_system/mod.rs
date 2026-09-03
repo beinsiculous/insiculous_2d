@@ -9,23 +9,20 @@
 //!
 //! # Collision Event Delivery
 //!
-//! Events reach consumers through two channels, both fed by `update()`:
-//! - the world event bus (`world.emit_event(CollisionData)`) — for systems
-//! - [`take_collision_events`](PhysicsSystem::take_collision_events) — for
-//!   game code: an owned `Vec` drained once per frame, shared by every
-//!   consumer (gameplay, pickups). Taking ownership means no borrow of the
-//!   physics system is held while reacting, so handlers can freely call
-//!   `set_velocity` / `destroy_entity` / etc.
+//! Events reach consumers through [`take_collision_events`](PhysicsSystem::take_collision_events) —
+//! for game code: an owned `Vec` drained once per frame, shared by every
+//! consumer (gameplay, pickups). Taking ownership means no borrow of the
+//! physics system is held while reacting, so handlers can freely call
+//! `set_velocity` / `destroy_entity` / etc.
 //!
 //! # API Design: Pass-Through Methods
 //!
 //! [`PhysicsSystem`] provides several methods that delegate directly to [`PhysicsWorld`]:
-//! - `set_gravity()` / `gravity()`
 //! - `set_velocity()` — the single, universal "launch / move this body at
 //!   velocity V" API. Safe on bodies spawned this frame (defers until synced).
-//! - `apply_force()`
-//! - `raycast()`
 //! - `take_collision_events()`
+//! - `destroy_entity()`
+//! - `reset_body()`
 //!
 //! These pass-through methods exist intentionally for **API ergonomics**:
 //!
@@ -143,12 +140,6 @@ impl PhysicsSystem {
         }
     }
 
-    /// Set the fixed timestep for physics updates
-    pub fn with_fixed_timestep(mut self, timestep: f32) -> Self {
-        self.fixed_timestep = timestep;
-        self
-    }
-
     /// Clear all physics state, forcing re-sync from ECS on next update.
     ///
     /// Preserves configuration (gravity, scale) but resets all rapier
@@ -190,35 +181,6 @@ impl PhysicsSystem {
         &mut self.physics_world
     }
 
-    /// Set gravity
-    pub fn set_gravity(&mut self, gravity: Vec2) {
-        self.physics_world.set_gravity(gravity);
-    }
-
-    /// Get gravity
-    pub fn gravity(&self) -> Vec2 {
-        self.physics_world.gravity()
-    }
-
-    /// Apply a force to an entity.
-    ///
-    /// The force lasts for one update: it is reset after the physics steps
-    /// run, so a continuous push must call this every frame. If a frame runs
-    /// zero physics steps (fixed-timestep accumulator not full), the force
-    /// is kept and acts on the next stepped frame instead.
-    pub fn apply_force(&mut self, entity: EntityId, force: Vec2) {
-        self.physics_world.apply_force(entity, force);
-    }
-
-    /// Cast a ray and return the first hit as `(entity, hit_point, distance)`.
-    ///
-    /// `direction` is normalized internally; `max_distance` and the returned
-    /// distance are in pixels along the ray. Returns `None` for a zero-length
-    /// or non-finite direction.
-    pub fn raycast(&self, origin: Vec2, direction: Vec2, max_distance: f32) -> Option<(EntityId, Vec2, f32)> {
-        self.physics_world.raycast(origin, direction, max_distance)
-    }
-
     /// Take the collision events from the last update's physics steps,
     /// leaving the buffer empty.
     ///
@@ -251,11 +213,6 @@ impl PhysicsSystem {
     /// Get the velocity of a rigid body
     pub fn get_body_velocity(&self, entity: EntityId) -> Option<(Vec2, f32)> {
         self.physics_world.get_body_velocity(entity)
-    }
-
-    /// Set the position and rotation of a rigid body
-    pub fn set_body_transform(&mut self, entity: EntityId, position: Vec2, rotation: f32) {
-        self.physics_world.set_body_transform(entity, position, rotation);
     }
 
     /// Set the next kinematic position (for kinematic bodies)

@@ -40,10 +40,8 @@ audio system is future work).
   0.1) because `SoundSettings` fields are public.
 - `play(handle)` / `unload(handle)` take `SoundHandle` by value (Copy);
   `play_with_settings(&handle, settings)` keeps a reference (external callers).
-- `stop(handle)` stops all active instances of one sound; `stop_all()` stops
-  every SFX (music unaffected). Unknown handles are a no-op.
-- Music: `play_music` / `play_music_with_volume` loop forever;
-  `play_music_once(path, volume)` plays one-shot. No crossfade.
+- `stop(handle)` stops all active instances of one sound. Unknown handles are a no-op.
+- Music: `play_music` / `play_music_with_volume` loop forever. No crossfade.
 - Errors: file-read failures are `AudioError::IoError` (`#[from] io::Error`);
   undecodable data is `DecodeError`; `LoadError` reserved for non-IO load problems.
 - `unload` does not cut off already-playing instances (each holds its own Arc).

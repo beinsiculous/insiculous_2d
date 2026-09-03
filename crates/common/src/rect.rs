@@ -117,29 +117,6 @@ impl Rect {
             && point.y <= self.y + self.height
     }
 
-    /// Check if this rectangle intersects another.
-    #[inline]
-    pub fn intersects(&self, other: &Rect) -> bool {
-        self.x < other.x + other.width
-            && self.x + self.width > other.x
-            && self.y < other.y + other.height
-            && self.y + self.height > other.y
-    }
-
-    /// Get the intersection of two rectangles, if any.
-    pub fn intersection(&self, other: &Rect) -> Option<Rect> {
-        let x1 = self.x.max(other.x);
-        let y1 = self.y.max(other.y);
-        let x2 = (self.x + self.width).min(other.x + other.width);
-        let y2 = (self.y + self.height).min(other.y + other.height);
-
-        if x1 < x2 && y1 < y2 {
-            Some(Rect::new(x1, y1, x2 - x1, y2 - y1))
-        } else {
-            None
-        }
-    }
-
     /// Get the bounding box containing both rectangles.
     #[inline]
     pub fn union(&self, other: &Rect) -> Rect {

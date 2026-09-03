@@ -35,16 +35,6 @@ pub enum GizmoMode {
 }
 
 impl GizmoMode {
-    /// Get the display name for this mode.
-    pub fn name(&self) -> &'static str {
-        match self {
-            GizmoMode::None => "None",
-            GizmoMode::Translate => "Translate",
-            GizmoMode::Rotate => "Rotate",
-            GizmoMode::Scale => "Scale",
-        }
-    }
-
     /// Whether `handle` is one this mode's renderer manages (and can
     /// therefore release at the end of a drag).
     fn owns_handle(&self, handle: GizmoHandle) -> bool {
@@ -157,8 +147,6 @@ pub struct Gizmo {
     position: Vec2,
     /// Current rotation of the entity (for rotation gizmo display)
     rotation: f32,
-    /// Current scale of the entity (for scale gizmo display)
-    scale: Vec2,
     /// Size of the gizmo handles
     handle_size: f32,
     /// Length of the axis lines
@@ -190,7 +178,6 @@ impl Gizmo {
             mode: GizmoMode::Translate,
             position: Vec2::ZERO,
             rotation: 0.0,
-            scale: Vec2::ONE,
             handle_size: 12.0,
             axis_length: 80.0,
             active_handle: None,
@@ -216,11 +203,6 @@ impl Gizmo {
         self.position = position;
     }
 
-    /// Set the length of the gizmo axis arms in screen pixels (minimum 10).
-    pub fn set_axis_length(&mut self, length: f32) {
-        self.axis_length = length.max(10.0);
-    }
-
     /// Get the length of the gizmo axis arms in screen pixels.
     pub fn axis_length(&self) -> f32 {
         self.axis_length
@@ -234,16 +216,6 @@ impl Gizmo {
     /// Apply colors from the editor theme.
     pub fn apply_theme(&mut self, theme: &EditorTheme) {
         self.palette = theme.gizmo_palette();
-    }
-
-    /// Set the entity rotation (for rotation gizmo display).
-    pub fn set_rotation(&mut self, rotation: f32) {
-        self.rotation = rotation;
-    }
-
-    /// Set the entity scale (for scale gizmo display).
-    pub fn set_scale(&mut self, scale: Vec2) {
-        self.scale = scale;
     }
 
     /// Check if the gizmo is currently being dragged.

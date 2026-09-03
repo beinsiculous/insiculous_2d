@@ -1,7 +1,7 @@
 # Common Crate — Agent Context
 
 Shared types used across all crates. Its only dependencies are `glam`, `serde`,
-`thiserror`, and `bytemuck` (plus wasm-only `web-time`) — anything added here
+and `bytemuck` (plus wasm-only `web-time`) — anything added here
 must stay dependency-light, headless, and GPU-free. (Vector/matrix math comes
 straight from `glam`; there is no engine-owned math module.)
 
@@ -31,11 +31,10 @@ straight from `glam`; there is no engine-owned math module.)
   through and the sampler clamps); `uv_rect_checked` is the guarded variant
 - `hash.rs` — `hash_u32` / `hash_f32` deterministic hashing for frame-driven
   pseudo-random values
-- `time.rs` — `Time` (delta/elapsed tracking)
 - `macros.rs` — small boilerplate-reduction macros
 
 Every type above is re-exported at the crate root; `Color`, `Transform2D`,
-`Camera`, `Rect`, `Time`, and `SheetGrid` are also in `common::prelude`.
+`Camera`, `Rect`, and `SheetGrid` are also in `common::prelude`.
 
 ## Testing
 - `cargo test -p common` — 0 failed, 0 ignored

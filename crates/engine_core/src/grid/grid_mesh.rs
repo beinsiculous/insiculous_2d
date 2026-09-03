@@ -168,14 +168,6 @@ impl GridMesh {
         self
     }
 
-    /// Replace just the alpha of the grid's color. Useful for fading the
-    /// grid in/out without touching the RGB tint.
-    pub fn with_alpha(mut self, alpha: f32) -> Self { self.color.w = alpha.clamp(0.0, 1.0); self }
-
-    /// Same as [`with_alpha`](Self::with_alpha) but on `&mut self` for
-    /// imperative fading from gameplay code.
-    pub fn set_alpha(&mut self, alpha: f32) { self.color.w = alpha.clamp(0.0, 1.0); }
-
     /// Builder variant of the [`visible`](Self::visible) field. Set to false
     /// to start the grid hidden — useful for games that toggle it on certain
     /// events (boss fights, menus, etc.).
@@ -402,7 +394,8 @@ mod tests {
         // skip the per-spring vertex loop.
         let mut hidden = GridMesh::new(6, 5, 10.0, Vec2::ZERO);
         hidden.visible = false;
-        let mut transparent = GridMesh::new(6, 5, 10.0, Vec2::ZERO).with_alpha(0.0);
+        let mut transparent = GridMesh::new(6, 5, 10.0, Vec2::ZERO);
+        transparent.color.w = 0.0;
         for g in [&mut hidden, &mut transparent] {
             let rest = g.nodes[CENTER].rest;
             g.apply_impulse(&GridImpulse::Point { position: rest, force: Vec2::new(0.0, 100.0), radius: 5.0 });

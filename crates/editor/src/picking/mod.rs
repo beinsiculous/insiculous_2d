@@ -158,12 +158,6 @@ impl EntityPicker {
         }
     }
 
-    /// Set the pick margin (tolerance for clicking near entities).
-    pub fn with_pick_margin(mut self, margin: f32) -> Self {
-        self.pick_margin = margin;
-        self
-    }
-
     /// Pick entities at a screen position.
     ///
     /// Returns entities sorted by depth (front to back).
@@ -267,12 +261,6 @@ impl EntityPicker {
         PickResult {
             hits: hits.into_iter().map(|(id, _)| id).collect(),
         }
-    }
-
-    /// Reset cycling state (call when selection changes).
-    pub fn reset_cycle(&mut self) {
-        self.cycle_index = 0;
-        self.last_pick_pos = None;
     }
 }
 

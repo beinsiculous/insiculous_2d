@@ -17,8 +17,6 @@ use crate::sprite_data::TextureResource;
 pub enum TextureError {
     #[error("Failed to load image: {0}")]
     ImageLoadError(String),
-    #[error("Texture not found: {0}")]
-    TextureNotFound(String),
     #[error("Invalid texture format")]
     InvalidFormat,
     #[error("Texture too large: {width}x{height}, max: {max_dimension}")]
@@ -37,11 +35,6 @@ impl TextureHandle {
     /// Sprites that want a flat color multiply their tint against it.
     /// [`TextureManager`] starts allocating real handles at 1 to keep this free.
     pub const WHITE: Self = Self { id: 0 };
-
-    /// Create a new texture handle
-    pub fn new(id: u32) -> Self {
-        Self { id }
-    }
 }
 
 
@@ -187,7 +180,7 @@ impl TextureManager {
         let data = rgba.as_raw();
 
         // Create handle and texture
-        let handle = TextureHandle::new(self.next_handle);
+        let handle = TextureHandle { id: self.next_handle };
         self.next_handle += 1;
 
         let texture = self.create_texture_from_rgba(width, height, data, config)?;
@@ -223,7 +216,7 @@ impl TextureManager {
         let rgba = img.to_rgba8();
         let data = rgba.as_raw();
 
-        let handle = TextureHandle::new(self.next_handle);
+        let handle = TextureHandle { id: self.next_handle };
         self.next_handle += 1;
 
         let texture = self.create_texture_from_rgba(width, height, data, config)?;
@@ -271,7 +264,7 @@ impl TextureManager {
             return Err(TextureError::InvalidFormat);
         }
 
-        let handle = TextureHandle::new(self.next_handle);
+        let handle = TextureHandle { id: self.next_handle };
         self.next_handle += 1;
 
         let texture = self.create_texture_from_rgba(width, height, data, config)?;
@@ -389,7 +382,7 @@ impl TextureManager {
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         // Create sampler
-        let sampler = self.create_sampler(&config.sampler_config);
+        let sampler = config.sampler_config.create_sampler(&self.device, Some("Texture Sampler"));
 
         Ok(TextureResource {
             texture: Arc::clone(&texture),
@@ -398,11 +391,6 @@ impl TextureManager {
             width,
             height,
         })
-    }
-
-    /// Create sampler from config (delegates to SamplerConfig::create_sampler)
-    fn create_sampler(&self, config: &SamplerConfig) -> Sampler {
-        config.create_sampler(&self.device, Some("Texture Sampler"))
     }
 }
 

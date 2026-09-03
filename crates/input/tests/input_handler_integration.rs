@@ -22,7 +22,6 @@ fn test_action_edges_fire_once_per_press_and_release_across_frames() {
     frame(&mut input, &[InputEvent::KeyPressed(KeyCode::Space)]);
     assert!(actions.is_active(GameAction::Action1, &input));
     assert!(actions.just_activated(GameAction::Action1, &input));
-    assert!(!actions.just_deactivated(GameAction::Action1, &input));
     input.end_frame();
 
     // Frame 2: still held — active, the edge is gone
@@ -31,11 +30,10 @@ fn test_action_edges_fire_once_per_press_and_release_across_frames() {
     assert!(!actions.just_activated(GameAction::Action1, &input));
     input.end_frame();
 
-    // Frame 3: released — inactive with a deactivation edge
+    // Frame 3: released — inactive
     frame(&mut input, &[InputEvent::KeyReleased(KeyCode::Space)]);
     assert!(!actions.is_active(GameAction::Action1, &input));
     assert!(!actions.just_activated(GameAction::Action1, &input));
-    assert!(actions.just_deactivated(GameAction::Action1, &input));
     input.end_frame();
 
     // Frame 4: the same action from another device (left click) re-arms
@@ -58,16 +56,14 @@ fn test_overlapping_sources_edge_only_on_the_first_press_and_the_last_release() 
     assert!(!actions.just_activated(GameAction::MoveUp, &input));
     input.end_frame();
 
-    // W released while ArrowUp is held: still active, no deactivation
+    // W released while ArrowUp is held: still active
     frame(&mut input, &[InputEvent::KeyReleased(KeyCode::KeyW)]);
     assert!(actions.is_active(GameAction::MoveUp, &input));
-    assert!(!actions.just_deactivated(GameAction::MoveUp, &input));
     input.end_frame();
 
-    // ArrowUp released too: now the action deactivates
+    // ArrowUp released too: now the action is inactive
     frame(&mut input, &[InputEvent::KeyReleased(KeyCode::ArrowUp)]);
     assert!(!actions.is_active(GameAction::MoveUp, &input));
-    assert!(actions.just_deactivated(GameAction::MoveUp, &input));
 }
 
 #[test]
@@ -124,10 +120,9 @@ fn test_axis_bound_action_edges_on_threshold_crossings_in_its_own_direction_only
     assert!(!actions.just_activated(GameAction::MoveRight, &input));
     input.end_frame();
 
-    // Frame 3: centered — deactivation edge
+    // Frame 3: centered — inactive
     frame(&mut input, &[stick_x(0.0)]);
     assert!(!actions.is_active(GameAction::MoveRight, &input));
-    assert!(actions.just_deactivated(GameAction::MoveRight, &input));
     input.end_frame();
 
     // Frame 4: stick left — MoveLeft fires, MoveRight stays off
@@ -245,25 +240,21 @@ fn test_press_and_release_within_one_frame_fires_both_edges_in_that_frame_and_no
         InputEvent::KeyReleased(KeyCode::Space),
     ]);
 
-    // InputMapping: sub-frame tap fires both edges, not active
+    // InputMapping: sub-frame tap fires activation edge, not active
     assert!(!actions.is_active(GameAction::Action1, &input));
     assert!(actions.just_activated(GameAction::Action1, &input));
-    assert!(actions.just_deactivated(GameAction::Action1, &input));
 
     // InputSettings: same semantics
     assert!(!settings.is_active(PlayerId::P1, GameAction::Action1, &input));
     assert!(settings.just_activated(PlayerId::P1, GameAction::Action1, &input));
-    assert!(settings.just_deactivated(PlayerId::P1, GameAction::Action1, &input));
 
-    // Next frame: edge has cleared, no trailing deactivation
+    // Next frame: edge has cleared
     input.end_frame();
     frame(&mut input, &[]);
 
     assert!(!actions.is_active(GameAction::Action1, &input));
     assert!(!actions.just_activated(GameAction::Action1, &input));
-    assert!(!actions.just_deactivated(GameAction::Action1, &input));
 
     assert!(!settings.is_active(PlayerId::P1, GameAction::Action1, &input));
     assert!(!settings.just_activated(PlayerId::P1, GameAction::Action1, &input));
-    assert!(!settings.just_deactivated(PlayerId::P1, GameAction::Action1, &input));
 }

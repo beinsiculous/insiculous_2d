@@ -10,6 +10,5 @@ pub use crate::{
     sprite::{Sprite, SpriteBatch, SpriteBatcher, SpritePipeline},
     texture::{TextureHandle, TextureManager, TextureLoadConfig, TextureError},
     texture_filter::TextureFilter,
-    Time,
     Renderer, RendererConfig, RendererError,
 };

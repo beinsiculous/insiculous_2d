@@ -522,25 +522,13 @@ impl<G: Game> Game for EditorGame<G> {
 /// The editor needs at least 1024x720 to be usable. If the provided config
 /// specifies a smaller size, it will be enlarged.
 pub fn run_game_with_editor<G: Game>(game: G, config: GameConfig) -> Result<(), Box<dyn std::error::Error>> {
-    run_game_with_editor_api(game, config, None)
-}
-
-/// [`run_game_with_editor`] plus a command-API request channel (audit §9
-/// Stage A). Each received line is answered on stdout as one line of JSON;
-/// the transport (stdin thread, later a WebSocket) lives with the caller —
-/// this crate only drains the channel inside the frame.
-pub fn run_game_with_editor_api<G: Game>(
-    game: G,
-    config: GameConfig,
-    api_rx: Option<std::sync::mpsc::Receiver<String>>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    run_game_with_editor_opts(game, config, EditorRunOptions { api_rx, initial_scene: None })
+    run_game_with_editor_opts(game, config, EditorRunOptions::default())
 }
 
 /// Options for [`run_game_with_editor_opts`].
 #[derive(Default)]
 pub struct EditorRunOptions {
-    /// Command-API request channel (see [`run_game_with_editor_api`]).
+    /// Command-API request channel.
     pub api_rx: Option<std::sync::mpsc::Receiver<String>>,
     /// A scene to open through the editor's load path right after init —
     /// how the standalone binary hands over its project's first scene (#53).

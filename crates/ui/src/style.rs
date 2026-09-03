@@ -14,16 +14,6 @@ mod palette {
         pub const BORDER_SUBTLE: u32 = 0x4A4A4A;
         pub const ACCENT: u32 = 0x4A90D9;
     }
-    pub mod light {
-        pub const SURFACE: u32 = 0xE0E0E0;
-        pub const SURFACE_HOVERED: u32 = 0xD0D0D0;
-        pub const SURFACE_PRESSED: u32 = 0xC0C0C0;
-        pub const SURFACE_DISABLED: u32 = 0xF0F0F0;
-        pub const PANEL: u32 = 0xF5F5F5;
-        pub const BORDER: u32 = 0xB0B0B0;
-        pub const BORDER_SUBTLE: u32 = 0xD0D0D0;
-        pub const ACCENT: u32 = 0x4A90D9;
-    }
 }
 
 /// Style configuration for buttons.
@@ -223,59 +213,5 @@ impl Theme {
     /// Create a dark theme (default).
     pub fn dark() -> Self {
         Self::default()
-    }
-
-    /// Create a light theme.
-    pub fn light() -> Self {
-        use palette::light;
-        Self {
-            button: ButtonStyle {
-                background: Color::from_hex(light::SURFACE),
-                background_hovered: Color::from_hex(light::SURFACE_HOVERED),
-                background_pressed: Color::from_hex(light::SURFACE_PRESSED),
-                background_disabled: Color::from_hex(light::SURFACE_DISABLED),
-                border: Color::from_hex(light::BORDER),
-                border_width: 1.0,
-                corner_radius: 4.0,
-                text_color: Color::BLACK,
-                text_color_disabled: Color::GRAY,
-                padding: 8.0,
-            },
-            panel: PanelStyle {
-                background: Color::from_hex(light::PANEL).with_alpha(0.95),
-                border: Color::from_hex(light::BORDER_SUBTLE),
-                border_width: 1.0,
-                corner_radius: 4.0,
-                padding: 8.0,
-            },
-            slider: SliderStyle {
-                track_background: Color::from_hex(light::SURFACE_HOVERED),
-                track_fill: Color::from_hex(light::ACCENT),
-                track_height: 6.0,
-                thumb_color: Color::WHITE,
-                thumb_hovered: Color::from_hex(light::SURFACE_DISABLED),
-                thumb_pressed: Color::from_hex(light::ACCENT),
-                thumb_radius: 8.0,
-            },
-            text: TextStyle {
-                color: Color::BLACK,
-                font_size: 16.0,
-                line_height: 1.2,
-            },
-            text_input: TextInputStyle {
-                background: Color::from_hex(light::PANEL),
-                background_focused: Color::WHITE,
-                border: Color::from_hex(light::BORDER),
-                border_focused: Color::from_hex(light::ACCENT),
-                border_invalid: Color::new(0.85, 0.15, 0.15, 1.0),
-                border_width: 1.0,
-                corner_radius: 2.0,
-                text_color: Color::BLACK,
-                font_size: 13.0,
-                padding: 4.0,
-                selection_color: Color::from_hex(light::ACCENT).with_alpha(0.35),
-                cursor_color: Color::BLACK,
-            },
-        }
     }
 }

@@ -494,7 +494,7 @@ This codebase implements patterns from [Robert Nystrom's Game Programming Patter
 | **Component** | ECS with entity-component storage |
 | **Update Method** | Single game loop with centralized update |
 | **Command** | Editor undo/redo, input events, UI draw commands as data |
-| **Manager Pattern** | GameLoopManager, UIManager, RenderManager, WindowManager |
+| **Manager Pattern** | GameLoopManager, RenderManager, WindowManager |
 
 ## Requirements
 

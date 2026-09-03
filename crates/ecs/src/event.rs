@@ -30,7 +30,6 @@ use std::collections::HashMap;
 /// Trait object interface for type-erased event queue operations.
 trait EventQueueOps: Send + Sync {
     fn clear(&mut self);
-    fn len(&self) -> usize;
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
@@ -49,10 +48,6 @@ impl<E: Send + Sync + 'static> TypedEventQueue<E> {
 impl<E: Send + Sync + 'static> EventQueueOps for TypedEventQueue<E> {
     fn clear(&mut self) {
         self.events.clear();
-    }
-
-    fn len(&self) -> usize {
-        self.events.len()
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -109,30 +104,11 @@ impl EventBus {
             .unwrap_or(&[])
     }
 
-    /// Get the count of pending events for a specific type.
-    pub fn count<E: Send + Sync + 'static>(&self) -> usize {
-        let type_id = TypeId::of::<E>();
-        self.queues
-            .get(&type_id)
-            .map(|queue| queue.len())
-            .unwrap_or(0)
-    }
-
     /// Clear all event queues. Call this at the end of each frame.
     pub fn flush(&mut self) {
         for queue in self.queues.values_mut() {
             queue.clear();
         }
-    }
-
-    /// Check if there are any pending events of type `E`.
-    pub fn has_events<E: Send + Sync + 'static>(&self) -> bool {
-        self.count::<E>() > 0
-    }
-
-    /// Get the total number of registered event types.
-    pub fn type_count(&self) -> usize {
-        self.queues.len()
     }
 }
 

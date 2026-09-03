@@ -42,7 +42,6 @@ pub use crate::{
     // Debug-draw helpers (collider outlines, etc.)
     debug,
     init,
-    timing::Timer,
     scene::Scene,
     EngineError,
 };

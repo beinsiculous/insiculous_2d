@@ -194,11 +194,6 @@ impl EditorContext {
         self.viewport.set_camera_position(offset);
     }
 
-    /// Pan the camera by a delta.
-    pub fn pan_camera(&mut self, delta: Vec2) {
-        self.viewport.pan_immediate(delta);
-    }
-
     /// Get the camera zoom level.
     pub fn camera_zoom(&self) -> f32 {
         self.viewport.camera_zoom()
@@ -362,25 +357,6 @@ impl EditorContext {
         self.play_state.in_play_session()
     }
 
-    /// Enter play mode (sets state to Playing).
-    pub fn enter_play_mode(&mut self) {
-        self.play_state = EditorPlayState::Playing;
-    }
-
-    /// Exit play mode (sets state to Editing).
-    pub fn exit_play_mode(&mut self) {
-        self.play_state = EditorPlayState::Editing;
-    }
-
-    /// Toggle between Editing and Playing.
-    pub fn toggle_play_mode(&mut self) {
-        self.play_state = if self.play_state.is_editing() {
-            EditorPlayState::Playing
-        } else {
-            EditorPlayState::Editing
-        };
-    }
-
     // ================== Add Component Popup ==================
 
     /// Whether the add-component popup is currently open.
@@ -490,16 +466,6 @@ impl EditorContext {
     /// Returns `None` when the panel is hidden or collapsed (no content area).
     pub fn scene_view_bounds(&self) -> Option<common::Rect> {
         self.panel_content_bounds(PanelId::SCENE_VIEW)
-    }
-
-    /// Get the inspector panel bounds (`None` when hidden or collapsed).
-    pub fn inspector_bounds(&self) -> Option<common::Rect> {
-        self.panel_content_bounds(PanelId::INSPECTOR)
-    }
-
-    /// Get the hierarchy panel bounds (`None` when hidden or collapsed).
-    pub fn hierarchy_bounds(&self) -> Option<common::Rect> {
-        self.panel_content_bounds(PanelId::HIERARCHY)
     }
 
     /// Content bounds of a panel, or `None` when it is hidden or collapsed.

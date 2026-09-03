@@ -85,7 +85,7 @@ pub fn render_ui_commands(
     glyph_textures: &HashMap<GlyphCacheKey, TextureHandle>,
 ) {
     let cam = UiCameraSpace::new(camera);
-    let white_texture = TextureHandle { id: 0 };
+    let white_texture = TextureHandle::WHITE;
     let mut clip_stack: Vec<Rect> = Vec::new();
 
     for cmd in commands {

@@ -98,18 +98,6 @@ impl Color {
         Self { a: alpha, ..self }
     }
 
-    /// Linearly interpolate between two colors.
-    #[inline]
-    pub fn lerp(self, other: Color, t: f32) -> Self {
-        let t = t.clamp(0.0, 1.0);
-        Self {
-            r: self.r + (other.r - self.r) * t,
-            g: self.g + (other.g - self.g) * t,
-            b: self.b + (other.b - self.b) * t,
-            a: self.a + (other.a - self.a) * t,
-        }
-    }
-
     /// Darken the color by a factor (0.0 = black, 1.0 = unchanged).
     #[inline]
     pub fn darken(self, factor: f32) -> Self {

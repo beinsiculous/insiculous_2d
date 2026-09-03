@@ -30,18 +30,6 @@ impl AudioManager {
         self.start_music(path.as_ref(), volume, true)
     }
 
-    /// Play background music once (no looping), with a specific volume.
-    ///
-    /// The track plays to completion and then stops; use
-    /// [`AudioManager::play_music`] for looping playback.
-    pub fn play_music_once<P: AsRef<Path>>(
-        &mut self,
-        path: P,
-        volume: f32,
-    ) -> AudioResult<()> {
-        self.start_music(path.as_ref(), volume, false)
-    }
-
     /// Shared music startup: stops current music, opens and decodes the file,
     /// then starts playback (looping or one-shot).
     ///

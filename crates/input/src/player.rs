@@ -170,11 +170,6 @@ impl PlayerBindings {
             .any(|source| input.is_source_just_pressed(&source))
     }
 
-    fn any_just_released(&self, action: GameAction, input: &InputHandler) -> bool {
-        self.resolved_sources(action, |_| true)
-            .any(|source| input.is_source_just_released(&source))
-    }
-
     fn was_active(&self, action: GameAction, input: &InputHandler) -> bool {
         self.resolved_sources(action, |_| true)
             .any(|source| source_was_pressed(&source, input))
@@ -319,25 +314,6 @@ impl InputSettings {
             .is_some_and(|b| b.is_just_pressed(action, input) && !b.was_active(action, input))
     }
 
-    /// Check if a player's action became inactive this frame
-    pub fn just_deactivated(
-        &self,
-        player: PlayerId,
-        action: GameAction,
-        input: &InputHandler,
-    ) -> bool {
-        self.player(player).is_some_and(|b| {
-            !b.is_active(action, input)
-                && (b.was_active(action, input) || b.any_just_released(action, input))
-        })
-    }
-
-    /// Check if the action is active for **any** player (shared pause,
-    /// restart, "press anything" screens)
-    pub fn is_active_any(&self, action: GameAction, input: &InputHandler) -> bool {
-        self.players.iter().any(|b| b.is_active(action, input))
-    }
-
     /// Check if the action became active this frame for any player
     pub fn just_activated_any(&self, action: GameAction, input: &InputHandler) -> bool {
         (0..self.players.len() as u8)
@@ -347,7 +323,7 @@ impl InputSettings {
     // ================== Analog Queries ==================
 
     /// Raw value of an axis on the player's assigned pad (0.0 without a pad)
-    pub fn axis_value(&self, player: PlayerId, axis: GamepadAxis, input: &InputHandler) -> f32 {
+    pub(crate) fn axis_value(&self, player: PlayerId, axis: GamepadAxis, input: &InputHandler) -> f32 {
         let Some(pad) = self.pad_of(player) else {
             return 0.0;
         };
@@ -529,7 +505,7 @@ mod tests {
         assert!(settings.just_activated_any(GameAction::Menu, &input));
         input.end_frame();
         frame(&mut input, &[]);
-        assert!(settings.is_active_any(GameAction::Menu, &input));
+        assert!(settings.is_active(PlayerId::P1, GameAction::Menu, &input));
         assert!(
             !settings.just_activated_any(GameAction::Menu, &input),
             "a held Menu key must not re-toggle the pause every frame"

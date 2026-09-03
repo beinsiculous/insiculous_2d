@@ -111,7 +111,7 @@ impl UIContext {
     }
 
     /// Create a horizontal slider with a custom range.
-    pub fn slider_range(
+    pub(crate) fn slider_range(
         &mut self,
         id: impl Into<WidgetId>,
         value: f32,
@@ -190,29 +190,6 @@ impl UIContext {
         }
 
         result.clicked
-    }
-
-    /// Create a checkbox with a label.
-    pub fn checkbox_labeled(
-        &mut self,
-        id: impl Into<WidgetId>,
-        label: &str,
-        checked: bool,
-        position: Vec2,
-    ) -> bool {
-        let checkbox_size = self.theme.text.font_size * 1.2;
-        let checkbox_bounds = Rect::new(position.x, position.y, checkbox_size, checkbox_size);
-
-        let clicked = self.checkbox(id, checked, checkbox_bounds);
-
-        // Draw label
-        let label_pos = Vec2::new(
-            position.x + checkbox_size + self.theme.button.padding,
-            position.y + checkbox_size / 2.0,
-        );
-        self.label(label, label_pos);
-
-        clicked
     }
 
     /// Create a progress bar.

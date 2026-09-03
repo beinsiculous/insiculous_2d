@@ -174,24 +174,11 @@ impl UIContext {
         self.draw_text_with_font(Some(font), text, position, color, font_size);
     }
 
-    /// Draw a label centered within bounds.
-    ///
-    /// This method handles vertical centering automatically using font metrics
-    /// when available, falling back to approximate centering otherwise.
-    /// Use this for text in buttons, headers, and other bounded containers.
-    pub fn label_in_bounds(&mut self, text: &str, bounds: Rect, align: TextAlign) {
-        let color = self.theme.text.color;
-        let font_size = self.theme.text.font_size;
-        let padding = self.theme.panel.padding;
-        self.label_in_bounds_styled(text, bounds, align, color, font_size, padding);
-    }
-
     /// Draw a styled label vertically centered within bounds.
     ///
-    /// Like [`label_in_bounds`](Self::label_in_bounds) but with explicit color,
-    /// font size, and edge padding. Use this instead of [`label_styled`](Self::label_styled)
-    /// whenever the text sits inside a box (panel headers, status bars) so the
-    /// glyphs never straddle the box's border.
+    /// With explicit color, font size, and edge padding. Use this instead of
+    /// [`label_styled`](Self::label_styled) whenever the text sits inside a
+    /// box (panel headers, status bars) so the glyphs never straddle the box's border.
     pub fn label_in_bounds_styled(
         &mut self,
         text: &str,

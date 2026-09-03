@@ -39,12 +39,6 @@ impl SpriteBatch {
         self.sorted = false;
     }
 
-    /// Add multiple sprite instances
-    pub fn add_instances(&mut self, instances: &[SpriteInstance]) {
-        self.instances.extend_from_slice(instances);
-        self.sorted = false;
-    }
-
     /// Sort instances by depth (for proper alpha blending).
     ///
     /// Uses `total_cmp` so NaN depths sort deterministically instead of
@@ -113,13 +107,6 @@ impl SpriteBatcher {
         batch.add_instance(sprite.to_instance());
     }
 
-    /// Add multiple sprites
-    pub fn add_sprites(&mut self, sprites: &[Sprite]) {
-        for sprite in sprites {
-            self.add_sprite(sprite);
-        }
-    }
-
     /// Sort all batches by depth
     pub fn sort_all_batches(&mut self) {
         for batch in self.batches.values_mut() {
@@ -130,11 +117,6 @@ impl SpriteBatcher {
     /// Get all batches
     pub fn batches(&self) -> &HashMap<(TextureHandle, Option<[u32; 4]>), SpriteBatch> {
         &self.batches
-    }
-
-    /// Get mutable batches
-    pub fn batches_mut(&mut self) -> &mut HashMap<(TextureHandle, Option<[u32; 4]>), SpriteBatch> {
-        &mut self.batches
     }
 
     /// The unclipped batch for a texture, if any — the common case for game
@@ -152,7 +134,8 @@ impl SpriteBatcher {
         self.current_clip = None;
     }
 
-    /// Get total sprite count
+    /// Get total sprite count (used by tests)
+    #[cfg(test)]
     pub fn sprite_count(&self) -> usize {
         self.batches.values().map(|batch| batch.len()).sum()
     }

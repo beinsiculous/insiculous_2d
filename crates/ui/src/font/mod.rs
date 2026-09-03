@@ -141,18 +141,6 @@ impl FontManager {
         })
     }
 
-    /// Rasterize a single glyph at a specific size.
-    pub fn rasterize_glyph(
-        &mut self,
-        handle: FontHandle,
-        character: char,
-        font_size: f32,
-    ) -> Result<&GlyphInfo, FontError> {
-        let font = self.fonts.get(&handle.id)
-            .ok_or_else(|| FontError::NotFound(format!("Font {} not found", handle.id)))?;
-        self.glyph_cache.get_or_rasterize(font, handle.id, character, font_size)
-    }
-
     /// Layout a string of text, returning positions and glyph info for each character.
     ///
     /// This method uses the internal glyph cache to avoid re-rasterizing glyphs that have
@@ -188,16 +176,6 @@ impl FontManager {
         let font = self.fonts.get(&handle.id)
             .ok_or_else(|| FontError::NotFound(format!("Font {} not found", handle.id)))?;
         Ok(layout::measure_text(font, text, font_size))
-    }
-
-    /// Clear the glyph cache to free memory.
-    pub fn clear_cache(&mut self) {
-        self.glyph_cache.clear();
-    }
-
-    /// Get cache statistics.
-    pub fn cache_stats(&self) -> (usize, usize) {
-        (self.fonts.len(), self.glyph_cache.len())
     }
 }
 

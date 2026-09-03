@@ -388,15 +388,6 @@ impl World {
         self.entity_generations.get(entity_id).copied()
     }
 
-    /// Check if an entity reference is still valid
-    pub fn is_entity_reference_valid(&self, reference: &crate::generation::EntityReference) -> bool {
-        if let Some(entity) = self.entities.get(&EntityId::with_generation(reference.id(), reference.generation())) {
-            entity.is_active() && entity.matches_reference(reference)
-        } else {
-            false
-        }
-    }
-
     /// Query for entities with specific component types.
     ///
     /// Returns a vector of entity IDs that have all required component types.
@@ -499,11 +490,6 @@ impl World {
     /// Read all events of type `E` emitted since the last flush.
     pub fn read_events<E: Send + Sync + 'static>(&self) -> &[E] {
         self.events.read::<E>()
-    }
-
-    /// Check if there are any pending events of type `E`.
-    pub fn has_events<E: Send + Sync + 'static>(&self) -> bool {
-        self.events.has_events::<E>()
     }
 
     /// Clear all event queues. Call at the end of each frame.

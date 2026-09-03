@@ -39,10 +39,10 @@ mod render;
 #[cfg(target_arch = "wasm32")]
 mod web;
 
-use crate::{GameLoopManager, UIManager};
+use crate::GameLoopManager;
 use crate::game_config::GameConfig;
 use crate::ui_integration::render_ui_commands;
-use ui::DrawCommand;
+use ui::{DrawCommand, UIContext};
 use crate::contexts::{GameContext, RenderContext};
 use crate::assets::{AssetConfig, AssetManager};
 use crate::achievements::AchievementManager;
@@ -185,7 +185,6 @@ pub fn run_game<G: Game>(game: G, config: GameConfig) -> Result<(), Box<dyn std:
 /// - `AssetManager`: Texture and asset loading
 /// - `AudioManager`: Sound playback
 /// - `GameLoopManager`: Frame timing and delta calculation
-/// - `UIManager`: UI lifecycle and draw command collection
 struct GameRunner<G: Game> {
     /// The user's game implementation
     game: G,
@@ -210,8 +209,8 @@ struct GameRunner<G: Game> {
     /// True while the last dirty-triggered input-settings save failed —
     /// gates the warning to once per failure streak (retries stay silent).
     input_save_failing: bool,
-    /// UI management
-    ui_manager: UIManager,
+    /// UI context and widget management
+    ui: UIContext,
     /// Game loop timing and frame management
     game_loop_manager: GameLoopManager,
     /// Cached glyph textures for text rendering
@@ -323,7 +322,7 @@ impl<G: Game> GameRunner<G> {
             gamepad_backend: crate::gamepad_backend::GamepadBackend::new_or_disabled(),
             player_input,
             input_save_failing: false,
-            ui_manager: UIManager::new(),
+            ui: UIContext::new(),
             game_loop_manager,
             glyph_textures: GlyphTextureCache::new(),
             #[cfg(target_arch = "wasm32")]
@@ -444,7 +443,7 @@ impl<G: Game> GameRunner<G> {
 
     /// Begin UI frame and process input
     fn update_ui_begin(&mut self, window_size: Vec2, delta_time: f32) {
-        self.ui_manager.begin_frame(&self.input, window_size, delta_time);
+        self.ui.begin_frame_dt(&self.input, window_size, delta_time);
     }
 
     /// Initialize game on first frame, then update game logic.
@@ -464,7 +463,7 @@ impl<G: Game> GameRunner<G> {
             world: &mut self.scene.world,
             assets: asset_manager,
             audio: &mut self.audio_manager,
-            ui: self.ui_manager.ui_context(),
+            ui: &mut self.ui,
             delta_time,
             window_size,
             chaos_mode: self.config.chaos_mode,
@@ -504,7 +503,8 @@ impl<G: Game> GameRunner<G> {
 
     /// End UI frame and return draw commands
     fn update_ui_end(&mut self) -> Vec<DrawCommand> {
-        self.ui_manager.end_frame()
+        self.ui.end_frame();
+        self.ui.draw_list().commands().to_vec()
     }
 
     /// Clear input state for next frame

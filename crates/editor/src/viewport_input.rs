@@ -106,14 +106,6 @@ impl ViewportInputHandler {
         }
     }
 
-    /// Create with custom configuration.
-    pub fn with_config(config: ViewportInputConfig) -> Self {
-        Self {
-            config,
-            state: ViewportInputInternalState::default(),
-        }
-    }
-
     /// Handle input and update viewport camera.
     ///
     /// Returns information about the input for other systems (picking, etc).
@@ -302,21 +294,11 @@ impl ViewportInputHandler {
         self.state.panning
     }
 
-    /// Check if selection rectangle is active.
-    pub fn is_selecting(&self) -> bool {
-        self.state.selection_active
-    }
-
     /// Whether ANY marquee gesture is in flight — an active rect OR a
     /// pressed-but-under-threshold press. Escape uses this: cancelling a
     /// pending press must suppress the click it would otherwise become.
     pub fn has_pending_marquee(&self) -> bool {
         self.state.selection_start.is_some()
-    }
-
-    /// Reset all input state.
-    pub fn reset(&mut self) {
-        self.state = ViewportInputInternalState::default();
     }
 }
 
@@ -423,7 +405,6 @@ mod tests {
         handler.handle_input(&mut viewport, &mouse_state(Vec2::ZERO, true), &mapping, &input, true);
         let live = handler.handle_input(&mut viewport, &mouse_state(Vec2::new(100.0, 80.0), true), &mapping, &input, true);
         assert_eq!(live.marquee_active, Some((Vec2::ZERO, Vec2::new(100.0, 80.0))));
-        assert!(handler.is_selecting());
         let released = handler.handle_input(&mut viewport, &mouse_state(Vec2::new(100.0, 80.0), false), &mapping, &input, true);
         assert_eq!(released.marquee_released, Some((Vec2::ZERO, Vec2::new(100.0, 80.0))));
         assert!(!released.clicked, "a drag is not a click");
@@ -445,16 +426,13 @@ mod tests {
 
         handler.handle_input(&mut viewport, &mouse_state(Vec2::ZERO, true), &mapping, &input, true);
         handler.handle_input(&mut viewport, &mouse_state(Vec2::new(100.0, 100.0), true), &mapping, &input, true);
-        assert!(handler.is_selecting());
 
         // Escape
         handler.cancel_marquee();
-        assert!(!handler.is_selecting());
 
         // Still holding: the cancelled gesture must not re-arm a fresh rect
         let held = handler.handle_input(&mut viewport, &mouse_state(Vec2::new(150.0, 150.0), true), &mapping, &input, true);
         assert_eq!(held.marquee_active, None);
-        assert!(!handler.is_selecting());
 
         // Release: nothing selected, nothing clicked
         let released = handler.handle_input(&mut viewport, &mouse_state(Vec2::new(150.0, 150.0), false), &mapping, &input, true);
