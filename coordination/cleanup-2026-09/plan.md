@@ -495,25 +495,249 @@ tests, `editor_game/{api_tests,shortcuts_tests,scene_io_tests,play_session_tests
 headless `--api` transcript against `../games/pong` exercising create, set (a scale of 0 must
 come back 0.01), add, remove, undo and save to a path under `target/`, pasted into the report.
 
-## Batch 7 — DRY in the editor UI (~400 removed, ~200 added)
+## Batch 7 — DRY in the editor UI (~400 removed, ~200 added; this section is the whole spec)
 
-- `EditResult::assign(slot, hint, name)` replaces the 82 identical writeback blocks across
-  `component_editors.rs`, `behavior_editor.rs`, `ui_component_editors.rs`,
-  `component_editors/grid_backdrop.rs`.
-- `EditableInspector::next_field()`/`advance()` replace the ten repeated preambles; one
-  `remove_button`; `InspectorFrame` context struct replaces the long argument lists (the last
-  three `#[allow(too_many_arguments)]` go).
-- `panel_renderer/add_component_popup.rs`: one walk both renders and measures;
-  `categorized_components()` computed once per frame.
-- Theme aliases removed (`bg_*` → `surface_N`, `pause_yellow` → `warn_yellow`, `inspector_*`
-  → base tokens); the surface-ladder guard tests are the safety net.
-- The seven `8.0` and four `20.0` route through `layout::PADDING`/`LINE_HEIGHT`; `rect_border`
-  replaces four hand-drawn lines; `render_node` loses its duplicate recursion;
-  `draw_world_segments` serves the three overlays; `EditableFieldStyle` borrowed not cloned per
-  component; `DockPanel.bounds`, `ViewportInputHandler.config`, `GridRenderer.config` private.
+Re-verified against the tree on Sep 3 2026 after batch 6 (`b25eeb7`); every line number below is
+from that tree. No `design-structure.md` section covers this batch — the target shapes are here,
+and where this section and `audit-editor.md` or `plan-sequence.md` disagree, this section wins
+(the audit counted 82 plain writeback blocks and ten preambles; the tree has 98 `Changed` sites
+and twelve field methods).
 
-Extra verification: editor suites; an `editor_demo` visual pass (a wrong theme token is
-invisible to tests) — Jesse's check.
+Scope: `crates/editor` and `crates/editor_integration` only. No public item of a systems crate
+changes, so the games and wasm gates are not required — say so in the report rather than skip
+silently, and run `scripts/check_games.sh` anyway if the diff strays into another crate root
+(the games compile `editor_integration` under `--features editor`, through
+`run_game_with_editor`, which this batch does not touch).
+
+Items, in order of work; `cargo test -p editor` after each, `cargo test -p editor_integration`
+after 7.3, 7.4, 7.6 and 7.7.
+
+### 7.1 `EditResult::assign`
+
+`crates/editor/src/field_style.rs` (`EditResult<T>` at :187) gains one method:
+
+```rust
+/// Write a changed value into `slot` and record `name` as the field hint;
+/// an unchanged result leaves both alone.
+pub fn assign(self, slot: &mut T, hint: &mut Option<&'static str>, name: &'static str)
+```
+
+It replaces every plain block of the shape `if let EditResult::Changed(v) = inspector.<kind>(…)
+{ new.<field> = v; hint = Some("<field>"); }` in `component_editors.rs` (38 `Changed` sites),
+`behavior_editor.rs` (28), `ui_component_editors.rs` (17) and `component_editors/grid_backdrop.rs`
+(15) — about 80 of the 98. Blocks that transform the value before storing it (the scale floor at
+`component_editors.rs:144-149`, `normalized_cols`/`clamp` at `grid_backdrop.rs:54-61`, every
+`cycle` index → enum, `round() as u32/i32`), branch on it, or return early (`edit_name`, :93)
+keep their `if let`. `script_editor.rs` and `composite_rows.rs` are out of scope: their `Changed`
+arms build `ScriptValue`s and composite values, not slot-plus-hint. A method, not a macro. Test:
+one contract test in `field_style.rs` — `Changed` writes the slot and the hint, and a later
+`Unchanged` on another field leaves the first field's hint standing (the hint is "last changed
+field wins"; an `Unchanged` that cleared it would break undo merging).
+
+### 7.2 `EditableInspector` — `next_field`/`advance`, one remove button, borrowed style
+
+`crates/editor/src/editable_inspector.rs` (530 lines):
+
+- Twelve methods repeat `let layout = self.row(); … self.field_index += 1; self.current_y +=
+  self.style.row_height;`, and ten of them also build `let id = FieldId::new(self.component_index,
+  self.field_index, 0)` first — `texture` :273, `f32` :299, `f32_hard` :318, `angle` :332, `bool`
+  :361, `vec2` :371, `action_button` :399, `string_edit` :417, `cycle` :432 (two ids, subfields 0
+  and 1), `color` :490. `u32` (:381) and `string` (:389) are read-only displays with no widget id.
+  Add private `fn next_field(&mut self) -> (FieldId, RowLayout)` (the subfield-0 id and the row
+  layout; does not bump) and `fn advance(&mut self, height: f32)` (bumps `field_index`, adds
+  `height` to `current_y`). Each id-bearing method becomes `let (id, layout) = self.next_field();
+  … self.advance(self.style.row_height)`; `u32` and `string` keep `self.row()` and use only
+  `advance` (an unused `id` binding would be a warning, and the gates deny warnings); `color`
+  advances by its own block height; `cycle` derives its subfield-1 id with `FieldId::new(..,
+  self.field_index, 1)` before advancing. Pin: the widget-id tests in
+  `component_editors/tests.rs` and `fonts.rs` run unchanged.
+- One remove button. `header_with_remove(type_name, removable: bool)` (:235) has exactly two
+  callers, both passing `true` (`stored_component/mod.rs:96` and `:534`), and draws the same 18px
+  [X] at `remove_button_x` that `component_editors::remove_button` (`component_editors.rs:430`)
+  draws. Delete the bool and the duplicated drawing: `pub fn header_with_remove(&mut self,
+  type_name: &str) -> bool` is `let header_y = self.current_y; self.header(type_name);
+  remove_button(self.ui, self.component_index, self.x, header_y, self.width)`. `remove_button`
+  stays `pub(crate)` in `component_editors.rs` and stays the one implementation — the registry's
+  `@removable … edit` arm (`stored_component/mod.rs:75`) keeps calling it directly, because there
+  the editor fn drew the header. (The audit's bool → enum item is moot: the parameter is gone.)
+- Borrowed style. `EditableInspector<'a>` holds `style: &'a EditableFieldStyle`; `new(ui, style,
+  x, y)` takes it; `with_style` (:208) is deleted — its callers are the three registry arms
+  (`stored_component/mod.rs:50`, `:71`, `:95`), the dynamic block (`:533`), all
+  `.with_style($field_style.clone())`, and the `fonts.rs:165` test. Every test that calls
+  `EditableInspector::new` — `script_editor.rs:239`, `grid_backdrop.rs:146`,
+  `ui_component_editors.rs:181`, `fonts.rs:165`, and the six fixtures in
+  `component_editors/tests.rs` (:69, :77, :103, :115, :143, :173) — binds `let style =
+  EditableFieldStyle::default();` outside the frame closure and passes `&style`. Not the `Copy`
+  alternative: a by-value 25-field struct is the clone in another costume.
+
+### 7.3 `InspectorFrame` — the last three `#[allow(clippy::too_many_arguments)]` go
+
+- `texture_field.rs:31-41` `edit_texture_field` has eight parameters and its `_id: FieldId` is
+  unused. Delete the parameter and its two arguments: `EditableInspector::texture` stops passing the
+  id `next_field` hands it (the id has no consumer once the parameter is gone; `texture` keeps
+  `next_field` for the layout and the field-index bump), and the test at `texture_field.rs:118`
+  drops its `FieldId::new(0, 0, 0)`. Seven
+  parameters; the allow goes.
+- `stored_component/mod.rs:295` `edit_all_components` (11 parameters) and `:511`
+  `render_dynamic_edit_blocks` (11). Add to `editable_inspector.rs`, re-exported from `lib.rs`
+  beside `EditableInspector`:
+
+  ```rust
+  /// One inspector render pass: the UI context, the two styles and the
+  /// content column every component block shares. The host builds it once
+  /// per frame; the registry-generated editors thread it through.
+  pub struct InspectorFrame<'a> {
+      pub ui: &'a mut UIContext,
+      pub inspect_style: &'a InspectorStyle,
+      pub field_style: &'a EditableFieldStyle,
+      /// Left edge of the content column.
+      pub x: f32,
+      /// Width of the content column.
+      pub width: f32,
+      /// Vertical gap before each component block.
+      pub section_gap: f32,
+  }
+  ```
+
+  `edit_all_components(frame: &mut InspectorFrame<'_>, world: &mut World, entity: EntityId,
+  history: &mut CommandHistory, y: f32, extras: &mut InspectorExtras<'_>) -> (f32, usize)` and
+  `render_dynamic_edit_blocks(frame: &mut InspectorFrame<'_>, world: &World, entity: EntityId,
+  y: f32, component_index: &mut usize, removals: &mut Vec<String>) -> f32`. The
+  `registry_edit_block!` arms (`:40-108`) take `$frame` in place of `$ui, $x, $width,
+  $inspect_style, $field_style, $gap` and read its fields (`EditableInspector::new(frame.ui,
+  frame.field_style, frame.x, $y)`; read `inspector.y()` before `apply_component_edit` runs, as
+  today, so the `frame.ui` borrow has ended). The one host caller is
+  `editor_integration/src/panel_renderer/inspector.rs:147`. `inspect_all_components` (:345,
+  seven parameters, no allow) is untouched. Both allows deleted; no new one anywhere — the
+  standing `arc_with_non_send_sync` in `renderer.rs:216` is the documented exception and is not
+  in this batch. `stored_component/mod.rs` is at 582 lines: the macro-argument cut must leave it
+  ≤ 600; if it does not, `render_dynamic_edit_blocks` moves to `stored_component/dynamic.rs`
+  (batch 9 plans that move; doing it here is allowed only if the ceiling forces it, and the
+  report says so).
+
+### 7.4 `panel_renderer/add_component_popup.rs` — one walk renders and measures
+
+`editor_integration/src/panel_renderer/inspector.rs:186-297` (the [+ Add Component] button and
+the popup), the height helpers `dynamic_section_height` (:301) and `categorized_popup_height`
+(:310), `popup_anchor_y` (:326) and its test move to a new `panel_renderer/add_component_popup.rs`:
+
+```rust
+/// One row of the popup, in draw order.
+enum PopupRow { Heading(&'static str), Typed(ComponentKind), Game(String) }
+/// The rows the popup shows for this entity: each category heading followed
+/// by its addable kinds, then a "Game" heading and the addable dynamic
+/// components. Built once per frame — `categorized_components()` allocates,
+/// and this is its only call.
+fn popup_rows(available: &[ComponentKind], available_dynamic: &[String]) -> Vec<PopupRow>
+/// Height of the popup for these rows: top padding plus heading and button rows.
+fn popup_height(rows: &[PopupRow]) -> f32
+pub(super) fn render_add_component_section(
+    editor: &mut EditorContext, ctx: &mut GameContext, entity_id: EntityId,
+    command_history: &mut CommandHistory, content_x: f32, y: f32, component_index: usize,
+) -> f32
+```
+
+The render loop walks `rows` once; `popup_height` walks the same Vec — no second
+`categorized_components()` call, no second filter pass. Heading rows advance 18, button rows 24; the
+height budgets 8 of vertical padding, of which the first row starts 4 below the popup top
+(`popup_y = popup_y0 + 4.0` today, :222) and 4 stay below the last row — keep that split, it is
+not "top padding 8"; `content_x + 8.0` is `layout::PADDING`. A category heading with no addable kind is omitted, as today, and the "Game"
+heading appears only when a dynamic component is addable. `WidgetSlot::PopupRow(index)` stays one
+counter across both sections, so every button keeps its id. Pin: `popup_rows` is pure — test
+that an empty category yields no heading, that "Game" appears only with an addable dynamic
+component, and that `popup_height` equals `8 + 18 × headings + 24 × buttons` for a fixture with
+both kinds of row (compute the expected number from the row counts, never by calling the deleted
+functions). `inspector.rs` shrinks to the component blocks and the warning plumbing.
+
+### 7.5 Theme aliases removed
+
+`crates/editor/src/theme/mod.rs`: delete `bg_primary` (:31), `bg_viewport` (:33), `bg_input`
+(:35), `bg_header` (:38), `pause_yellow` (:112), `inspector_label` (:148), `inspector_value`
+(:150), `inspector_header` (:152), their initialisers (:206-209, :261, :285-287) and their doc
+comments. Every value is already a base token: `bg_primary = surface_1`, `bg_viewport =
+surface_0`, `bg_input = surface_3`, `bg_header = surface_2`, `pause_yellow = warn_yellow =
+0xffcc00`, `inspector_label = text_secondary = 0xcccccc`, `inspector_value = text_primary =
+WHITE`, `inspector_header = accent_cyan = 0x00d9ff`. The call sites, all of them:
+`dock/render.rs:99` (bg_primary → surface_1), `:109` and `:219` (bg_header → surface_2),
+`menu/mod.rs:318` (bg_header → surface_2), `panel_renderer/asset_browser.rs:117` (bg_input →
+surface_3), and inside `theme/mod.rs`: `inspector_style()` (:320-322) and
+`editable_field_style()` (:330-336) read the three inspector tokens and `bg_input`; `ui_theme()`
+reads `bg_input` (:353-355, :366, :373-374) and `bg_primary` (:358, :363). `bg_viewport` and
+`pause_yellow` have no reader (dead tokens). `theme/tests.rs:19` drops the
+`("bg_primary/bg_header", …)` ladder entry — it duplicates the `surface_1/2` entry above it.
+Show the grep for each of the eight names across `crates src examples` in the report.
+`docs/EDITOR_UX_AUDIT.md` names the old tokens as history and is left alone;
+`crates/editor/CLAUDE.md:26` and `:82` describe the converters and stay true — check them.
+
+### 7.6 Layout constants, `rect_border`, `render_node`, `draw_world_line`
+
+- `layout::PADDING` (8.0) replaces `let padding = 8.0;` at `panel_renderer/mod.rs:19`, `:39`,
+  `panel_renderer/inspector.rs:24`, `status_bar.rs:124`, the `PADDING` const at
+  `panel_renderer/asset_browser.rs:25`, and the `padding: 8.0` defaults at `inspector.rs:31`
+  (`InspectorStyle`) and `field_style.rs:144` (`EditableFieldStyle`). `layout::LINE_HEIGHT`
+  (20.0) replaces `let line_height = 20.0;` at `panel_renderer/inspector.rs:23`, `:100`, `:117`
+  and the `line_height: 20.0` default at `inspector.rs:32`. `layout` is already `pub mod` in
+  `editor/src/lib.rs:76`. Nothing else in `layout.rs` changes; other `8.0`/`20.0` literals (menu
+  dropdown padding, test geometry, ranges) are not paddings or line heights and stay.
+- `panel_renderer/mod.rs:124-147`: the four `ctx.ui.line` calls become one
+  `ctx.ui.rect_border(bounds, border_color, outline_width, 0.0)`
+  (`UIContext::rect_border(bounds, color, width, corner_radius)`,
+  `crates/ui/src/context/mod.rs:298`; the crate already uses it at `viewport_interaction.rs:197`).
+  The visual pass confirms the play-state border still reads at both widths.
+- `hierarchy/mod.rs:289` `render_node`: the off-screen early return (:300-311) repeats the child
+  loop at :400-408. Restructure so the row drawing (:313-398) runs only when the row is on
+  screen and ONE child loop follows: `if row_visible { …draw… } let mut next_y = y + ROW_HEIGHT;
+  if self.is_expanded(entity) { for child in children … }`. `visible_order.push` stays
+  unconditional (it feeds keyboard navigation and Shift range select). Pin: `hierarchy/tests.rs`
+  runs unchanged. (Batch 9 splits the function into row and children; not here.)
+- New `crates/editor/src/world_lines.rs`, re-exported from `lib.rs`:
+  `pub fn draw_world_line(ui: &mut UIContext, viewport: &SceneViewport, start: Vec2, end: Vec2,
+  color: Color, width: f32)` maps both ends through `viewport.world_to_screen`, skips the line
+  when either end is non-finite (today only the grid guards this, `grid.rs:334-337`; the reason
+  moves with the guard), and calls `ui.line`; `pub fn draw_world_segments(ui, viewport,
+  segments: impl IntoIterator<Item = (Vec2, Vec2)>, color: Color, width: f32)` loops over it.
+  `grid.rs:329-345` calls `draw_world_line` per segment (its colour and width vary per segment);
+  `collider_overlay.rs:167-172` and `selection_outline.rs:138-153` (`draw_outline`) become
+  `draw_world_segments` calls. The three `push_clip_rect`/`pop_clip_rect` pairs stay where they
+  are — each renderer owns its clip. Pin: the draw-command tests in `grid.rs`,
+  `collider_overlay.rs` and `selection_outline.rs` run unchanged; add one test in
+  `world_lines.rs` that a non-finite endpoint emits no line draw command.
+
+### 7.7 Private fields
+
+- `dock/mod.rs:81` `DockPanel.bounds` → private. Written only by `DockArea::layout` (:270-313),
+  read by `dock/render.rs` (a child module, so no accessor is needed) and by `content_bounds()`
+  / `effective_size()`. Grep for readers outside `dock/`; add `pub fn bounds(&self) -> Rect`
+  only if one exists.
+- `viewport_input.rs:89` `ViewportInputHandler.config` → private. No reader or writer outside
+  the file (`:389` is a same-file test). No setter.
+- `grid.rs:118` `GridRenderer.config` → private. `set_grid_size` (:160, clamps ≥ 1.0) and
+  `grid_size` exist; `render_grid_overlay` (:343) reads `config.width_for` in the same file. The
+  one outside writer is the test `editor_integration/src/editor_game/viewport_interaction_tests.rs:148-160`
+  (`test_zero_grid_size_never_poisons_positions`), which exists only to reach the guard in
+  `context/mod.rs:297-306` `snap_to_grid_position`. With the field private the setter's clamp is
+  the guarantee: delete the guard (`if grid_size <= 0.0 { return pos; }` and the doc sentence
+  about the public field) and that test — the invariant stays pinned by
+  `grid.rs:359` `test_grid_size_floors_at_one_pixel`. Say so in the report with the grep for
+  `grid.config`.
+
+### Deliberately not in this batch
+
+`DockPanel.header_height` versus `HEADER_HEIGHT` (audit 3.9); the four-times-per-frame
+`build_pickable_entities` (batch 9's `PickableCache`); splitting `edit_behavior`,
+`render_inspector_editable` and `render_node` (batch 9); the `GridColors`/`GizmoPalette`
+default duplication (not in the plan); `menu/mod.rs`'s own dropdown padding constant.
+
+Gates: the standard set (test, clippy, tag grep, ≤ 600 lines, no `#[allow]`, no `unwrap()`
+outside tests); per-crate tests per item as above; the games and wasm gates are not required —
+assert it with `git diff --cached --name-only | grep -E "^crates/(ecs|physics|input|common|renderer|engine_core|audio)/"`
+printing nothing. Guides in the same change: `crates/editor/CLAUDE.md` (file map gains
+`world_lines.rs`; the `editable_inspector.rs` line names `InspectorFrame`; `:37` `layout.rs`
+says what it now governs), `crates/editor_integration/CLAUDE.md:37` (`panel_renderer/` gains
+`add_component_popup.rs`), root `CLAUDE.md` § SSOT "Inspector writeback / undo merge" row (names
+`apply_component_edit` and the registry — still true; verify). Extra verification: an
+`editor_demo` visual pass after the commit — Jesse's check, because a wrong theme token or a
+border stroke on the wrong edge is invisible to tests.
 
 ## Batch 8 — SRP splits, engine side (~900 lines moved; §A)
 
