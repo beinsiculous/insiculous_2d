@@ -1,4 +1,4 @@
-//! The #45 ship point, proven headless: an agent drives the full authoring
+//! The command API's ship point, proven headless: an agent drives the full authoring
 //! loop — query → create → mutate → save — with no window, then a second
 //! session reloads the file and reads the result back.
 
@@ -59,7 +59,7 @@ fn test_full_authoring_loop_survives_a_reload() -> std::io::Result<()> {
         responses[0]["data"]["path"]
             .as_str()
             .is_some_and(|p| p.ends_with("ship_point.ron")),
-        "the opened scene's path is reported (the #53 seam): {}",
+        "the opened scene's path is reported (the first-scene seam): {}",
         responses[0]
     );
     assert_eq!(responses[1]["ok"], false, "unknown verb is one error line");
@@ -88,7 +88,7 @@ fn test_unreadable_startup_scene_fails_fast() {
 
 #[test]
 fn test_unissued_texture_handle_is_refused_and_never_reaches_the_file() -> std::io::Result<()> {
-    // #66: only handles the session's resolver issued may be written. The
+    // Only handles the session's resolver issued may be written. The
     // refusal is an ordinary error line; the session continues and the
     // built-in #white (handle 0) still saves.
     let dir = tempfile::tempdir()?;

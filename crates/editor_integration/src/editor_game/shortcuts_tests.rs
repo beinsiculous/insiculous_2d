@@ -30,10 +30,10 @@ fn test_held_arrow_merges_into_one_undo_entry_sealed_on_release() {
     game.nudge_selection(&mut world, Vec2::new(1.0, 0.0), false);
     assert_eq!(position(&world, a), Vec2::new(4.0, 10.0));
 
-    // Undo #1: only the second hold reverts.
+    // First undo: only the second hold reverts.
     assert!(game.command_history.undo(&mut world));
     assert_eq!(position(&world, a), Vec2::new(3.0, 10.0));
-    // Undo #2: the whole first hold reverts in one step.
+    // Second undo: the whole first hold reverts in one step.
     assert!(game.command_history.undo(&mut world));
     assert_eq!(position(&world, a), Vec2::ZERO);
     assert!(!game.command_history.can_undo(), "exactly two entries for two holds");

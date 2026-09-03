@@ -450,7 +450,7 @@ mod range_tests {
 
     #[test]
     fn test_editor_ranges_admit_every_value_rapier_accepts() {
-        // The soft ranges only steer the scrub step and the #55 warning; a
+        // The soft ranges only steer the scrub step and the soft-range warning; a
         // range that stops short of a legal value would warn on scenes that
         // are fine (friction 2.0, damping above 1) or let a scrub drive a
         // collider extent to zero, which rapier rejects.

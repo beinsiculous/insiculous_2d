@@ -146,7 +146,7 @@ impl Default for EditableFieldStyle {
 }
 
 /// A field renderer's report: the edit result plus any warnings the host
-/// should surface (a typed value outside its soft range, #55). Renderers
+/// should surface (a typed value outside its soft range). Renderers
 /// stay pure widget code; [`crate::EditableInspector`] routes the warnings.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldEdit<T> {

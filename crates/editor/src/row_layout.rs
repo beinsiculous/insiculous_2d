@@ -17,7 +17,7 @@ const BADGE_GAP: f32 = 4.0;
 /// Minimum width an input box may shrink to on a narrow panel. Below this
 /// an input is unusable, so degenerate panel widths accept a bounded
 /// overdraw of at most this many pixels per input instead (panel content is
-/// culled at the dock edge until #41 lands real scissoring).
+/// culled at the dock edge until real scissoring lands).
 const MIN_INPUT_WIDTH: f32 = 24.0;
 
 /// Resolved layout for one positioned field row.

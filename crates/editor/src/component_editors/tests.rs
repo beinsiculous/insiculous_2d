@@ -154,7 +154,7 @@ fn test_pending_string_edit_commits_before_variant_cycle_applies() {
 
 #[test]
 fn test_typed_value_outside_soft_range_is_accepted_and_warned() {
-    // #55: soft ranges accept the typed value; the inspector reports it so
+    // Soft ranges accept the typed value; the inspector reports it so
     // the host can warn on the status bar instead of silently clamping. A
     // value inside the range, or an angle that WRAPS into range (270° →
     // −90°), earns no warning.

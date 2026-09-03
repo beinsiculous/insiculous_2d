@@ -217,7 +217,7 @@ mod tests {
 
     #[test]
     fn test_inspector_heading_names_the_primary_and_counts_the_rest_of_a_multi_selection() {
-        // #51: the inspector heading is how the user tells WHICH of a
+        // The inspector heading is how the user tells WHICH of a
         // multi-selection they are editing.
         let mut selection = Selection::new();
         assert_eq!(selection.inspector_heading(), None, "nothing selected, no heading");

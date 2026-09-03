@@ -165,7 +165,7 @@ fn test_set_rejects_non_finite_numbers() {
 
 #[test]
 fn test_unissued_texture_handle_is_refused_at_set_and_add() -> Result<(), ApiError> {
-    // #66: a handle the resolver never issued would save as `#texture_999`
+    // A handle the resolver never issued would save as `#texture_999`
     // and only fail on the next load — refuse it at the write instead.
     let mut rig = Rig::new();
     let e = rig.spawn_player();

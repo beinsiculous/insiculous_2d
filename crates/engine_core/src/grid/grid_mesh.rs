@@ -180,7 +180,7 @@ impl GridMesh {
 
     /// Move the whole grid by `delta` — rest and current positions alike,
     /// velocities untouched — so placement changes never reset the
-    /// simulation (#46: a backdrop following a scrolling camera).
+    /// simulation (a backdrop following a scrolling camera).
     pub fn translate(&mut self, delta: Vec2) {
         self.origin += delta;
         for node in &mut self.nodes {
@@ -409,7 +409,7 @@ mod tests {
 
     #[test]
     fn translate_shifts_rest_and_position_but_not_velocity() {
-        // #46: a backdrop following a scrolling camera moves without
+        // A backdrop following a scrolling camera moves without
         // resetting its simulation — the ripple travels with it.
         let mut g = GridMesh::new(6, 5, 10.0, Vec2::ZERO);
         g.apply_impulse(&GridImpulse::Point {

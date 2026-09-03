@@ -15,7 +15,7 @@ use editor_integration::{find_first_scene, run_game_with_editor_opts, EditorRunO
 
 /// Standalone editor application — a minimal `Game` that provides physics
 /// preview during play mode. All real editing (INCLUDING the initial scene
-/// load — #53) is handled by `EditorGame` wrapping this; scene loading here
+/// load) is handled by `EditorGame` wrapping this; scene loading here
 /// would bypass scene_path/physics/dirty tracking and silently break save.
 struct EditorApp {
     project_path: PathBuf,

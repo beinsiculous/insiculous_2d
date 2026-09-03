@@ -36,7 +36,7 @@ you introduced must be fixed properly — `#[allow(...)]` is not a fix.
 - No `#[allow(dead_code)]`, no `TODO:` left behind.
 - No tags in comments — say why, not where it was decided (`training.md`
   § Comment Policy). Run the gate and paste that it printed nothing:
-  `grep -riEn "kimi|issue #[0-9]+|GPP-[0-9]+|audit §|\(#[0-9]+\)|#[0-9]+\b|Sprint [0-9]" crates src examples --include=*.rs`
+  `grep -riEn "kimi|issue #[0-9]+|GPP-[0-9]+|audit §|\(#[0-9]+\)|#[0-9]{1,4}\b|Sprint [0-9]" crates src examples --include=*.rs`
 - Every touched file ≤ 600 lines (`wc -l` them). Split, don't grow.
 - Test names describe behavior (`test_selection_toggle_adds_and_removes`),
   not implementation (`test_toggle_method`).

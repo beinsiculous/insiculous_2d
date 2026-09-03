@@ -41,7 +41,7 @@ pub struct QueryCtx<'a> {
 
 /// How a request names an entity: by `Name` component (the stable,
 /// human-meaningful address) or by the session-local numeric id shown in
-/// the hierarchy/inspector (`#7` — `EntityId::value()`, NOT stable across
+/// the hierarchy/inspector (`#<id>` — `EntityId::value()`, NOT stable across
 /// sessions or Play/Stop).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EntityRef {

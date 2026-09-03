@@ -231,7 +231,7 @@ fn test_events_from_all_sub_steps_in_one_update_survive() {
 
 #[test]
 fn test_collider_size_is_absolute_pixels_and_ignores_transform_scale() {
-    // The #1 footgun in CLAUDE.md: a sprite scaled up via Transform2D.scale
+    // The first footgun in CLAUDE.md: a sprite scaled up via Transform2D.scale
     // keeps its authored collider size. A 20px box scaled ×10 would reach
     // the body 100px away if scale applied; it must not.
     let mut world = World::new();

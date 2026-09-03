@@ -196,7 +196,7 @@ fn test_cancel_restores_starts_and_pushes_no_undo_entry() {
 
 #[test]
 fn test_gizmo_drag_commit_and_cancel_seal_the_nudge_merge_window() {
-    // #56: mergeable commands on either side of a gizmo drag must never
+    // Mergeable commands on either side of a gizmo drag must never
     // collapse into one undo entry across it — commit AND cancel are
     // gesture boundaries.
     let mut game = editor_game();

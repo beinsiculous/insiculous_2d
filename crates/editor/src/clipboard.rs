@@ -53,7 +53,7 @@ pub fn capture_entity_tree(world: &World, root: EntityId) -> ClipboardEntity {
 
 /// Component type NAMES on `root`'s subtree that the editor registry does
 /// not know — these are silently absent from a capture. Callers surface a
-/// status-bar warning (warn, never block — the #22 policy).
+/// status-bar warning (warn, never block).
 pub fn uncaptured_component_names(world: &World, root: EntityId) -> Vec<&'static str> {
     let known: HashSet<TypeId> = registered_component_type_ids().into_iter().collect();
     let mut names: Vec<&'static str> = Vec::new();

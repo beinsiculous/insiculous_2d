@@ -71,7 +71,7 @@ mod tests {
 
     #[test]
     fn test_first_scene_is_the_byte_wise_first_ron_file_whatever_the_dir_order() -> std::io::Result<()> {
-        // #53: which scene opens on launch must not depend on `read_dir`.
+        // Which scene opens on launch must not depend on `read_dir`.
         let dir = tempfile::tempdir()?;
         std::fs::write(dir.path().join("zeta.ron"), "x")?;
         std::fs::write(dir.path().join("alpha.RON"), "x")?;

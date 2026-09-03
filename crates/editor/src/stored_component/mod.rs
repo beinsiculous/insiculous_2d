@@ -443,7 +443,7 @@ macro_rules! editor_component_registry {
         /// `describe` query. A component that fails to serialize contributes
         /// an error string so the result stays total. Hidden registry
         /// entries (GlobalTransform2D, BehaviorState) are internal and not
-        /// emitted. `Name` IS a registry component (editable since #32) and
+        /// emitted. `Name` IS a registry component (editable) and
         /// appears here; the `describe` query filters it out because the API
         /// surfaces the name as a top-level entity field instead.
         pub fn capture_all_values(

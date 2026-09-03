@@ -240,7 +240,7 @@ fn test_shift_click_range_runs_anchor_first_in_either_direction() -> Result<(), 
     Ok(())
 }
 
-/// #51: exactly the primary row gets the primary fill and the accent bar;
+/// Exactly the primary row gets the primary fill and the accent bar;
 /// the other selected rows get the secondary fill.
 #[test]
 fn test_primary_row_fill_differs_from_secondary_rows_and_carries_an_accent() -> Result<(), ecs::EcsError> {

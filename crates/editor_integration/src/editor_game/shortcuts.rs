@@ -252,7 +252,7 @@ impl<G: Game> EditorGame<G> {
     /// Execute one resolved editor action (Editing/Paused only — the caller
     /// has already peeled off play controls and the Playing state).
     ///
-    /// Guards: file-replacing actions rely on the #22 `in_play_session`
+    /// Guards: file-replacing actions rely on the `in_play_session`
     /// choke points (refused while Paused too); entity edits run while
     /// Paused by design (warn-don't-block); transform/existence-mutating
     /// actions are suppressed while a gizmo drag is live — a mid-drag nudge

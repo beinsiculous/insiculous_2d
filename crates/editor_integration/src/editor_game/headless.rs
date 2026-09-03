@@ -113,7 +113,7 @@ impl Game for NullGame {
 
 /// Run a blocking headless command-API session: optionally open a scene
 /// through the REAL editor load path (dry-run guard, physics settings,
-/// history reset — #53's seam), then answer one request line at a time
+/// history reset — the first-scene seam), then answer one request line at a time
 /// until EOF. Each response is one line of JSON, flushed immediately so a
 /// driving agent never blocks on buffering.
 ///

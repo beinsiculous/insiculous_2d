@@ -65,7 +65,7 @@ mod tests {
         assert_ne!(regular, mono, "regular and mono are different faces");
     }
 
-    /// #54 review F3: drawing in mono is not enough — the selection band
+    /// Drawing in mono is not enough — the selection band
     /// (and so the caret, which shares the prefix widths) must be measured
     /// with the mono advances, or the caret jitters against the glyphs.
     #[test]
@@ -106,7 +106,7 @@ mod tests {
         assert_eq!(band_widths, vec![mono_width], "the selection band spans the mono measurement");
     }
 
-    /// #54 review F2: a numeric font handle that no longer resolves must
+    /// A numeric font handle that no longer resolves must
     /// fall back to the default face, not downgrade the field to
     /// placeholders while a usable font is loaded.
     #[test]
@@ -128,7 +128,7 @@ mod tests {
         assert_eq!(font_ids, vec![regular.id], "the value is drawn from the default face");
     }
 
-    /// #54: numeric fields use the crate-shipped mono face. A float field
+    /// Numeric fields use the crate-shipped mono face. A float field
     /// told to use it rasterizes from that font and measures with its equal
     /// advances (caret and click placement follow monospace widths), and the
     /// inspector's composite rows propagate the style's numeric font to every

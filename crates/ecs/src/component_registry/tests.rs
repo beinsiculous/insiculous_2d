@@ -24,7 +24,7 @@ define_component! {
 
 #[test]
 fn test_insert_extract_remove_round_trip_on_a_world() -> Result<(), String> {
-    // The heart of #43: a component reaches a World and comes back out
+    // The heart of the dynamic tier: a component reaches a World and comes back out
     // through nothing but its registered name.
     let mut registry = ComponentRegistry::new();
     registry.register::<TestComponent>();

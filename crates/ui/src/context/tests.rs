@@ -153,7 +153,7 @@ fn test_float_input_and_text_input_resolve_a_stale_font_to_the_same_default_face
 
 #[test]
 fn test_float_input_with_an_unresolvable_font_still_draws_its_box_and_value() {
-    // #54: a stale handle must not panic or draw nothing — the field takes
+    // A stale handle must not panic or draw nothing — the field takes
     // the placeholder path a missing default font takes, box included.
     let mut ui = UIContext::new();
     ui.begin_frame(&input::InputHandler::new(), crate::test_support::WINDOW);

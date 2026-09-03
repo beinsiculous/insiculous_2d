@@ -20,7 +20,7 @@ use wasm_bindgen_futures::JsFuture;
 
 /// One-way latch: this page has been left (navigation away, tab close, or a
 /// back/forward-cache freeze). The frame loop treats it as fatal — issue
-/// #58: Firefox's bfcache RESTORES a frozen game page and our rAF loop
+/// Firefox's bfcache RESTORES a frozen game page and our rAF loop
 /// would resume against a WebGPU queue the (in-parent on Linux) wgpu may
 /// have dropped, and the first message to a dead queue id panics Firefox's
 /// MAIN process. Never resume a page the browser took away.

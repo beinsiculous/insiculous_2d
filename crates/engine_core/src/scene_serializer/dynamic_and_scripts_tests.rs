@@ -49,7 +49,7 @@ fn dynamic_types(world: &World) -> Vec<String> {
 
 #[test]
 fn dynamic_payload_survives_ron_round_trip() {
-    // The load-bearing risk of #43: serde_json::Value → RON → Value must
+    // The load-bearing risk of the dynamic tier: serde_json::Value → RON → Value must
     // preserve ints, floats, strings and nesting exactly — for a game type
     // and for the engine's own dynamic-tier audio components.
     ecs::register_components(|r| r.register::<SceneDynSpikeStats>());

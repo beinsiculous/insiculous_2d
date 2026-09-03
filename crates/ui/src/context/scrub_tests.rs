@@ -1,4 +1,4 @@
-//! Contract tests for the float-input numeric UX (#30, #55, #56): drag-scrub,
+//! Contract tests for the float-input numeric UX: drag-scrub,
 //! arrow nudge, soft vs hard ranges on typed commits, the invalid-buffer
 //! state, and the display suffix.
 
@@ -105,7 +105,7 @@ fn test_float_scrub_escape_restores_the_start_value() {
 
 #[test]
 fn test_ctrl_scrub_snaps_to_whole_steps_even_in_shift_fine_mode() {
-    // #56: Ctrl-held scrubbing lands on exact multiples of the step.
+    // Ctrl-held scrubbing lands on exact multiples of the step.
     let mut ui = UIContext::new();
     let mut input = input::InputHandler::new();
     input.keyboard_mut().handle_key_press(KeyCode::ControlLeft);
@@ -180,7 +180,7 @@ fn test_float_commit_of_an_unchanged_or_unparsable_buffer_reverts_and_never_flag
     let mut input = input::InputHandler::new();
     let soft = FloatFieldOpts::range(0.0, 10.0);
 
-    // #55 review F4: a value ALREADY outside the soft range (a scene
+    // A value ALREADY outside the soft range (a scene
     // author's 500 on a 0..=10 field) is not the user's doing — Enter
     // with nothing typed must stay quiet...
     let untouched = type_and_commit(&mut ui, &mut input, 500.0, soft, &[]);

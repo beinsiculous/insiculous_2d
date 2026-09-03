@@ -156,7 +156,7 @@ fn test_load_instantiate_failure_preserves_the_live_world() -> std::io::Result<(
 
 #[test]
 fn test_load_replaces_the_world_publishes_physics_and_save_keeps_the_block() -> std::io::Result<()> {
-    // #53: the old EditorApp bypass load left physics_settings None, so a
+    // The old EditorApp bypass load left physics_settings None, so a
     // save silently DROPPED the scene's gravity/scale. Through the real
     // load path the block round-trips, and the settings reach the world as
     // a resource for the host game's lazy physics preview.

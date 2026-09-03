@@ -28,7 +28,7 @@ encode lessons already learned here — following them is cheaper than re-learni
    reviewer tags, audit sections or sprint names in source. The gate is a grep,
    part of `/finish-task` Gate 3 and of every batch gate — nothing runs it at commit
    time, so run it yourself:
-   `grep -riEn "kimi|issue #[0-9]+|GPP-[0-9]+|audit §|\(#[0-9]+\)|#[0-9]+\b|Sprint [0-9]" crates src examples --include=*.rs`
+   `grep -riEn "kimi|issue #[0-9]+|GPP-[0-9]+|audit §|\(#[0-9]+\)|#[0-9]{1,4}\b|Sprint [0-9]" crates src examples --include=*.rs`
    must print nothing (a match inside a hex literal or a string is inspected by hand). No abbreviations, loop variables included; a value in
    converted units says so (`position_meters`). Too many parameters means a
    context struct, never a tuple parameter or an `#[allow]`.

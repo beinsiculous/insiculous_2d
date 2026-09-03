@@ -3,7 +3,7 @@
 //! Save / Discard / Cancel modal instead of a status-bar warning.
 //!
 //! State machine: [`request_scene_replace`] either proceeds immediately
-//! (clean world), refuses (play session — unchanged #22 behavior), or
+//! (clean world), refuses (play session — the standing refusal), or
 //! parks the action in `pending_scene_action`; the dialog renders EARLY in
 //! the frame (the drag-ghost pattern — its full-window blocking rect must
 //! land before the widgets it protects) and routes the choice.
@@ -38,7 +38,7 @@ impl PendingSceneAction {
 impl<G: Game> EditorGame<G> {
     /// Gate a scene-replacing action behind the dirty check: `true` means
     /// proceed NOW (clean world). A dirty world parks the action for the
-    /// confirm dialog; a play session refuses outright (#22 unchanged —
+    /// confirm dialog; a play session refuses outright (unchanged —
     /// the dialog is Editing-only, so it never needs to hide Save).
     pub(super) fn request_scene_replace(&mut self, action: PendingSceneAction) -> bool {
         if let Some(msg) = self.scene_replace_refusal() {

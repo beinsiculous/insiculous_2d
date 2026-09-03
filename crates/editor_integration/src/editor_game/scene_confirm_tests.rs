@@ -27,7 +27,7 @@ fn test_scene_replace_proceeds_when_clean_parks_when_dirty_and_refuses_mid_sessi
     editor.handle_play_action(PlayControlAction::Play, &mut world);
     assert_eq!(editor.pending_scene_action, None);
 
-    // Mid-session (Paused too): the #22 refusal wins — no dialog.
+    // Mid-session (Paused too): the play-session refusal wins — no dialog.
     editor.handle_play_action(PlayControlAction::Pause, &mut world);
     assert!(!editor.request_scene_replace(PendingSceneAction::NewScene));
     assert_eq!(editor.pending_scene_action, None);
