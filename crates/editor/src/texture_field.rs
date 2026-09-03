@@ -5,7 +5,7 @@ use ui::UIContext;
 
 use crate::drag_drop::{DragDropState, DragPayload};
 use crate::editable_inspector::draw_field_label;
-use crate::field_style::{EditResult, EditableFieldStyle, FieldId};
+use crate::field_style::{EditResult, EditableFieldStyle};
 use crate::row_layout::RowLayout;
 
 /// Context the integration layer threads into the editable inspector for
@@ -28,10 +28,8 @@ pub struct InspectorExtras<'a> {
 /// Render a texture slot: label + a boxed value showing the texture's path
 /// (falling back to the raw handle), acting as a drop target for
 /// [`DragPayload::Texture`]. Returns `Changed(handle)` when a drop lands.
-#[allow(clippy::too_many_arguments)]
 pub fn edit_texture_field(
     ui: &mut UIContext,
-    _id: FieldId,
     label: &str,
     handle: u32,
     drag_drop: &mut DragDropState,
@@ -116,7 +114,7 @@ mod tests {
             let result = frame(&mut ui, &input, |ui| {
                 let layout = field_row(Vec2::new(10.0, 10.0), 10.0, 400.0, &style);
                 edit_texture_field(
-                    ui, FieldId::new(0, 0, 0), "Texture", 1, &mut drag_drop, Some("old.png"), layout, &style,
+                    ui, "Texture", 1, &mut drag_drop, Some("old.png"), layout, &style,
                 )
             });
 

@@ -29,7 +29,7 @@ use crate::component_editors::{
 use crate::script_editor::edit_scripts;
 use crate::ui_component_editors::{edit_ui_button, edit_ui_label, edit_ui_panel};
 use crate::inspector::{inspect_component, InspectorStyle};
-use crate::{EditableFieldStyle, EditableInspector};
+use crate::{EditableInspector, InspectorFrame};
 
 /// Expands one component's editable-inspector block for
 /// [`edit_all_components`] — dispatched on the edit spec written in the
@@ -39,15 +39,13 @@ use crate::{EditableFieldStyle, EditableInspector};
 macro_rules! registry_edit_block {
     // Editable, NOT removable (builtin): the editor fn renders its own header.
     (@fixed $name:ident, $ty:ty, (edit $edit_fn:ident),
-     $ui:ident, $world:ident, $entity:ident, $history:ident, $x:ident, $width:ident, $y:ident,
-     $inspect_style:ident, $field_style:ident, $gap:ident, $idx:ident, $removals:ident,
-     $extras:ident) => {
+     $frame:ident, $world:ident, $entity:ident, $history:ident, $y:ident,
+     $idx:ident, $removals:ident, $extras:ident) => {
         if let Some(value) = $world.get::<$ty>($entity).cloned() {
-            $y += $gap;
-            let mut inspector = EditableInspector::new($ui, $x, $y)
+            $y += $frame.section_gap;
+            let mut inspector = EditableInspector::new($frame.ui, $frame.field_style, $frame.x, $y)
                 .with_component_index($idx)
-                .with_width($width)
-                .with_style($field_style.clone());
+                .with_width($frame.width);
             let edit = $edit_fn(&mut inspector, &value, &mut *$extras);
             $extras.warnings.append(&mut inspector.take_warnings());
             $y = inspector.y();
@@ -59,20 +57,18 @@ macro_rules! registry_edit_block {
     };
     // Editable + removable: overlay the [X] at the header the editor fn drew.
     (@removable $name:ident, $ty:ty, (edit $edit_fn:ident),
-     $ui:ident, $world:ident, $entity:ident, $history:ident, $x:ident, $width:ident, $y:ident,
-     $inspect_style:ident, $field_style:ident, $gap:ident, $idx:ident, $removals:ident,
-     $extras:ident) => {
+     $frame:ident, $world:ident, $entity:ident, $history:ident, $y:ident,
+     $idx:ident, $removals:ident, $extras:ident) => {
         if let Some(value) = $world.get::<$ty>($entity).cloned() {
-            $y += $gap;
+            $y += $frame.section_gap;
             let header_y = $y;
-            let mut inspector = EditableInspector::new($ui, $x, $y)
+            let mut inspector = EditableInspector::new($frame.ui, $frame.field_style, $frame.x, $y)
                 .with_component_index($idx)
-                .with_width($width)
-                .with_style($field_style.clone());
+                .with_width($frame.width);
             let edit = $edit_fn(&mut inspector, &value, &mut *$extras);
             $extras.warnings.append(&mut inspector.take_warnings());
             $y = inspector.y();
-            if crate::component_editors::remove_button($ui, $idx, $x, header_y, $width) {
+            if crate::component_editors::remove_button($frame.ui, $idx, $frame.x, header_y, $frame.width) {
                 $removals.push(ComponentKind::$name);
             }
             crate::component_editors::apply_component_edit($world, $entity, &value, edit, $history, |e, old, new, hint| {
@@ -84,21 +80,19 @@ macro_rules! registry_edit_block {
     // Read-only + removable: registry header with [X] + serde inspection
     // (components without a field editor yet).
     (@removable $name:ident, $ty:ty, (readonly),
-     $ui:ident, $world:ident, $entity:ident, $history:ident, $x:ident, $width:ident, $y:ident,
-     $inspect_style:ident, $field_style:ident, $gap:ident, $idx:ident, $removals:ident,
-     $extras:ident) => {
+     $frame:ident, $world:ident, $entity:ident, $history:ident, $y:ident,
+     $idx:ident, $removals:ident, $extras:ident) => {
         if $world.get::<$ty>($entity).is_some() {
-            $y += $gap;
-            let mut inspector = EditableInspector::new($ui, $x, $y)
+            $y += $frame.section_gap;
+            let mut inspector = EditableInspector::new($frame.ui, $frame.field_style, $frame.x, $y)
                 .with_component_index($idx)
-                .with_width($width)
-                .with_style($field_style.clone());
-            if inspector.header_with_remove(stringify!($name), true) {
+                .with_width($frame.width);
+            if inspector.header_with_remove(stringify!($name)) {
                 $removals.push(ComponentKind::$name);
             }
             $y = inspector.y();
             if let Some(value) = $world.get::<$ty>($entity) {
-                $y = inspect_component($ui, "", value, $x + 16.0, $y, $inspect_style);
+                $y = inspect_component($frame.ui, "", value, $frame.x + 16.0, $y, $frame.inspect_style);
             }
             $idx += 1;
         }
@@ -292,37 +286,28 @@ macro_rules! editor_component_registry {
         ///
         /// Returns `(next_y, component_count)` — the count feeds the
         /// add-component popup's widget-id offsets.
-        #[allow(clippy::too_many_arguments)]
         pub fn edit_all_components(
-            ui: &mut UIContext,
+            frame: &mut InspectorFrame<'_>,
             world: &mut World,
             entity: EntityId,
             history: &mut CommandHistory,
-            x: f32,
-            width: f32,
             mut y: f32,
-            inspect_style: &InspectorStyle,
-            field_style: &EditableFieldStyle,
-            section_gap: f32,
             extras: &mut crate::InspectorExtras<'_>,
         ) -> (f32, usize) {
             let mut component_index: usize = 0;
             let mut removals: Vec<ComponentKind> = Vec::new();
 
             $( registry_edit_block!(@fixed $b, $b_ty, ($($b_edit)+),
-                ui, world, entity, history, x, width, y,
-                inspect_style, field_style, section_gap, component_index, removals, extras); )+
+                frame, world, entity, history, y, component_index, removals, extras); )+
             $( registry_edit_block!(@removable $r, $r_ty, ($($r_edit)+),
-                ui, world, entity, history, x, width, y,
-                inspect_style, field_style, section_gap, component_index, removals, extras); )+
+                frame, world, entity, history, y, component_index, removals, extras); )+
 
             // Dynamic-tier components render read-only (serde display) with
             // a remove [X] — typed field editors are the opt-in overlay this
             // registry provides, and game types don't have one.
             let mut dynamic_removals: Vec<String> = Vec::new();
             y = render_dynamic_edit_blocks(
-                ui, world, entity, x, width, y,
-                inspect_style, field_style, section_gap,
+                frame, world, entity, y,
                 &mut component_index, &mut dynamic_removals,
             );
 
@@ -508,17 +493,11 @@ pub use dynamic::available_dynamic_components;
 /// entity: registry-name header with a remove [X] plus the serde value
 /// display. Removals are returned by name for the caller to execute as
 /// `RemoveComponentCommand::dynamic`s.
-#[allow(clippy::too_many_arguments)]
 fn render_dynamic_edit_blocks(
-    ui: &mut UIContext,
+    frame: &mut InspectorFrame<'_>,
     world: &World,
     entity: EntityId,
-    x: f32,
-    width: f32,
     mut y: f32,
-    inspect_style: &InspectorStyle,
-    field_style: &EditableFieldStyle,
-    section_gap: f32,
     component_index: &mut usize,
     removals: &mut Vec<String>,
 ) -> f32 {
@@ -526,16 +505,15 @@ fn render_dynamic_edit_blocks(
         let Some(value) = dynamic::dynamic_value(world, entity, &name) else {
             continue;
         };
-        y += section_gap;
-        let mut inspector = EditableInspector::new(ui, x, y)
+        y += frame.section_gap;
+        let mut inspector = EditableInspector::new(frame.ui, frame.field_style, frame.x, y)
             .with_component_index(*component_index)
-            .with_width(width)
-            .with_style(field_style.clone());
-        if inspector.header_with_remove(&name, true) {
+            .with_width(frame.width);
+        if inspector.header_with_remove(&name) {
             removals.push(name.clone());
         }
         y = inspector.y();
-        y = inspect_component(ui, "", &value, x + 16.0, y, inspect_style);
+        y = inspect_component(frame.ui, "", &value, frame.x + 16.0, y, frame.inspect_style);
         *component_index += 1;
     }
     y

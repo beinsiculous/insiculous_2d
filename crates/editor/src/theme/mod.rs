@@ -27,16 +27,6 @@ pub struct EditorTheme {
     /// read as bounded objects.
     pub popup_border: Color,
 
-    /// Main panel backgrounds (`#2a2a2a`)
-    pub bg_primary: Color,
-    /// Viewport / canvas area (`#0a0a0a`)
-    pub bg_viewport: Color,
-    /// Input fields, dropdowns (`#545454`)
-    pub bg_input: Color,
-    /// Panel header background — LIGHTER than bg_primary (surface_2 over
-    /// surface_1; the old doc claimed darker and the old value was neither)
-    pub bg_header: Color,
-
     // ── Accents ─────────────────────────────────────────────────
     /// Selection highlights, active buttons, "+ Add Component" (`#0078d4`)
     pub accent_blue: Color,
@@ -108,8 +98,6 @@ pub struct EditorTheme {
     // ── Play state ──────────────────────────────────────────────
     /// Play button / playing border tint (`#00cc44`)
     pub play_green: Color,
-    /// Pause border tint (`#ffcc00`)
-    pub pause_yellow: Color,
     /// Stop button (`#cc3333`)
     pub stop_red: Color,
 
@@ -142,14 +130,6 @@ pub struct EditorTheme {
     // ── Status bar ──────────────────────────────────────────────
     /// Status bar background (slightly darker than panels)
     pub status_bar_bg: Color,
-
-    // ── Inspector ───────────────────────────────────────────────
-    /// Inspector label color (field names)
-    pub inspector_label: Color,
-    /// Inspector value color (field values)
-    pub inspector_value: Color,
-    /// Inspector section header color
-    pub inspector_header: Color,
 
     // ── Play-state viewport borders ─────────────────────────────
     /// Viewport border tint while editing
@@ -201,13 +181,6 @@ impl Default for EditorTheme {
             surface_4,
             popup_border: Color::from_hex(0xc6c6c6),
 
-            // Backgrounds (aliases into the ladder — legacy names kept to
-            // avoid churning 30+ call sites this sprint)
-            bg_primary: surface_1,
-            bg_viewport: surface_0,
-            bg_input: surface_3,
-            bg_header: surface_2,
-
             // Accents
             accent_blue: Color::from_hex(0x0078d4),
             accent_cyan: Color::from_hex(0x00d9ff),
@@ -258,7 +231,6 @@ impl Default for EditorTheme {
 
             // Play state
             play_green: Color::from_hex(0x00cc44),
-            pause_yellow: Color::from_hex(0xffcc00),
             stop_red: Color::from_hex(0xcc3333),
 
             // Semantic
@@ -280,11 +252,6 @@ impl Default for EditorTheme {
 
             // Status bar
             status_bar_bg: surface_2,
-
-            // Inspector
-            inspector_label: Color::from_hex(0xcccccc),
-            inspector_value: Color::WHITE,
-            inspector_header: Color::from_hex(0x00d9ff),
 
             // Play-state viewport borders
             border_editing: Color::new(0.0, 0.48, 0.83, 0.5),
@@ -317,9 +284,9 @@ impl EditorTheme {
     /// Create `InspectorStyle` from this theme.
     pub fn inspector_style(&self) -> crate::InspectorStyle {
         crate::InspectorStyle {
-            label_color: self.inspector_label,
-            value_color: self.inspector_value,
-            header_color: self.inspector_header,
+            label_color: self.text_secondary,
+            value_color: self.text_primary,
+            header_color: self.accent_cyan,
             ..Default::default()
         }
     }
@@ -327,13 +294,13 @@ impl EditorTheme {
     /// Create `EditableFieldStyle` from this theme.
     pub fn editable_field_style(&self) -> crate::EditableFieldStyle {
         crate::EditableFieldStyle {
-            label_color: self.inspector_label,
-            value_color: self.inspector_value,
-            header_color: self.inspector_header,
+            label_color: self.text_secondary,
+            value_color: self.text_primary,
+            header_color: self.accent_cyan,
             axis_x_label: self.axis_x_label,
             axis_y_label: self.axis_y_label,
             channel_labels: self.channel_labels,
-            slot_bg: self.bg_input,
+            slot_bg: self.surface_3,
             drop_highlight: self.accent_blue,
             label_font: self.fonts.body,
             header_font: self.fonts.heading,
@@ -350,28 +317,28 @@ impl EditorTheme {
     pub fn ui_theme(&self) -> ui::Theme {
         let mut theme = ui::Theme::dark();
 
-        theme.button.background = self.bg_input;
-        theme.button.background_hovered = self.bg_input.lighten(0.12);
-        theme.button.background_pressed = self.bg_input.darken(0.25);
+        theme.button.background = self.surface_3;
+        theme.button.background_hovered = self.surface_3.lighten(0.12);
+        theme.button.background_pressed = self.surface_3.darken(0.25);
         // Distinct from pressed: a disabled button must not
         // look like a held one — flatten toward the panel body instead.
-        theme.button.background_disabled = self.bg_primary;
+        theme.button.background_disabled = self.surface_1;
         theme.button.border = self.border_subtle;
         theme.button.text_color = self.text_primary;
         theme.button.text_color_disabled = self.text_muted;
 
-        theme.panel.background = self.bg_primary;
+        theme.panel.background = self.surface_1;
         theme.panel.border = self.border_subtle;
 
-        theme.slider.track_background = self.bg_input;
+        theme.slider.track_background = self.surface_3;
         theme.slider.track_fill = self.accent_blue;
         theme.slider.thumb_pressed = self.accent_cyan;
 
         theme.text.color = self.text_primary;
         theme.text.font_size = self.fonts.body;
 
-        theme.text_input.background = self.bg_input;
-        theme.text_input.background_focused = self.bg_input.lighten(0.08);
+        theme.text_input.background = self.surface_3;
+        theme.text_input.background_focused = self.surface_3.lighten(0.08);
         theme.text_input.border = self.border_subtle;
         theme.text_input.border_focused = self.accent_blue;
         theme.text_input.border_invalid = self.error_red;

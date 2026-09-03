@@ -121,7 +121,7 @@ impl StatusBar {
             1.0,
         );
 
-        let padding = 8.0;
+        let padding = crate::layout::PADDING;
 
         // Left section: status message
         let status_text = self.message.as_deref().unwrap_or("Ready");

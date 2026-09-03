@@ -145,22 +145,6 @@ fn test_snapped_multi_drag_keeps_formation_offsets_with_the_pref_or_ctrl() {
 }
 
 #[test]
-fn test_zero_grid_size_never_poisons_positions() {
-    let mut game = editor_game();
-    game.editor.set_snap_to_grid(true);
-    // The setter clamps, but GridRenderer.config is a public field — a
-    // direct write can bypass it. Snapping must not divide by it.
-    game.editor.grid.config.primary_size = 0.0;
-    let mut world = World::new();
-    let a = spawn_at(&mut world, Vec2::new(5.0, 0.0));
-    game.gizmo_drag = Some(drag_state_for(&world, &[a]));
-
-    game.apply_gizmo_drag(&mut world, &translate_interaction(Vec2::new(40.0, 0.0)), false);
-
-    assert_eq!(position(&world, a), Vec2::new(45.0, 0.0), "snap degrades to unsnapped, never NaN");
-}
-
-#[test]
 fn test_cancel_restores_starts_and_pushes_no_undo_entry() {
     let mut game = editor_game();
     let mut world = World::new();

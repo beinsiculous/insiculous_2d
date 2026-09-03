@@ -63,60 +63,24 @@ pub fn edit_behavior(
 
     match &mut new {
         Behavior::PlayerPlatformer { move_speed, jump_impulse, jump_cooldown, tag } => {
-            if let EditResult::Changed(v) = inspector.f32("Move Speed", *move_speed, ranges::SPEED) {
-                *move_speed = v;
-                hint = Some("move_speed");
-            }
-            if let EditResult::Changed(v) = inspector.f32("Jump Impulse", *jump_impulse, ranges::IMPULSE) {
-                *jump_impulse = v;
-                hint = Some("jump_impulse");
-            }
-            if let EditResult::Changed(v) = inspector.f32("Jump Cooldown", *jump_cooldown, ranges::SECONDS) {
-                *jump_cooldown = v;
-                hint = Some("jump_cooldown");
-            }
-            if let EditResult::Changed(v) = inspector.string_edit("Tag", tag) {
-                *tag = v;
-                hint = Some("tag");
-            }
+            inspector.f32("Move Speed", *move_speed, ranges::SPEED).assign(move_speed, &mut hint, "move_speed");
+            inspector.f32("Jump Impulse", *jump_impulse, ranges::IMPULSE).assign(jump_impulse, &mut hint, "jump_impulse");
+            inspector.f32("Jump Cooldown", *jump_cooldown, ranges::SECONDS).assign(jump_cooldown, &mut hint, "jump_cooldown");
+            inspector.string_edit("Tag", tag).assign(tag, &mut hint, "tag");
         }
         Behavior::PlayerTopDown { move_speed, tag } => {
-            if let EditResult::Changed(v) = inspector.f32("Move Speed", *move_speed, ranges::SPEED) {
-                *move_speed = v;
-                hint = Some("move_speed");
-            }
-            if let EditResult::Changed(v) = inspector.string_edit("Tag", tag) {
-                *tag = v;
-                hint = Some("tag");
-            }
+            inspector.f32("Move Speed", *move_speed, ranges::SPEED).assign(move_speed, &mut hint, "move_speed");
+            inspector.string_edit("Tag", tag).assign(tag, &mut hint, "tag");
         }
         Behavior::FollowEntity { target_name, follow_distance, follow_speed } => {
-            if let EditResult::Changed(v) = inspector.string_edit("Target Name", target_name) {
-                *target_name = v;
-                hint = Some("target_name");
-            }
-            if let EditResult::Changed(v) = inspector.f32("Distance", *follow_distance, ranges::DISTANCE) {
-                *follow_distance = v;
-                hint = Some("follow_distance");
-            }
-            if let EditResult::Changed(v) = inspector.f32("Speed", *follow_speed, ranges::SPEED) {
-                *follow_speed = v;
-                hint = Some("follow_speed");
-            }
+            inspector.string_edit("Target Name", target_name).assign(target_name, &mut hint, "target_name");
+            inspector.f32("Distance", *follow_distance, ranges::DISTANCE).assign(follow_distance, &mut hint, "follow_distance");
+            inspector.f32("Speed", *follow_speed, ranges::SPEED).assign(follow_speed, &mut hint, "follow_speed");
         }
         Behavior::FollowTagged { target_tag, follow_distance, follow_speed } => {
-            if let EditResult::Changed(v) = inspector.string_edit("Target Tag", target_tag) {
-                *target_tag = v;
-                hint = Some("target_tag");
-            }
-            if let EditResult::Changed(v) = inspector.f32("Distance", *follow_distance, ranges::DISTANCE) {
-                *follow_distance = v;
-                hint = Some("follow_distance");
-            }
-            if let EditResult::Changed(v) = inspector.f32("Speed", *follow_speed, ranges::SPEED) {
-                *follow_speed = v;
-                hint = Some("follow_speed");
-            }
+            inspector.string_edit("Target Tag", target_tag).assign(target_tag, &mut hint, "target_tag");
+            inspector.f32("Distance", *follow_distance, ranges::DISTANCE).assign(follow_distance, &mut hint, "follow_distance");
+            inspector.f32("Speed", *follow_speed, ranges::SPEED).assign(follow_speed, &mut hint, "follow_speed");
         }
         Behavior::Patrol { point_a, point_b, speed, wait_time } => {
             if let EditResult::Changed(v) = inspector.vec2(
@@ -135,55 +99,25 @@ pub fn edit_behavior(
                 *point_b = (v.x, v.y);
                 hint = Some("point_b");
             }
-            if let EditResult::Changed(v) = inspector.f32("Speed", *speed, ranges::SPEED) {
-                *speed = v;
-                hint = Some("speed");
-            }
-            if let EditResult::Changed(v) = inspector.f32("Wait Time", *wait_time, ranges::SECONDS) {
-                *wait_time = v;
-                hint = Some("wait_time");
-            }
+            inspector.f32("Speed", *speed, ranges::SPEED).assign(speed, &mut hint, "speed");
+            inspector.f32("Wait Time", *wait_time, ranges::SECONDS).assign(wait_time, &mut hint, "wait_time");
         }
         Behavior::Collectible { score_value, despawn_on_collect, collector_tag } => {
             inspector.u32("Score Value", *score_value);
-            if let EditResult::Changed(v) = inspector.bool("Despawn", *despawn_on_collect) {
-                *despawn_on_collect = v;
-                hint = Some("despawn_on_collect");
-            }
-            if let EditResult::Changed(v) = inspector.string_edit("Collector Tag", collector_tag) {
-                *collector_tag = v;
-                hint = Some("collector_tag");
-            }
+            inspector.bool("Despawn", *despawn_on_collect).assign(despawn_on_collect, &mut hint, "despawn_on_collect");
+            inspector.string_edit("Collector Tag", collector_tag).assign(collector_tag, &mut hint, "collector_tag");
         }
         Behavior::ChaseTagged { target_tag, detection_range, chase_speed, lose_interest_range } => {
-            if let EditResult::Changed(v) = inspector.string_edit("Target Tag", target_tag) {
-                *target_tag = v;
-                hint = Some("target_tag");
-            }
-            if let EditResult::Changed(v) = inspector.f32("Detect Range", *detection_range, ranges::DISTANCE) {
-                *detection_range = v;
-                hint = Some("detection_range");
-            }
-            if let EditResult::Changed(v) = inspector.f32("Chase Speed", *chase_speed, ranges::SPEED) {
-                *chase_speed = v;
-                hint = Some("chase_speed");
-            }
-            if let EditResult::Changed(v) = inspector.f32("Lose Range", *lose_interest_range, ranges::DISTANCE) {
-                *lose_interest_range = v;
-                hint = Some("lose_interest_range");
-            }
+            inspector.string_edit("Target Tag", target_tag).assign(target_tag, &mut hint, "target_tag");
+            inspector.f32("Detect Range", *detection_range, ranges::DISTANCE).assign(detection_range, &mut hint, "detection_range");
+            inspector.f32("Chase Speed", *chase_speed, ranges::SPEED).assign(chase_speed, &mut hint, "chase_speed");
+            inspector.f32("Lose Range", *lose_interest_range, ranges::DISTANCE).assign(lose_interest_range, &mut hint, "lose_interest_range");
         }
         Behavior::CameraFollow {
             target_tag, lerp_speed, offset, dead_zone, look_ahead, look_ahead_lerp,
         } => {
-            if let EditResult::Changed(v) = inspector.string_edit("Target Tag", target_tag) {
-                *target_tag = v;
-                hint = Some("target_tag");
-            }
-            if let EditResult::Changed(v) = inspector.f32("Lerp Speed", *lerp_speed, ranges::FRACTION) {
-                *lerp_speed = v;
-                hint = Some("lerp_speed");
-            }
+            inspector.string_edit("Target Tag", target_tag).assign(target_tag, &mut hint, "target_tag");
+            inspector.f32("Lerp Speed", *lerp_speed, ranges::FRACTION).assign(lerp_speed, &mut hint, "lerp_speed");
             if let EditResult::Changed(v) = inspector.vec2(
                 "Offset",
                 glam::Vec2::new(offset.0, offset.1),
@@ -207,12 +141,7 @@ pub fn edit_behavior(
                 *look_ahead = (v.x, v.y);
                 hint = Some("look_ahead");
             }
-            if let EditResult::Changed(v) =
-                inspector.f32("Look Lerp", *look_ahead_lerp, ranges::FRACTION)
-            {
-                *look_ahead_lerp = v;
-                hint = Some("look_ahead_lerp");
-            }
+            inspector.f32("Look Lerp", *look_ahead_lerp, ranges::FRACTION).assign(look_ahead_lerp, &mut hint, "look_ahead_lerp");
         }
     }
 

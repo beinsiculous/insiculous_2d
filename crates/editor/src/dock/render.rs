@@ -96,7 +96,7 @@ impl DockArea {
             // Draw panel background (skip for scene view — it shows game content directly).
             // Uses the opaque EditorTheme background so game sprites never bleed through.
             if panel.id != PanelId::SCENE_VIEW {
-                ui.panel_styled(panel.bounds, theme.bg_primary, theme.border_panel, 1.0);
+                ui.panel_styled(panel.bounds, theme.surface_1, theme.border_panel, 1.0);
             }
 
             // Draw panel header
@@ -106,7 +106,7 @@ impl DockArea {
                 panel.bounds.width,
                 HEADER_HEIGHT,
             );
-            ui.rect_rounded(header_bounds, theme.bg_header, 0.0);
+            ui.rect_rounded(header_bounds, theme.surface_2, 0.0);
 
             // Draw panel title in accent color, vertically centered in the header
             ui.label_in_bounds_styled(
@@ -216,7 +216,7 @@ impl DockArea {
 /// Render a collapsed panel as a slim strip (header chrome only, no content).
 /// Returns true if the expand chevron was clicked.
 fn render_collapsed_strip(ui: &mut UIContext, panel: &DockPanel, theme: &EditorTheme) -> bool {
-    ui.panel_styled(panel.bounds, theme.bg_header, theme.border_panel, 1.0);
+    ui.panel_styled(panel.bounds, theme.surface_2, theme.border_panel, 1.0);
     draw_panel_chrome(ui, &panel.bounds, theme);
 
     // Horizontal strips (Top/Bottom) keep their title; vertical strips are

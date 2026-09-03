@@ -115,7 +115,7 @@ pub struct GridSegment {
 #[derive(Debug, Clone)]
 pub struct GridRenderer {
     /// Grid configuration
-    pub config: GridConfig,
+    config: GridConfig,
     /// Grid colors
     pub colors: GridColors,
     /// Whether the grid is visible
@@ -329,16 +329,11 @@ pub fn render_grid_overlay(
     ui.push_clip_rect(bounds);
     let visible_bounds = viewport.visible_world_bounds();
     for segment in grid.grid_segments(visible_bounds, viewport.camera_zoom()) {
-        let start = viewport.world_to_screen(segment.start);
-        let end = viewport.world_to_screen(segment.end);
-        // An extreme camera state can produce non-finite screen coordinates;
-        // never feed those into the draw list.
-        if !start.is_finite() || !end.is_finite() {
-            continue;
-        }
-        ui.line(
-            start,
-            end,
+        crate::world_lines::draw_world_line(
+            ui,
+            viewport,
+            segment.start,
+            segment.end,
             colors.color_for(segment.kind),
             grid.config.width_for(segment.kind),
         );
@@ -364,6 +359,8 @@ mod tests {
         assert_eq!(grid.grid_size(), 64.0);
         grid.set_grid_size(0.5);
         assert_eq!(grid.grid_size(), 1.0, "sizes below a pixel clamp to 1.0");
+        grid.set_grid_size(f32::NAN);
+        assert_eq!(grid.grid_size(), 1.0, "NaN clamps to 1.0 — snapping divides by this");
     }
 
     /// The constant coordinate of an axis-aligned segment.

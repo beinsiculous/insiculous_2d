@@ -78,7 +78,7 @@ pub struct DockPanel {
     /// Where the panel is docked
     pub position: DockPosition,
     /// Panel bounds (updated during layout)
-    pub bounds: Rect,
+    bounds: Rect,
     /// Panel size (width for Left/Right, height for Top/Bottom)
     pub size: f32,
     /// Minimum size

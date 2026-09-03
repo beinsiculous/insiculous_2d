@@ -22,7 +22,7 @@ const TILE_LABEL_HEIGHT: f32 = 16.0;
 /// Gap between tiles.
 const TILE_GAP: f32 = 10.0;
 /// Panel content padding.
-const PADDING: f32 = 8.0;
+const PADDING: f32 = editor::layout::PADDING;
 /// Header row height (Rescan button + counts).
 const HEADER_HEIGHT: f32 = 26.0;
 /// Cap on texture loads per frame so a big folder doesn't hitch one frame.
@@ -114,7 +114,7 @@ pub(super) fn render_asset_browser(
         let slot_ui = ui::Rect::new(slot.x, slot.y, slot.width, slot.height);
 
         // Tile background + content
-        ctx.ui.rect_rounded(slot_ui, editor.theme.bg_input, 4.0);
+        ctx.ui.rect_rounded(slot_ui, editor.theme.surface_3, 4.0);
         match (entry.kind, entry.texture_handle) {
             (AssetKind::Image, Some(handle)) => {
                 let (w, h) = ctx

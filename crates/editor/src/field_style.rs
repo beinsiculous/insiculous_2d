@@ -141,7 +141,7 @@ impl Default for EditableFieldStyle {
         Self {
             row_height: 24.0,
             label_width: 120.0,
-            padding: 8.0,
+            padding: crate::layout::PADDING,
             checkbox_size: 16.0,
             color_preview_size: 20.0,
             indent: 16.0,
@@ -212,6 +212,15 @@ impl<T> EditResult<T> {
             EditResult::Unchanged => original,
         }
     }
+
+    /// Write a changed value into `slot` and record `name` as the field hint;
+    /// an unchanged result leaves both alone.
+    pub fn assign(self, slot: &mut T, hint: &mut Option<&'static str>, name: &'static str) {
+        if let EditResult::Changed(value) = self {
+            *slot = value;
+            *hint = Some(name);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -247,5 +256,20 @@ mod tests {
         }
         let next_remove = ui::WidgetId::from(FieldId::slot(next_component, WidgetSlot::Remove));
         assert!(!ids.contains(&next_remove));
+    }
+
+    #[test]
+    fn test_assign_writes_slot_and_hint_and_subsequent_unchanged_preserves_hint() {
+        let mut slot_a = 10.0f32;
+        let mut slot_b = 20.0f32;
+        let mut hint: Option<&'static str> = None;
+
+        EditResult::Changed(15.0f32).assign(&mut slot_a, &mut hint, "field_a");
+        assert_eq!(slot_a, 15.0);
+        assert_eq!(hint, Some("field_a"));
+
+        EditResult::Unchanged.assign(&mut slot_b, &mut hint, "field_b");
+        assert_eq!(slot_b, 20.0);
+        assert_eq!(hint, Some("field_a"));
     }
 }

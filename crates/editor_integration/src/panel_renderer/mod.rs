@@ -5,7 +5,7 @@
 
 use glam::Vec2;
 
-use editor::{CommandHistory, EditorContext, HierarchyPanel, PanelId};
+use editor::{layout, CommandHistory, EditorContext, HierarchyPanel, PanelId};
 use engine_core::contexts::GameContext;
 
 /// Render the content of a specific dock panel.
@@ -16,7 +16,7 @@ pub fn render_panel_content(
     bounds: common::Rect,
     command_history: &mut CommandHistory,
 ) {
-    let padding = 8.0;
+    let padding = layout::PADDING;
     let content_x = bounds.x + padding;
     let y = bounds.y + padding;
 
@@ -36,7 +36,7 @@ pub(crate) use asset_browser::render_drag_ghost;
 /// Scene view — grid info, viewport origin crosshair, and play-state border.
 fn render_scene_view(editor: &EditorContext, ctx: &mut GameContext, bounds: common::Rect) {
     let theme = &editor.theme;
-    let padding = 8.0;
+    let padding = layout::PADDING;
     let content_x = bounds.x + padding;
     let y = bounds.y + padding;
 
@@ -121,30 +121,7 @@ fn render_scene_view(editor: &EditorContext, ctx: &mut GameContext, bounds: comm
     let border_color = theme.play_state_border(editor.play_state());
     let outline_width = if editor.in_play_session() { 3.0 } else { 1.0 };
 
-    // Top
-    ctx.ui.line(
-        Vec2::new(bounds.x, bounds.y),
-        Vec2::new(bounds.x + bounds.width, bounds.y),
-        border_color, outline_width,
-    );
-    // Bottom
-    ctx.ui.line(
-        Vec2::new(bounds.x, bounds.y + bounds.height),
-        Vec2::new(bounds.x + bounds.width, bounds.y + bounds.height),
-        border_color, outline_width,
-    );
-    // Left
-    ctx.ui.line(
-        Vec2::new(bounds.x, bounds.y),
-        Vec2::new(bounds.x, bounds.y + bounds.height),
-        border_color, outline_width,
-    );
-    // Right
-    ctx.ui.line(
-        Vec2::new(bounds.x + bounds.width, bounds.y),
-        Vec2::new(bounds.x + bounds.width, bounds.y + bounds.height),
-        border_color, outline_width,
-    );
+    ctx.ui.rect_border(bounds, border_color, outline_width, 0.0);
 }
 
 /// Hierarchy — tree view with click-to-select, Ctrl toggle, Shift range
@@ -281,6 +258,7 @@ fn render_default(ctx: &mut GameContext, content_x: f32, y: f32) {
     ctx.ui.label("Panel", Vec2::new(content_x, y));
 }
 
+mod add_component_popup;
 mod asset_browser;
 mod inspector;
 use inspector::render_inspector;

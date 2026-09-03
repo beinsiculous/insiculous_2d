@@ -164,14 +164,13 @@ pub fn render_collider_overlay(
             OUTLINE_WIDTH
         };
 
-        for (start, end) in collider_outline_segments(transform, collider) {
-            ui.line(
-                viewport.world_to_screen(start),
-                viewport.world_to_screen(end),
-                color,
-                width,
-            );
-        }
+        crate::world_lines::draw_world_segments(
+            ui,
+            viewport,
+            collider_outline_segments(transform, collider),
+            color,
+            width,
+        );
     }
     ui.pop_clip_rect();
 }

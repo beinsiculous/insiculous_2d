@@ -4,11 +4,12 @@
 use glam::Vec2;
 
 use editor::{
-    available_components, categorized_components, edit_all_components,
-    inspect_all_components, CommandHistory, ComponentKind, EditorContext,
-    FieldId, InspectorStyle,
+    edit_all_components, inspect_all_components, layout, CommandHistory,
+    EditorContext, InspectorFrame, InspectorStyle,
 };
 use engine_core::contexts::GameContext;
+
+use super::add_component_popup;
 
 /// Inspector — component inspection for the selected entity.
 ///
@@ -20,8 +21,8 @@ pub(super) fn render_inspector(
     bounds: common::Rect,
     command_history: &mut CommandHistory,
 ) {
-    let line_height = 20.0;
-    let padding = 8.0;
+    let line_height = layout::LINE_HEIGHT;
+    let padding = layout::PADDING;
     let content_x = bounds.x + padding;
 
     let entity_id = match editor.selection.primary() {
@@ -97,7 +98,7 @@ fn render_inspector_readonly(
     y: f32,
     style: &InspectorStyle,
 ) -> f32 {
-    let line_height = 20.0;
+    let line_height = layout::LINE_HEIGHT;
     inspect_all_components(
         ctx.ui, ctx.world, entity_id, content_x, y, style, line_height * 0.5,
     )
@@ -114,7 +115,7 @@ fn render_inspector_editable(
     mut y: f32,
     command_history: &mut CommandHistory,
 ) -> f32 {
-    let line_height = 20.0;
+    let line_height = layout::LINE_HEIGHT;
     let inspect_style = editor.theme.inspector_style();
     // Numeric inputs render in the crate-shipped monospace face.
     let field_style = editor.theme.editable_field_style().with_numeric_font(editor.fonts.mono);
@@ -144,17 +145,20 @@ fn render_inspector_editable(
     // remove buttons, read-only fallbacks) is generated from the editor's
     // component registry — adding a component to the registry is all it
     // takes to appear here.
+    let mut frame = InspectorFrame {
+        ui: ctx.ui,
+        inspect_style: &inspect_style,
+        field_style: &field_style,
+        x: content_x,
+        width: content_width,
+        section_gap: line_height * 0.5,
+    };
     let (next_y, component_index) = edit_all_components(
-        ctx.ui,
+        &mut frame,
         ctx.world,
         entity_id,
         command_history,
-        content_x,
-        content_width,
         y,
-        &inspect_style,
-        &field_style,
-        line_height * 0.5,
         &mut extras,
     );
     y = next_y;
@@ -182,154 +186,13 @@ fn render_inspector_editable(
         editor.status_bar.show_message(format!("Warning: {}", warnings.join(" · ")));
     }
 
-    // --- [+ Add Component] button ---
-    y += line_height;
-    let button_bounds = ui::Rect::new(content_x, y, 160.0, 24.0);
-    let add_button_id = FieldId::slot(component_index, editor::WidgetSlot::AddButton);
-    if ctx.ui.button(add_button_id, "+ Add Component", button_bounds) {
-        editor.toggle_add_component_popup();
-    }
-    y += 28.0;
-
-    // --- Add Component Popup ---
-    if editor.is_add_component_popup_open() {
-        let available = available_components(ctx.world, entity_id);
-        // Dynamic-tier (game-registered) components get their own popup
-        // section.
-        let available_dynamic =
-            editor::stored_component::available_dynamic_components(ctx.world, entity_id);
-        if available.is_empty() && available_dynamic.is_empty() {
-            ctx.ui.label("(all components added)", Vec2::new(content_x + 8.0, y));
-            y += line_height;
-        } else {
-            // Height first, then anchor against the WINDOW (the popup lives
-            // on the Floating layer, free of the panel clip): open below
-            // the button, flip up when it would overflow the window bottom.
-            let popup_height =
-                categorized_popup_height(&available) + dynamic_section_height(&available_dynamic);
-            let popup_y0 = popup_anchor_y(y, 28.0, popup_height, ctx.window_size.y);
-            let popup_bounds = ui::Rect::new(content_x, popup_y0, 180.0, popup_height);
-            // Floating layer + input blocking: escapes the inspector clip
-            // rect and widgets underneath go inert while the mouse is on it.
-            ctx.ui.begin_overlay(popup_bounds);
-            ctx.ui.panel_styled(
-                popup_bounds,
-                editor.theme.surface_4,
-                editor.theme.popup_border,
-                1.0,
-            );
-
-            let mut popup_y = popup_y0 + 4.0;
-            let mut popup_button_index: usize = 0;
-
-            for (category, kinds) in categorized_components() {
-                let visible: Vec<ComponentKind> = kinds.iter()
-                    .copied()
-                    .filter(|k| available.contains(k))
-                    .collect();
-                if visible.is_empty() {
-                    continue;
-                }
-
-                ctx.ui.label_styled(
-                    category.label(),
-                    Vec2::new(content_x + 8.0, popup_y),
-                    editor.theme.text_muted,
-                    editor.theme.fonts.small,
-                );
-                popup_y += 18.0;
-
-                for kind in visible {
-                    let button_bounds = ui::Rect::new(content_x + 16.0, popup_y, 148.0, 22.0);
-                    let button_id = FieldId::slot(component_index, editor::WidgetSlot::PopupRow(popup_button_index));
-                    if ctx.ui.button(button_id, kind.display_name(), button_bounds) {
-                        let cmd = editor::commands::AddComponentCommand::new(entity_id, kind);
-                        command_history.execute(Box::new(cmd), ctx.world);
-                        editor.close_add_component_popup();
-                        log::info!("Added component: {}", kind.display_name());
-                    }
-                    popup_y += 24.0;
-                    popup_button_index += 1;
-                }
-            }
-
-            // "Game" section: dynamic-tier components.
-            if !available_dynamic.is_empty() {
-                ctx.ui.label_styled(
-                    "Game",
-                    Vec2::new(content_x + 8.0, popup_y),
-                    editor.theme.text_muted,
-                    editor.theme.fonts.small,
-                );
-                popup_y += 18.0;
-                for name in &available_dynamic {
-                    let button_bounds = ui::Rect::new(content_x + 16.0, popup_y, 148.0, 22.0);
-                    let button_id = FieldId::slot(component_index, editor::WidgetSlot::PopupRow(popup_button_index));
-                    if ctx.ui.button(button_id, name, button_bounds) {
-                        let cmd = editor::commands::AddComponentCommand::dynamic(
-                            entity_id,
-                            name.clone(),
-                        );
-                        command_history.execute(Box::new(cmd), ctx.world);
-                        editor.close_add_component_popup();
-                        log::info!("Added dynamic component: {}", name);
-                    }
-                    popup_y += 24.0;
-                    popup_button_index += 1;
-                }
-            }
-            ctx.ui.end_overlay();
-        }
-    }
-
-    y
-}
-
-/// Height of the popup's dynamic-tier "Game" section (0 when empty).
-fn dynamic_section_height(available_dynamic: &[String]) -> f32 {
-    if available_dynamic.is_empty() {
-        0.0
-    } else {
-        18.0 + available_dynamic.len() as f32 * 24.0
-    }
-}
-
-/// Calculate the height needed for the categorized popup.
-fn categorized_popup_height(available: &[ComponentKind]) -> f32 {
-    let mut height = 8.0; // padding
-    for (_, kinds) in categorized_components() {
-        let visible_count = kinds.iter().filter(|k| available.contains(k)).count();
-        if visible_count > 0 {
-            height += 18.0; // category label
-            height += visible_count as f32 * 24.0; // buttons
-        }
-    }
-    height
-}
-
-/// Where the popup opens: below its anchor when it fits the window,
-/// flipped above (`anchor - button_height - popup`) otherwise, clamped to
-/// the window top. The popup is window-anchored (not panel-anchored)
-/// because the Floating layer frees it from the panel clip.
-fn popup_anchor_y(below_y: f32, button_height: f32, popup_height: f32, window_bottom: f32) -> f32 {
-    if below_y + popup_height <= window_bottom {
-        below_y
-    } else {
-        (below_y - button_height - popup_height).max(0.0)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::popup_anchor_y;
-
-    #[test]
-    fn test_popup_flips_up_when_it_would_overflow_window() {
-        // Fits below: opens at the anchor.
-        assert_eq!(popup_anchor_y(100.0, 28.0, 200.0, 720.0), 100.0);
-        // Would overflow the window bottom: flips above the button.
-        assert_eq!(popup_anchor_y(650.0, 28.0, 200.0, 720.0), 650.0 - 28.0 - 200.0);
-        // Taller than everything: clamps to the window top, never negative.
-        assert_eq!(popup_anchor_y(100.0, 28.0, 900.0, 720.0), 0.0);
-    }
+    add_component_popup::render_add_component_section(
+        editor,
+        ctx,
+        entity_id,
+        command_history,
+        content_x,
+        y,
+        component_index,
+    )
 }

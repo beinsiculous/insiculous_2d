@@ -143,14 +143,13 @@ fn draw_outline(
     width: f32,
 ) {
     let Some(size) = visible_size(pickable) else { return };
-    for (start, end) in outline_segments(pickable.position, size) {
-        ui.line(
-            viewport.world_to_screen(start),
-            viewport.world_to_screen(end),
-            color,
-            width,
-        );
-    }
+    crate::world_lines::draw_world_segments(
+        ui,
+        viewport,
+        outline_segments(pickable.position, size),
+        color,
+        width,
+    );
 }
 
 #[cfg(test)]

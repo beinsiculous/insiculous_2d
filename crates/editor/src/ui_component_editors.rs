@@ -43,31 +43,15 @@ pub fn edit_ui_label(
 
     inspector.header("UiLabel");
 
-    if let EditResult::Changed(v) = inspector.string_edit("Text", &label.text) {
-        new.text = v;
-        hint = Some("text");
-    }
+    inspector.string_edit("Text", &label.text).assign(&mut new.text, &mut hint, "text");
     if let Some(anchor) = edit_anchor(inspector, label.anchor) {
         new.anchor = anchor;
         hint = Some("anchor");
     }
-    if let EditResult::Changed(v) = inspector.vec2("Offset", label.offset, ranges::UI_OFFSET) {
-        new.offset = v;
-        hint = Some("offset");
-    }
-    if let EditResult::Changed(v) = inspector.f32("Font Size", label.font_size, ranges::UI_FONT_SIZE)
-    {
-        new.font_size = v;
-        hint = Some("font_size");
-    }
-    if let EditResult::Changed(v) = inspector.color("Color", label.color) {
-        new.color = v;
-        hint = Some("color");
-    }
-    if let EditResult::Changed(v) = inspector.bool("Visible", label.visible) {
-        new.visible = v;
-        hint = Some("visible");
-    }
+    inspector.vec2("Offset", label.offset, ranges::UI_OFFSET).assign(&mut new.offset, &mut hint, "offset");
+    inspector.f32("Font Size", label.font_size, ranges::UI_FONT_SIZE).assign(&mut new.font_size, &mut hint, "font_size");
+    inspector.color("Color", label.color).assign(&mut new.color, &mut hint, "color");
+    inspector.bool("Visible", label.visible).assign(&mut new.visible, &mut hint, "visible");
 
     hint.map(|field_hint| ComponentEdit { new_value: new, field_hint })
 }
@@ -87,32 +71,12 @@ pub fn edit_ui_panel(
         new.anchor = anchor;
         hint = Some("anchor");
     }
-    if let EditResult::Changed(v) = inspector.vec2("Offset", panel.offset, ranges::UI_OFFSET) {
-        new.offset = v;
-        hint = Some("offset");
-    }
-    if let EditResult::Changed(v) = inspector.vec2("Size", panel.size, ranges::UI_SIZE) {
-        new.size = v;
-        hint = Some("size");
-    }
-    if let EditResult::Changed(v) = inspector.color("Background", panel.background) {
-        new.background = v;
-        hint = Some("background");
-    }
-    if let EditResult::Changed(v) = inspector.color("Border", panel.border) {
-        new.border = v;
-        hint = Some("border");
-    }
-    if let EditResult::Changed(v) =
-        inspector.f32("Border Width", panel.border_width, ranges::UI_BORDER_WIDTH)
-    {
-        new.border_width = v;
-        hint = Some("border_width");
-    }
-    if let EditResult::Changed(v) = inspector.bool("Visible", panel.visible) {
-        new.visible = v;
-        hint = Some("visible");
-    }
+    inspector.vec2("Offset", panel.offset, ranges::UI_OFFSET).assign(&mut new.offset, &mut hint, "offset");
+    inspector.vec2("Size", panel.size, ranges::UI_SIZE).assign(&mut new.size, &mut hint, "size");
+    inspector.color("Background", panel.background).assign(&mut new.background, &mut hint, "background");
+    inspector.color("Border", panel.border).assign(&mut new.border, &mut hint, "border");
+    inspector.f32("Border Width", panel.border_width, ranges::UI_BORDER_WIDTH).assign(&mut new.border_width, &mut hint, "border_width");
+    inspector.bool("Visible", panel.visible).assign(&mut new.visible, &mut hint, "visible");
 
     hint.map(|field_hint| ComponentEdit { new_value: new, field_hint })
 }
@@ -128,30 +92,15 @@ pub fn edit_ui_button(
 
     inspector.header("UiButton");
 
-    if let EditResult::Changed(v) = inspector.string_edit("Text", &button.text) {
-        new.text = v;
-        hint = Some("text");
-    }
-    if let EditResult::Changed(v) = inspector.string_edit("Event Id", &button.id) {
-        new.id = v;
-        hint = Some("id");
-    }
+    inspector.string_edit("Text", &button.text).assign(&mut new.text, &mut hint, "text");
+    inspector.string_edit("Event Id", &button.id).assign(&mut new.id, &mut hint, "id");
     if let Some(anchor) = edit_anchor(inspector, button.anchor) {
         new.anchor = anchor;
         hint = Some("anchor");
     }
-    if let EditResult::Changed(v) = inspector.vec2("Offset", button.offset, ranges::UI_OFFSET) {
-        new.offset = v;
-        hint = Some("offset");
-    }
-    if let EditResult::Changed(v) = inspector.vec2("Size", button.size, ranges::UI_SIZE) {
-        new.size = v;
-        hint = Some("size");
-    }
-    if let EditResult::Changed(v) = inspector.bool("Visible", button.visible) {
-        new.visible = v;
-        hint = Some("visible");
-    }
+    inspector.vec2("Offset", button.offset, ranges::UI_OFFSET).assign(&mut new.offset, &mut hint, "offset");
+    inspector.vec2("Size", button.size, ranges::UI_SIZE).assign(&mut new.size, &mut hint, "size");
+    inspector.bool("Visible", button.visible).assign(&mut new.visible, &mut hint, "visible");
 
     hint.map(|field_hint| ComponentEdit { new_value: new, field_hint })
 }
@@ -160,7 +109,7 @@ pub fn edit_ui_button(
 mod tests {
     use super::*;
     use crate::test_support::{extras, frame};
-    use crate::FieldId;
+    use crate::{EditableFieldStyle, FieldId};
     use input::prelude::KeyCode;
     use ui::UIContext;
 
@@ -177,8 +126,9 @@ mod tests {
         ui.focus_text_input(field, "@hud.score");
         input.keyboard_mut().handle_key_press(KeyCode::Enter);
 
+        let style = EditableFieldStyle::default();
         let edit = frame(&mut ui, &input, |ui| {
-            let mut inspector = EditableInspector::new(ui, 10.0, 10.0);
+            let mut inspector = EditableInspector::new(ui, &style, 10.0, 10.0);
             edit_ui_label(&mut inspector, &UiLabel::default(), &mut extras(&mut drag_drop))
         })
         .expect("Enter commits the label text");

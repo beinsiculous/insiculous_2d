@@ -295,15 +295,9 @@ impl EditorContext {
     }
 
     /// Snap a position to the grid unconditionally (callers decide when —
-    /// e.g. the hold-Ctrl-to-snap gizmo drag). A non-positive grid size
-    /// returns the position unchanged: `GridRenderer.config` is a public
-    /// field, so the setter's ≥1 clamp is not a guarantee, and dividing by
-    /// zero here would write NaN into entity transforms.
+    /// e.g. the hold-Ctrl-to-snap gizmo drag).
     pub fn snap_to_grid_position(&self, pos: Vec2) -> Vec2 {
         let grid_size = self.grid.grid_size();
-        if grid_size <= 0.0 {
-            return pos;
-        }
         Vec2::new(
             (pos.x / grid_size).round() * grid_size,
             (pos.y / grid_size).round() * grid_size,

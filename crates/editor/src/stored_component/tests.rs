@@ -9,6 +9,7 @@ use glam::Vec2;
 
 use super::*;
 use crate::test_support::extras;
+use crate::EditableFieldStyle;
 
 /// The registry's hidden entries: captured for snapshots but never
 /// surfaced as inspector blocks or API component values.
@@ -100,13 +101,21 @@ fn test_inspector_renders_one_block_per_present_component_and_records_no_edit() 
     let mut extras = extras(&mut drag_drop);
     let start_y = 40.0;
 
+    let mut frame = InspectorFrame {
+        ui: &mut ui,
+        inspect_style: &inspect_style,
+        field_style: &field_style,
+        x: 10.0,
+        width: 400.0,
+        section_gap: 10.0,
+    };
     let (y, count) = edit_all_components(
-        &mut ui, &mut world, entity, &mut history,
-        10.0, 400.0, start_y, &inspect_style, &field_style, 10.0, &mut extras,
+        &mut frame, &mut world, entity, &mut history,
+        start_y, &mut extras,
     );
     let (_, none_count) = edit_all_components(
-        &mut ui, &mut world, bare, &mut history,
-        10.0, 400.0, start_y, &inspect_style, &field_style, 10.0, &mut extras,
+        &mut frame, &mut world, bare, &mut history,
+        start_y, &mut extras,
     );
 
     assert_eq!(count, 3, "one block per present registry component");

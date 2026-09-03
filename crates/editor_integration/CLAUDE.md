@@ -34,7 +34,7 @@ editor_integration ──→ editor, engine_core, ecs, ui, input, renderer, comm
   - `viewport_interaction.rs` — picking, marquee (live rect draw + Ctrl/Shift release semantics), gizmo drag apply/commit/cancel, Ctrl-hold-to-snap; tests in `viewport_interaction_tests.rs` incl. the snap-residual regression and the scale-tool collider commit
   - `test_support.rs` — the ONE fixture module: `DummyGame`, `editor_game()`, `spawn_at`, `drag_state_for`, the gizmo interaction builders, `api_line`; scene fixtures come from `engine_core::test_support`
 - `entity_ops.rs` — Pure entity CRUD (`&mut World` + `&mut Selection`, no UI). Component dispatch lives in `editor::ComponentKind` (registry macro). UI entities (`create_ui_label/panel/button`) get Name only — NO Transform2D (anchor+offset is their placement model)
-- `panel_renderer/` — Panel contents: `mod.rs` (dispatch, scene view, hierarchy), `inspector.rs` (thin shell: registry-generated `editor::edit_all_components()` for editing, `inspect_all_components` read-only during play, add-component popup)
+- `panel_renderer/` — Panel contents: `mod.rs` (dispatch, scene view, hierarchy), `inspector.rs` (thin shell: registry-generated `editor::edit_all_components()` for editing, `inspect_all_components` read-only during play), `add_component_popup.rs` (single-walk measuring and rendering)
 - `constants.rs` — `DEFAULT_SCENE_PATH`, `EDITOR_PREFS_PATH`, min window size, `MIN_ENTITY_SCALE`, `DUPLICATE_OFFSET`
 - `lib.rs` — Public re-exports
 

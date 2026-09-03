@@ -315,7 +315,7 @@ impl MenuBar {
     /// Phase 2 — draw the bar background and title buttons.
     /// Returns the index of a title that was clicked this frame, if any.
     fn render_title_bar(&mut self, ui: &mut UIContext, theme: &EditorTheme) -> Option<usize> {
-        ui.rect(self.bounds, theme.bg_header);
+        ui.rect(self.bounds, theme.surface_2);
 
         let mut toggled = None;
         for (index, menu) in self.menus.iter().enumerate() {

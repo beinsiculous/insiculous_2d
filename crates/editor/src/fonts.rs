@@ -162,7 +162,7 @@ mod tests {
 
         let style = crate::EditableFieldStyle::default().with_numeric_font(Some(mono));
         let font_ids = frame(&mut ui, &input, |ui| {
-            let mut inspector = crate::EditableInspector::new(ui, 10.0, 10.0).with_style(style);
+            let mut inspector = crate::EditableInspector::new(ui, &style, 10.0, 10.0);
             inspector.vec2("Position", glam::Vec2::ZERO, -100.0..=100.0);
             inspector.color("Tint", glam::Vec4::ONE);
             text_font_ids(ui)

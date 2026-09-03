@@ -28,8 +28,8 @@ pub struct InspectorStyle {
 impl Default for InspectorStyle {
     fn default() -> Self {
         Self {
-            padding: 8.0,
-            line_height: 20.0,
+            padding: crate::layout::PADDING,
+            line_height: crate::layout::LINE_HEIGHT,
             indent: 12.0,
             label_color: Color::new(0.7, 0.7, 0.7, 1.0),
             value_color: Color::new(1.0, 1.0, 1.0, 1.0),

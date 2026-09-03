@@ -74,6 +74,7 @@ mod viewport;
 mod viewport_input;
 pub mod editor_preferences;
 pub mod layout;
+pub mod world_lines;
 pub mod world_snapshot;
 
 #[cfg(test)]
@@ -98,7 +99,8 @@ pub use editor_preferences::{EditorPreferences, PanelPrefs};
 pub use dock::{panel_id_for_menu_label, DockArea, DockPanel, DockPosition, PanelId};
 pub use editable_inspector::{
     component_header, cycle_step, edit_bool, edit_color, edit_f32, edit_f32_opts, edit_vec2,
-    wrap_degrees, EditableFieldStyle, EditableInspector, EditResult, FieldEdit, FieldId, WidgetSlot,
+    wrap_degrees, EditableFieldStyle, EditableInspector, EditResult, FieldEdit, FieldId,
+    InspectorFrame, WidgetSlot,
 };
 pub use row_layout::{
     color_block_height, ellipsize, field_row, pair_slots, remove_button_x, scrub_step, PairSlot,
@@ -139,3 +141,4 @@ pub use theme::EditorTheme;
 pub use toolbar::{toolbar_position_for, EditorTool, Toolbar};
 pub use viewport::SceneViewport;
 pub use viewport_input::{ViewportInputConfig, ViewportInputHandler, ViewportInputResult};
+pub use world_lines::{draw_world_line, draw_world_segments};

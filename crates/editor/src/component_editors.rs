@@ -133,14 +133,8 @@ pub fn edit_transform2d(
 
     inspector.header("Transform2D");
 
-    if let EditResult::Changed(v) = inspector.vec2("Position", transform.position, ranges::POSITION) {
-        new.position = v;
-        hint = Some("position");
-    }
-    if let EditResult::Changed(v) = inspector.angle("Rotation", transform.rotation) {
-        new.rotation = v;
-        hint = Some("rotation");
-    }
+    inspector.vec2("Position", transform.position, ranges::POSITION).assign(&mut new.position, &mut hint, "position");
+    inspector.angle("Rotation", transform.rotation).assign(&mut new.rotation, &mut hint, "rotation");
     if let EditResult::Changed(v) = inspector.vec2("Scale", transform.scale, ranges::SCALE) {
         // Hard physical floor: soft ranges let typing exceed the range, but
         // a zero/negative scale breaks rendering math.
@@ -162,32 +156,17 @@ pub fn edit_sprite(
 
     inspector.header("Sprite");
 
-    if let EditResult::Changed(v) = inspector.vec2("Offset", sprite.offset, ranges::OFFSET) {
-        new.offset = v;
-        hint = Some("offset");
-    }
-    if let EditResult::Changed(v) = inspector.angle("Rotation", sprite.rotation) {
-        new.rotation = v;
-        hint = Some("rotation");
-    }
+    inspector.vec2("Offset", sprite.offset, ranges::OFFSET).assign(&mut new.offset, &mut hint, "offset");
+    inspector.angle("Rotation", sprite.rotation).assign(&mut new.rotation, &mut hint, "rotation");
     if let EditResult::Changed(v) = inspector.vec2("Scale", sprite.scale, ranges::SCALE) {
         new.scale = v.max(glam::Vec2::splat(crate::physical_floors::SCALE_FLOOR));
         hint = Some("scale");
     }
-    if let EditResult::Changed(v) = inspector.color("Color", sprite.color) {
-        new.color = v;
-        hint = Some("color");
-    }
-    if let EditResult::Changed(v) = inspector.f32("Depth", sprite.depth, ranges::DEPTH) {
-        new.depth = v;
-        hint = Some("depth");
-    }
+    inspector.color("Color", sprite.color).assign(&mut new.color, &mut hint, "color");
+    inspector.f32("Depth", sprite.depth, ranges::DEPTH).assign(&mut new.depth, &mut hint, "depth");
 
     // Texture slot: shows the resolved path, accepts asset-browser drops
-    if let EditResult::Changed(handle) = inspector.texture("Texture", sprite.texture_handle, extras) {
-        new.texture_handle = handle;
-        hint = Some("texture_handle");
-    }
+    inspector.texture("Texture", sprite.texture_handle, extras).assign(&mut new.texture_handle, &mut hint, "texture_handle");
 
     hint.map(|field_hint| ComponentEdit { new_value: new, field_hint })
 }
@@ -216,18 +195,9 @@ pub fn edit_rigid_body(
         hint = Some("body_type");
     }
 
-    if let EditResult::Changed(v) = inspector.vec2("Velocity", body.velocity, ranges::VELOCITY) {
-        new.velocity = v;
-        hint = Some("velocity");
-    }
-    if let EditResult::Changed(v) = inspector.f32("Ang. Velocity", body.angular_velocity, ranges::ANGULAR_VELOCITY) {
-        new.angular_velocity = v;
-        hint = Some("angular_velocity");
-    }
-    if let EditResult::Changed(v) = inspector.f32("Gravity Scale", body.gravity_scale, ranges::GRAVITY_SCALE) {
-        new.gravity_scale = v;
-        hint = Some("gravity_scale");
-    }
+    inspector.vec2("Velocity", body.velocity, ranges::VELOCITY).assign(&mut new.velocity, &mut hint, "velocity");
+    inspector.f32("Ang. Velocity", body.angular_velocity, ranges::ANGULAR_VELOCITY).assign(&mut new.angular_velocity, &mut hint, "angular_velocity");
+    inspector.f32("Gravity Scale", body.gravity_scale, ranges::GRAVITY_SCALE).assign(&mut new.gravity_scale, &mut hint, "gravity_scale");
     if let EditResult::Changed(v) = inspector.f32("Linear Damping", body.linear_damping, ranges::DAMPING) {
         new.linear_damping = v.max(0.0);
         hint = Some("linear_damping");
@@ -236,14 +206,8 @@ pub fn edit_rigid_body(
         new.angular_damping = v.max(0.0);
         hint = Some("angular_damping");
     }
-    if let EditResult::Changed(v) = inspector.bool("Can Rotate", body.can_rotate) {
-        new.can_rotate = v;
-        hint = Some("can_rotate");
-    }
-    if let EditResult::Changed(v) = inspector.bool("CCD Enabled", body.ccd_enabled) {
-        new.ccd_enabled = v;
-        hint = Some("ccd_enabled");
-    }
+    inspector.bool("Can Rotate", body.can_rotate).assign(&mut new.can_rotate, &mut hint, "can_rotate");
+    inspector.bool("CCD Enabled", body.ccd_enabled).assign(&mut new.ccd_enabled, &mut hint, "ccd_enabled");
 
     hint.map(|field_hint| ComponentEdit { new_value: new, field_hint })
 }
@@ -323,14 +287,8 @@ pub fn edit_collider(
         }
     }
 
-    if let EditResult::Changed(v) = inspector.vec2("Offset", collider.offset, ranges::OFFSET) {
-        new.offset = v;
-        hint = Some("offset");
-    }
-    if let EditResult::Changed(v) = inspector.bool("Is Sensor", collider.is_sensor) {
-        new.is_sensor = v;
-        hint = Some("is_sensor");
-    }
+    inspector.vec2("Offset", collider.offset, ranges::OFFSET).assign(&mut new.offset, &mut hint, "offset");
+    inspector.bool("Is Sensor", collider.is_sensor).assign(&mut new.is_sensor, &mut hint, "is_sensor");
     if let EditResult::Changed(v) = inspector.f32("Friction", collider.friction, ranges::FRICTION) {
         new.friction = v.max(0.0);
         hint = Some("friction");
@@ -364,41 +322,17 @@ pub fn edit_audio_source(
     // Volume/pitch are HARD ranges: the audio runtime clamps playback to
     // volume 0..=1 and speed >= 0.1, so an unclamped inspector value would
     // display parameters that are not actually taking effect.
-    if let EditResult::Changed(v) = inspector.f32_hard("Volume", source.volume, ranges::VOLUME) {
-        new.volume = v;
-        hint = Some("volume");
-    }
-    if let EditResult::Changed(v) = inspector.f32_hard("Pitch", source.pitch, ranges::PITCH) {
-        new.pitch = v;
-        hint = Some("pitch");
-    }
-    if let EditResult::Changed(v) = inspector.bool("Looping", source.looping) {
-        new.looping = v;
-        hint = Some("looping");
-    }
-    if let EditResult::Changed(v) = inspector.bool("Play on Spawn", source.play_on_spawn) {
-        new.play_on_spawn = v;
-        hint = Some("play_on_spawn");
-    }
-    if let EditResult::Changed(v) = inspector.bool("Spatial", source.spatial) {
-        new.spatial = v;
-        hint = Some("spatial");
-    }
+    inspector.f32_hard("Volume", source.volume, ranges::VOLUME).assign(&mut new.volume, &mut hint, "volume");
+    inspector.f32_hard("Pitch", source.pitch, ranges::PITCH).assign(&mut new.pitch, &mut hint, "pitch");
+    inspector.bool("Looping", source.looping).assign(&mut new.looping, &mut hint, "looping");
+    inspector.bool("Play on Spawn", source.play_on_spawn).assign(&mut new.play_on_spawn, &mut hint, "play_on_spawn");
+    inspector.bool("Spatial", source.spatial).assign(&mut new.spatial, &mut hint, "spatial");
 
     // Spatial audio parameters (only relevant if spatial is true)
     if source.spatial {
-        if let EditResult::Changed(v) = inspector.f32("Max Distance", source.max_distance, ranges::MAX_DISTANCE) {
-            new.max_distance = v;
-            hint = Some("max_distance");
-        }
-        if let EditResult::Changed(v) = inspector.f32("Ref Distance", source.reference_distance, ranges::REFERENCE_DISTANCE) {
-            new.reference_distance = v;
-            hint = Some("reference_distance");
-        }
-        if let EditResult::Changed(v) = inspector.f32("Rolloff", source.rolloff_factor, ranges::ROLLOFF) {
-            new.rolloff_factor = v;
-            hint = Some("rolloff_factor");
-        }
+        inspector.f32("Max Distance", source.max_distance, ranges::MAX_DISTANCE).assign(&mut new.max_distance, &mut hint, "max_distance");
+        inspector.f32("Ref Distance", source.reference_distance, ranges::REFERENCE_DISTANCE).assign(&mut new.reference_distance, &mut hint, "reference_distance");
+        inspector.f32("Rolloff", source.rolloff_factor, ranges::ROLLOFF).assign(&mut new.rolloff_factor, &mut hint, "rolloff_factor");
     }
 
     hint.map(|field_hint| ComponentEdit { new_value: new, field_hint })

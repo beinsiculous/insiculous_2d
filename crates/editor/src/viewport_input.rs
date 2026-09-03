@@ -86,7 +86,7 @@ pub struct ViewportInputResult {
 #[derive(Debug, Clone)]
 pub struct ViewportInputHandler {
     /// Configuration
-    pub config: ViewportInputConfig,
+    config: ViewportInputConfig,
     /// Current input state
     state: ViewportInputInternalState,
 }

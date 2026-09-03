@@ -57,8 +57,8 @@ pub fn field_row(pos: Vec2, origin_x: f32, width: f32, style: &EditableFieldStyl
 
 /// X position of the [X] remove button: right-aligned to the panel's content
 /// edge instead of floating at a fixed offset from the label column.
-pub fn remove_button_x(origin_x: f32, width: f32, btn_size: f32) -> f32 {
-    (origin_x + width - btn_size).max(origin_x)
+pub fn remove_button_x(origin_x: f32, width: f32, button_size: f32) -> f32 {
+    (origin_x + width - button_size).max(origin_x)
 }
 
 /// One badge+input slot inside a paired row (Vec2 X/Y, color channel column).

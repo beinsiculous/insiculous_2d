@@ -210,6 +210,7 @@ fn unique_param_name(script: &ScriptRef) -> String {
 mod tests {
     use super::*;
     use crate::test_support::{click_through, extras};
+    use crate::EditableFieldStyle;
     use glam::Vec2;
 
     const ORIGIN: Vec2 = Vec2::new(10.0, 10.0);
@@ -235,8 +236,9 @@ mod tests {
         let mut ui = ui::UIContext::new();
         let mut input = input::InputHandler::new();
         let mut drag_drop = crate::DragDropState::new();
+        let style = EditableFieldStyle::default();
         let (_, release) = click_through(&mut ui, &mut input, point, |ui| {
-            let mut inspector = EditableInspector::new(ui, ORIGIN.x, ORIGIN.y);
+            let mut inspector = EditableInspector::new(ui, &style, ORIGIN.x, ORIGIN.y);
             edit_scripts(&mut inspector, scripts, &mut extras(&mut drag_drop))
         });
         release

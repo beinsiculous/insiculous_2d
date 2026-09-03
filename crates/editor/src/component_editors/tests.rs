@@ -13,7 +13,7 @@ use super::{apply_component_edit, edit_collider, edit_entity_tag, edit_rigid_bod
 use crate::commands::{CommandHistory, SetTransformCommand};
 use crate::edit_behavior;
 use crate::test_support::{click_through, extras, frame, setup_entity};
-use crate::{DragDropState, EditResult, EditableInspector, FieldId};
+use crate::{DragDropState, EditResult, EditableFieldStyle, EditableInspector, FieldId};
 
 const ORIGIN: Vec2 = Vec2::new(10.0, 10.0);
 
@@ -63,10 +63,11 @@ fn test_string_fields_commit_on_enter_with_their_field_hint() {
     let mut ui = ui::UIContext::new();
     let mut input = input::InputHandler::new();
     let mut drag_drop = DragDropState::new();
+    let style = EditableFieldStyle::default();
 
     type_and_enter(&mut ui, &mut input, FieldId::new(0, 0, 0), "enemy");
     let tag_edit = frame(&mut ui, &input, |ui| {
-        let mut inspector = EditableInspector::new(ui, ORIGIN.x, ORIGIN.y);
+        let mut inspector = EditableInspector::new(ui, &style, ORIGIN.x, ORIGIN.y);
         edit_entity_tag(&mut inspector, &EntityTag("player".into()), &mut extras(&mut drag_drop))
     })
     .expect("Enter commits the tag");
@@ -74,7 +75,7 @@ fn test_string_fields_commit_on_enter_with_their_field_hint() {
 
     type_and_enter(&mut ui, &mut input, FieldId::new(0, 4, 0), "p1");
     let behavior_edit = frame(&mut ui, &input, |ui| {
-        let mut inspector = EditableInspector::new(ui, ORIGIN.x, ORIGIN.y);
+        let mut inspector = EditableInspector::new(ui, &style, ORIGIN.x, ORIGIN.y);
         edit_behavior(&mut inspector, &platformer("old"), &mut extras(&mut drag_drop))
     })
     .expect("Enter commits the behavior tag");
@@ -95,12 +96,13 @@ fn test_cycle_rows_step_the_variant_and_carry_collider_dimensions() {
     let mut ui = ui::UIContext::new();
     let mut input = input::InputHandler::new();
     let mut drag_drop = DragDropState::new();
+    let style = EditableFieldStyle::default();
     let row = first_row();
 
     // RigidBody: the "next" arrow steps Dynamic → Static on the RELEASE frame.
     let body = RigidBody::default();
     let (press, release) = click_through(&mut ui, &mut input, row.next_btn_center, |ui| {
-        let mut inspector = EditableInspector::new(ui, ORIGIN.x, ORIGIN.y);
+        let mut inspector = EditableInspector::new(ui, &style, ORIGIN.x, ORIGIN.y);
         edit_rigid_body(&mut inspector, &body, &mut extras(&mut drag_drop))
     });
     assert!(press.is_none(), "press frame must not fire the cycle");
@@ -112,7 +114,7 @@ fn test_cycle_rows_step_the_variant_and_carry_collider_dimensions() {
     let collider = Collider::new(ColliderShape::Box { half_extents: Vec2::new(20.0, 10.0) });
     let mut input = input::InputHandler::new();
     let (_, release) = click_through(&mut ui, &mut input, row.prev_btn_center, |ui| {
-        let mut inspector = EditableInspector::new(ui, ORIGIN.x, ORIGIN.y);
+        let mut inspector = EditableInspector::new(ui, &style, ORIGIN.x, ORIGIN.y);
         edit_collider(&mut inspector, &collider, &mut extras(&mut drag_drop))
     });
     let edit = release.expect("release frame cycles the shape");
@@ -133,6 +135,7 @@ fn test_pending_string_edit_commits_before_variant_cycle_applies() {
     let mut ui = ui::UIContext::new();
     let mut input = input::InputHandler::new();
     let mut drag_drop = DragDropState::new();
+    let style = EditableFieldStyle::default();
     let behavior = platformer("old");
     let field: ui::WidgetId = FieldId::new(0, 4, 0).into();
     ui.focus_text_input(field, "goblin");
@@ -140,7 +143,7 @@ fn test_pending_string_edit_commits_before_variant_cycle_applies() {
     assert!(row.row_y > ORIGIN.y, "cycle row sits below the header");
 
     let (press, release) = click_through(&mut ui, &mut input, row.next_btn_center, |ui| {
-        let mut inspector = EditableInspector::new(ui, ORIGIN.x, ORIGIN.y);
+        let mut inspector = EditableInspector::new(ui, &style, ORIGIN.x, ORIGIN.y);
         edit_behavior(&mut inspector, &behavior, &mut extras(&mut drag_drop))
     });
 
@@ -164,13 +167,14 @@ fn test_typed_value_outside_soft_range_is_accepted_and_warned() {
         ("80", |inspector| inspector.f32("Stiffness", 60.0, 0.0..=200.0), 80.0, 0),
         ("270", |inspector| inspector.angle("Rotation", 0.0), (-90.0_f32).to_radians(), 0),
     ];
+    let style = EditableFieldStyle::default();
     for (typed, edit_field, expected, warning_count) in cases {
         let mut ui = ui::UIContext::new();
         let mut input = input::InputHandler::new();
         type_and_enter(&mut ui, &mut input, FieldId::new(0, 0, 0), typed);
 
         let (edit, warnings) = frame(&mut ui, &input, |ui| {
-            let mut inspector = EditableInspector::new(ui, ORIGIN.x, ORIGIN.y);
+            let mut inspector = EditableInspector::new(ui, &style, ORIGIN.x, ORIGIN.y);
             let edit = edit_field(&mut inspector);
             (edit, inspector.take_warnings())
         });

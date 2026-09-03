@@ -34,7 +34,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 - `texture_field.rs` — inspector texture slot (drop target) + `InspectorExtras`
 - `gizmo_math.rs` — pure rotate-drag math (Y-flip + shortest-arc wrap)
 - `dock/` — Multi-panel docking: `mod.rs` (state + layout, collapse/visibility toggles, `panel_id_for_menu_label`), `render.rs` (chrome, collapse chevrons, resize grabbers + clamped `resized_size`), `tests.rs`
-- `layout.rs` — Layout helpers
+- `layout.rs` — Layout constants (`PADDING` 8.0 for panel content / status bar / inspector styles, `LINE_HEIGHT` 20.0 for inspector rows)
 - `menu/` — Top menu bar (`mod.rs` + `tests.rs`); action items carry a `checked` flag (`MenuBar::set_checked`) rendered as an accent square; `actions.rs`: `action_for_menu_label` (menu label → `EditorAction`, the menu bar's only vocabulary)
 - `toolbar.rs` — Tool selection toolbar
 - `status_bar.rs` — Bottom status bar (22px); `show_message`/`show_error`/`clear_message`
@@ -45,7 +45,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 
 ### Inspector / components
 - `inspector.rs` — Generic `inspect_component()` (read-only, serde-based)
-- `editable_inspector.rs` — Editable field widgets (f32 with soft-range opts + `angle()` degree field w/ `wrap_degrees`, bool, `string_edit` text input, `cycle()` variant selector); `EditableInspector` is width-aware (`with_width`) — labels ellipsize at the control column, controls clamp to the panel's right edge, the [X] right-aligns
+- `editable_inspector.rs` — Editable field widgets (f32 with soft-range opts + `angle()` degree field w/ `wrap_degrees`, bool, `string_edit` text input, `cycle()` variant selector); `InspectorFrame` (shared pass context with borrowed styles and column geometry); `EditableInspector` borrows `EditableFieldStyle`, width-aware — labels ellipsize at the control column, controls clamp to the panel's right edge, the [X] right-aligns
 - `row_layout.rs` — pure row-layout math (`field_row`/`remove_button_x`/`pair_slots`/`color_block_height`/`ellipsize`, measurement injected — headless-tested; ALL inspector horizontal placement goes through here, never hardcode offsets)
 - `composite_rows.rs` — `edit_vec2` (X/Y composite row) + `edit_color` (RGBA 2×2 grid with aligned columns), measured axis/channel badges
 - `text_field.rs` — `edit_string` free fn + read-only `display_string`/`display_u32`
@@ -66,6 +66,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 - `grid.rs` — Authoring grid (#36): pure `grid_segments()` (LOD, subdivisions, max_lines, origin axes) + `render_grid_overlay()` drawing clipped `ui.line`s via the viewport — the collider-overlay pattern
 - `clipboard.rs` — Entity clipboard (#40): `ClipboardEntity` + `capture_entity_tree`/`spawn_entity_tree` (registry-driven, hierarchy rebuilt explicitly), `SpawnTreeCommand` (undo removes the WHOLE subtree; redo re-records the fresh root), `uncaptured_component_names` warning helper; Duplicate and Paste both flow through here
 - `collider_overlay.rs` — Collider outline overlay for the scene view (mirrors rapier placement: offset is body-local, Transform2D.scale ignored); toggled via `EditorContext::toggle_colliders()` / C key
+- `world_lines.rs` — `draw_world_line` (guarded screen projection) + `draw_world_segments`
 
 ### Persistence + commands
 - `commands/` — EditorCommand trait + CommandHistory (`mod.rs`; **dirty source of truth**: id-of-top watermark, `is_dirty()`/`mark_saved()`, merges reassign the top a fresh id AND clear redo; dirty_tests.rs is the contract), entity commands, component commands, `SetComponentCommand<T>` with the thirteen `Set*Command` type aliases and `GIZMO_FIELD_HINT` (`set_commands.rs`; merge = same entity + same field hint, distinct `T`s never merge; + `RenameEntityCommand` for entities without a Name; tests.rs); `push_already_executed`, `push_as_one`/`execute_as_one` (none/one raw/many as a MacroCommand), `try_merge_or_push`, `break_merge()` gesture boundary (scrub/typed-commit seals the top entry — dirty_tests.rs)
