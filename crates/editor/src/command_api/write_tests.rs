@@ -1,16 +1,22 @@
-//! Stage B write-path tests: parse → execute through `CommandHistory`,
-//! round-trip undo, batch semantics, and the per-verb guards.
+//! Stage B write-path contracts: every verb runs through `CommandHistory`
+//! (so a script's edits are GUI-undoable), the per-verb refusals record
+//! nothing, and a batch is one undo entry.
 
+use ecs::behavior::Behavior;
 use ecs::sprite_components::{Name, Sprite};
 use ecs::World;
 use glam::Vec2;
+use physics::components::{Collider, ColliderShape};
 use serde_json::Value;
 
 use super::write::{ApiBatch, WriteCtx};
-use super::{parse_line, ApiError, Request, WriteCmd};
+use super::{parse_line, ApiError, HostedWrite, QueryCtx, Request, WriteCmd};
 use crate::commands::CommandHistory;
 use crate::play_state::EditorPlayState;
 use crate::selection::Selection;
+use crate::test_support::named_entity;
+
+const PLAYER_POS: Vec2 = Vec2::new(1.0, 2.0);
 
 struct Rig {
     world: World,
@@ -32,12 +38,7 @@ impl Rig {
     }
 
     fn spawn_player(&mut self) -> ecs::EntityId {
-        let e = self.world.create_entity();
-        self.world.add_component(&e, Name::new("Player")).ok();
-        self.world
-            .add_component(&e, common::Transform2D::new(Vec2::new(1.0, 2.0)))
-            .ok();
-        e
+        named_entity(&mut self.world, "Player", PLAYER_POS)
     }
 
     /// Parse and run one write line, panicking on a query.
@@ -57,417 +58,10 @@ impl Rig {
         };
         super::write::run(&write, &mut ctx)
     }
-}
 
-// ==================== set ====================
-
-#[test]
-fn test_set_patch_merges_fields_and_undoes() {
-    let mut rig = Rig::new();
-    let e = rig.spawn_player();
-
-    rig.run(r#"set Player Transform2D {"position": [40.0, 5.0]}"#).unwrap();
-    let t = rig.world.get::<common::Transform2D>(e).unwrap();
-    assert_eq!(t.position, Vec2::new(40.0, 5.0));
-    assert_eq!(t.scale, Vec2::ONE, "unpatched fields survive the shallow merge");
-
-    assert!(rig.history.undo(&mut rig.world), "the set is one undo entry");
-    let t = rig.world.get::<common::Transform2D>(e).unwrap();
-    assert_eq!(t.position, Vec2::new(1.0, 2.0), "undo restores the old value");
-}
-
-#[test]
-fn test_set_unknown_field_lists_valid_keys() {
-    let mut rig = Rig::new();
-    rig.spawn_player();
-
-    let err = rig.run(r#"set Player Transform2D {"positon": [1.0, 1.0]}"#).unwrap_err();
-    match err {
-        ApiError::Invalid(msg) => {
-            assert!(msg.contains("positon"), "{msg}");
-            assert!(msg.contains("position"), "message lists the real fields: {msg}");
-        }
-        other => panic!("expected Invalid, got {other:?}"),
+    fn position(&self, entity: ecs::EntityId) -> Vec2 {
+        self.world.get::<common::Transform2D>(entity).expect("transform").position
     }
-    assert!(!rig.history.can_undo(), "a rejected set records nothing");
-}
-
-#[test]
-fn test_set_absent_component_directs_to_add() {
-    let mut rig = Rig::new();
-    rig.spawn_player();
-
-    let err = rig.run(r#"set Player Sprite {"depth": 1.0}"#).unwrap_err();
-    assert!(matches!(err, ApiError::Invalid(msg) if msg.contains("add")));
-}
-
-#[test]
-fn test_set_readonly_registry_type_camera() {
-    // The generic path covers types with no typed Set*Command — the API's
-    // edge over the GUI.
-    let mut rig = Rig::new();
-    let e = rig.spawn_player();
-    rig.world.add_component(&e, common::Camera::default()).ok();
-
-    rig.run(r#"set Player Camera {"zoom": 2.5}"#).unwrap();
-    assert_eq!(rig.world.get::<common::Camera>(e).unwrap().zoom, 2.5);
-    assert!(rig.history.undo(&mut rig.world));
-    assert_eq!(rig.world.get::<common::Camera>(e).unwrap().zoom, 1.0);
-}
-
-#[test]
-fn test_two_sets_are_two_undo_steps() {
-    let mut rig = Rig::new();
-    let e = rig.spawn_player();
-
-    rig.run(r#"set Player Transform2D {"position": [10.0, 0.0]}"#).unwrap();
-    rig.run(r#"set Player Transform2D {"position": [20.0, 0.0]}"#).unwrap();
-
-    assert!(rig.history.undo(&mut rig.world));
-    assert_eq!(
-        rig.world.get::<common::Transform2D>(e).unwrap().position,
-        Vec2::new(10.0, 0.0),
-        "each API set line is its own undo entry"
-    );
-    assert!(rig.history.undo(&mut rig.world));
-    assert_eq!(
-        rig.world.get::<common::Transform2D>(e).unwrap().position,
-        Vec2::new(1.0, 2.0)
-    );
-}
-
-#[test]
-fn test_set_rejects_non_finite_numbers() {
-    let mut rig = Rig::new();
-    rig.spawn_player();
-    // serde_json can't represent bare inf/nan literals, but a huge float
-    // that parses to inf can arrive via 1e999 — reject it.
-    let err = rig.run(r#"set Player Transform2D {"rotation": 1e999}"#);
-    assert!(err.is_err(), "non-finite input must not reach the world");
-    assert!(!rig.history.can_undo());
-}
-
-#[test]
-fn test_set_rejects_unissued_texture_handle() {
-    // #66: a handle the resolver never issued would save as `#texture_999`
-    // and only fail on the next load — refuse it at the write instead.
-    let mut rig = Rig::new();
-    let e = rig.spawn_player();
-    rig.world.add_component(&e, Sprite::new(0)).ok();
-
-    let err = rig.run(r#"set Player Sprite {"texture_handle": 999}"#).unwrap_err();
-    assert!(matches!(err, ApiError::Invalid(ref msg) if msg.contains("999")), "{err:?}");
-    assert_eq!(rig.world.get::<Sprite>(e).unwrap().texture_handle, 0, "world untouched");
-    assert!(!rig.history.can_undo(), "nothing recorded");
-
-    // The built-in #white (handle 0) is always issued.
-    rig.run(r#"set Player Sprite {"texture_handle": 0, "depth": 2.0}"#).unwrap();
-    assert_eq!(rig.world.get::<Sprite>(e).unwrap().depth, 2.0);
-}
-
-#[test]
-fn test_add_rejects_unissued_texture_handle_without_leaving_component() {
-    let mut rig = Rig::new();
-    let e = rig.spawn_player();
-
-    let err = rig.run(r#"add Player Sprite {"texture_handle": 42}"#).unwrap_err();
-    assert!(matches!(err, ApiError::Invalid(_)), "{err:?}");
-    assert!(rig.world.get::<Sprite>(e).is_none(), "the add is rolled back");
-    assert!(!rig.history.can_undo());
-}
-
-#[test]
-fn test_tilemap_tileset_shares_the_texture_handle_rule() {
-    // `Tilemap.tileset` lives in the same handle space as `Sprite.texture_handle`
-    // (both serialize through the resolver's inverse), so it gets the same
-    // refusal — and the bare default (tileset 0) still adds.
-    let mut rig = Rig::new();
-    let e = rig.spawn_player();
-
-    rig.run("add Player Tilemap").unwrap();
-    assert_eq!(rig.world.get::<ecs::Tilemap>(e).unwrap().tileset, 0);
-
-    let err = rig.run(r#"set Player Tilemap {"tileset": 7}"#).unwrap_err();
-    assert!(matches!(err, ApiError::Invalid(ref msg) if msg.contains("7")), "{err:?}");
-    assert_eq!(rig.world.get::<ecs::Tilemap>(e).unwrap().tileset, 0, "world untouched");
-}
-
-#[test]
-fn test_set_sanitizes_collider_extents() {
-    let mut rig = Rig::new();
-    let e = rig.spawn_player();
-    rig.world
-        .add_component(&e, physics::components::Collider::new(
-            physics::components::ColliderShape::Box { half_extents: Vec2::new(10.0, 10.0) },
-        ))
-        .ok();
-
-    rig.run(r#"set Player Collider {"shape": {"Box": {"half_extents": [0.0, 0.0]}}}"#)
-        .unwrap();
-    match rig.world.get::<physics::components::Collider>(e).unwrap().shape {
-        physics::components::ColliderShape::Box { half_extents } => {
-            assert_eq!(half_extents, Vec2::new(0.5, 0.5), "hard floor mirrors the GUI");
-        }
-        ref other => panic!("expected Box, got {other:?}"),
-    }
-}
-
-// ==================== add / remove / rename / delete / select ====================
-
-#[test]
-fn test_add_with_value_is_single_undo_step() {
-    let mut rig = Rig::new();
-    let e = rig.spawn_player();
-
-    rig.run(r#"add Player Sprite {"depth": 3.0}"#).unwrap();
-    assert_eq!(rig.world.get::<Sprite>(e).unwrap().depth, 3.0);
-
-    assert!(rig.history.undo(&mut rig.world), "add+patch is ONE undo entry");
-    assert!(rig.world.get::<Sprite>(e).is_none());
-    assert!(!rig.history.can_undo());
-}
-
-#[test]
-fn test_add_duplicate_component_is_invalid() {
-    let mut rig = Rig::new();
-    rig.spawn_player();
-    rig.run("add Player Sprite").unwrap();
-    let err = rig.run("add Player Sprite").unwrap_err();
-    assert!(matches!(err, ApiError::Invalid(msg) if msg.contains("set")));
-}
-
-#[test]
-fn test_remove_undo_restores_value() {
-    let mut rig = Rig::new();
-    let e = rig.spawn_player();
-    rig.run(r#"add Player Sprite {"depth": 7.0}"#).unwrap();
-
-    rig.run("remove Player Sprite").unwrap();
-    assert!(rig.world.get::<Sprite>(e).is_none());
-
-    assert!(rig.history.undo(&mut rig.world));
-    assert_eq!(
-        rig.world.get::<Sprite>(e).unwrap().depth,
-        7.0,
-        "undo restores the removed component's VALUE, not a default"
-    );
-}
-
-#[test]
-fn test_rename_reaches_unnamed_entities_and_undoes() {
-    let mut rig = Rig::new();
-    let e = rig.world.create_entity();
-
-    let out = rig.run(&format!("rename #{} Crate", e.value())).unwrap();
-    assert_eq!(out["entity"]["name"], Value::String("Crate".into()));
-
-    assert!(rig.history.undo(&mut rig.world));
-    assert!(rig.world.get::<Name>(e).is_none(), "undo restores no-Name");
-}
-
-#[test]
-fn test_delete_undo_resurrects_and_selection_drops_it() {
-    let mut rig = Rig::new();
-    let e = rig.spawn_player();
-    rig.selection.select(e);
-
-    rig.run("delete Player").unwrap();
-    assert!(rig.world.get_entity(&e).is_err());
-    assert!(rig.selection.primary().is_none(), "selection drops the deleted entity");
-
-    assert!(rig.history.undo(&mut rig.world));
-    assert!(rig.world.get_entity(&e).is_ok(), "undo resurrects");
-    assert_eq!(rig.world.get::<Name>(e).unwrap().as_str(), "Player");
-}
-
-#[test]
-fn test_select_updates_selection_without_undo_entry() {
-    let mut rig = Rig::new();
-    let e = rig.spawn_player();
-
-    rig.run("select Player").unwrap();
-    assert_eq!(rig.selection.primary(), Some(e));
-    assert!(!rig.history.can_undo(), "selection is never on the undo stack");
-
-    rig.run("select none").unwrap();
-    assert!(rig.selection.primary().is_none());
-}
-
-// ==================== undo / redo verbs ====================
-
-#[test]
-fn test_undo_empty_history_reports_null() {
-    let mut rig = Rig::new();
-    let out = rig.run("undo").unwrap();
-    assert_eq!(out["undid"], Value::Null, "empty stack is a null, not an error");
-    let out = rig.run("redo").unwrap();
-    assert_eq!(out["redid"], Value::Null);
-}
-
-#[test]
-fn test_undo_verb_names_the_undone_command() {
-    let mut rig = Rig::new();
-    rig.spawn_player();
-    rig.run(r#"set Player Transform2D {"rotation": 1.0}"#).unwrap();
-
-    let out = rig.run("undo").unwrap();
-    assert_eq!(out["undid"], Value::String("Set Transform2D (API)".into()));
-}
-
-// ==================== batches ====================
-
-#[test]
-fn test_batch_groups_into_one_undo() {
-    let mut rig = Rig::new();
-    let e = rig.spawn_player();
-
-    rig.run("batch begin setup").unwrap();
-    rig.run(r#"set Player Transform2D {"position": [5.0, 5.0]}"#).unwrap();
-    rig.run("add Player Sprite").unwrap();
-    let out = rig.run("batch end").unwrap();
-    assert_eq!(out["commands"], Value::Number(2.into()));
-
-    assert!(rig.history.undo(&mut rig.world), "the whole batch is ONE entry");
-    assert!(rig.world.get::<Sprite>(e).is_none());
-    assert_eq!(
-        rig.world.get::<common::Transform2D>(e).unwrap().position,
-        Vec2::new(1.0, 2.0)
-    );
-    assert!(!rig.history.can_undo());
-}
-
-#[test]
-fn test_batch_abort_rolls_back_in_reverse() {
-    let mut rig = Rig::new();
-    let e = rig.spawn_player();
-
-    rig.run("batch begin oops").unwrap();
-    rig.run(r#"set Player Transform2D {"position": [9.0, 9.0]}"#).unwrap();
-    rig.run("add Player Sprite").unwrap();
-    let out = rig.run("batch abort").unwrap();
-    assert_eq!(out["aborted"], Value::Number(2.into()));
-
-    assert!(rig.world.get::<Sprite>(e).is_none(), "abort undid the add");
-    assert_eq!(
-        rig.world.get::<common::Transform2D>(e).unwrap().position,
-        Vec2::new(1.0, 2.0),
-        "abort undid the set"
-    );
-    assert!(!rig.history.can_undo(), "an aborted batch records nothing");
-}
-
-#[test]
-fn test_batch_end_without_begin_is_refused() {
-    let mut rig = Rig::new();
-    assert!(matches!(rig.run("batch end"), Err(ApiError::Refused(_))));
-    assert!(matches!(rig.run("batch abort"), Err(ApiError::Refused(_))));
-    rig.run("batch begin a").unwrap();
-    assert!(matches!(rig.run("batch begin b"), Err(ApiError::Refused(_))));
-}
-
-// ==================== guards ====================
-
-#[test]
-fn test_writes_refused_while_playing() {
-    let mut rig = Rig::new();
-    rig.spawn_player();
-    rig.play_state = EditorPlayState::Playing;
-
-    let err = rig.run(r#"set Player Transform2D {"rotation": 1.0}"#).unwrap_err();
-    assert!(matches!(err, ApiError::Refused(_)));
-    assert!(!rig.history.can_undo());
-
-    // Paused edits stay allowed — inspector parity.
-    rig.play_state = EditorPlayState::Paused;
-    assert!(rig.run(r#"set Player Transform2D {"rotation": 1.0}"#).is_ok());
-}
-
-#[test]
-fn test_read_only_dispatch_refuses_writes() {
-    let world = World::new();
-    let selection = Selection::new();
-    let ctx = super::QueryCtx {
-        world: &world,
-        selection: &selection,
-        scene_path: None,
-        dirty: false,
-        play_state: EditorPlayState::Editing,
-    };
-    let response = super::dispatch_line("delete Player", &ctx).unwrap();
-    assert!(response.contains("\"refused\""), "{response}");
-}
-
-// ==================== archetype drift ====================
-
-#[test]
-fn test_create_parse_shapes() {
-    let ok = parse_line("create sprite Crate 100 40").unwrap();
-    match ok {
-        Request::Write(WriteCmd::Hosted(super::HostedWrite::Create { archetype, name, position })) => {
-            assert_eq!(archetype, "sprite");
-            assert_eq!(name.as_deref(), Some("Crate"));
-            assert_eq!(position, Some((100.0, 40.0)));
-        }
-        other => panic!("expected hosted create, got {other:?}"),
-    }
-    assert!(matches!(parse_line("create flying-toaster"), Err(ApiError::Invalid(_))));
-}
-
-// ==================== review fixes (kimi batch-5) ====================
-
-#[test]
-fn test_set_behavior_switches_variant_by_whole_replace() {
-    // Kimi F1: an externally-tagged enum patch replaces the whole value —
-    // that IS how a script switches an entity's behavior variant.
-    use ecs::behavior::Behavior;
-    let mut rig = Rig::new();
-    let e = rig.spawn_player();
-    rig.world
-        .add_component(&e, Behavior::PlayerPlatformer {
-            move_speed: 100.0,
-            jump_impulse: 50.0,
-            jump_cooldown: 0.2,
-            tag: "p1".into(),
-        })
-        .ok();
-
-    rig.run(r#"set Player Behavior {"FollowTagged": {"target_tag": "p1", "follow_distance": 30.0, "follow_speed": 90.0}}"#)
-        .unwrap();
-    match rig.world.get::<Behavior>(e).unwrap() {
-        Behavior::FollowTagged { target_tag, .. } => assert_eq!(target_tag, "p1"),
-        other => panic!("variant must switch, got {other:?}"),
-    }
-
-    assert!(rig.history.undo(&mut rig.world));
-    assert!(
-        matches!(rig.world.get::<Behavior>(e), Some(Behavior::PlayerPlatformer { .. })),
-        "undo restores the old variant"
-    );
-}
-
-#[test]
-fn test_set_name_is_rejected_toward_rename() {
-    // Kimi F3: Name goes through `rename` (validated) — never `set`.
-    let mut rig = Rig::new();
-    rig.spawn_player();
-    let err = rig.run(r#"set Player Name "Sneaky""#).unwrap_err();
-    assert!(matches!(err, ApiError::Invalid(msg) if msg.contains("rename")));
-    assert!(!rig.history.can_undo());
-}
-
-#[test]
-fn test_undo_redo_refused_inside_open_batch() {
-    // Kimi F5: undoing mid-batch would desync the batch's collected
-    // commands from the world.
-    let mut rig = Rig::new();
-    rig.spawn_player();
-    rig.run("batch begin b").unwrap();
-    rig.run(r#"set Player Transform2D {"rotation": 1.0}"#).unwrap();
-    assert!(matches!(rig.run("undo"), Err(ApiError::Refused(_))));
-    assert!(matches!(rig.run("redo"), Err(ApiError::Refused(_))));
-    rig.run("batch abort").unwrap();
-    let out = rig.run("undo").unwrap();
-    assert_eq!(out["undid"], Value::Null, "after abort the stack is empty again");
 }
 
 ecs::define_component! {
@@ -478,86 +72,374 @@ ecs::define_component! {
     }
 }
 
+// ==================== set ====================
+
 #[test]
-fn test_add_set_remove_work_on_dynamic_components() {
-    // kimi R1-F1: the #45 ship point needs `add`/`set`/`remove` to reach
-    // game-registered components, not just ComponentKind variants.
+fn test_set_patch_shallow_merges_and_each_line_is_one_undo_entry() -> Result<(), ApiError> {
+    let mut rig = Rig::new();
+    let e = rig.spawn_player();
+    rig.world.add_component(&e, common::Camera::default()).ok();
+    rig.world
+        .add_component(
+            &e,
+            Behavior::PlayerPlatformer {
+                move_speed: 100.0,
+                jump_impulse: 50.0,
+                jump_cooldown: 0.2,
+                tag: "p1".into(),
+            },
+        )
+        .ok();
+
+    rig.run(r#"set Player Transform2D {"position": [40.0, 5.0]}"#)?;
+    let t = rig.world.get::<common::Transform2D>(e).expect("transform");
+    assert_eq!(t.position, Vec2::new(40.0, 5.0));
+    assert_eq!(t.scale, Vec2::ONE, "unpatched fields survive the shallow merge");
+    rig.run(r#"set Player Transform2D {"position": [20.0, 0.0]}"#)?;
+
+    // A type with no typed Set*Command goes through the generic path.
+    rig.run(r#"set Player Camera {"zoom": 2.5}"#)?;
+    assert_eq!(rig.world.get::<common::Camera>(e).expect("camera").zoom, 2.5);
+
+    // An externally-tagged enum patch replaces the whole value — that IS
+    // how a script switches an entity's behavior variant.
+    rig.run(r#"set Player Behavior {"FollowTagged": {"target_tag": "p1", "follow_distance": 30.0, "follow_speed": 90.0}}"#)?;
+    assert!(
+        matches!(rig.world.get::<Behavior>(e), Some(Behavior::FollowTagged { target_tag, .. }) if target_tag == "p1"),
+        "the variant switches"
+    );
+
+    assert!(rig.history.undo(&mut rig.world), "each set line is its own undo entry");
+    assert!(
+        matches!(rig.world.get::<Behavior>(e), Some(Behavior::PlayerPlatformer { .. })),
+        "undo restores the old variant"
+    );
+    assert!(rig.history.undo(&mut rig.world));
+    assert_eq!(rig.world.get::<common::Camera>(e).expect("camera").zoom, 1.0);
+    assert!(rig.history.undo(&mut rig.world));
+    assert_eq!(rig.position(e), Vec2::new(40.0, 5.0), "the second set undoes on its own");
+    assert!(rig.history.undo(&mut rig.world));
+    assert_eq!(rig.position(e), PLAYER_POS, "the first set undoes to the original");
+    assert!(!rig.history.can_undo());
+    Ok(())
+}
+
+#[test]
+fn test_set_refusals_name_the_fix_and_record_nothing() {
+    let mut rig = Rig::new();
+    let e = rig.spawn_player();
+
+    let err = rig
+        .run(r#"set Player Transform2D {"positon": [1.0, 1.0]}"#)
+        .expect_err("unknown field");
+    let ApiError::Invalid(msg) = err else {
+        panic!("expected Invalid, got {err:?}");
+    };
+    assert!(msg.contains("positon"), "names the bad field: {msg}");
+    assert!(msg.contains("position"), "lists the real fields: {msg}");
+
+    let err = rig.run(r#"set Player Sprite {"depth": 1.0}"#).expect_err("absent component");
+    assert!(matches!(err, ApiError::Invalid(msg) if msg.contains("add")), "directs to `add`");
+
+    // Name goes through `rename` (validated) — never `set`.
+    let err = rig.run(r#"set Player Name "Sneaky""#).expect_err("name via set");
+    assert!(matches!(err, ApiError::Invalid(msg) if msg.contains("rename")), "directs to `rename`");
+
+    assert_eq!(rig.position(e), PLAYER_POS, "the world is untouched");
+    assert!(!rig.history.can_undo(), "a rejected set records nothing");
+}
+
+#[test]
+fn test_set_rejects_non_finite_numbers() {
+    let mut rig = Rig::new();
+    let e = rig.spawn_player();
+
+    // serde_json can't represent bare inf/nan literals, but a huge float
+    // that parses to inf can arrive via 1e999 — reject it.
+    let result = rig.run(r#"set Player Transform2D {"rotation": 1e999}"#);
+
+    assert!(result.is_err(), "non-finite input must not reach the world");
+    assert_eq!(rig.world.get::<common::Transform2D>(e).expect("transform").rotation, 0.0);
+    assert!(!rig.history.can_undo());
+}
+
+#[test]
+fn test_unissued_texture_handle_is_refused_at_set_and_add() -> Result<(), ApiError> {
+    // #66: a handle the resolver never issued would save as `#texture_999`
+    // and only fail on the next load — refuse it at the write instead.
+    let mut rig = Rig::new();
+    let e = rig.spawn_player();
+
+    let err = rig.run(r#"add Player Sprite {"texture_handle": 42}"#).expect_err("unissued on add");
+    assert!(matches!(err, ApiError::Invalid(_)), "{err:?}");
+    assert!(rig.world.get::<Sprite>(e).is_none(), "the add is rolled back, no component left");
+    assert!(!rig.history.can_undo(), "nothing recorded");
+
+    // The built-in #white (handle 0) is always issued.
+    rig.run(r#"add Player Sprite {"texture_handle": 0, "depth": 2.0}"#)?;
+    assert_eq!(rig.world.get::<Sprite>(e).expect("sprite").depth, 2.0);
+    let top_before = rig.history.undo_name().map(str::to_string);
+
+    let err = rig.run(r#"set Player Sprite {"texture_handle": 999}"#).expect_err("unissued handle");
+    assert!(matches!(err, ApiError::Invalid(ref msg) if msg.contains("999")), "{err:?}");
+    assert_eq!(rig.world.get::<Sprite>(e).expect("sprite").texture_handle, 0, "world untouched");
+    assert_eq!(rig.history.undo_name().map(str::to_string), top_before, "nothing recorded");
+
+    // `Tilemap.tileset` lives in the same handle space.
+    rig.run("add Player Tilemap")?;
+    let err = rig.run(r#"set Player Tilemap {"tileset": 7}"#).expect_err("unissued tileset");
+    assert!(matches!(err, ApiError::Invalid(ref msg) if msg.contains("7")), "{err:?}");
+    assert_eq!(rig.world.get::<ecs::Tilemap>(e).expect("tilemap").tileset, 0, "world untouched");
+    Ok(())
+}
+
+#[test]
+fn test_set_sanitizes_collider_extents_to_the_gui_floor() -> Result<(), ApiError> {
+    let mut rig = Rig::new();
+    let e = rig.spawn_player();
+    rig.world
+        .add_component(&e, Collider::new(ColliderShape::Box { half_extents: Vec2::new(10.0, 10.0) }))
+        .ok();
+
+    rig.run(r#"set Player Collider {"shape": {"Box": {"half_extents": [0.0, 0.0]}}}"#)?;
+
+    assert_eq!(
+        rig.world.get::<Collider>(e).expect("collider").shape,
+        ColliderShape::Box { half_extents: Vec2::new(0.5, 0.5) },
+        "hard floor mirrors the GUI"
+    );
+    Ok(())
+}
+
+// ==================== add / remove / rename / delete / select ====================
+
+#[test]
+fn test_add_and_remove_round_trip_values_through_undo() -> Result<(), ApiError> {
+    let mut rig = Rig::new();
+    let e = rig.spawn_player();
+
+    rig.run(r#"add Player Sprite {"depth": 7.0}"#)?;
+    assert_eq!(rig.world.get::<Sprite>(e).expect("sprite").depth, 7.0);
+    let err = rig.run("add Player Sprite").expect_err("duplicate add");
+    assert!(matches!(err, ApiError::Invalid(msg) if msg.contains("set")), "directs to `set`");
+
+    rig.run("remove Player Sprite")?;
+    assert!(rig.world.get::<Sprite>(e).is_none());
+
+    assert!(rig.history.undo(&mut rig.world));
+    assert_eq!(
+        rig.world.get::<Sprite>(e).expect("sprite").depth,
+        7.0,
+        "undo restores the removed component's VALUE, not a default"
+    );
+    assert!(rig.history.undo(&mut rig.world), "add+patch is ONE undo entry");
+    assert!(rig.world.get::<Sprite>(e).is_none());
+    assert!(!rig.history.can_undo());
+    Ok(())
+}
+
+#[test]
+fn test_rename_reaches_unnamed_entities_and_undo_restores_no_name() -> Result<(), ApiError> {
+    let mut rig = Rig::new();
+    let e = rig.world.create_entity();
+
+    let out = rig.run(&format!("rename #{} Crate", e.value()))?;
+
+    assert_eq!(out["entity"]["name"], Value::String("Crate".into()));
+    assert_eq!(rig.world.get::<Name>(e).map(Name::as_str), Some("Crate"));
+    assert!(rig.history.undo(&mut rig.world));
+    assert!(rig.world.get::<Name>(e).is_none(), "undo restores no-Name");
+    Ok(())
+}
+
+#[test]
+fn test_delete_drops_the_selection_and_undo_resurrects_both() -> Result<(), ApiError> {
+    let mut rig = Rig::new();
+    let e = rig.spawn_player();
+    rig.selection.select(e);
+
+    rig.run("delete Player")?;
+    assert!(rig.world.get_entity(&e).is_err());
+    assert!(rig.selection.is_empty(), "selection drops the deleted entity");
+
+    rig.run("undo")?;
+    assert!(rig.world.get_entity(&e).is_ok(), "undo resurrects");
+    assert_eq!(rig.world.get::<Name>(e).map(Name::as_str), Some("Player"));
+    assert!(rig.selection.contains(e), "undoing the delete restores the pre-delete selection (#59)");
+    Ok(())
+}
+
+#[test]
+fn test_select_updates_the_selection_without_an_undo_entry() -> Result<(), ApiError> {
+    let mut rig = Rig::new();
+    let e = rig.spawn_player();
+
+    rig.run("select Player")?;
+    assert_eq!(rig.selection.primary(), Some(e));
+    assert!(!rig.history.can_undo(), "selection is never on the undo stack");
+
+    rig.run("select none")?;
+    assert!(rig.selection.primary().is_none());
+    Ok(())
+}
+
+// ==================== undo / redo verbs ====================
+
+#[test]
+fn test_undo_and_redo_verbs_name_the_command_and_report_null_when_empty() -> Result<(), ApiError> {
+    let mut rig = Rig::new();
+    rig.spawn_player();
+
+    assert_eq!(rig.run("undo")?["undid"], Value::Null, "empty stack is a null, not an error");
+    assert_eq!(rig.run("redo")?["redid"], Value::Null);
+
+    rig.run(r#"set Player Transform2D {"rotation": 1.0}"#)?;
+    assert_eq!(rig.run("undo")?["undid"], Value::String("Set Transform2D (API)".into()));
+    assert_eq!(rig.run("redo")?["redid"], Value::String("Set Transform2D (API)".into()));
+    Ok(())
+}
+
+// ==================== batches ====================
+
+#[test]
+fn test_batch_is_one_undo_entry_carrying_the_pre_batch_selection() -> Result<(), ApiError> {
+    let mut rig = Rig::new();
+    let e = rig.spawn_player();
+    rig.selection.select(e);
+
+    rig.run("batch begin setup")?;
+    rig.run(r#"set Player Transform2D {"position": [5.0, 5.0]}"#)?;
+    rig.run("add Player Sprite")?;
+    // A frame boundary overwrites the pending note while the batch is
+    // open — the user deselected everything mid-batch.
+    rig.selection.clear();
+    rig.history.note_selection(&rig.selection);
+    let out = rig.run("batch end")?;
+    assert_eq!(out["commands"], Value::Number(2.into()));
+
+    rig.run("undo")?;
+    assert!(rig.world.get::<Sprite>(e).is_none(), "the whole batch is ONE entry");
+    assert_eq!(rig.position(e), PLAYER_POS);
+    assert!(!rig.history.can_undo());
+    assert!(
+        rig.selection.contains(e),
+        "undoing the batch restores the PRE-BATCH selection, not the frame note"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_batch_abort_rolls_back_in_reverse_and_records_nothing() -> Result<(), ApiError> {
+    let mut rig = Rig::new();
+    let e = rig.spawn_player();
+
+    rig.run("batch begin oops")?;
+    rig.run(r#"set Player Transform2D {"position": [9.0, 9.0]}"#)?;
+    rig.run("add Player Sprite")?;
+    let out = rig.run("batch abort")?;
+
+    assert_eq!(out["aborted"], Value::Number(2.into()));
+    assert!(rig.world.get::<Sprite>(e).is_none(), "abort undid the add");
+    assert_eq!(rig.position(e), PLAYER_POS, "abort undid the set");
+    assert!(!rig.history.can_undo(), "an aborted batch records nothing");
+    Ok(())
+}
+
+#[test]
+fn test_batch_refuses_unbalanced_delimiters_and_mid_batch_undo() -> Result<(), ApiError> {
+    let mut rig = Rig::new();
+    rig.spawn_player();
+
+    assert!(matches!(rig.run("batch end"), Err(ApiError::Refused(_))));
+    assert!(matches!(rig.run("batch abort"), Err(ApiError::Refused(_))));
+
+    rig.run("batch begin a")?;
+    assert!(matches!(rig.run("batch begin b"), Err(ApiError::Refused(_))));
+    // Undoing mid-batch would desync the batch's commands from the world.
+    rig.run(r#"set Player Transform2D {"rotation": 1.0}"#)?;
+    assert!(matches!(rig.run("undo"), Err(ApiError::Refused(_))));
+    assert!(matches!(rig.run("redo"), Err(ApiError::Refused(_))));
+
+    rig.run("batch abort")?;
+    assert_eq!(rig.run("undo")?["undid"], Value::Null, "after abort the stack is empty again");
+    Ok(())
+}
+
+// ==================== guards ====================
+
+#[test]
+fn test_writes_refused_while_playing_and_allowed_while_paused() {
+    let mut rig = Rig::new();
+    rig.spawn_player();
+    rig.play_state = EditorPlayState::Playing;
+
+    let err = rig.run(r#"set Player Transform2D {"rotation": 1.0}"#).expect_err("playing");
+    assert!(matches!(err, ApiError::Refused(_)));
+    assert!(!rig.history.can_undo());
+
+    // Paused edits stay allowed — inspector parity.
+    rig.play_state = EditorPlayState::Paused;
+    assert!(rig.run(r#"set Player Transform2D {"rotation": 1.0}"#).is_ok());
+
+    // The read-only dispatch (query transport) never performs a write.
+    let world = World::new();
+    let selection = Selection::new();
+    let ctx = QueryCtx {
+        world: &world,
+        selection: &selection,
+        scene_path: None,
+        dirty: false,
+        play_state: EditorPlayState::Editing,
+    };
+    let response = super::dispatch_line("delete Player", &ctx).expect("response owed");
+    assert!(response.contains("\"refused\""), "{response}");
+}
+
+#[test]
+fn test_create_parses_to_a_hosted_write_and_refuses_unknown_archetypes() {
+    let parsed = parse_line("create sprite Crate 100 40").expect("valid create");
+
+    let Request::Write(WriteCmd::Hosted(HostedWrite::Create { archetype, name, position })) = parsed
+    else {
+        panic!("expected hosted create, got {parsed:?}");
+    };
+    assert_eq!(archetype, "sprite");
+    assert_eq!(name.as_deref(), Some("Crate"));
+    assert_eq!(position, Some((100.0, 40.0)));
+    assert!(matches!(parse_line("create flying-toaster"), Err(ApiError::Invalid(_))));
+}
+
+// ==================== dynamic tier (#43) ====================
+
+#[test]
+fn test_add_set_remove_reach_game_registered_components() -> Result<(), ApiError> {
     ecs::register_components(|r| r.register::<ApiDynTestBuff>());
     let mut rig = Rig::new();
     let entity = rig.spawn_player();
 
-    // add (with an inline patch) — one undoable entry.
-    rig.run(r#"add Player ApiDynTestBuff {"strength": 4.0}"#).unwrap();
-    assert_eq!(
-        rig.world.get::<ApiDynTestBuff>(entity).map(|b| b.strength),
-        Some(4.0)
-    );
+    let err = rig.run("add Player NoSuchComponent").expect_err("unknown name");
+    let ApiError::Invalid(msg) = err else {
+        panic!("expected Invalid");
+    };
+    assert!(msg.contains("ApiDynTestBuff"), "the error lists dynamic names: {msg}");
 
-    // set (shallow merge over the current value).
-    rig.run(r#"set Player ApiDynTestBuff {"active": false}"#).unwrap();
+    rig.run(r#"add Player ApiDynTestBuff {"strength": 4.0}"#)?;
+    assert_eq!(rig.world.get::<ApiDynTestBuff>(entity).map(|b| b.strength), Some(4.0));
+
+    rig.run(r#"set Player ApiDynTestBuff {"active": false}"#)?;
     let buff = rig.world.get::<ApiDynTestBuff>(entity).expect("still present");
     assert!(!buff.active);
     assert_eq!(buff.strength, 4.0, "merge keeps unpatched fields");
 
-    // remove — and the whole chain unwinds through CommandHistory.
-    rig.run("remove Player ApiDynTestBuff").unwrap();
+    rig.run("remove Player ApiDynTestBuff")?;
     assert!(rig.world.get::<ApiDynTestBuff>(entity).is_none());
-    rig.run("undo").unwrap(); // remove
-    assert!(rig.world.get::<ApiDynTestBuff>(entity).is_some());
-    rig.run("undo").unwrap(); // set
-    assert!(rig.world.get::<ApiDynTestBuff>(entity).map(|b| b.active).unwrap_or(false));
-    rig.run("undo").unwrap(); // add
+
+    // The whole chain unwinds through CommandHistory.
+    rig.run("undo")?;
+    assert_eq!(rig.world.get::<ApiDynTestBuff>(entity).map(|b| b.active), Some(false));
+    rig.run("undo")?;
+    assert_eq!(rig.world.get::<ApiDynTestBuff>(entity).map(|b| b.active), Some(true));
+    rig.run("undo")?;
     assert!(rig.world.get::<ApiDynTestBuff>(entity).is_none());
-}
-
-#[test]
-fn test_add_unknown_component_error_lists_dynamic_names() {
-    ecs::register_components(|r| r.register::<ApiDynTestBuff>());
-    let mut rig = Rig::new();
-    rig.spawn_player();
-    let err = rig.run(r#"add Player NoSuchComponent"#).unwrap_err();
-    let ApiError::Invalid(msg) = err else {
-        panic!("expected Invalid");
-    };
-    assert!(msg.contains("ApiDynTestBuff"), "dynamic names listed: {msg}");
-}
-
-#[test]
-fn test_api_undo_of_delete_restores_the_selection() {
-    // #59 through the API path: WriteCtx notes per line, undo restores.
-    let mut rig = Rig::new();
-    let entity = rig.spawn_player();
-    rig.selection.select(entity);
-
-    rig.run("delete Player").unwrap();
-    assert!(rig.selection.is_empty(), "delete drops the entity from selection");
-
-    rig.run("undo").unwrap();
-    assert!(
-        rig.selection.contains(entity),
-        "undoing the delete restores the pre-delete selection"
-    );
-}
-
-#[test]
-fn test_batch_macro_carries_the_pre_batch_selection() {
-    // #59 kimi F1: the macro's before-image is the selection at `batch
-    // begin`, even if notes (frame boundaries) land while it is open.
-    let mut rig = Rig::new();
-    let entity = rig.spawn_player();
-    rig.selection.select(entity);
-
-    rig.run("batch begin edits").unwrap();
-    rig.run(r#"set Player Transform2D {"rotation": 1.0}"#).unwrap();
-    // Simulate a frame boundary overwriting the pending note while the
-    // batch is open — the user deselected everything mid-batch.
-    rig.selection.clear();
-    rig.history.note_selection(&rig.selection);
-    rig.run("batch end").unwrap();
-
-    rig.run("undo").unwrap();
-    assert!(
-        rig.selection.contains(entity),
-        "undoing the batch restores the PRE-BATCH selection, not the frame note"
-    );
+    Ok(())
 }

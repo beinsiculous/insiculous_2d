@@ -156,70 +156,34 @@ impl StatusBar {
 mod tests {
     use super::*;
 
+    /// Message lifetime: a plain message clears itself after
+    /// `MESSAGE_TIMEOUT`, a newer message restarts the clock, and an error
+    /// stays until the host clears it explicitly.
     #[test]
-    fn test_show_message() {
+    fn test_message_auto_clears_but_an_error_persists_until_cleared() {
         let mut bar = StatusBar::new();
-        bar.show_message("Entity created");
-        assert_eq!(bar.message(), Some("Entity created"));
-    }
 
-    #[test]
-    fn test_message_auto_clears() {
-        let mut bar = StatusBar::new();
         bar.show_message("Saved");
-
-        // Tick partially — message still visible
+        bar.update(MESSAGE_TIMEOUT - 1.0);
+        assert_eq!(bar.message(), Some("Saved"), "still inside the timeout");
         bar.update(1.0);
-        assert!(bar.message().is_some());
+        assert_eq!(bar.message(), None, "cleared once the timeout elapses");
 
-        // Tick past timeout — message cleared
-        bar.update(3.0);
-        assert!(bar.message().is_none());
-    }
-
-    #[test]
-    fn test_persistent_error_message() {
-        let mut bar = StatusBar::new();
-        bar.show_error("Failed to save");
-
-        // Even after a long time, error persists
-        bar.update(100.0);
-        assert_eq!(bar.message(), Some("Failed to save"));
-
-        // Explicit clear removes it
-        bar.clear_message();
-        assert!(bar.message().is_none());
-    }
-
-    #[test]
-    fn test_update_stats() {
-        let mut bar = StatusBar::new();
-        bar.update_stats(42, 60.0);
-        assert_eq!(bar.stats.entity_count, 42);
-        assert_eq!(bar.stats.fps, 60.0);
-    }
-
-    #[test]
-    fn test_show_message_resets_timer() {
-        let mut bar = StatusBar::new();
         bar.show_message("First");
-        bar.update(2.0); // 1 second left
-
+        bar.update(MESSAGE_TIMEOUT - 1.0);
         bar.show_message("Second");
-        // Timer should be reset to full duration
-        bar.update(2.0); // Should still be visible
-        assert_eq!(bar.message(), Some("Second"));
+        bar.update(MESSAGE_TIMEOUT - 1.0);
+        assert_eq!(bar.message(), Some("Second"), "a new message restarts the timer");
+        bar.update(1.0);
+        assert_eq!(bar.message(), None);
 
-        bar.update(2.0); // Now it should be gone
-        assert!(bar.message().is_none());
-    }
-
-    #[test]
-    fn test_clear_message_stops_timer() {
-        let mut bar = StatusBar::new();
-        bar.show_message("Temp");
+        bar.show_error("Failed to save");
+        bar.update(MESSAGE_TIMEOUT * 100.0);
+        assert_eq!(bar.message(), Some("Failed to save"), "errors never time out");
         bar.clear_message();
-        assert!(bar.message().is_none());
-        assert!(!bar.message_persistent);
+        assert_eq!(bar.message(), None, "an explicit clear removes the error");
+        bar.show_message("Next");
+        bar.update(MESSAGE_TIMEOUT);
+        assert_eq!(bar.message(), None, "clearing an error does not leave persistence sticky");
     }
 }

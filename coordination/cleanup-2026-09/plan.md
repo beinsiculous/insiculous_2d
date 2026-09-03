@@ -757,7 +757,17 @@ the crate; some used internally — keep those); from the `engine_core` cut:
 `LifecycleManager::wait_for_state`, `ParticleEmitter::resume`, `GridMesh::{with_alpha,
 set_alpha}`, `Particle::t()` (plus `SceneManager` and `Timer`, already listed). The
 `test-support` feature and self dev-dependency landed with the engine_core cut, so batch 5
-only needs editor_integration to enable it. NOT `Transform2D::forward` — asteroids aims every
+only needs editor_integration to enable it; from the `editor` cut: `Selection::set_primary`,
+`CommandHistory::try_merge_or_execute` (and note: on a successful merge it never writes the
+merged value to the world — fix or delete in batch 6), `WorldSnapshot::entity_count`,
+`ComponentKind::category()`, `ViewportInputHandler::{with_config, is_selecting, reset}`,
+`ViewportInputConfig` (only built via Default), `Gizmo::{set_axis_length, set_rotation,
+set_scale}`, `GizmoMode::name`, `GridRenderer::set_axes_visible`, `EditorContext::pan_camera`,
+`SceneViewport::{focus_on, set_interpolation_speed}`, `EntityPicker::with_pick_margin`,
+`Menu::visible_item_count`, `MenuBar::close_all`, `StatusBar::set_version`,
+`HierarchyPanel::{collapse, expand}`. Batch 6 decision: two edits with an EMPTY `field_hint`
+currently merge (string equality); decide whether an empty hint refuses to merge and pin it.
+NOT `Transform2D::forward` — asteroids aims every
 bullet with it (`ship.rs:122`); its test was restored (review-4 F1). Rule: show the
 workspace AND `../games` grep for every candidate in the batch-2 review before deleting it. NOT `Rect::contains`/`center`/`expand` — the keep-list called `Rect`
 dead, but `contains` decides every widget interaction and the editor uses the other two;

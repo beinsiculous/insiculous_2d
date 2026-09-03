@@ -209,6 +209,7 @@ fn unique_param_name(script: &ScriptRef) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::{click_through, extras};
     use glam::Vec2;
 
     const ORIGIN: Vec2 = Vec2::new(10.0, 10.0);
@@ -228,79 +229,40 @@ mod tests {
         )
     }
 
-    /// Press+release frames at `point`, running edit_scripts each frame
-    /// against `scripts`; returns the release frame's edit.
+    /// Click (press frame + release frame) `point` with `edit_scripts`
+    /// rendering `scripts`; returns the release frame's edit.
     fn click_scripts(scripts: &Scripts, point: Vec2) -> Option<ComponentEdit<Scripts>> {
-        use input::prelude::MouseButton;
         let mut ui = ui::UIContext::new();
         let mut input = input::InputHandler::new();
         let mut drag_drop = crate::DragDropState::new();
-
-        let mut run = |ui: &mut ui::UIContext, input: &input::InputHandler| {
-            ui.begin_frame(input, Vec2::new(800.0, 600.0));
-            let mut extras =
-                crate::InspectorExtras { drag_drop: &mut drag_drop, texture_display: None, warnings: Vec::new() };
+        let (_, release) = click_through(&mut ui, &mut input, point, |ui| {
             let mut inspector = EditableInspector::new(ui, ORIGIN.x, ORIGIN.y);
-            edit_scripts(&mut inspector, scripts, &mut extras)
-        };
-
-        input.mouse_mut().update_position(point.x, point.y);
-        input.mouse_mut().handle_button_press(MouseButton::Left);
-        let _press = run(&mut ui, &input);
-        ui.end_frame();
-        input.mouse_mut().handle_button_release(MouseButton::Left);
-        let release = run(&mut ui, &input);
-        ui.end_frame();
+            edit_scripts(&mut inspector, scripts, &mut extras(&mut drag_drop))
+        });
         release
     }
 
     #[test]
-    fn test_add_script_button_appends_a_default_script() {
-        let scripts = Scripts::default();
+    fn test_structure_buttons_add_and_remove_scripts_and_params_without_name_collisions() {
         // Empty component: "+ Add Script" is the first row under the header.
-        let edit = click_scripts(&scripts, action_button_center(0))
-            .expect("clicking + Add Script emits an edit");
-        assert_eq!(edit.field_hint, "scripts_structure");
-        assert_eq!(edit.new_value.0.len(), 1);
-        assert_eq!(edit.new_value.0[0].script_id, "new_script");
-    }
+        let edit = click_scripts(&Scripts::default(), action_button_center(0)).expect("+ Add Script emits an edit");
+        assert_eq!(edit.field_hint, "scripts_structure", "structure edits never merge into value edits");
+        let ids: Vec<&str> = edit.new_value.0.iter().map(|script| script.script_id.as_str()).collect();
+        assert_eq!(ids, ["new_script"]);
 
-    #[test]
-    fn test_add_param_button_creates_a_unique_f32_param() {
+        // One script whose param_1 is taken: rows are Id(0), Source(1),
+        // param name(2), type(3), value(4), remove-param(5), + Add param(6).
         let mut scripts = Scripts(vec![ScriptRef::new("patrol")]);
-        scripts.0[0]
-            .params
-            .insert("param_1".to_string(), ScriptValue::Bool(true));
-        // Rows: Id(0), Source(1), param name(2), type(3), value(4),
-        // remove-param(5), + Add param(6).
-        let edit = click_scripts(&scripts, action_button_center(6))
-            .expect("clicking + Add param emits an edit");
-        assert_eq!(edit.field_hint, "scripts_structure");
+        scripts.0[0].params.insert("param_1".to_string(), ScriptValue::Bool(true));
+        let edit = click_scripts(&scripts, action_button_center(6)).expect("+ Add param emits an edit");
         let params = &edit.new_value.0[0].params;
         assert_eq!(params.len(), 2);
-        assert_eq!(params.get("param_2"), Some(&ScriptValue::F32(0.0)), "name collision skipped");
-    }
+        assert_eq!(params.get("param_2"), Some(&ScriptValue::F32(0.0)), "the taken name is skipped; a new param is an f32");
 
-    #[test]
-    fn test_remove_script_button_deletes_the_script() {
+        // One script without params: rows are Id(0), Source(1),
+        // + Add param(2), − Remove script(3).
         let scripts = Scripts(vec![ScriptRef::new("patrol")]);
-        // Rows: Id(0), Source(1), + Add param(2), − Remove script(3).
-        let edit = click_scripts(&scripts, action_button_center(3))
-            .expect("clicking − Remove script emits an edit");
-        assert_eq!(edit.field_hint, "scripts_structure");
-        assert!(edit.new_value.0.is_empty());
-    }
-
-    #[test]
-    fn test_no_input_emits_no_edit() {
-        let scripts = Scripts(vec![ScriptRef::new("patrol")]);
-        let mut ui = ui::UIContext::new();
-        let input = input::InputHandler::new();
-        let mut drag_drop = crate::DragDropState::new();
-        ui.begin_frame(&input, Vec2::new(800.0, 600.0));
-        let mut extras =
-            crate::InspectorExtras { drag_drop: &mut drag_drop, texture_display: None, warnings: Vec::new() };
-        let mut inspector = EditableInspector::new(&mut ui, ORIGIN.x, ORIGIN.y);
-        assert!(edit_scripts(&mut inspector, &scripts, &mut extras).is_none());
+        let edit = click_scripts(&scripts, action_button_center(3)).expect("− Remove script emits an edit");
+        assert!(edit.new_value.0.is_empty(), "the script is gone");
     }
 }

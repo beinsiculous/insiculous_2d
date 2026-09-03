@@ -159,28 +159,30 @@ pub fn edit_ui_button(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::{extras, frame};
+    use crate::FieldId;
+    use input::prelude::KeyCode;
     use ui::UIContext;
 
     #[test]
-    fn test_ui_editors_render_without_input_and_report_no_edit() {
+    fn test_ui_label_text_commits_on_enter_with_the_text_hint() {
+        // Text is the first field under the UiLabel header (field 0): a
+        // committed edit carries the new text — `@key` strings included,
+        // that is how labels localize — and the "text" hint that lets
+        // consecutive keystrokes merge into one undo entry.
         let mut ui = UIContext::new();
-        ui.begin_frame(&input::InputHandler::new(), glam::Vec2::new(800.0, 600.0));
-
+        let mut input = input::InputHandler::new();
         let mut drag_drop = crate::DragDropState::new();
-        let mut extras =
-            crate::InspectorExtras { drag_drop: &mut drag_drop, texture_display: None, warnings: Vec::new() };
+        let field: ui::WidgetId = FieldId::new(0, 0, 0).into();
+        ui.focus_text_input(field, "@hud.score");
+        input.keyboard_mut().handle_key_press(KeyCode::Enter);
 
-        let mut inspector = EditableInspector::new(&mut ui, 10.0, 10.0);
-        assert!(edit_ui_label(&mut inspector, &UiLabel::default(), &mut extras).is_none());
-        let y_after_label = inspector.y();
-        assert!(y_after_label > 10.0, "label editor must advance the cursor");
+        let edit = frame(&mut ui, &input, |ui| {
+            let mut inspector = EditableInspector::new(ui, 10.0, 10.0);
+            edit_ui_label(&mut inspector, &UiLabel::default(), &mut extras(&mut drag_drop))
+        })
+        .expect("Enter commits the label text");
 
-        let mut inspector = EditableInspector::new(&mut ui, 10.0, y_after_label);
-        assert!(edit_ui_panel(&mut inspector, &UiPanel::default(), &mut extras).is_none());
-
-        let mut inspector = EditableInspector::new(&mut ui, 10.0, 400.0);
-        assert!(edit_ui_button(&mut inspector, &UiButton::default(), &mut extras).is_none());
-
-        ui.end_frame();
+        assert_eq!((edit.new_value.text.as_str(), edit.field_hint), ("@hud.score", "text"));
     }
 }

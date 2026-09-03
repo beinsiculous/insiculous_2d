@@ -147,108 +147,88 @@ mod tests {
     }
 
     #[test]
-    fn test_remove_button_right_aligns_to_panel_edge() {
-        // Wide panel: button hugs the right content edge regardless of label column.
-        assert_eq!(remove_button_x(10.0, 400.0, 18.0), 392.0);
-        // Degenerate panel: never left of the origin.
-        assert_eq!(remove_button_x(10.0, 4.0, 18.0), 10.0);
-    }
-
-    #[test]
-    fn test_field_row_right_edge_tracks_panel_width() {
+    fn test_field_row_keeps_the_label_column_and_moves_only_the_right_edge() {
+        // A narrower panel never shifts the controls left of the label
+        // column; only the right edge tracks the width, and an input still
+        // gets MIN_INPUT_WIDTH when the row is too cramped to fit it.
         let style = EditableFieldStyle::default();
         let pos = Vec2::new(26.0, 40.0);
         let row = field_row(pos, 10.0, 300.0, &style);
-        assert_eq!(row.pos, pos);
-        assert_eq!(row.control_x, 26.0 + style.label_width);
-        assert_eq!(row.right, 310.0);
-        // Narrower panel moves only the right edge.
+        assert_eq!((row.pos, row.control_x, row.right), (pos, 26.0 + style.label_width, 310.0));
         let narrow = field_row(pos, 10.0, 150.0, &style);
-        assert_eq!(narrow.control_x, row.control_x);
-        assert_eq!(narrow.right, 160.0);
-    }
+        assert_eq!((narrow.control_x, narrow.right), (row.control_x, 160.0));
 
-    #[test]
-    fn test_clamp_width_floors_on_narrow_panels() {
-        let row = RowLayout { pos: Vec2::ZERO, control_x: 100.0, right: 110.0 };
-        assert_eq!(row.clamp_width(100.0), MIN_INPUT_WIDTH);
-        assert_eq!(MIN_INPUT_WIDTH, 24.0);
+        let cramped = RowLayout { pos: Vec2::ZERO, control_x: 100.0, right: 110.0 };
+        assert_eq!(cramped.clamp_width(100.0), MIN_INPUT_WIDTH, "10px of room still draws a usable input");
         let wide = RowLayout { pos: Vec2::ZERO, control_x: 100.0, right: 400.0 };
         assert_eq!(wide.clamp_width(100.0), 100.0);
     }
 
     #[test]
-    fn test_pair_slots_never_overlap_badges() {
-        let layout = RowLayout { pos: Vec2::ZERO, control_x: 120.0, right: 340.0 };
-        let [a, b] = pair_slots(&layout, [9.0, 8.0], 8.0, 90.0);
-        // Each input starts strictly after its measured badge.
-        assert!(a.input_x >= a.badge_x + 9.0);
-        assert!(b.input_x >= b.badge_x + 8.0);
-        // The second badge starts after the first input ends.
-        assert!(b.badge_x >= a.input_x + a.input_width);
+    fn test_remove_button_right_aligns_to_the_panel_edge() {
+        assert_eq!(remove_button_x(10.0, 400.0, 18.0), 392.0, "hugs the right content edge");
+        assert_eq!(remove_button_x(10.0, 4.0, 18.0), 10.0, "never left of the origin on a degenerate panel");
     }
 
     #[test]
-    fn test_pair_slots_shrink_on_narrow_panel_and_cap_on_wide() {
-        // Narrow: inputs shrink to exactly fit the available span.
-        let narrow = RowLayout { pos: Vec2::ZERO, control_x: 120.0, right: 240.0 };
-        let [a, b] = pair_slots(&narrow, [9.0, 8.0], 8.0, 90.0);
+    fn test_pair_slots_shrink_on_narrow_panels_cap_on_wide_ones_and_never_overlap() {
+        let badges = [9.0, 8.0];
         let fixed = 9.0 + 8.0 + 2.0 * 4.0 + 8.0;
+
+        // Narrow: inputs shrink to exactly fit the available span, each
+        // input starts after its measured badge and the second badge after
+        // the first input — X and Y never draw over each other.
+        let narrow = RowLayout { pos: Vec2::ZERO, control_x: 120.0, right: 240.0 };
+        let [a, b] = pair_slots(&narrow, badges, 8.0, 90.0);
         assert_eq!(a.input_width, (narrow.available() - fixed) / 2.0);
-        assert!(b.input_x + b.input_width <= narrow.right + 0.01);
+        assert!(b.input_x + b.input_width <= narrow.right + 0.01, "the Y input stays inside the row");
+        assert!(a.input_x >= a.badge_x + 9.0, "X input starts after its badge");
+        assert!(b.input_x >= b.badge_x + 8.0, "Y input starts after its badge");
+        assert!(b.badge_x >= a.input_x + a.input_width, "Y badge starts after the X input ends");
+
         // Wide: capped at max_w.
         let wide = RowLayout { pos: Vec2::ZERO, control_x: 120.0, right: 900.0 };
-        let [w, _] = pair_slots(&wide, [9.0, 8.0], 8.0, 90.0);
+        let [w, _] = pair_slots(&wide, badges, 8.0, 90.0);
         assert_eq!(w.input_width, 90.0);
-    }
 
-    #[test]
-    fn test_pair_slots_degenerate_panel_overdraw_is_bounded() {
-        // A panel narrower than the floor: inputs hold the usability floor
-        // and overdraw is bounded by it instead of collapsing to zero.
+        // Narrower than the floor: inputs hold the usability floor and the
+        // overdraw is bounded by it instead of collapsing to zero.
         let tiny = RowLayout { pos: Vec2::ZERO, control_x: 120.0, right: 130.0 };
-        let [a, b] = pair_slots(&tiny, [9.0, 8.0], 8.0, 90.0);
-        assert_eq!(a.input_width, 24.0);
-        assert!(b.input_x + b.input_width <= tiny.control_x + 24.0 * 2.0 + 9.0 + 8.0 + 2.0 * 4.0 + 8.0 + 0.01);
+        let [a, b] = pair_slots(&tiny, badges, 8.0, 90.0);
+        assert_eq!(a.input_width, MIN_INPUT_WIDTH);
+        assert!(b.input_x + b.input_width <= tiny.control_x + MIN_INPUT_WIDTH * 2.0 + fixed + 0.01);
     }
 
     #[test]
-    fn test_color_block_height_covers_two_rows() {
+    fn test_color_block_reserves_room_for_both_channel_rows() {
         let style = EditableFieldStyle::default();
-        let h = color_block_height(&style);
-        // Two 16px rows + 2px top + 4px inner + 4px bottom.
-        assert_eq!(h, 42.0);
-        // Content (top pad + both rows + inner gap) fits inside the block.
-        assert!(2.0 + style.color_input_height * 2.0 + 4.0 <= h);
+        let height = color_block_height(&style);
+        assert_eq!(height, 42.0, "two 16px rows + 2px top + 4px inner + 4px bottom");
+        assert!(2.0 + style.color_input_height * 2.0 + 4.0 <= height, "the content fits inside the block");
     }
 
     #[test]
-    fn test_scrub_step_narrow_and_unbounded_ranges() {
-        // A tight 0..=1 range scrubs finely; ~200px of drag spans it.
+    fn test_scrub_step_scales_with_the_range_and_falls_back_to_a_unit_per_pixel_when_unbounded() {
+        // A tight 0..=1 range scrubs finely (~200px of drag spans it), mid
+        // ranges scale with the span, huge/unbounded ranges move one unit
+        // per pixel.
         assert!((scrub_step(&(0.0..=1.0)) - 0.005).abs() < 1e-6);
-        // Bounded mid ranges scale with the span.
         assert!((scrub_step(&(0.0..=10.0)) - 0.05).abs() < 1e-6);
-        // Huge/unbounded ranges fall back to 1 unit per pixel.
         assert_eq!(scrub_step(&(-1000.0..=1000.0)), 1.0);
         assert_eq!(scrub_step(&(f32::NEG_INFINITY..=f32::INFINITY)), 1.0);
     }
 
     #[test]
-    fn test_ellipsize_preserves_short_labels() {
-        assert_eq!(ellipsize("Scale", 100.0, char_measure), "Scale");
-    }
-
-    #[test]
-    fn test_ellipsize_truncates_with_ellipsis() {
-        // "Angular Damping" is 15 chars = 105.0 wide; budget 60 = 8 chars.
-        let out = ellipsize("Angular Damping", 60.0, char_measure);
-        assert!(out.ends_with('…'));
-        assert!(char_measure(&out) <= 60.0);
-        assert!(out.len() > 1, "should keep a prefix, got {out:?}");
-    }
-
-    #[test]
-    fn test_ellipsize_degrades_to_bare_ellipsis() {
-        assert_eq!(ellipsize("Anything", 3.0, char_measure), "…");
+    fn test_ellipsize_keeps_short_labels_and_truncates_long_ones_within_budget() {
+        let cases: [(&str, f32, &str); 3] = [
+            ("Scale", 100.0, "Scale"),
+            // 15 chars = 105px; an 8-char budget keeps a prefix plus "…".
+            ("Angular Damping", 60.0, "Angular…"),
+            // No prefix fits: a bare ellipsis is the floor.
+            ("Anything", 3.0, "…"),
+        ];
+        for (label, budget, expected) in cases {
+            assert_eq!(ellipsize(label, budget, char_measure), expected, "{label:?} in {budget}px");
+        }
     }
 }

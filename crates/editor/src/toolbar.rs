@@ -196,142 +196,90 @@ pub fn toolbar_position_for(scene_content: Rect) -> Vec2 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::{frame, press_at, release};
+    use crate::{EditorAction, EditorBinding, EditorInputMapping, EditorTheme};
 
+    /// The toolbar tucks into the scene view's top-left corner and follows
+    /// it when the left panel is hidden.
     #[test]
     fn test_toolbar_position_follows_scene_content() {
-        let pos = toolbar_position_for(Rect::new(200.0, 48.0, 550.0, 600.0));
-        assert_eq!(pos, Vec2::new(216.0, 56.0));
-
-        // Left panel hidden: scene content starts at x = 0
-        let pos = toolbar_position_for(Rect::new(0.0, 48.0, 750.0, 600.0));
-        assert_eq!(pos, Vec2::new(16.0, 56.0));
+        let docked = toolbar_position_for(Rect::new(200.0, 48.0, 550.0, 600.0));
+        let left_hidden = toolbar_position_for(Rect::new(0.0, 48.0, 750.0, 600.0));
+        assert_eq!(docked, Vec2::new(216.0, 56.0));
+        assert_eq!(left_hidden, Vec2::new(16.0, 56.0));
     }
 
+    /// The shortcut hint painted under each tool button and the binding
+    /// table that actually switches tools are two tables; this holds them
+    /// together so a rebind cannot leave a stale hint on screen.
     #[test]
-    fn test_toolbar_set_position() {
-        let mut toolbar = Toolbar::new();
-        toolbar.set_position(Vec2::new(300.0, 60.0));
-        assert_eq!(toolbar.bounds().x, 300.0);
-        assert_eq!(toolbar.bounds().y, 60.0);
+    fn test_tool_shortcut_hints_match_the_editor_bindings() {
+        let mapping = EditorInputMapping::new();
+        let tools = [
+            (EditorTool::Select, EditorAction::ToolSelect),
+            (EditorTool::Move, EditorAction::ToolMove),
+            (EditorTool::Rotate, EditorAction::ToolRotate),
+            (EditorTool::Scale, EditorAction::ToolScale),
+        ];
+        assert_eq!(tools.map(|(tool, _)| tool).as_slice(), EditorTool::all());
+        for (tool, action) in tools {
+            let bindings = mapping.get_bindings(action);
+            let [EditorBinding::Chord { key, ctrl: false, shift: false }] = bindings else {
+                panic!("{tool:?} must have exactly one bare-key chord, got {bindings:?}");
+            };
+            let key_name = format!("{key:?}");
+            let hinted = key_name.strip_prefix("Key").unwrap_or(&key_name);
+            assert_eq!(hinted, tool.shortcut(), "{tool:?}: the hint shows a key that does not select it");
+        }
     }
 
-    #[test]
-    fn test_editor_tool_default_is_move_so_a_gizmo_shows() {
-        let tool = EditorTool::default();
-        assert_eq!(tool, EditorTool::Move);
-    }
-
-    #[test]
-    fn test_editor_tool_names() {
-        assert_eq!(EditorTool::Select.name(), "Select");
-        assert_eq!(EditorTool::Move.name(), "Move");
-        assert_eq!(EditorTool::Rotate.name(), "Rotate");
-        assert_eq!(EditorTool::Scale.name(), "Scale");
-    }
-
-    #[test]
-    fn test_editor_tool_shortcuts() {
-        assert_eq!(EditorTool::Select.shortcut(), "Q");
-        assert_eq!(EditorTool::Move.shortcut(), "W");
-        assert_eq!(EditorTool::Rotate.shortcut(), "E");
-        assert_eq!(EditorTool::Scale.shortcut(), "R");
-    }
-
-    #[test]
-    fn test_editor_tool_all() {
-        let tools = EditorTool::all();
-        assert_eq!(tools.len(), 4);
-        assert!(tools.contains(&EditorTool::Select));
-        assert!(tools.contains(&EditorTool::Move));
-        assert!(tools.contains(&EditorTool::Rotate));
-        assert!(tools.contains(&EditorTool::Scale));
-    }
-
-    #[test]
-    fn test_toolbar_new() {
-        let toolbar = Toolbar::new();
-        assert_eq!(toolbar.current_tool(), EditorTool::Move);
-    }
-
-    #[test]
-    fn test_toolbar_with_position() {
-        let toolbar = Toolbar::new().with_position(Vec2::new(100.0, 50.0));
-        assert_eq!(toolbar.position, Vec2::new(100.0, 50.0));
-    }
-
-    #[test]
-    fn test_toolbar_set_tool() {
-        let mut toolbar = Toolbar::new();
-        toolbar.set_tool(EditorTool::Move);
-        assert_eq!(toolbar.current_tool(), EditorTool::Move);
-    }
-
-    #[test]
-    fn test_toolbar_chrome_bounds_cover_background_and_hint_row() {
-        let toolbar = Toolbar::new();
-        let chrome = toolbar.chrome_bounds();
-        let bg = toolbar.bounds().expand(4.0);
-        assert!(chrome.contains(Vec2::new(bg.x, bg.y)), "background top-left is chrome");
-        // Shortcut hint baseline sits 12px below the buttons
-        assert!(
-            chrome.contains(Vec2::new(38.0, 10.0 + 56.0 + 12.0)),
-            "hint row below the buttons is chrome"
-        );
-    }
-
-    #[test]
-    fn test_toolbar_background_press_claims_mouse_gesture() {
-        use input::prelude::MouseButton;
-        let mut toolbar = Toolbar::new();
-        let theme = crate::EditorTheme::default();
-        let mut ui = UIContext::new();
-        let mut input = input::InputHandler::new();
-
-        // Press in the 6px gap between the first two buttons — visually
-        // toolbar chrome, but no button contains the point.
-        input.mouse_mut().update_position(68.0, 30.0);
-        input.mouse_mut().handle_button_press(MouseButton::Left);
-        ui.begin_frame(&input, Vec2::new(1280.0, 720.0));
-        assert!(toolbar.render(&mut ui, &theme).is_none());
-        assert!(
-            ui.wants_mouse(),
-            "a press on toolbar chrome must not fall through to viewport picking"
-        );
-        ui.end_frame();
-    }
-
+    /// Press on toolbar chrome (the gap between buttons): the toolbar claims
+    /// the gesture so viewport picking underneath never sees the click.
+    /// Press on a button: the click fires on the RELEASE frame and must win
+    /// over the consume-only chrome rect registered after it — the
+    /// `WidgetState::Active` footgun, where the release frame is Hovered.
     #[test]
     fn test_toolbar_button_click_survives_chrome_interact() {
-        use input::prelude::MouseButton;
         let mut toolbar = Toolbar::new();
-        let theme = crate::EditorTheme::default();
+        let theme = EditorTheme::default();
         let mut ui = UIContext::new();
         let mut input = input::InputHandler::new();
 
-        // Press on the Move button (second button, center x = 72 + 28)
-        input.mouse_mut().update_position(100.0, 38.0);
-        input.mouse_mut().handle_button_press(MouseButton::Left);
-        ui.begin_frame(&input, Vec2::new(1280.0, 720.0));
-        assert!(toolbar.render(&mut ui, &theme).is_none(), "clicks fire on release");
-        assert!(ui.wants_mouse());
-        ui.end_frame();
+        // Chrome press in the 6px gap between the first two buttons.
+        let picked = press_at(&mut ui, &mut input, Vec2::new(68.0, 30.0), |ui| toolbar.render(ui, &theme));
+        assert_eq!(picked, None, "a gap press selects no tool");
+        assert!(ui.wants_mouse(), "a press on toolbar chrome must not fall through to picking");
+        release(&mut ui, &mut input, |ui| toolbar.render(ui, &theme));
 
-        // Release: the button must still win the click over the chrome rect
-        input.update();
-        input.mouse_mut().handle_button_release(MouseButton::Left);
-        ui.begin_frame(&input, Vec2::new(1280.0, 720.0));
-        assert_eq!(toolbar.render(&mut ui, &theme), Some(EditorTool::Move));
-        assert!(ui.wants_mouse(), "release frame stays widget-owned");
-        ui.end_frame();
+        // Button press on Move (second button, center x = 72 + 28).
+        let picked = press_at(&mut ui, &mut input, Vec2::new(100.0, 38.0), |ui| toolbar.render(ui, &theme));
+        assert_eq!(picked, None, "clicks fire on release, not on press");
+        assert!(ui.wants_mouse());
+        let (picked, widget_owned) = release(&mut ui, &mut input, |ui| (toolbar.render(ui, &theme), ui.wants_mouse()));
+        assert_eq!(picked, Some(EditorTool::Move), "the button wins the click over the chrome rect");
+        assert!(widget_owned, "the release frame stays widget-owned");
     }
 
+    /// The same click with raw input timing: press frame then release frame
+    /// with NO `input.update()` between them, the way a fast click lands
+    /// when the release arrives in the very next frame. The harness's
+    /// inserted update must not be what makes the click register.
     #[test]
-    fn test_toolbar_bounds() {
-        let toolbar = Toolbar::new();
-        let bounds = toolbar.bounds();
+    fn test_button_click_registers_when_release_follows_press_without_an_input_update() {
+        use input::prelude::MouseButton;
+        let mut toolbar = Toolbar::new();
+        let theme = EditorTheme::default();
+        let mut ui = UIContext::new();
+        let mut input = input::InputHandler::new();
+        let rotate_center = Vec2::new(10.0 + 2.0 * 62.0 + 28.0, 38.0);
 
-        // 4 tools * (56 + 6) - 6 = 242
-        assert_eq!(bounds.width, 242.0);
-        assert_eq!(bounds.height, 56.0);
+        input.mouse_mut().update_position(rotate_center.x, rotate_center.y);
+        input.mouse_mut().handle_button_press(MouseButton::Left);
+        let pressed = frame(&mut ui, &input, |ui| toolbar.render(ui, &theme));
+        input.mouse_mut().handle_button_release(MouseButton::Left);
+        let released = frame(&mut ui, &input, |ui| toolbar.render(ui, &theme));
+
+        assert_eq!(pressed, None, "the press frame selects nothing");
+        assert_eq!(released, Some(EditorTool::Rotate), "the release frame fires the click");
     }
 }

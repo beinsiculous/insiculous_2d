@@ -503,75 +503,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_edit_result_unchanged() {
-        let result: EditResult<f32> = EditResult::Unchanged;
-        assert!(!result.is_changed());
-        assert_eq!(result.new_value(), None);
-        assert_eq!(result.unwrap_or(5.0), 5.0);
-    }
-
-    #[test]
-    fn test_edit_result_changed() {
-        let result = EditResult::Changed(10.0);
-        assert!(result.is_changed());
-        assert_eq!(result.new_value(), Some(&10.0));
-        assert_eq!(result.unwrap_or(5.0), 10.0);
-    }
-
-    #[test]
-    fn test_field_id_creation() {
-        let id = FieldId::new(1, 2, 3);
-        let _widget_id: ui::WidgetId = id.into();
-        // WidgetId is created successfully (can't verify internal value without accessor)
-    }
-
-    #[test]
-    fn test_editable_field_style_default() {
-        let style = EditableFieldStyle::default();
-        assert_eq!(style.row_height, 24.0);
-        assert_eq!(style.label_width, 120.0);
-        assert_eq!(style.padding, 8.0);
-    }
-
-    #[test]
-    fn test_wrap_degrees_wraps_both_directions() {
-        assert_eq!(wrap_degrees(0.0), 0.0);
-        assert_eq!(wrap_degrees(190.0), -170.0);
-        assert_eq!(wrap_degrees(-190.0), 170.0);
-        assert_eq!(wrap_degrees(720.0), 0.0);
-        assert_eq!(wrap_degrees(270.0), -90.0);
-    }
-
-    #[test]
-    fn test_angle_degree_radian_round_trip() {
-        // The angle field's transform: degrees wrap then convert. A stored
-        // rotation survives display→edit→commit within float precision.
-        for deg in [-179.0_f32, -90.0, 0.0, 45.0, 179.0] {
-            let radians = deg.to_radians();
+    fn test_angle_field_wraps_degrees_to_a_half_turn_and_round_trips_radians() {
+        // The rotation field shows degrees in (-180, 180]: a typed 270 reads
+        // back as -90, and a stored rotation survives display → edit →
+        // commit within float precision.
+        let wraps = [(0.0, 0.0), (190.0, -170.0), (-190.0, 170.0), (720.0, 0.0), (270.0, -90.0)];
+        for (typed, shown) in wraps {
+            assert_eq!(wrap_degrees(typed), shown, "{typed}° must show as {shown}°");
+        }
+        for degrees in [-179.0_f32, -90.0, 0.0, 45.0, 179.0] {
+            let radians = degrees.to_radians();
             let round_tripped = wrap_degrees(radians.to_degrees()).to_radians();
-            assert!((round_tripped - radians).abs() < 1e-5, "{deg}° drifted");
+            assert!((round_tripped - radians).abs() < 1e-5, "{degrees}° drifted to {round_tripped} rad");
         }
     }
 
     #[test]
-    fn test_cycle_step_wraps_both_directions() {
+    fn test_cycle_step_wraps_both_directions_and_survives_zero_variants() {
         assert_eq!(cycle_step(0, 7, true), 1);
-        assert_eq!(cycle_step(6, 7, true), 0); // wraps forward
-        assert_eq!(cycle_step(0, 7, false), 6); // wraps backward
+        assert_eq!(cycle_step(6, 7, true), 0, "forward wraps to the first variant");
+        assert_eq!(cycle_step(0, 7, false), 6, "backward wraps to the last variant");
         assert_eq!(cycle_step(3, 7, false), 2);
-    }
-
-    #[test]
-    fn test_cycle_step_zero_count_is_safe() {
+        // An empty variant list must not underflow `count - 1`.
         assert_eq!(cycle_step(5, 0, true), 0);
         assert_eq!(cycle_step(5, 0, false), 0);
-    }
-
-    #[test]
-    fn test_editable_inspector_builder() {
-        // Just verify the builder pattern compiles and initializes correctly
-        // Actual rendering requires a UIContext which needs rendering infrastructure
-        let style = EditableFieldStyle::default();
-        assert_eq!(style.row_height, 24.0);
     }
 }

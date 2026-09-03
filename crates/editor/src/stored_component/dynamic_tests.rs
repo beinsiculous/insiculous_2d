@@ -1,6 +1,6 @@
-//! Tests for the dynamic component tier (issue #43): game-registered
-//! components surviving snapshot, clipboard, undo/redo, and the command API
-//! without any typed editor registry entry.
+//! The dynamic component tier (issue #43): a game-registered component with
+//! no typed editor registry entry still survives every editor copy path
+//! (snapshot, clipboard, undo/redo) and reaches the command API's JSON seam.
 
 use ecs::World;
 use glam::Vec2;
@@ -18,6 +18,8 @@ ecs::define_component! {
     }
 }
 
+const TYPE_NAME: &str = "EditorDynTestStat";
+
 fn register_test_type() {
     ecs::register_components(|r| r.register::<EditorDynTestStat>());
 }
@@ -30,77 +32,44 @@ fn world_with_dyn_entity() -> (World, ecs::EntityId) {
         .add_component(&entity, common::Transform2D::new(Vec2::new(1.0, 2.0)))
         .ok();
     world
-        .add_component(
-            &entity,
-            EditorDynTestStat {
-                power: 42.0,
-                label: "dyn".to_string(),
-            },
-        )
+        .add_component(&entity, EditorDynTestStat { power: 42.0, label: "dyn".to_string() })
         .ok();
     (world, entity)
 }
 
-#[test]
-fn test_capture_all_components_includes_dynamic_types() {
-    let (world, entity) = world_with_dyn_entity();
-    let captured = capture_all_components(&world, entity);
-    let dynamic = captured
-        .iter()
-        .find(|c| c.type_name() == "EditorDynTestStat")
-        .expect("dynamic component captured");
-    match dynamic {
-        StoredComponent::Dynamic { value, .. } => {
-            assert_eq!(value["power"], 42.0);
-            assert_eq!(value["label"], "dyn");
-        }
-        other => panic!("expected Dynamic, got {other:?}"),
-    }
-
-    // apply_to restores it onto a fresh entity.
-    let mut world2 = World::new();
-    let fresh = world2.create_entity();
-    for c in &captured {
-        c.apply_to(&mut world2, fresh);
-    }
-    assert_eq!(
-        world2.get::<EditorDynTestStat>(fresh).map(|s| s.power),
-        Some(42.0)
-    );
+fn power(world: &World, entity: ecs::EntityId) -> Option<f32> {
+    world.get::<EditorDynTestStat>(entity).map(|s| s.power)
 }
 
 #[test]
-fn test_world_snapshot_round_trips_dynamic_components() {
-    // The Play→Stop path: a game-registered component must survive the
-    // snapshot restore AND stop appearing in the loss warning.
+fn test_dynamic_components_survive_snapshot_restore_and_clipboard_duplicate() {
     let (mut world, entity) = world_with_dyn_entity();
+
+    // Capture sees the value through the dynamic tier.
+    let captured = capture_all_components(&world, entity);
+    let dynamic = captured.iter().find(|c| c.type_name() == TYPE_NAME).expect("captured");
+    let StoredComponent::Dynamic { value, .. } = dynamic else {
+        panic!("expected Dynamic, got {dynamic:?}");
+    };
+    assert_eq!(value["power"], 42.0);
+    assert_eq!(value["label"], "dyn");
+
+    // The Play→Stop path: not reported as lost, and restored after gameplay
+    // mutates it.
     let snapshot = WorldSnapshot::capture(&world);
     assert!(
-        !snapshot
-            .uncaptured_types()
-            .iter()
-            .any(|t| t.contains("EditorDynTestStat")),
+        !snapshot.uncaptured_types().iter().any(|t| t.contains(TYPE_NAME)),
         "registered dynamic types are NOT reported as lost"
     );
-
-    // Simulate gameplay mutating it, then Stop.
     if let Some(stat) = world.get_mut::<EditorDynTestStat>(entity) {
         stat.power = -1.0;
     }
     snapshot.restore(&mut world);
-    assert_eq!(
-        world.get::<EditorDynTestStat>(entity).map(|s| s.power),
-        Some(42.0),
-        "restore returns the captured value"
-    );
-}
+    assert_eq!(power(&world, entity), Some(42.0), "restore returns the captured value");
 
-#[test]
-fn test_clipboard_duplicate_carries_dynamic_components() {
-    let (mut world, entity) = world_with_dyn_entity();
+    // The Duplicate/Paste path carries it too.
     let clip = crate::clipboard::capture_entity_tree(&world, entity);
-    let spawned =
-        crate::clipboard::spawn_entity_tree(&mut world, &clip, None, Vec2::new(10.0, 0.0), None);
+    let spawned = crate::clipboard::spawn_entity_tree(&mut world, &clip, None, Vec2::new(10.0, 0.0), None);
     assert_ne!(spawned, entity);
     assert_eq!(
         world.get::<EditorDynTestStat>(spawned).map(|s| s.label.clone()),
@@ -109,73 +78,45 @@ fn test_clipboard_duplicate_carries_dynamic_components() {
 }
 
 #[test]
-fn test_add_remove_dynamic_commands_undo_redo() {
+fn test_dynamic_components_add_and_remove_through_history_with_undo_redo() {
     register_test_type();
     let mut world = World::new();
     let entity = world.create_entity();
     let mut history = CommandHistory::new();
 
-    // Add default → undo removes → redo restores (with later edits kept).
-    history.execute(
-        Box::new(AddDynamicComponentCommand::new(entity, "EditorDynTestStat".to_string())),
-        &mut world,
-    );
-    assert_eq!(
-        world.get::<EditorDynTestStat>(entity).map(|s| s.power),
-        Some(5.0),
-        "default attached"
-    );
+    history.execute(Box::new(AddDynamicComponentCommand::new(entity, TYPE_NAME.to_string())), &mut world);
+    assert_eq!(power(&world, entity), Some(5.0), "the type's default attached");
     if let Some(stat) = world.get_mut::<EditorDynTestStat>(entity) {
         stat.power = 9.0; // user edit after add
     }
     history.undo(&mut world);
-    assert!(world.get::<EditorDynTestStat>(entity).is_none());
+    assert_eq!(power(&world, entity), None);
     history.redo(&mut world);
-    assert_eq!(
-        world.get::<EditorDynTestStat>(entity).map(|s| s.power),
-        Some(9.0),
-        "redo restores the value captured at undo, not the default"
-    );
+    assert_eq!(power(&world, entity), Some(9.0), "redo restores the value captured at undo, not the default");
 
-    // Remove → undo restores the removed value.
-    history.execute(
-        Box::new(RemoveDynamicComponentCommand::new(entity, "EditorDynTestStat".to_string())),
-        &mut world,
-    );
-    assert!(world.get::<EditorDynTestStat>(entity).is_none());
+    history.execute(Box::new(RemoveDynamicComponentCommand::new(entity, TYPE_NAME.to_string())), &mut world);
+    assert_eq!(power(&world, entity), None);
     history.undo(&mut world);
-    assert_eq!(
-        world.get::<EditorDynTestStat>(entity).map(|s| s.power),
-        Some(9.0)
-    );
+    assert_eq!(power(&world, entity), Some(9.0), "undo restores the removed value");
 }
 
 #[test]
-fn test_dynamic_names_reach_settable_and_from_json() {
+fn test_dynamic_names_are_settable_and_from_json_reports_the_type_and_the_candidates() {
     register_test_type();
+
     assert!(
-        settable_component_names().iter().any(|n| n == "EditorDynTestStat"),
+        settable_component_names().iter().any(|n| n == TYPE_NAME),
         "dynamic names are settable via the command API"
     );
+    let stored = stored_component_from_json(TYPE_NAME, serde_json::json!({"power": 3.0, "label": "api"}))
+        .expect("valid dynamic value");
+    assert_eq!(stored.type_name(), TYPE_NAME);
 
-    let stored = stored_component_from_json(
-        "EditorDynTestStat",
-        serde_json::json!({"power": 3.0, "label": "api"}),
-    )
-    .expect("valid dynamic value");
-    assert_eq!(stored.type_name(), "EditorDynTestStat");
+    let err = stored_component_from_json(TYPE_NAME, serde_json::json!({"power": "NaN-ish string"}))
+        .expect_err("bad payload");
+    assert!(err.contains(TYPE_NAME), "malformed payloads are rejected with the type's own error: {err}");
 
-    // Malformed payloads are rejected with the type's own error.
-    let err = stored_component_from_json(
-        "EditorDynTestStat",
-        serde_json::json!({"power": "NaN-ish string"}),
-    )
-    .expect_err("bad payload");
-    assert!(err.contains("EditorDynTestStat"));
-
-    // Unknown names list typed AND dynamic candidates.
-    let err = stored_component_from_json("NoSuchThing", serde_json::Value::Null)
-        .expect_err("unknown name");
-    assert!(err.contains("unknown component"));
-    assert!(err.contains("EditorDynTestStat"));
+    let err = stored_component_from_json("NoSuchThing", serde_json::Value::Null).expect_err("unknown name");
+    assert!(err.contains("unknown component"), "{err}");
+    assert!(err.contains(TYPE_NAME), "unknown names list the dynamic candidates: {err}");
 }

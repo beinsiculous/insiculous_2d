@@ -1,63 +1,81 @@
+//! Picking contracts: the order hits come back in (it becomes the
+//! selection's primary), repeat-click cycling through a stack, marquee
+//! selection through the screen→world mapping, and flip-scaled sprites
+//! staying clickable at their visual bounds.
+
 use super::*;
+use crate::test_support::{entity, pickable, test_viewport};
 
+const SIZE: Vec2 = Vec2::new(50.0, 50.0);
+
+/// The box math every pick and marquee test above relies on: a box built
+/// from a center and size has the expected edges, contains its edges but
+/// not the outside, intersects on overlap only, and expands symmetrically
+/// (the pick margin).
 #[test]
-fn test_aabb_contains_point() {
-    let aabb = AABB::new(Vec2::new(-10.0, -10.0), Vec2::new(10.0, 10.0));
+fn test_aabb_edges_contain_intersect_and_expand_as_marquee_picking_assumes() {
+    let box_ = AABB::from_position_size(Vec2::new(10.0, 20.0), Vec2::new(6.0, 4.0));
+    assert_eq!((box_.min, box_.max), (Vec2::new(7.0, 18.0), Vec2::new(13.0, 22.0)));
+    assert_eq!((box_.center(), box_.size()), (Vec2::new(10.0, 20.0), Vec2::new(6.0, 4.0)));
 
-    assert!(aabb.contains_point(Vec2::ZERO));
-    assert!(aabb.contains_point(Vec2::new(5.0, 5.0)));
-    assert!(aabb.contains_point(Vec2::new(-10.0, -10.0))); // On edge
-    assert!(!aabb.contains_point(Vec2::new(15.0, 0.0)));
-    assert!(!aabb.contains_point(Vec2::new(0.0, 15.0)));
+    let unit = AABB::new(Vec2::new(-10.0, -10.0), Vec2::new(10.0, 10.0));
+    assert!(unit.contains_point(Vec2::ZERO));
+    assert!(unit.contains_point(Vec2::new(-10.0, -10.0)), "an edge point is inside");
+    assert!(!unit.contains_point(Vec2::new(15.0, 0.0)), "outside on x");
+    assert!(!unit.contains_point(Vec2::new(0.0, 15.0)), "outside on y");
+
+    let origin = AABB::new(Vec2::ZERO, Vec2::new(10.0, 10.0));
+    assert!(origin.intersects(&AABB::new(Vec2::new(5.0, 5.0), Vec2::new(15.0, 15.0))), "overlap");
+    assert!(!origin.intersects(&AABB::new(Vec2::new(20.0, 20.0), Vec2::new(30.0, 30.0))), "disjoint");
+
+    let expanded = origin.expand(5.0);
+    assert_eq!((expanded.min, expanded.max), (Vec2::new(-5.0, -5.0), Vec2::new(15.0, 15.0)));
 }
+/// The screen point over the world origin in [`test_viewport`].
+const OVER_ORIGIN: Vec2 = Vec2::new(400.0, 300.0);
 
 #[test]
-fn test_aabb_intersects() {
-    let aabb1 = AABB::new(Vec2::new(0.0, 0.0), Vec2::new(10.0, 10.0));
-    let aabb2 = AABB::new(Vec2::new(5.0, 5.0), Vec2::new(15.0, 15.0));
-    let aabb3 = AABB::new(Vec2::new(20.0, 20.0), Vec2::new(30.0, 30.0));
-
-    assert!(aabb1.intersects(&aabb2)); // Overlapping
-    assert!(!aabb1.intersects(&aabb3)); // Not overlapping
-}
-
-#[test]
-fn test_aabb_from_position_size() {
-    let aabb = AABB::from_position_size(Vec2::new(10.0, 20.0), Vec2::new(6.0, 4.0));
-
-    assert_eq!(aabb.center(), Vec2::new(10.0, 20.0));
-    assert_eq!(aabb.size(), Vec2::new(6.0, 4.0));
-    assert_eq!(aabb.min, Vec2::new(7.0, 18.0));
-    assert_eq!(aabb.max, Vec2::new(13.0, 22.0));
-}
-
-#[test]
-fn test_aabb_expand() {
-    let aabb = AABB::new(Vec2::new(0.0, 0.0), Vec2::new(10.0, 10.0));
-    let expanded = aabb.expand(5.0);
-
-    assert_eq!(expanded.min, Vec2::new(-5.0, -5.0));
-    assert_eq!(expanded.max, Vec2::new(15.0, 15.0));
-}
-
-#[test]
-fn test_pick_single_entity() {
+fn test_click_hits_sort_front_to_back_then_by_id_and_repeat_clicks_cycle_the_stack() {
     let mut picker = EntityPicker::new();
-    let mut viewport = SceneViewport::new();
-    viewport.set_viewport_bounds(common::Rect::new(0.0, 0.0, 800.0, 600.0));
+    let viewport = test_viewport();
+    let stack = [
+        pickable(1, Vec2::ZERO, SIZE, 0.0),
+        pickable(9, Vec2::ZERO, SIZE, 5.0),
+        pickable(2, Vec2::ZERO, SIZE, 10.0),
+        pickable(4, Vec2::ZERO, SIZE, 5.0),
+    ];
 
-    let entities = vec![PickableEntity::new(
-        EntityId::with_generation(1, 1),
-        Vec2::new(0.0, 0.0),
-        Vec2::new(50.0, 50.0),
-        0.0,
-    )];
+    let first = picker.pick_at_screen_pos(&viewport, OVER_ORIGIN, &stack);
 
-    // Click at viewport center (world origin)
-    let result = picker.pick_at_screen_pos(&viewport, Vec2::new(400.0, 300.0), &entities);
+    // Highest depth first; equal depths order by id so the primary is never
+    // left to an unstable sort.
+    assert_eq!(first.hits, vec![entity(2), entity(4), entity(9), entity(1)]);
 
-    assert_eq!(result.len(), 1);
-    assert_eq!(result.topmost(), Some(EntityId::with_generation(1, 1)));
+    // Clicking the same spot again walks down the stack.
+    let second = picker.pick_at_screen_pos(&viewport, OVER_ORIGIN, &stack);
+    assert_eq!(second.topmost(), Some(entity(4)), "a repeat click cycles to the next entity");
+    let third = picker.pick_at_screen_pos(&viewport, OVER_ORIGIN, &stack);
+    assert_eq!(third.topmost(), Some(entity(9)));
+    picker.reset_cycle();
+    let reset = picker.pick_at_screen_pos(&viewport, OVER_ORIGIN, &stack);
+    assert_eq!(reset.topmost(), Some(entity(2)), "a selection change restarts from the front");
+}
+
+#[test]
+fn test_marquee_selects_what_it_overlaps_in_the_same_order_as_a_click() {
+    let picker = EntityPicker::new();
+    let viewport = test_viewport();
+    let entities = [
+        pickable(9, Vec2::new(-50.0, 50.0), SIZE, 5.0),
+        pickable(2, Vec2::new(50.0, -50.0), SIZE, 5.0),
+        pickable(4, Vec2::ZERO, SIZE, 8.0),
+        pickable(3, Vec2::new(200.0, 200.0), Vec2::new(10.0, 10.0), 9.0),
+    ];
+
+    // Screen top-left → bottom-right is world (-100, 100) → (100, -100).
+    let result = picker.pick_in_screen_rect(&viewport, Vec2::new(300.0, 200.0), Vec2::new(500.0, 400.0), &entities);
+
+    assert_eq!(result.hits, vec![entity(4), entity(2), entity(9)], "inside entities front to back, ties by id; the far one is out");
 }
 
 #[test]
@@ -66,126 +84,14 @@ fn test_flip_scaled_sprite_is_picked_at_its_visual_bounds() {
     // the AABB must use the absolute size or min > max and every click
     // misses (regression: flipped sprites were unclickable).
     let mut picker = EntityPicker::new();
-    let mut viewport = SceneViewport::new();
-    viewport.set_viewport_bounds(common::Rect::new(0.0, 0.0, 800.0, 600.0));
+    let viewport = test_viewport();
+    let flipped = [pickable(1, Vec2::ZERO, Vec2::new(-50.0, 50.0), 0.0)];
 
-    let entities = vec![PickableEntity::new(
-        EntityId::with_generation(1, 1),
-        Vec2::new(0.0, 0.0),
-        Vec2::new(-50.0, 50.0),
-        0.0,
-    )];
+    let hit = picker.pick_at_screen_pos(&viewport, OVER_ORIGIN, &flipped);
+    assert_eq!(hit.topmost(), Some(entity(1)));
 
-    let result = picker.pick_at_screen_pos(&viewport, Vec2::new(400.0, 300.0), &entities);
-    assert_eq!(result.topmost(), Some(EntityId::with_generation(1, 1)));
+    let edge = picker.pick_at_screen_pos(&viewport, OVER_ORIGIN + Vec2::new(25.0, 0.0), &flipped);
+    assert_eq!(edge.topmost(), Some(entity(1)), "the visual edge is inside the pick margin");
+    let miss = picker.pick_at_screen_pos(&viewport, OVER_ORIGIN + Vec2::new(100.0, 0.0), &flipped);
+    assert!(miss.is_empty(), "a click well outside the sprite misses");
 }
-
-#[test]
-fn test_pick_miss() {
-    let mut picker = EntityPicker::new();
-    let mut viewport = SceneViewport::new();
-    viewport.set_viewport_bounds(common::Rect::new(0.0, 0.0, 800.0, 600.0));
-
-    let entities = vec![PickableEntity::new(
-        EntityId::with_generation(1, 1),
-        Vec2::new(100.0, 100.0), // Entity at (100, 100)
-        Vec2::new(10.0, 10.0),
-        0.0,
-    )];
-
-    // Click at viewport center (world origin) - should miss
-    let result = picker.pick_at_screen_pos(&viewport, Vec2::new(400.0, 300.0), &entities);
-
-    assert!(result.is_empty());
-}
-
-#[test]
-fn test_pick_depth_sorting() {
-    let mut picker = EntityPicker::new();
-    let mut viewport = SceneViewport::new();
-    viewport.set_viewport_bounds(common::Rect::new(0.0, 0.0, 800.0, 600.0));
-
-    let entities = vec![
-        PickableEntity::new(EntityId::with_generation(1, 1), Vec2::ZERO, Vec2::new(50.0, 50.0), 0.0),
-        PickableEntity::new(EntityId::with_generation(2, 1), Vec2::ZERO, Vec2::new(50.0, 50.0), 10.0), // Higher depth
-        PickableEntity::new(EntityId::with_generation(3, 1), Vec2::ZERO, Vec2::new(50.0, 50.0), 5.0),
-    ];
-
-    let result = picker.pick_at_screen_pos(&viewport, Vec2::new(400.0, 300.0), &entities);
-
-    assert_eq!(result.len(), 3);
-    // Should be sorted by depth, highest first
-    assert_eq!(result.hits[0], EntityId::with_generation(2, 1)); // depth 10
-    assert_eq!(result.hits[1], EntityId::with_generation(3, 1)); // depth 5
-    assert_eq!(result.hits[2], EntityId::with_generation(1, 1)); // depth 0
-}
-
-#[test]
-fn test_equal_depth_hits_order_by_id_deterministically() {
-    // Equal depths must not leave the order to the unstable sort: the first
-    // hit becomes the selection's primary, so ids break the tie — in the
-    // marquee AND the click path (whose cycling rotates from that order).
-    let picker = EntityPicker::new();
-    let mut viewport = SceneViewport::new();
-    viewport.set_viewport_bounds(common::Rect::new(0.0, 0.0, 800.0, 600.0));
-
-    let entities = vec![
-        PickableEntity::new(EntityId::with_generation(9, 1), Vec2::ZERO, Vec2::new(50.0, 50.0), 5.0),
-        PickableEntity::new(EntityId::with_generation(2, 1), Vec2::ZERO, Vec2::new(50.0, 50.0), 5.0),
-        PickableEntity::new(EntityId::with_generation(4, 1), Vec2::ZERO, Vec2::new(50.0, 50.0), 5.0),
-    ];
-
-    let rect = AABB::new(Vec2::new(-100.0, -100.0), Vec2::new(100.0, 100.0));
-    let result = picker.pick_in_world_rect(rect, &entities);
-
-    assert_eq!(result.hits[0], EntityId::with_generation(2, 1));
-    assert_eq!(result.hits[1], EntityId::with_generation(4, 1));
-    assert_eq!(result.hits[2], EntityId::with_generation(9, 1));
-}
-
-#[test]
-fn test_pick_in_rect() {
-    let picker = EntityPicker::new();
-    let mut viewport = SceneViewport::new();
-    viewport.set_viewport_bounds(common::Rect::new(0.0, 0.0, 800.0, 600.0));
-
-    let entities = vec![
-        PickableEntity::new(
-            EntityId::with_generation(1, 1),
-            Vec2::new(-50.0, 50.0),
-            Vec2::new(10.0, 10.0),
-            0.0,
-        ),
-        PickableEntity::new(
-            EntityId::with_generation(2, 1),
-            Vec2::new(50.0, -50.0),
-            Vec2::new(10.0, 10.0),
-            0.0,
-        ),
-        PickableEntity::new(
-            EntityId::with_generation(3, 1),
-            Vec2::new(200.0, 200.0), // Outside rect
-            Vec2::new(10.0, 10.0),
-            0.0,
-        ),
-    ];
-
-    // Select rectangle around entities 1 and 2 (but not 3)
-    // Screen coords: top-left to bottom-right
-    let result = picker.pick_in_screen_rect(
-        &viewport,
-        Vec2::new(300.0, 200.0), // Screen top-left
-        Vec2::new(500.0, 400.0), // Screen bottom-right
-        &entities,
-    );
-
-    assert_eq!(result.len(), 2);
-    assert!(result.hits.contains(&EntityId::with_generation(1, 1)));
-    assert!(result.hits.contains(&EntityId::with_generation(2, 1)));
-    assert!(!result.hits.contains(&EntityId::with_generation(3, 1)));
-}
-
-// SelectionRect was deleted with issue #39: it was never instantiated in
-// production (the live marquee path is ViewportInputHandler + the caller's
-// screen-space rect draw), and keeping two representations is how the old
-// Vec2::ZERO sentinel bug happened.

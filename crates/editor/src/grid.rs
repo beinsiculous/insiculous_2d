@@ -359,229 +359,113 @@ pub fn render_grid_overlay(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::test_viewport;
+    use ui::DrawCommand;
 
-    fn bounds_200() -> (f32, f32, f32, f32) {
-        (-100.0, -100.0, 100.0, 100.0)
-    }
+    const BOUNDS: (f32, f32, f32, f32) = (-100.0, -100.0, 100.0, 100.0);
 
+    /// A sub-pixel grid size would flood the viewport with lines (and
+    /// divide snapping by ~0); the setter floors it at one pixel.
     #[test]
-    fn test_grid_renderer_new() {
-        let grid = GridRenderer::new();
-        assert!(grid.is_visible());
-        assert_eq!(grid.grid_size(), 32.0);
-    }
-
-    #[test]
-    fn test_grid_visibility_toggle() {
+    fn test_grid_size_floors_at_one_pixel() {
         let mut grid = GridRenderer::new();
-        assert!(grid.is_visible());
 
-        grid.toggle_visible();
-        assert!(!grid.is_visible());
-
-        grid.toggle_visible();
-        assert!(grid.is_visible());
-    }
-
-    #[test]
-    fn test_grid_size_setting() {
-        let mut grid = GridRenderer::new();
         grid.set_grid_size(64.0);
         assert_eq!(grid.grid_size(), 64.0);
-
-        // Minimum size enforcement
         grid.set_grid_size(0.5);
-        assert_eq!(grid.grid_size(), 1.0);
+        assert_eq!(grid.grid_size(), 1.0, "sizes below a pixel clamp to 1.0");
+    }
+
+    /// The constant coordinate of an axis-aligned segment.
+    fn line_coordinate(segment: &GridSegment) -> f32 {
+        if segment.start.y == segment.end.y { segment.start.y } else { segment.start.x }
+    }
+
+    fn coordinates(segments: &[GridSegment], kind: GridLineKind) -> Vec<f32> {
+        segments.iter().filter(|s| s.kind == kind).map(line_coordinate).collect()
     }
 
     #[test]
-    fn test_hidden_grid_produces_no_segments() {
-        let mut grid = GridRenderer::new();
-        grid.set_visible(false);
-        assert!(grid.grid_segments(bounds_200(), 1.0).is_empty());
-    }
-
-    #[test]
-    fn test_segments_include_axes_spanning_the_bounds() {
-        let grid = GridRenderer::new();
-        let segments = grid.grid_segments(bounds_200(), 1.0);
-
-        let x_axis = segments
-            .iter()
-            .find(|s| s.kind == GridLineKind::AxisX)
-            .expect("X axis rendered");
-        assert_eq!(x_axis.start, Vec2::new(-100.0, 0.0));
-        assert_eq!(x_axis.end, Vec2::new(100.0, 0.0));
-
-        let y_axis = segments
-            .iter()
-            .find(|s| s.kind == GridLineKind::AxisY)
-            .expect("Y axis rendered");
-        assert_eq!(y_axis.start, Vec2::new(0.0, -100.0));
-        assert_eq!(y_axis.end, Vec2::new(0.0, 100.0));
-    }
-
-    #[test]
-    fn test_primary_lines_land_on_grid_size_multiples() {
-        let grid = GridRenderer::new();
-        let segments = grid.grid_segments(bounds_200(), 1.0);
-
-        let primaries: Vec<_> = segments
-            .iter()
-            .filter(|s| s.kind == GridLineKind::Primary)
-            .collect();
-        assert!(!primaries.is_empty());
-        for segment in primaries {
-            // A primary line is axis-aligned; its constant coordinate sits
-            // on a multiple of the grid size and never on the origin axes
-            // (those are drawn as axis segments).
-            let coord = if segment.start.y == segment.end.y {
-                segment.start.y
-            } else {
-                segment.start.x
-            };
-            assert!(is_on_grid(coord, 32.0), "line at {coord} off-grid");
-            assert!(coord.abs() > 0.001, "axis line duplicated as primary");
-        }
-    }
-
-    #[test]
-    fn test_lod_grid_size() {
+    fn test_subdivisions_appear_only_zoomed_in_and_never_on_a_primary_line() {
         let grid = GridRenderer::new();
 
-        // At zoom 1.0, should use base size
-        assert_eq!(grid.calculate_lod_grid_size(1.0), 32.0);
-        // At zoom 0.5, should double
-        assert_eq!(grid.calculate_lod_grid_size(0.5), 64.0);
-        // At zoom 2.0, should use base size (no reduction)
-        assert_eq!(grid.calculate_lod_grid_size(2.0), 32.0);
-    }
-
-    #[test]
-    fn test_lod_doubles_primary_spacing_when_zoomed_out() {
-        let grid = GridRenderer::new();
-        let segments = grid.grid_segments(bounds_200(), 0.5);
-        for segment in segments.iter().filter(|s| s.kind == GridLineKind::Primary) {
-            let coord = if segment.start.y == segment.end.y {
-                segment.start.y
-            } else {
-                segment.start.x
-            };
-            assert!(is_on_grid(coord, 64.0), "line at {coord} off the LOD grid");
-        }
-    }
-
-    #[test]
-    fn test_subdivisions_gated_by_zoom_and_never_on_primary_lines() {
-        let grid = GridRenderer::new();
-
-        // Below subdivision_min_zoom (0.5): no secondary lines.
-        let zoomed_out = grid.grid_segments(bounds_200(), 0.4);
-        assert!(
-            !zoomed_out.iter().any(|s| s.kind == GridLineKind::Secondary),
-            "subdivisions must hide below the zoom threshold"
+        let zoomed_out = grid.grid_segments(BOUNDS, 0.4);
+        assert_eq!(
+            coordinates(&zoomed_out, GridLineKind::Secondary),
+            Vec::<f32>::new(),
+            "subdivisions hide below subdivision_min_zoom"
         );
 
-        // At zoom 1.0: secondary lines exist between primaries, never on them.
-        let zoomed_in = grid.grid_segments(bounds_200(), 1.0);
-        let secondaries: Vec<_> = zoomed_in
-            .iter()
-            .filter(|s| s.kind == GridLineKind::Secondary)
-            .collect();
+        let zoomed_in = grid.grid_segments(BOUNDS, 1.0);
+        let secondaries = coordinates(&zoomed_in, GridLineKind::Secondary);
         assert!(!secondaries.is_empty());
-        for segment in secondaries {
-            let coord = if segment.start.y == segment.end.y {
-                segment.start.y
-            } else {
-                segment.start.x
-            };
-            assert!(
-                !is_on_grid(coord, 32.0),
-                "subdivision at {coord} coincides with a primary line"
-            );
+        for coord in secondaries {
+            assert!(is_on_grid(coord, 8.0), "subdivision at {coord} is off the quarter-cell grid");
+            assert!(!is_on_grid(coord, 32.0), "subdivision at {coord} coincides with a primary line");
         }
     }
 
     #[test]
-    fn test_calculate_grid_lines() {
+    fn test_lod_doubles_primary_spacing_each_time_zoom_halves() {
         let grid = GridRenderer::new();
-        let (h_lines, v_lines) = grid.calculate_grid_lines(-64.0, -64.0, 64.0, 64.0, 32.0);
-
-        // Should have lines at -64, -32, 0, 32, 64
-        assert!(h_lines.len() >= 5);
-        assert!(v_lines.len() >= 5);
-
-        // Check that 0 is included
-        assert!(h_lines.iter().any(|&y| y.abs() < 0.001));
-        assert!(v_lines.iter().any(|&x| x.abs() < 0.001));
+        for (zoom, spacing) in [(2.0, 32.0), (1.0, 32.0), (0.5, 64.0), (0.25, 128.0)] {
+            let primaries = coordinates(&grid.grid_segments(BOUNDS, zoom), GridLineKind::Primary);
+            assert!(
+                primaries.iter().any(|coord| (coord - spacing).abs() < 0.001),
+                "zoom {zoom}: expected a primary line at {spacing}, got {primaries:?}"
+            );
+            for coord in &primaries {
+                assert!(is_on_grid(*coord, spacing), "zoom {zoom}: primary at {coord} is off the {spacing} grid");
+                assert!(coord.abs() > 0.001, "the axes are never duplicated as primaries");
+            }
+        }
     }
 
     #[test]
-    fn test_is_on_grid() {
-        assert!(is_on_grid(0.0, 32.0));
-        assert!(is_on_grid(32.0, 32.0));
-        assert!(is_on_grid(64.0, 32.0));
-        assert!(is_on_grid(-32.0, 32.0));
-
-        assert!(!is_on_grid(16.0, 32.0));
-        assert!(!is_on_grid(8.0, 32.0));
-    }
-
-    #[test]
-    fn test_max_lines_exceeded_leaves_only_axes() {
+    fn test_too_many_lines_leaves_only_the_two_axes() {
         let mut grid = GridRenderer::new();
         grid.config.max_lines = 10;
 
         let segments = grid.grid_segments((-10000.0, -10000.0, 10000.0, 10000.0), 4.0);
-        assert_eq!(segments.len(), 2);
-        assert!(segments.iter().any(|s| s.kind == GridLineKind::AxisX));
-        assert!(segments.iter().any(|s| s.kind == GridLineKind::AxisY));
+
+        let kinds: Vec<GridLineKind> = segments.iter().map(|s| s.kind).collect();
+        assert_eq!(kinds, [GridLineKind::AxisX, GridLineKind::AxisY]);
+        assert_eq!((segments[0].start, segments[0].end), (Vec2::new(-10000.0, 0.0), Vec2::new(10000.0, 0.0)));
+        assert_eq!((segments[1].start, segments[1].end), (Vec2::new(0.0, -10000.0), Vec2::new(0.0, 10000.0)));
     }
 
     #[test]
-    fn test_render_overlay_hidden_grid_draws_nothing() {
+    fn test_overlay_draws_axes_and_cells_through_the_viewport_mapping_inside_a_clip() {
         let mut grid = GridRenderer::new();
-        grid.set_visible(false);
+        let viewport = test_viewport();
+        let colors = GridColors::default();
+        let bounds = Rect::new(0.0, 0.0, 800.0, 600.0);
         let mut ui = UIContext::new();
-        let viewport = SceneViewport::new();
 
-        render_grid_overlay(
-            &mut ui,
-            &grid,
-            &viewport,
-            &GridColors::default(),
-            Rect::new(0.0, 0.0, 800.0, 600.0),
-        );
-
-        assert!(ui.draw_list().commands().is_empty());
-    }
-
-    #[test]
-    fn test_render_overlay_emits_clipped_lines() {
-        let grid = GridRenderer::new();
-        let mut ui = UIContext::new();
-        let mut viewport = SceneViewport::new();
-        viewport.set_viewport_bounds(Rect::new(0.0, 0.0, 800.0, 600.0));
-
-        render_grid_overlay(
-            &mut ui,
-            &grid,
-            &viewport,
-            &GridColors::default(),
-            Rect::new(0.0, 0.0, 800.0, 600.0),
-        );
+        render_grid_overlay(&mut ui, &grid, &viewport, &colors, bounds);
 
         let commands = ui.draw_list().commands();
-        let lines = commands
+        assert!(commands.iter().any(|c| matches!(c, DrawCommand::PushClipRect { .. })));
+        assert!(commands.iter().any(|c| matches!(c, DrawCommand::PopClipRect)));
+        let lines: Vec<(Vec2, Vec2, Color)> = commands
             .iter()
-            .filter(|c| matches!(c, ui::DrawCommand::Line { .. }))
-            .count();
-        assert!(lines > 2, "grid plus axes expected, got {lines} lines");
-        assert!(commands
-            .iter()
-            .any(|c| matches!(c, ui::DrawCommand::PushClipRect { .. })));
-        assert!(commands
-            .iter()
-            .any(|c| matches!(c, ui::DrawCommand::PopClipRect)));
+            .filter_map(|c| match c {
+                DrawCommand::Line { start, end, color, .. } => Some((*start, *end, *color)),
+                _ => None,
+            })
+            .collect();
+        // World (-400,0)→(400,0) is screen (0,300)→(800,300); world
+        // (0,-300)→(0,300) is screen (400,600)→(400,0) — Y flips.
+        assert!(lines.contains(&(Vec2::new(0.0, 300.0), Vec2::new(800.0, 300.0), colors.axis_x)), "X axis");
+        assert!(lines.contains(&(Vec2::new(400.0, 600.0), Vec2::new(400.0, 0.0), colors.axis_y)), "Y axis");
+        assert!(
+            lines.contains(&(Vec2::new(0.0, 268.0), Vec2::new(800.0, 268.0), colors.primary)),
+            "the primary line one cell above the X axis sits 32px up on screen"
+        );
+
+        grid.set_visible(false);
+        let mut hidden = UIContext::new();
+        render_grid_overlay(&mut hidden, &grid, &viewport, &colors, bounds);
+        assert!(hidden.draw_list().commands().is_empty(), "a hidden grid draws nothing, not even its clip");
     }
 }

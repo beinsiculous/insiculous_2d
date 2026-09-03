@@ -179,116 +179,68 @@ pub fn render_collider_overlay(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::test_viewport;
     use std::f32::consts::FRAC_PI_2;
+    use ui::DrawCommand;
 
     fn transform_at(pos: Vec2, rotation: f32) -> Transform2D {
         Transform2D::from_parts(pos, rotation, Vec2::ONE)
     }
 
     fn assert_vec2_near(actual: Vec2, expected: Vec2) {
-        assert!(
-            (actual - expected).length() < 1e-4,
-            "expected {expected:?}, got {actual:?}"
-        );
+        assert!((actual - expected).length() < 1e-4, "expected {expected:?}, got {actual:?}");
     }
 
-    /// Max distance of any segment endpoint from a point.
-    fn max_extent_from(segments: &[(Vec2, Vec2)], origin: Vec2) -> f32 {
+    /// Farthest reach of any endpoint along +X and +Y.
+    fn max_reach(segments: &[(Vec2, Vec2)]) -> Vec2 {
         segments
             .iter()
-            .flat_map(|(a, b)| [a, b])
-            .map(|p| (*p - origin).length())
-            .fold(0.0, f32::max)
+            .flat_map(|(a, b)| [*a, *b])
+            .fold(Vec2::splat(f32::MIN), |acc, p| acc.max(p))
+    }
+
+    fn colors() -> ColliderOverlayColors {
+        ColliderOverlayColors {
+            solid: Color::new(0.0, 1.0, 0.0, 1.0),
+            sensor: Color::new(0.0, 1.0, 1.0, 1.0),
+            selected: Color::new(1.0, 1.0, 0.0, 1.0),
+        }
     }
 
     #[test]
-    fn test_box_outline_has_four_segments_at_corners() {
-        let transform = transform_at(Vec2::new(100.0, 50.0), 0.0);
-        let collider = Collider::box_collider(40.0, 20.0);
+    fn test_collider_offset_and_box_corners_rotate_with_the_body() {
+        // Offset (10, 0) on a body rotated 90° CCW lands at (0, 10) —
+        // rapier's body-local collider placement.
+        let transform = transform_at(Vec2::new(5.0, 5.0), FRAC_PI_2);
+        let circle = Collider::circle_collider(1.0).with_offset(Vec2::new(10.0, 0.0));
 
-        let segments = collider_outline_segments(&transform, &collider);
+        let segments = collider_outline_segments(&transform, &circle);
 
+        assert_eq!(segments.len(), CIRCLE_SEGMENTS);
+        for (start, _) in &segments {
+            let distance = (*start - Vec2::new(5.0, 15.0)).length();
+            assert!((distance - 1.0).abs() < 1e-3, "point {start} is off the rotated circle");
+        }
+
+        // A 40×20 box rotated 90° puts its bottom-left corner (-20,-10) at
+        // (10,-20); the outline stays a closed loop.
+        let boxed = Collider::box_collider(40.0, 20.0);
+        let segments = collider_outline_segments(&transform_at(Vec2::ZERO, FRAC_PI_2), &boxed);
         assert_eq!(segments.len(), 4);
-        // First segment starts at the bottom-left corner.
-        assert_vec2_near(segments[0].0, Vec2::new(80.0, 40.0));
-        // Loop is closed: last segment ends where the first starts.
+        assert_vec2_near(segments[0].0, Vec2::new(10.0, -20.0));
         assert_vec2_near(segments[3].1, segments[0].0);
     }
 
     #[test]
-    fn test_box_outline_rotates_with_transform() {
-        let transform = transform_at(Vec2::ZERO, FRAC_PI_2);
-        let collider = Collider::box_collider(40.0, 20.0);
-
-        let segments = collider_outline_segments(&transform, &collider);
-
-        // Rotating 90° swaps the box's width and height: the corner that was
-        // at (-20, -10) moves to (10, -20).
-        assert_vec2_near(segments[0].0, Vec2::new(10.0, -20.0));
-    }
-
-    #[test]
-    fn test_collider_offset_rotates_with_body() {
-        // Offset (10, 0) on a body rotated 90° CCW lands at (0, 10),
-        // mirroring rapier's body-local collider placement.
-        let transform = transform_at(Vec2::new(5.0, 5.0), FRAC_PI_2);
-        let collider = Collider::circle_collider(1.0).with_offset(Vec2::new(10.0, 0.0));
-
-        let segments = collider_outline_segments(&transform, &collider);
-
-        let expected_center = Vec2::new(5.0, 15.0);
-        for (start, _) in &segments {
-            assert!(((*start - expected_center).length() - 1.0).abs() < 1e-3);
-        }
-    }
-
-    #[test]
-    fn test_circle_outline_points_lie_on_radius() {
-        let center = Vec2::new(-30.0, 12.0);
-        let transform = transform_at(center, 0.0);
-        let collider = Collider::circle_collider(25.0);
-
-        let segments = collider_outline_segments(&transform, &collider);
-
-        assert_eq!(segments.len(), CIRCLE_SEGMENTS);
-        for (start, end) in &segments {
-            assert!(((*start - center).length() - 25.0).abs() < 1e-3);
-            assert!(((*end - center).length() - 25.0).abs() < 1e-3);
-        }
-    }
-
-    #[test]
-    fn test_capsule_y_extends_half_height_plus_radius_vertically() {
-        let transform = transform_at(Vec2::ZERO, 0.0);
+    fn test_capsule_reaches_half_height_plus_radius_along_its_axis() {
         // Total height 120, cap radius 10 → half_height 50, full reach 60.
-        let collider = Collider::new(ColliderShape::capsule_y(120.0, 10.0));
+        let along_y = Collider::new(ColliderShape::capsule_y(120.0, 10.0));
+        let reach = max_reach(&collider_outline_segments(&transform_at(Vec2::ZERO, 0.0), &along_y));
+        assert_vec2_near(reach, Vec2::new(10.0, 60.0));
 
-        let segments = collider_outline_segments(&transform, &collider);
-
-        let max_y = segments
-            .iter()
-            .flat_map(|(a, b)| [a.y, b.y])
-            .fold(f32::MIN, f32::max);
-        let max_x = segments
-            .iter()
-            .flat_map(|(a, b)| [a.x, b.x])
-            .fold(f32::MIN, f32::max);
-        assert!((max_y - 60.0).abs() < 1e-3);
-        assert!((max_x - 10.0).abs() < 1e-3);
-    }
-
-    #[test]
-    fn test_capsule_x_extends_along_x() {
-        let transform = transform_at(Vec2::ZERO, 0.0);
-        let collider = Collider::new(ColliderShape::capsule_x(120.0, 10.0));
-
-        let segments = collider_outline_segments(&transform, &collider);
-
-        let max_x = segments
-            .iter()
-            .flat_map(|(a, b)| [a.x, b.x])
-            .fold(f32::MIN, f32::max);
-        assert!((max_x - 60.0).abs() < 1e-3);
+        let along_x = Collider::new(ColliderShape::capsule_x(120.0, 10.0));
+        let reach = max_reach(&collider_outline_segments(&transform_at(Vec2::ZERO, 0.0), &along_x));
+        assert_vec2_near(reach, Vec2::new(60.0, 10.0));
     }
 
     #[test]
@@ -297,149 +249,64 @@ mod tests {
         let scaled = Transform2D::from_parts(Vec2::ZERO, 0.0, Vec2::new(5.0, 5.0));
         let collider = Collider::box_collider(40.0, 20.0);
 
-        let a = collider_outline_segments(&unscaled, &collider);
-        let b = collider_outline_segments(&scaled, &collider);
-
-        assert_eq!(a.len(), b.len());
-        let extent_a = max_extent_from(&a, Vec2::ZERO);
-        let extent_b = max_extent_from(&b, Vec2::ZERO);
-        assert!((extent_a - extent_b).abs() < 1e-5);
-    }
-
-    #[test]
-    fn test_overlay_color_selection_wins_over_sensor() {
-        let colors = ColliderOverlayColors {
-            solid: Color::new(0.0, 1.0, 0.0, 1.0),
-            sensor: Color::new(0.0, 1.0, 1.0, 1.0),
-            selected: Color::new(1.0, 1.0, 0.0, 1.0),
-        };
-        let solid = Collider::box_collider(10.0, 10.0);
-        let sensor = Collider::box_collider(10.0, 10.0).as_sensor();
-
-        assert_eq!(colors.color_for(&solid, false), colors.solid);
-        assert_eq!(colors.color_for(&sensor, false), colors.sensor);
-        assert_eq!(colors.color_for(&sensor, true), colors.selected);
-        assert_eq!(colors.color_for(&solid, true), colors.selected);
-    }
-
-    #[test]
-    fn test_render_overlay_emits_line_commands_for_collider_entities() {
-        let mut world = World::new();
-        let entity = world.create_entity();
-        world
-            .add_component(&entity, Transform2D::new(Vec2::ZERO))
-            .ok();
-        world
-            .add_component(&entity, Collider::box_collider(32.0, 32.0))
-            .ok();
-
-        let mut ui = UIContext::new();
-        let mut viewport = SceneViewport::new();
-        viewport.set_viewport_bounds(Rect::new(0.0, 0.0, 800.0, 600.0));
-        let selection = Selection::new();
-        let colors = ColliderOverlayColors {
-            solid: Color::new(0.0, 1.0, 0.0, 1.0),
-            sensor: Color::new(0.0, 1.0, 1.0, 1.0),
-            selected: Color::new(1.0, 1.0, 0.0, 1.0),
-        };
-
-        render_collider_overlay(
-            &mut ui,
-            &world,
-            &viewport,
-            &selection,
-            &colors,
-            Rect::new(0.0, 0.0, 800.0, 600.0),
+        assert_eq!(
+            collider_outline_segments(&scaled, &collider),
+            collider_outline_segments(&unscaled, &collider),
+            "collider sizes are absolute pixels: a sprite scaled up drifts from its collider, and the overlay must show that drift"
         );
-
-        let lines = ui
-            .draw_list()
-            .commands()
-            .iter()
-            .filter(|c| matches!(c, ui::DrawCommand::Line { .. }))
-            .count();
-        // A box collider draws exactly its 4 edges.
-        assert_eq!(lines, 4);
     }
 
     #[test]
-    fn test_primary_collider_outline_is_wider_than_secondary_selected() {
+    fn test_overlay_draws_each_collider_at_its_screen_corners_in_its_state_color() {
         let mut world = World::new();
-        let spawn = |world: &mut World| {
-            let entity = world.create_entity();
-            world.add_component(&entity, Transform2D::new(Vec2::ZERO)).ok();
-            world.add_component(&entity, Collider::box_collider(32.0, 32.0)).ok();
-            entity
-        };
-        let primary = spawn(&mut world);
-        let secondary = spawn(&mut world);
+        let solid = world.create_entity();
+        world.add_component(&solid, Transform2D::new(Vec2::new(100.0, 50.0))).ok();
+        world.add_component(&solid, Collider::box_collider(40.0, 20.0)).ok();
+        let sensor = world.create_entity();
+        world.add_component(&sensor, Transform2D::new(Vec2::new(-200.0, 0.0))).ok();
+        world.add_component(&sensor, Collider::box_collider(10.0, 10.0).as_sensor()).ok();
+        let selected_sensor = world.create_entity();
+        world.add_component(&selected_sensor, Transform2D::new(Vec2::new(-200.0, -100.0))).ok();
+        world.add_component(&selected_sensor, Collider::box_collider(10.0, 10.0).as_sensor()).ok();
+        let secondary_selected = world.create_entity();
+        world.add_component(&secondary_selected, Transform2D::new(Vec2::new(200.0, -100.0))).ok();
+        world.add_component(&secondary_selected, Collider::box_collider(10.0, 10.0)).ok();
+        let bare = world.create_entity();
+        world.add_component(&bare, Transform2D::new(Vec2::ZERO)).ok();
         let mut selection = Selection::new();
-        selection.select(primary);
-        selection.add(secondary);
-
+        selection.select(selected_sensor);
+        selection.add(secondary_selected);
+        let colors = colors();
         let mut ui = UIContext::new();
-        let mut viewport = SceneViewport::new();
-        viewport.set_viewport_bounds(Rect::new(0.0, 0.0, 800.0, 600.0));
-        let colors = ColliderOverlayColors {
-            solid: Color::new(0.0, 1.0, 0.0, 1.0),
-            sensor: Color::new(0.0, 1.0, 1.0, 1.0),
-            selected: Color::new(1.0, 1.0, 0.0, 1.0),
-        };
-        render_collider_overlay(
-            &mut ui,
-            &world,
-            &viewport,
-            &selection,
-            &colors,
-            Rect::new(0.0, 0.0, 800.0, 600.0),
-        );
 
-        let mut widths: Vec<f32> = ui
+        render_collider_overlay(&mut ui, &world, &test_viewport(), &selection, &colors, Rect::new(0.0, 0.0, 800.0, 600.0));
+
+        let lines: Vec<(Vec2, Vec2, Color, f32)> = ui
             .draw_list()
             .commands()
             .iter()
             .filter_map(|c| match c {
-                ui::DrawCommand::Line { width, .. } => Some(*width),
+                DrawCommand::Line { start, end, color, width, .. } => Some((*start, *end, *color, *width)),
                 _ => None,
             })
             .collect();
-        widths.sort_by(|a, b| a.partial_cmp(b).expect("finite widths"));
-        widths.dedup();
-        // Both selected (same color), but the primary reads wider.
-        assert_eq!(widths, vec![OUTLINE_WIDTH_SECONDARY, OUTLINE_WIDTH_SELECTED]);
-    }
+        assert_eq!(lines.len(), 16, "four boxes of four edges; the collider-less entity draws nothing");
 
-    #[test]
-    fn test_render_overlay_skips_entities_without_collider() {
-        let mut world = World::new();
-        let entity = world.create_entity();
-        world
-            .add_component(&entity, Transform2D::new(Vec2::ZERO))
-            .ok();
+        // The solid box's world corners (80,40)…(120,60) land on screen
+        // through the viewport mapping, Y flipped.
+        let solid_lines: Vec<_> = lines.iter().filter(|line| line.2 == colors.solid).collect();
+        let corners = [Vec2::new(480.0, 260.0), Vec2::new(520.0, 260.0), Vec2::new(520.0, 240.0), Vec2::new(480.0, 240.0)];
+        assert_eq!(solid_lines.len(), 4);
+        for (i, (start, end, _, width)) in solid_lines.iter().enumerate() {
+            assert_eq!(*start, corners[i]);
+            assert_eq!(*end, corners[(i + 1) % 4]);
+            assert_eq!(*width, OUTLINE_WIDTH);
+        }
 
-        let mut ui = UIContext::new();
-        let viewport = SceneViewport::new();
-        let colors = ColliderOverlayColors {
-            solid: Color::new(0.0, 1.0, 0.0, 1.0),
-            sensor: Color::new(0.0, 1.0, 1.0, 1.0),
-            selected: Color::new(1.0, 1.0, 0.0, 1.0),
-        };
-
-        render_collider_overlay(
-            &mut ui,
-            &world,
-            &viewport,
-            &Selection::new(),
-            &colors,
-            Rect::new(0.0, 0.0, 800.0, 600.0),
-        );
-
-        let lines = ui
-            .draw_list()
-            .commands()
-            .iter()
-            .filter(|c| matches!(c, ui::DrawCommand::Line { .. }))
-            .count();
-        assert_eq!(lines, 0);
+        // Sensors draw in the sensor colour; selection wins over sensor, the
+        // primary draws widest and other selected entities in between (#51).
+        assert_eq!(lines.iter().filter(|line| line.2 == colors.sensor && line.3 == OUTLINE_WIDTH).count(), 4);
+        assert_eq!(lines.iter().filter(|line| line.2 == colors.selected && line.3 == OUTLINE_WIDTH_SELECTED).count(), 4);
+        assert_eq!(lines.iter().filter(|line| line.2 == colors.selected && line.3 == OUTLINE_WIDTH_SECONDARY).count(), 4);
     }
 }

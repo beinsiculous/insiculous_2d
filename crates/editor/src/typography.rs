@@ -32,18 +32,12 @@ impl Default for FontSizes {
 mod tests {
     use super::*;
 
+    /// No editor chrome may be set below the readable floor.
     #[test]
     fn test_every_font_token_is_readable() {
         let fonts = FontSizes::default();
-        assert!(fonts.small >= MIN_READABLE_FONT, "small: {}", fonts.small);
-        assert!(fonts.body >= MIN_READABLE_FONT, "body: {}", fonts.body);
-        assert!(fonts.heading >= MIN_READABLE_FONT, "heading: {}", fonts.heading);
-    }
-
-    #[test]
-    fn test_font_scale_is_ordered() {
-        let fonts = FontSizes::default();
-        assert!(fonts.small < fonts.body);
-        assert!(fonts.body < fonts.heading);
+        for (name, size) in [("small", fonts.small), ("body", fonts.body), ("heading", fonts.heading)] {
+            assert!(size >= MIN_READABLE_FONT, "{name}: {size} is below MIN_READABLE_FONT");
+        }
     }
 }

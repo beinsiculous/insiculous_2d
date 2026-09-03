@@ -76,62 +76,55 @@ impl ScrollState {
 mod tests {
     use super::*;
 
+    const INSIDE: Vec2 = Vec2::new(50.0, 50.0);
+
     fn bounds() -> Rect {
         Rect::new(0.0, 0.0, 200.0, 100.0)
     }
 
     #[test]
-    fn test_wheel_only_scrolls_when_mouse_inside_bounds() {
+    fn test_wheel_scrolls_only_with_the_mouse_inside_the_panel() {
         let mut scroll = ScrollState::default();
         scroll.end_frame(500.0, 100.0); // plenty of content
 
         let outside = Vec2::new(500.0, 500.0);
-        assert_eq!(scroll.begin_frame(bounds(), outside, -1.0, 100.0), 0.0);
-
-        let inside = Vec2::new(50.0, 50.0);
-        assert_eq!(scroll.begin_frame(bounds(), inside, -1.0, 100.0), WHEEL_STEP);
+        assert_eq!(scroll.begin_frame(bounds(), outside, -1.0, 100.0), 0.0, "a wheel over another panel is ignored");
+        assert_eq!(scroll.begin_frame(bounds(), INSIDE, -1.0, 100.0), WHEEL_STEP);
     }
 
     #[test]
-    fn test_offset_clamps_to_last_frame_content_height() {
+    fn test_offset_clamps_to_the_content_measured_last_frame() {
         let mut scroll = ScrollState::default();
-        scroll.end_frame(150.0, 100.0); // max_scroll = 50
 
-        let inside = Vec2::new(50.0, 50.0);
-        // Ten notches down would be 300px; the content only allows 50.
+        // Content that fits the viewport never scrolls.
+        scroll.end_frame(60.0, 100.0);
+        assert_eq!(scroll.begin_frame(bounds(), INSIDE, -3.0, 100.0), 0.0);
+
+        // 150px of content in a 100px viewport allows 50; ten notches down
+        // would be 300.
+        scroll.end_frame(150.0, 100.0);
         for _ in 0..10 {
-            scroll.begin_frame(bounds(), inside, -1.0, 100.0);
+            scroll.begin_frame(bounds(), INSIDE, -1.0, 100.0);
         }
         assert_eq!(scroll.offset(), 50.0);
-
-        // Scrolling back up clamps at the top.
         for _ in 0..10 {
-            scroll.begin_frame(bounds(), inside, 1.0, 100.0);
+            scroll.begin_frame(bounds(), INSIDE, 1.0, 100.0);
         }
-        assert_eq!(scroll.offset(), 0.0);
+        assert_eq!(scroll.offset(), 0.0, "scrolling back up clamps at the top");
     }
 
     #[test]
-    fn test_short_content_never_scrolls() {
-        let mut scroll = ScrollState::default();
-        scroll.end_frame(60.0, 100.0); // content fits the viewport
-
-        let inside = Vec2::new(50.0, 50.0);
-        assert_eq!(scroll.begin_frame(bounds(), inside, -3.0, 100.0), 0.0);
-    }
-
-    #[test]
-    fn test_shrinking_content_reclamps_offset() {
+    fn test_shrinking_content_reclamps_the_offset() {
         let mut scroll = ScrollState::default();
         scroll.end_frame(500.0, 100.0);
-        let inside = Vec2::new(50.0, 50.0);
         for _ in 0..5 {
-            scroll.begin_frame(bounds(), inside, -1.0, 100.0);
+            scroll.begin_frame(bounds(), INSIDE, -1.0, 100.0);
         }
         assert_eq!(scroll.offset(), 150.0);
 
         // A collapse shrinks the content below the current offset: the
-        // end-of-frame measurement snaps the offset back into range.
+        // end-of-frame measurement snaps the offset back into range, so the
+        // panel never shows blank space past its last row.
         scroll.end_frame(120.0, 100.0);
         assert_eq!(scroll.offset(), 20.0);
     }

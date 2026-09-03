@@ -322,85 +322,21 @@ impl ViewportInputHandler {
 
 #[cfg(test)]
 mod tests {
+    //! Driven through `handle_input` / `handle_input_simple` so the asserts
+    //! pin what the viewport actually does with a pan, a wheel notch, a
+    //! marquee gesture and a camera shortcut — never a test-local copy of
+    //! the math.
+
     use super::*;
-
-    /// Calculate zoom factor for a scroll delta (mirrors the logic in `handle_input`).
-    fn calculate_zoom_factor(scroll_delta: f32, base_factor: f32, invert: bool) -> f32 {
-        let factor = if scroll_delta > 0.0 {
-            base_factor
-        } else {
-            1.0 / base_factor
-        };
-
-        if invert {
-            1.0 / factor
-        } else {
-            factor
-        }
-    }
-
-    /// Convert screen delta to world delta for panning (mirrors the logic in `handle_input`).
-    fn screen_to_world_delta(screen_delta: Vec2, camera_zoom: f32) -> Vec2 {
-        Vec2::new(
-            -screen_delta.x / camera_zoom,
-            screen_delta.y / camera_zoom, // Flip Y
-        )
-    }
-
-    #[test]
-    fn test_viewport_input_handler_new() {
-        let handler = ViewportInputHandler::new();
-        assert!(!handler.is_panning());
-        assert!(!handler.is_selecting());
-    }
-
-    #[test]
-    fn test_zoom_factor_calculation() {
-        let factor = calculate_zoom_factor(1.0, 1.1, false);
-        assert!((factor - 1.1).abs() < 0.001);
-
-        let factor = calculate_zoom_factor(-1.0, 1.1, false);
-        assert!((factor - 1.0 / 1.1).abs() < 0.001);
-    }
-
-    #[test]
-    fn test_zoom_factor_inverted() {
-        let factor = calculate_zoom_factor(1.0, 1.1, true);
-        assert!((factor - 1.0 / 1.1).abs() < 0.001);
-    }
-
-    #[test]
-    fn test_screen_to_world_delta() {
-        let screen_delta = Vec2::new(100.0, 50.0);
-        let world_delta = screen_to_world_delta(screen_delta, 1.0);
-
-        // X should be negated, Y should be flipped
-        assert_eq!(world_delta.x, -100.0);
-        assert_eq!(world_delta.y, 50.0);
-    }
-
-    #[test]
-    fn test_screen_to_world_delta_with_zoom() {
-        let screen_delta = Vec2::new(100.0, 50.0);
-        let world_delta = screen_to_world_delta(screen_delta, 2.0);
-
-        // At 2x zoom, world deltas are halved
-        assert_eq!(world_delta.x, -50.0);
-        assert_eq!(world_delta.y, 25.0);
-    }
-
-    #[test]
-    fn test_viewport_input_config_default() {
-        let config = ViewportInputConfig::default();
-        assert!((config.zoom_factor - 1.1).abs() < 0.001);
-        assert!(!config.invert_zoom);
-        assert_eq!(config.min_zoom, 0.1);
-        assert_eq!(config.max_zoom, 10.0);
-    }
-
-    // ---- Marquee state machine (issue #39) ----
-
     use crate::editor_input::ButtonState;
+    use crate::test_support::{move_mouse, next_frame, press_button, release_button, test_viewport};
+    use input::prelude::{InputHandler, KeyCode, MouseButton};
+
+    const PANEL_CENTER: Vec2 = Vec2::new(400.0, 300.0);
+
+    fn rig() -> (SceneViewport, EditorInputMapping, InputHandler, ViewportInputHandler) {
+        (test_viewport(), EditorInputMapping::new(), InputHandler::new(), ViewportInputHandler::new())
+    }
 
     /// Input state with the primary button held (or not) at `pos`.
     fn mouse_state(pos: Vec2, pressed: bool) -> EditorInputState {
@@ -411,54 +347,101 @@ mod tests {
         }
     }
 
-    fn marquee_rig() -> (SceneViewport, EditorInputMapping, input::InputHandler, ViewportInputHandler) {
-        let mut viewport = SceneViewport::new();
-        viewport.set_viewport_bounds(common::Rect::new(0.0, 0.0, 800.0, 600.0));
-        (viewport, EditorInputMapping::new(), input::InputHandler::new(), ViewportInputHandler::new())
+    // ---- Pan and zoom through the real input path (E1) ----
+
+    #[test]
+    fn test_middle_button_drag_pans_the_camera_by_screen_delta_over_zoom() {
+        let (mut viewport, mapping, mut input, mut handler) = rig();
+        viewport.set_camera_zoom(2.0);
+
+        press_button(&mut input, MouseButton::Middle, PANEL_CENTER);
+        let pressed = handler.handle_input_simple(&mut viewport, &mapping, &input);
+        assert!(pressed.consumed, "a pan claims the input");
+        assert!(handler.is_panning());
+        assert_eq!(viewport.camera_position(), Vec2::ZERO, "the press frame only anchors the drag");
+
+        move_mouse(&mut input, PANEL_CENTER + Vec2::new(100.0, 40.0));
+        handler.handle_input_simple(&mut viewport, &mapping, &input);
+        // Screen right/down at zoom 2 drags the world with the cursor, so the
+        // camera moves left/up by half the pixels: (-dx/zoom, +dy/zoom).
+        assert_eq!(viewport.camera_position(), Vec2::new(-50.0, 20.0));
+
+        release_button(&mut input, MouseButton::Middle);
+        let released = handler.handle_input_simple(&mut viewport, &mapping, &input);
+        assert!(!handler.is_panning());
+        assert!(!released.clicked, "a pan is never a pick");
+        assert_eq!(viewport.camera_position(), Vec2::new(-50.0, 20.0), "release moves nothing");
     }
 
     #[test]
-    fn test_marquee_starting_at_screen_origin_is_reported() {
-        let (mut viewport, mapping, input, mut handler) = marquee_rig();
+    fn test_wheel_notch_multiplies_zoom_by_the_factor_around_the_cursor_and_clamps() {
+        let (mut viewport, mapping, mut input, mut handler) = rig();
+        viewport.set_interpolation_speed(1.0);
+        let cursor = Vec2::new(600.0, 200.0);
+        let under_cursor = viewport.screen_to_world(cursor);
+        input.mouse_mut().update_position(cursor.x, cursor.y);
+
+        input.mouse_mut().update_wheel_delta(1.0);
+        let zoomed = handler.handle_input_simple(&mut viewport, &mapping, &input);
+        assert!(zoomed.consumed, "a wheel notch claims the input");
+        assert!((viewport.target_camera_zoom() - 1.1).abs() < 1e-6, "scroll up zooms in by zoom_factor");
+        viewport.update(1.0 / 60.0);
+        assert!(
+            (viewport.screen_to_world(cursor) - under_cursor).length() < 1e-3,
+            "the world point under the cursor stays put"
+        );
+
+        next_frame(&mut input);
+        input.mouse_mut().update_wheel_delta(-1.0);
+        handler.handle_input_simple(&mut viewport, &mapping, &input);
+        assert!((viewport.target_camera_zoom() - 1.0).abs() < 1e-6, "scroll down divides by the same factor");
+
+        for (start, notch, clamped) in [(10.0, 1.0, 10.0), (0.1, -1.0, 0.1)] {
+            viewport.set_camera_zoom(start);
+            next_frame(&mut input);
+            input.mouse_mut().update_wheel_delta(notch);
+            handler.handle_input_simple(&mut viewport, &mapping, &input);
+            assert_eq!(viewport.target_camera_zoom(), clamped, "zoom clamps at the {clamped} end");
+        }
+
+        handler.config.invert_zoom = true;
+        viewport.set_camera_zoom(1.0);
+        next_frame(&mut input);
+        input.mouse_mut().update_wheel_delta(1.0);
+        handler.handle_input_simple(&mut viewport, &mapping, &input);
+        assert!((viewport.target_camera_zoom() - 1.0 / 1.1).abs() < 1e-6, "invert_zoom flips the direction");
+    }
+
+    // ---- Marquee state machine (issue #39) ----
+
+    #[test]
+    fn test_marquee_from_screen_origin_is_real_and_a_sub_threshold_press_is_a_click() {
+        let (mut viewport, mapping, input, mut handler) = rig();
 
         // Press exactly at (0,0) — the old Vec2::ZERO sentinel silently
         // dropped this drag on release.
         handler.handle_input(&mut viewport, &mouse_state(Vec2::ZERO, true), &mapping, &input, true);
-        let live = handler.handle_input(
-            &mut viewport, &mouse_state(Vec2::new(100.0, 80.0), true), &mapping, &input, true,
-        );
+        let live = handler.handle_input(&mut viewport, &mouse_state(Vec2::new(100.0, 80.0), true), &mapping, &input, true);
         assert_eq!(live.marquee_active, Some((Vec2::ZERO, Vec2::new(100.0, 80.0))));
         assert!(handler.is_selecting());
-
-        let released = handler.handle_input(
-            &mut viewport, &mouse_state(Vec2::new(100.0, 80.0), false), &mapping, &input, true,
-        );
+        let released = handler.handle_input(&mut viewport, &mouse_state(Vec2::new(100.0, 80.0), false), &mapping, &input, true);
         assert_eq!(released.marquee_released, Some((Vec2::ZERO, Vec2::new(100.0, 80.0))));
-        assert!(!released.clicked);
-    }
+        assert!(!released.clicked, "a drag is not a click");
 
-    #[test]
-    fn test_sub_threshold_press_release_is_a_click_not_a_marquee() {
-        let (mut viewport, mapping, input, mut handler) = marquee_rig();
-
+        // 2px of jitter stays under the 5px drag threshold: a click at the
+        // PRESS position, no marquee.
         handler.handle_input(&mut viewport, &mouse_state(Vec2::new(50.0, 50.0), true), &mapping, &input, true);
-        // 2px of jitter — under the 5px drag threshold
-        let jitter = handler.handle_input(
-            &mut viewport, &mouse_state(Vec2::new(52.0, 51.0), true), &mapping, &input, true,
-        );
-        assert!(jitter.marquee_active.is_none(), "jitter must not start a marquee");
-
-        let released = handler.handle_input(
-            &mut viewport, &mouse_state(Vec2::new(52.0, 51.0), false), &mapping, &input, true,
-        );
-        assert!(released.clicked, "a sub-threshold gesture stays a click");
-        assert_eq!(released.click_position, Vec2::new(50.0, 50.0));
-        assert!(released.marquee_released.is_none());
+        let jitter = handler.handle_input(&mut viewport, &mouse_state(Vec2::new(52.0, 51.0), true), &mapping, &input, true);
+        assert_eq!(jitter.marquee_active, None, "jitter must not start a marquee");
+        let clicked = handler.handle_input(&mut viewport, &mouse_state(Vec2::new(52.0, 51.0), false), &mapping, &input, true);
+        assert!(clicked.clicked, "a sub-threshold gesture stays a click");
+        assert_eq!(clicked.click_position, Vec2::new(50.0, 50.0));
+        assert_eq!(clicked.marquee_released, None);
     }
 
     #[test]
     fn test_cancel_marquee_kills_the_gesture_until_release() {
-        let (mut viewport, mapping, input, mut handler) = marquee_rig();
+        let (mut viewport, mapping, input, mut handler) = rig();
 
         handler.handle_input(&mut viewport, &mouse_state(Vec2::ZERO, true), &mapping, &input, true);
         handler.handle_input(&mut viewport, &mouse_state(Vec2::new(100.0, 100.0), true), &mapping, &input, true);
@@ -469,96 +452,49 @@ mod tests {
         assert!(!handler.is_selecting());
 
         // Still holding: the cancelled gesture must not re-arm a fresh rect
-        let held = handler.handle_input(
-            &mut viewport, &mouse_state(Vec2::new(150.0, 150.0), true), &mapping, &input, true,
-        );
-        assert!(held.marquee_active.is_none());
+        let held = handler.handle_input(&mut viewport, &mouse_state(Vec2::new(150.0, 150.0), true), &mapping, &input, true);
+        assert_eq!(held.marquee_active, None);
         assert!(!handler.is_selecting());
 
         // Release: nothing selected, nothing clicked
-        let released = handler.handle_input(
-            &mut viewport, &mouse_state(Vec2::new(150.0, 150.0), false), &mapping, &input, true,
-        );
-        assert!(released.marquee_released.is_none());
+        let released = handler.handle_input(&mut viewport, &mouse_state(Vec2::new(150.0, 150.0), false), &mapping, &input, true);
+        assert_eq!(released.marquee_released, None);
         assert!(!released.clicked);
 
         // A fresh press afterwards drags normally again
         handler.handle_input(&mut viewport, &mouse_state(Vec2::new(10.0, 10.0), true), &mapping, &input, true);
-        let fresh = handler.handle_input(
-            &mut viewport, &mouse_state(Vec2::new(60.0, 60.0), true), &mapping, &input, true,
-        );
-        assert!(fresh.marquee_active.is_some(), "latch must clear on release");
+        let fresh = handler.handle_input(&mut viewport, &mouse_state(Vec2::new(60.0, 60.0), true), &mapping, &input, true);
+        assert_eq!(fresh.marquee_active, Some((Vec2::new(10.0, 10.0), Vec2::new(60.0, 60.0))), "latch must clear on release");
     }
 
     // ---- Camera shortcut requests (issue #21) ----
 
-    /// A viewport with bounds, mouse hovering its center, and a raw input
-    /// handler with the given key just pressed.
-    fn shortcut_rig(
-        key: winit::keyboard::KeyCode,
-    ) -> (SceneViewport, EditorInputState, EditorInputMapping, input::InputHandler) {
-        let mut viewport = SceneViewport::new();
-        viewport.set_viewport_bounds(common::Rect::new(0.0, 0.0, 800.0, 600.0));
-        let state = EditorInputState {
-            mouse_position: Vec2::new(400.0, 300.0),
-            ..Default::default()
-        };
-        let mut input = input::InputHandler::new();
-        input.keyboard_mut().handle_key_press(key);
-        (viewport, state, EditorInputMapping::new(), input)
-    }
-
     #[test]
-    fn test_f_requests_focus_on_selection() {
-        let (mut viewport, state, mapping, input) =
-            shortcut_rig(winit::keyboard::KeyCode::KeyF);
-        let mut handler = ViewportInputHandler::new();
+    fn test_camera_shortcuts_are_requests_the_caller_consumes() {
+        // (key, shift held, mouse over the viewport) → (focus, frame all, reset)
+        let table = [
+            (KeyCode::KeyF, false, true, (true, false, false)),
+            (KeyCode::KeyF, true, true, (false, true, false)),
+            (KeyCode::Home, false, true, (false, false, true)),
+            (KeyCode::KeyF, false, false, (false, false, false)),
+        ];
+        for (key, shift, over_viewport, expected) in table {
+            let (mut viewport, mapping, mut input, mut handler) = rig();
+            viewport.set_target_camera_position(Vec2::new(50.0, 60.0));
+            input.keyboard_mut().handle_key_press(key);
+            let state = EditorInputState { mouse_position: PANEL_CENTER, add_modifier: shift, ..Default::default() };
 
-        let result = handler.handle_input(&mut viewport, &state, &mapping, &input, true);
+            let result = handler.handle_input(&mut viewport, &state, &mapping, &input, over_viewport);
 
-        assert!(result.focus_requested);
-        assert!(!result.frame_all_requested);
-        // Requests don't claim the input — the caller decides whether to act.
-        assert!(!result.consumed);
-    }
-
-    #[test]
-    fn test_shift_f_requests_frame_all_not_focus() {
-        let (mut viewport, mut state, mapping, input) =
-            shortcut_rig(winit::keyboard::KeyCode::KeyF);
-        state.add_modifier = true; // Shift held
-        let mut handler = ViewportInputHandler::new();
-
-        let result = handler.handle_input(&mut viewport, &state, &mapping, &input, true);
-
-        assert!(result.frame_all_requested);
-        assert!(!result.focus_requested);
-    }
-
-    #[test]
-    fn test_home_requests_reset_and_leaves_the_camera_to_the_caller() {
-        let (mut viewport, state, mapping, input) =
-            shortcut_rig(winit::keyboard::KeyCode::Home);
-        viewport.set_target_camera_position(Vec2::new(50.0, 60.0));
-        let mut handler = ViewportInputHandler::new();
-
-        let result = handler.handle_input(&mut viewport, &state, &mapping, &input, true);
-
-        // The handler only reports the request — the caller consumes it
-        // (it knows whether a text field owns the keyboard).
-        assert!(result.reset_requested);
-        assert_eq!(viewport.target_camera_position(), Vec2::new(50.0, 60.0));
-    }
-
-    #[test]
-    fn test_shortcuts_ignored_while_mouse_outside_viewport() {
-        let (mut viewport, state, mapping, input) =
-            shortcut_rig(winit::keyboard::KeyCode::KeyF);
-        let mut handler = ViewportInputHandler::new();
-
-        let result = handler.handle_input(&mut viewport, &state, &mapping, &input, false);
-
-        assert!(!result.focus_requested);
-        assert!(!result.frame_all_requested);
+            assert_eq!(
+                (result.focus_requested, result.frame_all_requested, result.reset_requested),
+                expected,
+                "{key:?} shift={shift} over_viewport={over_viewport}"
+            );
+            // The handler cannot see ui focus or the gizmo: it reports and
+            // leaves both the input claim and the camera to the caller.
+            assert!(!result.consumed, "requests never claim the input");
+            assert_eq!(viewport.target_camera_position(), Vec2::new(50.0, 60.0));
+        }
     }
 }

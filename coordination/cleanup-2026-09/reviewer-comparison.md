@@ -21,6 +21,8 @@ from launch to file.
 | ui cut r2 | kimi | 4 | 4 | 0 | 0 | same-frame press+release click (the wasm tap) mislabelled a duplicate | ~9 min |
 | engine_core cut | kimi | 6 | 5 | 0 | 1 | prefab RON wire unpinned; toast draw path; sidecar filter; static review (did not run the suite) | ~15 min |
 | engine_core cut | gemini | 4 | 4 | 0 | 0 | Camera/Tilemap/Behavior extraction arms unpinned (unique); 3 of 4 overlap kimi; cited file:line links; static | ~6 min |
+| editor cut | kimi | 4 | 4 | 0 | 0 | font load incl. bold + two #54 locks; Behavior defaults-within-ranges; a sweep of small pins; verified every called API against the tree (no compile break) | ~24 min |
+| editor cut | gemini | 5 | 5 | 0 | 0 | same two blocking locks as kimi; unique: `type_key` release asymmetry in the new harness, scroll clamp bounds | ~12 min |
 
 Observations to weigh at the end: every kimi review verified claims by running the suite and
 grepping callers, and each round found at least one contract the keep-list had wrongly

@@ -269,57 +269,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_format_simple_value_number() {
-        let value = serde_json::json!(42.0);
-        assert_eq!(format_simple_value(&value), "42.0");
-
-        let value = serde_json::json!(1.23456);
-        assert_eq!(format_simple_value(&value), "1.235");
-    }
-
-    #[test]
-    fn test_format_simple_value_bool() {
-        assert_eq!(format_simple_value(&serde_json::json!(true)), "true");
-        assert_eq!(format_simple_value(&serde_json::json!(false)), "false");
-    }
-
-    #[test]
-    fn test_format_simple_value_string() {
-        let value = serde_json::json!("hello");
-        assert_eq!(format_simple_value(&value), "\"hello\"");
-    }
-
-    #[test]
-    fn test_is_vec_like() {
-        let vec2 = serde_json::json!({"x": 1.0, "y": 2.0});
-        assert!(is_vec_like(vec2.as_object().unwrap()));
-
-        let vec3 = serde_json::json!({"x": 1.0, "y": 2.0, "z": 3.0});
-        assert!(is_vec_like(vec3.as_object().unwrap()));
-
-        let vec4 = serde_json::json!({"x": 1.0, "y": 2.0, "z": 3.0, "w": 4.0});
-        assert!(is_vec_like(vec4.as_object().unwrap()));
-
-        let not_vec = serde_json::json!({"a": 1.0, "b": 2.0});
-        assert!(!is_vec_like(not_vec.as_object().unwrap()));
-    }
-
-    #[test]
-    fn test_format_vec_like() {
-        let vec2 = serde_json::json!({"x": 1.0, "y": 2.0});
-        assert_eq!(format_vec_like(vec2.as_object().unwrap()), "(1.0, 2.0)");
-
-        let vec4 = serde_json::json!({"x": 1.0, "y": 2.0, "z": 3.0, "w": 4.0});
-        assert_eq!(
-            format_vec_like(vec4.as_object().unwrap()),
-            "(1.0, 2.0, 3.0, 4.0)"
-        );
-    }
-
-    #[test]
-    fn test_inspector_style_default() {
-        let style = InspectorStyle::default();
-        assert_eq!(style.padding, 8.0);
-        assert_eq!(style.line_height, 20.0);
+    fn test_read_only_inspector_formats_values_the_way_the_panel_shows_them() {
+        // Floats keep one decimal or round to three, strings are quoted,
+        // x/y(/z(/w)) objects read as tuples, anything else collapses.
+        let cases = [
+            (serde_json::json!(42.0), "42.0"),
+            (serde_json::json!(1.23456), "1.235"),
+            (serde_json::json!(true), "true"),
+            (serde_json::json!("hello"), "\"hello\""),
+            (serde_json::json!({"x": 1.0, "y": 2.0}), "(1.0, 2.0)"),
+            (serde_json::json!({"x": 1.0, "y": 2.0, "z": 3.0}), "(1.0, 2.0, 3.0)"),
+            (serde_json::json!({"x": 1.0, "y": 2.0, "z": 3.0, "w": 4.0}), "(1.0, 2.0, 3.0, 4.0)"),
+            (serde_json::json!({"a": 1.0, "b": 2.0}), "{...}"),
+            (serde_json::json!([1, 2, 3]), "[3 items]"),
+        ];
+        for (value, expected) in cases {
+            assert_eq!(format_simple_value(&value), expected, "{value}");
+        }
     }
 }

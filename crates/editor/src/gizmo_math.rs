@@ -31,54 +31,34 @@ mod tests {
     const EPS: f32 = 1e-5;
 
     #[test]
-    fn test_drag_screen_up_on_right_side_is_ccw_positive() {
-        // From (center + (r, 0)) to (center + (0, -r)): mouse moved up-left,
-        // which is counter-clockwise in world terms -> +PI/2.
+    fn test_rotation_delta_is_ccw_positive_under_screen_y_down() {
         let center = Vec2::new(100.0, 100.0);
-        let delta = world_rotation_delta(
-            center,
-            center + Vec2::new(50.0, 0.0),
-            center + Vec2::new(0.0, -50.0),
+        let right = center + Vec2::new(50.0, 0.0);
+        let table = [
+            (right, center + Vec2::new(0.0, -50.0), PI / 2.0, "screen-up on the right side is world CCW"),
+            (right, center + Vec2::new(0.0, 50.0), -PI / 2.0, "screen-down on the right side is world CW"),
+            (right, right, 0.0, "no movement is no rotation"),
+            (right, center + Vec2::new(-50.0, 0.0), PI, "a half turn is +PI, the top of the (-PI, PI] range"),
+        ];
+        for (from, to, expected, why) in table {
+            let delta = world_rotation_delta(center, from, to);
+            assert!((delta - expected).abs() < EPS, "{why}: got {delta}, expected {expected}");
+        }
+    }
+
+    #[test]
+    fn test_seam_crossing_returns_a_small_delta_not_a_full_turn() {
+        // Both points hug the -X axis (world angle ~±PI) on either side:
+        // naive subtraction yields ~2π; the wrap keeps the shortest arc.
+        let just_above = Vec2::new(-50.0, 1.0);
+        let just_below = Vec2::new(-50.0, -1.0);
+
+        let delta = world_rotation_delta(Vec2::ZERO, just_above, just_below);
+
+        assert!(delta.abs() < 0.1, "expected the short way round, got {delta}");
+        assert!(
+            (world_rotation_delta(Vec2::ZERO, just_below, just_above) + delta).abs() < EPS,
+            "crossing back is the opposite short arc"
         );
-        assert!((delta - PI / 2.0).abs() < EPS, "got {delta}");
-    }
-
-    #[test]
-    fn test_drag_screen_down_on_right_side_is_cw_negative() {
-        let center = Vec2::new(100.0, 100.0);
-        let delta = world_rotation_delta(
-            center,
-            center + Vec2::new(50.0, 0.0),
-            center + Vec2::new(0.0, 50.0),
-        );
-        assert!((delta + PI / 2.0).abs() < EPS, "got {delta}");
-    }
-
-    #[test]
-    fn test_seam_crossing_returns_small_delta() {
-        // Both points sit near the -X axis (world angle ~PI), on either side.
-        // Naive subtraction would yield ~±2π; the wrap keeps it small.
-        let center = Vec2::ZERO;
-        let a = Vec2::new(-50.0, 1.0); // world angle just below +PI
-        let b = Vec2::new(-50.0, -1.0); // world angle just above -PI
-        let delta = world_rotation_delta(center, a, b);
-        assert!(delta.abs() < 0.1, "expected small delta, got {delta}");
-    }
-
-    #[test]
-    fn test_zero_movement_is_zero_delta() {
-        let center = Vec2::new(10.0, 20.0);
-        let p = Vec2::new(60.0, 20.0);
-        assert_eq!(world_rotation_delta(center, p, p), 0.0);
-    }
-
-    #[test]
-    fn test_wrap_angle_bounds() {
-        // At the ±PI seam, float rounding may land on either sign — both
-        // represent the same angle; only the magnitude matters.
-        assert!((wrap_angle(3.0 * PI).abs() - PI).abs() < EPS);
-        assert!((wrap_angle(-3.0 * PI).abs() - PI).abs() < EPS);
-        assert!((wrap_angle(0.25) - 0.25).abs() < EPS);
-        assert!((wrap_angle(-0.25) + 0.25).abs() < EPS);
     }
 }

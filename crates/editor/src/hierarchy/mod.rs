@@ -423,3 +423,6 @@ impl HierarchyPanel {
     }
 }
 
+
+#[cfg(test)]
+mod tests;

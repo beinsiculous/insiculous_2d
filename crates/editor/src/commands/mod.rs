@@ -374,8 +374,6 @@ impl Default for CommandHistory {
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
-mod name_tests;
-#[cfg(test)]
 mod dirty_tests;
 #[cfg(test)]
 mod selection_restore_tests;

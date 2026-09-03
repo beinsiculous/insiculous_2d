@@ -1,21 +1,13 @@
 //! Selection restore on undo/redo (#59): undoing a destructive command
 //! brings back the selection that existed before it — platform convention —
-//! and redo restores what was selected at undo time, generally (the
-//! mechanism lives in `CommandHistory`, not in any one command).
+//! and redo restores what was selected at undo time. The mechanism lives in
+//! `CommandHistory`, not in any one command.
 
-use ecs::World;
 use glam::Vec2;
 
 use super::*;
 use crate::selection::Selection;
-
-fn spawn(world: &mut World) -> ecs::EntityId {
-    let e = world.create_entity();
-    world
-        .add_component(&e, common::Transform2D::new(Vec2::ZERO))
-        .ok();
-    e
-}
+use crate::test_support::setup_entity;
 
 /// The host contract in miniature: note before handlers run, apply the
 /// restore after undo/redo.
@@ -27,133 +19,108 @@ fn apply_restore(history: &mut CommandHistory, selection: &mut Selection) {
 }
 
 #[test]
-fn test_undo_delete_restores_the_selection() {
+fn test_undo_of_a_delete_restores_the_selection_and_redo_reclears_it() {
     let mut world = World::new();
     let mut history = CommandHistory::new();
     let mut selection = Selection::new();
-    let a = spawn(&mut world);
-    let b = spawn(&mut world);
-
-    selection.select(a);
-    selection.add(b);
+    let deleted = setup_entity(&mut world);
+    let survivor = setup_entity(&mut world);
+    selection.select(deleted);
+    selection.add(survivor);
     history.note_selection(&selection); // frame start
 
     // The delete handler clears the selection, then records the command —
     // exactly the order the editor uses.
     selection.clear();
-    history.execute(Box::new(DeleteEntityCommand::new(a)), &mut world);
+    history.execute(Box::new(DeleteEntityCommand::new(deleted)), &mut world);
 
     assert!(history.undo(&mut world));
     apply_restore(&mut history, &mut selection);
-    assert!(selection.contains(a), "the deleted entity is selected again");
-    assert!(selection.contains(b), "co-selected survivors come back too");
-    assert_eq!(selection.primary(), Some(a), "insertion order restores the primary");
-}
+    assert_eq!(
+        selection.selected().collect::<Vec<_>>(),
+        vec![deleted, survivor],
+        "the deleted entity and its co-selected survivor come back in order"
+    );
+    assert_eq!(selection.primary(), Some(deleted), "insertion order restores the primary");
 
-#[test]
-fn test_redo_delete_reclears_and_redo_create_reselects() {
-    let mut world = World::new();
-    let mut history = CommandHistory::new();
-    let mut selection = Selection::new();
-    let a = spawn(&mut world);
-
-    selection.select(a);
-    history.note_selection(&selection);
-    selection.clear();
-    history.execute(Box::new(DeleteEntityCommand::new(a)), &mut world);
-
-    // undo → selection back
-    history.undo(&mut world);
-    apply_restore(&mut history, &mut selection);
-    assert!(selection.contains(a));
-
-    // redo → the delete re-applies; the after-image (captured at undo time
-    // = {a}) prunes to nothing because a is gone again.
+    // Redo re-applies the delete; the after-image (captured at undo time)
+    // prunes to the survivor because the deleted entity is gone again.
     history.note_selection(&selection);
     assert!(history.redo(&mut world));
     apply_restore(&mut history, &mut selection);
+    assert_eq!(selection.selected().collect::<Vec<_>>(), vec![survivor]);
+}
+
+#[test]
+fn test_redo_re_executes_before_restoring_so_a_recreated_entity_stays_selected() {
+    let mut world = World::new();
+    let mut history = CommandHistory::new();
+    let mut selection = Selection::new();
+    history.note_selection(&selection); // empty before-create
+
+    let created = setup_entity(&mut world);
+    history.push_already_executed(Box::new(CreateEntityCommand::already_created(&world, created)));
+    selection.select(created); // the editor selects what it creates
+
+    history.note_selection(&selection);
+    assert!(history.undo(&mut world));
+    apply_restore(&mut history, &mut selection);
+    assert!(selection.is_empty(), "undo of create restores the empty before-image");
+
+    assert!(history.redo(&mut world));
+    apply_restore(&mut history, &mut selection);
     assert!(
-        selection.is_empty(),
-        "redo of a delete leaves nothing selected (pruned)"
+        selection.contains(created),
+        "redo executes FIRST, so the recreated entity exists before pruning and is selected again"
     );
 }
 
 #[test]
-fn test_redo_of_create_reselects_the_created_entity() {
-    // kimi plan R1-F5: redo executes FIRST, then restores — so the recreated
-    // entity exists before pruning and stays selected.
+fn test_a_merged_gesture_restores_its_first_before_image() {
     let mut world = World::new();
     let mut history = CommandHistory::new();
     let mut selection = Selection::new();
-
-    history.note_selection(&selection); // empty before-create
-    let created = spawn(&mut world);
-    history.push_already_executed(Box::new(CreateEntityCommand::already_created(
-        &world, created,
-    )));
-    selection.select(created); // the editor selects what it creates
-
-    // Undo: the create reverts; before-image (empty) restores.
+    let nudged = setup_entity(&mut world);
+    selection.select(nudged);
     history.note_selection(&selection);
-    history.undo(&mut world);
-    apply_restore(&mut history, &mut selection);
-    assert!(selection.is_empty());
 
-    // Redo: the entity exists again (id-exact) and is selected again.
-    assert!(history.redo(&mut world));
-    apply_restore(&mut history, &mut selection);
-    assert!(selection.contains(created), "redo re-selects the recreated entity");
-}
-
-#[test]
-fn test_merged_entries_keep_the_first_before_image() {
-    let mut world = World::new();
-    let mut history = CommandHistory::new();
-    let mut selection = Selection::new();
-    let a = spawn(&mut world);
-
-    selection.select(a);
-    history.note_selection(&selection);
-    // Two merging nudges in one gesture window.
-    history.try_merge_or_push(Box::new(NudgeCommand::new(
-        vec![(a, Vec2::ZERO, Vec2::new(1.0, 0.0))],
-    )));
-    // Selection changes mid-gesture (say the user also clicked elsewhere
-    // in a way that didn't record a command)...
+    history.try_merge_or_push(Box::new(NudgeCommand::new(vec![(nudged, Vec2::ZERO, Vec2::new(1.0, 0.0))])));
+    // The selection changes mid-gesture without recording a command...
     selection.clear();
     history.note_selection(&selection);
-    history.try_merge_or_push(Box::new(NudgeCommand::new(
-        vec![(a, Vec2::new(1.0, 0.0), Vec2::new(2.0, 0.0))],
-    )));
+    history.try_merge_or_push(Box::new(NudgeCommand::new(vec![(nudged, Vec2::new(1.0, 0.0), Vec2::new(2.0, 0.0))])));
 
-    // ...but the merged entry's before-image is the FIRST one: {a}.
-    history.undo(&mut world);
+    assert!(history.undo(&mut world));
     apply_restore(&mut history, &mut selection);
-    assert!(selection.contains(a), "a merged gesture restores its first before-image");
+    assert_eq!(
+        selection.selected().collect::<Vec<_>>(),
+        vec![nudged],
+        "...but the merged entry's before-image is the FIRST one"
+    );
+    assert!(!history.can_undo(), "the two nudges were one entry");
 }
 
 #[test]
-fn test_stale_ids_are_pruned_from_the_restore() {
+fn test_ids_that_no_longer_exist_are_pruned_from_the_restore() {
     let mut world = World::new();
     let mut history = CommandHistory::new();
     let mut selection = Selection::new();
-    let a = spawn(&mut world);
-    let doomed = spawn(&mut world);
-
-    selection.select(a);
+    let deleted = setup_entity(&mut world);
+    let doomed = setup_entity(&mut world);
+    selection.select(deleted);
     selection.add(doomed);
     history.note_selection(&selection);
     selection.clear();
-    history.execute(Box::new(DeleteEntityCommand::new(a)), &mut world);
+    history.execute(Box::new(DeleteEntityCommand::new(deleted)), &mut world);
 
     // `doomed` dies OUTSIDE the history (a game-side removal).
     world.remove_entity(&doomed).ok();
 
-    history.undo(&mut world);
+    assert!(history.undo(&mut world));
     apply_restore(&mut history, &mut selection);
-    assert!(selection.contains(a));
-    assert!(
-        !selection.contains(doomed),
-        "an id that no longer exists is pruned, never restored dangling"
+    assert_eq!(
+        selection.selected().collect::<Vec<_>>(),
+        vec![deleted],
+        "an id that no longer exists is never restored dangling"
     );
 }

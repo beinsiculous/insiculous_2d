@@ -51,10 +51,6 @@ mod gizmo_math;
 mod clipboard;
 mod grid;
 mod hierarchy;
-#[cfg(test)]
-mod hierarchy_tests;
-#[cfg(test)]
-mod inspector_edit_tests;
 mod inspector;
 mod menu;
 mod picking;
@@ -76,6 +72,9 @@ mod viewport_input;
 pub mod editor_preferences;
 pub mod layout;
 pub mod world_snapshot;
+
+#[cfg(test)]
+mod test_support;
 
 // Re-export main types
 pub use asset_browser::{fit_rect, scan_assets, AssetBrowserState, AssetEntry, AssetKind};

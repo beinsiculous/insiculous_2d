@@ -87,69 +87,40 @@ pub fn edit_texture_field(
 mod tests {
     use super::*;
     use crate::row_layout::field_row;
+    use crate::test_support::frame;
     use glam::Vec2;
 
+    /// Arm a texture drag, move past the threshold, release at `pos`.
     fn drop_texture_at(drag_drop: &mut DragDropState, handle: u32, pos: Vec2) {
-        drag_drop.arm(
-            DragPayload::Texture { handle, path: "tex.png".into() },
-            Vec2::new(0.0, 0.0),
-        );
-        drag_drop.begin_frame(Vec2::new(50.0, 50.0), true, false); // past threshold
-        drag_drop.begin_frame(pos, false, true); // release = drop
+        drag_drop.arm(DragPayload::Texture { handle, path: "tex.png".into() }, Vec2::ZERO);
+        drag_drop.begin_frame(Vec2::new(50.0, 50.0), true, false);
+        drag_drop.begin_frame(pos, false, true);
     }
 
     #[test]
-    fn test_drop_inside_slot_changes_handle() {
-        let mut ui = UIContext::new();
-        ui.begin_frame(&input::InputHandler::new(), Vec2::new(800.0, 600.0));
-        let mut drag_drop = DragDropState::new();
+    fn test_texture_drop_assigns_the_handle_only_inside_the_slot_and_only_when_it_changes() {
         let style = EditableFieldStyle::default();
-        let pos = Vec2::new(10.0, 10.0);
-
-        // Slot spans x: 10+label_width .. +input_width+40, y: 12 .. 12+row_height-4
+        // The slot spans x: 10+label_width .. +input_width+40, y: 12 .. 12+row_height-4.
         let slot_center = Vec2::new(10.0 + style.label_width + 20.0, 12.0 + 8.0);
-        drop_texture_at(&mut drag_drop, 7, slot_center);
+        let cases = [
+            (7, slot_center, EditResult::Changed(7)),
+            (7, Vec2::new(700.0, 500.0), EditResult::Unchanged), // dropped elsewhere
+            (1, slot_center, EditResult::Unchanged),               // the handle it already has
+        ];
+        for (dropped, at, expected) in cases {
+            let mut ui = UIContext::new();
+            let input = input::InputHandler::new();
+            let mut drag_drop = DragDropState::new();
+            drop_texture_at(&mut drag_drop, dropped, at);
 
-        let layout = field_row(pos, pos.x, 400.0, &style);
-        let result = edit_texture_field(
-            &mut ui, FieldId::new(0, 0, 0), "Texture", 1,
-            &mut drag_drop, Some("old.png"), layout, &style,
-        );
-        assert_eq!(result, EditResult::Changed(7));
-    }
+            let result = frame(&mut ui, &input, |ui| {
+                let layout = field_row(Vec2::new(10.0, 10.0), 10.0, 400.0, &style);
+                edit_texture_field(
+                    ui, FieldId::new(0, 0, 0), "Texture", 1, &mut drag_drop, Some("old.png"), layout, &style,
+                )
+            });
 
-    #[test]
-    fn test_drop_outside_slot_is_ignored() {
-        let mut ui = UIContext::new();
-        ui.begin_frame(&input::InputHandler::new(), Vec2::new(800.0, 600.0));
-        let mut drag_drop = DragDropState::new();
-        let style = EditableFieldStyle::default();
-
-        drop_texture_at(&mut drag_drop, 7, Vec2::new(700.0, 500.0));
-
-        let layout = field_row(Vec2::new(10.0, 10.0), 10.0, 400.0, &style);
-        let result = edit_texture_field(
-            &mut ui, FieldId::new(0, 0, 0), "Texture", 1,
-            &mut drag_drop, None, layout, &style,
-        );
-        assert_eq!(result, EditResult::Unchanged);
-    }
-
-    #[test]
-    fn test_dropping_same_handle_is_unchanged() {
-        let mut ui = UIContext::new();
-        ui.begin_frame(&input::InputHandler::new(), Vec2::new(800.0, 600.0));
-        let mut drag_drop = DragDropState::new();
-        let style = EditableFieldStyle::default();
-        let slot_center = Vec2::new(10.0 + style.label_width + 20.0, 12.0 + 8.0);
-
-        drop_texture_at(&mut drag_drop, 1, slot_center);
-
-        let layout = field_row(Vec2::new(10.0, 10.0), 10.0, 400.0, &style);
-        let result = edit_texture_field(
-            &mut ui, FieldId::new(0, 0, 0), "Texture", 1,
-            &mut drag_drop, None, layout, &style,
-        );
-        assert_eq!(result, EditResult::Unchanged, "no-op drop must not dirty the scene");
+            assert_eq!(result, expected, "dropping handle {dropped} at {at} (a no-op drop must not dirty the scene)");
+        }
     }
 }

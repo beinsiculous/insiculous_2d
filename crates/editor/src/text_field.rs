@@ -71,26 +71,3 @@ pub fn display_string(
         style.label_font,
     );
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_edit_string_without_interaction_is_unchanged() {
-        let mut ui = UIContext::new();
-        ui.begin_frame(&input::InputHandler::new(), Vec2::new(800.0, 600.0));
-        let style = EditableFieldStyle::default();
-        let layout = crate::row_layout::field_row(Vec2::new(10.0, 10.0), 10.0, 400.0, &style);
-        let result = edit_string(
-            &mut ui,
-            FieldId::new(0, 0, 0),
-            "Text",
-            "hello",
-            layout,
-            &style,
-        );
-        ui.end_frame();
-        assert!(!result.is_changed());
-    }
-}

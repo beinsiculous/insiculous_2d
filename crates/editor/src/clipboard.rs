@@ -312,20 +312,34 @@ impl EditorCommand for DeleteTreeCommand {
     }
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use common::Transform2D;
 
-    fn named_entity(world: &mut World, name: &str, pos: Vec2) -> EntityId {
-        let entity = world.create_entity();
-        world.add_component(&entity, Transform2D::new(pos)).ok();
-        world.add_component(&entity, Name::new(name)).ok();
-        entity
+    use crate::test_support::named_entity;
+
+    fn name_of(world: &World, entity: EntityId) -> Option<String> {
+        world.get::<Name>(entity).map(|n| n.as_str().to_string())
+    }
+
+    fn children_of(world: &World, entity: EntityId) -> Vec<EntityId> {
+        world.get_children(entity).map(|c| c.to_vec()).unwrap_or_default()
+    }
+
+    /// Parent → Child → Grandchild, named A/B/C at x = 1/2/3.
+    fn three_deep(world: &mut World) -> (EntityId, EntityId, EntityId) {
+        let a = named_entity(world, "A", Vec2::new(1.0, 0.0));
+        let b = named_entity(world, "B", Vec2::new(2.0, 0.0));
+        let c = named_entity(world, "C", Vec2::new(3.0, 0.0));
+        world.set_parent(b, a).ok();
+        world.set_parent(c, b).ok();
+        (a, b, c)
     }
 
     #[test]
-    fn test_capture_and_spawn_round_trips_a_hierarchy() {
+    fn test_capture_and_spawn_round_trips_a_hierarchy_with_the_offset_on_the_root_only() {
         let mut world = World::new();
         let parent = named_entity(&mut world, "Parent", Vec2::new(10.0, 20.0));
         let child = named_entity(&mut world, "Child", Vec2::new(1.0, 2.0));
@@ -334,46 +348,45 @@ mod tests {
         let tree = capture_entity_tree(&world, parent);
         let spawned = spawn_entity_tree(&mut world, &tree, None, Vec2::new(5.0, 0.0), None);
 
-        assert_ne!(spawned, parent);
+        assert_ne!(spawned, parent, "a paste is a fresh entity");
         assert_eq!(
             world.get::<Transform2D>(spawned).map(|t| t.position),
             Some(Vec2::new(15.0, 20.0)),
-            "offset applies to the root"
+            "the offset applies to the root"
         );
-        let children = world.get_children(spawned).map(|c| c.to_vec()).unwrap_or_default();
-        assert_eq!(children.len(), 1, "the child spawns re-parented");
+        let children = children_of(&world, spawned);
+        assert_eq!(children.len(), 1, "the child spawns re-parented under the copy");
         assert_eq!(
             world.get::<Transform2D>(children[0]).map(|t| t.position),
             Some(Vec2::new(1.0, 2.0)),
             "child positions are parent-local and un-offset"
         );
-        assert_eq!(
-            world.get::<Name>(children[0]).map(|n| n.as_str().to_string()),
-            Some("Child".to_string())
-        );
+        assert_eq!(name_of(&world, children[0]), Some("Child".to_string()));
     }
 
     #[test]
-    fn test_spawn_tree_undo_removes_the_whole_subtree() {
+    fn test_paste_undo_removes_the_whole_subtree_including_grandchildren() {
+        // Depth ≥ 2 regression: removing a child before the root promotes
+        // its children to roots — a plain descendant loop orphaned the
+        // grandchild, and per-root CreateEntityCommand undo orphaned the
+        // pasted child.
         let mut world = World::new();
-        let parent = named_entity(&mut world, "Parent", Vec2::ZERO);
-        let child = named_entity(&mut world, "Child", Vec2::ZERO);
-        world.set_parent(child, parent).ok();
+        let (a, _, _) = three_deep(&mut world);
         let baseline = world.entities().len();
+        let tree = capture_entity_tree(&world, a);
 
-        let tree = capture_entity_tree(&world, parent);
         let mut cmd = SpawnTreeCommand::paste(tree, None, Vec2::new(20.0, 0.0));
         cmd.execute(&mut world);
-        assert_eq!(world.entities().len(), baseline + 2);
+        assert_eq!(world.entities().len(), baseline + 3, "root, child and grandchild pasted");
 
-        // The bug this exists to fix: per-root CreateEntityCommand undo
-        // removed the root and ORPHANED the pasted child.
         cmd.undo(&mut world);
-        assert_eq!(world.entities().len(), baseline, "no orphans left behind");
+        assert_eq!(world.entities().len(), baseline, "no orphaned child or grandchild left behind");
     }
 
     #[test]
-    fn test_spawn_tree_redo_resurrects_the_same_ids() {
+    fn test_paste_redo_resurrects_the_same_ids_for_root_and_children() {
+        // GPP-14: the selection and any later history command referencing
+        // the pasted entities must stay valid across undo/redo.
         let mut world = World::new();
         let source = named_entity(&mut world, "Parent", Vec2::ZERO);
         let child = named_entity(&mut world, "Child", Vec2::ZERO);
@@ -383,106 +396,73 @@ mod tests {
         let mut cmd = SpawnTreeCommand::paste(tree, None, Vec2::ZERO);
         cmd.execute(&mut world);
         let first_root = cmd.spawned_root().expect("spawned");
-        let first_child = world.get_children(first_root).map(|c| c.to_vec()).unwrap()[0];
+        let first_child = children_of(&world, first_root)[0];
 
         cmd.undo(&mut world);
-        assert!(world.get::<Name>(first_root).is_none());
+        assert_eq!(name_of(&world, first_root), None, "undo removes the pasted root");
 
         cmd.execute(&mut world); // redo
-        let second_root = cmd.spawned_root().expect("respawned");
-        // The GPP-14 contract: the selection and any later history command
-        // referencing the pasted entities must stay valid across undo/redo,
-        // so redo resurrects the SAME ids — root and children both.
-        assert_eq!(first_root, second_root);
-        assert!(world.get::<Name>(first_root).is_some());
-        assert!(world.get::<Name>(first_child).is_some(), "child id stable too");
+        assert_eq!(cmd.spawned_root(), Some(first_root), "redo resurrects the SAME root id");
+        assert_eq!(name_of(&world, first_root), Some("Parent".to_string()));
+        assert_eq!(name_of(&world, first_child), Some("Child".to_string()), "child id stable too");
 
         cmd.undo(&mut world);
         assert_eq!(world.entities().len(), 2, "only the originals remain");
     }
 
     #[test]
-    fn test_spawn_tree_undo_removes_grandchildren_too() {
-        // Depth ≥ 2 regression: removing a child before the root promotes
-        // its children to roots — a plain descendant loop orphaned the
-        // grandchild.
+    fn test_cut_removes_the_whole_subtree_and_undo_restores_ids_hierarchy_and_values() {
         let mut world = World::new();
-        let a = named_entity(&mut world, "A", Vec2::ZERO);
-        let b = named_entity(&mut world, "B", Vec2::ZERO);
-        let c = named_entity(&mut world, "C", Vec2::ZERO);
-        world.set_parent(b, a).ok();
-        world.set_parent(c, b).ok();
-        let baseline = world.entities().len();
-
-        let tree = capture_entity_tree(&world, a);
-        let mut cmd = SpawnTreeCommand::paste(tree, None, Vec2::ZERO);
-        cmd.execute(&mut world);
-        assert_eq!(world.entities().len(), baseline + 3);
-
-        cmd.undo(&mut world);
-        assert_eq!(world.entities().len(), baseline, "no orphaned grandchildren");
-    }
-
-    #[test]
-    fn test_delete_tree_removes_whole_subtree_and_undo_restores_ids() {
-        let mut world = World::new();
-        let a = named_entity(&mut world, "A", Vec2::new(1.0, 0.0));
-        let b = named_entity(&mut world, "B", Vec2::new(2.0, 0.0));
-        let c = named_entity(&mut world, "C", Vec2::new(3.0, 0.0));
-        world.set_parent(b, a).ok();
-        world.set_parent(c, b).ok();
+        let (a, b, c) = three_deep(&mut world);
 
         let mut cmd = DeleteTreeCommand::new(&world, a);
         cmd.execute(&mut world);
-        // Cut removes the WHOLE subtree — no promoted children left behind
-        // (Delete's reparent semantics would duplicate them on paste)
-        assert!(world.entities().is_empty());
+        assert!(
+            world.entities().is_empty(),
+            "cut removes the WHOLE subtree — no promoted children (Delete's reparent semantics would duplicate them on paste)"
+        );
 
         cmd.undo(&mut world);
         assert_eq!(world.entities().len(), 3);
-        // Original ids and hierarchy resurrect exactly
-        assert_eq!(
-            world.get::<Name>(a).map(|n| n.as_str().to_string()),
-            Some("A".to_string())
-        );
+        assert_eq!(name_of(&world, a), Some("A".to_string()), "original ids resurrect exactly");
         assert_eq!(world.get_parent(b), Some(a));
         assert_eq!(world.get_parent(c), Some(b));
-        assert_eq!(
-            world.get::<Transform2D>(c).map(|t| t.position),
-            Some(Vec2::new(3.0, 0.0))
-        );
+        assert_eq!(world.get::<Transform2D>(c).map(|t| t.position), Some(Vec2::new(3.0, 0.0)));
     }
 
     #[test]
-    fn test_duplicate_suffix_renames_every_spawned_name() {
+    fn test_duplicate_suffixes_every_spawned_name() {
         let mut world = World::new();
         let parent = named_entity(&mut world, "Parent", Vec2::ZERO);
         let child = named_entity(&mut world, "Child", Vec2::ZERO);
         world.set_parent(child, parent).ok();
-
         let tree = capture_entity_tree(&world, parent);
+
         let mut cmd = SpawnTreeCommand::duplicate(tree, None, Vec2::ZERO);
         cmd.execute(&mut world);
-        let root = cmd.spawned_root().expect("spawned");
 
-        assert_eq!(
-            world.get::<Name>(root).map(|n| n.as_str().to_string()),
-            Some("Parent (Copy)".to_string())
-        );
-        let children = world.get_children(root).map(|c| c.to_vec()).unwrap_or_default();
-        assert_eq!(
-            world.get::<Name>(children[0]).map(|n| n.as_str().to_string()),
-            Some("Child (Copy)".to_string())
-        );
+        let root = cmd.spawned_root().expect("spawned");
+        assert_eq!(name_of(&world, root), Some("Parent (Copy)".to_string()));
+        assert_eq!(name_of(&world, children_of(&world, root)[0]), Some("Child (Copy)".to_string()));
     }
 
     #[test]
-    fn test_uncaptured_component_names_reports_nothing_for_registry_worlds() {
+    fn test_paste_warning_names_unregistered_components_but_never_hierarchy_links() {
+        struct EnemyAi;
+
         let mut world = World::new();
         let parent = named_entity(&mut world, "P", Vec2::ZERO);
         let child = named_entity(&mut world, "C", Vec2::ZERO);
         world.set_parent(child, parent).ok();
-        // Hierarchy components are explicitly rebuilt, never "lost"
-        assert!(uncaptured_component_names(&world, parent).is_empty());
+        assert!(
+            uncaptured_component_names(&world, parent).is_empty(),
+            "Parent/Children are rebuilt explicitly, never reported as lost"
+        );
+
+        world.add_component(&child, EnemyAi).ok();
+
+        let names = uncaptured_component_names(&world, parent);
+        assert_eq!(names.len(), 1, "a component the registry cannot capture is reported once");
+        assert!(names[0].contains("EnemyAi"), "reported by type name, found on a descendant: {names:?}");
     }
 }

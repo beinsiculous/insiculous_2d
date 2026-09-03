@@ -442,80 +442,23 @@ pub(crate) fn remove_button(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use glam::Vec2;
+mod tests;
+
+#[cfg(test)]
+mod range_tests {
+    use super::ranges;
 
     #[test]
-    fn test_component_edit_carries_value_and_hint() {
-        let edit = ComponentEdit {
-            new_value: Transform2D::new(Vec2::new(5.0, 6.0)),
-            field_hint: "position",
-        };
-        assert_eq!(edit.new_value.position, Vec2::new(5.0, 6.0));
-        assert_eq!(edit.field_hint, "position");
-    }
-
-    #[test]
-    fn test_component_edit_equality() {
-        let a = ComponentEdit { new_value: 1.0_f32, field_hint: "x" };
-        let b = ComponentEdit { new_value: 1.0_f32, field_hint: "x" };
-        let c = ComponentEdit { new_value: 2.0_f32, field_hint: "x" };
-        assert_eq!(a, b);
-        assert_ne!(a, c);
-    }
-
-    #[test]
-    fn test_ranges_are_well_formed() {
+    fn test_editor_ranges_admit_every_value_rapier_accepts() {
+        // The soft ranges only steer the scrub step and the #55 warning; a
+        // range that stops short of a legal value would warn on scenes that
+        // are fine (friction 2.0, damping above 1) or let a scrub drive a
+        // collider extent to zero, which rapier rejects.
         assert!(ranges::POSITION.start() < ranges::POSITION.end());
-        assert!(ranges::SCALE.start() > &0.0); // scale must stay positive
-        assert!(ranges::PITCH.start() > &0.0); // pitch of zero is silence
+        assert!(ranges::SCALE.start() > &0.0, "scale must stay positive");
+        assert!(ranges::PITCH.start() > &0.0, "pitch of zero is silence");
         assert!(ranges::DAMPING.end() > &1.0, "damping is unbounded in rapier — the range must exceed 1");
         assert!(ranges::FRICTION.end() > &1.0, "friction above 1.0 is legal in rapier");
-        // Collider dimensions must stay positive (rapier rejects zero extents)
-        assert!(ranges::COLLIDER_EXTENT.start() > &0.0);
-    }
-
-    #[test]
-    fn test_transform_default_values() {
-        let transform = Transform2D::default();
-        assert_eq!(transform.position, Vec2::ZERO);
-        assert_eq!(transform.rotation, 0.0);
-        assert_eq!(transform.scale, Vec2::ONE);
-    }
-
-    #[test]
-    fn test_sprite_default_values() {
-        let sprite = Sprite::default();
-        assert_eq!(sprite.offset, Vec2::ZERO);
-        assert_eq!(sprite.rotation, 0.0);
-        assert_eq!(sprite.scale, Vec2::ONE);
-        assert_eq!(sprite.depth, 0.0);
-    }
-
-    #[test]
-    fn test_rigid_body_default_values() {
-        let body = RigidBody::default();
-        assert_eq!(body.body_type, RigidBodyType::Dynamic);
-        assert_eq!(body.velocity, Vec2::ZERO);
-        assert_eq!(body.gravity_scale, 1.0);
-    }
-
-    #[test]
-    fn test_collider_default_values() {
-        let collider = Collider::default();
-        assert_eq!(collider.offset, Vec2::ZERO);
-        assert!(!collider.is_sensor);
-        assert_eq!(collider.friction, 0.5);
-        assert_eq!(collider.restitution, 0.0);
-    }
-
-    #[test]
-    fn test_audio_source_default_values() {
-        let source = AudioSource::default();
-        assert_eq!(source.volume, 1.0);
-        assert_eq!(source.pitch, 1.0);
-        assert!(!source.looping);
-        assert!(!source.spatial);
+        assert!(ranges::COLLIDER_EXTENT.start() > &0.0, "rapier rejects zero extents");
     }
 }

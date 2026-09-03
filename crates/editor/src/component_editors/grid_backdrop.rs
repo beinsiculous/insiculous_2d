@@ -126,42 +126,28 @@ pub fn edit_grid_backdrop(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{DragDropState, FieldId, InspectorExtras};
-    use glam::Vec2;
-
-    fn extras(drag_drop: &mut DragDropState) -> InspectorExtras<'_> {
-        InspectorExtras { drag_drop, texture_display: None, warnings: Vec::new() }
-    }
-
-    #[test]
-    fn test_renders_without_input_and_reports_no_edit() {
-        let mut ui = ui::UIContext::new();
-        let mut drag_drop = DragDropState::new();
-        ui.begin_frame(&input::InputHandler::new(), Vec2::new(800.0, 600.0));
-        let mut inspector = EditableInspector::new(&mut ui, 10.0, 10.0);
-        let edit = edit_grid_backdrop(&mut inspector, &GridBackdrop::default(), &mut extras(&mut drag_drop));
-        assert!(edit.is_none());
-        assert!(inspector.y() > 10.0, "the editor advances the cursor");
-        ui.end_frame();
-    }
+    use crate::test_support::{extras, frame};
+    use crate::{DragDropState, FieldId};
+    use input::prelude::KeyCode;
 
     #[test]
     fn test_typed_odd_hex_column_count_commits_as_the_even_count_that_renders() {
-        // Field 1 = Columns (field 0 is the Topology cycle row).
+        // Field 1 = Columns (field 0 is the Topology cycle row). A hex grid
+        // only renders even column counts, so what the inspector stores is
+        // what the engine builds: a typed 45 commits as 46.
         let mut ui = ui::UIContext::new();
         let mut drag_drop = DragDropState::new();
         let mut input = input::InputHandler::new();
         let field: ui::WidgetId = FieldId::new(0, 1, 0).into();
         ui.focus_text_input(field, "45");
-        input.keyboard_mut().handle_key_press(input::prelude::KeyCode::Enter);
+        input.keyboard_mut().handle_key_press(KeyCode::Enter);
 
-        ui.begin_frame(&input, Vec2::new(800.0, 600.0));
-        let mut inspector = EditableInspector::new(&mut ui, 10.0, 10.0);
-        let edit = edit_grid_backdrop(&mut inspector, &GridBackdrop::default(), &mut extras(&mut drag_drop));
-        ui.end_frame();
+        let edit = frame(&mut ui, &input, |ui| {
+            let mut inspector = EditableInspector::new(ui, 10.0, 10.0);
+            edit_grid_backdrop(&mut inspector, &GridBackdrop::default(), &mut extras(&mut drag_drop))
+        })
+        .expect("Enter commits");
 
-        let edit = edit.expect("Enter commits");
-        assert_eq!(edit.field_hint, "cols");
-        assert_eq!(edit.new_value.cols, 46, "what the inspector stores is what the engine builds");
+        assert_eq!((edit.field_hint, edit.new_value.cols), ("cols", 46));
     }
 }

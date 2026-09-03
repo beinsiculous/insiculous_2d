@@ -181,93 +181,61 @@ impl PlayControls {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::{press_at, release};
 
-    #[test]
-    fn test_play_controls_default() {
-        let controls = PlayControls::new();
-        assert_eq!(controls.button_size, 40.0);
-        assert_eq!(controls.spacing, 4.0);
+    const ORIGIN: Vec2 = Vec2::new(300.0, 20.0);
+
+    fn controls() -> PlayControls {
+        let mut controls = PlayControls::new();
+        controls.position = ORIGIN;
+        controls
     }
 
+    /// Play-control chrome claims the mouse gesture: a press on the
+    /// separator or a gap never falls through to viewport picking. The
+    /// chrome spans the separator to the last button of the current state,
+    /// and the Follow toggle exists only inside a play session, where a
+    /// click on it (fired on the release frame) returns the toggle action.
     #[test]
     fn test_play_controls_chrome_press_claims_mouse_gesture() {
-        use input::prelude::MouseButton;
-        let mut controls = PlayControls::new();
-        controls.position = Vec2::new(300.0, 20.0);
+        let controls = controls();
         let theme = EditorTheme::default();
         let mut ui = UIContext::new();
         let mut input = input::InputHandler::new();
 
-        // Press on the separator line left of the buttons — chrome, no button
-        input.mouse_mut().update_position(292.0, 40.0);
-        input.mouse_mut().handle_button_press(MouseButton::Left);
-        ui.begin_frame(&input, Vec2::new(1280.0, 720.0));
-        let action = controls.render(&mut ui, EditorPlayState::Editing, true, &theme);
-        assert!(action.is_none());
-        assert!(
-            ui.wants_mouse(),
-            "a press on play-control chrome must not fall through to viewport picking"
-        );
-        ui.end_frame();
-    }
+        // Press on the separator line left of the buttons — chrome, no button.
+        let separator = Vec2::new(ORIGIN.x - 8.0, ORIGIN.y + 20.0);
+        let action = press_at(&mut ui, &mut input, separator, |ui| {
+            controls.render(ui, EditorPlayState::Editing, true, &theme)
+        });
+        assert_eq!(action, None);
+        assert!(ui.wants_mouse(), "a press on play-control chrome must not fall through to picking");
+        release(&mut ui, &mut input, |ui| controls.render(ui, EditorPlayState::Editing, true, &theme));
 
-    #[test]
-    fn test_play_controls_chrome_bounds_span_separator_to_last_button() {
-        let mut controls = PlayControls::new();
-        controls.position = Vec2::new(300.0, 20.0);
-
+        // Editing: [Play] only — the viewport right of Play stays pickable.
         let editing = controls.chrome_bounds(EditorPlayState::Editing);
-        assert!(editing.contains(Vec2::new(292.0, 40.0)), "separator is chrome");
-        assert!(editing.contains(Vec2::new(339.0, 40.0)), "Play button is chrome");
-        assert!(!editing.contains(Vec2::new(360.0, 40.0)), "viewport right of Play stays pickable");
+        assert!(editing.contains(separator), "the separator is chrome");
+        assert!(editing.contains(Vec2::new(339.0, 40.0)), "the Play button is chrome");
+        assert!(!editing.contains(Vec2::new(360.0, 40.0)), "right of Play is the viewport");
 
-        // Paused is the widest layout: Resume (+10) + spacing + Stop + Follow
+        // Paused is the widest layout: [Resume +10] [Stop] [Follow].
         let paused = controls.chrome_bounds(EditorPlayState::Paused);
-        assert!(paused.contains(Vec2::new(300.0 + 40.0 + 10.0 + 4.0 + 39.0, 40.0)), "Stop is chrome");
-        // Follow toggle sits after Stop (issue #42) and is chrome too.
-        assert!(
-            paused.contains(Vec2::new(300.0 + 50.0 + 4.0 + 40.0 + 4.0 + 50.0, 40.0)),
-            "Follow toggle is chrome"
-        );
-    }
+        let stop_center = Vec2::new(ORIGIN.x + 50.0 + 4.0 + 20.0, 40.0);
+        let follow_center = Vec2::new(ORIGIN.x + 50.0 + 4.0 + 40.0 + 4.0 + 27.0, 40.0);
+        assert!(paused.contains(stop_center), "Stop is chrome");
+        assert!(paused.contains(follow_center), "the Follow toggle is chrome");
+        assert!(!editing.contains(follow_center), "no Follow toggle outside a play session");
 
-    #[test]
-    fn test_follow_toggle_shows_only_during_play_session() {
-        let mut controls = PlayControls::new();
-        controls.position = Vec2::new(300.0, 20.0);
-        let theme = EditorTheme::default();
-        let mut input = input::InputHandler::new();
-
-        // Editing: chrome ends at the Play button — no Follow toggle.
-        let editing = controls.chrome_bounds(EditorPlayState::Editing);
-        let playing = controls.chrome_bounds(EditorPlayState::Playing);
-        assert!(playing.width > editing.width + controls.follow_width() - 1.0);
-
-        // Clicking the Follow button while Playing returns the toggle action.
+        // Clicking Follow while Playing returns the toggle action on release.
         let follow_center = Vec2::new(
             controls.follow_x(EditorPlayState::Playing) + controls.follow_width() * 0.5,
-            20.0 + controls.button_size * 0.5,
+            ORIGIN.y + controls.button_size * 0.5,
         );
-        use input::prelude::MouseButton;
-        let mut ui = UIContext::new();
-        // Frame 1: press.
-        input.mouse_mut().update_position(follow_center.x, follow_center.y);
-        input.mouse_mut().handle_button_press(MouseButton::Left);
-        ui.begin_frame(&input, Vec2::new(1280.0, 720.0));
-        controls.render(&mut ui, EditorPlayState::Playing, true, &theme);
-        ui.end_frame();
-        // Frame 2: release → click fires.
-        input.mouse_mut().handle_button_release(MouseButton::Left);
-        ui.begin_frame(&input, Vec2::new(1280.0, 720.0));
-        let action = controls.render(&mut ui, EditorPlayState::Playing, true, &theme);
-        ui.end_frame();
-        assert_eq!(action, Some(PlayControlAction::ToggleCameraFollow));
-    }
-
-    #[test]
-    fn test_play_control_action_eq() {
-        assert_eq!(PlayControlAction::Play, PlayControlAction::Play);
-        assert_ne!(PlayControlAction::Play, PlayControlAction::Pause);
-        assert_ne!(PlayControlAction::Pause, PlayControlAction::Stop);
+        let pressed = press_at(&mut ui, &mut input, follow_center, |ui| {
+            controls.render(ui, EditorPlayState::Playing, true, &theme)
+        });
+        assert_eq!(pressed, None, "clicks fire on release");
+        let clicked = release(&mut ui, &mut input, |ui| controls.render(ui, EditorPlayState::Playing, true, &theme));
+        assert_eq!(clicked, Some(PlayControlAction::ToggleCameraFollow));
     }
 }

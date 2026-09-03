@@ -115,83 +115,71 @@ impl DragDropState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use common::Rect;
+
+    const ANYWHERE: Rect = Rect::new(0.0, 0.0, 1000.0, 1000.0);
 
     fn texture_payload() -> DragPayload {
         DragPayload::Texture { handle: 7, path: "player.png".into() }
+    }
+
+    /// Arm at (100,100), drag past the threshold, release at `drop_pos`.
+    fn drag_and_drop_at(drop_pos: Vec2) -> DragDropState {
+        let mut dd = DragDropState::new();
+        dd.arm(texture_payload(), Vec2::new(100.0, 100.0));
+        dd.begin_frame(Vec2::new(150.0, 150.0), true, false);
+        assert_eq!(dd.dragging_payload(), Some(&texture_payload()), "past the threshold the drag is live");
+        assert!(dd.suppresses_click(), "a live drag is not a click");
+        dd.begin_frame(drop_pos, false, true);
+        dd
     }
 
     #[test]
     fn test_release_under_threshold_is_a_click_not_a_drag() {
         let mut dd = DragDropState::new();
         dd.arm(texture_payload(), Vec2::new(100.0, 100.0));
-        // Mouse released 2px away — below the threshold
-        dd.begin_frame(Vec2::new(102.0, 100.0), false, true);
-        assert!(dd.dragging_payload().is_none());
+        dd.begin_frame(Vec2::new(102.0, 100.0), false, true); // released 2px away
+
+        assert_eq!(dd.dragging_payload(), None);
         assert!(!dd.suppresses_click(), "a plain click must not be suppressed");
-        assert!(dd.take_drop_in(common::Rect::new(0.0, 0.0, 500.0, 500.0)).is_none());
+        assert_eq!(dd.take_drop_in(ANYWHERE), None);
     }
 
     #[test]
-    fn test_moving_past_threshold_starts_drag() {
-        let mut dd = DragDropState::new();
-        dd.arm(texture_payload(), Vec2::new(100.0, 100.0));
-        dd.begin_frame(Vec2::new(106.0, 100.0), true, false);
-        assert_eq!(dd.dragging_payload(), Some(&texture_payload()));
-        assert!(dd.suppresses_click());
-    }
-
-    #[test]
-    fn test_release_while_dragging_drops_at_position() {
-        let mut dd = DragDropState::new();
-        dd.arm(texture_payload(), Vec2::new(100.0, 100.0));
-        dd.begin_frame(Vec2::new(150.0, 150.0), true, false);
-        dd.begin_frame(Vec2::new(300.0, 200.0), false, true);
-
+    fn test_drop_is_consumed_once_by_the_first_target_that_contains_it() {
+        let mut dd = drag_and_drop_at(Vec2::new(300.0, 200.0));
         assert!(dd.suppresses_click(), "the release frame still suppresses clicks");
-        let (payload, pos) = dd
-            .take_drop_in(common::Rect::new(250.0, 150.0, 200.0, 200.0))
-            .expect("drop inside bounds is consumable");
-        assert_eq!(payload, texture_payload());
-        assert_eq!(pos, Vec2::new(300.0, 200.0));
-        // Consumed — a second target gets nothing
-        assert!(dd.take_drop_in(common::Rect::new(0.0, 0.0, 1000.0, 1000.0)).is_none());
-    }
 
-    #[test]
-    fn test_drop_outside_target_bounds_is_left_for_others() {
-        let mut dd = DragDropState::new();
-        dd.arm(texture_payload(), Vec2::new(100.0, 100.0));
-        dd.begin_frame(Vec2::new(150.0, 150.0), true, false);
-        dd.begin_frame(Vec2::new(300.0, 200.0), false, true);
-
-        // A target whose bounds don't contain the drop leaves it in place
-        assert!(dd.take_drop_in(common::Rect::new(0.0, 0.0, 50.0, 50.0)).is_none());
-        // The right target can still take it this frame
-        assert!(dd.take_drop_in(common::Rect::new(290.0, 190.0, 20.0, 20.0)).is_some());
+        // A target whose bounds miss the drop leaves it for the others...
+        assert_eq!(dd.take_drop_in(Rect::new(0.0, 0.0, 50.0, 50.0)), None);
+        // ...the containing target takes it, payload and position...
+        assert_eq!(
+            dd.take_drop_in(Rect::new(250.0, 150.0, 200.0, 200.0)),
+            Some((texture_payload(), Vec2::new(300.0, 200.0)))
+        );
+        // ...and a second taker gets nothing.
+        assert_eq!(dd.take_drop_in(ANYWHERE), None);
     }
 
     #[test]
     fn test_unconsumed_drop_expires_after_one_frame() {
-        let mut dd = DragDropState::new();
-        dd.arm(texture_payload(), Vec2::new(100.0, 100.0));
-        dd.begin_frame(Vec2::new(150.0, 150.0), true, false);
-        dd.begin_frame(Vec2::new(300.0, 200.0), false, true);
-        assert!(dd.suppresses_click());
+        let mut dd = drag_and_drop_at(Vec2::new(300.0, 200.0));
 
-        // Next frame: nobody consumed it — it expires
         dd.begin_frame(Vec2::new(300.0, 200.0), false, false);
+
         assert!(!dd.suppresses_click());
-        assert!(dd.take_drop_in(common::Rect::new(0.0, 0.0, 1000.0, 1000.0)).is_none());
+        assert_eq!(dd.take_drop_in(ANYWHERE), None, "nobody consumed it — it is gone, not stuck");
     }
 
     #[test]
-    fn test_arm_ignored_while_drag_in_flight() {
+    fn test_arming_while_a_drag_is_in_flight_is_ignored() {
         let mut dd = DragDropState::new();
         dd.arm(texture_payload(), Vec2::new(100.0, 100.0));
         dd.begin_frame(Vec2::new(150.0, 150.0), true, false);
 
         let other = DragPayload::Texture { handle: 99, path: "other.png".into() };
-        dd.arm(other, Vec2::new(0.0, 0.0));
-        assert_eq!(dd.dragging_payload(), Some(&texture_payload()), "in-flight drag wins");
+        dd.arm(other, Vec2::ZERO);
+
+        assert_eq!(dd.dragging_payload(), Some(&texture_payload()), "the in-flight drag wins");
     }
 }

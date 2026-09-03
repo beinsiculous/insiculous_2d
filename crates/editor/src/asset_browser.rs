@@ -147,96 +147,73 @@ mod tests {
     use super::*;
     use std::fs;
 
-    fn touch(path: &Path) {
+    fn touch(path: &Path) -> std::io::Result<()> {
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).unwrap();
+            fs::create_dir_all(parent)?;
         }
-        fs::write(path, b"x").unwrap();
+        fs::write(path, b"x")
+    }
+
+    fn image_entry(name: &str) -> AssetEntry {
+        AssetEntry {
+            name: name.into(),
+            relative_path: name.into(),
+            kind: AssetKind::Image,
+            texture_handle: None,
+            load_failed: false,
+        }
     }
 
     #[test]
-    fn test_scan_finds_images_and_scenes_recursively() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("player.png"));
-        touch(&dir.path().join("brick.JPG"));
-        touch(&dir.path().join("scenes/level1.scene.ron"));
-        touch(&dir.path().join("fonts/font.ttf")); // ignored
-        touch(&dir.path().join("notes.txt")); // ignored
+    fn test_scan_lists_images_then_scenes_by_load_compatible_relative_path() -> std::io::Result<()> {
+        let dir = tempfile::tempdir()?;
+        for file in ["player.png", "brick.JPG", "scenes/level1.scene.ron", "fonts/font.ttf", "notes.txt"] {
+            touch(&dir.path().join(file))?;
+        }
 
         let entries = scan_assets(dir.path());
-        assert_eq!(entries.len(), 3);
-        // Sorted: images first (by name), then scenes
-        assert_eq!(entries[0].name, "brick.JPG");
-        assert_eq!(entries[0].kind, AssetKind::Image);
-        assert_eq!(entries[1].name, "player.png");
-        assert_eq!(entries[2].kind, AssetKind::Scene);
-        assert_eq!(entries[2].relative_path, "scenes/level1.scene.ron");
-    }
 
-    #[test]
-    fn test_scan_missing_dir_is_empty_not_panic() {
-        let entries = scan_assets(Path::new("/definitely/not/a/real/dir"));
-        assert!(entries.is_empty());
-    }
-
-    #[test]
-    fn test_relative_paths_are_load_compatible() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("sub/tex.png"));
-        let entries = scan_assets(dir.path());
-        assert_eq!(entries[0].relative_path, "sub/tex.png", "forward slashes, no base prefix");
+        let listed: Vec<(&str, AssetKind, &str)> =
+            entries.iter().map(|entry| (entry.name.as_str(), entry.kind, entry.relative_path.as_str())).collect();
+        assert_eq!(
+            listed,
+            vec![
+                ("brick.JPG", AssetKind::Image, "brick.JPG"),
+                ("player.png", AssetKind::Image, "player.png"),
+                ("level1.scene.ron", AssetKind::Scene, "scenes/level1.scene.ron"),
+            ],
+            "images first by name, then scenes; fonts and notes are not assets; \
+             paths are forward-slash and base-relative so the loader can open them"
+        );
+        assert!(
+            scan_assets(Path::new("/definitely/not/a/real/dir")).is_empty(),
+            "a missing folder is an empty browser, not a crash"
+        );
+        Ok(())
     }
 
     #[test]
     fn test_apply_scan_preserves_loaded_handles_by_path() {
         let mut state = AssetBrowserState::default();
-        state.apply_scan(vec![AssetEntry {
-            name: "a.png".into(),
-            relative_path: "a.png".into(),
-            kind: AssetKind::Image,
-            texture_handle: None,
-            load_failed: false,
-        }]);
+        state.apply_scan(vec![image_entry("a.png")]);
         state.entries[0].texture_handle = Some(5);
-        state.entries[0].load_failed = false;
 
-        // Rescan finds the same file plus a new one
-        state.apply_scan(vec![
-            AssetEntry {
-                name: "a.png".into(),
-                relative_path: "a.png".into(),
-                kind: AssetKind::Image,
-                texture_handle: None,
-                load_failed: false,
-            },
-            AssetEntry {
-                name: "b.png".into(),
-                relative_path: "b.png".into(),
-                kind: AssetKind::Image,
-                texture_handle: None,
-                load_failed: false,
-            },
-        ]);
+        // A rescan finds the same file plus a new one.
+        state.apply_scan(vec![image_entry("a.png"), image_entry("b.png")]);
 
-        assert_eq!(state.entries[0].texture_handle, Some(5), "handle survives rescan");
-        assert_eq!(state.entries[1].texture_handle, None, "new entry starts unloaded");
+        assert_eq!(state.entries[0].texture_handle, Some(5), "a rescan must not reload what is already on the GPU");
+        assert_eq!(state.entries[1].texture_handle, None, "a new entry starts unloaded");
         assert!(state.scanned);
     }
 
     #[test]
-    fn test_fit_rect_preserves_aspect_and_centers() {
+    fn test_thumbnail_fit_preserves_aspect_and_centers_in_the_slot() {
         let slot = common::Rect::new(10.0, 10.0, 64.0, 64.0);
-        // Wide image: width-bound
+
         let wide = fit_rect(128, 64, slot);
-        assert_eq!(wide.width, 64.0);
-        assert_eq!(wide.height, 32.0);
-        assert_eq!(wide.y, 10.0 + 16.0, "vertically centered");
-        // Tall image: height-bound
+        assert_eq!((wide.width, wide.height, wide.y), (64.0, 32.0, 26.0), "width-bound, vertically centered");
         let tall = fit_rect(32, 64, slot);
-        assert_eq!(tall.height, 64.0);
-        assert_eq!(tall.width, 32.0);
-        assert_eq!(tall.x, 10.0 + 16.0, "horizontally centered");
-        // Degenerate sizes fall back to the slot
-        assert_eq!(fit_rect(0, 10, slot), slot);
+        assert_eq!((tall.width, tall.height, tall.x), (32.0, 64.0, 26.0), "height-bound, horizontally centered");
+        assert_eq!(fit_rect(0, 10, slot), slot, "degenerate sizes fall back to the slot");
     }
 }

@@ -224,54 +224,72 @@ pub fn edit_behavior(
 mod tests {
     use super::*;
 
+    /// The soft ranges steer the scrub step and the typed-commit warning
+    /// (#55): each must be a real interval and must admit the values the
+    /// engine's own defaults and demo scenes use, or every fresh Behavior
+    /// warns the moment it is typed into.
     #[test]
-    fn test_ranges_are_well_formed() {
-        assert!(ranges::SPEED.start() < ranges::SPEED.end());
-        assert!(ranges::IMPULSE.start() < ranges::IMPULSE.end());
-        assert!(ranges::SECONDS.contains(&0.3)); // default jump cooldown
-        assert!(ranges::DISTANCE.contains(&300.0)); // default lose range
-        assert!(ranges::POSITION.contains(&0.0));
-        assert!(ranges::LOOK_AHEAD.start() < ranges::LOOK_AHEAD.end());
-        assert!(ranges::LOOK_AHEAD.contains(&220.0)); // demo scene look-ahead
-        assert!(ranges::FRACTION.contains(&0.08)); // default look_ahead_lerp
+    fn test_behavior_ranges_are_intervals_that_admit_the_engine_defaults() {
+        let intervals = [
+            ("SPEED", ranges::SPEED),
+            ("IMPULSE", ranges::IMPULSE),
+            ("SECONDS", ranges::SECONDS),
+            ("DISTANCE", ranges::DISTANCE),
+            ("POSITION", ranges::POSITION),
+            ("FRACTION", ranges::FRACTION),
+            ("LOOK_AHEAD", ranges::LOOK_AHEAD),
+        ];
+        for (name, range) in intervals {
+            assert!(range.start() < range.end(), "{name} must be a non-empty interval, got {range:?}");
+        }
+
+        assert!(ranges::SECONDS.contains(&0.3), "default jump cooldown");
+        assert!(ranges::DISTANCE.contains(&300.0), "default lose-interest range");
+        assert!(ranges::POSITION.contains(&0.0), "the origin is a valid position");
+        assert!(ranges::LOOK_AHEAD.contains(&220.0), "the demo scene's look-ahead");
+        assert!(ranges::FRACTION.contains(&0.08), "default look_ahead_lerp");
     }
 
+    /// Cycling the variant selector hands the author `default_for_variant`;
+    /// every one of those defaults must sit inside the editor's soft ranges
+    /// or the fresh variant is flagged as out of range before a single edit.
     #[test]
     fn test_every_variant_default_is_within_editor_ranges() {
         for index in 0..Behavior::VARIANT_NAMES.len() {
+            let name = Behavior::VARIANT_NAMES[index];
             match Behavior::default_for_variant(index) {
                 Behavior::PlayerPlatformer { move_speed, jump_impulse, jump_cooldown, .. } => {
-                    assert!(ranges::SPEED.contains(&move_speed));
-                    assert!(ranges::IMPULSE.contains(&jump_impulse));
-                    assert!(ranges::SECONDS.contains(&jump_cooldown));
+                    assert!(ranges::SPEED.contains(&move_speed), "{name} move_speed");
+                    assert!(ranges::IMPULSE.contains(&jump_impulse), "{name} jump_impulse");
+                    assert!(ranges::SECONDS.contains(&jump_cooldown), "{name} jump_cooldown");
                 }
                 Behavior::PlayerTopDown { move_speed, .. } => {
-                    assert!(ranges::SPEED.contains(&move_speed));
+                    assert!(ranges::SPEED.contains(&move_speed), "{name} move_speed");
                 }
                 Behavior::FollowEntity { follow_distance, follow_speed, .. }
                 | Behavior::FollowTagged { follow_distance, follow_speed, .. } => {
-                    assert!(ranges::DISTANCE.contains(&follow_distance));
-                    assert!(ranges::SPEED.contains(&follow_speed));
+                    assert!(ranges::DISTANCE.contains(&follow_distance), "{name} follow_distance");
+                    assert!(ranges::SPEED.contains(&follow_speed), "{name} follow_speed");
                 }
                 Behavior::Patrol { point_a, point_b, speed, wait_time } => {
-                    assert!(ranges::POSITION.contains(&point_a.0));
-                    assert!(ranges::POSITION.contains(&point_b.0));
-                    assert!(ranges::SPEED.contains(&speed));
-                    assert!(ranges::SECONDS.contains(&wait_time));
+                    assert!(ranges::POSITION.contains(&point_a.0), "{name} point_a");
+                    assert!(ranges::POSITION.contains(&point_b.0), "{name} point_b");
+                    assert!(ranges::SPEED.contains(&speed), "{name} speed");
+                    assert!(ranges::SECONDS.contains(&wait_time), "{name} wait_time");
                 }
                 Behavior::Collectible { .. } => {}
                 Behavior::ChaseTagged { detection_range, chase_speed, lose_interest_range, .. } => {
-                    assert!(ranges::DISTANCE.contains(&detection_range));
-                    assert!(ranges::SPEED.contains(&chase_speed));
-                    assert!(ranges::DISTANCE.contains(&lose_interest_range));
+                    assert!(ranges::DISTANCE.contains(&detection_range), "{name} detection_range");
+                    assert!(ranges::SPEED.contains(&chase_speed), "{name} chase_speed");
+                    assert!(ranges::DISTANCE.contains(&lose_interest_range), "{name} lose_interest_range");
                 }
                 Behavior::CameraFollow { lerp_speed, offset, look_ahead, look_ahead_lerp, .. } => {
-                    assert!(ranges::FRACTION.contains(&lerp_speed));
-                    assert!(ranges::POSITION.contains(&offset.0));
-                    assert!(ranges::POSITION.contains(&offset.1));
-                    assert!(ranges::LOOK_AHEAD.contains(&look_ahead.0));
-                    assert!(ranges::LOOK_AHEAD.contains(&look_ahead.1));
-                    assert!(ranges::FRACTION.contains(&look_ahead_lerp));
+                    assert!(ranges::FRACTION.contains(&lerp_speed), "{name} lerp_speed");
+                    assert!(ranges::POSITION.contains(&offset.0), "{name} offset.x");
+                    assert!(ranges::POSITION.contains(&offset.1), "{name} offset.y");
+                    assert!(ranges::LOOK_AHEAD.contains(&look_ahead.0), "{name} look_ahead.x");
+                    assert!(ranges::LOOK_AHEAD.contains(&look_ahead.1), "{name} look_ahead.y");
+                    assert!(ranges::FRACTION.contains(&look_ahead_lerp), "{name} look_ahead_lerp");
                 }
             }
         }

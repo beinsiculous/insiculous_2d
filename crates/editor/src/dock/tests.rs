@@ -1,3 +1,6 @@
+//! Dock layout contracts: edge panels carve the window, the center gets the
+//! rest, collapsing and hiding reflow it, and splitter drags stay in range.
+
 use glam::Vec2;
 use ui::Rect;
 
@@ -6,271 +9,116 @@ use crate::layout::HEADER_HEIGHT;
 use super::render::resized_size;
 use super::*;
 
+const DOCK: Rect = Rect::new(0.0, 0.0, 1000.0, 800.0);
+
+/// What a panel renderer may draw into: the panel minus its header strip,
+/// and nothing at all while the panel is collapsed.
 #[test]
-fn test_dock_panel_content_bounds() {
+fn test_content_bounds_sit_below_the_header_and_vanish_when_collapsed() {
     let mut panel = DockPanel::new(PanelId::INSPECTOR, "Test", DockPosition::Right);
     panel.bounds = Rect::new(100.0, 50.0, 200.0, 400.0);
 
     let content = panel.content_bounds();
-    assert_eq!(content.x, 100.0);
-    assert_eq!(content.y, 74.0); // 50 + 24 header
-    assert_eq!(content.width, 200.0);
-    assert_eq!(content.height, 376.0); // 400 - 24 header
-}
+    assert_eq!(content, Rect::new(100.0, 50.0 + HEADER_HEIGHT, 200.0, 400.0 - HEADER_HEIGHT));
 
-#[test]
-fn test_collapsed_panel_has_zero_content_bounds() {
-    let mut panel = DockPanel::new(PanelId::INSPECTOR, "Test", DockPosition::Right);
-    panel.bounds = Rect::new(100.0, 50.0, 200.0, 400.0);
     panel.collapsed = true;
-
-    let content = panel.content_bounds();
-    assert_eq!(content.width, 0.0);
-    assert_eq!(content.height, 0.0);
+    let collapsed = panel.content_bounds();
+    assert_eq!((collapsed.width, collapsed.height), (0.0, 0.0), "a collapsed panel has no content area");
 }
 
-#[test]
-fn test_collapsible_only_for_edge_positions() {
-    let edge = DockPanel::new(PanelId::HIERARCHY, "H", DockPosition::Left);
-    assert!(edge.is_collapsible());
-    let bottom = DockPanel::new(PanelId::ASSET_BROWSER, "A", DockPosition::Bottom);
-    assert!(bottom.is_collapsible());
-    let center = DockPanel::new(PanelId::SCENE_VIEW, "S", DockPosition::Center);
-    assert!(!center.is_collapsible());
-}
-
-#[test]
-fn test_effective_size_collapsed_is_header_height() {
-    let mut panel = DockPanel::new(PanelId::HIERARCHY, "H", DockPosition::Left).with_size(200.0);
-    assert_eq!(panel.effective_size(), 200.0);
-    panel.collapsed = true;
-    assert_eq!(panel.effective_size(), HEADER_HEIGHT);
-}
-
-#[test]
-fn test_effective_size_center_ignores_collapsed_flag() {
-    let mut panel = DockPanel::new(PanelId::SCENE_VIEW, "S", DockPosition::Center).with_size(300.0);
-    panel.collapsed = true;
-    assert_eq!(panel.effective_size(), 300.0);
-}
-
-#[test]
-fn test_dock_area_add_panel() {
+/// A dock with a 200px left panel, a 250px right panel and a center view.
+fn three_panel_dock() -> DockArea {
     let mut area = DockArea::new();
-    area.add_panel(DockPanel::new(PanelId::INSPECTOR, "Inspector", DockPosition::Right));
-    area.add_panel(DockPanel::new(PanelId::HIERARCHY, "Hierarchy", DockPosition::Left));
-
-    assert_eq!(area.panels().len(), 2);
-}
-
-#[test]
-fn test_dock_area_get_panel() {
-    let mut area = DockArea::new();
-    area.add_panel(DockPanel::new(PanelId::INSPECTOR, "Inspector", DockPosition::Right));
-
-    let panel = area.get_panel(PanelId::INSPECTOR);
-    assert!(panel.is_some());
-    assert_eq!(panel.unwrap().title, "Inspector");
-
-    let missing = area.get_panel(PanelId::HIERARCHY);
-    assert!(missing.is_none());
-}
-
-#[test]
-fn test_dock_area_layout_left() {
-    let mut area = DockArea::new();
-    area.set_bounds(Rect::new(0.0, 0.0, 1000.0, 800.0));
-    area.add_panel(
-        DockPanel::new(PanelId::HIERARCHY, "Hierarchy", DockPosition::Left).with_size(200.0),
-    );
-    area.layout();
-
-    let panel = area.get_panel(PanelId::HIERARCHY).unwrap();
-    assert_eq!(panel.bounds.x, 0.0);
-    assert_eq!(panel.bounds.y, 0.0);
-    assert_eq!(panel.bounds.width, 200.0);
-    assert_eq!(panel.bounds.height, 800.0);
-}
-
-#[test]
-fn test_dock_area_layout_right() {
-    let mut area = DockArea::new();
-    area.set_bounds(Rect::new(0.0, 0.0, 1000.0, 800.0));
-    area.add_panel(
-        DockPanel::new(PanelId::INSPECTOR, "Inspector", DockPosition::Right).with_size(250.0),
-    );
-    area.layout();
-
-    let panel = area.get_panel(PanelId::INSPECTOR).unwrap();
-    assert_eq!(panel.bounds.x, 750.0); // 1000 - 250
-    assert_eq!(panel.bounds.y, 0.0);
-    assert_eq!(panel.bounds.width, 250.0);
-    assert_eq!(panel.bounds.height, 800.0);
-}
-
-#[test]
-fn test_dock_area_layout_center_gets_remaining() {
-    let mut area = DockArea::new();
-    area.set_bounds(Rect::new(0.0, 0.0, 1000.0, 800.0));
-    area.add_panel(
-        DockPanel::new(PanelId::HIERARCHY, "Hierarchy", DockPosition::Left).with_size(200.0),
-    );
-    area.add_panel(
-        DockPanel::new(PanelId::INSPECTOR, "Inspector", DockPosition::Right).with_size(250.0),
-    );
+    area.set_bounds(DOCK);
+    area.add_panel(DockPanel::new(PanelId::HIERARCHY, "Hierarchy", DockPosition::Left).with_size(200.0));
+    area.add_panel(DockPanel::new(PanelId::INSPECTOR, "Inspector", DockPosition::Right).with_size(250.0));
     area.add_panel(DockPanel::new(PanelId::SCENE_VIEW, "Scene", DockPosition::Center));
     area.layout();
-
-    let center = area.get_panel(PanelId::SCENE_VIEW).unwrap();
-    assert_eq!(center.bounds.x, 200.0);
-    assert_eq!(center.bounds.y, 0.0);
-    assert_eq!(center.bounds.width, 550.0); // 1000 - 200 - 250
-    assert_eq!(center.bounds.height, 800.0);
+    area
 }
 
+fn bounds_of(area: &DockArea, id: PanelId) -> Rect {
+    area.get_panel(id).expect("panel exists").bounds
+}
+
+/// Edge panels take their size from their own edge, full height; the
+/// center is whatever remains between them.
 #[test]
-fn test_dock_area_layout_hidden_panel() {
-    let mut area = DockArea::new();
-    area.set_bounds(Rect::new(0.0, 0.0, 1000.0, 800.0));
-    area.add_panel({
-        let mut panel =
-            DockPanel::new(PanelId::HIERARCHY, "Hierarchy", DockPosition::Left).with_size(200.0);
-        panel.visible = false;
-        panel
-    });
-    area.add_panel(DockPanel::new(PanelId::SCENE_VIEW, "Scene", DockPosition::Center));
-    area.layout();
-
-    // Center should get full width since left panel is hidden
-    let center = area.get_panel(PanelId::SCENE_VIEW).unwrap();
-    assert_eq!(center.bounds.x, 0.0);
-    assert_eq!(center.bounds.width, 1000.0);
+fn test_edge_panels_carve_the_dock_and_the_center_gets_the_remainder() {
+    let area = three_panel_dock();
+    let table = [
+        (PanelId::HIERARCHY, Rect::new(0.0, 0.0, 200.0, 800.0)),
+        (PanelId::INSPECTOR, Rect::new(750.0, 0.0, 250.0, 800.0)),
+        (PanelId::SCENE_VIEW, Rect::new(200.0, 0.0, 550.0, 800.0)),
+    ];
+    for (id, expected) in table {
+        assert_eq!(bounds_of(&area, id), expected, "{id:?}");
+    }
 }
 
+/// Collapsing an edge panel leaves a header-wide strip and the center
+/// reclaims the space; expanding restores the remembered size; hiding a
+/// panel hands the center its full width and re-showing relayouts; the
+/// center itself never collapses.
 #[test]
 fn test_dock_area_layout_collapsed_left_is_slim_strip_and_center_reclaims() {
-    let mut area = DockArea::new();
-    area.set_bounds(Rect::new(0.0, 0.0, 1000.0, 800.0));
-    area.add_panel(
-        DockPanel::new(PanelId::HIERARCHY, "Hierarchy", DockPosition::Left).with_size(200.0),
-    );
-    area.add_panel(DockPanel::new(PanelId::SCENE_VIEW, "Scene", DockPosition::Center));
+    let mut area = three_panel_dock();
+
     area.set_panel_collapsed(PanelId::HIERARCHY, true);
+    assert_eq!(bounds_of(&area, PanelId::HIERARCHY).width, HEADER_HEIGHT, "a collapsed panel is a strip");
+    assert_eq!(bounds_of(&area, PanelId::SCENE_VIEW).x, HEADER_HEIGHT);
+    assert_eq!(bounds_of(&area, PanelId::SCENE_VIEW).width, 1000.0 - HEADER_HEIGHT - 250.0);
 
-    let strip = area.get_panel(PanelId::HIERARCHY).unwrap();
-    assert_eq!(strip.bounds.width, HEADER_HEIGHT);
-    let center = area.get_panel(PanelId::SCENE_VIEW).unwrap();
-    assert_eq!(center.bounds.x, HEADER_HEIGHT);
-    assert_eq!(center.bounds.width, 1000.0 - HEADER_HEIGHT);
-}
+    area.toggle_panel_collapsed(PanelId::HIERARCHY);
+    let hierarchy = area.get_panel(PanelId::HIERARCHY).expect("panel exists");
+    assert!(!hierarchy.collapsed);
+    assert_eq!(hierarchy.size, 200.0, "expanding restores the remembered size");
+    assert_eq!(hierarchy.bounds.width, 200.0);
 
-#[test]
-fn test_collapse_expand_round_trip_preserves_size() {
-    let mut area = DockArea::new();
-    area.set_bounds(Rect::new(0.0, 0.0, 1000.0, 800.0));
-    area.add_panel(
-        DockPanel::new(PanelId::INSPECTOR, "Inspector", DockPosition::Right).with_size(280.0),
-    );
-    area.layout();
+    area.toggle_panel_visible(PanelId::HIERARCHY);
+    area.toggle_panel_visible(PanelId::INSPECTOR);
+    assert_eq!(bounds_of(&area, PanelId::SCENE_VIEW), DOCK, "with both edges hidden the center is the dock");
 
-    area.toggle_panel_collapsed(PanelId::INSPECTOR);
-    assert!(area.get_panel(PanelId::INSPECTOR).unwrap().collapsed);
-    assert_eq!(area.get_panel(PanelId::INSPECTOR).unwrap().bounds.width, HEADER_HEIGHT);
+    area.toggle_panel_visible(PanelId::HIERARCHY);
+    assert_eq!(bounds_of(&area, PanelId::SCENE_VIEW).x, 200.0, "re-showing relayouts immediately");
 
-    area.toggle_panel_collapsed(PanelId::INSPECTOR);
-    let panel = area.get_panel(PanelId::INSPECTOR).unwrap();
-    assert!(!panel.collapsed);
-    assert_eq!(panel.size, 280.0);
-    assert_eq!(panel.bounds.width, 280.0);
-}
-
-#[test]
-fn test_collapse_ignored_for_center_panel() {
-    let mut area = DockArea::new();
-    area.set_bounds(Rect::new(0.0, 0.0, 1000.0, 800.0));
-    area.add_panel(DockPanel::new(PanelId::SCENE_VIEW, "Scene", DockPosition::Center));
     area.set_panel_collapsed(PanelId::SCENE_VIEW, true);
-    assert!(!area.get_panel(PanelId::SCENE_VIEW).unwrap().collapsed);
+    assert!(!area.get_panel(PanelId::SCENE_VIEW).expect("panel exists").collapsed, "the center never collapses");
 }
 
-#[test]
-fn test_toggle_panel_visible_relayouts() {
-    let mut area = DockArea::new();
-    area.set_bounds(Rect::new(0.0, 0.0, 1000.0, 800.0));
-    area.add_panel(
-        DockPanel::new(PanelId::HIERARCHY, "Hierarchy", DockPosition::Left).with_size(200.0),
-    );
-    area.add_panel(DockPanel::new(PanelId::SCENE_VIEW, "Scene", DockPosition::Center));
-    area.layout();
-    assert_eq!(area.get_panel(PanelId::SCENE_VIEW).unwrap().bounds.x, 200.0);
-
-    area.toggle_panel_visible(PanelId::HIERARCHY);
-    assert!(!area.get_panel(PanelId::HIERARCHY).unwrap().visible);
-    assert_eq!(area.get_panel(PanelId::SCENE_VIEW).unwrap().bounds.x, 0.0);
-
-    area.toggle_panel_visible(PanelId::HIERARCHY);
-    assert!(area.get_panel(PanelId::HIERARCHY).unwrap().visible);
-    assert_eq!(area.get_panel(PanelId::SCENE_VIEW).unwrap().bounds.x, 200.0);
-}
-
+/// A splitter drag clamps to the panel's min size and to half the dock,
+/// and right/bottom panels measure their size from the far edge.
 #[test]
 fn test_resized_size_clamps_to_min_and_half_dock() {
-    let dock = Rect::new(0.0, 0.0, 1000.0, 800.0);
-    let panel_bounds = Rect::new(0.0, 0.0, 200.0, 800.0);
-
-    // Dragging inward below min clamps to min
-    let too_small = resized_size(
-        DockPosition::Left,
-        Vec2::new(10.0, 400.0),
-        panel_bounds,
-        100.0,
-        dock,
-    );
-    assert_eq!(too_small, 100.0);
-
-    // Dragging outward beyond half the dock clamps to half
-    let too_big = resized_size(
-        DockPosition::Left,
-        Vec2::new(900.0, 400.0),
-        panel_bounds,
-        100.0,
-        dock,
-    );
-    assert_eq!(too_big, 500.0);
-
-    // In-range drag follows the mouse
-    let ok = resized_size(
-        DockPosition::Left,
-        Vec2::new(300.0, 400.0),
-        panel_bounds,
-        100.0,
-        dock,
-    );
-    assert_eq!(ok, 300.0);
+    let left = Rect::new(0.0, 0.0, 200.0, 800.0);
+    let right = Rect::new(750.0, 0.0, 250.0, 800.0);
+    let bottom = Rect::new(0.0, 620.0, 1000.0, 180.0);
+    let table = [
+        ("left below min", DockPosition::Left, Vec2::new(10.0, 400.0), left, 100.0),
+        ("left beyond half", DockPosition::Left, Vec2::new(900.0, 400.0), left, 500.0),
+        ("left in range", DockPosition::Left, Vec2::new(300.0, 400.0), left, 300.0),
+        ("right from far edge", DockPosition::Right, Vec2::new(700.0, 400.0), right, 300.0),
+        ("bottom from far edge", DockPosition::Bottom, Vec2::new(500.0, 600.0), bottom, 200.0),
+    ];
+    for (name, position, mouse, panel, expected) in table {
+        assert_eq!(resized_size(position, mouse, panel, 100.0, DOCK), expected, "{name}");
+    }
 }
 
-#[test]
-fn test_resized_size_right_and_bottom_measure_from_far_edge() {
-    let dock = Rect::new(0.0, 0.0, 1000.0, 800.0);
-
-    let right_bounds = Rect::new(750.0, 0.0, 250.0, 800.0);
-    let right =
-        resized_size(DockPosition::Right, Vec2::new(700.0, 400.0), right_bounds, 100.0, dock);
-    assert_eq!(right, 300.0); // 1000 - 700
-
-    let bottom_bounds = Rect::new(0.0, 620.0, 1000.0, 180.0);
-    let bottom =
-        resized_size(DockPosition::Bottom, Vec2::new(500.0, 600.0), bottom_bounds, 100.0, dock);
-    assert_eq!(bottom, 200.0); // 800 - 600
-}
-
+/// The View menu's labels and the panel ids they toggle are two tables;
+/// a renamed label must fail here, not silently do nothing when clicked.
 #[test]
 fn test_panel_id_for_menu_label_map() {
-    assert_eq!(panel_id_for_menu_label("Inspector"), Some(PanelId::INSPECTOR));
-    assert_eq!(panel_id_for_menu_label("Hierarchy"), Some(PanelId::HIERARCHY));
-    assert_eq!(panel_id_for_menu_label("Asset Browser"), Some(PanelId::ASSET_BROWSER));
-    // Scene view can't be hidden; Console has no panel yet.
-    assert_eq!(panel_id_for_menu_label("Scene View"), None);
-    assert_eq!(panel_id_for_menu_label("Console"), None);
-    assert_eq!(panel_id_for_menu_label("Toggle Grid"), None);
+    let table = [
+        ("Inspector", Some(PanelId::INSPECTOR)),
+        ("Hierarchy", Some(PanelId::HIERARCHY)),
+        ("Asset Browser", Some(PanelId::ASSET_BROWSER)),
+        // The scene view cannot be hidden; Console has no panel yet.
+        ("Scene View", None),
+        ("Console", None),
+        ("Toggle Grid", None),
+    ];
+    for (label, expected) in table {
+        assert_eq!(panel_id_for_menu_label(label), expected, "{label}");
+    }
 }

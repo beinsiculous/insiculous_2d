@@ -122,72 +122,7 @@ mod tests {
     use super::*;
     use crate::dock::DockPanel;
 
-    #[test]
-    fn test_editor_preferences_defaults() {
-        let prefs = EditorPreferences::default();
-        assert_eq!(prefs.camera_position, (0.0, 0.0));
-        assert_eq!(prefs.camera_zoom, 1.0);
-        assert!(prefs.last_scene_path.is_none());
-        assert!(!prefs.snap_to_grid);
-        assert_eq!(prefs.grid_size, 32.0);
-        assert!(prefs.panels.is_empty());
-    }
-
-    #[test]
-    fn test_editor_preferences_roundtrip() {
-        let prefs = EditorPreferences {
-            camera_position: (100.0, 200.0),
-            camera_zoom: 2.5,
-            last_scene_path: Some("scenes/test.ron".to_string()),
-            snap_to_grid: true,
-            grid_size: 64.0,
-            grid_visible: false,
-            panels: vec![PanelPrefs { id: 1, visible: false, collapsed: true, size: 320.0 }],
-        };
-
-        let temp_dir = std::env::temp_dir();
-        let path = temp_dir.join("test_editor_prefs.json");
-
-        prefs.save(&path).expect("Failed to save");
-        let loaded = EditorPreferences::load(&path);
-
-        assert_eq!(loaded.camera_position, (100.0, 200.0));
-        assert_eq!(loaded.camera_zoom, 2.5);
-        assert_eq!(loaded.last_scene_path, Some("scenes/test.ron".to_string()));
-        assert!(loaded.snap_to_grid);
-        assert_eq!(loaded.grid_size, 64.0);
-        assert!(!loaded.grid_visible);
-        assert_eq!(loaded.panels.len(), 1);
-        assert_eq!(loaded.panels[0].id, 1);
-        assert!(!loaded.panels[0].visible);
-        assert!(loaded.panels[0].collapsed);
-        assert_eq!(loaded.panels[0].size, 320.0);
-
-        // Cleanup
-        let _ = std::fs::remove_file(&path);
-    }
-
-    #[test]
-    fn test_editor_preferences_load_missing_file() {
-        let prefs = EditorPreferences::load(Path::new("/nonexistent/path.json"));
-        assert_eq!(prefs.camera_zoom, 1.0); // Should return defaults
-    }
-
-    #[test]
-    fn test_legacy_prefs_without_panels_field_still_load() {
-        let legacy = r#"{
-            "camera_position": [10.0, 20.0],
-            "camera_zoom": 1.5,
-            "last_scene_path": null,
-            "snap_to_grid": false,
-            "grid_size": 32.0
-        }"#;
-        let prefs: EditorPreferences = serde_json::from_str(legacy).expect("legacy JSON parses");
-        assert_eq!(prefs.camera_position, (10.0, 20.0));
-        assert!(prefs.panels.is_empty());
-        // Prefs files predating the drawn grid default to visible.
-        assert!(prefs.grid_visible);
-    }
+    const HIERARCHY_MIN_WIDTH: f32 = 150.0;
 
     /// Dock area with the editor's default panel set (minus theme concerns).
     fn test_dock() -> DockArea {
@@ -196,7 +131,7 @@ mod tests {
         dock.add_panel(
             DockPanel::new(PanelId::HIERARCHY, "Hierarchy", DockPosition::Left)
                 .with_size(200.0)
-                .with_min_size(150.0),
+                .with_min_size(HIERARCHY_MIN_WIDTH),
         );
         dock.add_panel(
             DockPanel::new(PanelId::INSPECTOR, "Inspector", DockPosition::Right)
@@ -209,27 +144,46 @@ mod tests {
     }
 
     #[test]
-    fn test_capture_apply_panels_roundtrip() {
+    fn test_prefs_round_trip_through_a_file_including_the_panel_layout() -> Result<(), String> {
         let mut dock = test_dock();
         dock.set_panel_collapsed(PanelId::HIERARCHY, true);
         dock.set_panel_visible(PanelId::INSPECTOR, false);
-        dock.get_panel_mut(PanelId::INSPECTOR).unwrap().size = 333.0;
-
-        let mut prefs = EditorPreferences::default();
+        dock.get_panel_mut(PanelId::INSPECTOR).expect("inspector").size = 333.0;
+        let mut prefs = EditorPreferences {
+            camera_position: (100.0, 200.0),
+            camera_zoom: 2.5,
+            last_scene_path: Some("scenes/test.ron".to_string()),
+            snap_to_grid: true,
+            grid_size: 64.0,
+            grid_visible: false,
+            panels: Vec::new(),
+        };
         prefs.capture_panels(&dock);
-        // Center panel is never captured
-        assert_eq!(prefs.panels.len(), 2);
-        assert!(prefs.panels.iter().all(|p| p.id != PanelId::SCENE_VIEW.0));
+        let dir = tempfile::tempdir().map_err(|e| e.to_string())?;
+        let path = dir.path().join("editor_prefs.json");
 
+        prefs.save(&path)?;
+        let loaded = EditorPreferences::load(&path);
         let mut fresh = test_dock();
-        prefs.apply_panels(&mut fresh);
-        assert!(fresh.get_panel(PanelId::HIERARCHY).unwrap().collapsed);
-        assert!(!fresh.get_panel(PanelId::INSPECTOR).unwrap().visible);
-        assert_eq!(fresh.get_panel(PanelId::INSPECTOR).unwrap().size, 333.0);
+        loaded.apply_panels(&mut fresh);
+
+        assert_eq!(loaded.camera_position, (100.0, 200.0));
+        assert_eq!(loaded.camera_zoom, 2.5);
+        assert_eq!(loaded.last_scene_path.as_deref(), Some("scenes/test.ron"));
+        assert!(loaded.snap_to_grid);
+        assert_eq!(loaded.grid_size, 64.0);
+        assert!(!loaded.grid_visible);
+        // The Center panel is layout-derived and never persisted.
+        assert_eq!(loaded.panels.len(), 2);
+        assert!(loaded.panels.iter().all(|p| p.id != PanelId::SCENE_VIEW.0));
+        assert!(fresh.get_panel(PanelId::HIERARCHY).expect("hierarchy").collapsed);
+        assert!(!fresh.get_panel(PanelId::INSPECTOR).expect("inspector").visible);
+        assert_eq!(fresh.get_panel(PanelId::INSPECTOR).expect("inspector").size, 333.0);
+        Ok(())
     }
 
     #[test]
-    fn test_apply_panels_clamps_size_and_skips_unknown() {
+    fn test_apply_panels_clamps_sizes_to_the_panel_minimum_and_skips_unknown_ids() {
         let prefs = EditorPreferences {
             panels: vec![
                 PanelPrefs { id: PanelId::HIERARCHY.0, visible: true, collapsed: false, size: 1.0 },
@@ -237,10 +191,48 @@ mod tests {
             ],
             ..Default::default()
         };
-
         let mut dock = test_dock();
+
         prefs.apply_panels(&mut dock);
-        // Size clamped up to the panel's min_size (150)
-        assert_eq!(dock.get_panel(PanelId::HIERARCHY).unwrap().size, 150.0);
+
+        assert_eq!(
+            dock.get_panel(PanelId::HIERARCHY).expect("hierarchy").size,
+            HIERARCHY_MIN_WIDTH,
+            "a corrupt file cannot zero out a panel"
+        );
+        assert_eq!(dock.panels().len(), 3, "an unknown id adds nothing");
+    }
+
+    #[test]
+    fn test_legacy_prefs_without_panels_or_grid_fields_still_load() {
+        let legacy = r#"{
+            "camera_position": [10.0, 20.0],
+            "camera_zoom": 1.5,
+            "last_scene_path": null,
+            "snap_to_grid": false,
+            "grid_size": 32.0
+        }"#;
+
+        let prefs: EditorPreferences = serde_json::from_str(legacy).expect("legacy JSON parses");
+
+        assert_eq!(prefs.camera_position, (10.0, 20.0));
+        assert!(prefs.panels.is_empty());
+        assert!(prefs.grid_visible, "prefs files predating the drawn grid default to visible");
+    }
+
+    #[test]
+    fn test_load_falls_back_to_defaults_on_a_missing_or_truncated_file() -> Result<(), String> {
+        let dir = tempfile::tempdir().map_err(|e| e.to_string())?;
+        let truncated = dir.path().join("editor_prefs.json");
+        std::fs::write(&truncated, r#"{"camera_position": [100.0, 200.0], "camera_zo"#)
+            .map_err(|e| e.to_string())?;
+
+        let from_missing = EditorPreferences::load(&dir.path().join("absent.json"));
+        let from_truncated = EditorPreferences::load(&truncated);
+
+        assert_eq!(from_missing.camera_zoom, 1.0, "first run starts from defaults");
+        assert_eq!(from_truncated.camera_zoom, 1.0, "a corrupt file never blocks startup");
+        assert_eq!(from_truncated.camera_position, (0.0, 0.0), "no partial values leak from the corrupt file");
+        Ok(())
     }
 }

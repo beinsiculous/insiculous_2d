@@ -55,8 +55,10 @@ impl EditorPlayState {
 mod tests {
     use super::*;
 
+    /// A paused game is still a play session: the snapshot is live, so
+    /// Save/New/Open stay refused and Stop still restores the authored world.
     #[test]
-    fn test_in_play_session() {
+    fn test_paused_is_still_a_play_session() {
         assert!(!EditorPlayState::Editing.in_play_session());
         assert!(EditorPlayState::Playing.in_play_session());
         assert!(EditorPlayState::Paused.in_play_session());

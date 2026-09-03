@@ -156,17 +156,10 @@ fn draw_outline(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::{entity, pickable, test_viewport, WINDOW};
     use ui::DrawCommand;
 
-    fn viewport() -> SceneViewport {
-        let mut v = SceneViewport::new();
-        v.set_viewport_bounds(Rect::new(0.0, 0.0, 800.0, 600.0));
-        v
-    }
-
-    fn pickable(id: u64, pos: Vec2, size: Vec2, depth: f32) -> PickableEntity {
-        PickableEntity::new(EntityId::with_generation(id, 1), pos, size, depth)
-    }
+    const SIZE: Vec2 = Vec2::new(50.0, 50.0);
 
     fn colors() -> SelectionOutlineColors {
         SelectionOutlineColors {
@@ -176,195 +169,111 @@ mod tests {
         }
     }
 
-    fn lines(ui: &UIContext) -> Vec<(Color, f32)> {
+    fn bounds() -> Rect {
+        Rect::new(0.0, 0.0, WINDOW.x, WINDOW.y)
+    }
+
+    fn lines(ui: &UIContext) -> Vec<(Vec2, Vec2, Color, f32)> {
         ui.draw_list()
             .commands()
             .iter()
             .filter_map(|c| match c {
-                DrawCommand::Line { color, width, .. } => Some((*color, *width)),
+                DrawCommand::Line { start, end, color, width, .. } => Some((*start, *end, *color, *width)),
                 _ => None,
             })
             .collect()
     }
 
-    fn bounds() -> Rect {
-        Rect::new(0.0, 0.0, 800.0, 600.0)
-    }
-
     #[test]
-    fn test_outline_segments_trace_the_aabb_corners() {
-        let segments = outline_segments(Vec2::new(10.0, 20.0), Vec2::new(4.0, 6.0));
-        let corners = [
-            Vec2::new(8.0, 17.0),
-            Vec2::new(12.0, 17.0),
-            Vec2::new(12.0, 23.0),
-            Vec2::new(8.0, 23.0),
-        ];
-        for (i, (start, end)) in segments.iter().enumerate() {
-            assert_eq!(*start, corners[i]);
-            assert_eq!(*end, corners[(i + 1) % 4]);
-        }
-        // A negative (flip) scale outlines the same rectangle
-        assert_eq!(
-            outline_segments(Vec2::new(10.0, 20.0), Vec2::new(-4.0, 6.0)),
-            segments
-        );
-    }
-
-    #[test]
-    fn test_render_outline_emits_four_lines_for_selected_sprite() {
-        let mut ui = UIContext::new();
+    fn test_primary_outline_is_wider_and_brighter_and_traces_the_sprite_on_screen() {
+        let viewport = test_viewport();
+        let colors = colors();
         let mut selection = Selection::new();
-        let p = pickable(1, Vec2::ZERO, Vec2::new(50.0, 50.0), 0.0);
-        selection.select(p.entity_id);
-
-        render_selection_outline(&mut ui, &viewport(), &selection, None, &[p], &colors(), bounds());
-        assert_eq!(lines(&ui).len(), 4);
-    }
-
-    #[test]
-    fn test_render_outline_skips_unselected_entities() {
-        let mut ui = UIContext::new();
-        let p = pickable(1, Vec2::ZERO, Vec2::new(50.0, 50.0), 0.0);
-
-        render_selection_outline(
-            &mut ui, &viewport(), &Selection::new(), None, &[p], &colors(), bounds(),
-        );
-        assert!(lines(&ui).is_empty());
-    }
-
-    #[test]
-    fn test_selected_and_hovered_entity_outlined_once_not_twice() {
-        let mut ui = UIContext::new();
-        let mut selection = Selection::new();
-        let p = pickable(1, Vec2::ZERO, Vec2::new(50.0, 50.0), 0.0);
-        selection.select(p.entity_id);
-
-        render_selection_outline(
-            &mut ui, &viewport(), &selection, Some(p.entity_id), &[p], &colors(), bounds(),
-        );
-        assert_eq!(lines(&ui).len(), 4, "hover must not double-outline a selected entity");
-    }
-
-    #[test]
-    fn test_hovered_only_entity_gets_translucent_outline() {
-        let mut ui = UIContext::new();
-        let p = pickable(1, Vec2::ZERO, Vec2::new(50.0, 50.0), 0.0);
-
-        render_selection_outline(
-            &mut ui, &viewport(), &Selection::new(), Some(p.entity_id), &[p], &colors(), bounds(),
-        );
-        let drawn = lines(&ui);
-        assert_eq!(drawn.len(), 4);
-        for (color, _) in drawn {
-            assert_eq!(color, colors().hovered);
-        }
-    }
-
-    #[test]
-    fn test_primary_outline_brighter_and_wider_than_secondary() {
-        let c = colors();
-        assert_eq!(c.color_for(true), c.primary);
-        assert_eq!(c.color_for(false), c.secondary);
-
-        let mut ui = UIContext::new();
-        let mut selection = Selection::new();
-        let a = pickable(1, Vec2::new(-100.0, 0.0), Vec2::new(50.0, 50.0), 0.0);
-        let b = pickable(2, Vec2::new(100.0, 0.0), Vec2::new(50.0, 50.0), 0.0);
-        selection.select(a.entity_id);
-        selection.add(b.entity_id);
-
-        render_selection_outline(
-            &mut ui, &viewport(), &selection, None, &[a, b], &c, bounds(),
-        );
-        let drawn = lines(&ui);
-        assert_eq!(drawn.len(), 8);
-        assert_eq!(drawn.iter().filter(|(col, w)| *col == c.primary && *w > 2.0).count(), 4);
-        assert_eq!(drawn.iter().filter(|(col, w)| *col == c.secondary && *w < 2.0).count(), 4);
-    }
-
-    #[test]
-    fn test_overlapping_selection_outlines_draw_back_to_front() {
-        let mut ui = UIContext::new();
-        let mut selection = Selection::new();
-        // Primary is the BACK entity — the front one must still draw last.
-        let back = pickable(1, Vec2::ZERO, Vec2::new(50.0, 50.0), 0.0);
-        let front = pickable(2, Vec2::ZERO, Vec2::new(50.0, 50.0), 5.0);
+        // The primary sits BEHIND the secondary at the same spot: outlines
+        // draw back to front, so the primary's edges come first.
+        let back = pickable(1, Vec2::new(-100.0, 0.0), SIZE, 0.0);
+        let front = pickable(2, Vec2::new(-100.0, 0.0), SIZE, 5.0);
+        let unselected = pickable(3, Vec2::new(100.0, 0.0), SIZE, 0.0);
         selection.select(back.entity_id);
         selection.add(front.entity_id);
+        let mut ui = UIContext::new();
 
-        render_selection_outline(
-            &mut ui, &viewport(), &selection, None, &[front.clone(), back], &colors(), bounds(),
-        );
+        render_selection_outline(&mut ui, &viewport, &selection, None, &[front, back, unselected], &colors, bounds());
+
         let drawn = lines(&ui);
-        assert_eq!(drawn.len(), 8);
-        for (color, _) in &drawn[..4] {
-            assert_eq!(*color, colors().primary, "back (primary) entity draws first");
+        assert_eq!(drawn.len(), 8, "two selected outlines of four edges; the unselected entity draws none");
+        // World corners (-125,-25)…(-75,25) land on screen with Y flipped.
+        let corners = [Vec2::new(275.0, 325.0), Vec2::new(325.0, 325.0), Vec2::new(325.0, 275.0), Vec2::new(275.0, 275.0)];
+        for (i, (start, end, color, width)) in drawn[..4].iter().enumerate() {
+            assert_eq!(*start, corners[i]);
+            assert_eq!(*end, corners[(i + 1) % 4]);
+            assert_eq!(*color, colors.primary);
+            assert_eq!(*width, PRIMARY_WIDTH);
         }
-        for (color, _) in &drawn[4..] {
-            assert_eq!(*color, colors().secondary, "front entity draws last, on top");
+        for (_, _, color, width) in &drawn[4..] {
+            assert_eq!(*color, colors.secondary);
+            assert_eq!(*width, SECONDARY_WIDTH);
         }
     }
 
     #[test]
-    fn test_hover_picks_topmost_by_depth_with_stable_tiebreak() {
-        let vp = viewport();
+    fn test_hover_hint_is_translucent_and_never_doubles_a_selected_outline() {
+        let viewport = test_viewport();
+        let colors = colors();
+        let sprite = pickable(1, Vec2::ZERO, SIZE, 0.0);
+
+        let mut hovered_only = UIContext::new();
+        render_selection_outline(
+            &mut hovered_only, &viewport, &Selection::new(), Some(sprite.entity_id), std::slice::from_ref(&sprite), &colors, bounds(),
+        );
+        let drawn = lines(&hovered_only);
+        assert_eq!(drawn.len(), 4);
+        for (_, _, color, width) in drawn {
+            assert_eq!(color, colors.hovered, "an unselected hover draws the translucent hint");
+            assert_eq!(width, SECONDARY_WIDTH);
+        }
+
+        let mut selection = Selection::new();
+        selection.select(sprite.entity_id);
+        let mut selected_and_hovered = UIContext::new();
+        render_selection_outline(
+            &mut selected_and_hovered, &viewport, &selection, Some(sprite.entity_id), &[sprite], &colors, bounds(),
+        );
+        let drawn = lines(&selected_and_hovered);
+        assert_eq!(drawn.len(), 4, "hover must not double-outline a selected entity");
+        assert!(drawn.iter().all(|line| line.2 == colors.primary));
+    }
+
+    #[test]
+    fn test_hover_picks_topmost_by_depth_then_id_and_honours_flip_and_zero_size() {
+        let viewport = test_viewport();
+        let center = viewport.world_to_screen(Vec2::ZERO);
+
         let stack = [
-            pickable(1, Vec2::ZERO, Vec2::new(50.0, 50.0), 0.0),
-            pickable(2, Vec2::ZERO, Vec2::new(50.0, 50.0), 10.0),
-            pickable(3, Vec2::ZERO, Vec2::new(50.0, 50.0), 5.0),
+            pickable(1, Vec2::ZERO, SIZE, 0.0),
+            pickable(2, Vec2::ZERO, SIZE, 10.0),
+            pickable(3, Vec2::ZERO, SIZE, 5.0),
         ];
-        let center = vp.world_to_screen(Vec2::ZERO);
-        assert_eq!(
-            hover_entity_at(center, &vp, &stack),
-            Some(EntityId::with_generation(2, 1))
-        );
+        assert_eq!(hover_entity_at(center, &viewport, &stack), Some(entity(2)), "highest depth wins");
+        let tied = [pickable(7, Vec2::ZERO, SIZE, 1.0), pickable(4, Vec2::ZERO, SIZE, 1.0)];
+        assert_eq!(hover_entity_at(center, &viewport, &tied), Some(entity(7)), "equal depths: the higher id, deterministically");
+        let far = viewport.world_to_screen(Vec2::new(500.0, 500.0));
+        assert_eq!(hover_entity_at(far, &viewport, &stack), None, "a miss hovers nothing");
 
-        // Equal depths: the higher entity id wins, deterministically
-        let tied = [
-            pickable(7, Vec2::ZERO, Vec2::new(50.0, 50.0), 1.0),
-            pickable(4, Vec2::ZERO, Vec2::new(50.0, 50.0), 1.0),
-        ];
-        assert_eq!(
-            hover_entity_at(center, &vp, &tied),
-            Some(EntityId::with_generation(7, 1))
-        );
-
-        // A miss hovers nothing
-        let far = vp.world_to_screen(Vec2::new(500.0, 500.0));
-        assert_eq!(hover_entity_at(far, &vp, &stack), None);
-    }
-
-    #[test]
-    fn test_zero_size_pickable_never_outlines_or_hovers() {
-        let vp = viewport();
-        let mut ui = UIContext::new();
+        // A negative (flip) scale hovers and outlines at its absolute size.
+        let flipped = [pickable(1, Vec2::ZERO, Vec2::new(-50.0, 50.0), 0.0)];
+        assert_eq!(hover_entity_at(viewport.world_to_screen(Vec2::new(10.0, 10.0)), &viewport, &flipped), Some(entity(1)));
         let mut selection = Selection::new();
-        let p = pickable(1, Vec2::ZERO, Vec2::ZERO, 0.0);
-        selection.select(p.entity_id);
-
-        render_selection_outline(
-            &mut ui, &vp, &selection, Some(p.entity_id), std::slice::from_ref(&p), &colors(), bounds(),
-        );
-        assert!(lines(&ui).is_empty(), "a degenerate outline is skipped, not drawn as a dot");
-        assert_eq!(hover_entity_at(vp.world_to_screen(Vec2::ZERO), &vp, &[p]), None);
-    }
-
-    #[test]
-    fn test_negative_flip_scale_outlines_and_hovers_at_absolute_size() {
-        let vp = viewport();
+        selection.select(entity(1));
         let mut ui = UIContext::new();
-        let mut selection = Selection::new();
-        let p = pickable(1, Vec2::ZERO, Vec2::new(-50.0, 50.0), 0.0);
-        selection.select(p.entity_id);
-
-        render_selection_outline(
-            &mut ui, &vp, &selection, None, std::slice::from_ref(&p), &colors(), bounds(),
-        );
+        render_selection_outline(&mut ui, &viewport, &selection, None, &flipped, &colors(), bounds());
         assert_eq!(lines(&ui).len(), 4);
-        assert_eq!(
-            hover_entity_at(vp.world_to_screen(Vec2::new(10.0, 10.0)), &vp, &[p]),
-            Some(EntityId::with_generation(1, 1))
-        );
+
+        // A zero-size pickable neither hovers nor draws as a dot.
+        let point = [pickable(1, Vec2::ZERO, Vec2::ZERO, 0.0)];
+        assert_eq!(hover_entity_at(center, &viewport, &point), None);
+        let mut ui = UIContext::new();
+        render_selection_outline(&mut ui, &viewport, &selection, Some(entity(1)), &point, &colors(), bounds());
+        assert_eq!(lines(&ui).len(), 0, "a degenerate outline is skipped");
     }
 }

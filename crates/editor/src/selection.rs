@@ -134,268 +134,106 @@ impl Selection {
 mod tests {
     use super::*;
 
-    fn entity(id: u64) -> EntityId {
-        EntityId::with_generation(id, 1)
+    use crate::test_support::entity;
+
+    fn order(selection: &Selection) -> Vec<EntityId> {
+        selection.selected().collect()
     }
 
     #[test]
-    fn test_inspector_heading_counts_the_rest_of_a_multi_selection() {
+    fn test_selection_keeps_insertion_order_and_re_adding_keeps_the_original_position() {
+        let (third, first, second) = (entity(3), entity(1), entity(2));
         let mut selection = Selection::new();
-        assert_eq!(selection.inspector_heading(), None);
-        selection.select(entity(7));
-        assert_eq!(selection.inspector_heading().as_deref(), Some("Entity: 7"));
-        selection.add(entity(8));
-        selection.add(entity(9));
+
+        selection.add(third);
+        selection.add(first);
+        selection.add(second);
+        assert_eq!(order(&selection), vec![third, first, second], "order is by selection, not by id");
+        assert_eq!(selection.primary(), Some(third), "the first added is the primary");
+
+        selection.add(first);
+        assert_eq!(order(&selection), vec![third, first, second], "a re-add neither duplicates nor moves");
+        assert_eq!(selection.len(), 3);
+
+        selection.toggle(first);
+        assert_eq!(order(&selection), vec![third, second], "toggle on a selected entity removes it");
+        selection.toggle(first);
+        assert_eq!(order(&selection), vec![third, second, first], "toggle back appends at the end");
+    }
+
+    #[test]
+    fn test_removing_the_primary_falls_back_to_the_earliest_remaining_without_reordering() {
+        // Four entries so that a swap_remove would be visible: removing the
+        // second of [a, b, c, d] must leave [a, c, d], never [a, d, c].
+        let (a, b, c, d) = (entity(1), entity(2), entity(3), entity(4));
+        let mut selection = Selection::new();
+        selection.add(a);
+        selection.add(b);
+        selection.add(c);
+        selection.add(d);
+
+        selection.remove(b);
+        assert_eq!(order(&selection), vec![a, c, d], "removal shifts, it never swaps the tail in");
+        assert_eq!(selection.primary(), Some(a), "removing a non-primary keeps the primary");
+
+        selection.remove(a);
         assert_eq!(
-            selection.inspector_heading().as_deref(),
-            Some("Entity: 7  (1 of 3 selected)")
+            selection.primary(),
+            Some(c),
+            "the earliest remaining entity becomes primary — deterministic, not hash order"
         );
-    }
+        assert!(!selection.contains(a));
 
-    #[test]
-    fn test_selection_new() {
-        let selection = Selection::new();
+        selection.remove(c);
+        selection.remove(d);
         assert!(selection.is_empty());
-        assert_eq!(selection.len(), 0);
-        assert!(selection.primary().is_none());
+        assert_eq!(selection.primary(), None, "an emptied selection has no primary");
     }
 
     #[test]
-    fn test_selection_select() {
+    fn test_select_replaces_the_selection_in_the_given_order_with_the_first_as_primary() {
+        let (previous, e5, e2, e9) = (entity(7), entity(5), entity(2), entity(9));
         let mut selection = Selection::new();
-        let e1 = entity(1);
+        selection.select(previous);
 
-        selection.select(e1);
-
-        assert!(!selection.is_empty());
-        assert_eq!(selection.len(), 1);
-        assert!(selection.contains(e1));
-        assert_eq!(selection.primary(), Some(e1));
-    }
-
-    #[test]
-    fn test_selection_select_clears_previous() {
-        let mut selection = Selection::new();
-        let e1 = entity(1);
-        let e2 = entity(2);
-
-        selection.select(e1);
-        selection.select(e2);
-
-        assert_eq!(selection.len(), 1);
-        assert!(!selection.contains(e1));
-        assert!(selection.contains(e2));
-        assert_eq!(selection.primary(), Some(e2));
-    }
-
-    #[test]
-    fn test_selection_add() {
-        let mut selection = Selection::new();
-        let e1 = entity(1);
-        let e2 = entity(2);
-
-        selection.add(e1);
-        selection.add(e2);
-
-        assert_eq!(selection.len(), 2);
-        assert!(selection.contains(e1));
-        assert!(selection.contains(e2));
-        // Primary should be the first added
-        assert_eq!(selection.primary(), Some(e1));
-    }
-
-    #[test]
-    fn test_selection_remove() {
-        let mut selection = Selection::new();
-        let e1 = entity(1);
-        let e2 = entity(2);
-
-        selection.add(e1);
-        selection.add(e2);
-        selection.remove(e1);
-
-        assert_eq!(selection.len(), 1);
-        assert!(!selection.contains(e1));
-        assert!(selection.contains(e2));
-    }
-
-    #[test]
-    fn test_selection_remove_primary_updates() {
-        let mut selection = Selection::new();
-        let e1 = entity(1);
-        let e2 = entity(2);
-
-        selection.add(e1);
-        selection.add(e2);
-        assert_eq!(selection.primary(), Some(e1));
-
-        selection.remove(e1);
-        // Primary should update to remaining entity
-        assert_eq!(selection.primary(), Some(e2));
-    }
-
-    #[test]
-    fn test_selection_toggle() {
-        let mut selection = Selection::new();
-        let e1 = entity(1);
-
-        selection.toggle(e1);
-        assert!(selection.contains(e1));
-
-        selection.toggle(e1);
-        assert!(!selection.contains(e1));
-    }
-
-    #[test]
-    fn test_selection_clear() {
-        let mut selection = Selection::new();
-        let e1 = entity(1);
-        let e2 = entity(2);
-
-        selection.add(e1);
-        selection.add(e2);
-        selection.clear();
-
-        assert!(selection.is_empty());
-        assert!(selection.primary().is_none());
-    }
-
-    #[test]
-    fn test_selection_select_multiple() {
-        let mut selection = Selection::new();
-        let e1 = entity(1);
-        let e2 = entity(2);
-        let e3 = entity(3);
-
-        selection.select(e3); // Previous selection
-        selection.select_multiple([e1, e2]);
-
-        assert_eq!(selection.len(), 2);
-        assert!(selection.contains(e1));
-        assert!(selection.contains(e2));
-        assert!(!selection.contains(e3));
-    }
-
-    #[test]
-    fn test_selection_set_primary() {
-        let mut selection = Selection::new();
-        let e1 = entity(1);
-        let e2 = entity(2);
-
-        selection.add(e1);
-        selection.add(e2);
-        selection.set_primary(e2);
-
-        assert_eq!(selection.primary(), Some(e2));
-    }
-
-    #[test]
-    fn test_selection_set_primary_must_be_selected() {
-        let mut selection = Selection::new();
-        let e1 = entity(1);
-        let e2 = entity(2);
-
-        selection.select(e1);
-        selection.set_primary(e2); // e2 is not selected
-
-        // Primary should remain e1
-        assert_eq!(selection.primary(), Some(e1));
-    }
-
-    #[test]
-    fn test_selected_iterates_in_insertion_order() {
-        let mut selection = Selection::new();
-        let (e3, e1, e2) = (entity(3), entity(1), entity(2));
-
-        selection.add(e3);
-        selection.add(e1);
-        selection.add(e2);
-
-        let selected: Vec<_> = selection.selected().collect();
-        assert_eq!(selected, vec![e3, e1, e2]);
-    }
-
-    #[test]
-    fn test_add_already_selected_keeps_position_and_len() {
-        let mut selection = Selection::new();
-        let e1 = entity(1);
-        let e2 = entity(2);
-
-        selection.add(e1);
-        selection.add(e2);
-        selection.add(e1); // re-add must not duplicate or move e1
-
-        assert_eq!(selection.len(), 2);
-        let selected: Vec<_> = selection.selected().collect();
-        assert_eq!(selected, vec![e1, e2]);
-        assert_eq!(selection.primary(), Some(e1));
-    }
-
-    #[test]
-    fn test_remove_primary_falls_back_to_earliest_remaining() {
-        let mut selection = Selection::new();
-        let (e1, e2, e3) = (entity(1), entity(2), entity(3));
-
-        selection.add(e1);
-        selection.add(e2);
-        selection.add(e3);
-        assert_eq!(selection.primary(), Some(e1));
-
-        selection.remove(e1);
-        // Deterministic: the earliest remaining selected entity, not an
-        // arbitrary hash-order survivor.
-        assert_eq!(selection.primary(), Some(e2));
-    }
-
-    #[test]
-    fn test_select_multiple_primary_is_first_given() {
-        let mut selection = Selection::new();
-        let (e5, e2, e9) = (entity(5), entity(2), entity(9));
-
-        selection.select_multiple([e5, e2, e9]);
-
+        selection.select(e5);
+        assert_eq!(order(&selection), vec![e5], "a single select clears what was there");
         assert_eq!(selection.primary(), Some(e5));
-        let selected: Vec<_> = selection.selected().collect();
-        assert_eq!(selected, vec![e5, e2, e9]);
-    }
 
-    #[test]
-    fn test_select_multiple_empty_clears_primary() {
-        let mut selection = Selection::new();
-        selection.select(entity(1));
+        selection.select_multiple([e5, e2, e9, e2]);
+        assert_eq!(order(&selection), vec![e5, e2, e9], "given order kept, duplicates keep their first slot");
+        assert_eq!(selection.primary(), Some(e5), "the first given is the primary");
+        assert!(!selection.contains(previous));
 
         selection.select_multiple(std::iter::empty());
+        assert!(selection.is_empty());
+        assert_eq!(selection.primary(), None, "an empty multi-select clears the primary too");
 
+        selection.add(e2);
+        selection.clear();
         assert!(selection.is_empty());
         assert_eq!(selection.primary(), None);
     }
 
     #[test]
-    fn test_select_multiple_dedupes_keeping_first_position() {
+    fn test_inspector_heading_names_the_primary_and_counts_the_rest_of_a_multi_selection() {
+        // #51: the inspector heading is how the user tells WHICH of a
+        // multi-selection they are editing.
         let mut selection = Selection::new();
-        let e1 = entity(1);
-        let e2 = entity(2);
+        assert_eq!(selection.inspector_heading(), None, "nothing selected, no heading");
 
-        selection.select_multiple([e1, e2, e1]);
+        selection.select(entity(7));
+        assert_eq!(selection.inspector_heading().as_deref(), Some("Entity: 7"));
 
-        assert_eq!(selection.len(), 2);
-        let selected: Vec<_> = selection.selected().collect();
-        assert_eq!(selected, vec![e1, e2]);
-        assert_eq!(selection.primary(), Some(e1));
-    }
+        selection.add(entity(8));
+        selection.add(entity(9));
+        assert_eq!(selection.inspector_heading().as_deref(), Some("Entity: 7  (1 of 3 selected)"));
 
-    #[test]
-    fn test_selection_iterator() {
-        let mut selection = Selection::new();
-        let e1 = entity(1);
-        let e2 = entity(2);
-
-        selection.add(e1);
-        selection.add(e2);
-
-        let selected: Vec<_> = selection.selected().collect();
-        assert_eq!(selected.len(), 2);
-        assert!(selected.contains(&e1));
-        assert!(selected.contains(&e2));
+        selection.remove(entity(7));
+        assert_eq!(
+            selection.inspector_heading().as_deref(),
+            Some("Entity: 8  (1 of 2 selected)"),
+            "the heading follows the primary fallback"
+        );
     }
 }

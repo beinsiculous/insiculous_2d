@@ -125,58 +125,42 @@ impl ConfirmDialog {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use input::prelude::MouseButton;
+    use crate::test_support::{click_through, frame, WINDOW};
 
-    const WINDOW: Vec2 = Vec2::new(1280.0, 720.0);
-
+    /// Click `point` on a fresh dialog and return the release frame's choice.
     fn click_at(point: Vec2) -> Option<ConfirmChoice> {
         let dialog = ConfirmDialog::unsaved_changes("opening another scene");
         let theme = EditorTheme::default();
         let mut ui = UIContext::new();
         let mut input = input::InputHandler::new();
-
-        // Press frame.
-        input.mouse_mut().update_position(point.x, point.y);
-        input.mouse_mut().handle_button_press(MouseButton::Left);
-        ui.begin_frame(&input, WINDOW);
-        dialog.render(&mut ui, WINDOW, &theme);
-        ui.end_frame();
-        // Release frame — clicks fire here.
-        input.mouse_mut().handle_button_release(MouseButton::Left);
-        ui.begin_frame(&input, WINDOW);
-        let choice = dialog.render(&mut ui, WINDOW, &theme);
-        ui.end_frame();
+        let (_, choice) = click_through(&mut ui, &mut input, point, |ui| dialog.render(ui, WINDOW, &theme));
         choice
     }
 
-    fn center(r: Rect) -> Vec2 {
-        Vec2::new(r.x + r.width * 0.5, r.y + r.height * 0.5)
-    }
-
+    /// Each of the three buttons returns its own choice, on the release frame.
     #[test]
     fn test_each_button_returns_its_choice() {
         let (confirm, alt, cancel) = ConfirmDialog::button_rects(WINDOW);
-        assert_eq!(click_at(center(confirm)), Some(ConfirmChoice::Confirm));
-        assert_eq!(click_at(center(alt)), Some(ConfirmChoice::Alt));
-        assert_eq!(click_at(center(cancel)), Some(ConfirmChoice::Cancel));
+        assert_eq!(click_at(confirm.center()), Some(ConfirmChoice::Confirm));
+        assert_eq!(click_at(alt.center()), Some(ConfirmChoice::Alt));
+        assert_eq!(click_at(cancel.center()), Some(ConfirmChoice::Cancel));
     }
 
+    /// The scrim is not a choice, and while the dialog shows the whole
+    /// window is input-blocked so nothing underneath can be clicked.
     #[test]
     fn test_scrim_click_is_not_a_choice_and_blocks_input() {
-        // A click on the scrim (outside the panel) chooses nothing…
-        assert_eq!(click_at(Vec2::new(20.0, 20.0)), None);
+        assert_eq!(click_at(Vec2::new(20.0, 20.0)), None, "a scrim click chooses nothing");
 
-        // …and the full window is input-blocked while the dialog shows.
         let dialog = ConfirmDialog::unsaved_changes("creating a new scene");
         let theme = EditorTheme::default();
         let mut ui = UIContext::new();
         let input = input::InputHandler::new();
-        ui.begin_frame(&input, WINDOW);
-        dialog.render(&mut ui, WINDOW, &theme);
-        assert!(
-            ui.is_input_blocked_at(Vec2::new(5.0, 700.0)),
-            "the scrim swallows clicks anywhere in the window"
-        );
-        ui.end_frame();
+        let corners_blocked = frame(&mut ui, &input, |ui| {
+            dialog.render(ui, WINDOW, &theme);
+            [Vec2::new(5.0, WINDOW.y - 5.0), Vec2::new(WINDOW.x - 5.0, 5.0), ConfirmDialog::panel_rect(WINDOW).center()]
+                .map(|point| ui.is_input_blocked_at(point))
+        });
+        assert_eq!(corners_blocked, [true, true, true], "the scrim swallows clicks anywhere in the window");
     }
 }
