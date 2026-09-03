@@ -351,33 +351,149 @@ Extra verification: scene round-trip suite + new behaviour fixture; games test g
 
 ## Batch 6 — DRY in editor commands and the command API (~450 removed, ~250 added; §F, §G)
 
-- `SetComponentCommand<T>` replaces `impl_set_component_command!`; the 13 names become type
-  aliases; `TransformGizmoCommand` = `SetTransformCommand` with `GIZMO_FIELD_HINT` (five call
-  sites); registry entries drop the `=> SetCmd` token. Two display-string asserts change
-  ("Set Transform" → "Set Transform2D"). Add: distinct `T`s never merge; gizmo hint never merges
-  with a field hint.
-- `stored_component/component_ref.rs` `ComponentRef { Typed(ComponentKind), Dynamic(String) }`;
-  one Add/Remove pair with `::dynamic(..)` constructors; the dynamic twins deleted (five sites).
-- `physical_floors.rs`: shared floor constants/`clamp_*` used by `sanitize()` and the field
-  editors.
-- `write.rs`: `build_add_patch_set` reuses the Set path; `api.rs` uses `WriteCtx::record` and
-  passes the parsed request instead of re-parsing the raw line.
-- `archetype.rs` `Archetype` enum (`kebab`, `from_kebab`, `menu_label`, `ALL`); `ARCHETYPES`
-  derives from it; `handle_create_action(&str)` → `create_archetype(Archetype)`; menu items
-  generated from `Archetype::ALL` (closes #90 ARCH-101).
-- `menu/actions.rs` `action_for_menu_label` → `EditorAction` (gains `CreateEntity(Archetype)`,
-  `Exit`, `TogglePanel(PanelId)`, `ResetLayout`, `CycleGameLocale`, and
-  `allowed_while_playing()`); `handle_menu_bar` shrinks to one dispatch through
-  `dispatch_editor_action`. Shortcut Undo/Redo gain the menu's status message; the drag guard
-  now also protects menu-driven Undo/Delete/Paste/Cut. Test: every enabled menu item maps.
-- `CommandHistory::push_as_one` / `execute_as_one` (four copies); `Modifiers::read(input)` in
-  `editor_input.rs` (five spellings, `ctrl_held` deleted); `WidgetSlot` enum behind `FieldId`
-  replaces the 99/+50/+60 arithmetic; one `uncaptured_component_names`; `loss_warning`/
-  `drop_report` share a body; `scene_io.rs` calls `World::clear()`, gains `reset_session()`,
-  returns a typed `SceneIoError`.
+Corrected Sep 3 2026 against the tree after batch 5, then again after review 21 (kimi, seven
+findings, all folded in): every line reference below was re-derived from the current files. The
+design's `editor_game/tests.rs:518`, `panel_renderer/tests.rs`, `commands/name_tests.rs` and
+`commands/tests.rs:117,122` no longer exist or moved. The design's "api.rs drift test" is
+`api_tests.rs:69 test_api_create_archetypes_all_map_to_factories`, which drives every
+`ARCHETYPES` entry through `create` end-to-end and stays as it is; the doc comments at
+`parse.rs:9-10` and `api.rs:223-225` describe the label mapping this batch deletes. The three
+remaining `#[allow(too_many_arguments)]` in the editor crate (`texture_field.rs:31`,
+`stored_component/mod.rs:297,513`) are batch 7's, not this batch's.
 
-Extra verification: `commands/tests.rs`, `dirty_tests.rs`, `write_tests.rs`, selection-restore
-and archetype drift tests; a headless `--api` transcript exercising set/add/create/undo/save.
+- `SetComponentCommand<T>` (`commands/set_commands.rs`, design §F) replaces
+  `impl_set_component_command!` (`set_commands.rs:73-118`) and its 13 expansions (`:120-158`); the
+  13 names become type aliases, re-exported from `commands/mod.rs:19-24` together with
+  `SetComponentCommand` and `GIZMO_FIELD_HINT`. `TransformGizmoCommand` (`set_commands.rs:14-63`)
+  is deleted: the one production site `viewport_interaction.rs:441` and the two test sites
+  `commands/tests.rs:257,259` become `SetTransformCommand::new(entity, old, new, GIZMO_FIELD_HINT)`;
+  `commands/mod.rs:23` drops the re-export. Three asserts change from "Set Transform" to
+  "Set Transform2D": `commands/tests.rs:45,50` and `component_editors/tests.rs:209`. The gizmo
+  drag's undo label changes with it — the status bar reads "Undo: Set Transform2D" where it read
+  "Undo: Transform Gizmo" — user-visible and cosmetic; no test pins it. The registry macro loses
+  its command token: the `$cmd:ident` in `registry_edit_block!` (`stored_component/mod.rs:43,63`,
+  used at `:57,81`) and the `=> Set…Command` half of each of the 13 `edit` entries (`:483-501`)
+  go, the block constructs `SetComponentCommand::<$ty>::new(e, old, new, hint)` itself, and the
+  Set* import block at `stored_component/mod.rs:22-26` shrinks to `CommandHistory,
+  RemoveComponentCommand`. Unchanged through the aliases: `entity_ops.rs` (`SetSpriteCommand`, one
+  site), `viewport_interaction.rs:450` (`SetColliderCommand` with `"gizmo_scale"`),
+  `commands/dirty_tests.rs`, the rest of `commands/tests.rs` and `component_editors/tests.rs`.
+  `display` is a `String` built once from `T::type_name()`. Add: distinct `T`s never merge on one
+  entity + hint; the gizmo hint never merges with a field hint.
+- `stored_component/component_ref.rs` (new — `mod.rs` is 584 lines):
+  `ComponentRef { Typed(ComponentKind), Dynamic(String) }` with `display_name`, `add_default`,
+  `capture`, `remove`, `cascade` (RigidBody → Collider, today inline at
+  `component_commands.rs:88-92`; dynamic never cascades). `AddComponentCommand`/
+  `RemoveComponentCommand` (`component_commands.rs:16-112`) hold a `ComponentRef`; `::new(entity,
+  kind)` stays, `::dynamic(entity, name)` is added; `AddDynamicComponentCommand`/
+  `RemoveDynamicComponentCommand` (`component_commands.rs:114-258`) are deleted with their
+  re-exports at `commands/mod.rs:14-17`. Five sites: `panel_renderer/inspector.rs:269`,
+  `command_api/write.rs:293,353`, `stored_component/mod.rs:338` (and the doc comment at `:511`),
+  `stored_component/dynamic_tests.rs:9,87,97`. Display names unify to "Add {name}" /
+  "Remove {name}" (no test asserts "Add Component" or "Remove Component").
+- `crates/editor/src/physical_floors.rs` (new): the floors that `sanitize()`
+  (`command_api/write.rs:168-207`) and the field editors (`component_editors.rs:147,174` scale;
+  `:284,292,300,306,314,320` collider; `ranges::VOLUME`/`ranges::PITCH` at `:367,371`) both apply
+  today — scale ≥ 0.01 (Transform2D and Sprite), collider half-extents and radius ≥ 0.5, capsule
+  half-height ≥ 0.0, volume 0..=1, pitch ≥ 0.1 — become named constants plus `clamp_transform`/
+  `clamp_sprite`/`clamp_collider`/`clamp_audio_source`; `sanitize` calls the `clamp_*`, the
+  editors use the constants (or the clamp), so each number appears once. Deliberately unchanged:
+  the inspector-only floors on damping, friction and restitution (`component_editors.rs:232,236,
+  335,339`) stay inspector-only — widening `sanitize` to them is a behaviour change, not DRY.
+  `docs/EDITOR_COMMAND_API.md` § Sanitation already describes the shared set; no doc edit.
+- `write.rs`: `build_add_patch_set` (`write.rs:80-96`) and the `PureWrite::Set` arm of `run`
+  (`:226-250`) share one body that builds the sanitized, texture-validated
+  `SetComponentValueCommand` (Set keeps its Name refusal, its non-finite check and its "add it
+  first" message). A `pub fn record_executed(history, batch, cmd)` in `write.rs` backs
+  `WriteCtx::record` (`:52-57`) and replaces the copy at `api.rs:144-147`. `answer_api_lines`
+  (`api.rs:42-58`) stops re-parsing queries: a `pub fn answer_query(&Query, &QueryCtx) -> String`
+  (run + envelope) serves both `dispatch_line` (`mod.rs:186-199`, kept — the documented
+  transport-agnostic entry with three test callers) and the query arm in `api.rs`.
+- `crates/editor/src/archetype.rs` (new, design §G1): `Archetype` with `ALL`, `const fn kebab`,
+  `from_kebab`, `const fn menu_label`, and its own test `from_kebab(kebab(a)) == Some(a)` over
+  `ALL`. `ARCHETYPES` (`parse.rs:11-14`) derives from it and stays `pub` (`specs.rs:177`,
+  `mod.rs:24`, `api_tests.rs:75,80` read it); its doc comment (`parse.rs:9-10`) stops claiming a
+  drift test locks a mapping — the list derives from the enum, nothing can drift. The validation
+  at `parse.rs:173-178` becomes `from_kebab`; `HostedWrite::Create { archetype: Archetype, .. }`
+  (`mod.rs:117`; the response string at `api.rs:148` uses `kebab()`). `archetype_action`
+  (`api.rs:223-239`, doc comment included) is deleted; `entity_ops::handle_create_action(&str, ..)
+  -> Option<EntityId>` (`entity_ops.rs:136-159`) becomes `create_archetype(Archetype, ..) ->
+  EntityId` (every variant spawns, so no `Option`); callers `api.rs:105` and `menu_actions.rs:52`,
+  plus its own test `entity_ops.rs:254-291 test_world_factories_place_name_and_select_the_new_entity`,
+  rewritten to iterate `Archetype::ALL` with the same name/placement/selection asserts and
+  without the `"Create Nonsense"` → `None` case (an unknown archetype now dies at parse time).
+  The nine Entity-menu items (`menu/mod.rs:222-236`) are generated from `Archetype::ALL`, the
+  three separators kept by grouping. Closes #90 (ARCH-101).
+- `EditorAction` (`editor_input.rs:25-114`, design §G2) gains `CreateEntity(Archetype)`, `Exit`,
+  `TogglePanel(PanelId)`, `ResetLayout`, `CycleGameLocale` and `allowed_while_playing()`
+  (`PanelId` is already `Copy + Eq + Hash`, `dock/mod.rs:18`); `set_default_bindings` binds none
+  of them. `allowed_while_playing` is a deny list, exactly the variants today's
+  `if !self.editor.is_playing()` guards (`menu_actions.rs:46-93`) block: `CreateEntity(_)`, `Cut`,
+  `Copy`, `Paste`, `Delete`, `Duplicate`, `Undo`, `Redo`, `NewScene`, `OpenScene` return false;
+  every other variant returns true — `Save`/`SaveAs` (the choke point still refuses with its
+  "stop Play" message), `Exit`, the three toggles, `TogglePanel`, `ResetLayout`,
+  `CycleGameLocale` all dispatch during Play exactly as the menu does today. A disallowed action
+  is dropped silently, today's fall-through. `crates/editor/src/menu/actions.rs` (new, §G3):
+  `action_for_menu_label(&str) -> Option<EditorAction>` beside `panel_id_for_menu_label`
+  (`dock/mod.rs:44`), exported from `menu`. `handle_menu_bar` (`menu_actions.rs:35-133`) shrinks
+  to render + one `dispatch_editor_action` call behind that guard; `dispatch_editor_action`
+  (`shortcuts.rs:260`) becomes `pub(super)` and gains the five arms (bodies from
+  `menu_actions.rs:114-132`, verbatim). The Undo/Redo arms (`shortcuts.rs:271-286`) gain the
+  menu's "Undo: {name}" / "Redo: {name}" status message (`menu_actions.rs:72-87`); the
+  `drag_guard` now also covers menu-driven Undo/Redo/Delete/Duplicate/Paste/Cut. Tests: every
+  enabled, non-separator item of `MenuBar::editor_default()` maps through
+  `action_for_menu_label`; the deny list is exactly the ten variants above; Ctrl+Z shows the
+  status message (`shortcuts_tests.rs`); keep `test_every_default_chord_resolves_to_its_action`.
+  `editor_input.rs` is 516 lines: if the enum growth brings it near 600, `Modifiers` (next
+  bullet) goes to its own file instead.
+- Small helpers (§G4 and the plan-sequence remainder):
+  `CommandHistory::push_as_one(name, commands)` replaces `viewport_interaction.rs:460-472`
+  (0/1/many), `menu_actions.rs:239-249` (Paste) and `:274-284` (Cut); `execute_as_one` replaces
+  Delete's `menu_actions.rs:157-166` (`scene_io.rs:76-87`, the script-target rename macro, may use
+  it too). Contract, in the doc comment and the test: none records nothing, ONE is pushed or
+  executed raw — never wrapped — so its own display name stays the undo label
+  (`shortcuts_tests.rs:146` pins "Delete Entity" for one, `:185` "Delete Entities" for many),
+  many become a `MacroCommand` named `name`. `Modifiers { ctrl, shift }` +
+  `Modifiers::read(&InputHandler)` in `editor_input.rs` replaces the five reads
+  `shortcuts.rs:206-209`, `editor_input.rs:341-342`, `viewport_interaction.rs:108-109`,
+  `viewport_interaction.rs:526-529` (`fn ctrl_held`, deleted; its caller at `:350` reads `.ctrl`)
+  and `panel_renderer/mod.rs:179-182`; the `ctrl_held`/`shift_held` FIELDS of
+  `ViewportInputResult` (`viewport_input.rs:67-69`) and the bool parameters of
+  `apply_gizmo_drag`/`apply_click_selection` are results, not reads, and stay.
+  `WidgetSlot { Field(n), Remove, AddButton, PopupRow(n) }` with `FieldId::slot(component_index,
+  WidgetSlot)` in `field_style.rs` replaces `editable_inspector.rs:253` and
+  `component_editors.rs:440` (`Remove`, today field 99), `panel_renderer/inspector.rs:188`
+  (`AddButton`, today `component_index + 50`) and `:244,267` (`PopupRow(n)`, today
+  `component_index + 60 + n`); every slot encodes inside the component's own
+  `COMPONENT_ID_STRIDE` (a reserved field index per slot, the popup row in the subfield), so the
+  add button and popup rows stop borrowing other components' id ranges. Test: for one component,
+  `Field(0..n)`, `Remove`, `AddButton` and `PopupRow(0..m)` are pairwise distinct and none equals
+  an id of component + 1 (batch 7 merges the two `remove_button` bodies; batch 6 changes only the
+  id line). One `uncaptured_component_names`: `clipboard.rs:57-73` (subtree) and the inline copy
+  in `WorldSnapshot::capture` (`world_snapshot.rs:81-96`, whole world) share one body over an
+  entity list — the hierarchy-type exclusion is one rule spelled twice today; keep one spelling.
+  `loss_warning`/`drop_report` (`world_snapshot.rs:136-158`) share one body that takes the full
+  message template — the two messages differ in shape, not by a prefix; `world_snapshot/tests.rs:118,120`
+  pin "lost on Stop" and "dropped 1". `scene_io.rs`: the two `for entity in world.entities() {
+  world.remove_entity(&entity).ok(); }` loops (`:155-157` in `load_scene`, `:251-253` in
+  `new_scene`) become `world.clear()` (`ecs::World::clear`, `world.rs:428` — entities and
+  components only; resources survive, as today); `reset_session()` for the block repeated at
+  `:179-186` and `:256-266` (dirty, history, api_batch, selection, gizmo_drag, gizmo.cancel —
+  `new_scene`'s extra `entity_counter`/`physics_settings`/resource lines stay in `new_scene`);
+  `SceneIoError { MidSimulation, CreateDirectory(std::io::Error), Write(String),
+  Load(SceneLoadError) }` with a hand-written `Display` (editor_integration has no `thiserror`
+  dependency and gets none) replaces `Result<(), String>` at `scene_io.rs:30,43,62,138`
+  (`save_scene_to_file` returns `String`, `SceneLoader::load_from_file`/`instantiate` return
+  `SceneLoadError`); callers format with `{e}` unchanged; `play_session_tests.rs:107` asserts on
+  the message and becomes `err.to_string().contains("stop Play")`; `headless.rs:143` keeps its
+  `String` error and maps with `{e}`.
+
+Extra verification: `commands/{tests,dirty_tests,selection_restore_tests}.rs`,
+`component_editors/tests.rs`, `command_api/{tests,write_tests}.rs`,
+`stored_component/{tests,dynamic_tests}.rs`, `world_snapshot/tests.rs`, the `entity_ops.rs`
+tests, `editor_game/{api_tests,shortcuts_tests,scene_io_tests,play_session_tests}.rs`; a
+headless `--api` transcript against `../games/pong` exercising create, set (a scale of 0 must
+come back 0.01), add, remove, undo and save to a path under `target/`, pasted into the report.
 
 ## Batch 7 — DRY in the editor UI (~400 removed, ~200 added)
 
