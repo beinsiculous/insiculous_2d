@@ -200,10 +200,11 @@ mod tests {
     #[test]
     fn exit_request_latches_across_frames_and_the_latest_title_wins() {
         let mut pending = FrameRequests::default();
-        let mut frame = FrameRequests::default();
-        frame.exit = true;
-        frame.window_title = Some("first".to_string());
-        pending.absorb(frame);
+        pending.absorb(FrameRequests {
+            exit: true,
+            window_title: Some("first".to_string()),
+            ..FrameRequests::default()
+        });
         assert!(pending.exit);
 
         // A later frame that asks for nothing must not clear the exit, and a
@@ -212,9 +213,10 @@ mod tests {
         assert!(pending.exit, "exit is latched until the engine shuts down");
         assert_eq!(pending.window_title.as_deref(), Some("first"));
 
-        let mut retitle = FrameRequests::default();
-        retitle.window_title = Some("second".to_string());
-        pending.absorb(retitle);
+        pending.absorb(FrameRequests {
+            window_title: Some("second".to_string()),
+            ..FrameRequests::default()
+        });
         assert_eq!(pending.window_title.as_deref(), Some("second"));
     }
 }
