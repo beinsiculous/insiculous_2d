@@ -1015,7 +1015,7 @@ gate `scripts/check_games.sh --test` (breakout's level tests load scenes through
 wasm gate (engine_core, ecs and renderer change); a native `hello_world` and `editor_demo`
 run — Jesse's check, after the commit.
 
-## Batch 9 — SRP splits, editor side (~1000 lines moved; this section is the whole spec, re-verified against the tree Sep 3 2026)
+## Batch 9 — SRP splits, editor side (~1000 lines moved; this section is the whole spec, re-verified against the tree Sep 3 2026) — DONE Sep 3 2026 (f66920d; reviews 29 and 29-claude, rebuttal-29, fixes applied by Claude per Jesse's standing ruling; the section itself was reviewed by kimi and gemini as review-28 and review-28-gemini before the handoff; the editor_demo manual pass — play/pause/stop, undo merge, marquee, gizmo with Escape, the --api pipe with a batch across Play — is Jesse's, after the commit)
 
 Re-verification notes, so the executor does not chase what earlier batches already did or
 what the audit and `plan-sequence.md` § Batch 9 got wrong:
