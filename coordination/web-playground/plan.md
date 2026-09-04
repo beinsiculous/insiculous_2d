@@ -43,7 +43,7 @@ late-put base recording; deterministic instance order with resets applied before
 `pagehide`, a terminal *conflicted* state, the textarea's own dirty flag, backslash zip paths,
 zero-vector `normalize`. **This is v7, the settled plan** (Jesse, 2026-09-04: no round 7;
 corrections from here go into the acting batch section before its handoff, and every batch's
-staged diff is reviewed by kimi and Claude). Batch 2 landed (936bcf9).
+staged diff is reviewed by kimi and Claude). Batch 2 landed (936bcf9). Batch 3's section was re-verified against the tree before its handoff (2026-09-04): the corrections are listed at the top of that section, and batch 4's and 7's cross-references to the two replaced hooks were updated with it.
 
 ## Context
 
@@ -453,158 +453,280 @@ Gates: standard + wasm. Leaves out: scripting, web entry.
 
 ## Batch 3 — the `playground` crate: web entry, IndexedDB project store, bridge
 
+**Re-verified against the tree 2026-09-04 before the handoff** (the section changed most
+across the six rounds, and it named things the tree contradicts). Corrections, each stated
+where it applies below: the adapter file is `store/idb_transaction.rs` (the files list said
+`idb_request.rs`); `EditorRunOptions` is named field by field, and two hooks that pointed the
+wrong way across the `run_game` boundary are replaced — `on_persist_failed` (a closure the
+editor owns cannot be invoked by `persist.rs`, which never holds the editor) becomes the
+shared `persist_pending` flag, and `source_check`/`script_errors` move to the bridge's own
+`Hooks` (the bridge cannot read options `run_game` has consumed; batch 7's cross-reference
+is corrected in place); preferences save on a **settle rule** the editor runs itself (a DOM
+`visibilitychange` listener cannot reach the editor synchronously, so the decision's
+"hidden / before switch" triggers were unimplementable as written — the settle rule is
+strictly stronger and keeps "never only in `on_exit`"); `default_scene_path` joins a base
+the editor captures at `init`, since the method has no `ctx`; the entry passes
+`initial_scene`; `mod.rs` is at 588 lines and splits; `engine_core::web` is wasm-gated;
+line numbers refreshed. The corrected section was reviewed in code mode by kimi
+(`review-9.md`, 5 findings) and gemini (`review-9-gemini.md`, 6), adjudicated in
+`rebuttal-9.md` — all 11 accepted (one in part): the load side reads `prefs_slot` too, the
+settle rule is time-based and skipped during Play, `is_pending` and `has_active` are two
+predicates so a conflicted path never blocks a switch, Reset is gated on stored files,
+explicit relative save paths join the base, bridge paths are project-relative, the
+observer fires once, and `StoredFile` drops `content_hash`.
+
 Files: new `crates/playground/` (`Cargo.toml`, `src/lib.rs`, `src/web_entry.rs`,
 `src/bridge.rs`, `src/store.rs`, `src/store/{directory.rs, memory.rs, indexed_db.rs,
-idb_request.rs}`, `src/projects.rs`, `src/persist.rs`), root `Cargo.toml` (workspace
-member AND `[profile.wasm-release]` — cargo ignores profiles in member manifests),
-`crates/engine_core/src/web/mod.rs` (one addition), `crates/common/src/vfs.rs` (a
-write-observer hook), `crates/editor_integration/src/editor_game/{api.rs, mod.rs}`
-(response channel, dirty query, prefs slot). The sample project is `examples/` (its two
-scenes; `behavior_demo.scene.ron` is fully data-driven and opens first by sorted order);
-the build script (batch 4) copies it to `projects/examples/`.
+idb_transaction.rs}`, `src/projects.rs`, `src/persist.rs` — `persist/{mod.rs, chain.rs}`
+if the state machine plus its tests pass 600 lines), root `Cargo.toml` (workspace member
+AND `[profile.wasm-release]` — cargo ignores profiles in member manifests),
+`crates/engine_core/src/web/mod.rs` (one addition; the module is
+`#[cfg(target_arch = "wasm32")]` at `lib.rs:27-28`) and `crates/engine_core/Cargo.toml`
+(web-sys features `Location`, `UrlSearchParams`), `crates/common/src/vfs.rs` (a
+write-observer hook; the file is at 501 lines with inline tests from `:289` — if the
+observer plus the key-story test cross 600, split into `vfs/mod.rs` + `vfs/tests.rs`),
+`crates/editor_integration/src/editor_game/{api.rs, mod.rs, scene_io.rs, play_session.rs,
+headless.rs}` plus new `editor_game/preferences.rs` (response channel, dirty flags, prefs
+slot, base-joined default scene path), `crates/editor/src/editor_preferences.rs` (a
+`PartialEq` derive), `docs/EDITOR_COMMAND_API.md`, `docs/WEB_SAVES.md`, new
+`docs/WEB_PLAYGROUND.md`. The sample project is `examples/` (its two scenes under
+`examples/assets/scenes/`; `behavior_demo.scene.ron` sorts before `hello_world.scene.ron`
+and opens first); the build script (batch 4) copies it to `projects/examples/`.
 
 **First deliverable, before anything else in this batch: the size probe.** Add
-`[profile.wasm-release]` (pong's four lines) to the ROOT `Cargo.toml`, then build a bare
-`crates/playground` cdylib (entry that only calls `run_game_with_editor_opts` on
-`ProjectHost`) with `cargo build -p playground --lib --target wasm32-unknown-unknown
---profile wasm-release` + `wasm-bindgen`; the `.wasm` size is recorded in this section.
-Past 15 MiB, the planner decides font (`crates/editor/src/fonts.rs` embeds ~1.8 MB of
-DejaVu) and later rhai trimming before batch 4 commits to a page. (Reference: pong ships
-at 2.5 MiB.)
+`[profile.wasm-release]` (pong's four lines, `../games/pong/Cargo.toml:28-32`: `inherits =
+"release"`, `opt-level = "s"`, `lto = true`, `strip = "debuginfo"`) to the ROOT
+`Cargo.toml`, then build a bare `crates/playground` cdylib (entry that only calls
+`run_game_with_editor_opts` on `ProjectHost`) with `cargo build -p playground --lib --target
+wasm32-unknown-unknown --profile wasm-release` (output under
+`target/wasm32-unknown-unknown/wasm-release/playground.wasm`) + `wasm-bindgen --target web
+--out-dir <scratch>`; the `.wasm` size is recorded in this section. Past 15 MiB, the planner
+decides font (`crates/editor/src/fonts.rs` embeds 1.81 MB of DejaVu — 760 + 709 + 343 KB)
+and later rhai trimming before batch 4 commits to a page. (Reference: pong ships at 2.5 MiB.)
 
 Target shapes:
 
 - `crates/playground/Cargo.toml`: `[lib] crate-type = ["cdylib", "rlib"]`, deps
   `editor_integration`, `engine_core`, `common`, `serde`, `serde_json`, `log`; wasm
-  target deps `wasm-bindgen = "=0.2.126"` (the pin `build_wasm.sh` asserts),
-  `wasm-bindgen-futures`, `js-sys`, `web-sys` with the `Idb*` features the store needs.
-  No `[profile.*]` here (root only). No native `main.rs` (the standalone `editor` bin is
-  the native face).
+  target deps `wasm-bindgen = "=0.2.126"` (the pin `engine_core` and `renderer` carry and
+  `build_wasm.sh` asserts), `wasm-bindgen-futures = "0.4"`, `js-sys = "0.3"`, `web-sys =
+  "0.3"` with the `Idb*` features the store needs plus `Window`, `Document`, `Location`,
+  `Event`, `BeforeUnloadEvent`, `Element` for the listeners and the banner. Native
+  dev-dep `pollster` (already a workspace dependency — not a new crate) is allowed for
+  tests that await a store call to completion. No `[profile.*]` here (root only). No
+  native `main.rs` (the standalone `editor` bin is the native face).
 - `store.rs`: `pub trait ProjectStore { fn load_project(&self, slug) -> Fut<Result<Vec<
-  StoredFile>, StoreError>>; fn put(&self, file: StoredFile, base_revision: u64) ->
-  Fut<Result<u64 /* new revision */, StoreError>>; fn replace_project(&self, slug, files:
-  Vec<StoredFile>, manifest: ProjectManifest) -> Fut<Result<(), StoreError>>; fn
-  remove_project(&self, slug) -> Fut<Result<(), StoreError>>; fn manifests(&self) ->
-  Fut<Vec<ProjectManifest>>; }` where `Fut<T> = Pin<Box<dyn Future<Output = T>>>` (no
-  `async_trait` crate), `StoredFile { project: String, path: String /* project-relative */,
-  bytes: Vec<u8>, revision: u64, bundle_version: String }`, `StoreError::{Unavailable,
-  StaleRevision { stored: u64, base: u64 }, Backend(String)}`. **`put` is a
-  compare-and-swap**: inside ONE `readwrite` transaction it reads the stored revision,
-  refuses with `StaleRevision` unless it equals `base_revision`, else writes
-  `base_revision + 1` and returns it. **`replace_project` is one transaction** across both
-  object stores (`files` cleared for the slug, new files written, manifest written last as
-  the commit marker); `remove_project` likewise; `put` upserts the slug's manifest when
-  the store has none (the caller passes the manifest to copy from; one transaction);
-  `sweep_orphans(bundled: &[slug])` removes `files` whose slug has no manifest AND is not
-  bundled (boot calls it with `projects.json`'s slugs). `StoredFile` and
-  `ProjectManifest` both carry `bundle_version` and `content_hash`. `store/directory.rs` (native; the test double for
-  every contract — a lock file per project makes the CAS honest), `store/memory.rs` (the
-  fallback when IndexedDB will not open; all targets), `store/indexed_db.rs` (database
-  `beinsiculous.playground` v1, object stores `files` keyed `[project, path]` and `projects`
-  keyed `slug`), `store/idb_transaction.rs` (the adapter — it wraps a whole TRANSACTION's
+  StoredFile>, StoreError>>; fn put(&self, file: StoredFile, base_revision: u64, manifest:
+  &ProjectManifest) -> Fut<Result<u64 /* new revision */, StoreError>>; fn
+  replace_project(&self, slug, files: Vec<StoredFile>, manifest: ProjectManifest) ->
+  Fut<Result<(), StoreError>>; fn remove_project(&self, slug) -> Fut<Result<(),
+  StoreError>>; fn manifests(&self) -> Fut<Vec<ProjectManifest>>; fn sweep_orphans(&self,
+  bundled: &[String]) -> Fut<Result<(), StoreError>>; }` where `Fut<T> = Pin<Box<dyn
+  Future<Output = T>>>` (no `async_trait` crate), `StoredFile { project: String, path:
+  String /* project-relative */, bytes: Vec<u8>, revision: u64, bundle_version: String }`, `StoreError::{Unavailable, StaleRevision { stored: u64, base: u64
+  }, Backend(String)}`. **`put` is a compare-and-swap**: inside ONE `readwrite` transaction
+  it reads the stored revision, refuses with `StaleRevision` unless it equals
+  `base_revision`, else writes `base_revision + 1` and returns it. **`replace_project` is
+  one transaction** across both object stores (`files` cleared for the slug, new files
+  written, manifest written last as the commit marker); `remove_project` likewise; `put`
+  upserts the slug's manifest when the store has none (copied from the `manifest`
+  argument with `origin` set to `saved`; same transaction); `sweep_orphans(bundled)` removes `files` whose slug has no
+  manifest AND is not bundled (boot calls it with `projects.json`'s slugs). `StoredFile`
+  carries `bundle_version`; only `ProjectManifest` carries `content_hash` (nothing in this
+  crate hashes — the build script computes it, and no consumer reads a per-file hash).
+  `store/directory.rs` (native; the test double for every contract — a lock file per
+  project makes the CAS honest), `store/memory.rs` (the fallback when IndexedDB will not
+  open; all targets), `store/indexed_db.rs` (database `beinsiculous.playground` v1, object
+  stores `files` keyed `[project, path]` and `projects` keyed `slug`),
+  `store/idb_transaction.rs` (the adapter — it wraps a whole TRANSACTION's
   `complete`/`abort`/`error` events into a `Future`, one `Closure` trio,
   `Rc<RefCell<Option<Result>>>`, waker; every dependent request — the CAS's `put` after
   its `get`, each file of a `replace_project` — is issued synchronously inside the
   previous request's `onsuccess` callback, never after an `await`, because the
   transaction is inactive by then; the only place web-sys IDB verbosity lives).
 - `persist.rs`: the write path. `common::vfs` gains `set_write_observer(fn(&Path))`
-  (wasm-only; called after every `MemFs::insert` from `vfs::write`). `persist::seed(files:
+  (wasm-only; called ONCE per write, inside `vfs::write` after its `MemFs::insert` —
+  `write_string` delegates to `write` (`vfs.rs:63-65`) and must not notify again; the
+  boot-phase free function `vfs::insert` at `:190` does NOT notify, so seeding never
+  looks like a save. A test pins one notification per `write_string`). The state machine is target-agnostic and owns no
+  executor: `persist::Chains` (one entry per path: base revision, in-flight future, queued
+  bytes, stranded/conflicted marks, the write epoch) is driven natively by hand-polling
+  its futures with `std::task::Waker::noop()` (rustc 1.94) against a test-only
+  `GatedStore` that wraps `memory.rs` and completes a `put` only when the test releases it
+  — that is how "in flight with queued" is observable; the wasm layer is the thin part
+  that `spawn_local`s and installs the three listeners. `persist::seed(files:
   &[StoredFile])` runs at boot with `load_project`'s result and records each path's
-  revision as the tab's base (the reload-then-save case must not conflict). **No debounce,
-  one chain per path**: the observer checks the write epoch (a write under an older epoch
-  is refused with "project is being replaced — save again after the reload"), strips the
-  project root, and either `spawn_local`s `store.put(file, base_revision)` immediately or,
-  if a put for that path is in flight, queues the bytes behind it (replacing any earlier
-  queued bytes for the same path — only the newest content matters); when the in-flight
-  put resolves `Ok(new)`, the queued put starts with `base_revision = new`. Path states
-  are exactly *idle / in flight / queued / stranded* as the decision text defines them.
-  `base_revision` is the revision the tab last loaded or wrote for that path (0 for a new
-  file; an absent record accepts only 0); the put carries the project's manifest so the
-  store can upsert it on a first save. Outcomes:
-  `Ok(new)` records `new` as the base and clears pending (a put resolving after its
-  drain timed out records the stored revision as base silently); `StaleRevision` (a
-  genuine cross-tab conflict) → the path becomes CONFLICTED, never retried: the
-  persistent banner "another tab saved <file> after you loaded it; reloading discards
-  THIS tab's version — export first to keep it" plus a "download this file" control;
-  `Backend`/`Unavailable` → the path is STRANDED holding the newest bytes (a queued put
-  behind the failed one starts at once with the same base) and the persistent banner +
-  the editor's dirty indicator via `EditorRunOptions.on_persist_failed: Option<Box<dyn
-  FnMut(&str)>>`. `visibilitychange`→hidden re-issues STRANDED paths only (newest bytes);
-  `pagehide` also issues QUEUED puts at once, best effort; `beforeunload` returns a
-  warning while anything is pending. Import, reset and project switch share
-  `drain_then_epoch()` — bump the epoch, THEN await every chain, in-flight and queued,
-  bounded at 5 s. Preferences save through `save_store` on
-  Play/Stop, on hidden, and before switch/reset (`EditorGame::save_preferences` becomes
-  callable from those edges; `on_exit` keeps its call). `EditorGame::default_scene_path`
-  joins the project's asset base (`ctx.assets.base_path()`), never the bare relative
-  `DEFAULT_SCENE_PATH`, so an untitled scene saved on the web lands under the root — a
-  test pins that the default path starts with the base. Tests (native, directory store):
-  put/load round trip; a put with a stale base is refused and the stored bytes are
-  untouched; two writers racing from the same base — exactly one wins; two puts of one
-  path from one writer — the second chains and lands with revision base + 2, no
-  `StaleRevision`; `seed` then save — a file loaded at revision 3 saves as 4 with no
-  conflict; a first put to a slug whose manifest exists only in `projects.json` upserts
-  the manifest and a following `sweep_orphans` KEEPS it; `drain_then_epoch` — a queued
-  put before the switch lands, a write after the bump is refused, a first-time put born
-  during the drain is refused (not resurrected after the remove); fail v1 with v2 queued
-  → v2 starts at once, and a re-issue puts v2; a conflicted path is never re-issued; a
-  re-issue leaves an in-flight-plus-queued path alone; a put resolving after a drain
-  timeout updates the base without a conflict;
-  `replace_project` leaves the other project intact; a failed `replace_project` leaves the
-  previous project intact (manifest is the marker); `sweep_orphans` removes files of a
-  non-bundled manifest-less slug and nothing else; manifests merge bundled + stored; the
-  memory store passes the same suite.
-- `projects.rs`: `ProjectManifest { slug, title, bundle_version, content_hash }`; the
-  project ROOT is computed, never stored: `{ASSET_BASE}/projects/<slug>` on the web (the
-  base-joined canonical VFS key), `<dir>/projects/<slug>` natively; the project's asset
-  base is `{root}/assets` on both. `list_projects()` = bundled `{ASSET_BASE}/projects.json`
+  revision as the tab's base (the reload-then-save case must not conflict). **No
+  debounce, one chain per path**: the observer checks the write epoch (a write under an
+  older epoch is refused with "project is being replaced — save again after the reload"),
+  strips the project root (a key outside the open project's root is logged once per path
+  and ignored — never a panic, never a mis-keyed chain), and either starts
+  `store.put(file, base_revision, &manifest)` — the manifest is the open project's
+  `ProjectEntry` manifest, handed to `Chains` at boot beside `seed` — immediately or, if a put for that path is in flight, queues the bytes behind it
+  (replacing any earlier queued bytes for the same path — only the newest content
+  matters); when the in-flight put resolves `Ok(new)`, the queued put starts with
+  `base_revision = new`. Path states are exactly *idle / in flight / queued / stranded /
+  conflicted* as the decision text defines them. Two predicates, not one:
+  `persist::is_pending()` is "any path not idle" (feeds `persist_pending`,
+  `playground_is_dirty` and the `beforeunload` warning — stranded or conflicted bytes are
+  unsaved work); `persist::has_active()` is "any path in flight or queued" and is what
+  `drain_then_epoch` awaits — a stranded or conflicted path has nothing running and must
+  never block a switch or reset (the page's confirm over `playground_is_dirty` is the
+  guard for its bytes). A `vfs::write` to a CONFLICTED path issues no put: `MemFs` keeps
+  the newest bytes (the export carries them), the path stays conflicted, the banner
+  stands. `base_revision` is the revision the tab last loaded or wrote for that path (0
+  for a new file; an absent record accepts only 0). Outcomes: `Ok(new)` records `new` as
+  the base and clears pending (a put resolving after its drain timed out records the
+  stored revision as base silently); `StaleRevision` (a genuine cross-tab conflict) → the
+  path becomes CONFLICTED, never retried: the persistent banner "another tab saved <file>
+  after you loaded it; reloading discards THIS tab's version — export first to keep it"
+  plus a "download this file" control; `Backend`/`Unavailable` → the path is STRANDED
+  holding the newest bytes (a queued put behind the failed one starts at once with the
+  same base) and the persistent banner. **The banner is DOM, written by `persist.rs`
+  itself** into the element with id `playground-banner` (text content; absent element is a
+  silent no-op, like `set_boot_status`) — there is no callback into the editor. **The
+  editor's dirty indicator** comes from the shared flag `EditorRunOptions.persist_pending:
+  Option<Arc<AtomicBool>>`: `persist.rs` keeps it equal to `is_pending()`, and
+  `sync_dirty_mirror` (`mod.rs:396-398`) ORs it into `set_dirty`, so a stranded or queued
+  put shows in the title exactly like an unsaved command. `visibilitychange`→hidden
+  re-issues STRANDED paths only (newest bytes); `pagehide` also issues QUEUED puts at
+  once, best effort; `beforeunload` sets `returnValue` while anything is pending. Import,
+  reset and project switch share `drain_then_epoch()` — bump the epoch, THEN await every
+  chain, in-flight and queued, bounded at 5 s (the wasm layer's timeout is a
+  `setTimeout` promise raced against the drain; the machine itself just reports whether
+  anything is still pending).
+  **Preferences (corrected mechanism):** `EditorGame` gains `prefs_slot: PathBuf` (from
+  `EditorRunOptions.prefs_slot`, default `EDITOR_PREFS_PATH`); **both** `load_preferences`
+  (today hardcoded to `EDITOR_PREFS_PATH` at `mod.rs:244`) and the save read that field,
+  so the web restores what it wrote. Saves go through `save_store` on a **settle rule**
+  the editor runs itself: `save_preferences` becomes `pub(super) fn
+  save_preferences_if_changed(&mut self, delta_time: f32)`, called every frame from
+  `finish_frame` beside `sync_dirty_mirror` — it captures an `EditorPreferences` (the
+  struct derives `PartialEq`; nothing is serialised until a write), compares it with the
+  last written one, accumulates `delta_time` while unchanged, and writes once the
+  preferences have been stable for 0.5 s (time, not frames — a 20 fps device settles in
+  the same half second; a pan writes once, after the hand lifts, not sixty times a
+  second). **Skipped while `in_play_session()`** (Playing or Paused): the viewport then
+  holds the game's camera (`adopt_game_camera`, `play_session.rs:64-71`), and a settle
+  would overwrite the authored camera. The Play transition's immediate write happens at
+  the TOP of `handle_play_action` (`play_session.rs:176`) for `Play` from Editing — before
+  `start_play_session` swaps the camera — and after `stop_play_session` for `Stop`;
+  `on_exit` keeps its call. Natively the file is the same JSON at the same relative path
+  as today. This replaces the decision's "on hidden / before switch" triggers: a DOM
+  listener cannot reach the editor's state synchronously, and the settle rule covers both
+  within half a second of the last change. Headless tests pin it: change the camera,
+  tick 29 times at 1/60 s — the slot is unchanged; tick once more — it holds the new
+  JSON; a Play transition writes at once with the EDITING camera; a stable half second
+  during Play writes nothing; `load_preferences` after a settle write restores the
+  camera from the slot (the round trip through `prefs_slot`). `preferences.rs` holds
+  the plumbing (`load_preferences`, `load_preferences_from`, the settle logic — today
+  `mod.rs:242-298`), which keeps `mod.rs` (588 lines) under the ceiling; if
+  `EditorRunOptions` and `run_game_with_editor{,_opts}` (`mod.rs:541-567`) still push it
+  over, they move to `editor_game/run_options.rs`.
+  **Default scene path (corrected mechanism):** `EditorGame` gains `asset_base: PathBuf`,
+  captured in `Game::init` AFTER `self.inner.init(ctx)` (`mod.rs:416` — `ProjectHost::init`
+  sets the base there, `project_host.rs:107-111`) from `ctx.assets.base_path()`; the three
+  sites that fall back to the bare relative `DEFAULT_SCENE_PATH` — `scene_io.rs:61`,
+  `scene_io.rs:249-254` (`default_scene_path`) and `api.rs:172` — join `asset_base` with
+  it instead, so an untitled scene saved on the web lands under the project root. The
+  same rule covers an EXPLICIT relative path: `save <path>` on the API (`api.rs:166-168`
+  takes it verbatim today) and a relative Save As target are joined to `asset_base`
+  (an absolute path, or a key already under the base, passes through); on the web a
+  relative key would never persist and never reload. `docs/EDITOR_COMMAND_API.md`'s `save
+  [path]` row says "relative to the project's assets". `run_headless_editor_api`
+  (`headless.rs:122-135`, never calls `init`) sets `asset_base` from its own argument,
+  so a headless `save` with no path lands under the project too. Tests pin that after
+  `init` with a base the default path starts with the base, and that `save
+  scenes/x.scene.ron` writes under the base.
+  Tests (native, directory store unless said): put/load round trip; a put with a stale
+  base is refused and the stored bytes are untouched; two writers racing from the same
+  base — exactly one wins; two puts of one path from one writer — the second chains and
+  lands with revision base + 2, no `StaleRevision` (gated store); `seed` then save — a
+  file loaded at revision 3 saves as 4 with no conflict; a first put to a slug whose
+  manifest exists only in `projects.json` upserts the manifest and a following
+  `sweep_orphans` KEEPS it; `drain_then_epoch` — a queued put before the switch lands, a
+  write after the bump is refused, a first-time put born during the drain is refused (not
+  resurrected after the remove); fail v1 with v2 queued → v2 starts at once, and a
+  re-issue puts v2; a conflicted path is never re-issued; a re-issue leaves an
+  in-flight-plus-queued path alone; a put resolving after a drain timeout updates the
+  base without a conflict; `persist_pending` rises on the first non-idle path and falls
+  when the last one settles; `replace_project` leaves the other project intact; a failed
+  `replace_project` leaves the previous project intact (manifest is the marker);
+  `sweep_orphans` removes files of a non-bundled manifest-less slug and nothing else;
+  manifests merge bundled + stored; the memory store passes the same suite.
+- `projects.rs`: `ProjectManifest { slug, title, bundle_version, content_hash, origin }`
+  (`origin: bundled | saved | imported`); the project ROOT is computed, never stored:
+  `{ASSET_BASE}/projects/<slug>` on the web (the base-joined canonical VFS key),
+  `<dir>/projects/<slug>` natively; the project's asset base is `{root}/assets` on both.
+  `list_projects(bundled: &[ProjectManifest], stored: &[ProjectManifest]) ->
+  Vec<ProjectEntry>` is pure and tested natively: bundled `{ASSET_BASE}/projects.json`
   merged with `store.manifests()` (stored wins on a slug clash, so an imported project can
-  shadow a bundled one); each entry reports `is_bundled`, `has_stored_files` and whether
-  the stored `content_hash`/`bundle_version` differ from the bundled one, which is what
-  the page's Reset control reads. `validate_slug` enforces `^[a-z0-9_-]{1,32}$`.
-- `web_entry.rs`: `ASSET_BASE = "/playground/v1/assets"` and `BUNDLE_VERSION = "v1"`
-  (the version contract, now five places — documented in the crate header),
+  shadow a bundled one); each entry reports `is_bundled`, `has_stored_files` and `differs_from_bundle`
+  (the stored `content_hash` or `bundle_version` differs from the bundled one). **Reset
+  is gated on `has_stored_files`** (stored files shadowing a bundled slug ARE the
+  divergence — the upserted manifest copies the bundled hash, so the hash alone would
+  never show a plain edit); `differs_from_bundle` with `origin` only chooses the note
+  beside the control. `validate_slug` enforces `^[a-z0-9_-]{1,32}$` (no regex
+  crate — a byte loop).
+- `web_entry.rs` (wasm-only): `ASSET_BASE = "/playground/v1/assets"` and `BUNDLE_VERSION =
+  "v1"` (the version contract, now five places — documented in the crate header),
   `init_web_logging`, `preload_assets(ASSET_BASE)`, open the store (fall back to
   `memory.rs` + banner on failure), `sweep_orphans(bundled slugs)`, `list_projects()`, pick
-  the project (query string `?project=<slug>`; an unknown slug redirects to the first
-  project's query so the URL never claims a project that is not loaded), await
-  `load_project`, insert every stored file at `{root}/{relative path}` onto `MemFs`
-  (stored files overwrite bundled ones; a slug with files but no manifest is ignored as
-  an unfinished import), `persist::seed(&files)`, then
-  `run_game_with_editor_opts(ProjectHost::new(root), GameConfig::new("Insiculous
-  Playground").with_size(1280, 800).with_asset_base_path("{root}/assets"), opts)`. The
-  editor's 1024×720 minimum (`constants.rs:22-26`) is respected by the page canvas size.
-  Editor prefs slot: `EditorRunOptions.prefs_slot = "beinsiculous.playground.editor_prefs"`
-  (localStorage via `save_store`). A `MemFs` test in `common` pins the whole key story:
-  insert a bundled file at the key the build script's copy produces
+  the project (query string `?project=<slug>` via `engine_core::web::query_param`; an
+  unknown slug redirects to the first project's query so the URL never claims a project
+  that is not loaded), await `load_project`, insert every stored file at
+  `{root}/{relative path}` onto `MemFs` through the boot-phase `vfs::insert` (stored files
+  overwrite bundled ones; a slug with files but no manifest is ignored as an unfinished
+  import), `persist::seed(&files)`, install the persist listeners and the write observer,
+  then `run_game_with_editor_opts(ProjectHost::new(root), GameConfig::new("Insiculous
+  Playground").with_size(1280, 800).with_asset_base_path("{root}/assets"), opts)` with
+  `opts.initial_scene = find_first_scene(&root.join("assets").join("scenes"))` (the
+  `vfs::list_dir_files` scan works over `MemFs`; this is how `behavior_demo` opens first)
+  and `opts.prefs_slot = Some("beinsiculous.playground.editor_prefs".into())`
+  (localStorage via `save_store`). The editor's 1024×720 minimum (`constants.rs:15-26`) is
+  respected by the page canvas size. `EditorRunOptions` after this batch, exactly:
+  `api_rx: Option<mpsc::Receiver<String>>` (existing), `initial_scene: Option<PathBuf>`
+  (existing), `api_responses: Option<mpsc::Sender<String>>`, `prefs_slot:
+  Option<PathBuf>`, `dirty_flag: Option<Arc<AtomicBool>>` (WRITTEN by the editor from
+  `sync_dirty_mirror`, the same value `set_dirty` gets, so the bridge reads the watermark
+  without holding the editor), `persist_pending: Option<Arc<AtomicBool>>` (READ by the
+  editor there, written by `persist.rs`). `run_game_with_editor_opts` copies each onto
+  `EditorGame`; the standalone binary passes `..Default::default()` for the new fields
+  (`EditorRunOptions` derives `Default`). A `MemFs` test in `common` pins the whole key
+  story: insert a bundled file at the key the build script's copy produces
   (`{ASSET_BASE}/projects/examples/assets/scenes/behavior_demo.scene.ron`), `vfs::write`
   an edit at the same key, read it back through a `Path::new("{root}/assets").join(
   "scenes/behavior_demo.scene.ron")` lookup, and confirm a RELATIVE key never resolves.
 - `bridge.rs` (wasm-only `#[wasm_bindgen]` exports; each is a thin call into
-  target-agnostic functions unit-tested natively): `playground_dispatch(line) -> bool`
-  pushes onto the API channel (`EditorRunOptions.api_rx`'s sender in a `thread_local`,
-  capped at 1024 pending — a full queue OR a whitespace-only line REFUSES and returns
-  `false`, never drops, never enqueues a line the API answers with nothing);
-  `playground_poll_responses() -> Vec<JsValue>` drains a response channel —
-  `ApiSession` gains `responses: Option<mpsc::Sender<String>>` and `drain_api_requests`
-  (`api.rs:212-234`) writes there when set, stdout otherwise; `playground_is_dirty() ->
-  bool` = the `CommandHistory` watermark OR pending persistence (the page confirms before
-  any switch, import or reset); `playground_write_file(path, text)` /
-  `playground_read_file(path)` / `playground_list_files()` canonicalise the path and
-  REFUSE `..`, absolute keys and anything outside the open project's root, then go
-  through `vfs`; after a `.rhai` write the bridge calls `EditorRunOptions.source_check:
-  Option<fn(&str) -> Result<(), String>>` if set — `None` in this batch (nothing in the
-  tree compiles Rhai yet; batch 7 supplies `scripting::check_source`) and the result
-  reaches the page through the write's return value; likewise
-  `EditorRunOptions.script_errors: Option<Box<dyn Fn() -> Vec<String>>>` is `None` here
-  and `playground_script_errors` ships in batch 7; `playground_list_projects()`;
-  `playground_open_project(slug)
-  -> Promise` and `playground_reset_project(slug) -> Promise` call `drain_then_epoch()`
-  (in-flight and queued, bounded 5 s; a rejection keeps the current project and shows the
-  message naming tab visibility), then (reset) `remove_project`, and resolve — the PAGE
-  then sets the query and reloads (the engine cannot swap a running project — documented).
-- `engine_core::web`: `pub fn query_param(name) -> Option<String>` beside
-  `set_boot_status` (used by the entry for `?project=`).
+  target-agnostic functions unit-tested natively — path canonicalisation, the FIFO
+  refusal rule and the dirty OR live in plain functions): the request channel is
+  `mpsc::sync_channel::<String>(1024)` — its `Receiver` is what `api_rx` takes and its
+  `SyncSender` lives in the bridge's `thread_local`, so the cap is `try_send`'s refusal —
+  `playground_dispatch(line) -> bool` returns `false` on a full queue OR a whitespace-only
+  line (never drops, never enqueues a line the API answers with nothing);
+  `playground_poll_responses() -> Vec<JsValue>` drains the response channel — `ApiSession`
+  (`api.rs:24-32`, `pub(super)`) gains `responses: Option<mpsc::Sender<String>>` and
+  `drain_api_requests` (`api.rs:212-235`) sends there when set, stdout otherwise;
+  `playground_is_dirty() -> bool` = `dirty_flag` OR `persist::is_pending()` (the page
+  confirms before any switch, import or reset); `playground_write_file(path, text) ->
+  Result<(), JsValue>` / `playground_read_file(path)` / `playground_list_files()` take
+  and return PROJECT-RELATIVE paths (`assets/scripts/ball.rhai`): the bridge joins the
+  open project's root, and REFUSES `..`, a leading `/`, an empty path and anything
+  that does not canonicalise under the root, then goes through `vfs`; after a `.rhai` write the bridge calls
+  `bridge::Hooks.source_check: Option<fn(&str) -> Result<(), String>>` if set — the bridge
+  owns a `thread_local` `Hooks { source_check, script_errors: Option<Rc<dyn Fn() ->
+  Vec<String>>> }` that `web_entry` fills, both `None` in this batch (nothing in the tree
+  compiles Rhai yet; batch 7 supplies `scripting::check_source` and the error list) and
+  the result reaches the page through the write's return value; `playground_script_errors`
+  ships in batch 7; `playground_list_projects() -> JsValue` (the `ProjectEntry` list as
+  JSON); `playground_open_project(slug) -> Promise` and `playground_reset_project(slug) ->
+  Promise` call `drain_then_epoch()` (in-flight and queued, bounded 5 s; a rejection
+  keeps the current project and shows the message naming tab visibility), then (reset)
+  `remove_project`, and resolve — the PAGE then sets the query and reloads (the engine
+  cannot swap a running project — documented).
+- `engine_core::web`: `pub fn query_param(name: &str) -> Option<String>` beside
+  `set_boot_status` (`web/mod.rs:88`), over `window().location().search()` and
+  `UrlSearchParams` (features added to `engine_core/Cargo.toml:45-57`).
 - Gate hole closed: `scripts/check_wasm.sh` already covers the new member. Add one line
   to its header naming the playground crate as the reason the editor crates are in the
   gate.
@@ -612,12 +734,17 @@ Target shapes:
   database and object stores, the CAS rule and why get-then-put is forbidden, the
   base-joined root rule, the bundle-version/reset rule, the bridge function list with
   argument and return shapes, the FIFO ordering contract and the refusal on a full
-  queue, the "one embed per page" constraint, the status element id). `docs/EDITOR_COMMAND_API.md` § Stages: Stage D is the function
-  bridge, shipped here. `docs/WEB_SAVES.md` gains a paragraph naming the playground's
-  prefs key and pointing at the store doc.
+  queue, the "one embed per page" constraint, the element ids `game-loading` and
+  `playground-banner`, the settle rule for preferences). `docs/EDITOR_COMMAND_API.md` §
+  Stages (`:159-165`): Stage D is the function bridge, shipped here — replace the
+  WebSocket line. `docs/WEB_SAVES.md` gains a paragraph (after § Keys) naming the
+  playground's prefs key and pointing at the store doc. `crates/editor_integration/CLAUDE.md`
+  file map gains `preferences.rs` and the `EditorRunOptions` field list;
+  `crates/common/CLAUDE.md` names the write observer.
 
-Gates: standard + wasm (the crate must build for wasm32 and natively). Leaves out:
-the build script, the page (batch 4), zip (batch 5).
+Gates: standard + wasm (the crate must build for wasm32 and natively) + games
+(`common`'s public surface grows by the observer hook, `engine_core::web` is wasm-only
+and needs none). Leaves out: the build script, the page (batch 4), zip (batch 5).
 
 ## Batch 4 — bundle build and the `/playground/` page
 
@@ -662,7 +789,7 @@ Target shapes:
   differs (awaits `playground_reset_project`, then reloads), a command console (`<input>` + `<output
   aria-live="polite">` over `playground_dispatch`/`playground_poll_responses`, paired in
   FIFO order, a `false` return shown inline as "busy — try again"), the persistence
-  banner region (`role="alert"`, filled on `on_persist_failed`), a `beforeunload`
+  banner region (`role="alert"`, the `#playground-banner` element `persist.rs` writes), a `beforeunload`
   handler that warns while a put is pending, `canvas.focus()` after the project switch
   completes (never while a text control has focus), keyboard-shortcut list next to the
   embed (the README's playable-game accessibility requirements apply). Copy uses curly
@@ -867,9 +994,10 @@ Target shapes:
   physics from the scene's settings and `ctx.scripts.reset(ctx.assets.base_path())`)
   → behaviors → `ctx.scripts.early_update(...)` → physics step → drain collisions once →
   `ctx.scripts.update(...)` with that Vec → transform hierarchy. The bridge hooks batch 3
-  left `None` are populated here: `EditorRunOptions.source_check =
-  Some(scripting::check_source)` and `script_errors` reads the runner's list, and
-  `playground_script_errors` ships. This is pong's own order
+  left `None` are populated here: `playground::bridge::Hooks.source_check =
+  Some(scripting::check_source)` and `Hooks.script_errors` reads the runner's list (the
+  bridge never holds the editor, so batch 7 designs the channel that copies the list out
+  of `ctx.scripts` each frame), and `playground_script_errors` ships. This is pong's own order
   (paddles → physics → drain → rules): a paddle's kinematic target set in `early_update`
   is where the collider is when the ball arrives this frame, and the goal's reaction in
   `update` sees this frame's contacts.
