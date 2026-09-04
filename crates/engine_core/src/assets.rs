@@ -303,8 +303,8 @@ impl AssetManager {
         grayscale: &[u8],
     ) -> Result<TextureHandle, AssetError> {
         if width == 0 || height == 0 {
-            // Return the white texture for empty glyphs (like spaces)
-            return Ok(TextureHandle { id: 0 });
+            // Empty glyphs (spaces) draw the white texture at zero size.
+            return Ok(TextureHandle::WHITE);
         }
 
         // Convert grayscale to RGBA where RGBA all = grayscale value

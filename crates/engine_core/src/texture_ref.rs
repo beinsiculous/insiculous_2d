@@ -70,8 +70,7 @@ pub(crate) fn resolve_texture(
     assets: &mut AssetManager,
 ) -> Result<TextureHandle, SceneLoadError> {
     if texture_ref == "#white" {
-        // White texture is always handle 0
-        return Ok(TextureHandle { id: 0 });
+        return Ok(TextureHandle::WHITE);
     }
 
     if let Some(hex) = texture_ref.strip_prefix("#solid:") {
@@ -88,7 +87,7 @@ pub(crate) fn resolve_texture(
             "texture ref '{texture_ref}' is a generated-texture placeholder and cannot be \
              reloaded; substituting the white texture"
         );
-        Ok(TextureHandle { id: 0 })
+        Ok(TextureHandle::WHITE)
     } else {
         // Load as file path. A sheet declares its own sampling in its
         // `.sheet.ron` sidecar, so scene-referenced pixel-art sheets get
