@@ -129,8 +129,12 @@ cat > "$GAME_DIR/dist/games/$SLUG/index.html" <<EOF
         role="img" aria-label="$SLUG game canvas"></canvas>
 <script type="module">
   const status = document.getElementById('game-loading');
-  if (!navigator.gpu) {
-    // Guard BEFORE the import: unsupported browsers never download the wasm.
+  // Guard BEFORE the import, and mirror the site's GameEmbed gate: an adapter
+  // alone is not proof, the engine asks for a device at the default limits.
+  const adapter = navigator.gpu ? await navigator.gpu.requestAdapter().catch(() => null) : null;
+  const device = adapter ? await adapter.requestDevice().catch(() => null) : null;
+  device?.destroy();
+  if (!adapter || !device) {
     status.textContent =
       'This game needs WebGPU. Use Chrome/Edge, or enable dom.webgpu.enabled in Firefox (full restart).';
   } else {
