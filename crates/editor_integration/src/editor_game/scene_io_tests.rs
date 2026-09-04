@@ -237,3 +237,34 @@ fn test_save_scene_with_creates_parent_directories_and_writes_valid_scene() -> s
     assert!(written.contains("hero"));
     Ok(())
 }
+
+#[test]
+fn test_default_scene_path_joins_asset_base() {
+    let mut editor = editor_game();
+    let base = PathBuf::from("/playground/v1/assets/projects/my_project/assets");
+    editor.asset_base = base.clone();
+
+    let default_path = editor.default_scene_path();
+    assert!(default_path.starts_with(&base), "default scene path must start with asset_base");
+    assert_eq!(default_path, base.join(crate::constants::DEFAULT_SCENE_PATH));
+}
+
+#[test]
+fn test_resolve_asset_path_joins_relative_path_under_base() {
+    let mut editor = editor_game();
+    let base = PathBuf::from("my_game/assets");
+    editor.asset_base = base.clone();
+
+    let relative_target = std::path::Path::new("scenes/x.scene.ron");
+    let resolved = editor.resolve_asset_path(relative_target);
+    assert_eq!(resolved, base.join("scenes/x.scene.ron"));
+
+    // Absolute path is untouched
+    let absolute_target = std::path::Path::new("/tmp/custom.scene.ron");
+    assert_eq!(editor.resolve_asset_path(absolute_target), absolute_target);
+
+    // Path already under base is untouched
+    let already_under_base = base.join("scenes/y.scene.ron");
+    assert_eq!(editor.resolve_asset_path(&already_under_base), already_under_base);
+}
+

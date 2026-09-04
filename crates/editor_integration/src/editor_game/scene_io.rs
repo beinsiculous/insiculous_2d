@@ -6,8 +6,6 @@ use ecs::World;
 use engine_core::scene_data::SceneLoadError;
 use engine_core::Game;
 
-use crate::constants::DEFAULT_SCENE_PATH;
-
 use super::EditorGame;
 
 /// Errors that can occur during scene save or load operations.
@@ -57,8 +55,8 @@ impl<G: Game> EditorGame<G> {
         assets: &engine_core::assets::AssetManager,
     ) -> Result<(), SceneIoError> {
         let path = self.editor.scene_path()
-            .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| PathBuf::from(DEFAULT_SCENE_PATH));
+            .map(|scene_path| scene_path.to_path_buf())
+            .unwrap_or_else(|| self.default_scene_path());
         self.save_scene_as(world, assets, path)
     }
 
@@ -245,12 +243,22 @@ impl<G: Game> EditorGame<G> {
     /// Where "Open Scene…"/"Save As…" default to: a `scene.ron` next to the
     /// currently open scene, else the legacy cwd-relative default (the old
     /// hardcoded default wrote into the wrong directory after opening a project
-    /// elsewhere).
+    /// elsewhere). Joined with `asset_base` when set.
     pub(super) fn default_scene_path(&self) -> PathBuf {
         self.editor
             .scene_path()
-            .and_then(|p| p.parent().map(|d| d.join("scene.ron")))
-            .unwrap_or_else(|| PathBuf::from(crate::constants::DEFAULT_SCENE_PATH))
+            .and_then(|scene_path| scene_path.parent().map(|parent_directory| parent_directory.join("scene.ron")))
+            .unwrap_or_else(|| self.resolve_asset_path(std::path::Path::new(crate::constants::DEFAULT_SCENE_PATH)))
+    }
+
+    /// Resolve a scene/asset path: an absolute path or one already prefixed
+    /// with `asset_base` passes through unchanged; a relative path joins `asset_base`.
+    pub(super) fn resolve_asset_path(&self, path: &std::path::Path) -> PathBuf {
+        if path.is_absolute() || self.asset_base.as_os_str().is_empty() || path.starts_with(&self.asset_base) {
+            path.to_path_buf()
+        } else {
+            self.asset_base.join(path)
+        }
     }
 
     /// Create a new empty scene, clearing the world.

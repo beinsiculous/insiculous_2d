@@ -7,7 +7,6 @@
 //! factories and save choke point the GUI uses.
 
 use std::io::Write as _;
-use std::path::PathBuf;
 
 use engine_core::contexts::GameContext;
 use engine_core::Game;
@@ -25,6 +24,8 @@ pub(super) struct ApiSession {
     /// Request lines, fed by the transport (the `--api` stdin thread in the
     /// editor binary) and drained once per frame.
     pub receiver: Option<std::sync::mpsc::Receiver<String>>,
+    /// Response lines, collected and sent to the transport (FIFO for web bridge).
+    pub responses: Option<std::sync::mpsc::Sender<String>>,
     /// Open batch: commands collected between `batch begin` and `batch
     /// end`/`abort`; committed on Play so a stale macro can't be pushed
     /// after a Stop restore.
@@ -164,12 +165,12 @@ impl<G: Game> EditorGame<G> {
                 // Same default-path logic as save_scene, through the same
                 // mandatory choke point.
                 let target = match path {
-                    Some(path) => PathBuf::from(path),
+                    Some(path) => self.resolve_asset_path(std::path::Path::new(&path)),
                     None => self
                         .editor
                         .scene_path()
-                        .map(|p| p.to_path_buf())
-                        .unwrap_or_else(|| PathBuf::from(crate::constants::DEFAULT_SCENE_PATH)),
+                        .map(|scene_path| scene_path.to_path_buf())
+                        .unwrap_or_else(|| self.default_scene_path()),
                 };
                 let result = self.save_scene_with(world, texture_path_fn, target);
                 match result {
@@ -222,14 +223,20 @@ impl<G: Game> EditorGame<G> {
         // GUI commands recorded LATER this frame must see the current
         // selection as their before-image, not the frame-start note.
         self.command_history.note_selection(&self.editor.selection);
-        let stdout = std::io::stdout();
-        let mut out = stdout.lock();
-        for response in responses {
-            // .ok(): a closed pipe must not crash the editor.
-            writeln!(out, "{response}").ok();
+        if let Some(sender) = &self.api.responses {
+            for response in responses {
+                sender.send(response).ok();
+            }
+        } else {
+            let stdout = std::io::stdout();
+            let mut out = stdout.lock();
+            for response in responses {
+                // .ok(): a closed pipe must not crash the editor.
+                writeln!(out, "{response}").ok();
+            }
+            // Piped stdout is block-buffered — without this the caller hangs
+            // waiting for a response that sits in the buffer.
+            out.flush().ok();
         }
-        // Piped stdout is block-buffered — without this the caller hangs
-        // waiting for a response that sits in the buffer.
-        out.flush().ok();
     }
 }

@@ -54,7 +54,9 @@ web-sys = { version = "0.3", features = [
     "CustomEventInit",
     "Event",
     "EventTarget",
+    "Location",
     "PageTransitionEvent",
+    "UrlSearchParams",
 ] }
 console_log = "1.0"
 console_error_panic_hook = "0.1"

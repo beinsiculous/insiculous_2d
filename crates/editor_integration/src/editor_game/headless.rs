@@ -131,6 +131,9 @@ pub fn run_headless_editor_api(
     engine_core::component_registration::register_engine_components();
 
     let mut editor_game = EditorGame::new(NullGame);
+    if let Some(ref base) = asset_base {
+        editor_game.asset_base = base.clone();
+    }
     let mut world = ecs::World::new();
     let mut assets = HeadlessAssets::with_asset_base(asset_base);
 

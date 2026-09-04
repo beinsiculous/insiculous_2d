@@ -94,6 +94,14 @@ pub fn set_boot_status(text: &str) {
     }
 }
 
+/// Read a URL search query parameter value by key.
+pub fn query_param(name: &str) -> Option<String> {
+    let window = web_sys::window()?;
+    let search = window.location().search().ok()?;
+    let search_params = web_sys::UrlSearchParams::new_with_str(&search).ok()?;
+    search_params.get(name)
+}
+
 /// Fetch `{base_url}/manifest.json` (a JSON array of relative paths) and
 /// every listed file into the VFS under `{base_url}/{entry}`.
 ///

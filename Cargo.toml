@@ -17,7 +17,15 @@ members = [
     "crates/ui",
     "crates/editor",
     "crates/editor_integration",
+    "crates/playground",
 ]
+
+# Web builds: small + LTO'd, without touching the native release profile.
+[profile.wasm-release]
+inherits = "release"
+opt-level = "s"
+lto = true
+strip = "debuginfo"
 
 [workspace.dependencies]
 # Internal crates

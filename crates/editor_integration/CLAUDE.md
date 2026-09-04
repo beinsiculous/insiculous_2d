@@ -12,7 +12,7 @@ EditorGame<G: Game>  — transparent wrapper implementing Game trait
 └── Intercepts: init(), update(), on_key_pressed()
 
 run_game_with_editor(game, config) → wraps game in EditorGame, calls run_game()
-run_game_with_editor_opts(game, config, EditorRunOptions { api_rx, initial_scene }) → full option set (#53: the standalone binary hands its project's first scene here — find_first_scene, sorted — and EditorGame opens it through the REAL load path after init, so scene_path/physics/dirty are recorded; ProjectHost never loads scenes itself, and load_scene publishes PhysicsSettings as a world resource for the host's lazy physics and behavior preview)
+run_game_with_editor_opts(game, config, EditorRunOptions { api_rx, initial_scene, api_responses, prefs_slot, dirty_flag, persist_pending }) → full option set. The standalone binary hands its project's first scene here (find_first_scene, sorted) and EditorGame opens it through the REAL load path after init, so scene_path/physics/dirty are recorded; ProjectHost never loads scenes itself, and load_scene publishes PhysicsSettings as a world resource for the host's lazy physics and behavior preview. The playground supplies the other four: a response channel for the bridge, a localStorage prefs slot, the dirty flag the editor WRITES from sync_dirty_mirror, and the persist-pending flag it READS there (ORed into the title's dirty mark). asset_base is not an option: EditorGame captures ctx.assets.base_path() after the inner game's init, and every bare relative scene path joins it.
 ```
 
 ## Dependency Graph
@@ -25,6 +25,7 @@ editor_integration ──→ editor, engine_core, ecs, ui, input, renderer, comm
 ## File Map
 - `project_host.rs` — data-only game host for the standalone editor (physics preview, behavior runner, transform hierarchy).
 - `editor_game/mod.rs` — struct and Game impl (`update()` = named phases `prepare_frame`/`render_early_overlays`/`finish_frame`) + `run_game_with_editor`.
+- `editor_game/preferences.rs` — preferences load/save and debounced settle persistence (0.5s stability window).
 - `editor_game/scene_io.rs` — save/load/new scene (load dry-runs into a scratch World before touching the live one).
 - `editor_game/api.rs` — command-API frame hook (`answer_api_lines`, `drain_api_requests` with ≤256 lines/frame cap, skipped during gizmo drags).
 - `editor_game/shortcuts.rs` — key dispatch: `route_editor_key` + four category dispatchers; Escape cancel cascade, arrow nudge merge/seal.

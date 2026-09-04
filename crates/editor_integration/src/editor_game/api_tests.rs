@@ -235,3 +235,25 @@ fn test_api_drain_leaves_the_channel_untouched_while_a_gizmo_drag_is_live() {
     editor.editor.gizmo.cancel();
     assert_eq!(editor.take_api_lines().len(), 3, "the channel was left untouched");
 }
+
+#[test]
+fn test_api_save_verb_lands_under_asset_base() {
+    let mut editor = editor_game();
+    let temporary_directory = std::env::temp_dir().join(format!(
+        "insiculous_api_save_test_{}_{}",
+        std::process::id(),
+        999
+    ));
+    let _ = std::fs::remove_dir_all(&temporary_directory);
+    let _ = std::fs::create_dir_all(&temporary_directory);
+    editor.asset_base = temporary_directory.clone();
+
+    let mut world = World::new();
+    let response = api_line(&mut editor, &mut world, "save scenes/x.scene.ron");
+    assert_ok(&response);
+
+    let saved_file = temporary_directory.join("scenes/x.scene.ron");
+    assert!(saved_file.exists(), "file must exist at <base>/scenes/x.scene.ron");
+
+    let _ = std::fs::remove_dir_all(&temporary_directory);
+}

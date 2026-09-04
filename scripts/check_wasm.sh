@@ -4,6 +4,7 @@
 # engine change can't silently break the live web target. CI runs exactly
 # this script (.github/workflows/wasm-check.yml), so the local command and
 # the CI gate cannot drift.
+# crates/playground targets wasm32 and depends on the editor crates, bringing them into this gate.
 #
 # Deliberately NO --all-targets, unlike the native clippy gate: dev-deps
 # (ecs's criterion -> rayon, renderer's tokio) don't build on wasm and are

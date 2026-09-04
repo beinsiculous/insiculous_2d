@@ -184,6 +184,7 @@ impl<G: Game> EditorGame<G> {
         match action {
             PlayControlAction::Play => {
                 if self.editor.is_editing() {
+                    self.save_preferences_now();
                     self.start_play_session(world);
                 } else if self.editor.is_paused() {
                     self.resume_from_pause();
@@ -194,7 +195,11 @@ impl<G: Game> EditorGame<G> {
                 self.pause();
                 false
             }
-            PlayControlAction::Stop => self.stop_play_session(world),
+            PlayControlAction::Stop => {
+                let stopped = self.stop_play_session(world);
+                self.save_preferences_now();
+                stopped
+            }
             PlayControlAction::ToggleCameraFollow => {
                 self.toggle_camera_follow_with_feedback();
                 false

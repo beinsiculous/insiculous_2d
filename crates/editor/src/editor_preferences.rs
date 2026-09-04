@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::dock::{DockArea, DockPosition, PanelId};
 
 /// Persisted layout state for one dock panel.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PanelPrefs {
     /// Panel identifier (`PanelId.0`)
     pub id: u32,
@@ -21,7 +21,7 @@ pub struct PanelPrefs {
 }
 
 /// Persistent editor preferences saved between sessions.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EditorPreferences {
     /// Last camera position (x, y)
     pub camera_position: (f32, f32),

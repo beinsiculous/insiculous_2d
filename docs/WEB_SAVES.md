@@ -31,6 +31,12 @@ Keys are deliberately separate per game and per document type (the site's
 `myfort-store.js` precedent: sharing a key lets one document migrate into
 another when either changes shape).
 
+The Web Playground (`/playground/`) stores editor UI preferences under the
+`beinsiculous.playground.editor_prefs` key via the same `SaveStore` contract
+— the same JSON `EditorPreferences` document the native `editor_prefs.json`
+holds, written on the editor's settle rule. The project files themselves live in
+IndexedDB, not in `SaveStore`; `docs/WEB_PLAYGROUND.md` is that contract.
+
 ## Values — byte-identical to the native save files
 
 Every value is exactly the pretty-printed JSON the engine writes natively

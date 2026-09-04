@@ -30,6 +30,7 @@ mod gizmo_drag;
 pub mod headless;
 mod menu_actions;
 mod play_session;
+mod preferences;
 mod scene_confirm;
 mod scene_io;
 mod shortcuts;
@@ -78,6 +79,13 @@ struct EditorGame<G: Game> {
     /// (the standalone binary passes it via `EditorRunOptions` so
     /// scene_path/physics/dirty-state are recorded like any other load).
     initial_scene: Option<std::path::PathBuf>,
+    pub(super) asset_base: std::path::PathBuf,
+    pub(super) prefs_slot: std::path::PathBuf,
+    pub(super) last_saved_prefs: Option<editor::EditorPreferences>,
+    pub(super) pending_prefs: Option<editor::EditorPreferences>,
+    pub(super) prefs_stable_time: f32,
+    pub(super) dirty_flag: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    pub(super) persist_pending: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl<G: Game> EditorGame<G> {
@@ -101,6 +109,13 @@ impl<G: Game> EditorGame<G> {
             api: api::ApiSession::default(),
             scene_confirm: scene_confirm::SceneConfirm::default(),
             initial_scene: None,
+            asset_base: std::path::PathBuf::new(),
+            prefs_slot: std::path::PathBuf::from(EDITOR_PREFS_PATH),
+            last_saved_prefs: None,
+            pending_prefs: None,
+            prefs_stable_time: 0.0,
+            dirty_flag: None,
+            persist_pending: None,
         }
     }
 
@@ -239,62 +254,6 @@ impl<G: Game> EditorGame<G> {
         }
     }
 
-    /// Load persisted editor preferences (camera, grid, panel layout).
-    fn load_preferences(&mut self) {
-        self.load_preferences_from(std::path::Path::new(EDITOR_PREFS_PATH));
-    }
-
-    /// Load preferences from one `save_store` slot. An absent slot is the
-    /// first run and stays silent; an unreadable or corrupt one falls back to
-    /// defaults with a warning, so a broken file never blocks startup and never
-    /// hides either.
-    pub(crate) fn load_preferences_from(&mut self, slot: &std::path::Path) {
-        let prefs = match engine_core::save_store::read(slot) {
-            Ok(None) => editor::EditorPreferences::default(),
-            Ok(Some(json)) => editor::EditorPreferences::from_json(&json).unwrap_or_else(|error| {
-                log::warn!("editor preferences at {} ignored: {error}", slot.display());
-                editor::EditorPreferences::default()
-            }),
-            Err(error) => {
-                log::warn!("editor preferences at {} unreadable: {error}", slot.display());
-                editor::EditorPreferences::default()
-            }
-        };
-        self.editor.set_camera_offset(Vec2::new(prefs.camera_position.0, prefs.camera_position.1));
-        self.editor.set_camera_zoom(prefs.camera_zoom);
-        self.editor.set_snap_to_grid(prefs.snap_to_grid);
-        self.editor.set_grid_size(prefs.grid_size);
-        self.editor.set_grid_visible(prefs.grid_visible);
-        prefs.apply_panels(&mut self.editor.dock_area);
-    }
-
-    /// Capture and save editor preferences. Failures are logged, not fatal.
-    fn save_preferences(&self) {
-        let mut prefs = editor::EditorPreferences {
-            camera_position: (self.editor.camera_offset().x, self.editor.camera_offset().y),
-            camera_zoom: self.editor.camera_zoom(),
-            last_scene_path: self
-                .editor
-                .scene_path()
-                .and_then(|p| p.to_str())
-                .map(|s| s.to_string()),
-            snap_to_grid: self.editor.is_snap_to_grid(),
-            grid_size: self.editor.grid_size(),
-            grid_visible: self.editor.is_grid_visible(),
-            panels: Vec::new(),
-        };
-        prefs.capture_panels(&self.editor.dock_area);
-        match prefs.to_json() {
-            Ok(json) => {
-                if let Err(e) = engine_core::save_store::write(std::path::Path::new(EDITOR_PREFS_PATH), &json) {
-                    log::warn!("Failed to save editor preferences: {}", e);
-                }
-            }
-            Err(e) => {
-                log::warn!("Failed to serialize editor preferences: {}", e);
-            }
-        }
-    }
 
     /// Update status bar stats and render it.
     fn render_status_bar(&mut self, ctx: &mut GameContext, window_size: Vec2) {
@@ -360,6 +319,7 @@ impl<G: Game> EditorGame<G> {
     /// window title on change, and clip engine UI to the scene viewport.
     fn finish_frame(&mut self, ctx: &mut GameContext) {
         self.sync_dirty_mirror();
+        self.save_preferences_if_changed(ctx.delta_time);
 
         self.render_status_bar(ctx, ctx.window_size);
 
@@ -394,7 +354,17 @@ impl<G: Game> EditorGame<G> {
     /// written; it runs in `finish_frame` and after a save or scene reset, so
     /// anything reading dirtiness earlier in a frame consults the history.
     pub(super) fn sync_dirty_mirror(&mut self) {
-        self.editor.set_dirty(self.command_history.is_dirty());
+        let is_command_dirty = self.command_history.is_dirty();
+        let is_persist_pending = self
+            .persist_pending
+            .as_ref()
+            .map(|flag| flag.load(std::sync::atomic::Ordering::Relaxed))
+            .unwrap_or(false);
+        let dirty = is_command_dirty || is_persist_pending;
+        self.editor.set_dirty(dirty);
+        if let Some(flag) = &self.dirty_flag {
+            flag.store(dirty, std::sync::atomic::Ordering::Relaxed);
+        }
     }
 }
 
@@ -414,6 +384,7 @@ impl<G: Game> Game for EditorGame<G> {
 
         // Delegate to inner game
         self.inner.init(ctx);
+        self.asset_base = std::path::PathBuf::from(ctx.assets.base_path());
 
         // Whatever font the game set up is the game view's baseline; locale
         // fonts layer on top of it during play (see update_inner_game).
@@ -525,7 +496,7 @@ impl<G: Game> Game for EditorGame<G> {
     }
 
     fn on_exit(&mut self) {
-        self.save_preferences();
+        self.save_preferences_now();
         self.inner.on_exit();
     }
 }
@@ -551,18 +522,32 @@ pub struct EditorRunOptions {
     /// A scene to open through the editor's load path right after init —
     /// how the standalone binary hands over its project's first scene.
     pub initial_scene: Option<std::path::PathBuf>,
+    /// Command-API response channel (for web bridge FIFO responses).
+    pub api_responses: Option<std::sync::mpsc::Sender<String>>,
+    /// Path or storage slot key for editor preferences.
+    pub prefs_slot: Option<std::path::PathBuf>,
+    /// Dirty flag written by `sync_dirty_mirror`.
+    pub dirty_flag: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    /// Persistence-pending flag read by `sync_dirty_mirror`.
+    pub persist_pending: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
 /// [`run_game_with_editor`] with the full option set.
 pub fn run_game_with_editor_opts<G: Game>(
     game: G,
     config: GameConfig,
-    opts: EditorRunOptions,
+    options: EditorRunOptions,
 ) -> Result<(), engine_core::EngineError> {
     let config = clamp_editor_window_size(config);
     let mut editor_game = EditorGame::new(game);
-    editor_game.api.receiver = opts.api_rx;
-    editor_game.initial_scene = opts.initial_scene;
+    editor_game.api.receiver = options.api_rx;
+    editor_game.api.responses = options.api_responses;
+    editor_game.initial_scene = options.initial_scene;
+    if let Some(slot) = options.prefs_slot {
+        editor_game.prefs_slot = slot;
+    }
+    editor_game.dirty_flag = options.dirty_flag;
+    editor_game.persist_pending = options.persist_pending;
     engine_core::run_game(editor_game, config)
 }
 
@@ -578,6 +563,8 @@ mod camera_follow_tests;
 mod gizmo_drag_tests;
 #[cfg(test)]
 mod play_session_tests;
+#[cfg(test)]
+mod preferences_tests;
 #[cfg(test)]
 mod scene_confirm_tests;
 #[cfg(test)]

@@ -92,7 +92,11 @@ fn main() {
         log::info!("no scene found under assets/scenes — starting with an empty scene");
     }
 
-    let opts = EditorRunOptions { api_rx, initial_scene };
+    let opts = EditorRunOptions {
+        api_rx,
+        initial_scene,
+        ..Default::default()
+    };
     if let Err(e) = run_game_with_editor_opts(ProjectHost::new(project_path), config, opts) {
         log::error!("Editor error: {}", e);
         std::process::exit(1);

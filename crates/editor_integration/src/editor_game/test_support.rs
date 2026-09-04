@@ -23,7 +23,14 @@ impl Game for DummyGame {
 
 /// A fresh editor session wrapping [`DummyGame`], in the Editing state.
 pub(super) fn editor_game() -> EditorGame<DummyGame> {
-    EditorGame::new(DummyGame)
+    static SLOT_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let slot_id = SLOT_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let mut editor_game = EditorGame::new(DummyGame);
+    // Pressing Play writes the preferences; the default slot would land in the crate
+    // directory, and tests run in parallel, so each session gets its own slot.
+    editor_game.prefs_slot = std::env::temp_dir()
+        .join(format!("insiculous_test_editor_prefs_{}_{slot_id}.json", std::process::id()));
+    editor_game
 }
 
 /// A world entity with only a `Transform2D` at `pos`.
