@@ -1850,7 +1850,7 @@ The dead-API additions from the cut reviews now live under Batch 2 (moved Sep 3 
 - Board: file one tracking issue on `beinsiculous/insiculous_2d` in the house shape and claim it.
 - Branch: `git switch -c jesse dev`.
 
-## Batch 10 — docs and guides (Markdown only; this section is the whole spec, re-verified against the tree Sep 4 2026; reviewed like every batch — the hook's `--numstat` counts Markdown, so "review skipped" was never true)
+## Batch 10 — docs and guides (Markdown only; this section is the whole spec, re-verified against the tree Sep 4 2026; reviewed like every batch — the hook's `--numstat` counts Markdown, so "review skipped" was never true) — DONE Sep 4 2026 (2eb35eb; reviews 32 and 32-claude, rebuttal-32, fixes applied by Claude per Jesse's standing ruling; the section itself was reviewed by kimi and gemini as review-30 and review-31 before the handoff; 10.6 is the planner's and follows the commit)
 
 Re-verification notes — what earlier batches already did, so the executor does not chase it:
 the collision-bus sentence, the "arms in BOTH loader and serializer" phrasing and the
@@ -1967,9 +1967,10 @@ The references follow:
   canonical retirement line and is not touched.
 - `docs/EDITOR_UX_AUDIT.md:579` cites `ANALYSIS.md:242` for the Console-panel placeholder — history,
   stays as written. `log_archive.md:343` "Earlier (from ANALYSIS.md)" — history, stays.
-- Show the grep: `grep -rn "ANALYSIS" --include=*.md . | grep -v "^./target\|^./review\|^./coordination\|^./.claude/worktrees\|log_archive\|EDITOR_UX_AUDIT"`
-  prints exactly one line, `./.claude/commands/continue.md:67` (the retirement notice). Any other
-  line is a live reference the batch missed.
+- Show the grep: `grep -rn "ANALYSIS" --include=*.md . | grep -vE "^(\./)?(target|review|coordination|\.claude/worktrees)/|log_archive|EDITOR_UX_AUDIT"`
+  prints exactly one line, `.claude/commands/continue.md:67` (the retirement notice; the optional
+  `./` is because `ugrep` prints paths without it). Any other line is a live reference the
+  batch missed.
 
 ### 10.5 Root guides
 

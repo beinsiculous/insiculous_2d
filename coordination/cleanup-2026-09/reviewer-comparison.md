@@ -76,6 +76,7 @@ a public seam** — every gemini-only finding was in that class. For small, sing
 one reviewer is enough; alternate them so neither's blind spots become the default's.
 | plan batch 10 correction (claude authored) | kimi | 3 | 3 | 0 | 0 | "10.4's own acceptance gate can never pass — two surviving ANALYSIS references are outside the plan's edit list" (`.junie/commands/continue.md:45` was a real missed dead reference); also caught `apply_impulse` mislabelled as deleted when it is one of the batch's own keepers | ~8 min (20:53 → 21:01) |
 | plan batch 10 correction (claude authored) | gemini | 6 | 6 | 0 | 0 | "Section 10.6 contains two mutually contradictory instructions regarding issue #89" — close it, then append four deferred items to it; also the `input`/Design Notes contradiction, the `src/`-relative path that cannot name integration tests, and the ten-row ceiling evicting engine_core contracts | ~4 min (20:53 → 20:57) |
+| batch 10 (gemini authored) | kimi | 2 | 2 | 0 | 0 | "the new tables create an unenforced doc↔test mapping that silently rots on the first test rename" — a process gap, not a defect in the diff; verified every cited test itself and cleared the ANALYSIS migration; missed the two wrong cells claude found (an annulus guard marked `— none`, a HashMap order stated as a contract) | ~7 min (06:02 → 06:09) |
 
 Observations to weigh at the end: every kimi review verified claims by running the suite and
 grepping callers, and each round found at least one contract the keep-list had wrongly
