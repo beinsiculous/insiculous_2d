@@ -14,10 +14,14 @@ Four read-only audits (core, editor, systems, tests) and two design passes were 
 `d58f3c3`. Every claim the plan acts on was verified against the tree; three audit claims were
 corrected (the input "swallowed press" is a low-severity phantom `just_deactivated`; the
 cache-skipping texture loader has zero callers and is a deletion; the games never call the
-`GridMesh` builders, so the grid fold does not ripple). Full reports live in `coordination/cleanup-2026-09/` (batch 0 moves them there from the
-session scratchpad): `audit-{core,systems,editor,tests}.md`, `plan-sequence.md`,
-`design-structure.md` — the implementer reads `design-structure.md` for the exact target
-shapes of batches 4–9; this file is the executable summary.
+`GridMesh` builders, so the grid fold does not ripple). The full reports — `audit-{core,systems,editor,tests}.md`,
+`audit-tests-deletelist.md`, `plan-sequence.md`, `design-structure.md` and the five
+`keeplist-*.md` — lived beside this file until the effort closed; they were pruned on Sep 4
+2026 after the `jesse` → `dev` merge (their line numbers had long outrun the tree, and their
+durable outputs are the batches and the crate guides' pitfall tables). Read them at
+`git show cleanup-2026-09-records:coordination/cleanup-2026-09/<file>` (a tag on the last commit
+that carried them, `a8f188d`); every citation of those files below resolves the same way. This
+file is the record, with the reviewer ledger beside it.
 
 Decisions taken with Jesse (Sep 2 2026): all ten batches in order; delete every dead public
 API including the audio quartet and the physics event-bus mirror; convert the three
