@@ -1850,28 +1850,179 @@ The dead-API additions from the cut reviews now live under Batch 2 (moved Sep 3 
 - Board: file one tracking issue on `beinsiculous/insiculous_2d` in the house shape and claim it.
 - Branch: `git switch -c jesse dev`.
 
-## Batch 10 — docs and guides (~300 removed, ~120 added, Markdown only; review skipped)
+## Batch 10 — docs and guides (Markdown only; this section is the whole spec, re-verified against the tree Sep 4 2026; reviewed like every batch — the hook's `--numstat` counts Markdown, so "review skipped" was never true)
 
-- Remove every test count from every doc: root `CLAUDE.md` ("Key Metrics", "Test Status",
-  "Run all 1703 tests", per-system counts in "Core Systems Complete"), `training.md`, the ten
-  `crates/*/CLAUDE.md` "Testing" sections (keep only the `cargo test -p <crate>` command),
-  `README.md` if present. The invariant "0 failed, 0 ignored" stays.
-- Crate guides drop File Map lines that restate the `mod` tree; a line survives only if it says
-  something `ls` and `grep mod` cannot.
-- Each crate guide's "Common Pitfalls" becomes a "pitfall → guard test" table naming the test
-  that guards it (the durable record of the keep-list; the audit reports stay transient in
-  `review/`).
-- Root `CLAUDE.md`/`training.md`: three managers (GameLoop/Render/Window), collision-bus
-  sentence gone, `run_game` returns `EngineError`, Pause Pattern uses `request_exit()`, the
-  SSOT table row "Behavior ↔ BehaviorData From pair" → "`ecs::Behavior` serde attributes",
-  "arms in BOTH loader and serializer" → "a builder, an extractor, and a table row".
-- `log_archive.md`: the physics pass-through changelog, the deleted `docs/plans` note, lessons.
-- The nine `crates/*/ANALYSIS.md` (retired family, `continue.md` §3.1) still teach deleted API —
-  `common::Time`, `play_music_once`/`stop_all`/`unload_all`, `SceneManager`, `device_ref` (kimi's
-  review-16 F2, deferred here in rebuttal-16): delete the family or sweep it; decide, don't leave it.
-- Issue bookkeeping: close #82, #89; tick items on #84, #86, #90, #91; file the deferred issues.
+Re-verification notes — what earlier batches already did, so the executor does not chase it:
+the collision-bus sentence, the "arms in BOTH loader and serializer" phrasing and the
+"Behavior ↔ BehaviorData From pair" SSOT row are gone (batches 5 and 8); root `CLAUDE.md`
+§ Key Metrics and § Test Status carry no count; `crates/*/CLAUDE.md` "Testing" sections carry
+no count except `ecs_macros`; the physics pass-through changelog is in `log_archive.md`;
+`crates/common/CLAUDE.md` no longer lists `thiserror`. What remains is below, numbered in the
+order of work.
 
-## Deliberately not doing (filed as issues in batch 10)
+### 10.1 The last test counts
+
+- `README.md` § Test Summary (the nine-row table totalling 955 and the "Run all tests" line
+  under it): the table goes; the section becomes two lines — `cargo test --workspace`, headless,
+  and the invariant "0 failed, 0 ignored". `README.md` § Project Status "Test Status" line
+  already says that and stays.
+- `crates/ecs_macros/CLAUDE.md:10` "4 tests (3 integration + 1 doc), run with …" → the command only.
+- `training.md:801` "Current count lives in `CLAUDE.md`" — no doc records a count; the
+  sentence goes.
+- Gate: `grep -rnE "[0-9]+ tests\b|passing|passed:" CLAUDE.md training.md README.md
+  crates/*/CLAUDE.md` prints nothing. `docs/EDITOR_UX_AUDIT.md` and `log_archive.md` are
+  history and keep theirs.
+
+### 10.2 File Maps stop restating the `mod` tree
+
+Applies to the File Map / Files section of every crate guide that has one: `engine_core`
+(114 lines), `editor` (54), `renderer` (43), `common` (30), `editor_integration` (16),
+`physics` (15), `ecs` (12), `ui` (9), `audio` (7). The rule, per line: a line that names a
+file and paraphrases its module doc is deleted (`ls crates/<c>/src` and `grep -n "^pub mod\|^mod"`
+say the same thing, and the module doc says it better). A line survives only if it says
+something neither can — a cross-file rule ("new render passes go in their own module like
+`tilemap_render.rs`"), a pitfall ("never unify the two frame drivers — an occluded native
+window stops receiving redraws"), a contract that spans files (`clock.rs`'s "import time types
+from here, never `std::time`"), or a name the file name does not carry (`SidecarCache`, the
+`#white` sentinel). A surviving line is trimmed to that sentence; the file name stays as its
+anchor. Expected: `engine_core` keeps roughly a third, `editor` and `renderer` about half,
+`common` most of it (its lines are contracts), the rest lose a line or two.
+- Where a deleted line carried a pitfall, that pitfall moves to the 10.3 table instead of
+  vanishing. Read each line for that before deleting it.
+- Every guide's dead-name check, before you report: for each deleted-in-this-effort symbol
+  named in `coordination/cleanup-2026-09/plan.md` § Batch 2 (its bullets list them), grep the
+  living guides — `CLAUDE.md`, `training.md`, `README.md`, `crates/*/CLAUDE.md`,
+  `docs/EDITOR_COMMAND_API.md`, `docs/WEB_SAVES.md`, `.claude/`, `.junie/`, `.kimi-code/` — and
+  paste any hit; batches 2–9 each swept their own lines, so the expected result is none.
+
+### 10.3 Pitfalls become "pitfall → guard test" tables
+
+One section per crate guide named `## Pitfalls and their guard tests`, a two-column table:
+the pitfall as one sentence, and the test that fails when it regresses as `src/file.rs
+test_name` or `tests/file.rs test_name` (path relative to the crate root — several guards are
+integration tests, `ecs/tests/hierarchy_dirty.rs`, `physics/tests/external_edits.rs`). Sources,
+in order: every bullet in the guide that states a trap, whatever its section is called —
+`Common Pitfalls`, `Key Patterns`, `Critical Patterns`, `Key Guidelines`, `Design Notes`, and
+physics' `Collision Event Contract` (take the events once per frame) and `Physics Entities Must
+Be Root Entities` (a bullet that states a convention with no failure mode stays a bullet where
+it is); the root `CLAUDE.md` § Known Footguns bullets that belong to that crate
+(the root list stays as the cross-crate summary — do not delete from it); and the lines 10.2
+moved here. The test name comes from the CONTRACT rows of
+`coordination/cleanup-2026-09/keeplist-*.md` (grep the pitfall's key noun there) or from the
+test the bullet already names. A pitfall with no guard test gets `— none` in the second
+column, verbatim; it is reported in the batch report, not fixed here (writing tests is not
+this batch). `crates/editor_integration/CLAUDE.md` § Common Pitfalls already has the shape as
+bullets; it becomes the table. `input`'s table comes from its `Design Notes` plus the two
+10.4 keepers; only `ecs_macros` gains no table. No row ceiling: a row earns its place by naming
+a failure mode, and `engine_core` is expected to run past ten because its File Map carries that
+many contracts (the frame-driver split, the gesture-gated audio retry cap, the web preload
+order, device-loss fail-stop, the save_store merge rule).
+
+### 10.4 The nine `crates/*/ANALYSIS.md` are deleted
+
+`git rm crates/{audio,common,ecs,editor,engine_core,input,physics,renderer,ui}/ANALYSIS.md`.
+The family was retired Aug 2026 (`continue.md` § 3.1 says "do not create them"), eight of the
+nine teach deleted API (`common::Time`, `play_music_once`/`stop_all`/`unload_all`,
+`SceneManager`, `device_ref`, `EngineApplication`, `apply_force`/`reset_forces`, archetype storage, stale
+counts). A read of all nine against the tree on Sep 4 2026 found about forty lines still true,
+non-obvious and stated nowhere else; those move first, each as one row of the crate's 10.3
+table or one sentence in the guide, then the files go. The keepers, verified against the tree:
+- `common/ANALYSIS.md:23` — the graduation rule (a module used by fewer than three crates does
+  not belong in `common`) → one sentence in `crates/common/CLAUDE.md`'s intro.
+- `ui/ANALYSIS.md:46-50` — the dual glyph cache is intentional: `ui` caches rasterized bitmaps
+  (`font/glyph_cache.rs`), `engine_core` caches GPU textures (`glyph_texture_cache.rs`) → one
+  sentence in both guides.
+- `input/ANALYSIS.md:118-124` — `GamepadState::axis_value` (`gamepad.rs:118`) returns the raw
+  axis, no dead zone; `AXIS_ACTIVATION_THRESHOLD` filters digital sources only → a
+  `crates/input/CLAUDE.md` § Design Notes bullet. `input/ANALYSIS.md:99-104` — `update()`
+  (`input_handler.rs:283`) fuses `process_queued_events`/`end_frame` and can eat `just_*` reads
+  → the same section.
+- `audio/ANALYSIS.md:65` — `_stream: OutputStream` (`manager/mod.rs:65`) is kept alive on
+  purpose; dropping it kills all audio → 10.3 row. `audio/ANALYSIS.md:29` — the audio
+  components live in `ecs` to avoid a circular dependency → the "why" clause on the existing
+  guide line.
+- `ecs/ANALYSIS.md:128-133` — `World::update` swaps `systems` out (`world.rs:82-84`,
+  `system.rs:206`) so a system cannot reach the system list; fragile by design → 10.3 row.
+  `ecs/ANALYSIS.md:118-126` — `query_entities` allocates through `entities()` (`world.rs:362`);
+  `entity_ids()` is the iterator → the `#86` GPP-L1 item already says it; a guide bullet.
+- `engine_core/ANALYSIS.md:130-138` and `211-214` — the boundary policy: `ui` defines
+  `DrawCommand`, `renderer` defines `Sprite`, `engine_core` owns the bridge; cross-cutting glue
+  biases toward `engine_core`, and `ui`/`renderer` never depend on each other transitively
+  through it → a short "Crate boundary" paragraph in `crates/engine_core/CLAUDE.md`.
+- `physics/ANALYSIS.md:141-151` — `PhysicsWorld::apply_impulse` (`physics_world/bodies.rs:252`)
+  needs a synced body and silently no-ops on a same-frame spawn; `set_velocity` defers → 10.3
+  row, guard test from the keep-list or `— none`.
+- `editor/ANALYSIS.md:202-206` — typed `EditResult<T>` returns exist so `editor` stays free of
+  an `engine_core` dependency → one clause on the guide's `field_style.rs` line.
+- `renderer/ANALYSIS.md` — nothing; every live point is already in its guide.
+The references follow:
+- `.claude/commands/missed.md:28` and `.junie/commands/missed.md:28`: the ANALYSIS.md item is
+  deleted (item 2, the `tech-debt` issues, is the replacement and is already there). Closes #95.
+- `.junie/commands/continue.md`: line 45 (§ 2.1's "Crate's ANALYSIS.md (if exists)" item) is
+  deleted; § 3.1 and § 6.1 ("Update ANALYSIS.md") each collapse to their heading plus the one
+  sentence "The issue thread is the durable record; the per-crate analysis files are retired,
+  do not create them." (worded without the file name, so the gate below stays mechanical);
+  checklist line 138 becomes "Documentation updated (board issues closed/filed)". The rest of
+  that file's drift is #94's, not this batch's. `.claude/commands/continue.md:67` is the
+  canonical retirement line and is not touched.
+- `docs/EDITOR_UX_AUDIT.md:579` cites `ANALYSIS.md:242` for the Console-panel placeholder — history,
+  stays as written. `log_archive.md:343` "Earlier (from ANALYSIS.md)" — history, stays.
+- Show the grep: `grep -rn "ANALYSIS" --include=*.md . | grep -v "^./target\|^./review\|^./coordination\|^./.claude/worktrees\|log_archive\|EDITOR_UX_AUDIT"`
+  prints exactly one line, `./.claude/commands/continue.md:67` (the retirement notice). Any other
+  line is a live reference the batch missed.
+
+### 10.5 Root guides
+
+- `training.md` § Test Status Summary: the 10.1 sentence. § Key Commands "Check for TODOs"
+  stays (it is a gate). Nothing else in `training.md` — the API sections were kept current
+  batch by batch.
+- `CLAUDE.md` § Known Footguns keeps every bullet (cross-crate summary); § Key Metrics stays.
+- `log_archive.md`: the `docs/plans/` deletion (batch 2, `cc31078`: three shipped Jan–Feb 2026
+  plans for scene saving and a DRY/SRP pass; history lives in git) gets one dated line in the
+  Sep 2026 cleanup entry. The effort's lessons entry is the planner's, written at close from
+  `reviewer-comparison.md` — not this batch.
+
+### 10.6 Planner's own work, after the commit (not the executor's)
+
+- Issue bookkeeping (needs `gh`): close #82 (one `clamp_volume` in `common`, batch 4) and #95; tick
+  #84 DRY-011 (`ui_integration` uses `TextureHandle::WHITE`; the three `TextureHandle { id: 0 }`
+  in `assets.rs:307` and `texture_ref.rs:74,91` are the white-handle producers and stay as the
+  item's remainder — say so on the item), #86 GPP-L12 (`ecs/src/event.rs`'s module doc states the same-frame
+  emit-then-read contract), #89 DRY-006 (already ticked; ARCH-006 is #10's — #89 stays OPEN as the renderer
+  backlog issue, since 10.6's deferred renderer items land there), #90 ARCH-101 (`editor::archetype::Archetype`, batch 6; UX-001 stays open), #91 KISS-002
+  (`thiserror` gone from `crates/common/Cargo.toml`, batch 2).
+- The deferred items below are appended as checklist items to the existing per-crate
+  "Low-priority backlog" issues (the house shape's one exception to one-item-per-issue), not
+  filed as ten new issues: `EditorGame` regrouping and `MenuAction`-style merge-policy move →
+  #90; `GameRunner` regrouping, bool parameters → enums, `assets.rs` rename → #84;
+  `World` delegation shell, `RegistryError`, `EntityId` by-value convention → #86;
+  `Renderer` FrameGraph, shared `CameraBinding`, WGSL renames and the error-callback `panic!`
+  → #89; `ui` depending on `input` → #88; `EditorContext` delegation shell and the
+  `editable_inspector.rs` rename → a new editor backlog issue (the editor crate has none).
+  Root `CLAUDE.md` status trimming → #94's thread. `PhysicsWorld` split is already #85 SRP-001.
+- `coordination/cleanup-2026-09/` stays tracked as the effort's record (batch 0 said "archive
+  or delete when the effort closes": it stays — `reviewer-comparison.md` is what the next
+  effort reads).
+
+### Gates
+
+`cargo test --workspace` and `cargo clippy --workspace --all-targets` still run (a Markdown
+batch cannot break them, and the report must show it did not); the 10.1 and 10.4 greps; the
+tag gate over `crates src examples` (unchanged by this batch, shown anyway); no `.rs` file
+touched (`git diff --cached --name-only -- '*.rs'` prints nothing); every touched Markdown file
+renders — no dangling table row, no unclosed fence (`grep -c '^```' <file>` is even for each).
+Review: kimi and Claude code-mode over the staged diff, same as every batch.
+
+### Deliberately not in this batch
+
+- The four in-repo agent-tool mirrors' remaining drift (#94), beyond the ANALYSIS.md lines.
+- `docs/EDITOR_UX_AUDIT.md`, `log_archive.md`, `coordination/` and `review/`: history.
+- Root `CLAUDE.md` status-report trimming (the Core Systems Complete / Current Priority
+  paragraphs) — a rewrite with an owner, not a cleanup; goes to #94's thread per 10.6.
+- Rewriting `training.md`'s pattern sections — kept current per batch; a rewrite is its own effort.
+- New tests for a `— none` row in a 10.3 table.
+
+## Deliberately not doing (appended to the per-crate backlog issues in batch 10, § 10.6)
 
 - `EditorGame` field regrouping beyond `ApiSession`/`SceneConfirm`; full `GameRunner`
   regrouping; `World`/`EditorContext` delegation shells; `Renderer` FrameGraph — speculative
