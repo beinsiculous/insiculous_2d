@@ -43,7 +43,7 @@ late-put base recording; deterministic instance order with resets applied before
 `pagehide`, a terminal *conflicted* state, the textarea's own dirty flag, backslash zip paths,
 zero-vector `normalize`. **This is v7, the settled plan** (Jesse, 2026-09-04: no round 7;
 corrections from here go into the acting batch section before its handoff, and every batch's
-staged diff is reviewed by kimi and Claude). Batch 2 landed (936bcf9). Batch 3's section was re-verified against the tree before its handoff (2026-09-04): the corrections are listed at the top of that section, and batch 4's and 7's cross-references to the two replaced hooks were updated with it.
+staged diff is reviewed by kimi and Claude). Batch 2 landed (936bcf9). Batch 3's section was re-verified against the tree before its handoff (2026-09-04): the corrections are listed at the top of that section, and batch 4's and 7's cross-references to the two replaced hooks were updated with it. Batch 3 landed (1462cbe). Batch 4's section was re-verified the same way before its handoff (2026-09-04); its corrections are listed at the top of that section, and the conflicted-path download control it deferred is recorded in batch 5.
 
 ## Context
 
@@ -777,7 +777,29 @@ and needs none). Leaves out: the build script, the page (batch 4), zip (batch 5)
 
 ## Batch 4 — bundle build and the `/playground/` page
 
-Repos: `insiculous_2d` (`scripts/build_wasm.sh`, 173 lines) and `insiculous_web`.
+**Re-verified against the tree 2026-09-04 before the handoff.** Corrections, each stated
+where it applies below: `build_wasm.sh` is 177 lines (batch 0's device gate added four) and
+its `--sync` hard-code moved to `:167`; the site layout is `src/layouts/BaseLayout.astro`
+(the embeds live in `src/components/`); the README section is titled "WASM builds"; a
+`projects.json` entry needs the `origin` field, which `ProjectManifest` does not default;
+the local test page and the `rm -rf` of the output dir are games-shaped too and are named
+now; the examples project opens `behavior_demo.scene.ron` (sorted first), which is where
+the patrollers are; `shellcheck` is not installed on Iroh; the site's screenshot map is
+opt-in per route; the synced bundle is tracked in the site repo; two doc rows batch 3 left
+stale are folded in; the conflicted-path "download this file" control moves to batch 5.
+The corrected section was reviewed in code mode by kimi (`review-13.md`, 3 findings) and
+gemini (`review-13-gemini.md`, 4), adjudicated in `rebuttal-13.md`: the entry gains a
+`playground-ready` event (the page's `await init()` resolves before the spawned boot has
+loaded the manifests or installed the bridge, so a select populated right after it is
+empty forever); both cargo queries in the script name the manifest explicitly; the engine
+`.gitignore` gains the build output; a project switch ends unconditionally in navigation
+and the page-side `canvas.focus()` clause is gone (the engine focuses its canvas at boot,
+`crates/renderer/src/window.rs:114`); Reset confirms; the page keeps the loaded slug
+itself; batch 5's download control reads bytes, not text.
+
+Repos: `insiculous_2d` (`scripts/build_wasm.sh`, 177 lines; `crates/playground/src/web_entry.rs`
+— one hunk, the readiness event; `.gitignore`; `docs/WEB_PLAYGROUND.md`;
+`crates/playground/CLAUDE.md`) and `insiculous_web`.
 
 Target shapes:
 
@@ -785,54 +807,151 @@ Target shapes:
   `games/<slug>/<version>/` for games and `playground/<version>/` for the playground —
   no slug segment, so the deployed dir matches `ASSET_BASE = "/playground/v1/assets"`;
   the slug argument names the bundle in messages only) and, for `--kind playground`, a
-  repeatable `--project <slug>=<title>=<dir>`: each `<dir>/assets` is copied to
+  repeatable `--project <slug>=<title>=<dir>` (`<dir>` resolves against the caller's
+  cwd, the engine root in the invocation of record): each `<dir>/assets` is copied to
   `assets/projects/<slug>/assets/…` — the `assets/` segment is KEPT, mirroring the source
   tree and the export-zip layout, so the entry's `{root}/assets` base finds every file —
-  and `assets/projects.json` lists the manifests with `bundle_version` and a
-  `content_hash` (sha256 over the sorted file list and bytes of `<dir>/assets`). The
-  crate's own `assets/` copy is skipped for this kind. **Order**: project copies and
-  `projects.json` first, `assets/manifest.json` generated LAST from the finished tree,
-  then `--sync` — a manifest written before the copies would leave boot fetching nothing.
-  **Workspace member, not a standalone crate**: the wasm-bindgen pin probe (`:63`) reads
-  the lockfile beside the manifest `cargo locate-project --workspace --message-format
-  plain` names; the built `.wasm` is found under `cargo metadata --format-version 1`'s
-  `target_directory` (today `:83` assumes `$GAME_DIR/target`, which a member lacks); and
-  `--sync` copies to `<site>/public/<kind's output path>` (today `:163` hard-codes
-  `games/$SLUG/$VERSION`). The `ASSET_BASE` assertion (`:49-58`) reads
-  the kind and also asserts `BUNDLE_VERSION`. The `[profile.wasm-release]` check (`:76`)
-  inspects the manifest `cargo locate-project --workspace --message-format plain` names
-  (a game's root is its own manifest; the playground's is the engine root). Invocation
-  of record: `scripts/build_wasm.sh crates/playground playground --kind playground
-  --version v1 --project examples=Examples=examples --sync ../insiculous_web/public`.
+  and `assets/projects.json` lists the manifests. **Its entry shape is
+  `crates/playground/src/projects.rs:19-30`, deserialized with no defaults**:
+  `{ "slug", "title", "bundle_version", "content_hash", "origin": "bundled" }` — `origin`
+  is required and snake_case (the entry falls back to a one-project default list when the
+  file fails to parse, so a missing field is a silent wrong project list, not an error).
+  `content_hash` is sha256 (hex) over the sorted relative file list and bytes of
+  `<dir>/assets`. The crate's own `assets/` copy is skipped for this kind (`crates/playground`
+  has no `assets/` today; batch 8 adds `assets/projects/pong/` there and passes it as a
+  `--project`). **Order**: project copies and `projects.json` first, `assets/manifest.json`
+  generated LAST from the finished tree, then `--sync` — a manifest written before the
+  copies would leave boot fetching nothing. The boot (`crates/engine_core/src/web/mod.rs:112`,
+  `preload_assets`) fetches `{ASSET_BASE}/manifest.json` and inserts every entry under
+  `{ASSET_BASE}/{entry}`, so the manifest must list `projects.json` and every
+  `projects/examples/assets/**` file — today's `find … ! -name manifest.json` (`:100`)
+  already does, once it runs last. **Workspace member, not a standalone crate**: the
+  wasm-bindgen pin probe (`:63`) reads the lockfile beside the manifest `cargo
+  locate-project --manifest-path "$GAME_DIR/Cargo.toml" --workspace --message-format plain`
+  names (the root `Cargo.lock:3302-3303` resolves `0.2.126`; the installed CLI is 0.2.126);
+  the built `.wasm` is found under `cargo metadata --manifest-path "$GAME_DIR/Cargo.toml"
+  --no-deps --format-version 1`'s `target_directory` (today `:83` assumes
+  `$GAME_DIR/target`, which a member lacks; here it resolves to the engine root's `target/`
+  — no `CARGO_TARGET_DIR`, no `.cargo/config.toml`). **Both queries name the manifest**: the
+  script never `cd`s before them, so a bare query run from the engine root would answer
+  for the engine while building a game in `$GAME_DIR` — the games-kind regression gate
+  below runs from the engine root for exactly this reason. The output dir and its `rm -rf`
+  (`:84,:88`) follow the kind; and `--sync` copies to `<site>/public/<kind's output path>`
+  (today `:167` hard-codes `games/$SLUG/$VERSION`). The `ASSET_BASE` assertion (`:49-58`)
+  reads the kind — for the playground the expected base is `/playground/$VERSION/assets`
+  against `crates/playground/src/web_entry.rs:29`, and it also asserts `BUNDLE_VERSION`
+  (`:31`) equals `$VERSION`; the games branch stays as it is, its `grep -o '"/games/…'`
+  remediation included. The `[profile.wasm-release]` check (`:76`) inspects the manifest
+  `cargo locate-project --workspace --message-format plain` names (a game's root is its
+  own manifest; the playground's is the engine root, `Cargo.toml:24`). **The local test
+  page** (`:104-154`, mirrors the site's embed contract, NOT deployed) follows the kind
+  too: for the playground it lands at `dist/playground/index.html`, imports
+  `/playground/<version>/game.js` (`:143` hard-codes the games URL), sizes the canvas
+  1280×800 — the entry's `with_size(1280, 800)`; the `src/constants.rs` probe (`:105-116`)
+  finds no such file in the crate and would fall back to 800×600 — and carries a
+  `<p id="playground-banner" role="alert"></p>` beside `#game-loading`, so the local check
+  shows persistence banners instead of dropping them (an absent element is a silent
+  no-op); the `--serve` message names the kind's path. The header usage comment (`:1-22`)
+  documents `--kind` and `--project`. Invocation of record, from the engine root:
+  `scripts/build_wasm.sh crates/playground playground --kind playground --version v1
+  --project examples=Examples=examples --sync ../insiculous_web/public`. `examples/assets`
+  is 1.7 MiB (fonts 1000K); the examples project's first scene by `find_first_scene`'s
+  sorted order is `behavior_demo.scene.ron` (six Patrol behaviors), not `hello_world`.
+  The build output lands in `crates/playground/dist/` (the script's `$GAME_DIR/dist`), and
+  the engine `.gitignore` ignores `target/` but no `dist/` — add `crates/playground/dist/`
+  to it in this batch, or the next `git add -A` commits a multi-MiB binary.
+- **The readiness event** (`crates/playground/src/web_entry.rs`, the one Rust hunk):
+  `start()` (`:57-66`) spawns `run_playground` and returns, so the page's `await init()`
+  resolves while the boot is still fetching assets; `BUNDLED_MANIFESTS` and
+  `STORED_MANIFESTS` are empty and `REQUEST_SENDER` is `None` (`bridge.rs:28`) until steps
+  2–8 run. Immediately after `setup_bridge` (step 8, `:216-219`) the entry dispatches
+  `web_sys::Event::new("playground-ready")` on `window` (`dispatch_event`; the `Event`
+  feature is already on, and `persist/mod.rs:463` already calls an `EventTarget` method on
+  `window` under the current feature list). A failed boot dispatches nothing: its message
+  is already on `#game-loading`. The header's boot order and `docs/WEB_PLAYGROUND.md`'s
+  "one embed per page" paragraph name the event. Gates for this hunk: `cargo test
+  --workspace`, `cargo clippy --workspace --all-targets`, `scripts/check_wasm.sh`.
 - `insiculous_web`: `src/pages/playground.astro` on `BaseLayout` with a nav entry
-  (`BaseLayout.astro:26-33`); `src/components/PlaygroundEmbed.astro` copying
-  `GameEmbed.astro`'s loader shape verbatim (`new Function` import trick, `#game-loading`
-  status, `#game-canvas` placeholder at 1280×800 with `tabindex`, `role`, `aria-label`,
-  fallback text) and the batch-0 gate. Page controls, all keyboard-reachable and
-  labelled: a project `<select>` (from `playground_list_projects`; a change asks
+  (`src/layouts/BaseLayout.astro:26-33`, the `nav` array); `src/components/PlaygroundEmbed.astro`
+  copying `GameEmbed.astro`'s loader shape verbatim (`:69-109`: the device-asking WebGPU
+  gate, the `new Function` import trick, `#game-loading` status with `role="status"`,
+  `#game-canvas` placeholder at 1280×800 with `tabindex`, `role`, `aria-label`, fallback
+  text, and the `:global(canvas)` rule — the engine swaps its own canvas in). **Every
+  control is static HTML**, present and labelled before the module loads: the a11y and
+  screenshot gates run in headless Chromium, where the WebGPU gate stops at "needs
+  WebGPU", and axe must still see a complete, labelled page. Page controls, all
+  keyboard-reachable and labelled, and **`disabled` until the page's `playground-ready`
+  listener fires** (registered on `window` BEFORE `init()` is awaited; the listener
+  populates the select, enables the controls and reads the entries) — a control the boot
+  never enables sits disabled beside the failure message on `#game-loading`: a project
+  `<select>` (populated from `playground_list_projects` — it returns a parsed
+  `ProjectEntry[]` (`bridge.rs:178-190`), not a JSON string; the page keeps
+  `currentSlug` = the `?project=` parameter, else the first entry's slug (`list_projects`
+  puts bundled entries first, matching the boot's default; an unknown parameter never
+  reaches the page — the boot redirects), and the select starts on it; a change asks
   `playground_is_dirty` OR any page-side dirty flag (batch 8's textarea keeps `value !==
-  lastSaved`), confirms with a native `confirm()` — a cancel restores the select to the
-  loaded project — AWAITS `playground_open_project`'s promise, then reloads), a "Reset to bundled" button shown for any bundled slug with stored files,
-  with the note "the bundled project changed since you saved" or "you imported over the
-  bundled project" per the manifest's origin when the content hash or bundle version
-  differs (awaits `playground_reset_project`, then reloads), a command console (`<input>` + `<output
+  lastSaved`), confirms with a native `confirm()` — a cancel restores the select to
+  `currentSlug` — AWAITS `playground_open_project`'s promise, then **ends unconditionally
+  in navigation**: `location.search = "?project=" + slug` — nothing runs after it; the
+  promise rejects with the drain's status message on a 5 s timeout, shown in the banner
+  region, the select restored to `currentSlug`), a "Reset to bundled" button shown for any
+  bundled slug with `has_stored_files` — **it confirms first, always** (`confirm()`: it
+  deletes this browser's saved copy of the project) — with the note "you imported over the
+  bundled project" when the entry's `manifest.origin` is `imported`, else "the bundled
+  project changed since you saved", shown only when `differs_from_bundle` (a first save
+  upserts the manifest with `origin: saved` and the bundled hash — `store/indexed_db/mod.rs:327-333`
+  — so the note appears after a bundle change, not after every save; awaits
+  `playground_reset_project`, then navigates to `?project=<slug>`), a command console (`<input>` + `<output
   aria-live="polite">` over `playground_dispatch`/`playground_poll_responses`, paired in
-  FIFO order, a `false` return shown inline as "busy — try again"), the persistence
-  banner region (`role="alert"`, the `#playground-banner` element `persist.rs` writes), a `beforeunload`
-  handler that warns while a put is pending, `canvas.focus()` after the project switch
-  completes (never while a text control has focus), keyboard-shortcut list next to the
-  embed (the README's playable-game accessibility requirements apply). Copy uses curly
-  apostrophes; exactly one `<h1>`; no duplicate ids.
-- `README.md` (site) § drop-in convention gains "the editor bundle" subsection;
-  `docs/roadmap.md:128-131` updated to "shipped, route `/playground/`";
-  `src/pages/engine.astro:34-39` links the playground.
+  FIFO order, a `false` return shown inline as "busy — try again"; `list` is the smoke
+  command, `docs/EDITOR_COMMAND_API.md:30`), the persistence banner region
+  (`role="alert"`, the `#playground-banner` element `persist/mod.rs:347` writes), a
+  `beforeunload` handler that warns while a put is pending (the engine already warns
+  through `persist`'s own listener; the page's covers batch 8's unsaved textarea), no
+  page-side focus management — the engine focuses its canvas at boot
+  (`crates/renderer/src/window.rs:114`) and the page never moves focus away from a text
+  control — and a keyboard-shortcut list next to the embed (the README's playable-game
+  accessibility requirements apply). Copy uses curly apostrophes; exactly one `<h1>`; no
+  duplicate ids.
+- `scripts/screenshot-pages.mjs:55-70` (`shotNames`): add `"/playground/":
+  "studio-playground"` — every route is measured for sideways scroll automatically, but a
+  PNG is opt-in per route. `scripts/postbuild-check.mjs:48-59`: the `index.html` guard
+  walks `public/games/` only; walk `public/playground/` with it — the same silent
+  route-overwrite applies to `/playground/` (the build script's test page lands outside
+  the synced dir, so this is a guard, not a fix).
+- The synced bundle is **tracked in the site repo**, like the six game bundles (85 files
+  under `public/games/`): stage `public/playground/v1/**` (`game.js`, `game_bg.wasm`,
+  `assets/manifest.json`, `assets/projects.json`, `assets/projects/examples/assets/**`).
+- `README.md` (site) § "WASM builds" (`:166-199`) gains "the editor bundle" subsection
+  (route, `public/playground/<version>/`, the project layout, the one-embed-per-page
+  rule); its item 4 (`:177-179`, "GameEmbed currently renders a placeholder") is stale
+  since the embeds shipped and is corrected in the same edit; `docs/roadmap.md:128-131`
+  updated to "shipped, route `/playground/`"; `src/pages/engine.astro:34-39` links the
+  playground.
+- `docs/WEB_PLAYGROUND.md`: the intro's "Batch 4 … adds the build script and the page;
+  this file describes what the crate exports today" is rewritten, and a new § "The bundle"
+  states the layout (`playground/<version>/{game.js, game_bg.wasm, assets/{manifest.json,
+  projects.json, projects/<slug>/assets/**}}`), the `projects.json` entry shape, the hash
+  definition and the invocation of record. `crates/playground/CLAUDE.md` file map: the row
+  `store/indexed_db.rs` names a file batch 3 split into `store/indexed_db/{mod,cursors}.rs`
+  — correct the row (a batch-3 leftover, folded in here because this batch touches the
+  guide's bundle contract).
 - Deploy is Jesse's push of `jesse → dev` (staging) then `main`.
 
-Gates: `npm run verify`; bundle gate; `shellcheck scripts/build_wasm.sh` if installed.
+Gates: `npm run verify`; bundle gate (the invocation of record must not warn past 20 MiB;
+report the `wasm size:` line); games-kind regression — `scripts/build_wasm.sh ../games/pong
+pong` (no `--sync`) still completes and produces `../games/pong/dist/games/pong/v1/`
+unchanged in layout; `shellcheck scripts/build_wasm.sh` is not installed on Iroh — say so
+in the report instead of running it. The readiness hunk touches `crates/playground`, so
+`cargo test --workspace`, `cargo clippy --workspace --all-targets` and `scripts/check_wasm.sh`
+run; no public item of an engine crate changes, so the games gate does not apply.
 **Jesse's browser check:** open `/playground/` on staging, select an entity, move it
 with the gizmo, press Play (the patrollers walk), Stop, Ctrl+S, reload — the move
 persisted; the console answers `list`; switch project with unsaved edits — the page
-asks first. Leaves out: export/import (batch 5), scripts.
+asks first; batch 3's persistence check rides on this page too: save twice, reload,
+switch, reset. Leaves out: export/import (batch 5) and, with them, the "download this
+file" control the conflicted-path banner names (the page needs export's Blob-download
+shape and `playground_read_file`; batch 5 carries it); scripts.
 
 ## Batch 5 — project export and import (#49 items 1–2)
 
@@ -873,7 +992,12 @@ Target shapes:
 - Bridge: `playground_export_zip() -> Vec<u8>` and `playground_import_zip(bytes: &[u8])
   -> Promise<String /* slug */>`; the page offers the export as a Blob download link and
   an `<input type="file" accept=".zip">` for import, confirming through
-  `playground_is_dirty` first.
+  `playground_is_dirty` first. The same Blob-download shape gives the conflicted-path
+  banner its "download this file" control (deferred here from batch 4): the page reads
+  the named file and offers it, so THIS tab's version can be kept before a reload
+  discards it. It reads BYTES — a new `playground_read_file_bytes(path) -> Vec<u8>` beside
+  the text one (`playground_read_file` goes through `read_to_string`, which would corrupt
+  a conflicted `.png` or `.wav` under `assets/`).
 - `docs/WEB_PLAYGROUND.md` § Export layout — the layout is the template repo's
   (batch 10), stated here first so batch 10 conforms to it.
 
