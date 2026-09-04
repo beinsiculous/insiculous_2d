@@ -495,7 +495,7 @@ tests, `editor_game/{api_tests,shortcuts_tests,scene_io_tests,play_session_tests
 headless `--api` transcript against `../games/pong` exercising create, set (a scale of 0 must
 come back 0.01), add, remove, undo and save to a path under `target/`, pasted into the report.
 
-## Batch 7 — DRY in the editor UI (~400 removed, ~200 added; this section is the whole spec) — DONE Sep 3 2026 (367fc5f; reviews 24 and 24-claude, fixes applied by Claude per Jesse's standing ruling; the editor_demo visual pass is Jesse's, after the commit)
+## Batch 7 — DRY in the editor UI (~400 removed, ~200 added; this section is the whole spec) — DONE Sep 3 2026 (367fc5f; reviews 24 and 24-claude, fixes applied by Claude per Jesse's standing ruling; the editor_demo visual pass done by Jesse Sep 3 2026)
 
 Re-verified against the tree on Sep 3 2026 after batch 6 (`b25eeb7`); every line number below is
 from that tree. No `design-structure.md` section covers this batch — the target shapes are here,
@@ -739,7 +739,7 @@ says what it now governs), `crates/editor_integration/CLAUDE.md:37` (`panel_rend
 `editor_demo` visual pass after the commit — Jesse's check, because a wrong theme token or a
 border stroke on the wrong edge is invisible to tests.
 
-## Batch 8 — SRP splits, engine side (~900 lines moved; §A; this section is the whole spec, re-verified against the tree Sep 3 2026) — DONE Sep 3 2026 (edde064 without 8.3 — reviews 26 and 26-claude, rebuttal-26, fixes applied by Claude per Jesse's standing ruling; 8.3 was reported done and had not landed, went back to gemini as `8-fixes-for-gemini.md` and landed as ef10209 — reviews 27 and 27-claude, rebuttal-27, no fix hunks; Jesse's 8.2 hand-diff of the golden fixture and the native `hello_world`/`editor_demo` run are still his)
+## Batch 8 — SRP splits, engine side (~900 lines moved; §A; this section is the whole spec, re-verified against the tree Sep 3 2026) — DONE Sep 3 2026 (edde064 without 8.3 — reviews 26 and 26-claude, rebuttal-26, fixes applied by Claude per Jesse's standing ruling; 8.3 was reported done and had not landed, went back to gemini as `8-fixes-for-gemini.md` and landed as ef10209 — reviews 27 and 27-claude, rebuttal-27, no fix hunks; the native `editor_demo` run done by Jesse Sep 3 2026; the 8.2 hand-diff of the golden fixture waived by Jesse the same day — the fixture equals the pre-batch serializer's output, verified in a worktree, and no one outside the repo consumes saved scenes yet)
 
 Re-verification notes, so the executor does not chase what earlier batches already did or
 what the design got wrong:
