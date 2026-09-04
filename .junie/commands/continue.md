@@ -42,7 +42,6 @@ never as "the next task".
 ## 2. Gather Context
 
 ### 2.1 Read Existing Documentation
-- Crate's `ANALYSIS.md` (if exists) - previous analysis and plans
 - Crate's open `tech-debt` issues (`gh issue list -R beinsiculous/insiculous_2d --label tech-debt`; for a game, `-R beinsiculous/<game>`) - known issues in this crate
 - `PROJECT_ROADMAP.md` - vision, settled decisions, phase context
 
@@ -55,15 +54,8 @@ never as "the next task".
 
 ## 3. Plan and Document Changes
 
-### 3.1 Update ANALYSIS.md
-Before modifying code:
-- Document the current state of relevant components
-- Outline the planned approach and design decisions
-- Note any risks or open questions
-
-If no `ANALYSIS.md` exists:
-- Create one with current state assessment
-- Document the problem and proposed solution
+### 3.1 Update analysis
+The issue thread is the durable record; the per-crate analysis files are retired, do not create them.
 
 ### 3.2 Consider Context Isolation
 For complex changes that might clutter the main context:
@@ -110,10 +102,8 @@ For user-facing features:
 
 ## 6. Update Documentation
 
-### 6.1 Update ANALYSIS.md
-- Mark completed work
-- Document any deviations from original plan
-- Note follow-up work identified
+### 6.1 Update analysis
+The issue thread is the durable record; the per-crate analysis files are retired, do not create them.
 
 ### 6.2 Update the board (if relevant)
 - Resolved debt: close its `tech-debt` issue ("fixes …#N"); append lessons to
@@ -135,7 +125,7 @@ For user-facing features:
 Before finishing:
 - [ ] All tests pass: `cargo test --workspace`
 - [ ] No compilation warnings: `cargo build --workspace`
-- [ ] Documentation updated (ANALYSIS.md as needed; board issues closed/filed)
+- [ ] Documentation updated (board issues closed/filed)
 - [ ] Follow-up work filed as new issues on the board
 
 ---

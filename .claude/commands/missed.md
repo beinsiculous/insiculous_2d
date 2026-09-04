@@ -25,11 +25,10 @@ ls crates/
 ### 1.2 Read Existing Documentation
 
 Read these sources in order:
-1. `crates/<crate_name>/ANALYSIS.md` - Previous analysis and plans
-2. The crate's open `tech-debt` issues - `gh issue list -R beinsiculous/insiculous_2d --label tech-debt` (known existing debt)
-3. `PROJECT_ROADMAP.md` - Vision + settled decisions
-4. `AGENTS.md` - High-level project guidance
-5. `training.md` - Established patterns to check against
+1. The crate's open `tech-debt` issues - `gh issue list -R beinsiculous/insiculous_2d --label tech-debt` (known existing debt)
+2. `PROJECT_ROADMAP.md` - Vision + settled decisions
+3. `AGENTS.md` - High-level project guidance
+4. `training.md` - Established patterns to check against
 
 ### 1.3 Assess Crate Size
 

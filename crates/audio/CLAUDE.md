@@ -2,17 +2,23 @@
 
 Audio playback via rodio (sound effects + background music). **No spatial audio
 lives in this crate**: the ECS components `AudioSource`, `AudioListener`, and
-`PlaySoundEffect` are in `crates/ecs/src/audio_components.rs` and are currently
-editor-inspectable data only — no runtime system consumes them (a bridging
+`PlaySoundEffect` live in `crates/ecs/src/audio_components.rs` to avoid a circular dependency
+and are currently editor-inspectable data only — no runtime system consumes them (a bridging
 audio system is future work).
 
 ## Files
-- `lib.rs` — crate docs + re-exports (`AudioManager`, `SoundHandle`, `SoundSettings`, `AudioError`, `AudioResult`)
-- `manager/mod.rs` — `AudioManager` struct + device/output lifecycle, load/cache, SFX playback, stop-by-handle
-- `manager/music.rs` — music playback (play/stop/pause/resume) + the volume buses (`update_all_volumes`)
-- `manager/tests.rs` — headless tests for both seams (shared WAV fixtures)
-- `sound.rs` — `SoundHandle` (Copy id), `SoundSettings` (builder: volume/speed/looping)
-- `error.rs` — `AudioError` (thiserror) + `AudioResult<T>` alias
+- `manager/mod.rs` — `AudioManager` device/output lifecycle, load/cache, SFX playback, and active sound tracking.
+- `manager/music.rs` — music playback (play/stop/pause/resume) and volume buses (`update_all_volumes`).
+- `sound.rs` — `SoundHandle` (Copy id) and `SoundSettings` (builder: volume/speed/looping).
+
+## Pitfalls and their guard tests
+| Pitfall | Guard Test |
+|---|---|
+| `_stream: OutputStream` on `AudioManager` must be kept alive; dropping it kills all audio playback | — none |
+| `AudioManager` on wasm32 must start disabled because browsers gate audio behind a user gesture, enabling on first user interaction | `src/manager/tests.rs test_enable_output_keeps_handles_ids_buses_and_pending_music_whatever_the_outcome` |
+| Clamping volume and speed at point of use: `SoundSettings` fields are public, so out-of-range volume or speed must be clamped before reaching sinks | `src/manager/tests.rs test_sound_settings_clamp_volume_to_unit_range_and_floor_speed_at_a_tenth` |
+| Unloaded sound handle must be rejected and its ID never recycled | `src/manager/tests.rs test_unloaded_handle_is_rejected_and_its_id_is_never_recycled` |
+| Missing audio files produce IO errors while corrupt data produces decode errors naming the file | `src/manager/tests.rs test_missing_files_are_io_errors_and_undecodable_data_is_a_decode_error_naming_the_file` |
 
 ## Key Types & Behavior
 - `AudioManager::new_or_disabled()` — never fails; *disabled* mode (no audio

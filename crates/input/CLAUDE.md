@@ -57,6 +57,19 @@ player-aware settings layer (the universal mapping games consume).
   on `InputEvent`); serde derives on all binding types (winit `serde` feature)
 - Scroll deltas normalized to lines (`PixelDelta` ÷ 16)
 - Stick Y follows gilrs convention: **positive = up**
+- `GamepadState::axis_value` returns the raw axis verbatim without a dead zone; `AXIS_ACTIVATION_THRESHOLD` filters digital sources only
+- `update()` shortcut fuses `process_queued_events` and `end_frame`, which can eat `just_*` reads if called before reading one-shot state
+
+## Pitfalls and their guard tests
+| Pitfall | Guard Test |
+|---|---|
+| `InputHandler::update()` fuses event processing and frame cleanup, clearing one-shot flags before `just_*` checks can read them | `tests/input_event_queue.rs test_update_clears_edges_but_keeps_held_inputs` |
+| `GamepadState::axis_value` returns the raw axis without dead-zone filtering; only digital thresholded sources are filtered | `tests/input_handler_integration.rs test_axis_activation_threshold_is_half_deflection_by_default` |
+| Calling `end_frame()` before querying action activation clears one-shot flags and breaks edge detection | `tests/input_handler_integration.rs test_action_edges_fire_once_per_press_and_release_across_frames` |
+| Gamepad disconnect drops state so sources read released without firing a `just_released` edge | `tests/input_handler_integration.rs test_pads_register_on_first_event_or_connect_and_disconnect_drops_state_without_an_edge` |
+| `InputMapping::new()` is empty with no implicit bindings, requiring explicit binding configuration | `tests/input_mapping.rs test_new_mapping_binds_nothing_implicitly` |
+| Scroll pixel deltas must be normalized to lines (`PixelDelta` ÷ 16) | `tests/mouse.rs test_wheel_lines_and_trackpad_pixels_accumulate_as_lines_and_clear_each_frame` |
 
 ## Testing
 - `cargo test -p input` — 0 failed, 0 ignored
+

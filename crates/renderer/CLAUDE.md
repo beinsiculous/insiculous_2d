@@ -23,48 +23,31 @@ Renderer (WGPU device, queue, surface, RendererConfig{vsync})
 3. Camera uniforms uploaded once per pipeline per frame via `CameraBinding`
 
 ## File Map
-- `renderer.rs` — WGPU device/queue/surface lifecycle, `RendererConfig`, frame orchestration.
-  Registers wgpu's device-lost + uncaptured-error callbacks at creation; every render-path
-  entry (`acquire_frame`, `render_with_sprites`, `set_lines`, `resize`, `recreate_surface`)
-  guards on the loss latch. `resize` dedups same-size reconfigures and arms a forced
-  reconfigure after a skipped zero-size request (hidden web canvas round trip).
-  `set_viewport_scissor(Option<[u32;4]>)` (per-frame, like `set_lines`) bounds the
-  game-world passes — sprites, lines, bloom composite — to a rect; the UI pass is exempt
-- `camera_binding.rs` — `CameraBinding`: unified camera uniform buffer, bind group layout,
-  and bind group with `new`, `update`, and `bind` (composed by SpritePipeline and LinePipeline; ticks DRY-006)
-- `pipeline_builder.rs` — `PipelineSpec`, `build_render_pipeline`, and `depth_state` helper
-- `scissor.rs` — pure scissor math (issue #41): `quantize_rect` (outward rounding,
-  NaN-safe), `clamp_scissor` (`None` = empty ⇒ skip draw), `intersect_scissor`,
-  `batch_scissor` (per-batch decision: clip ∩ pass default, clamped), `PassScissor` enum
-  (`Fullscreen`, `Rect`, `Empty`). All headless-tested
-- `white_texture.rs` — the built-in 1x1 white texture resource (extracted from renderer.rs)
-- `device_status.rs` — `DeviceLossLatch` (one-way Arc<AtomicBool> set by the lost callback,
-  polled before all queue/surface work) + pure `resize_action` guard. Fail-stop by design:
-  no auto-recovery (the device/queue Arcs fan out into every pipeline)
-- `sprite.rs` — `Sprite` data type storing `shape: SpriteShape`, `corner_radius`, and `border_width`
-  (flattened in `to_instance()`); parent of the sprite submodules
-- `sprite/batch.rs` — `SpriteBatch` (carries `clip: Option<[u32;4]>`), `SpriteBatcher`
-  (CPU-side grouping keyed by `(texture, clip)`; `set_clip` cursor drives per-batch GPU
-  scissoring for clipped UI — game paths never set a clip and batch exactly as before;
-  `batch_for(texture)` = the unclipped batch)
-- `sprite/pipeline.rs` — `SpritePipeline` (GPU pipeline, bind group caches, draw)
-- `sprite_data.rs` — GPU data structures (`SpriteVertex`, `SpriteInstance` incl. `shape: [f32;4]` SDF params [kind, corner_radius, border_width, _] — kind 0=quad/1=rounded rect/2=circle, 76-byte stride, attr @10; fragment masks with sdRoundedBox + 1.5px AA), `DynamicBuffer` with `grown_capacity`
-- `texture.rs` — `TextureManager` (with shared `insert_rgba`), `TextureHandle` (incl. `WHITE`), `SamplerConfig`
-- `texture_filter.rs` — `TextureFilter` (Linear/Nearest → `SamplerConfig` via `From`; the pixel-art knob engine_core plumbs from `GameConfig` and `.sheet.ron` sidecars); public path is still `renderer::TextureFilter`
-- `render_targets.rs` — HDR/depth/bloom textures, resize handling, `bloom_dims`
-- `bloom.rs` — bloom passes + `BloomConfig` (runtime-tunable); composite takes
-  a `SwapchainTarget { view, is_srgb }` — non-sRGB swapchains (WebGPU canvases
-  expose NO sRGB formats) get gamma-encoded in the shader via
-  `BloomParams.inv_gamma` so web brightness matches native
-- `window.rs` — window creation + **`insert_canvas_into_dom` (wasm)**: winit
-  NEVER inserts its canvas into the DOM (detached canvas = every pass valid,
-  page silently black); this swaps it in place of the page's `#game-canvas`
-  placeholder (id/size/a11y attrs copied, canvas focused) or appends to body.
-  Called from engine_core's `WindowManager::create` — any new window-creation
-  path must call it too. Adopting an existing canvas via `with_canvas` was
-  tried and abandoned (Aug 2026)
-- `line_pipeline.rs` — `LinePipeline`, `LineVertex`
-- `shaders/` — `sprite_instanced.wgsl`, `line.wgsl`, `bloom_{extract,blur,composite}.wgsl`
+- `renderer.rs` — WGPU lifecycle and frame orchestration; fail-stop on device loss, resize dedup with forced reconfigure on zero-size recovery, and `set_viewport_scissor`.
+- `camera_binding.rs` — `CameraBinding`: unified camera uniform buffer, bind group layout, and bind group shared across SpritePipeline and LinePipeline.
+- `scissor.rs` — scissor math: `quantize_rect` (outward rounding), `clamp_scissor` (None = empty/skip draw), and `batch_scissor` (clip ∩ pass default).
+- `device_status.rs` — `DeviceLossLatch` (one-way fail-stop latch polled before queue/surface work) and pure `resize_action` guard.
+- `sprite/batch.rs` — `SpriteBatch` and `SpriteBatcher`: CPU-side grouping keyed by (texture, clip); `set_clip` cursor drives per-batch GPU scissoring.
+- `sprite_data.rs` — GPU data structures (`SpriteVertex`, `SpriteInstance` with SDF shape parameters, `DynamicBuffer` with power-of-two growth).
+- `texture.rs` — `TextureManager`, `TextureHandle` (with reserved `WHITE`), and `SamplerConfig`.
+- `texture_filter.rs` — `TextureFilter`: Linear/Nearest mapping to `SamplerConfig`.
+- `bloom.rs` — Bloom passes; composite encodes gamma via `BloomParams.inv_gamma` on non-sRGB swapchains (WebGPU canvases).
+- `window.rs` — `insert_canvas_into_dom` (wasm): swaps canvas in place of `#game-canvas` or appends to body (winit does not insert canvas into DOM).
+
+## Pitfalls and their guard tests
+| Pitfall | Guard Test |
+|---|---|
+| Float sorts in `SpriteBatch` must use `total_cmp`, never `partial_cmp().unwrap()` | `src/sprite/batch.rs test_sort_by_depth_orders_ascending_with_nan_last` |
+| `DeviceLossLatch` is one-way: marking loss is idempotent and never resets | `src/device_status.rs test_device_loss_latch_is_one_way_and_shared_by_clones` |
+| Instance cache invalidation: identical bytes with different batch boundaries must still re-upload | `src/sprite/instance_cache.rs test_same_bytes_with_different_batch_boundaries_still_upload` |
+| Scissor clamping: overhang on resize race trims to live surface to satisfy `scissor ⊆ attachment` | `src/scissor.rs test_clamp_trims_to_the_live_surface_and_empties_to_none` |
+| Empty scissor intersection result must skip the draw call | `src/scissor.rs test_batch_scissor_intersects_clip_with_default_and_skips_empty` |
+| `TextureHandle::WHITE` is reserved (default is `WHITE` and manager allocates from 1 so no loaded texture collides) | `src/texture.rs test_default_handle_is_the_reserved_white_texture` |
+| `SpriteVertex` and `SpriteInstance` attributes must match shader locations | `src/sprite_data.rs test_sprite_attributes_match_shader_locations` |
+| `DynamicBuffer` grows to next power of two and never shrinks | `src/sprite_data.rs test_dynamic_buffer_grown_capacity` |
+| `queue.write_buffer` flushes at `submit()`, not encode time: rewriting one uniform between passes in a single submit makes every pass read the last write | — none |
+| Cross-batch draw order follows `HashMap` iteration in `SpriteBatcher` and is not deterministic today; only the sort within a batch is (open defect on the renderer backlog issue) | — none |
+| Winit on wasm never inserts canvas into DOM; `insert_canvas_into_dom` must swap into `#game-canvas` or append to body | — none |
 
 ## Key Guidelines
 - **Cache bind groups — never create per-frame.** Sprite textures cache per handle; bloom caches per target size.

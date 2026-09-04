@@ -50,20 +50,23 @@ is never applied and hierarchy propagation will fight the physics writeback.
 Pinned by `test_parented_entity_with_rigid_body_is_treated_as_world_space`.
 
 ## File Map
-- `lib.rs` — public exports
-- `prelude.rs` — convenience re-exports
-- `physics_world/` — Rapier2d world wrapper
-  - `mod.rs` — `PhysicsConfig` (validated scale), struct, construction, unit conversion
-  - `bodies.rs` — add/remove bodies & colliders, per-body accessors
-  - `stepping.rs` — `step()`, collision event extraction, `clear_collision_events`
-  - `tests.rs`
-- `physics_system/` — ECS driver
-  - `mod.rs` — struct, builders, deferred-op queue, pass-through API
-  - `sync.rs` — ECS↔rapier sync + orphan GC
-  - `update.rs` — `System` impl (fixed-timestep loop)
-  - `tests.rs`
-- `components.rs` — RigidBody, Collider ECS components, CollisionEvent/Data; editor-facing enum helpers (`RigidBodyType::ALL/label/index`, `ColliderShape::VARIANT_NAMES/variant_with_carried_dimensions` — clean round-trips are exact, capsule↔capsule is a pure axis swap)
-- `presets.rs` — Pre-configured physics: `RigidBody::player_platformer()`, `Collider::platform(w, h)`, etc.
+- `physics_world/` — Rapier2d wrapper: `PhysicsConfig` (unit conversion, validated scale), bodies, stepping, and collision extraction.
+- `physics_system/` — ECS driver: fixed-timestep sub-stepping, ECS↔rapier sync, external-edit propagation, and deferred op queue.
+- `components.rs` — `RigidBody` and `Collider` components, collision events, and editor variant helpers with carried dimensions.
+- `presets.rs` — pre-configured physics body and collider archetypes.
+
+## Pitfalls and their guard tests
+| Pitfall | Guard Test |
+|---|---|
+| Colliders are absolute-pixel sized and ignore `Transform2D.scale`; scaled sprites will visually drift from colliders | `src/physics_system/tests.rs test_collider_size_is_absolute_pixels_and_ignores_transform_scale` |
+| Live physics edits: editing `Transform2D` teleports the body and editing `Collider` rebuilds its collider, but `RigidBody` config edits require recreating the body | `src/physics_system/tests.rs test_live_rigid_body_config_edit_needs_the_body_rebuilt` |
+| Physics entities must be root entities: parenting an entity that has a `RigidBody` is treated as world space and hierarchy propagation fights physics writeback | `src/physics_system/tests.rs test_parented_entity_with_rigid_body_is_treated_as_world_space` |
+| Draining collision events via `take_collision_events()` more than once in the same frame returns empty | `src/physics_system/tests.rs test_second_take_collision_events_in_a_frame_returns_empty` |
+| Destroying a body on contact-start cancels Rapier's impulse; if collision response matters, apply in game code | — none |
+| `PhysicsWorld::apply_impulse` silently no-ops on same-frame spawns without a synced body; `PhysicsSystem::set_velocity` defers safely | `src/physics_system/tests.rs test_reset_body_and_set_velocity_apply_in_call_order_live_or_deferred` |
+| External `Transform2D` edits teleport live bodies while preserving velocity | `tests/external_edits.rs test_external_transform_edit_teleports_live_body_and_keeps_its_velocity` |
+| External `Collider` edits rebuild Rapier colliders and removal drops them | `tests/external_edits.rs test_collider_edit_rebuilds_and_collider_removal_drops_the_rapier_collider` |
+
 
 ## Key Patterns
 - All rapier types stay inside `PhysicsWorld` — ECS components are our own types

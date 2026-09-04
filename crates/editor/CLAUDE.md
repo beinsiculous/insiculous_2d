@@ -21,58 +21,51 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 
 ## File Map
 ### State + chrome
-- `context/` — EditorContext struct (selection, tools, state, theme, fonts, inspector_scroll); tests in `context/tests.rs`
-- `lib.rs` — Public re-exports
-- `theme/` — EditorTheme (`mod.rs` + `tests.rs`; WCAG surface ladder `surface_0..surface_4` + `popup_border` with luminance guard tests — the ≥1.35:1 adjacent / ≥3:1 border tests are the spec, tune hexes only with them green; color tokens, `fonts: FontSizes` typography tokens, gizmo/grid/inspector style converters, `ui_theme()` → derives the ui crate Theme)
-- `fonts.rs` — crate-shipped DejaVu faces (`EDITOR_FONT_REGULAR/BOLD/MONO` via include_bytes + `EditorFonts` handles; LICENSE ships in assets/fonts/)
-- `scroll.rs` — shared `ScrollState` (per-panel vertical scroll; two documented call orders)
-- `test_support.rs` — `#[cfg(test)]` fixtures: `entity`/`setup_entity`/`named_entity`, `pickable`, the 800×600 `test_viewport`, `extras`, and the press-frame/release-frame click harness (`press_at`/`move_to`/`release`/`click_through`/`type_key`) — a click is two frames and fires on the release frame
-- `command_api/` — **Stages A+B** (`mod.rs` types + envelope + dispatch_line, `parse.rs` one parser per verb incl. rest-of-line JSON for set/add + ARCHETYPES/VERBS, `query.rs`, `write/` with `verbs.rs` one fn per verb, WriteCtx/ApiBatch/run — every write through CommandHistory, `specs.rs` CommandDoc table + `commands` self-description w/ drift tests): queries list/describe/selection/scene/commands + writes set/add/remove/rename/delete/select/undo/redo/batch (create/save are HostedWrite, performed by editor_integration); name-first `EntityRef`, single-line JSON; pure dispatch — no I/O/threads/cfg (contract doc = `docs/EDITOR_COMMAND_API.md`; write_tests.rs)
-- `typography.rs` — `FontSizes` {small 12/body 14/heading 16} + `MIN_READABLE_FONT` guard
-- `drag_drop.rs` — `DragDropState`/`DragPayload` cross-panel drag state machine (Idle→Armed→Dragging→Dropped-1-frame)
-- `asset_browser.rs` — pure asset scan (`scan_assets`), `AssetBrowserState`, `fit_rect`
-- `texture_field.rs` — inspector texture slot (drop target) + `InspectorExtras`
-- `gizmo_math.rs` — pure rotate-drag math (Y-flip + shortest-arc wrap)
-- `dock/` — Multi-panel docking: `mod.rs` (state + layout, collapse/visibility toggles, `panel_id_for_menu_label`), `render.rs` (chrome, collapse chevrons, resize grabbers + clamped `resized_size`), `tests.rs`
-- `layout.rs` — Layout constants (`PADDING` 8.0 for panel content / status bar / inspector styles, `LINE_HEIGHT` 20.0 for inspector rows)
-- `menu/` — Top menu bar (`mod.rs` + `tests.rs`); action items carry a `checked` flag (`MenuBar::set_checked`) rendered as an accent square; `actions.rs`: `action_for_menu_label` (menu label → `EditorAction`, the menu bar's only vocabulary)
-- `toolbar.rs` — Tool selection toolbar
-- `status_bar.rs` — Bottom status bar (22px); `show_message`/`show_error`/`clear_message`
-- `play_controls.rs`, `play_state.rs` — Play/Pause/Stop widget + state enum
-- `editor_input.rs` — THE editor shortcut table (#40): `EditorBinding` chord model (`Chord{key,ctrl,shift}`/`KeyAnyMods`/`Mouse` — editor-owned, engine `InputSource` untouched), `EditorInputMapping` with event-path `resolve(key,ctrl,shift)` (exact chord beats any-mods; eviction keyed by the full tuple) + poll-path `is_action_pressed/just_pressed`; every editor shortcut ships as a default binding here; `Modifiers::read` (either Ctrl / either Shift — the one modifier read); the menu-only actions `CreateEntity(Archetype)`/`Exit`/`TogglePanel`/`ResetLayout`/`CycleGameLocale` and `allowed_while_playing()` (deny list: creates, clipboard, Delete/Duplicate, Undo/Redo, New/Open)
-- `archetype.rs` — `Archetype`: the nine entity factories the Entity menu and the command API's `create` share (`ALL`, `kebab`/`from_kebab`, `menu_label`); `ARCHETYPES` and the Entity menu derive from it
-- `editor_preferences.rs` — Persisted editor prefs (camera, zoom, last scene, `PanelPrefs` panel layout via `capture_panels`/`apply_panels`)
+- `context/` — EditorContext struct (selection, tools, state, theme, fonts, inspector_scroll).
+- `theme/` — EditorTheme: WCAG surface ladder `surface_0..surface_4` with luminance guard tests (≥1.35:1 adjacent / ≥3:1 border), style converters, and `ui_theme()`.
+- `command_api/` — CLI/API dispatch (query list/describe/selection/scene/commands and write set/add/remove/rename/delete/select/undo/redo/batch) through CommandHistory; `docs/EDITOR_COMMAND_API.md`.
+- `drag_drop.rs` — `DragDropState`/`DragPayload` cross-panel drag state machine (Idle→Armed→Dragging→Dropped-1-frame).
+- `dock/` — multi-panel docking: state, layout, collapse/visibility toggles, chevrons, and clamped resize grabbers.
+- `menu/` — top menu bar; action items carry checked flag and map labels to `EditorAction`.
+- `editor_input.rs` — shortcut chord model (exact chord beats any-mods) and `allowed_while_playing()` action deny list.
+- `archetype.rs` — `Archetype`: the nine entity factories shared by the Entity menu and command API `create`.
 
 ### Inspector / components
-- `inspector.rs` — Generic `inspect_component()` (read-only, serde-based)
-- `editable_inspector.rs` — Editable field widgets (f32 with soft-range opts + `angle()` degree field w/ `wrap_degrees`, bool, `string_edit` text input, `cycle()` variant selector); `InspectorFrame` (shared pass context with borrowed styles and column geometry); `EditableInspector` borrows `EditableFieldStyle`, width-aware — labels ellipsize at the control column, controls clamp to the panel's right edge, the [X] right-aligns
-- `row_layout.rs` — pure row-layout math (`field_row`/`remove_button_x`/`pair_slots`/`color_block_height`/`ellipsize`, measurement injected — headless-tested; ALL inspector horizontal placement goes through here, never hardcode offsets)
-- `composite_rows.rs` — `edit_vec2` (X/Y composite row) + `edit_color` (RGBA 2×2 grid with aligned columns), measured axis/channel badges
-- `text_field.rs` — `edit_string` free fn + read-only `display_string`/`display_u32`
-- `ui_component_editors.rs` — `edit_ui_label/panel/button` (UiLabel/UiPanel/UiButton field editors; anchor via cycle selector)
-- `field_style.rs` — `FieldId` (widget-ID mapping), `EditableFieldStyle` (layout dims + colors; `label_width` 120), `EditResult<T>`; `WidgetSlot` (`Field`/`Remove`/`AddButton`/`PopupRow` — every slot inside the component's own id stride)
-- `component_editors.rs` — Per-component editors: `edit_transform2d()`, `edit_sprite()`, etc. Return `Option<ComponentEdit<T>>`; field ranges in `mod ranges`; RigidBody Type + Collider Shape are cycle rows (shape cycling carries dimensions, early-return on variant change; headless-locked in `component_editors/tests.rs` incl. the commit-before-cycle ordering and the `apply_component_edit` merge-by-hint contract)
-- `physical_floors.rs` — the hard floors the inspector editors and the command API's `sanitize` both apply (scale, collider extents, capsule half-height, volume, pitch), as constants plus `clamp_*` per component
-- `script_editor.rs` — `edit_scripts()` (#44 Stage 1): widgets inferred from `ScriptValue` variants (param rename = key move, type cycle resets to variant default, Entity read-only until a picker exists), add/remove script + param via `EditableInspector::action_button`; one registry line + `SetScriptsCommand` buys the rest
-- `behavior_editor.rs` — `edit_behavior()`: variant cycle selector + per-variant editors (`edit_<variant>` returning field hint; tag/target strings editable via `string_edit`; `CameraFollow.dead_zone` stays read-only — it's an `Option<(f32,f32)>` awaiting an Option widget)
+- `editable_inspector.rs` — editable field widgets (f32 soft-range, angle degree field with wrap, cycle selector) and width-aware `EditableInspector`.
+- `row_layout.rs` — row-layout math (`field_row`, `remove_button_x`, `pair_slots`, `ellipsize`; all horizontal placement goes through here, never hardcode offsets).
+- `field_style.rs` — `FieldId` (widget-ID mapping), `EditableFieldStyle`, and typed `EditResult<T>` returns (keeps the editor crate free of an engine_core dependency); `WidgetSlot` inside component ID stride.
+- `component_editors.rs` — per-component editors returning `Option<ComponentEdit<T>>`; shape cycling carries dimensions with commit-before-cycle ordering.
+- `physical_floors.rs` — hard floors applied by inspector editors and command API `sanitize` (scale, collider extents, capsule half-height, volume, pitch).
+- `behavior_editor.rs` — `edit_behavior()`: variant cycle selector and per-variant editors; `CameraFollow.dead_zone` stays read-only.
 
 ### Scene + selection
-- `selection.rs` — Selection set (primary + multi-select; insertion-ordered IndexSet, deterministic primary fallback)
-- `hierarchy/` — Hierarchy panel tree view + F2 inline rename (`mod.rs`: `begin_rename`/`rename_widget_id`/`HierarchyResponse`, `RowGeometry`, `render_row`/`render_children`, `normalized_rename` guard; `tests.rs`)
-- `viewport/{mod,tests}.rs`, `viewport_input.rs` — Scene viewport with camera pan/zoom; `to_window_render_camera`/`world_to_screen` overlay↔GPU equivalence locked by `assert_overlay_matches_render_camera` tests (incl. the #42 play-follow pose); `EditorContext.camera_follow` (default true) is the play-session follow flag
-- `picking/` — EntityPicker, PickableEntity (AABB from absolute size — flip scales stay clickable), screen_to_world() (SelectionRect deleted in #39 — the live marquee is ViewportInputHandler state + the caller's screen-space rect draw)
-- `selection_outline.rs` — viewport selection/hover outlines (consumes the picking `PickableEntity` list; pure `hover_entity_at` hit test; colors via `theme.selection_outline_colors()`)
-- `gizmo/` — Transform gizmos (`mod.rs` + `tests.rs`): annulus rotate ring (dead-center clicks fall through to picking), cumulative interaction (`translation`/`scale_factor` from drag start, `released` flag), ratio-based multiplicative scale, `cancel()` + polled suppress-until-release latch, `render(ui, screen_pos, interactive)` clip/gating, mode-switch-mid-drag handle release
-- `grid.rs` — Authoring grid (#36): pure `grid_segments()` (LOD, subdivisions, max_lines, origin axes) + `render_grid_overlay()` drawing clipped `ui.line`s via the viewport — the collider-overlay pattern
-- `clipboard.rs` — Entity clipboard (#40): `ClipboardEntity` + `capture_entity_tree`/`spawn_entity_tree` (registry-driven, hierarchy rebuilt explicitly), `SpawnTreeCommand` (undo removes the WHOLE subtree; redo re-records the fresh root), `uncaptured_component_names` warning helper; Duplicate and Paste both flow through here
-- `collider_overlay.rs` — Collider outline overlay for the scene view (mirrors rapier placement: offset is body-local, Transform2D.scale ignored); toggled via `EditorContext::toggle_colliders()` / C key
-- `world_lines.rs` — `draw_world_line` (guarded screen projection) + `draw_world_segments`
+- `selection.rs` — Selection set (IndexSet preserving insertion order, deterministic primary fallback).
+- `hierarchy/` — hierarchy panel tree view, F2 inline rename, `RowGeometry`, and `normalized_rename` guard.
+- `viewport/` — scene viewport with camera pan/zoom; `to_window_render_camera`/`world_to_screen` equivalence locked by overlay tests.
+- `picking/` — `EntityPicker` and `PickableEntity` (AABB from absolute size, flip scales stay clickable).
+- `gizmo/` — transform gizmos (annulus rotate ring with dead-center fallthrough, cumulative delta, ratio-based scale, and cancel latch).
+- `grid.rs` — authoring grid segments and viewport clipped overlay lines.
+- `clipboard.rs` — `ClipboardEntity`, `capture_entity_tree`/`spawn_entity_tree`, and `SpawnTreeCommand`.
+- `collider_overlay.rs` — collider outline overlay mirroring rapier placement (offset is body-local, Transform2D.scale ignored).
 
 ### Persistence + commands
-- `commands/` — EditorCommand trait + CommandHistory (`mod.rs`; **dirty source of truth**: id-of-top watermark, `is_dirty()`/`mark_saved()`, merges reassign the top a fresh id AND clear redo; dirty_tests.rs is the contract), entity commands, component commands, `SetComponentCommand<T>` with the thirteen `Set*Command` type aliases and `GIZMO_FIELD_HINT` (`set_commands.rs`; merge = same entity + same field hint, distinct `T`s never merge; + `RenameEntityCommand` for entities without a Name; tests.rs); `push_already_executed`, `push_as_one`/`execute_as_one` (none/one raw/many as a MacroCommand), `try_merge_or_push`, `break_merge()` gesture boundary (scrub/typed-commit seals the top entry — dirty_tests.rs)
-- `stored_component/` — **The TYPED registry overlay** (one line in `editor_component_registry!` generates StoredComponent, ComponentKind, capture_all_components, registered_component_type_ids, inspect_all_components AND edit_all_components — entries carry `{ edit edit_x }` or `{ readonly }` — the block constructs `SetComponentCommand::<T>` itself), `category.rs` (`ComponentCategory` + `categorized_components`), plus `dynamic.rs` (#43): everything the macro does NOT cover falls through by name to the ecs dynamic registry — StoredComponent::Dynamic, snapshot/clipboard/undo, read-only inspection, `render_dynamic_edit_blocks`, the popup's "Game" section, and command-API set/add/remove for game-registered types (name APIs are Cow<'static,str>; `AddComponentCommand::dynamic`/`RemoveComponentCommand::dynamic` over `component_ref.rs`'s `ComponentRef { Typed, Dynamic }` in commands/)
-- `world_snapshot.rs` — WorldSnapshot save/restore (used by play/stop): registry-driven capture (auto-includes new registry types) + explicit Parent/Children; unregistered component types are detected (`uncaptured_types`/`loss_warning`/`drop_report`) and lost on restore
-- Scene save/load file I/O lives in `editor_integration` (via `engine_core::scene_serializer`), not in this crate
+- `commands/` — `EditorCommand` trait, `CommandHistory` dirty tracking watermark, `SetComponentCommand` merge-by-hint, and `break_merge()` gesture boundary.
+- `stored_component/` — typed registry overlay (`editor_component_registry!`), `category.rs`, and `dynamic.rs` falling through to ECS dynamic registry.
+- `world_snapshot.rs` — `WorldSnapshot` save/restore with uncaptured component type detection and drop reporting.
+
+## Pitfalls and their guard tests
+| Pitfall | Guard Test |
+|---|---|
+| Continuous edits on different entities must never merge even when sharing a field hint | `src/commands/tests.rs test_edits_on_different_entities_never_merge_even_with_the_same_field_hint` |
+| Continuous edits merge by field hint until `break_merge()` seals the gesture into distinct history entries | `src/commands/dirty_tests.rs test_break_merge_seals_the_gesture_so_two_scrubs_are_two_entries` |
+| Adjacent surfaces in the editor theme ladder must maintain WCAG contrast (≥1.35:1 adjacent / ≥3:1 border) | `src/theme/tests.rs test_adjacent_surfaces_are_distinguishable` |
+| Open menu dropdown renders in the overlay band and must block clicks from reaching underlying widgets | `src/menu/tests.rs test_open_dropdown_renders_in_overlay_band_and_blocks_input` |
+| Entity picking must compute AABB from absolute visual size so flip-scaled sprites remain clickable | `src/picking/tests.rs test_flip_scaled_sprite_is_picked_at_its_visual_bounds` |
+| Confirm dialog scrim clicks must block input to underlying background widgets | `src/confirm_dialog.rs test_scrim_click_is_not_a_choice_and_blocks_input` |
+| World snapshot restore must detect and report unregistered component types that cannot be captured | `src/world_snapshot/tests.rs test_loss_messages_name_every_dropped_type_or_nothing` |
+| Rotate gizmo dead-center clicks must fall through to entity picking | `src/gizmo/tests.rs test_rotate_ring_is_an_annulus_so_a_dead_center_press_falls_through_to_picking` |
+| Hard floors for inspector editors and command API must clamp negative or zero dimensions | `src/command_api/write_tests.rs test_set_sanitizes_collider_extents_to_the_gui_floor` |
+
 
 ## Key Patterns
 - Inspector uses `serde_json::to_value()` to extract component fields generically

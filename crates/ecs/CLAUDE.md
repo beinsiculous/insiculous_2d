@@ -34,17 +34,10 @@ Note: `RigidBody` and `Collider` are NOT defined in this crate — they live in
 components like any other type, but the physics crate owns their definitions.
 
 ## File Map
-- `world.rs` — World struct, entity/component CRUD
-- `component.rs` — Component trait, ComponentStore
-- `query.rs` — Type-safe query system (Single, Pair, Triple)
-- `hierarchy_extension.rs` — Hierarchy operations (WorldHierarchyExt trait)
-- `hierarchy_system.rs` — Dirty-flagged transform propagation (value-compare cache; clean frames recompute nothing; `reset()` after wholesale world replacement)
-- `lifetime.rs` — `Lifetime` component + `LifetimeSystem` (auto-despawn after N seconds; bullets/effects)
-- `tilemap.rs` — `Tilemap` component + `TileInstance` (top-left-tile anchor, row 0 on top, tile 0 = empty, depth default -1.0)
-- `component_registry/{mod,tests}.rs` — THE dynamic component tier (#43): name-keyed `ComponentEntry` fn-pointer table (create/insert/extract/remove/has/default, monomorphized at `register::<T>()`); global = `OnceLock<RwLock<..>>` with `register_components(f)` (late registration OK, name collision = panic, poison recovered, re-entrancy = clear panic) + `with_global_registry(f)`; `register_transient` = editable-never-persisted (PlaySoundEffect). Dynamic components must NOT store raw EntityId
-- `sprite_components.rs` — Built-in component definitions (incl. `AnimationClip` + `SpriteAnimation`)
-- `sprite_system.rs` — `SpriteAnimationSystem`: advances each clip, then writes `current_uv()` into `Sprite.tex_region`. Scheduled by engine_core's `game/frame_tail.rs` with the time-scaled delta (so pausing freezes animation); nothing in ecs drives it
-- `ui_components.rs` — UiAnchor + resolve_anchored_pos + UiLabel/UiPanel/UiButton
+- `hierarchy_system.rs` — dirty-flagged transform propagation (value-compare cache; call `reset()` after wholesale world replacement).
+- `tilemap.rs` — row-major tile grid from tileset (top-left-tile anchor, tile 0 = empty, default depth -1.0).
+- `component_registry/` — dynamic component tier: name-keyed `register::<T>()` fn-pointer table; `register_transient` for editable-never-persisted components.
+- `sprite_system.rs` — `SpriteAnimationSystem`: advances clips and writes UV into `Sprite.tex_region`, scheduled with time-scaled delta so pausing freezes animation.
 
 ## Critical Patterns
 - **Adding components**: `world.add_component(&entity, Transform2D::new(pos)).ok()`
@@ -72,14 +65,18 @@ aren't enough.
 ## Documented Conventions
 - Typed accessors `get`/`get_mut` take `EntityId` by value; CRUD methods (`add_component`, `remove_component`, `has_component`, `get_component`) take `&EntityId`. Prefer by-value for new APIs.
 - `Children` uses a `Vec<EntityId>` deliberately — child order is load-bearing for the editor hierarchy panel and scene serialization. Do not swap to `HashSet`.
+- `world.entity_ids()` yields an iterator without allocating, whereas `world.entities()` allocates an owned `Vec<EntityId>`.
 
-## Common Pitfalls
-- `Box<dyn Component>` is NOT clonable — there is no `dyn_clone`/`CloneComponent` machinery. Storage is plain `HashMap<EntityId, Box<dyn Component>>`; anything that needs to copy components (e.g. `WorldSnapshot`, entity duplication) downcasts to each known concrete type and calls its own `Clone`
-- When downcasting a `Box<dyn Component>`, call `.as_ref().as_any()` (or `.as_mut().as_any_mut()`) — calling `.as_any()` directly on the Box hits the blanket impl on the Box itself, not the concrete type (see component.rs comments)
-- TypeId is per-concrete-type — different generic params = different TypeIds
-- `GlobalTransform2D` is system-owned (computed by `TransformHierarchySystem`); manual writes to it are NOT change-tracked and get overwritten the next time the entity is dirty. Edit `Transform2D` instead
-- Always check for circular references when reparenting in hierarchy
-- serde_json for inspector, RON for scene files — both must work
+## Pitfalls and their guard tests
+| Pitfall | Guard Test |
+|---|---|
+| When downcasting a `Box<dyn Component>`, calling `.as_any()` directly hits the blanket impl on the Box; call `.as_ref().as_any()` instead | `src/component.rs test_boxed_component_downcasts_only_through_as_ref_as_any` |
+| Manual writes to `GlobalTransform2D` are not change-tracked and get overwritten by hierarchy propagation when the entity is dirty | `tests/hierarchy_dirty.rs test_hand_written_global_transform_is_discarded_once_the_entity_goes_dirty` |
+| Circular hierarchy references during reparenting create invalid cyclic trees and are rejected | `tests/world.rs test_set_parent_rejects_cycles_and_names_the_cycle` |
+| `World::update` swaps `systems` out so a system cannot reach or mutate the system list during update | `tests/system_lifecycle.rs test_a_panicking_system_does_not_stop_later_systems_from_updating` |
+| Event bus events stay readable until flushed at the end of the frame; the next frame starts empty | `tests/world.rs test_events_stay_readable_until_flush_then_the_next_frame_starts_empty` |
+| `Box<dyn Component>` is not clonable: anything that copies components (`WorldSnapshot`, duplication) downcasts to each concrete type and calls its own `Clone` | — none |
+
 
 ## Testing
 - `cargo test -p ecs` — 0 failed, 0 ignored

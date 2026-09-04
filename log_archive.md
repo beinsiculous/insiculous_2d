@@ -657,3 +657,8 @@ Closed as part of the universal controller/2-player feature:
 ## Physics System Pass-Through and Velocity Semantics (recorded Sep 2026; the `apply_impulse` removal itself predates this entry and was moved here from the `physics_system` module doc)
 
 `PhysicsSystem` provides pass-through methods (`set_velocity`, `take_collision_events`, `destroy_entity`, `reset_body`) delegating to `PhysicsWorld` for ergonomics. `set_velocity` is the single, universal launch/movement API, buffering operations on bodies spawned in the current frame until they are synchronized with Rapier. The legacy `apply_impulse` pass-through was removed because all call sites across the workspace intended "start this body at velocity V" rather than a mass-aware momentum delta, creating a footgun where impulse silently no-oped on same-frame spawns. `PhysicsWorld::apply_impulse` remains available for cases requiring mass-aware momentum changes on live bodies.
+
+## Cleanup effort (Sep 2026)
+
+- **Plans directory retired (Sep 2026, batch 2):** deleted `docs/plans/` (three shipped Jan–Feb 2026 plans for scene saving and a DRY/SRP pass); history lives in git.
+

@@ -1,40 +1,29 @@
 # Common Crate — Agent Context
 
-Shared types used across all crates. Its only dependencies are `glam`, `serde`,
+Shared types used across all crates. A module used by fewer than three crates does not belong in `common` (graduation rule). Its only dependencies are `glam`, `serde`,
 and `bytemuck` (plus wasm-only `web-time`) — anything added here
 must stay dependency-light, headless, and GPU-free. (Vector/matrix math comes
 straight from `glam`; there is no engine-owned math module.)
 
 ## File Map
-- `clock.rs` — time-source alias: re-exports `std::time::{Instant, SystemTime,
-  UNIX_EPOCH, SystemTimeError}` natively, `web_time::*` on wasm32 (those types
-  panic on the web). Import time types from here, never `std::time` directly
-  (`Duration` stays std). H2 (Aug 2026)
-- `vfs.rs` — asset-read seam: `read`/`read_to_string`/`list_dir_files` are
-  `std::fs` passthroughs natively; on wasm they serve an in-memory map the web
-  boot phase fills via `insert`. **Canonical key = the joined path string
-  `{asset_base}/{relative entry}`** — `MemFs` (the map) compiles + is unit
-  tested on ALL targets so the browser's exact lookup semantics are covered by
-  the native suite. `list_dir_files` is sorted + direct-children-only on both
-  targets. H5 (Aug 2026)
-- `color.rs` — `Color` (the engine-wide color type; WCAG `luminance()` / `contrast_ratio()` back the editor theme's surface-ladder guard tests)
-- `rect.rs` — `Rect` (axis-aligned bounds: hit tests, intersection/union, UI layout)
-- `transform.rs` — `Transform2D` (position/rotation/scale + point transforms)
-- `camera.rs` — `Camera` (2D camera) and `CameraUniform` (view/projection data
-  uploaded by the renderer; defined here only, not duplicated in renderer)
-- `sheet_grid.rs` — `SheetGrid`: row-major cell grid over a sprite sheet /
-  tileset plus its cell-index → UV-region math. Constructors: `new(cols, rows)`,
-  `from_cell_size` (pixel sizes, truncating — partial trailing cells excluded),
-  `from_uv_size` (the compatibility constructor `ecs::Tilemap` uses — it stores
-  the given UV size verbatim, which is what keeps non-reciprocal sizes like
-  `0.3` bit-identical). `uv_rect` is unchecked (out-of-range indices pass
-  through and the sampler clamps); `uv_rect_checked` is the guarded variant
-- `hash.rs` — `hash_u32` / `hash_f32` deterministic hashing for frame-driven
-  pseudo-random values
-- `macros.rs` — small boilerplate-reduction macros
+- `clock.rs` — import time types from here, never `std::time` directly (`std::time` panics on wasm; `Duration` stays std).
+- `vfs.rs` — asset-read seam; canonical key is joined path string `{asset_base}/{relative entry}`, with `list_dir_files` sorted and direct-children-only on both native and wasm.
+- `color.rs` — `Color`: WCAG `luminance()` and `contrast_ratio()` back the editor theme's surface-ladder guard tests.
+- `camera.rs` — `Camera` and `CameraUniform` (view/projection uniform uploaded by renderer; defined here only to avoid cross-crate duplication).
+- `sheet_grid.rs` — `SheetGrid`: `from_uv_size` preserves non-reciprocal cell sizes for `ecs::Tilemap`, and `from_cell_size` truncates partial trailing cells.
+- `hash.rs` — deterministic `hash_u32` and `hash_f32` for frame-driven pseudo-random values.
 
 Every type above is re-exported at the crate root; `Color`, `Transform2D`,
 `Camera`, `Rect`, and `SheetGrid` are also in `common::prelude`.
 
+## Pitfalls and their guard tests
+| Pitfall | Guard Test |
+|---|---|
+| Importing time types directly from `std::time` panics on wasm32; import from `common::clock` instead | — none |
+| Wasm asset lookups require the exact joined key `{asset_base}/{relative entry}` matching preloaded VFS keys | `src/vfs.rs test_boot_phase_keys_resolve_through_base_joined_reads` |
+| Degenerate or zero-dimension sheet grids must clamp to one usable cell without dividing by zero | `src/sheet_grid.rs test_degenerate_grids_clamp_to_one_usable_cell_without_dividing_by_zero` |
+| Screen-space Y is down while world-space Y is up in camera conversions | `src/camera.rs test_screen_y_down_maps_to_world_y_up` |
+
 ## Testing
 - `cargo test -p common` — 0 failed, 0 ignored
+

@@ -445,21 +445,8 @@ if ctx.chaos_mode.is_ridiculous() { /* e.g. spawn extras */ }
 
 ## Test Summary
 
-| Crate | Tests | Coverage |
-|-------|-------|----------|
-| ECS | 174 | Entity lifecycle, components, queries, hierarchy, systems |
-| Editor | 241 | Panels, inspector, gizmos, undo/redo, collider overlay, theme |
-| Engine Core | 161 | Game API, lifecycle, scenes, behaviors, achievements, timing |
-| Renderer | 70 | Sprite batching, instancing, camera, textures |
-| UI | 70 | Widgets, interaction, draw commands, font rendering |
-| Editor Integration | 64 | Editor↔game wiring, play/pause, scene save/load |
-| Input | 62 | Key states, action mapping, events |
-| Physics | 61 | Body types, colliders, simulation, presets |
-| Common / Audio / Macros | 52 | Math, transforms, sound playback, derive macros |
-| **Total** | **955** | **All passing, 0 ignored** |
-
-Run all tests: `cargo test --workspace` — everything runs headless, no GPU
-or window required.
+Run all tests: `cargo test --workspace` — headless, no GPU or window required.
+0 failed, 0 ignored is the invariant.
 
 ## Project Status
 

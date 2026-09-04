@@ -798,7 +798,7 @@ cargo test -- --nocapture
 ### Test Status Summary
 Do not trust hardcoded test counts in docs — run `cargo test --workspace` for the
 truth. The invariant that matters: **0 failed, 0 ignored** (GPU/window-bound doc
-examples are `no_run`, never `ignore`). Current count lives in `CLAUDE.md`.
+examples are `no_run`, never `ignore`).
 
 For more game programming patterns, refer to the [Game Programming Patterns](https://gameprogrammingpatterns.com/) book.
 
@@ -888,6 +888,8 @@ A failing test must mean a **player- or author-visible contract** broke, not
 that a field assignment still assigns. Name tests after the behavior
 (`test_entity_despawns_when_lifetime_crosses_zero`), not the method
 (`test_new`). Models: `crates/ecs/src/lifetime.rs`, `crates/ecs/src/sprite_system.rs`.
+A test cited in a crate guide's "Pitfalls and their guard tests" table keeps that row
+current when it is renamed; `cargo test` output is the truth, the row is the pointer.
 
 A test **stays** if a game author or player would notice the failure:
 
