@@ -13,6 +13,7 @@ use glam::Vec2;
 
 use super::world_to_scene_data;
 use crate::scene_data::ComponentData;
+use crate::scene_loader::SceneLoader;
 use crate::script_data::ensure_script_target_names;
 use crate::test_support::{load_ron, roundtrip, test_texture_path, StubResolver};
 
@@ -218,7 +219,6 @@ fn save_auto_names_referenced_unnamed_targets_skipping_taken_names() {
 
 #[test]
 fn exclusion_list_drift_guard_saves_every_persistent_type_exactly_once() {
-    // Register all engine components (including physics)
     crate::component_registration::register_engine_components();
     let mut world = World::new();
     let entity = world.create_entity();
@@ -227,7 +227,7 @@ fn exclusion_list_drift_guard_saves_every_persistent_type_exactly_once() {
         for name in registry.persistent_names() {
             registry
                 .insert_default(&mut world, entity, name)
-                .unwrap_or_else(|e| panic!("failed inserting default for {name}: {e}"));
+                .unwrap_or_else(|error| panic!("failed inserting default for {name}: {error}"));
         }
         registry.persistent_names()
     });
@@ -236,38 +236,89 @@ fn exclusion_list_drift_guard_saves_every_persistent_type_exactly_once() {
     assert_eq!(scene.entities.len(), 1);
     let entity_data = &scene.entities[0];
 
-    // Name is emitted on EntityData.name, not in components
     assert!(entity_data.name.is_some(), "Name must be recorded on EntityData");
+
+    let rows = super::components::concrete_components();
+
+    ecs::with_global_registry(|registry| {
+        for row in &rows {
+            assert!(
+                registry.is_registered(row.registry_name),
+                "row {} is not registered in global component registry",
+                row.registry_name
+            );
+        }
+    });
+
+    // Wire name → registry name, derived from what each row's extractor writes
+    // for this all-defaults entity — the table carries no wire name of its own.
+    let registry_name_by_wire_name: std::collections::HashMap<String, &str> = rows
+        .iter()
+        .map(|row| {
+            let component = (row.extract)(&world, entity, &test_texture_path)
+                .unwrap_or_else(|| panic!("extract returned None for row {}", row.registry_name));
+            (SceneLoader::component_type_name(&component).to_string(), row.registry_name)
+        })
+        .collect();
 
     let mut seen_types = std::collections::HashMap::<String, usize>::new();
     seen_types.insert("Name".to_string(), 1);
 
-    for comp in &entity_data.components {
-        let name = match comp {
-            ComponentData::Transform2D { .. } => "Transform2D",
-            ComponentData::Sprite { .. } => "Sprite",
-            ComponentData::Camera2D { .. } => "Camera",
-            ComponentData::SpriteAnimation { .. } => "SpriteAnimation",
-            ComponentData::Tilemap { .. } => "Tilemap",
-            ComponentData::GridBackdrop { .. } => "GridBackdrop",
-            ComponentData::UiLabel { .. } => "UiLabel",
-            ComponentData::UiPanel { .. } => "UiPanel",
-            ComponentData::UiButton { .. } => "UiButton",
-            ComponentData::Behavior { .. } => "Behavior",
-            ComponentData::Scripts { .. } => "Scripts",
-            ComponentData::EntityTag { .. } => "EntityTag",
-            #[cfg(feature = "physics")]
-            ComponentData::RigidBody { .. } => "RigidBody",
-            #[cfg(feature = "physics")]
-            ComponentData::Collider { .. } => "Collider",
-            ComponentData::Dynamic { component_type, .. } => component_type.as_str(),
+    for component in &entity_data.components {
+        let registry_name = match component {
+            ComponentData::Dynamic { component_type, .. } => {
+                assert!(
+                    !rows.iter().any(|row| row.registry_name == component_type),
+                    "dynamic component '{component_type}' duplicates a concrete row"
+                );
+                component_type.as_str()
+            }
+            _ => {
+                let wire_name = SceneLoader::component_type_name(component);
+                *registry_name_by_wire_name
+                    .get(wire_name)
+                    .unwrap_or_else(|| panic!("no table row for wire name '{wire_name}'"))
+            }
         };
-        *seen_types.entry(name.to_string()).or_default() += 1;
+        *seen_types.entry(registry_name.to_string()).or_default() += 1;
     }
 
-    // Every persistent type in registry must appear exactly once
     for name in &persistent_names {
         let count = seen_types.get(*name).copied().unwrap_or(0);
         assert_eq!(count, 1, "persistent type {name} must appear exactly once, got {count}");
     }
+}
+
+#[test]
+fn every_table_row_extracts_its_own_variant_and_no_two_rows_share_one() {
+    crate::component_registration::register_engine_components();
+    let mut world = World::new();
+    let entity = world.create_entity();
+
+    ecs::with_global_registry(|registry| {
+        for name in registry.persistent_names() {
+            registry
+                .insert_default(&mut world, entity, name)
+                .unwrap_or_else(|error| panic!("failed inserting default for {name}: {error}"));
+        }
+    });
+
+    let rows = super::components::concrete_components();
+    let mut wire_names = std::collections::HashSet::new();
+    for row in &rows {
+        let component = (row.extract)(&world, entity, &test_texture_path)
+            .unwrap_or_else(|| panic!("extract returned None for row {}", row.registry_name));
+        let wire_name = SceneLoader::component_type_name(&component).to_string();
+        assert!(
+            !matches!(component, ComponentData::Dynamic { .. }),
+            "row {} extracted a Dynamic component",
+            row.registry_name
+        );
+        assert!(
+            wire_names.insert(wire_name.clone()),
+            "row {} extracted '{wire_name}', which another row already produced",
+            row.registry_name
+        );
+    }
+    assert_eq!(wire_names.len(), rows.len());
 }

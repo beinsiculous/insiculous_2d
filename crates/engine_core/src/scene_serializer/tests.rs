@@ -419,10 +419,14 @@ fn every_root_entity_is_saved_in_a_stable_order() {
     };
     let first_save = names(&world);
 
-    assert_eq!(first_save.len(), 3);
-    for name in ["First", "Second", "Third"] {
-        assert!(first_save.contains(&Some(name.to_string())), "{name} saved: {first_save:?}");
-    }
+    assert_eq!(
+        first_save,
+        vec![
+            Some("First".to_string()),
+            Some("Second".to_string()),
+            Some("Third".to_string())
+        ]
+    );
     assert_eq!(names(&world), first_save, "a second save diffs clean against the first");
 }
 

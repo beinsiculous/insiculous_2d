@@ -22,6 +22,7 @@
 //! }
 //! ```
 
+#[cfg(feature = "physics")]
 pub mod behavior_runner;
 #[cfg(target_arch = "wasm32")]
 pub mod web;
@@ -71,6 +72,7 @@ pub mod prelude;
 
 // Re-export the public API surface explicitly (no globs) so the crate's
 // top-level names are visible at a glance.
+#[cfg(feature = "physics")]
 pub use behavior_runner::{BehaviorRunner, EntityCollected};
 pub use game::{run_game, Game};
 pub use scene::Scene;

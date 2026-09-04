@@ -62,9 +62,28 @@ pub fn step_and_emit_grid(
         let verts = grid.build_line_vertices();
         lines.extend_from_slice(verts);
     }
+    draw_debug_colliders(world, lines, debug_colliders);
+}
+
+/// Overlay collider outlines in bright emissive magenta so they bloom above sprites.
+#[cfg(feature = "physics")]
+fn draw_debug_colliders(
+    world: &ecs::World,
+    lines: &mut Vec<renderer::line_pipeline::LineVertex>,
+    debug_colliders: bool,
+) {
     if debug_colliders {
         crate::debug::draw_colliders(world, lines, glam::Vec4::new(1.0, 0.2, 1.0, 0.9), 2.0);
     }
+}
+
+/// Without physics there are no colliders to outline.
+#[cfg(not(feature = "physics"))]
+fn draw_debug_colliders(
+    _world: &ecs::World,
+    _lines: &mut Vec<renderer::line_pipeline::LineVertex>,
+    _debug_colliders: bool,
+) {
 }
 
 #[cfg(test)]

@@ -47,7 +47,7 @@ encode lessons already learned here — following them is cheaper than re-learni
 | Scene RON schema (load) | `crates/engine_core/src/scene_data.rs` — `ComponentData` enum + `scene_loader.rs` |
 | `.sheet.ron` sidecar schema | `crates/engine_core/src/sheet_file.rs` — `SheetFile` + `parse_sheet_file` + `into_parts` (validation lives here too) |
 | Animation clip wire format | `ClipData` in `scene_data.rs` — ONE DTO shared by scene RON and `.sheet.ron` |
-| World → RON save | `crates/engine_core/src/scene_serializer.rs` — `extract_components()` (the ONLY save pipeline) |
+| World → RON save | `crates/engine_core/src/scene_serializer/components.rs` — table behind `extract_components()` (the ONLY save pipeline) |
 | Inspector writeback / undo merge | `apply_component_edit()` in `crates/editor/src/component_editors.rs` (called by the registry-generated `edit_all_components`); `SetComponentCommand<T>` (one generic, thirteen `Set*Command` aliases, `GIZMO_FIELD_HINT` for drags) in `crates/editor/src/commands/set_commands.rs` |
 | Frame timing | `GameLoopManager` (`game_loop_manager.rs`) — there is no other frame timer |
 | Editor colors | `crates/editor/src/theme.rs` `EditorTheme` tokens — never hardcode colors in panels |
@@ -314,7 +314,7 @@ editor_integration ──→ editor, engine_core, ecs, ui, input, renderer, comm
 insiculous_2d (root) ──→ editor_integration (optional, behind "editor" feature)
 ```
 
-Notes: Escape is NOT a hard-coded exit — it flows to `Game::on_key_pressed()`. `editor_demo.rs` wraps the full PlatformerGame (synced with hello_world.rs). A standalone editor binary exists: `cargo run --bin editor --features editor -- /path/to/project`.
+Notes: Escape is NOT a hard-coded exit — it flows to `Game::on_key_pressed()`. `editor_demo.rs` wraps the full PlatformerGame (shares `examples/hello_world/platformer.rs` with `hello_world.rs`). A standalone editor binary exists: `cargo run --bin editor --features editor -- /path/to/project`.
 
 ## Quick Reference
 

@@ -225,31 +225,12 @@ impl BloomPipeline {
         swapchain: SwapchainTarget<'_>,
         config: &BloomConfig,
     ) {
-        // 1. Update the extract/composite params (tunable at runtime).
-        let intensity = if config.enabled { config.intensity } else { 0.0 };
-        queue.write_buffer(
-            &self.bloom_params_buffer,
-            0,
-            bytemuck::bytes_of(&BloomParams {
-                threshold: config.threshold,
-                knee: config.knee,
-                intensity,
-                inv_gamma: if swapchain.is_srgb { 1.0 } else { 1.0 / 2.2 },
-            }),
-        );
-
-        // 2. (Re)build bind groups if the targets resized. This also rewrites
-        // the per-direction blur params, whose texel size only changes with
-        // the target size.
-        let size = (targets.width(), targets.height());
-        if self.cached.as_ref().map(|c| c.size) != Some(size) {
-            self.cached = Some(self.build_bind_groups(device, queue, targets));
-        }
+        self.write_params(queue, config, swapchain.is_srgb);
+        self.bind_groups_for(device, queue, targets);
         let Some(cached) = self.cached.as_ref() else {
             return;
         };
 
-        // 3. Extract bright pass: HDR -> bloom_ping (half-res).
         self.run_fullscreen_pass(
             encoder,
             &self.extract_pipeline,
@@ -258,31 +239,74 @@ impl BloomPipeline {
             "Bloom Extract",
         );
 
-        // 4. Blur iterations — ping-pong horizontal then vertical. The
-        // bloom_ping texture holds the live state at the start and end of
-        // every iteration, so it's the source the composite pass reads.
-        //
-        // Each direction has its own uniform buffer. Sharing one buffer and
-        // rewriting it between passes would not work: write_buffer flushes at
-        // submit, before any pass runs, so every pass would see only the
-        // final write.
         let iterations = config.blur_iterations.max(1);
-        for _ in 0..iterations {
-            // Horizontal: bloom_ping -> bloom_pong.
-            self.run_fullscreen_pass(encoder, &self.blur_pipeline, &cached.blur_h, &targets.bloom_pong_view, "Bloom Blur H");
-            // Vertical: bloom_pong -> bloom_ping.
-            self.run_fullscreen_pass(encoder, &self.blur_pipeline, &cached.blur_v, &targets.bloom_ping_view, "Bloom Blur V");
-        }
+        self.blur_passes(encoder, cached, targets, iterations);
 
-        // 5. Composite HDR + bloom -> swapchain. The render targets are
-        // surface-sized, so their size is the clamp bound. An empty
-        // effective scissor still runs the pass (the Clear must blank the
-        // swapchain) but skips the fullscreen draw.
         let composite_scissor = PassScissor::resolve(
             swapchain.composite_scissor,
             (targets.width(), targets.height()),
         );
         self.run_composite_pass(encoder, &cached.composite, swapchain.view, composite_scissor);
+    }
+
+    fn write_params(&self, queue: &Queue, config: &BloomConfig, is_srgb: bool) {
+        let intensity = if config.enabled { config.intensity } else { 0.0 };
+        queue.write_buffer(
+            &self.bloom_params_buffer,
+            0,
+            bytemuck::bytes_of(&BloomParams {
+                threshold: config.threshold,
+                knee: config.knee,
+                intensity,
+                inv_gamma: if is_srgb { 1.0 } else { 1.0 / 2.2 },
+            }),
+        );
+    }
+
+    fn bind_groups_for(
+        &mut self,
+        device: &Device,
+        queue: &Queue,
+        targets: &RenderTargets,
+    ) {
+        let size = (targets.width(), targets.height());
+        if self.cached.as_ref().map(|cached| cached.size) != Some(size) {
+            self.cached = Some(self.build_bind_groups(device, queue, targets));
+        }
+    }
+
+    /// Ping-pong blur passes alternating horizontal and vertical.
+    ///
+    /// The bloom_ping texture holds the live state at the start and end of
+    /// every iteration, so it is the source the composite pass reads.
+    ///
+    /// Each direction has its own uniform buffer. Sharing one buffer and
+    /// rewriting it between passes would not work: write_buffer flushes at
+    /// submit, before any pass runs, so every pass would see only the
+    /// final write.
+    fn blur_passes(
+        &self,
+        encoder: &mut CommandEncoder,
+        cached: &CachedBindGroups,
+        targets: &RenderTargets,
+        iterations: u32,
+    ) {
+        for _ in 0..iterations {
+            self.run_fullscreen_pass(
+                encoder,
+                &self.blur_pipeline,
+                &cached.blur_h,
+                &targets.bloom_pong_view,
+                "Bloom Blur H",
+            );
+            self.run_fullscreen_pass(
+                encoder,
+                &self.blur_pipeline,
+                &cached.blur_v,
+                &targets.bloom_ping_view,
+                "Bloom Blur V",
+            );
+        }
     }
 
     /// The composite pass with optional scissoring.

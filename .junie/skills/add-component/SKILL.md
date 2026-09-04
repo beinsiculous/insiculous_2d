@@ -39,7 +39,7 @@ Only if the component should persist in `.scene.ron` files:
 1. `scene_data.rs` — add a variant to the `ComponentData` enum (~line 123),
    mirroring existing variants' field style.
 2. `scene_loader.rs` — handle the new variant when instantiating entities.
-3. `scene_serializer.rs` — add an extraction block in `extract_components()`
+3. `scene_serializer/components.rs` — add an extractor and a table row in `extract_components()`
    (this is the ONLY World→RON pipeline; do not create another).
 4. Add a round-trip test in scene_serializer's test module (copy
    `test_entity_with_sprite` shape: build world → serialize → assert variant).

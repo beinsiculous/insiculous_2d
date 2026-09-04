@@ -476,7 +476,7 @@ See [PROJECT_ROADMAP.md](PROJECT_ROADMAP.md) for detailed technical debt trackin
 
 - **hello_world** - Physics platformer with UI, audio, ECS, scene files, and behaviors
 - **behavior_demo** - Demonstrates all built-in entity behaviors
-- **editor_demo** - The hello_world platformer running inside the visual editor
+- **editor_demo** - The hello_world platformer running inside the visual editor (shares `examples/hello_world/platformer.rs`)
 
 Run an example:
 ```bash

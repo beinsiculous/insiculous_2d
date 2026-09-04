@@ -17,8 +17,7 @@ pub use crate::{
     // Scene serialization
     scene_data::{SceneData, PhysicsSettings, PrefabData, EntityData, ComponentData, BehaviorData, SceneLoadError},
     scene_loader::{SceneLoader, SceneInstance},
-    // Behavior system
-    behavior_runner::{BehaviorRunner, EntityCollected},
+
     // Particle system (CPU pool; spawn bursts or attach a ParticleEmitter)
     particles::{Particle, ParticleConfig, ParticleEmitter, ParticleManager, ParticleSystem},
     // Spring-mass grid (Geometry-Wars style deforming background)
@@ -92,3 +91,7 @@ pub use physics::{
 // Generic pickup/collectible tracking (built on physics collision events)
 #[cfg(feature = "physics")]
 pub use crate::pickups::{EffectTimer, Pickup, Pickups};
+
+// Behavior system (requires physics)
+#[cfg(feature = "physics")]
+pub use crate::behavior_runner::{BehaviorRunner, EntityCollected};

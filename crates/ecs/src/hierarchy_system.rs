@@ -166,100 +166,16 @@ impl System for TransformHierarchySystem {
         self.frame += 1;
         let mut recomputed = 0usize;
         let mut visited = 0usize;
-        // Cache entries stamped or (re)inserted this frame. If the cache
-        // holds more entries than this afterwards, entities were removed and
-        // the stale entries get pruned.
         let mut live_entries = 0usize;
 
-        // Seed the reusable stack with root entities (single pass — no
-        // get_root_entities()/entities() Vec allocations).
-        self.stack.clear();
-        self.stack.extend(
-            world
-                .entity_ids()
-                .filter(|&e| world.get::<Parent>(e).is_none())
-                .map(|e| (e, None, false)),
-        );
+        self.seed_roots(world);
 
-        while let Some((entity, parent, ancestor_dirty)) = self.stack.pop() {
+        while let Some(frame) = self.stack.pop() {
             visited += 1;
-
-            let Some(local) = world.get::<Transform2D>(entity).copied() else {
-                // No local transform: nothing to propagate for this entity.
-                // Drop any stale baseline (dirtying the subtree for this
-                // transition frame) and let children propagate against this
-                // entity's stored global, preserving pre-dirty-flag behavior.
-                let was_cached = self.cache.remove(&entity).is_some();
-                let node_global = world
-                    .get::<GlobalTransform2D>(entity)
-                    .copied()
-                    .unwrap_or_default();
-                if let Some(children) = world.get_children(entity) {
-                    let inherit_dirty = ancestor_dirty || was_cached;
-                    self.stack.extend(
-                        children
-                            .iter()
-                            .map(|&c| (c, Some((entity, node_global)), inherit_dirty)),
-                    );
-                }
-                continue;
-            };
-
-            let parent_id = parent.map(|(id, _)| id);
-
-            // Dirty check. The cache stamp must be refreshed on EVERY visit
-            // (not short-circuited past), or pruning would evict live
-            // entities that happened to be clean under a dirty ancestor.
-            let mut dirty = ancestor_dirty;
-            match self.cache.get_mut(&entity) {
-                Some(cached) => {
-                    cached.stamp = self.frame;
-                    live_entries += 1;
-                    if cached.local != local || cached.parent != parent_id {
-                        dirty = true;
-                    }
-                }
-                None => dirty = true,
-            }
-            if !dirty && world.get::<GlobalTransform2D>(entity).is_none() {
-                // Someone removed the (system-owned) global — restore it.
-                dirty = true;
-            }
-
-            let node_global = match parent {
-                None => GlobalTransform2D::from_transform(&local),
-                Some((_, parent_global)) => parent_global.mul_transform(&local),
-            };
-
-            if dirty {
-                recomputed += 1;
-                Self::set_global_transform(world, entity, node_global);
-                if self
-                    .cache
-                    .insert(
-                        entity,
-                        CachedNode { local, parent: parent_id, stamp: self.frame },
-                    )
-                    .is_none()
-                {
-                    live_entries += 1;
-                }
-            }
-
-            if let Some(children) = world.get_children(entity) {
-                self.stack.extend(
-                    children
-                        .iter()
-                        .map(|&c| (c, Some((entity, node_global)), dirty)),
-                );
-            }
+            live_entries += self.visit(world, frame, &mut recomputed);
         }
 
-        // Prune baselines of removed entities (only when something vanished).
-        if self.cache.len() > live_entries {
-            let frame = self.frame;
-            self.cache.retain(|_, c| c.stamp == frame);
-        }
+        self.prune_removed(live_entries);
 
         self.recomputed_last_update = recomputed;
         self.visited_last_update = visited;
@@ -276,6 +192,123 @@ impl System for TransformHierarchySystem {
 }
 
 impl TransformHierarchySystem {
+    /// Seed the reusable stack with root entities.
+    fn seed_roots(&mut self, world: &World) {
+        // Seed the reusable stack with root entities (single pass — no
+        // get_root_entities()/entities() Vec allocations).
+        self.stack.clear();
+        self.stack.extend(
+            world
+                .entity_ids()
+                .filter(|&entity| world.get::<Parent>(entity).is_none())
+                .map(|entity| (entity, None, false)),
+        );
+    }
+
+    /// Process one node from the traversal stack.
+    ///
+    /// Returns 1 if a cache entry was stamped or inserted for this entity,
+    /// or 0 if `propagate_without_local` removed it.
+    fn visit(
+        &mut self,
+        world: &mut World,
+        frame: TraversalFrame,
+        recomputed: &mut usize,
+    ) -> usize {
+        let (entity, parent, ancestor_dirty) = frame;
+
+        let Some(local) = world.get::<Transform2D>(entity).copied() else {
+            self.propagate_without_local(world, entity, ancestor_dirty);
+            return 0;
+        };
+
+        let parent_id = parent.map(|(id, _)| id);
+        let mut dirty = self.is_dirty(entity, &local, parent_id) || ancestor_dirty;
+        if !dirty && world.get::<GlobalTransform2D>(entity).is_none() {
+            // Someone removed the (system-owned) global — restore it.
+            dirty = true;
+        }
+
+        let node_global = match parent {
+            None => GlobalTransform2D::from_transform(&local),
+            Some((_, parent_global)) => parent_global.mul_transform(&local),
+        };
+
+        if dirty {
+            *recomputed += 1;
+            Self::set_global_transform(world, entity, node_global);
+            self.cache.insert(
+                entity,
+                CachedNode {
+                    local,
+                    parent: parent_id,
+                    stamp: self.frame,
+                },
+            );
+        }
+
+        if let Some(children) = world.get_children(entity) {
+            self.stack.extend(
+                children
+                    .iter()
+                    .map(|&child| (child, Some((entity, node_global)), dirty)),
+            );
+        }
+
+        1
+    }
+
+    fn propagate_without_local(
+        &mut self,
+        world: &World,
+        entity: EntityId,
+        ancestor_dirty: bool,
+    ) {
+        // No local transform: nothing to propagate for this entity.
+        // Drop any stale baseline (dirtying the subtree for this
+        // transition frame) and let children propagate against this
+        // entity's stored global, preserving pre-dirty-flag behavior.
+        let was_cached = self.cache.remove(&entity).is_some();
+        let node_global = world
+            .get::<GlobalTransform2D>(entity)
+            .copied()
+            .unwrap_or_default();
+        if let Some(children) = world.get_children(entity) {
+            let inherit_dirty = ancestor_dirty || was_cached;
+            self.stack.extend(
+                children
+                    .iter()
+                    .map(|&child| (child, Some((entity, node_global)), inherit_dirty)),
+            );
+        }
+    }
+
+    fn is_dirty(
+        &mut self,
+        entity: EntityId,
+        local: &Transform2D,
+        parent_id: Option<EntityId>,
+    ) -> bool {
+        // The cache stamp must be refreshed on EVERY visit (not short-circuited
+        // past), or pruning would evict live entities that happened to be clean
+        // under a dirty ancestor.
+        match self.cache.get_mut(&entity) {
+            Some(cached) => {
+                cached.stamp = self.frame;
+                cached.local != *local || cached.parent != parent_id
+            }
+            None => true,
+        }
+    }
+
+    /// Prune baselines of removed entities (only when something vanished).
+    fn prune_removed(&mut self, live_entries: usize) {
+        if self.cache.len() > live_entries {
+            let frame = self.frame;
+            self.cache.retain(|_, cached| cached.stamp == frame);
+        }
+    }
+
     /// Set or add a GlobalTransform2D component on an entity.
     fn set_global_transform(world: &mut World, entity: EntityId, global: GlobalTransform2D) {
         if let Some(existing) = world.get_mut::<GlobalTransform2D>(entity) {

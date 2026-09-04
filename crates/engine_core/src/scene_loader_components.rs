@@ -1,8 +1,9 @@
 //! Scene-component construction: `ComponentData` -> ECS components.
 //!
 //! Split from `scene_loader.rs` (file size); this is the loader half of the
-//! scene schema. The inverse (World -> `ComponentData`) lives in
-//! `scene_serializer.rs` — new component types need an arm in BOTH.
+//! scene schema. The inverse (World -> `ComponentData`) is the extractor table
+//! in `scene_serializer/components.rs` — a new component type needs an arm
+//! here, an extractor and a table row there, and the drift test proves the row.
 
 use glam::Vec2;
 
@@ -10,8 +11,10 @@ use ecs::sprite_components::{AnimationClip, Camera, Sprite, SpriteAnimation, Tra
 use ecs::{EntityId, World};
 
 use crate::scene_data::{
-    ClipData, ColliderShapeData, ComponentData, GridData, RigidBodyTypeData, SceneLoadError,
+    ClipData, ComponentData, GridData, SceneLoadError,
 };
+#[cfg(feature = "physics")]
+use crate::scene_data::{ColliderShapeData, RigidBodyTypeData};
 use crate::texture_ref::TextureResolver;
 
 use crate::scene_loader::SceneLoader;

@@ -46,6 +46,12 @@ impl<G: Game> GameRunner<G> {
             self.glyph_textures.prepare(ui_commands, asset_manager);
         }
 
+        self.collect_game_sprites(window_size);
+        self.collect_ui_sprites(ui_commands);
+        self.submit_frame();
+    }
+
+    fn collect_game_sprites(&mut self, window_size: Vec2) {
         // Game sprites — render into their own batcher so they never
         // share a batch with UI elements (which would cause UI panel backgrounds
         // to paint over game sprites due to painter's algorithm). The batchers
@@ -72,15 +78,17 @@ impl<G: Game> GameRunner<G> {
         // Editor-style hosts bound the game-world passes to a sub-rect of
         // the window; plain games leave it None (full window). Forwarded
         // every frame — per-frame state, like set_lines.
-        self.render_manager.set_viewport_scissor(viewport_scissor.map(|r| {
-            renderer::scissor::quantize_rect(r.x, r.y, r.width, r.height)
+        self.render_manager.set_viewport_scissor(viewport_scissor.map(|rect| {
+            renderer::scissor::quantize_rect(rect.x, rect.y, rect.width, rect.height)
         }));
 
         // Append particle sprites into the game batcher. Particles render
         // after gameplay sprites so they appear on top of static objects
         // but below UI.
         append_particle_sprites(&mut self.game_batcher, &self.particles);
+    }
 
+    fn collect_ui_sprites(&mut self, ui_commands: &[DrawCommand]) {
         // UI sprites — separate batcher. Conversion is camera-relative so UI
         // stays at fixed screen pixels even when the game (or editor) moves/zooms
         // the camera.
@@ -91,7 +99,9 @@ impl<G: Game> GameRunner<G> {
             self.render_manager.camera(),
             self.glyph_textures.textures(),
         );
+    }
 
+    fn submit_frame(&mut self) {
         // Sort within each batch, then order the batch refs (game first, then
         // UI on top; by min depth then texture handle for determinism). Refs
         // only — batches are never cloned. A persistent batcher can hold
@@ -99,25 +109,25 @@ impl<G: Game> GameRunner<G> {
         self.game_batcher.sort_all_batches();
         self.ui_batcher.sort_all_batches();
         let mut batch_refs: Vec<&SpriteBatch> =
-            self.game_batcher.batches().values().filter(|b| !b.instances.is_empty()).collect();
+            self.game_batcher.batches().values().filter(|batch| !batch.instances.is_empty()).collect();
         Self::sort_batch_refs(&mut batch_refs);
         // UI batches stay separate: they draw in their own post-tonemap
         // pass so authored UI colors display exactly.
         let mut ui_batch_refs: Vec<&SpriteBatch> =
-            self.ui_batcher.batches().values().filter(|b| !b.instances.is_empty()).collect();
+            self.ui_batcher.batches().values().filter(|batch| !batch.instances.is_empty()).collect();
         Self::sort_batch_refs(&mut ui_batch_refs);
 
         if let Some(asset_manager) = &self.asset_manager {
             let textures = asset_manager.textures();
-            if let Err(e) = self.render_manager.render(&batch_refs, &ui_batch_refs, textures) {
-                if matches!(e, renderer::RendererError::DeviceLost) {
+            if let Err(error) = self.render_manager.render(&batch_refs, &ui_batch_refs, textures) {
+                if matches!(error, renderer::RendererError::DeviceLost) {
                     // Fail-stop: the frame driver halts the loop instead of
                     // submitting to a dead queue every rAF (which is what
                     // crashed Firefox's in-process WebGPU).
                     self.render_fatal = true;
                     log::error!("Fatal: graphics device lost — stopping the frame loop");
                 } else {
-                    log::error!("Render error: {}", e);
+                    log::error!("Render error: {error}");
                 }
             }
         }

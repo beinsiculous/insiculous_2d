@@ -37,10 +37,10 @@ Core engine: Game trait, run_game(), managers, scene loading/saving, asset manag
   `common::vfs` under `{base}/{entry}` keys BEFORE `run_game`;
   `init_web_logging()`, `set_boot_status()` (writes `#game-loading`).
   Game wasm entries call these from `#[wasm_bindgen(start)]`
-- `game/render.rs` — GameRunner's frame-render tail (`render_frame`, batch-ref sorting,
-  particle append); child module of `game` so no field visibility changes were needed
-- `game/frame_tail.rs` — GameRunner's post-update tail (particles, **sprite animations**,
-  lines, UI-element pass, toasts, base-font capture); both particles and
+- `game/render.rs` — GameRunner's frame-render tail (`collect_game_sprites`, `collect_ui_sprites`,
+  `submit_frame`); child module of `game` so no field visibility changes were needed
+- `game/frame_tail.rs` — GameRunner's post-update tail (`step_simulations`, `draw_scene_ui`,
+  `apply_frame_requests`); both particles and
   `ecs::SpriteAnimationSystem` step on `delta_time * time_scale`, which is what makes a
   paused game freeze both; `game/locale_font.rs` — locale-font application
 - `localization.rs` — `Strings`: RON locale tables (`assets/locales/*.ron`, `LocaleFile` v1
@@ -84,7 +84,7 @@ Core engine: Game trait, run_game(), managers, scene loading/saving, asset manag
 - `window_manager.rs` — Window creation
 - `scene.rs` — Scene lifecycle / world coordination
 - `scene_loader.rs` — RON → World deserialization (`ComponentData` construction lives in `scene_loader_components.rs`); `SceneInstance` retains the prefab table and offers runtime `spawn_prefab(world, assets, name, overrides)` (Prototype pattern, override semantics; failed spawns leave no debris)
-- `scene_serializer.rs` — World → SceneData (inverse of scene_loader, used by editor save; tests in `scene_serializer/tests.rs` and `scene_serializer/dynamic_and_scripts_tests.rs`, on the shared `test_support` fixtures). NEW COMPONENT TYPES need arms in BOTH scene_loader_components.rs and scene_serializer.rs
+- `scene_serializer.rs` — World → SceneData (inverse of scene_loader, used by editor save; tests in `scene_serializer/tests.rs` and `scene_serializer/dynamic_and_scripts_tests.rs`, on the shared `test_support` fixtures). A new component type needs a match arm in `scene_loader_components.rs`, an extractor and a table row in `scene_serializer/components.rs`, and the drift test proves the row
 - `achievements/toast.rs` — `ToastQueue`/`ToastStyle`/`DEFAULT_TOAST_DURATION`: the toast timers and top-right HUD draw; `AchievementManager` forwards `tick`/`draw_toasts`/`set_toast_*` to it
 - `scene_data.rs` — SceneData / PrefabData / EntityData structs (schema incl. `ComponentData::EntityTag`, Sprite `emissive`/`tex_region`/`visible` — the latter two with NAMED serde defaults (full region / true); a plain `#[serde(default)]` would render nothing / hide every old sprite)
 - `scene_data::BehaviorData` is a type alias of `ecs::Behavior`, which IS the behavior wire schema (wire-frozen; its serde defaults are what old scene files rely on — guarded by `tests/behavior_fixture.rs`)
