@@ -33,8 +33,17 @@ standard package already has the math): boot seeds base revisions, `.rhai` paths
 against the asset base, one `drain_then_epoch()` for switch/reset/import, a failed import
 touches nothing, batch 3's script hooks are `None` until batch 7, the lockfile and the
 output path for the playground kind, precise pending states, getters-only `me`, `vec2`,
-`game_over`, first-frame physics before the phases, `apply(dt)`, export takes the manifest.
-This is v6.
+`game_over`, first-frame physics before the phases, `apply(dt)`, export takes the manifest. v6 reviewed by kimi
+(`review-7.md`, 9) and gemini (`review-7-gemini.md`, 7), adjudicated in `rebuttal-7.md` — all
+16 accepted: `// @param` header defaults for `.rhai` scripts, the chain's failure state
+defined, scenes dry-run on import, epoch bumps at the start of the drain, an errored call's
+buffer discarded, `check_source` honest as syntax-only, `Rc` views, side-aware win text,
+late-put base recording; deterministic instance order with resets applied before velocities,
+`cargo metadata` for the target dir and a kind-aware sync path, queued puts issued on
+`pagehide`, a terminal *conflicted* state, the textarea's own dirty flag, backslash zip paths,
+zero-vector `normalize`. **This is v7, the settled plan** (Jesse, 2026-09-04: no round 7;
+corrections from here go into the acting batch section before its handoff, and every batch's
+staged diff is reviewed by kimi and Claude). Batch 2 landed (936bcf9).
 
 ## Context
 
@@ -158,10 +167,22 @@ What the exploration established (Sep 4 2026, tree at `0f052b9`):
   (reactions, scoring) on a view with post-step transforms and the frame's contacts —
   pong's own order, and the only way a kinematic paddle's collider and sprite agree in
   the same frame. One shared view per phase, two per frame, pinned by a counter test.
-  Rust scripts receive `&mut ScriptCommands`; Rhai scripts receive a
-  `ScriptCommandsHandle` (`Rc<RefCell<Vec<ScriptCommand>>>`) because Rhai passes by
-  value, and `me` is named `me` because `this` is a Rhai keyword. Safe, headless
-  testable, deterministic, and the same rules for Rust and Rhai.
+  Instances run in a deterministic order (`BTreeMap` keyed by entity id then script
+  index — a `HashMap` would let the goal's reset and the ball's speed maintenance land in
+  either order), and `apply` orders commands by kind: every `reset_body` first, then
+  positions, then velocities and kinematic targets — dropping a velocity aimed at an
+  entity reset in the same call — then sprite, label and blackboard writes, then
+  despawns. A hook that errors mid-call has its buffer for that call DISCARDED: an
+  errored script did nothing. Rust scripts receive `&mut ScriptCommands`; Rhai scripts
+  receive a `ScriptCommandsHandle` (`Rc<RefCell<Vec<ScriptCommand>>>`) because Rhai
+  passes by value, `me` and `view` reach Rhai as `Rc<SelfView>` / `Rc<ScriptView>`
+  handles with getters only (a clone is a pointer, not the snapshot), and `me` is named
+  `me` because `this` is a Rhai keyword. A `.rhai` script declares its params in a header
+  block — `// @param speed: f32 = 450` (types `f32 i32 bool str vec2 entity color`) —
+  which is the defaults channel: attach pre-fills `ScriptRef.params` from it, a declared
+  param missing on the ref takes the header default at run time, and a param declared
+  nowhere is a named error. Safe, headless testable, deterministic, and the same rules
+  for Rust and Rhai.
 - **Persistence on the web is IndexedDB, now** (Jesse, reversing the v1 localStorage
   overlay: future-proof upfront rather than migrate later). A `ProjectStore` holds
   per-file records `{ project, path, bytes, revision, bundle_version }` plus each
@@ -172,13 +193,19 @@ What the exploration established (Sep 4 2026, tree at `0f052b9`):
     starts its store put immediately — unless a put for that path is in flight, in which
     case the new bytes are QUEUED behind it and start with its resolved revision as base
     (a tab must not race itself). A path is in exactly one state: *idle* (stored bytes
-    match), *in flight* (a put running), *queued* (bytes waiting behind the in-flight
-    put), or *stranded* (its last put failed, nothing running). "Pending" means not idle.
-    `visibilitychange`→hidden and `pagehide` re-issue STRANDED paths only — never an
-    in-flight or queued one, which would duplicate a put and manufacture a conflict;
-    `beforeunload` warns while anything is pending. **Boot seeds the tab's base revisions**
-    from the files `load_project` returned, so the first save after a reload is not a
-    conflict.
+    match), *in flight* (a put running, possibly with newer bytes *queued* behind it),
+    *stranded* (its last put failed with `Backend`/`Unavailable`, nothing running, and it
+    holds the NEWEST bytes), or *conflicted* (`StaleRevision`: terminal — never retried,
+    exited only by export or reload). "Pending" means not idle. On an in-flight `Err` the
+    slot frees and the queued bytes start at once with the same base; a stranded path
+    always carries the newest bytes and a re-issue always puts those.
+    `visibilitychange`→hidden re-issues STRANDED paths only; `pagehide` additionally
+    issues QUEUED puts at once (best effort — if the in-flight put has not committed the
+    queued one fails its CAS and the bytes stay only in `MemFs`; `beforeunload`'s warning
+    while anything is pending is the guard, and the plan says so plainly). A put that
+    resolves after its drain timed out records the stored revision as the tab's base
+    silently — this tab lost nothing. **Boot seeds the tab's base revisions** from the
+    files `load_project` returned, so the first save after a reload is not a conflict.
   - **Every put is a compare-and-swap** inside ONE `readwrite` transaction, with the
     dependent `put` issued synchronously inside the read's `onsuccess` (an `await` in
     between would find the transaction inactive): read the stored revision, refuse unless
@@ -191,15 +218,17 @@ What the exploration established (Sep 4 2026, tree at `0f052b9`):
     saved <file> after you loaded it; reloading discards THIS tab's version — export
     first to keep it", with a "download this file" affordance. Never get-then-put across
     two requests.
-  - **Drain, then epoch — one helper.** Import, reset and project switch all call the
-    same `drain_then_epoch()`: DRAIN every per-path chain — in-flight AND queued puts —
-    bounded at 5 s (on timeout the promise rejects with a status message that names tab
-    visibility as the usual cause and invites a foreground retry; the current project
-    stays loaded), then bump the write epoch; a `vfs::write` observed under an older
-    epoch is refused with "project is being replaced — save again after the reload".
-    Nothing queued before the switch is lost. **A failed replace touches nothing**: no
-    epoch stays bumped, no `remove_prefix`, no insert; the current project runs on and
-    the banner offers the uploaded archive back as a download.
+  - **Epoch, then drain — one helper.** Import, reset and project switch all call the
+    same `drain_then_epoch()`: bump the write epoch FIRST (a `vfs::write` observed under
+    an older epoch is refused with "project is being replaced — save again after the
+    reload", accurate because the page reloads; without this a first-time put born
+    during the drain lands after the remove and resurrects the slug), then DRAIN every
+    per-path chain — in-flight AND queued puts — bounded at 5 s (on timeout the promise
+    rejects with a status message that names tab visibility as the usual cause and
+    invites a foreground retry; the epoch is restored and the current project stays
+    loaded). Nothing queued before the switch is lost. **A failed replace touches
+    nothing**: the epoch is restored, no `remove_prefix`, no insert; the current project
+    runs on and the banner offers the uploaded archive back as a download.
   - **Import and reset are atomic**: `replace_project(slug, files, manifest)` is one
     transaction across both object stores; the manifest is the commit marker; boot
     ignores a slug that has files but no manifest, and `sweep_orphans` removes such files
@@ -381,7 +410,19 @@ Target shapes:
 Gates: standard + wasm + games (`common` public surface grew). Leaves out: any web
 entry, any persistence store (batch 3).
 
-## Batch 2 — the data-only host moves into `editor_integration`
+## Batch 2 — the data-only host moves into `editor_integration` — DONE 2026-09-04 (936bcf9)
+
+Authored by gemini from `review/web-playground/handoff-2.md`; reviewed by kimi (`review-8.md`,
+4 accepted) and Claude (`review-8-claude.md`, 4 accepted); adjudicated in `rebuttal-8.md`.
+**Ruling recorded:** the host never invents physics — a scene with no `physics:` block runs
+Play with no `PhysicsSystem` and behaviors move transforms directly (with a physics system
+present, a body-less entity's velocity goes to a rapier body that does not exist, so the old
+platformer-gravity default froze every pure-behavior scene). Stated in `project_host.rs`'s
+module doc and the integration guide's pitfall table. Also landed: named entities rebuilt
+every Playing frame (the command API can create and rename mid-Play), a logged
+initialisation failure, `test_`-prefixed contract tests. `Game::update` delegates to
+`pub(crate) fn update_frame(world, input, delta_time)` for headless tests — batch 7 adds the
+script phases there. Every gate green (`gates-2-fixed.log`).
 
 Files: `src/bin/editor.rs` (thin afterwards), new
 `crates/editor_integration/src/project_host.rs`, `crates/editor_integration/src/lib.rs`
@@ -480,15 +521,19 @@ Target shapes:
   `base_revision` is the revision the tab last loaded or wrote for that path (0 for a new
   file; an absent record accepts only 0); the put carries the project's manifest so the
   store can upsert it on a first save. Outcomes:
-  `Ok(new)` records `new` as the base and clears pending; `StaleRevision` (a genuine
-  cross-tab conflict) → the persistent banner "another tab saved <file> after you loaded
-  it; reloading discards THIS tab's version — export first to keep it" plus a "download
-  this file" control, path stays pending; `Backend`/`Unavailable` → the persistent banner
-  + the editor's dirty indicator via `EditorRunOptions.on_persist_failed: Option<Box<dyn
-  FnMut(&str)>>`. `pagehide` and `visibilitychange`→hidden re-issue STRANDED paths only
-  (best effort); `beforeunload` returns a warning while anything is pending. Import,
-  reset and project switch share `drain_then_epoch()` — await every chain, in-flight and
-  queued, bounded at 5 s — THEN bump the epoch. Preferences save through `save_store` on
+  `Ok(new)` records `new` as the base and clears pending (a put resolving after its
+  drain timed out records the stored revision as base silently); `StaleRevision` (a
+  genuine cross-tab conflict) → the path becomes CONFLICTED, never retried: the
+  persistent banner "another tab saved <file> after you loaded it; reloading discards
+  THIS tab's version — export first to keep it" plus a "download this file" control;
+  `Backend`/`Unavailable` → the path is STRANDED holding the newest bytes (a queued put
+  behind the failed one starts at once with the same base) and the persistent banner +
+  the editor's dirty indicator via `EditorRunOptions.on_persist_failed: Option<Box<dyn
+  FnMut(&str)>>`. `visibilitychange`→hidden re-issues STRANDED paths only (newest bytes);
+  `pagehide` also issues QUEUED puts at once, best effort; `beforeunload` returns a
+  warning while anything is pending. Import, reset and project switch share
+  `drain_then_epoch()` — bump the epoch, THEN await every chain, in-flight and queued,
+  bounded at 5 s. Preferences save through `save_store` on
   Play/Stop, on hidden, and before switch/reset (`EditorGame::save_preferences` becomes
   callable from those edges; `on_exit` keeps its call). `EditorGame::default_scene_path`
   joins the project's asset base (`ctx.assets.base_path()`), never the bare relative
@@ -500,8 +545,11 @@ Target shapes:
   `StaleRevision`; `seed` then save — a file loaded at revision 3 saves as 4 with no
   conflict; a first put to a slug whose manifest exists only in `projects.json` upserts
   the manifest and a following `sweep_orphans` KEEPS it; `drain_then_epoch` — a queued
-  put before the switch lands, a write after the bump is refused; a re-issue touches a
-  stranded path and leaves an in-flight-plus-queued path alone;
+  put before the switch lands, a write after the bump is refused, a first-time put born
+  during the drain is refused (not resurrected after the remove); fail v1 with v2 queued
+  → v2 starts at once, and a re-issue puts v2; a conflicted path is never re-issued; a
+  re-issue leaves an in-flight-plus-queued path alone; a put resolving after a drain
+  timeout updates the base without a conflict;
   `replace_project` leaves the other project intact; a failed `replace_project` leaves the
   previous project intact (manifest is the marker); `sweep_orphans` removes files of a
   non-bundled manifest-less slug and nothing else; manifests merge bundled + stored; the
@@ -589,9 +637,12 @@ Target shapes:
   crate's own `assets/` copy is skipped for this kind. **Order**: project copies and
   `projects.json` first, `assets/manifest.json` generated LAST from the finished tree,
   then `--sync` — a manifest written before the copies would leave boot fetching nothing.
-  The wasm-bindgen pin probe (`:63`) reads the lockfile beside the manifest
-  `cargo locate-project --workspace --message-format plain` names — a workspace member
-  has no `Cargo.lock` of its own. The `ASSET_BASE` assertion (`:49-58`) reads
+  **Workspace member, not a standalone crate**: the wasm-bindgen pin probe (`:63`) reads
+  the lockfile beside the manifest `cargo locate-project --workspace --message-format
+  plain` names; the built `.wasm` is found under `cargo metadata --format-version 1`'s
+  `target_directory` (today `:83` assumes `$GAME_DIR/target`, which a member lacks); and
+  `--sync` copies to `<site>/public/<kind's output path>` (today `:163` hard-codes
+  `games/$SLUG/$VERSION`). The `ASSET_BASE` assertion (`:49-58`) reads
   the kind and also asserts `BUNDLE_VERSION`. The `[profile.wasm-release]` check (`:76`)
   inspects the manifest `cargo locate-project --workspace --message-format plain` names
   (a game's root is its own manifest; the playground's is the engine root). Invocation
@@ -603,9 +654,9 @@ Target shapes:
   status, `#game-canvas` placeholder at 1280×800 with `tabindex`, `role`, `aria-label`,
   fallback text) and the batch-0 gate. Page controls, all keyboard-reachable and
   labelled: a project `<select>` (from `playground_list_projects`; a change asks
-  `playground_is_dirty`, confirms with a native `confirm()` — a cancel restores the
-  select to the loaded project — AWAITS `playground_open_project`'s promise, then
-  reloads), a "Reset to bundled" button shown for any bundled slug with stored files,
+  `playground_is_dirty` OR any page-side dirty flag (batch 8's textarea keeps `value !==
+  lastSaved`), confirms with a native `confirm()` — a cancel restores the select to the
+  loaded project — AWAITS `playground_open_project`'s promise, then reloads), a "Reset to bundled" button shown for any bundled slug with stored files,
   with the note "the bundled project changed since you saved" or "you imported over the
   bundled project" per the manifest's origin when the content hash or bundle version
   differs (awaits `playground_reset_project`, then reloads), a command console (`<input>` + `<output
@@ -642,9 +693,13 @@ Target shapes:
   NOT the template repo, which does not exist until batch 10 adds that sentence) and
   `project.ron` (the manifest passed in — the VFS holds no title or hash); `pub fn
   import_project(bytes) -> Result<(ProjectManifest, Vec<StoredFile>), ArchiveError>`
-  validates every entry (path traversal refused, `project.ron` required and its slug is
-  the project's identity, `.sheet.ron` sidecars run through
-  `sheet_file::parse_sheet_file` — schema drift fails loud naming the file, the slug must
+  validates every entry (entry names normalised `\` → `/` first — Windows archivers emit
+  backslashes; path traversal refused, `project.ron` required and its slug is the
+  project's identity, `.sheet.ron` sidecars run through `sheet_file::parse_sheet_file`
+  and every `*.scene.ron` through `SceneLoader::parse` plus a dry-run instantiate into a
+  scratch `World` — the same guard `load_scene` uses — so schema drift or a typo in a
+  scene fails loud naming the file instead of committing a project the editor cannot
+  open, the slug must
   match `^[a-z0-9_-]{1,32}$`, archives over 64 MiB refused AND cumulative decompressed
   bytes capped at 64 MiB as entries are read — a 1 MiB zip of zeros must not OOM the
   tab, directory entries skipped — `zip -r` and Finder emit them) and returns the files;
@@ -740,9 +795,15 @@ Target shapes:
   `ScriptCommands::apply(world, physics: Option<&mut PhysicsSystem>, delta_time: f32)`
   mirrors `BehaviorCommands::apply` incl. the kinematic/dynamic/no-physics fallback
   (`behavior_runner/mod.rs:222-249`, which integrates `velocity * delta_time` into
-  `Transform2D` when there is no physics), which is what keeps it headless-testable.
-- `ScriptRunner { registry, instances: HashMap<(EntityId, usize), Instance>, rhai:
-  RhaiBackend, frames_run: u32, errors: ScriptErrors }`; two entry points,
+  `Transform2D` when there is no physics), which is what keeps it headless-testable —
+  and applies by KIND, not by arrival: resets first, then positions, then velocities and
+  kinematic targets (a velocity aimed at an entity reset in this call is dropped), then
+  sprite/label/blackboard writes, then despawns. A hook whose call returned `Err` has its
+  commands for that call discarded before `apply` runs.
+- `ScriptRunner { registry, instances: BTreeMap<(EntityId, usize), Instance>, rhai:
+  RhaiBackend, frames_run: u32, errors: ScriptErrors }` (`BTreeMap`: instances run in
+  entity-then-index order every frame — a `HashMap` would randomise which of two scripts'
+  commands lands last); two entry points,
   `early_update(&mut self, world, input, players, delta_time, physics)` and
   `update(&mut self, world, input, players, delta_time, collisions: &[CollisionData],
   physics: Option<&mut PhysicsSystem>)`, each building ONE shared view for its phase
@@ -761,13 +822,19 @@ Target shapes:
   passes `ctx.assets.base_path()`.
 - `RhaiBackend`: one `rhai::Engine::new()` — which already carries Rhai's
   `StandardPackage`, so `sqrt`, `abs`, `min`, `max`, `clamp` need no registration — with
-  the `SelfView`, `ScriptView` and `ScriptCommandsHandle` types registered
-  (`register_type_with_name`; GETTERS ONLY on the two views, so `me.transform.x = 5.0`
-  fails at evaluation with "unknown property" instead of mutating a by-value clone that
-  nobody reads; methods on the handle) and a `vec2` type — `vec2(x, y)`, `.x`/`.y`
-  getters, `+`/`-` between vectors, `*`/`/` by a number, `length()`, `normalize()`,
-  `dot()` — because Rhai has no vector; `AST` cache keyed by `source_path` + content hash
-  (a changed file recompiles on the next Play). Params travel as an ARGUMENT, not scope variables (Rhai `fn`s cannot
+  the `Rc<SelfView>`, `Rc<ScriptView>` and `ScriptCommandsHandle` types registered
+  (`register_type_with_name`; the views travel as `Rc` handles so a by-value clone is a
+  pointer, not a snapshot of every named entity per instance per phase; GETTERS ONLY on
+  the two views, so `me.transform.x = 5.0` fails at evaluation with "unknown property"
+  instead of mutating a clone nobody reads; methods on the handle) and a `vec2` type —
+  `vec2(x, y)`, `.x`/`.y` getters, `+`/`-` between vectors, `*`/`/` by a number,
+  `length()`, `normalize()` (the zero vector normalises to itself, never NaN), `dot()` —
+  because Rhai has no vector; `AST` cache keyed by `source_path` + content hash (a changed
+  file recompiles on the next Play). Compiling also parses the `// @param name: type =
+  default` header block into the script's `ParamSpec`s — the defaults channel for `.rhai`
+  scripts: the catalog shows them, the attach paths (batch 6's drop and the picker)
+  pre-fill `ScriptRef.params` from them, a declared param missing on a ref takes the
+  default at run time, and a param declared nowhere is a named `ScriptError`. Params travel as an ARGUMENT, not scope variables (Rhai `fn`s cannot
   read the calling scope): a `rhai::Map` built per call from the `ScriptRef` (F32→float,
   I32→int, Bool, Str, Vec2→`vec2` type, Entity→the target's name, Color→array). `out` is
   a `ScriptCommandsHandle(Rc<RefCell<Vec<ScriptCommand>>>)` because `call_fn` passes by
@@ -779,7 +846,10 @@ Target shapes:
   reach `ScriptErrors` with file and line, never a panic; `Engine::set_max_operations`
   guards runaway loops, and an instance that trips it is QUARANTINED for the rest of the
   Play session (reported once; Stop/Play re-enables it) so a buggy loop cannot burn its
-  budget sixty times a second. **Numbers mix freely**: Rhai never coerces `INT` to
+  budget sixty times a second. `check_source` is a SYNTAX check (`Engine::compile` plus
+  the header parse) — Rhai is dynamic, so an unknown function or a getter typo is a
+  run-time error; `docs/SCRIPTING.md` and the page's Save status say so ("syntax OK —
+  runtime errors show during Play"). **Numbers mix freely**: Rhai never coerces `INT` to
   `FLOAT`, so the engine registers `+ - * / % < <= > >= == !=` for every (`INT`,`FLOAT`)
   and (`FLOAT`,`INT`) pair, F32 params are always `FLOAT`, and every command method that
   takes a float has an `INT` overload — `dt * 450` and `out.set_velocity_x("Ball", 250)`
@@ -816,7 +886,11 @@ Target shapes:
   of the frame's commands still apply; `update`'s view carries the injected collision
   and `early_update`'s does not; a game registering a descriptor, wrapped in
   `EditorGame`, exposes it through the registry; a blackboard read of an unset key
-  returns its default; a compile error reaches the error list and leaves other
+  returns its default; two instances issue `set_velocity` and `reset_body` for one entity
+  in either order and the entity ends reset and still; a hook that errors after issuing a
+  command leaves the world untouched; a `.rhai` with a `// @param` header attached with
+  an empty ref runs with the header defaults and the catalog lists them; a compile error
+  reaches the error list and leaves other
   scripts running; a runaway loop is reported once across many frames; `engine::rotate`
   rotates by `degrees_per_second * dt`; an unresolved id is reported once; `reset()`
   clears the blackboard; `early_update`'s kinematic target lands before the step and
@@ -849,21 +923,25 @@ Target shapes:
   first Play is not a deadlock — AND `!view.blackboard_bool("game_over", false)`, so the
   restart press cannot serve in the same frame the scoreboard resets; direction from
   `blackboard_str("last_scorer", "left")`; `update` maintains speed as
-  `gameplay/balls.rs:27-45` does using `vec2` `length()`/`normalize()`; params `speed:
-  F32 = 250`, `max_vertical: F32 = 500`), `scripts/goal.rhai` (`update`; param `side:
-  Str`; on a started collision with `Ball`: award the point in the blackboard,
+  `gameplay/balls.rs:27-45` does using `vec2` `length()`/`normalize()` — ONLY while not
+  `serving`, so it never fights the goal's reset in the same phase; params `speed: F32 =
+  250`, `max_vertical: F32 = 500`), `scripts/goal.rhai` (`update`; param `side: Str`; on
+  a started collision with `Ball`: award the point in the blackboard,
   `out.reset_body("Ball", vec2(0.0, 0.0))`, set `serving`), `scripts/scoreboard.rhai`
-  (`update`; writes "L : R" to `out.set_label_text(me, …)`; at 7 writes "LEFT WINS —
-  Action1 to restart" and sets `game_over`; on Action1 while `game_over` it zeros the
-  score, clears `game_over`, sets `serving`).
+  (`update`; writes "L : R" to `out.set_label_text(me, …)`; at 7 writes "<LEFT|RIGHT>
+  WINS — Action1 to restart" for the side that reached 7 and sets `game_over`; on Action1
+  while `game_over` it zeros the score, clears `game_over`, sets `serving`). Every script
+  carries its `// @param` header with these defaults.
   The pseudo-random serve spread comes from `view.frame` hashed as `serve_direction`
   does.
 - `build_wasm.sh` invocation adds `--project pong=Pong=crates/playground/assets/projects/pong`.
 - Page: a "Scripts" panel — `<select>` of the project's `.rhai` files (via
   `playground_list_files`), a `<textarea>` bound to `playground_read_file`/
   `playground_write_file`, a Save button (Ctrl+S / Cmd+S inside the textarea
-  `preventDefault`s and runs the same Save), `aria-live` status for compile errors: Save
-  shows `check_source`'s result immediately (Edit mode), and during Play the panel polls
+  `preventDefault`s and runs the same Save), a dirty flag (`value !== lastSaved`) that
+  every switch/import/reset confirm ORs into `playground_is_dirty`, `aria-live` status:
+  Save shows `check_source`'s result immediately as "syntax OK — runtime errors show
+  during Play" or the error with line, and during Play the panel polls
   `playground_script_errors()` for runtime errors. Focus returns to the canvas only via
   the Play control, never while the textarea is being typed in.
 - Tests: the pong project's four scripts compile in a headless test that loads the
@@ -921,7 +999,7 @@ Play runs the real game. Leaves out: nothing else; if dropped, file it.
   (`playground_delete_file` + a store delete keyed `[project, path]` — today a file
   leaves a project only by re-import); contact points and normals in `ScriptView`
   for a game whose rules read them (pong's never did); a criterion bench for view-building +
-  script dispatch at 200 named entities × 30 instances (a timing assertion is not a
+  script dispatch at 200 named entities × 30 instances, exercising the Rhai path (a timing assertion is not a
   `cargo test` — flaky on shared CI, and `#[ignore]` is forbidden); batch 9 if dropped.
 - Merge `jesse → dev` in both repos once every gate is green; Jesse pushes.
 
