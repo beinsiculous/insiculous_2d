@@ -201,7 +201,7 @@ Semantics identical to the windowed `--api` mode, with these limits:
 ### Decision of record — audit §6.6(5): the editor does not own the build
 
 Resolved with Stage C (they hinge on the same file, `src/bin/editor.rs`):
-the standalone binary stays a generic, data-only host wrapping `EditorApp`;
+the standalone binary stays a generic, data-only host wrapping `ProjectHost`;
 games that want in-process editing embed via `run_game_with_editor`. The
 API edits DATA (scenes), never code. Combined with §6.6(4)'s
 relaunch-over-dylib decision, any future editor-triggered rebuild is

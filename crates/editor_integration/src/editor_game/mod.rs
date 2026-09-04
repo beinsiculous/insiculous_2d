@@ -449,7 +449,7 @@ impl<G: Game> Game for EditorGame<G> {
 
         // Open the initial scene through the REAL editor load path:
         // dry-run guard, scene_path, physics settings + resource, history
-        // reset — the old EditorApp bypass load recorded none of those, so
+        // reset — an old bypass load recorded none of those, so
         // the title stayed "Untitled" and a save silently dropped physics.
         if let Some(path) = self.initial_scene.take() {
             self.load_scene_with_feedback(ctx.world, ctx.assets, &path);

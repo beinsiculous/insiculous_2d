@@ -176,7 +176,7 @@ impl<G: Game> EditorGame<G> {
             .map_err(SceneIoError::Load)?;
 
         // Store physics settings from loaded scene, and publish them as a
-        // world resource so the host game (EditorApp's lazy physics preview)
+        // world resource so the host game (ProjectHost's lazy physics preview)
         // can build its PhysicsSystem without reaching into EditorGame.
         // Resources deliberately survive the play snapshot restore — so if
         // physics settings ever become EDITABLE, route edits through

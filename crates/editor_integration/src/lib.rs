@@ -23,7 +23,9 @@ mod constants;
 mod editor_game;
 mod entity_ops;
 mod panel_renderer;
+mod project_host;
 
 pub use constants::find_first_scene;
 pub use editor_game::headless::{run_headless_editor_api, HeadlessAssets};
 pub use editor_game::{run_game_with_editor, run_game_with_editor_opts, EditorRunOptions};
+pub use project_host::ProjectHost;

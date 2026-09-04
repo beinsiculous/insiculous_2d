@@ -12,7 +12,7 @@ EditorGame<G: Game>  — transparent wrapper implementing Game trait
 └── Intercepts: init(), update(), on_key_pressed()
 
 run_game_with_editor(game, config) → wraps game in EditorGame, calls run_game()
-run_game_with_editor_opts(game, config, EditorRunOptions { api_rx, initial_scene }) → full option set (#53: the standalone binary hands its project's first scene here — find_first_scene, sorted — and EditorGame opens it through the REAL load path after init, so scene_path/physics/dirty are recorded; EditorApp never loads scenes itself, and load_scene publishes PhysicsSettings as a world resource for the host's lazy physics preview)
+run_game_with_editor_opts(game, config, EditorRunOptions { api_rx, initial_scene }) → full option set (#53: the standalone binary hands its project's first scene here — find_first_scene, sorted — and EditorGame opens it through the REAL load path after init, so scene_path/physics/dirty are recorded; ProjectHost never loads scenes itself, and load_scene publishes PhysicsSettings as a world resource for the host's lazy physics and behavior preview)
 ```
 
 ## Dependency Graph
@@ -23,6 +23,7 @@ editor_integration ──→ editor, engine_core, ecs, ui, input, renderer, comm
 ```
 
 ## File Map
+- `project_host.rs` — data-only game host for the standalone editor (physics preview, behavior runner, transform hierarchy).
 - `editor_game/mod.rs` — struct and Game impl (`update()` = named phases `prepare_frame`/`render_early_overlays`/`finish_frame`) + `run_game_with_editor`.
 - `editor_game/scene_io.rs` — save/load/new scene (load dry-runs into a scratch World before touching the live one).
 - `editor_game/api.rs` — command-API frame hook (`answer_api_lines`, `drain_api_requests` with ≤256 lines/frame cap, skipped during gizmo drags).
@@ -76,6 +77,7 @@ Tracked on the Studio Board: issue #90 (all files < 600 lines since June 2026; r
 | A paused world is mid-simulation; save/new/open must be refused while Paused, not just Playing | `src/editor_game/play_session_tests.rs test_save_is_refused_mid_session_and_allowed_after_stop` |
 | `load_scene` must dry-run into a scratch World so a parse or instantiate failure never corrupts the live world | `src/editor_game/scene_io_tests.rs test_failed_parse_or_missing_file_preserves_the_live_world` |
 | Scene saves must reach `common::vfs` (via `scene_serializer`) so parent creation and wasm storage are handled uniformly | `src/editor_game/scene_io_tests.rs test_save_scene_with_creates_parent_directories_and_writes_valid_scene` |
+| The host never invents physics: a scene with no `physics:` block runs Play with no `PhysicsSystem` and behaviors move transforms directly (with physics present, a body-less entity's velocity goes to a rapier body that does not exist) | `src/project_host.rs test_physics_builds_only_when_the_scene_declares_physics_settings`, `test_patrol_entity_advances_over_playing_frames_without_physics` |
 | Editor shortcuts must respect text focus so typing in an inspector field does not trigger global shortcuts | `src/editor_game/shortcuts_tests.rs test_key_routing_respects_text_focus_play_state_and_the_dialog` |
 
 
