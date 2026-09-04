@@ -4,7 +4,6 @@
 //! and per-panel layout (visibility, collapse state, size).
 
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 
 use crate::dock::{DockArea, DockPosition, PanelId};
 
@@ -62,22 +61,14 @@ impl Default for EditorPreferences {
 }
 
 impl EditorPreferences {
-    /// Load preferences from a JSON file.
-    ///
-    /// Returns default preferences if the file doesn't exist or can't be parsed.
-    pub fn load(path: &Path) -> Self {
-        match std::fs::read_to_string(path) {
-            Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
-            Err(_) => Self::default(),
-        }
+    /// Deserialize preferences from JSON text.
+    pub fn from_json(json: &str) -> Result<Self, String> {
+        serde_json::from_str(json).map_err(|e| format!("Failed to parse preferences: {e}"))
     }
 
-    /// Save preferences to a JSON file.
-    pub fn save(&self, path: &Path) -> Result<(), String> {
-        let json = serde_json::to_string_pretty(self)
-            .map_err(|e| format!("Failed to serialize preferences: {}", e))?;
-        std::fs::write(path, json)
-            .map_err(|e| format!("Failed to write preferences file: {}", e))
+    /// Serialize preferences to pretty-printed JSON text.
+    pub fn to_json(&self) -> Result<String, String> {
+        serde_json::to_string_pretty(self).map_err(|e| format!("Failed to serialize preferences: {e}"))
     }
 
     /// Capture the current panel layout from a dock area.
@@ -144,7 +135,7 @@ mod tests {
     }
 
     #[test]
-    fn test_prefs_round_trip_through_a_file_including_the_panel_layout() -> Result<(), String> {
+    fn test_prefs_round_trip_through_json_including_the_panel_layout() -> Result<(), String> {
         let mut dock = test_dock();
         dock.set_panel_collapsed(PanelId::HIERARCHY, true);
         dock.set_panel_visible(PanelId::INSPECTOR, false);
@@ -159,11 +150,9 @@ mod tests {
             panels: Vec::new(),
         };
         prefs.capture_panels(&dock);
-        let dir = tempfile::tempdir().map_err(|e| e.to_string())?;
-        let path = dir.path().join("editor_prefs.json");
 
-        prefs.save(&path)?;
-        let loaded = EditorPreferences::load(&path);
+        let json = prefs.to_json()?;
+        let loaded = EditorPreferences::from_json(&json)?;
         let mut fresh = test_dock();
         loaded.apply_panels(&mut fresh);
 
@@ -213,7 +202,8 @@ mod tests {
             "grid_size": 32.0
         }"#;
 
-        let prefs: EditorPreferences = serde_json::from_str(legacy).expect("legacy JSON parses");
+        let prefs: EditorPreferences =
+            EditorPreferences::from_json(legacy).expect("legacy JSON parses");
 
         assert_eq!(prefs.camera_position, (10.0, 20.0));
         assert!(prefs.panels.is_empty());
@@ -221,18 +211,13 @@ mod tests {
     }
 
     #[test]
-    fn test_load_falls_back_to_defaults_on_a_missing_or_truncated_file() -> Result<(), String> {
-        let dir = tempfile::tempdir().map_err(|e| e.to_string())?;
-        let truncated = dir.path().join("editor_prefs.json");
-        std::fs::write(&truncated, r#"{"camera_position": [100.0, 200.0], "camera_zo"#)
-            .map_err(|e| e.to_string())?;
+    fn test_from_json_fails_on_truncated_json_and_caller_falls_back_to_defaults() {
+        let truncated = r#"{"camera_position": [100.0, 200.0], "camera_zo"#;
+        let result = EditorPreferences::from_json(truncated);
+        assert!(result.is_err());
 
-        let from_missing = EditorPreferences::load(&dir.path().join("absent.json"));
-        let from_truncated = EditorPreferences::load(&truncated);
-
-        assert_eq!(from_missing.camera_zoom, 1.0, "first run starts from defaults");
-        assert_eq!(from_truncated.camera_zoom, 1.0, "a corrupt file never blocks startup");
-        assert_eq!(from_truncated.camera_position, (0.0, 0.0), "no partial values leak from the corrupt file");
-        Ok(())
+        let fallback = result.unwrap_or_default();
+        assert_eq!(fallback.camera_zoom, 1.0, "a corrupt file falls back to defaults");
+        assert_eq!(fallback.camera_position, (0.0, 0.0), "no partial values leak");
     }
 }

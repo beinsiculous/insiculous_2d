@@ -1,12 +1,15 @@
 //! Asset browser data: filesystem scan and per-entry state.
 //!
-//! Pure data + std::fs only — thumbnail loading and drawing live in
+//! Pure data + vfs scan only — thumbnail loading and drawing live in
 //! `editor_integration` (which can reach the engine's `AssetManager`).
+//!
+//! The scan never follows symlinks (`common::vfs::list_files`): a link out of
+//! the project would otherwise dump six levels of someone's home directory into
+//! the panel and into every export. Assets are copies by convention — the art
+//! repo's sync script copies, never links — so a linked tree is not a supported
+//! layout; it lists as empty, not as an error.
 
 use std::path::Path;
-
-/// Maximum directory depth `scan_assets` descends (guards symlink cycles).
-const MAX_SCAN_DEPTH: usize = 6;
 
 /// What kind of asset a scanned file is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -75,51 +78,40 @@ fn kind_for_extension(ext: &str) -> Option<AssetKind> {
 }
 
 /// Recursively scan `base` for known asset files. Never panics: missing or
-/// unreadable directories yield an empty (or partial) list. Results are
-/// sorted by (kind, name) for a stable grid.
+/// unreadable directories yield an empty list. Results are sorted by (kind, name)
+/// for a stable grid.
 pub fn scan_assets(base: &Path) -> Vec<AssetEntry> {
     let mut entries = Vec::new();
-    // Explicit stack instead of recursion; depth cap guards symlink cycles.
-    let mut stack: Vec<(std::path::PathBuf, usize)> = vec![(base.to_path_buf(), 0)];
+    let Ok(files) = common::vfs::list_files(base) else {
+        return entries;
+    };
 
-    while let Some((dir, depth)) = stack.pop() {
-        let Ok(read) = std::fs::read_dir(&dir) else {
+    for path in files {
+        let Some(kind) = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .and_then(kind_for_extension)
+        else {
             continue;
         };
-        for entry in read.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                if depth < MAX_SCAN_DEPTH {
-                    stack.push((path, depth + 1));
-                }
-                continue;
-            }
-            let Some(kind) = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .and_then(kind_for_extension)
-            else {
-                continue;
-            };
-            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
-                continue;
-            };
-            let Ok(relative) = path.strip_prefix(base) else {
-                continue;
-            };
-            let relative_path = relative
-                .components()
-                .map(|c| c.as_os_str().to_string_lossy())
-                .collect::<Vec<_>>()
-                .join("/");
-            entries.push(AssetEntry {
-                name: name.to_string(),
-                relative_path,
-                kind,
-                texture_handle: None,
-                load_failed: false,
-            });
-        }
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        let Ok(relative) = path.strip_prefix(base) else {
+            continue;
+        };
+        let relative_path = relative
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy())
+            .collect::<Vec<_>>()
+            .join("/");
+        entries.push(AssetEntry {
+            name: name.to_string(),
+            relative_path,
+            kind,
+            texture_handle: None,
+            load_failed: false,
+        });
     }
 
     entries.sort_by(|a, b| a.kind.cmp(&b.kind).then_with(|| a.name.cmp(&b.name)));
@@ -165,25 +157,34 @@ mod tests {
     }
 
     #[test]
-    fn test_scan_lists_images_then_scenes_by_load_compatible_relative_path() -> std::io::Result<()> {
+    fn test_nested_images_and_scenes_listed_with_slash_joined_relative_paths_while_txt_is_ignored() -> std::io::Result<()> {
         let dir = tempfile::tempdir()?;
-        for file in ["player.png", "brick.JPG", "scenes/level1.scene.ron", "fonts/font.ttf", "notes.txt"] {
+        for file in [
+            "player.png",
+            "brick.JPG",
+            "sprites/nested/coin.png",
+            "scenes/level1.scene.ron",
+            "fonts/font.ttf",
+            "notes.txt",
+        ] {
             touch(&dir.path().join(file))?;
         }
 
         let entries = scan_assets(dir.path());
 
-        let listed: Vec<(&str, AssetKind, &str)> =
-            entries.iter().map(|entry| (entry.name.as_str(), entry.kind, entry.relative_path.as_str())).collect();
+        let listed: Vec<(&str, AssetKind, &str)> = entries
+            .iter()
+            .map(|entry| (entry.name.as_str(), entry.kind, entry.relative_path.as_str()))
+            .collect();
         assert_eq!(
             listed,
             vec![
                 ("brick.JPG", AssetKind::Image, "brick.JPG"),
+                ("coin.png", AssetKind::Image, "sprites/nested/coin.png"),
                 ("player.png", AssetKind::Image, "player.png"),
                 ("level1.scene.ron", AssetKind::Scene, "scenes/level1.scene.ron"),
             ],
-            "images first by name, then scenes; fonts and notes are not assets; \
-             paths are forward-slash and base-relative so the loader can open them"
+            "images first by name, then scenes; nested files have forward-slash relative paths; txt is ignored"
         );
         assert!(
             scan_assets(Path::new("/definitely/not/a/real/dir")).is_empty(),

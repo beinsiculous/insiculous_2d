@@ -166,3 +166,23 @@ fn test_render_writes_zero_scissor_when_scene_panel_hidden() {
     let rect = scissor.expect("editor always writes a scissor");
     assert_eq!((rect.width, rect.height), (0.0, 0.0));
 }
+
+#[test]
+fn test_preferences_start_from_defaults_when_the_slot_is_absent_or_corrupt() -> std::io::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let mut editor = editor_game();
+
+    // First run: no slot at all. Whatever the session held is replaced by defaults.
+    editor.editor.set_camera_zoom(2.5);
+    editor.load_preferences_from(&dir.path().join("absent.json"));
+    assert_eq!(editor.editor.camera_zoom(), 1.0, "an absent slot is a first run");
+
+    // A corrupt slot never blocks startup and leaks no partial values.
+    let corrupt = dir.path().join("corrupt.json");
+    std::fs::write(&corrupt, r#"{"camera_position": [100.0, 200.0], "camera_zo"#)?;
+    editor.editor.set_camera_zoom(2.5);
+    editor.load_preferences_from(&corrupt);
+    assert_eq!(editor.editor.camera_zoom(), 1.0);
+    assert_eq!(editor.editor.camera_offset(), Vec2::ZERO, "no partial values leak from a corrupt file");
+    Ok(())
+}

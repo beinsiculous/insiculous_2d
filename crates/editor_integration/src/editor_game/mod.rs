@@ -241,7 +241,25 @@ impl<G: Game> EditorGame<G> {
 
     /// Load persisted editor preferences (camera, grid, panel layout).
     fn load_preferences(&mut self) {
-        let prefs = editor::EditorPreferences::load(std::path::Path::new(EDITOR_PREFS_PATH));
+        self.load_preferences_from(std::path::Path::new(EDITOR_PREFS_PATH));
+    }
+
+    /// Load preferences from one `save_store` slot. An absent slot is the
+    /// first run and stays silent; an unreadable or corrupt one falls back to
+    /// defaults with a warning, so a broken file never blocks startup and never
+    /// hides either.
+    pub(crate) fn load_preferences_from(&mut self, slot: &std::path::Path) {
+        let prefs = match engine_core::save_store::read(slot) {
+            Ok(None) => editor::EditorPreferences::default(),
+            Ok(Some(json)) => editor::EditorPreferences::from_json(&json).unwrap_or_else(|error| {
+                log::warn!("editor preferences at {} ignored: {error}", slot.display());
+                editor::EditorPreferences::default()
+            }),
+            Err(error) => {
+                log::warn!("editor preferences at {} unreadable: {error}", slot.display());
+                editor::EditorPreferences::default()
+            }
+        };
         self.editor.set_camera_offset(Vec2::new(prefs.camera_position.0, prefs.camera_position.1));
         self.editor.set_camera_zoom(prefs.camera_zoom);
         self.editor.set_snap_to_grid(prefs.snap_to_grid);
@@ -266,8 +284,15 @@ impl<G: Game> EditorGame<G> {
             panels: Vec::new(),
         };
         prefs.capture_panels(&self.editor.dock_area);
-        if let Err(e) = prefs.save(std::path::Path::new(EDITOR_PREFS_PATH)) {
-            log::warn!("Failed to save editor preferences: {}", e);
+        match prefs.to_json() {
+            Ok(json) => {
+                if let Err(e) = engine_core::save_store::write(std::path::Path::new(EDITOR_PREFS_PATH), &json) {
+                    log::warn!("Failed to save editor preferences: {}", e);
+                }
+            }
+            Err(e) => {
+                log::warn!("Failed to serialize editor preferences: {}", e);
+            }
         }
     }
 

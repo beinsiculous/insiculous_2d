@@ -50,6 +50,8 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 
 ### Persistence + commands
 - `commands/` — `EditorCommand` trait, `CommandHistory` dirty tracking watermark, `SetComponentCommand` merge-by-hint, and `break_merge()` gesture boundary.
+- `editor_preferences.rs` — `EditorPreferences` JSON serialization (`from_json`/`to_json`), panel layout capture/apply, camera/grid state (IO handled by integration layer via save_store).
+- `asset_browser.rs` — `AssetEntry` and `scan_assets` walking `common::vfs::list_files` for images and scenes.
 - `stored_component/` — typed registry overlay (`editor_component_registry!`), `category.rs`, and `dynamic.rs` falling through to ECS dynamic registry.
 - `world_snapshot.rs` — `WorldSnapshot` save/restore with uncaptured component type detection and drop reporting.
 
@@ -65,6 +67,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 | World snapshot restore must detect and report unregistered component types that cannot be captured | `src/world_snapshot/tests.rs test_loss_messages_name_every_dropped_type_or_nothing` |
 | Rotate gizmo dead-center clicks must fall through to entity picking | `src/gizmo/tests.rs test_rotate_ring_is_an_annulus_so_a_dead_center_press_falls_through_to_picking` |
 | Hard floors for inspector editors and command API must clamp negative or zero dimensions | `src/command_api/write_tests.rs test_set_sanitizes_collider_extents_to_the_gui_floor` |
+| Asset scanning must use `common::vfs::list_files` instead of `std::fs` so recursive asset enumeration works on wasm; it never follows symlinks (assets are copies by convention), so a linked tree lists as empty | `src/asset_browser.rs test_nested_images_and_scenes_listed_with_slash_joined_relative_paths_while_txt_is_ignored`; `common/src/vfs.rs test_vfs_list_files_never_follows_symlinks` |
 
 
 ## Key Patterns

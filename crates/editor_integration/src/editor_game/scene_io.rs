@@ -14,7 +14,6 @@ use super::EditorGame;
 #[derive(Debug)]
 pub enum SceneIoError {
     MidSimulation,
-    CreateDirectory(std::io::Error),
     Write(String),
     Load(SceneLoadError),
 }
@@ -23,7 +22,6 @@ impl std::fmt::Display for SceneIoError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SceneIoError::MidSimulation => write!(f, "scene is mid-simulation — stop Play first"),
-            SceneIoError::CreateDirectory(err) => write!(f, "Failed to create directory: {err}"),
             SceneIoError::Write(err) => write!(f, "{err}"),
             SceneIoError::Load(err) => write!(f, "Failed to load scene: {err}"),
         }
@@ -33,7 +31,6 @@ impl std::fmt::Display for SceneIoError {
 impl std::error::Error for SceneIoError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            SceneIoError::CreateDirectory(err) => Some(err),
             SceneIoError::Load(err) => Some(err),
             _ => None,
         }
@@ -129,13 +126,6 @@ impl<G: Game> EditorGame<G> {
         let scene_data = engine_core::scene_serializer::world_to_scene_data(
             world, &scene_name, self.physics_settings.clone(), texture_path_fn,
         );
-
-        // Ensure parent directory exists
-        if let Some(parent) = path.parent() {
-            if !parent.exists() {
-                std::fs::create_dir_all(parent).map_err(SceneIoError::CreateDirectory)?;
-            }
-        }
 
         engine_core::scene_serializer::save_scene_to_file(&scene_data, &path)
             .map_err(SceneIoError::Write)?;

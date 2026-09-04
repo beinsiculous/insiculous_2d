@@ -75,6 +75,7 @@ Tracked on the Studio Board: issue #90 (all files < 600 lines since June 2026; r
 | World snapshot restore replaces the world wholesale; `Stop` must reset the transform-propagation baseline | `src/editor_game/play_session_tests.rs test_stop_resets_the_transform_propagation_baseline` |
 | A paused world is mid-simulation; save/new/open must be refused while Paused, not just Playing | `src/editor_game/play_session_tests.rs test_save_is_refused_mid_session_and_allowed_after_stop` |
 | `load_scene` must dry-run into a scratch World so a parse or instantiate failure never corrupts the live world | `src/editor_game/scene_io_tests.rs test_failed_parse_or_missing_file_preserves_the_live_world` |
+| Scene saves must reach `common::vfs` (via `scene_serializer`) so parent creation and wasm storage are handled uniformly | `src/editor_game/scene_io_tests.rs test_save_scene_with_creates_parent_directories_and_writes_valid_scene` |
 | Editor shortcuts must respect text focus so typing in an inspector field does not trigger global shortcuts | `src/editor_game/shortcuts_tests.rs test_key_routing_respects_text_focus_play_state_and_the_dialog` |
 
 

@@ -292,7 +292,7 @@ ui.end_frame();
 **Files:** `ui/lib.rs`, `ui/context/`, `ui/draw.rs`
 
 ### Asset Manager Pattern
-Centralized asset loading with caching:
+Centralized asset loading with caching (reads use `common::vfs::read`; edits and new files write through `common::vfs::write` / `vfs::write_string`):
 
 ```rust
 // Load textures

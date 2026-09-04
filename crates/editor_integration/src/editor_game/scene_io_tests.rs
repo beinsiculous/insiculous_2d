@@ -218,3 +218,22 @@ fn test_new_scene_resets_world_and_editor_state() {
     assert!(editor.physics_settings.is_none());
     assert!(!world.has_resource::<PhysicsSettings>(), "no inherited physics settings");
 }
+
+#[test]
+fn test_save_scene_with_creates_parent_directories_and_writes_valid_scene() -> std::io::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let nested_path = dir.path().join("nested/sub/deep/level.scene.ron");
+    let mut editor = editor_game();
+    let mut world = World::new();
+    let entity = spawn_at(&mut world, Vec2::new(10.0, 20.0));
+    world.add_component(&entity, ecs::Name::new("hero")).ok();
+
+    editor
+        .save_scene_with(&mut world, &test_texture_path, nested_path.clone())
+        .expect("save succeeds and creates parent directories");
+
+    assert!(nested_path.exists());
+    let written = std::fs::read_to_string(&nested_path)?;
+    assert!(written.contains("hero"));
+    Ok(())
+}
