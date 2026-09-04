@@ -10,17 +10,25 @@ use glam::Vec2;
 use ecs::sprite_components::{AnimationClip, Camera, Sprite, SpriteAnimation, Transform2D};
 use ecs::{EntityId, World};
 
-use crate::scene_data::{
-    ClipData, ComponentData, GridData, SceneLoadError,
-};
+use crate::scene_data::{ClipData, ComponentData, GridData, SceneLoadError};
 #[cfg(feature = "physics")]
 use crate::scene_data::{ColliderShapeData, RigidBodyTypeData};
 use crate::texture_ref::TextureResolver;
 
 use crate::scene_loader::SceneLoader;
 
+/// Near clipping plane distance covering the entire 2D depth range a scene may use.
+const CAMERA_NEAR: f32 = -1000.0;
+
+/// Far clipping plane distance covering the entire 2D depth range a scene may use.
+const CAMERA_FAR: f32 = 1000.0;
+
 impl SceneLoader {
-    /// Get a simple type name for component matching
+    /// Get a simple type name for component matching.
+    ///
+    /// This is an exhaustive match over every [`ComponentData`] variant; when adding
+    /// a new variant here, the serializer table in `scene_serializer/components.rs`
+    /// is the next required edit.
     pub(crate) fn component_type_name(component: &ComponentData) -> &str {
         match component {
             ComponentData::Transform2D { .. } => "Transform2D",
@@ -101,8 +109,8 @@ impl SceneLoader {
                     zoom: *zoom,
                     viewport_size: Vec2::new(viewport_size.0, viewport_size.1),
                     is_main_camera: *is_main_camera,
-                    near: -1000.0,
-                    far: 1000.0,
+                    near: CAMERA_NEAR,
+                    far: CAMERA_FAR,
                 };
                 Self::add_component_logged(world, entity_id, camera);
             }
@@ -174,21 +182,11 @@ impl SceneLoader {
             } => {
                 let animation =
                     Self::build_sprite_animation(sheet.as_deref(), *grid, clips, autoplay.as_deref(), assets);
-                // A component with no sheet and no clips can never animate.
-                // Old-format scene data (the pre-named-clip schema) parses
-                // "successfully" into exactly this inert shape because every
-                // new field is serde-defaulted — say so instead of silently
-                // loading a do-nothing component.
-                if animation.sheet.is_none() && animation.clips.is_empty() {
-                    log::warn!(
-                        "Scene load: SpriteAnimation on entity {entity_id:?} has no sheet and no \
-                         clips — it will never animate. Old-format scene data parses to this \
-                         inert default; re-author the component with clips or a sheet reference."
-                    );
-                }
+                warn_if_inert(&animation, entity_id);
                 Self::add_component_logged(world, entity_id, animation);
             }
 
+            #[cfg(feature = "physics")]
             ComponentData::RigidBody {
                 body_type,
                 velocity,
@@ -199,38 +197,24 @@ impl SceneLoader {
                 can_rotate,
                 ccd_enabled,
             } => {
-                #[cfg(feature = "physics")]
-                {
-                    use physics::components::RigidBody;
+                let mut rigid_body = rigid_body_of_type(*body_type);
+                rigid_body.velocity = Vec2::new(velocity.0, velocity.1);
+                rigid_body.angular_velocity = *angular_velocity;
+                rigid_body.gravity_scale = *gravity_scale;
+                rigid_body.linear_damping = *linear_damping;
+                rigid_body.angular_damping = *angular_damping;
+                rigid_body.can_rotate = *can_rotate;
+                rigid_body.ccd_enabled = *ccd_enabled;
 
-                    let mut rigid_body = match body_type {
-                        RigidBodyTypeData::Dynamic => RigidBody::new_dynamic(),
-                        RigidBodyTypeData::Static => RigidBody::new_static(),
-                        RigidBodyTypeData::Kinematic => RigidBody::new_kinematic(),
-                    };
-
-                    rigid_body.velocity = Vec2::new(velocity.0, velocity.1);
-                    rigid_body.angular_velocity = *angular_velocity;
-                    rigid_body.gravity_scale = *gravity_scale;
-                    rigid_body.linear_damping = *linear_damping;
-                    rigid_body.angular_damping = *angular_damping;
-                    rigid_body.can_rotate = *can_rotate;
-                    rigid_body.ccd_enabled = *ccd_enabled;
-
-                    Self::add_component_logged(world, entity_id, rigid_body);
-                }
-
-                #[cfg(not(feature = "physics"))]
-                {
-                    log::warn!(
-                        "RigidBody component in scene but physics feature is disabled"
-                    );
-                    // Suppress unused variable warnings
-                    let _ = (body_type, velocity, angular_velocity, gravity_scale,
-                             linear_damping, angular_damping, can_rotate, ccd_enabled);
-                }
+                Self::add_component_logged(world, entity_id, rigid_body);
             }
 
+            #[cfg(not(feature = "physics"))]
+            ComponentData::RigidBody { .. } => {
+                log::warn!("RigidBody component in scene but physics feature is disabled");
+            }
+
+            #[cfg(feature = "physics")]
             ComponentData::Collider {
                 shape,
                 offset,
@@ -238,48 +222,21 @@ impl SceneLoader {
                 friction,
                 restitution,
             } => {
-                #[cfg(feature = "physics")]
-                {
-                    use physics::components::{Collider, ColliderShape};
+                use physics::components::Collider;
 
-                    let collider_shape = match shape {
-                        ColliderShapeData::Box { half_extents } => ColliderShape::Box {
-                            half_extents: Vec2::new(half_extents.0, half_extents.1),
-                        },
-                        ColliderShapeData::Circle { radius } => {
-                            ColliderShape::Circle { radius: *radius }
-                        }
-                        ColliderShapeData::CapsuleY { half_height, radius } => {
-                            ColliderShape::CapsuleY {
-                                half_height: *half_height,
-                                radius: *radius,
-                            }
-                        }
-                        ColliderShapeData::CapsuleX { half_height, radius } => {
-                            ColliderShape::CapsuleX {
-                                half_height: *half_height,
-                                radius: *radius,
-                            }
-                        }
-                    };
+                let collider_shape = collider_shape_from_data(shape);
+                let mut collider = Collider::new(collider_shape);
+                collider.offset = Vec2::new(offset.0, offset.1);
+                collider.is_sensor = *is_sensor;
+                collider.friction = *friction;
+                collider.restitution = *restitution;
 
-                    let mut collider = Collider::new(collider_shape);
-                    collider.offset = Vec2::new(offset.0, offset.1);
-                    collider.is_sensor = *is_sensor;
-                    collider.friction = *friction;
-                    collider.restitution = *restitution;
+                Self::add_component_logged(world, entity_id, collider);
+            }
 
-                    Self::add_component_logged(world, entity_id, collider);
-                }
-
-                #[cfg(not(feature = "physics"))]
-                {
-                    log::warn!(
-                        "Collider component in scene but physics feature is disabled"
-                    );
-                    // Suppress unused variable warnings
-                    let _ = (shape, offset, is_sensor, friction, restitution);
-                }
+            #[cfg(not(feature = "physics"))]
+            ComponentData::Collider { .. } => {
+                log::warn!("Collider component in scene but physics feature is disabled");
             }
 
             ComponentData::UiLabel { text, anchor, offset, font_size, color, visible } => {
@@ -336,52 +293,12 @@ impl SceneLoader {
             }
 
             ComponentData::Scripts(refs) => {
-                // Entity params defer to a post-instantiate pass — the
-                // target may not exist yet. The pending list
-                // rides a scene-load-scoped World resource that
-                // `resolve_pending_script_targets` drains.
-                let mut pending = world
-                    .remove_resource::<crate::script_data::PendingScriptTargets>()
-                    .unwrap_or_default();
-                let scripts = ecs::Scripts(
-                    refs.iter()
-                        .enumerate()
-                        .map(|(index, data)| {
-                            crate::script_data::script_ref_from_data(
-                                data, entity_id, index, &mut pending,
-                            )
-                        })
-                        .collect(),
-                );
-                world.insert_resource(pending);
+                let scripts = build_scripts(refs, entity_id, world);
                 Self::add_component_logged(world, entity_id, scripts);
             }
 
             ComponentData::Dynamic { component_type, data } => {
-                // The dynamic tier: deserialize + attach through
-                // the global registry. An UNREGISTERED name is a hard load
-                // error — fail loud, never silently drop authored data.
-                // Game-specific components require the game's own binary
-                // (which registered them in main()); the standalone editor
-                // refuses such scenes instead of corrupting them on resave.
-                ecs::with_global_registry(|registry| {
-                    if !registry.is_registered(component_type) {
-                        return Err(SceneLoadError::ComponentError(format!(
-                            "Unknown dynamic component '{}' — not registered. Game components \
-                             are only editable from the game's own binary (which registers \
-                             them at startup).",
-                            component_type
-                        )));
-                    }
-                    registry
-                        .insert_component(world, entity_id, component_type, data.clone())
-                        .map_err(|e| {
-                            SceneLoadError::ComponentError(format!(
-                                "Failed to load dynamic component '{}': {}",
-                                component_type, e
-                            ))
-                        })
-                })?;
+                insert_dynamic_component(world, entity_id, component_type, data)?;
             }
         }
 
@@ -437,5 +354,110 @@ impl SceneLoader {
         }
 
         animation
+    }
+}
+
+/// Convert scene collider shape data into an engine physics `ColliderShape`.
+#[cfg(feature = "physics")]
+fn collider_shape_from_data(shape: &ColliderShapeData) -> physics::components::ColliderShape {
+    use physics::components::ColliderShape;
+
+    match shape {
+        ColliderShapeData::Box { half_extents } => ColliderShape::Box {
+            half_extents: Vec2::new(half_extents.0, half_extents.1),
+        },
+        ColliderShapeData::Circle { radius } => ColliderShape::Circle { radius: *radius },
+        ColliderShapeData::CapsuleY { half_height, radius } => ColliderShape::CapsuleY {
+            half_height: *half_height,
+            radius: *radius,
+        },
+        ColliderShapeData::CapsuleX { half_height, radius } => ColliderShape::CapsuleX {
+            half_height: *half_height,
+            radius: *radius,
+        },
+    }
+}
+
+/// Create a new physics `RigidBody` matching the serialized body type.
+#[cfg(feature = "physics")]
+fn rigid_body_of_type(body_type: RigidBodyTypeData) -> physics::components::RigidBody {
+    use physics::components::RigidBody;
+
+    match body_type {
+        RigidBodyTypeData::Dynamic => RigidBody::new_dynamic(),
+        RigidBodyTypeData::Static => RigidBody::new_static(),
+        RigidBodyTypeData::Kinematic => RigidBody::new_kinematic(),
+    }
+}
+
+/// Build an [`ecs::Scripts`] component from serialized script references.
+///
+/// Entity params defer to a post-instantiate pass because target entities may
+/// not exist yet. The pending target list is stored in a scene-load-scoped
+/// World resource that `resolve_pending_script_targets` drains.
+fn build_scripts(
+    refs: &[crate::script_data::ScriptRefData],
+    entity_id: EntityId,
+    world: &mut World,
+) -> ecs::Scripts {
+    let mut pending = world
+        .remove_resource::<crate::script_data::PendingScriptTargets>()
+        .unwrap_or_default();
+    let scripts = ecs::Scripts(
+        refs.iter()
+            .enumerate()
+            .map(|(index, data)| {
+                crate::script_data::script_ref_from_data(data, entity_id, index, &mut pending)
+            })
+            .collect(),
+    );
+    world.insert_resource(pending);
+    scripts
+}
+
+/// Deserialize and attach a dynamic component through the global ECS component registry.
+///
+/// An unregistered component name is a hard load error: fail loud rather than
+/// silently dropping authored data. Game-specific components require the game's
+/// own binary (which registers them at startup); the standalone editor refuses
+/// such scenes instead of corrupting them on re-save.
+fn insert_dynamic_component(
+    world: &mut World,
+    entity_id: EntityId,
+    component_type: &str,
+    data: &serde_json::Value,
+) -> Result<(), SceneLoadError> {
+    ecs::with_global_registry(|registry| {
+        if !registry.is_registered(component_type) {
+            return Err(SceneLoadError::ComponentError(format!(
+                "Unknown dynamic component '{}' — not registered. Game components \
+                 are only editable from the game's own binary (which registers \
+                 them at startup).",
+                component_type
+            )));
+        }
+        registry
+            .insert_component(world, entity_id, component_type, data.clone())
+            .map_err(|error| {
+                SceneLoadError::ComponentError(format!(
+                    "Failed to load dynamic component '{}': {}",
+                    component_type, error
+                ))
+            })
+    })
+}
+
+/// Warn if a loaded [`SpriteAnimation`] has neither a sheet nor clips.
+///
+/// A component with no sheet and no clips can never animate. Old-format scene
+/// data (the pre-named-clip schema) parses successfully into this inert shape
+/// because fields default — warn instead of silently loading a no-op component.
+fn warn_if_inert(animation: &SpriteAnimation, entity_id: EntityId) {
+    if animation.sheet.is_none() && animation.clips.is_empty() {
+        log::warn!(
+            "Scene load: SpriteAnimation on entity {entity_id:?} has no sheet and no \
+             clips — it will never animate. Old-format scene data parses to this \
+             inert default; re-author the component with clips or a sheet reference."
+        );
     }
 }
