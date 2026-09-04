@@ -451,7 +451,7 @@ Target shapes:
 
 Gates: standard + wasm. Leaves out: scripting, web entry.
 
-## Batch 3 — the `playground` crate: web entry, IndexedDB project store, bridge
+## Batch 3 — the `playground` crate: web entry, IndexedDB project store, bridge — DONE 2026-09-04 (1462cbe)
 
 **Re-verified against the tree 2026-09-04 before the handoff** (the section changed most
 across the six rounds, and it named things the tree contradicts). Corrections, each stated
@@ -474,6 +474,26 @@ settle rule is time-based and skipped during Play, `is_pending` and `has_active`
 predicates so a conflicted path never blocks a switch, Reset is gated on stored files,
 explicit relative save paths join the base, bridge paths are project-relative, the
 observer fires once, and `StoredFile` drops `content_hash`.
+
+**Corrected after the round-1 code review (2026-09-04; kimi `review-10.md`, planner
+`review-10-claude.md`, `rebuttal-10.md`; fixes to the executor as
+`3-fixes-for-gemini.md`):** the wasm layer must spawn every started put and feed its
+result back (`Chains::take_started_puts` + `drive_started_puts`) — the batch shipped the
+state machine with no driver; the transaction adapter's abort handler surfaces the CAS
+result cell; `Chains` tracks `draining` itself and `on_vfs_write` takes no epoch; the
+`pagehide` re-put is deleted (below); `ProjectStore` carries no `Send + Sync` bound; the
+directory double stages and swaps; the persist file is `persist/{mod.rs, tests/}`.
+Round 2 (kimi `review-11.md`, planner `review-11-claude.md`, `rebuttal-11.md`): the
+planner's own round-1 prescription for the abort handler was the defect — only a
+refusal survives an abort, a callback's early `Ok` never does (quota aborts were silent
+data loss); the project root is a directory boundary, not a string prefix; a `.rhai`
+write is checked before it is written; a failed preferences write stays pending and
+retries; the open project's manifest-less files are removed at boot. Round 3 (kimi
+`review-12.md`, `rebuttal-12.md`) reviewed those planner fixes: an outside-root write is
+bannered, not only logged; `manifests()` failures are logged; one hitched frame no longer
+commits a mid-gesture preference; rebutted: clearing `draining` on a successful drain (a
+post-drain write would resurrect a removed project) and the non-BMP key-range claim
+(IndexedDB orders strings by UTF-16 code unit).
 
 Files: new `crates/playground/` (`Cargo.toml`, `src/lib.rs`, `src/web_entry.rs`,
 `src/bridge.rs`, `src/store.rs`, `src/store/{directory.rs, memory.rs, indexed_db.rs,
@@ -503,6 +523,9 @@ wasm32-unknown-unknown --profile wasm-release` (output under
 --out-dir <scratch>`; the `.wasm` size is recorded in this section. Past 15 MiB, the planner
 decides font (`crates/editor/src/fonts.rs` embeds 1.81 MB of DejaVu — 760 + 709 + 343 KB)
 and later rhai trimming before batch 4 commits to a page. (Reference: pong ships at 2.5 MiB.)
+**Measured 2026-09-04:** raw cdylib 8,834,928 bytes (8.43 MiB); after `wasm-bindgen
+--target web` 6,949,393 bytes (6.63 MiB). Under the ceiling — no font or rhai trimming
+before batch 4.
 
 Target shapes:
 
@@ -589,8 +612,11 @@ Target shapes:
   Option<Arc<AtomicBool>>`: `persist.rs` keeps it equal to `is_pending()`, and
   `sync_dirty_mirror` (`mod.rs:396-398`) ORs it into `set_dirty`, so a stranded or queued
   put shows in the title exactly like an unsaved command. `visibilitychange`→hidden
-  re-issues STRANDED paths only (newest bytes); `pagehide` also issues QUEUED puts at
-  once, best effort; `beforeunload` sets `returnValue` while anything is pending. Import,
+  re-issues STRANDED paths only (newest bytes); `beforeunload` sets `returnValue` while
+  anything is pending. There is NO `pagehide` handler (round-1 code review): a queued put
+  cannot be issued before the in-flight one resolves without re-using its base and
+  breaking the CAS, and IndexedDB commits the in-flight transaction on its own, so "at
+  once" bought nothing and manufactured a false conflict. Import,
   reset and project switch share `drain_then_epoch()` — bump the epoch, THEN await every
   chain, in-flight and queued, bounded at 5 s (the wasm layer's timeout is a
   `setTimeout` promise raced against the drain; the machine itself just reports whether
@@ -651,7 +677,10 @@ Target shapes:
   in-flight-plus-queued path alone; a put resolving after a drain timeout updates the
   base without a conflict; `persist_pending` rises on the first non-idle path and falls
   when the last one settles; `replace_project` leaves the other project intact; a failed
-  `replace_project` leaves the previous project intact (manifest is the marker);
+  `replace_project` leaves the previous project intact (manifest is the marker) — an
+  IndexedDB-only property (one transaction) no native double can fail mid-way; the
+  directory double stages and swaps instead, and the property is on Jesse's browser
+  check in batch 4;
   `sweep_orphans` removes files of a non-bundled manifest-less slug and nothing else;
   manifests merge bundled + stored; the memory store passes the same suite.
 - `projects.rs`: `ProjectManifest { slug, title, bundle_version, content_hash, origin }`
