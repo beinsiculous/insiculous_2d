@@ -15,15 +15,26 @@ pub fn render_panel_content(
     panel_id: PanelId,
     bounds: common::Rect,
     command_history: &mut CommandHistory,
+    pickables: &[editor::PickableEntity],
 ) {
     let padding = layout::PADDING;
     let content_x = bounds.x + padding;
     let y = bounds.y + padding;
 
     match panel_id {
-        PanelId::SCENE_VIEW => render_scene_view(editor, ctx, bounds),
+        PanelId::SCENE_VIEW => render_scene_view(editor, ctx, bounds, pickables),
         PanelId::HIERARCHY => render_hierarchy(editor, ctx, bounds, command_history),
-        PanelId::INSPECTOR => render_inspector(editor, ctx, bounds, command_history),
+        PanelId::INSPECTOR => {
+            let texture_path = |handle: u32| ctx.assets.texture_path(handle).map(str::to_string);
+            render_inspector(
+                editor,
+                ctx.ui,
+                ctx.world,
+                &texture_path,
+                bounds,
+                command_history,
+            )
+        }
         PanelId::ASSET_BROWSER => {
             asset_browser::render_asset_browser(editor, ctx, bounds, command_history)
         }
@@ -34,7 +45,12 @@ pub fn render_panel_content(
 pub(crate) use asset_browser::render_drag_ghost;
 
 /// Scene view — grid info, viewport origin crosshair, and play-state border.
-fn render_scene_view(editor: &EditorContext, ctx: &mut GameContext, bounds: common::Rect) {
+fn render_scene_view(
+    editor: &EditorContext,
+    ctx: &mut GameContext,
+    bounds: common::Rect,
+    pickables: &[editor::PickableEntity],
+) {
     let theme = &editor.theme;
     let padding = layout::PADDING;
     let content_x = bounds.x + padding;
@@ -95,14 +111,13 @@ fn render_scene_view(editor: &EditorContext, ctx: &mut GameContext, bounds: comm
     // click selects; hover reads the same input-frame mouse state picking
     // will read one step later, so hint and click agree.
     if !editor.is_playing() {
-        let pickables = crate::editor_game::build_pickable_entities(ctx.world);
         let mouse = ctx.ui.mouse_pos();
         let hover_allowed = editor.viewport.contains_screen_point(mouse)
             && !crate::editor_game::chrome_owns_mouse(ctx.ui)
             && !editor.drag_drop.suppresses_click()
             && !editor.gizmo_has_priority();
         let hovered = if hover_allowed {
-            editor::hover_entity_at(mouse, &editor.viewport, &pickables)
+            editor::hover_entity_at(mouse, &editor.viewport, pickables)
         } else {
             None
         };
@@ -111,7 +126,7 @@ fn render_scene_view(editor: &EditorContext, ctx: &mut GameContext, bounds: comm
             &editor.viewport,
             &editor.selection,
             hovered,
-            &pickables,
+            pickables,
             &editor.theme.selection_outline_colors(),
             ui::Rect::new(bounds.x, bounds.y, bounds.width, bounds.height),
         );

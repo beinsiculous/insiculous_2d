@@ -19,6 +19,18 @@ use editor::command_api::{
 use super::EditorGame;
 use crate::entity_ops;
 
+/// The command-API transport state: `None` receiver = API not enabled.
+#[derive(Default)]
+pub(super) struct ApiSession {
+    /// Request lines, fed by the transport (the `--api` stdin thread in the
+    /// editor binary) and drained once per frame.
+    pub receiver: Option<std::sync::mpsc::Receiver<String>>,
+    /// Open batch: commands collected between `batch begin` and `batch
+    /// end`/`abort`; committed on Play so a stale macro can't be pushed
+    /// after a Stop restore.
+    pub batch: Option<editor::command_api::write::ApiBatch>,
+}
+
 impl<G: Game> EditorGame<G> {
     /// Answer a batch of request lines against the current editor state.
     /// Blank lines produce no response; everything else produces exactly
@@ -61,7 +73,7 @@ impl<G: Game> EditorGame<G> {
                         history: &mut self.command_history,
                         selection: &mut self.editor.selection,
                         play_state,
-                        batch: &mut self.api_batch,
+                        batch: &mut self.api.batch,
                         texture_known: &texture_known,
                     };
                     match command_api::write::run(&write, &mut ctx) {
@@ -97,7 +109,7 @@ impl<G: Game> EditorGame<G> {
         // Hosted creates mutate the selection BEFORE their command is
         // recorded — note the pre-action selection first. Skipped
         // while a batch is open (the macro keeps the pre-batch image).
-        if self.api_batch.is_none() {
+        if self.api.batch.is_none() {
             self.command_history.note_selection(&self.editor.selection);
         }
         match hosted {
@@ -135,7 +147,7 @@ impl<G: Game> EditorGame<G> {
                 let cmd = editor::commands::CreateEntityCommand::already_created(world, entity);
                 command_api::write::record_executed(
                     &mut self.command_history,
-                    &mut self.api_batch,
+                    &mut self.api.batch,
                     Box::new(cmd),
                 );
                 Ok(serde_json::json!({
@@ -144,7 +156,7 @@ impl<G: Game> EditorGame<G> {
                 }))
             }
             HostedWrite::Save { path } => {
-                if self.api_batch.is_some() {
+                if self.api.batch.is_some() {
                     return Err(ApiError::Refused(
                         "a batch is open — `batch end` or `batch abort` before saving".to_string(),
                     ));
@@ -170,27 +182,35 @@ impl<G: Game> EditorGame<G> {
         }
     }
 
-    /// Frame hook: drain the request channel and write responses to stdout.
+    /// Drain up to `MAX_LINES_PER_FRAME` lines from the API channel.
     ///
-    /// Skipped entirely while a gizmo drag is live — requests stay queued
-    /// in the channel and are answered the next eligible frame, so an API
-    /// read can never observe (or later, mutate) mid-drag state.
-    pub(super) fn drain_api_requests(&mut self, ctx: &mut GameContext) {
-        if self.editor.gizmo_has_priority() {
-            return;
-        }
-        // Cap per-frame work so a piped flood of requests can't stall the
-        // frame; the rest stays queued in the channel for later frames.
+    /// Empty while a gizmo drag is live — requests stay queued and are
+    /// answered the next eligible frame, so an API read can never observe
+    /// (or later, mutate) mid-drag state. The cap keeps a piped flood from
+    /// stalling the frame; the rest stays queued for later frames.
+    pub(super) fn take_api_lines(&mut self) -> Vec<String> {
         const MAX_LINES_PER_FRAME: usize = 256;
-        let lines = {
-            let Some(rx) = &self.api_rx else { return };
-            let mut lines = Vec::new();
-            while lines.len() < MAX_LINES_PER_FRAME {
-                let Ok(line) = rx.try_recv() else { break };
-                lines.push(line);
-            }
-            lines
+        if self.editor.gizmo_has_priority() {
+            return Vec::new();
+        }
+        let Some(receiver) = &self.api.receiver else {
+            return Vec::new();
         };
+        let mut lines = Vec::new();
+        while lines.len() < MAX_LINES_PER_FRAME {
+            let Ok(line) = receiver.try_recv() else {
+                break;
+            };
+            lines.push(line);
+        }
+        lines
+    }
+
+    /// Frame hook: drain the request channel (see [`Self::take_api_lines`]
+    /// for the mid-drag skip and the per-frame cap) and write responses to
+    /// stdout.
+    pub(super) fn drain_api_requests(&mut self, ctx: &mut GameContext) {
+        let lines = self.take_api_lines();
         if lines.is_empty() {
             return;
         }

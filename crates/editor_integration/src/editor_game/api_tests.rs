@@ -7,7 +7,7 @@
 use ecs::World;
 use editor::PlayControlAction;
 
-use super::test_support::{api_line, assert_ok, editor_game};
+use super::test_support::{api_line, assert_ok, editor_game, press_mouse, ui_frame};
 
 #[test]
 fn test_answer_api_lines_answers_each_non_blank_line_in_order_from_live_state() {
@@ -174,7 +174,7 @@ fn test_play_commits_an_open_batch_as_one_entry_and_stop_discards_a_paused_one()
     assert_ok(&api_line(&mut editor, &mut world, "create empty B"));
     assert!(!editor.command_history.can_undo(), "batched commands are held aside");
     editor.handle_play_action(PlayControlAction::Play, &mut world);
-    assert!(editor.api_batch.is_none(), "Play commits the open batch");
+    assert!(editor.api.batch.is_none(), "Play commits the open batch");
     editor.handle_play_action(PlayControlAction::Stop, &mut world);
     assert!(editor.command_history.undo(&mut world), "the batch is one undo entry");
     assert!(world.entities().is_empty());
@@ -188,9 +188,50 @@ fn test_play_commits_an_open_batch_as_one_entry_and_stop_discards_a_paused_one()
     assert_ok(&api_line(&mut editor, &mut world, "batch begin paused-edits"));
     assert_ok(&api_line(&mut editor, &mut world, "create empty Ghost"));
     editor.handle_play_action(PlayControlAction::Stop, &mut world);
-    assert!(editor.api_batch.is_none(), "Stop drops the stale batch");
+    assert!(editor.api.batch.is_none(), "Stop drops the stale batch");
     assert_eq!(world.entities().len(), 1, "snapshot restore discarded the paused-world entity");
     let refused = api_line(&mut editor, &mut world, "batch end");
     assert!(refused.contains("\"refused\""), "no batch remains open: {refused}");
     assert_ne!(editor.command_history.undo_name(), Some("paused-edits"), "the stale macro never reaches the history");
+}
+
+#[test]
+fn test_take_api_lines_caps_at_maximum_lines_per_frame() {
+    let mut editor = editor_game();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    editor.api.receiver = Some(receiver);
+    for index in 0..300 {
+        sender.send(format!("line {index}")).ok();
+    }
+    let first_batch = editor.take_api_lines();
+    assert_eq!(first_batch.len(), 256);
+    let second_batch = editor.take_api_lines();
+    assert_eq!(second_batch.len(), 44);
+}
+
+#[test]
+fn test_api_drain_leaves_the_channel_untouched_while_a_gizmo_drag_is_live() {
+    let mut editor = editor_game();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    editor.api.receiver = Some(receiver);
+    for index in 0..3 {
+        sender.send(format!("line {index}")).ok();
+    }
+
+    // A press frame on the gizmo's center handle starts a drag, exactly as
+    // the viewport does it.
+    let center = glam::Vec2::new(400.0, 300.0);
+    let mut ui = ui::UIContext::new();
+    let mut input = input::InputHandler::new();
+    press_mouse(&mut input, center);
+    ui_frame(&mut ui, &input, glam::Vec2::new(800.0, 600.0), |ui| {
+        editor.editor.gizmo.render(ui, center, true);
+    });
+    assert!(editor.editor.gizmo_has_priority(), "fixture: the drag is live");
+
+    assert!(editor.take_api_lines().is_empty(), "no request is answered mid-drag");
+
+    // The drag ends: every queued line is still there to be answered.
+    editor.editor.gizmo.cancel();
+    assert_eq!(editor.take_api_lines().len(), 3, "the channel was left untouched");
 }

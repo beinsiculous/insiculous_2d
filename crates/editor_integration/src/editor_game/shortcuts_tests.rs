@@ -295,3 +295,60 @@ fn test_undo_and_redo_name_the_entry_on_the_status_bar() {
     assert_eq!(game.editor.status_bar.message(), Some("Redo: Delete Entity"));
     assert!(world.get::<common::Transform2D>(entity).is_none(), "the redo ran");
 }
+
+#[test]
+fn test_key_routing_respects_text_focus_play_state_and_the_dialog() {
+    use super::scene_confirm::PendingSceneAction;
+    use super::shortcuts::KeyRoute;
+    use editor::{EditorAction, Modifiers, PlayControlAction};
+    use winit::keyboard::KeyCode;
+
+    let mut game = editor_game();
+    let plain = Modifiers { ctrl: false, shift: false };
+    let ctrl_shift = Modifiers { ctrl: true, shift: true };
+
+    // 1. Delete with keyboard_owned -> Consumed
+    assert_eq!(
+        game.route_editor_key(KeyCode::Delete, true, plain),
+        KeyRoute::Consumed,
+        "text focus swallows delete"
+    );
+
+    // 2. Delete while Editing -> Editor { action: EditorAction::Delete, shift: false }
+    assert_eq!(
+        game.route_editor_key(KeyCode::Delete, false, plain),
+        KeyRoute::Editor {
+            action: EditorAction::Delete,
+            shift: false,
+        },
+        "delete while editing maps to Delete action"
+    );
+
+    // 3. Delete while Playing -> ForwardToGame
+    game.editor.set_play_state(editor::EditorPlayState::Playing);
+    assert_eq!(
+        game.route_editor_key(KeyCode::Delete, false, plain),
+        KeyRoute::ForwardToGame,
+        "raw key forwards to game while playing"
+    );
+
+    // 4. Ctrl+Shift+P while Playing -> PlayControl(Stop)
+    assert_eq!(
+        game.route_editor_key(KeyCode::KeyP, false, ctrl_shift),
+        KeyRoute::PlayControl(PlayControlAction::Stop),
+        "stop shortcut works while playing"
+    );
+
+    // 5. With a pending confirm action, Escape -> Consumed and the action cleared
+    game.editor.set_play_state(editor::EditorPlayState::Editing);
+    game.scene_confirm.pending_action = Some(PendingSceneAction::NewScene);
+    assert_eq!(
+        game.route_editor_key(KeyCode::Escape, false, plain),
+        KeyRoute::Consumed,
+        "confirm dialog consumes escape"
+    );
+    assert!(
+        game.scene_confirm.pending_action.is_none(),
+        "escape clears pending confirm action"
+    );
+}

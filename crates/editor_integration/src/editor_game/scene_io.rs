@@ -144,7 +144,7 @@ impl<G: Game> EditorGame<G> {
         // The history is the dirty source of truth; the mirror is set too so
         // the same frame's title/status already read clean.
         self.command_history.mark_saved();
-        self.editor.set_dirty(false);
+        self.sync_dirty_mirror();
         self.editor.status_bar.show_message("Scene saved");
         log::info!("Scene saved to: {:?}", path);
         Ok(())
@@ -169,7 +169,7 @@ impl<G: Game> EditorGame<G> {
             return Err(SceneIoError::MidSimulation);
         }
 
-        if self.editor.is_dirty() {
+        if self.command_history.is_dirty() {
             log::warn!("Current scene has unsaved changes. Save first to avoid losing work.");
         }
 
@@ -219,11 +219,11 @@ impl<G: Game> EditorGame<G> {
     }
 
     fn reset_session(&mut self) {
-        self.editor.set_dirty(false);
         self.command_history = editor::CommandHistory::new();
+        self.sync_dirty_mirror();
         // A stale API batch would hold commands referencing the replaced
         // world — drop it with the history.
-        self.api_batch = None;
+        self.api.batch = None;
         self.editor.selection.clear();
         self.gizmo_drag = None;
         self.editor.gizmo.cancel();
@@ -275,7 +275,7 @@ impl<G: Game> EditorGame<G> {
             return;
         }
 
-        if self.editor.is_dirty() {
+        if self.command_history.is_dirty() {
             log::warn!("Current scene has unsaved changes. Save first to avoid losing work.");
         }
 

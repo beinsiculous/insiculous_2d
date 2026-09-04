@@ -51,10 +51,7 @@ pub(super) fn dirty_editor(world: &mut World) -> EditorGame<DummyGame> {
         world,
     );
     assert!(editor.command_history.is_dirty(), "fixture: a recorded command dirties the scene");
-    // The EditorContext flag is a per-frame mirror of the history, synced
-    // by `EditorGame::update` (unreachable headless until batch 9's seam);
-    // set it here so both halves agree the way a real frame leaves them.
-    editor.editor.set_dirty(true);
+    editor.sync_dirty_mirror();
     editor
 }
 
@@ -103,4 +100,31 @@ pub(super) fn api_line(editor: &mut EditorGame<DummyGame>, world: &mut World, li
 /// The response line is an `ok` envelope.
 pub(super) fn assert_ok(response: &str) {
     assert!(response.contains("\"ok\":true"), "expected ok: {response}");
+}
+
+// Copied from crates/editor/src/test_support.rs:66-99 (the third copy after ui and editor).
+
+/// Move the pointer to `position` and press the left button for the coming frame.
+pub(super) fn press_mouse(input: &mut input::InputHandler, position: Vec2) {
+    input.update();
+    input.mouse_mut().update_position(position.x, position.y);
+    input.mouse_mut().handle_button_press(input::prelude::MouseButton::Left);
+}
+
+/// Release the left button for the coming frame (the pointer stays put).
+pub(super) fn release_mouse(input: &mut input::InputHandler) {
+    input.update();
+    input.mouse_mut().handle_button_release(input::prelude::MouseButton::Left);
+}
+
+/// Run one UI frame at `window_size` around `body`.
+pub(super) fn ui_frame(
+    ui: &mut ui::UIContext,
+    input: &input::InputHandler,
+    window_size: Vec2,
+    body: impl FnOnce(&mut ui::UIContext),
+) {
+    ui.begin_frame(input, window_size);
+    body(ui);
+    ui.end_frame();
 }

@@ -172,3 +172,33 @@ pub fn unknown_component_error(name: &str) -> String {
         .collect();
     format!("unknown component \"{name}\" — known: {}", known.join(", "))
 }
+
+/// Render the read-only edit blocks for every dynamic-tier component on the
+/// entity: registry-name header with a remove [X] plus the serde value
+/// display. Removals are returned by name for the caller to execute as
+/// `RemoveComponentCommand::dynamic`s.
+pub(super) fn render_dynamic_edit_blocks(
+    frame: &mut crate::InspectorFrame<'_>,
+    world: &World,
+    entity: EntityId,
+    mut y: f32,
+    component_index: &mut usize,
+    removals: &mut Vec<String>,
+) -> f32 {
+    for name in dynamic_components_on(world, entity) {
+        let Some(value) = dynamic_value(world, entity, &name) else {
+            continue;
+        };
+        y += frame.section_gap;
+        let mut inspector = crate::EditableInspector::new(frame.ui, frame.field_style, frame.x, y)
+            .with_component_index(*component_index)
+            .with_width(frame.width);
+        if inspector.header_with_remove(&name) {
+            removals.push(name.clone());
+        }
+        y = inspector.y();
+        y = crate::inspect_component(frame.ui, "", &value, frame.x + 16.0, y, frame.inspect_style);
+        *component_index += 1;
+    }
+    y
+}

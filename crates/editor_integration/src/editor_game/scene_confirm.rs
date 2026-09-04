@@ -4,7 +4,7 @@
 //!
 //! State machine: [`request_scene_replace`] either proceeds immediately
 //! (clean world), refuses (play session — the standing refusal), or
-//! parks the action in `pending_scene_action`; the dialog renders EARLY in
+//! parks the action in `scene_confirm.pending_action`; the dialog renders EARLY in
 //! the frame (the drag-ghost pattern — its full-window blocking rect must
 //! land before the widgets it protects) and routes the choice.
 //!
@@ -35,6 +35,17 @@ impl PendingSceneAction {
     }
 }
 
+/// The unsaved-changes dialog's state machine; a `Some` action blocks the frame's input.
+#[derive(Default)]
+pub(super) struct SceneConfirm {
+    /// A scene-replacing action (New/Open) awaiting the unsaved-changes
+    /// confirm dialog. While set, a modal blocks the frame's input.
+    pub pending_action: Option<PendingSceneAction>,
+    /// Enter pressed while the dialog is up — consumed by the next dialog
+    /// render as the primary (Save) action.
+    pub pending_choice: Option<editor::ConfirmChoice>,
+}
+
 impl<G: Game> EditorGame<G> {
     /// Gate a scene-replacing action behind the dirty check: `true` means
     /// proceed NOW (clean world). A dirty world parks the action for the
@@ -46,7 +57,7 @@ impl<G: Game> EditorGame<G> {
             return false;
         }
         if self.command_history.is_dirty() {
-            self.pending_scene_action = Some(action);
+            self.scene_confirm.pending_action = Some(action);
             return false;
         }
         true
@@ -56,7 +67,7 @@ impl<G: Game> EditorGame<G> {
     /// right after the drag ghost (frame step 2c): the modal's full-window
     /// blocking rect makes every later widget this frame inert.
     pub(super) fn render_scene_confirm_dialog(&mut self, ctx: &mut GameContext) {
-        let Some(action) = self.pending_scene_action.clone() else {
+        let Some(action) = self.scene_confirm.pending_action.clone() else {
             return;
         };
         // A modal is keyboard-modal: whatever text field held focus loses
@@ -66,7 +77,7 @@ impl<G: Game> EditorGame<G> {
         let dialog = ConfirmDialog::unsaved_changes(action.phrase());
         // Enter pressed since last frame = the primary action;
         // mouse clicks come from the rendered buttons.
-        let key_choice = self.pending_dialog_choice.take();
+        let key_choice = self.scene_confirm.pending_choice.take();
         match dialog.render(ctx.ui, ctx.window_size, &self.editor.theme).or(key_choice) {
             Some(ConfirmChoice::Confirm) => {
                 // Save, then proceed — but a FAILED save keeps the dialog
@@ -74,7 +85,7 @@ impl<G: Game> EditorGame<G> {
                 // while their work is still unsaved.
                 match self.save_scene(ctx.world, ctx.assets) {
                     Ok(()) => {
-                        self.pending_scene_action = None;
+                        self.scene_confirm.pending_action = None;
                         self.perform_scene_action(ctx, action);
                     }
                     Err(e) => {
@@ -84,11 +95,11 @@ impl<G: Game> EditorGame<G> {
                 }
             }
             Some(ConfirmChoice::Alt) => {
-                self.pending_scene_action = None;
+                self.scene_confirm.pending_action = None;
                 self.perform_scene_action(ctx, action);
             }
             Some(ConfirmChoice::Cancel) => {
-                self.pending_scene_action = None;
+                self.scene_confirm.pending_action = None;
                 self.editor.status_bar.show_message("Cancelled");
             }
             None => {}
@@ -113,17 +124,17 @@ impl<G: Game> EditorGame<G> {
     /// is deliberately out of scope for now (mouse-first).
     /// Returns whether the key was consumed.
     pub(super) fn confirm_dialog_consumes_key(&mut self, key: winit::keyboard::KeyCode) -> bool {
-        if self.pending_scene_action.is_none() {
+        if self.scene_confirm.pending_action.is_none() {
             return false;
         }
         match key {
             winit::keyboard::KeyCode::Escape => {
-                self.pending_scene_action = None;
-                self.pending_dialog_choice = None;
+                self.scene_confirm.pending_action = None;
+                self.scene_confirm.pending_choice = None;
                 self.editor.status_bar.show_message("Cancelled");
             }
             winit::keyboard::KeyCode::Enter | winit::keyboard::KeyCode::NumpadEnter => {
-                self.pending_dialog_choice = Some(ConfirmChoice::Confirm);
+                self.scene_confirm.pending_choice = Some(ConfirmChoice::Confirm);
             }
             _ => {}
         }

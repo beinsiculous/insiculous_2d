@@ -97,7 +97,12 @@ fn test_pending_title_update_only_on_change() {
     assert_eq!(first.as_deref(), Some("Untitled - Insiculous Editor"));
     assert_eq!(editor.pending_title_update(), None, "unchanged title is not re-published");
 
-    editor.editor.set_dirty(true);
+    let mut world = World::new();
+    let entity = world.spawn().id();
+    editor.command_history.push_already_executed(
+        Box::new(editor::commands::CreateEntityCommand::already_created(&world, entity)),
+    );
+    editor.sync_dirty_mirror();
     let dirty = editor.pending_title_update();
     assert_eq!(dirty.as_deref(), Some("Untitled* - Insiculous Editor"));
     assert_eq!(editor.pending_title_update(), None);

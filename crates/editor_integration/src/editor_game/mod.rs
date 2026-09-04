@@ -29,6 +29,7 @@ mod api;
 mod gizmo_drag;
 pub mod headless;
 mod menu_actions;
+mod play_session;
 mod scene_confirm;
 mod scene_io;
 mod shortcuts;
@@ -71,24 +72,12 @@ struct EditorGame<G: Game> {
     /// Last OS-window title published via `ctx.set_window_title`, so the
     /// title (a window-system round-trip) is only re-sent on change.
     last_window_title: Option<String>,
-    /// Command-API request lines, fed by the transport
-    /// (the `--api` stdin thread in the editor binary). Drained once per
-    /// frame in `update()`; `None` = API not enabled.
-    api_rx: Option<std::sync::mpsc::Receiver<String>>,
-    /// A scene-replacing action (New/Open) awaiting the unsaved-changes
-    /// confirm dialog. While set, a modal blocks the frame's input.
-    pending_scene_action: Option<scene_confirm::PendingSceneAction>,
-    /// Enter pressed while the confirm dialog is up — consumed by the next
-    /// dialog render as the primary (Save) action.
-    pending_dialog_choice: Option<editor::ConfirmChoice>,
+    pub(super) api: api::ApiSession,
+    pub(super) scene_confirm: scene_confirm::SceneConfirm,
     /// Scene to open through the editor load path right after `init`
     /// (the standalone binary passes it via `EditorRunOptions` so
     /// scene_path/physics/dirty-state are recorded like any other load).
     initial_scene: Option<std::path::PathBuf>,
-    /// Open command-API batch (Stage B): commands collected between `batch
-    /// begin` and `batch end`/`abort`; committed on Play so a stale macro
-    /// can't be pushed after a Stop restore.
-    pub(super) api_batch: Option<editor::command_api::write::ApiBatch>,
 }
 
 impl<G: Game> EditorGame<G> {
@@ -109,11 +98,9 @@ impl<G: Game> EditorGame<G> {
             game_base_font: None,
             frozen_time_scale: None,
             last_window_title: None,
-            api_rx: None,
-            pending_scene_action: None,
-            pending_dialog_choice: None,
+            api: api::ApiSession::default(),
+            scene_confirm: scene_confirm::SceneConfirm::default(),
             initial_scene: None,
-            api_batch: None,
         }
     }
 
@@ -198,14 +185,23 @@ impl<G: Game> EditorGame<G> {
 
     /// Render the dock panel frames and their content. Returns the panel
     /// content areas for later viewport/gizmo hit testing.
-    fn render_panels(&mut self, ctx: &mut GameContext) -> Vec<(editor::PanelId, common::Rect)> {
+    fn render_panels(
+        &mut self,
+        ctx: &mut GameContext,
+        pickables: &[editor::PickableEntity],
+    ) -> Vec<(editor::PanelId, common::Rect)> {
         let theme = &self.editor.theme;
         let content_areas = self.editor.dock_area.render(ctx.ui, theme);
 
         for (panel_id, bounds) in content_areas.clone() {
             ctx.ui.push_clip_rect(ui::Rect::new(bounds.x, bounds.y, bounds.width, bounds.height));
             panel_renderer::render_panel_content(
-                &mut self.editor, ctx, panel_id, bounds, &mut self.command_history,
+                &mut self.editor,
+                ctx,
+                panel_id,
+                bounds,
+                &mut self.command_history,
+                pickables,
             );
             ctx.ui.pop_clip_rect();
         }
@@ -285,6 +281,96 @@ impl<G: Game> EditorGame<G> {
         let theme = &self.editor.theme;
         self.editor.status_bar.render(ctx.ui, window_size, theme);
     }
+
+    /// Prepare the frame: freeze engine-side time, re-assert the editor font,
+    /// interpolate the viewport camera toward its targets, note the selection
+    /// before handlers mutate it, update transform hierarchy, sync viewport
+    /// camera from main camera if playing, and update layout.
+    fn prepare_frame(&mut self, ctx: &mut GameContext) {
+        // Freeze engine-side time unless we're Playing. Set before the
+        // inner game runs so a Playing game's own write to `time_scale`
+        // (a pause menu, say) is the value that survives the frame.
+        ctx.time_scale = self.editor_time_scale(ctx.time_scale);
+
+        // Editor chrome always renders in the editor font — re-asserted
+        // every frame because the engine applies locale fonts after update.
+        if let Some(editor_font) = self.editor_font {
+            ctx.ui.set_default_font(editor_font);
+        }
+
+        // Interpolate the viewport camera toward its targets — this is
+        // what makes scroll zoom, pan, Home, and focus_on actually move the
+        // view (every setter writes target_* only). Runs before the play-mode
+        // camera sync, which sets camera and target together, so while
+        // Playing this is a no-op and the game camera stays authoritative.
+        self.editor.update_viewport(ctx.delta_time);
+
+        // Note the selection BEFORE any handler this frame mutates it: every
+        // command recorded later this frame carries it as the before-image
+        // undo restores. Delete/Cut clear the selection before
+        // pushing, which is exactly why the note happens here.
+        self.command_history.note_selection(&self.editor.selection);
+
+        self.transform_system.update(ctx.world, ctx.delta_time);
+
+        self.sync_viewport_from_main_camera(ctx.world);
+
+        self.editor.update_layout(ctx.window_size);
+    }
+
+    /// Early modal overlays: confirm dialog scrim must land before the drag ghost
+    /// can arm a gesture, so no widget arms under a modal.
+    fn render_early_overlays(&mut self, ctx: &mut GameContext) {
+        self.render_scene_confirm_dialog(ctx);
+
+        self.editor.drag_drop.begin_frame(
+            ctx.ui.mouse_pos(),
+            ctx.ui.mouse_down(),
+            ctx.ui.mouse_just_released(),
+        );
+        panel_renderer::render_drag_ghost(&mut self.editor, ctx);
+    }
+
+    /// Complete the frame: sync dirty mirror, render status bar, publish
+    /// window title on change, and clip engine UI to the scene viewport.
+    fn finish_frame(&mut self, ctx: &mut GameContext) {
+        self.sync_dirty_mirror();
+
+        self.render_status_bar(ctx, ctx.window_size);
+
+        // Publish the scene name + dirty indicator as the OS window
+        // title (title_bar_text() finally has a caller).
+        // While Playing the running game owns the title (it may write
+        // ctx.set_window_title itself); forgetting ours makes Stop republish
+        // even if the game changed the OS title in the meantime.
+        if self.editor.is_playing() {
+            self.last_window_title = None;
+        } else if !ctx.window_title_requested() {
+            if let Some(title) = self.pending_title_update() {
+                ctx.set_window_title(title);
+            }
+        }
+
+        // Clip the engine's post-update draws (the frame tail's
+        // UiLabel/UiPanel/UiButton pass and toasts run after this method
+        // returns and painted over editor chrome). A plain
+        // trailing push_clip_rect would poison later-flushed UI layers
+        // (Floating menus, the Modal dialog — bands reorder at end_frame),
+        // so the engine wraps only its own tail draws in this rect.
+        let bounds = self
+            .editor
+            .scene_view_bounds()
+            .unwrap_or(common::Rect::new(0.0, 0.0, 0.0, 0.0));
+        ctx.clip_engine_ui(bounds);
+    }
+
+    /// Mirror the dirty flag from its source of truth: a command was recorded
+    /// in the history ⇒ the scene changed. The single place the mirror is
+    /// written; it runs in `finish_frame` and after a save or scene reset, so
+    /// anything reading dirtiness earlier in a frame consults the history.
+    pub(super) fn sync_dirty_mirror(&mut self) {
+        self.editor.set_dirty(self.command_history.is_dirty());
+    }
 }
 
 impl<G: Game> Game for EditorGame<G> {
@@ -347,118 +433,27 @@ impl<G: Game> Game for EditorGame<G> {
 
     fn update(&mut self, ctx: &mut GameContext) {
         let window_size = ctx.window_size;
-
-        // Freeze engine-side time unless we're Playing. Set before the
-        // inner game runs so a Playing game's own write to `time_scale`
-        // (a pause menu, say) is the value that survives the frame.
-        ctx.time_scale = self.editor_time_scale(ctx.time_scale);
-
-        // Editor chrome always renders in the editor font — re-asserted
-        // every frame because the engine applies locale fonts after update.
-        if let Some(editor_font) = self.editor_font {
-            ctx.ui.set_default_font(editor_font);
-        }
-
-        // Interpolate the viewport camera toward its targets — this is
-        // what makes scroll zoom, pan, Home, and focus_on actually move the
-        // view (every setter writes target_* only). Runs before the play-mode
-        // camera sync, which sets camera and target together, so while
-        // Playing this is a no-op and the game camera stays authoritative.
-        self.editor.update_viewport(ctx.delta_time);
-
-        // Mirror the dirty flag from its source of truth: a command was
-        // recorded in the history ⇒ the scene changed. Editor-
-        // crate renderers (title bar, status) read the EditorContext mirror.
-        self.editor.set_dirty(self.command_history.is_dirty());
-        // Note the selection BEFORE any handler this frame mutates it: every
-        // command recorded later this frame carries it as the before-image
-        // undo restores. Delete/Cut clear the selection before
-        // pushing, which is exactly why the note happens here.
-        self.command_history.note_selection(&self.editor.selection);
-
-        // Run transform hierarchy system
-        self.transform_system.update(ctx.world, ctx.delta_time);
-
-        // While Playing, the game's main camera drives the viewport
-        self.sync_viewport_from_main_camera(ctx.world);
-
-        // Editor layout
-        self.editor.update_layout(window_size);
-
-        // Unsaved-changes confirm dialog — FIRST of the early
-        // overlays: its full-window scrim must be in place before
-        // the drag ghost (or anything else) evaluates, so no widget can arm
-        // a gesture under a modal.
-        self.render_scene_confirm_dialog(ctx);
-
-        // Drag-and-drop state machine + ghost. Runs before panels so the
-        // ghost's overlay blocking rect makes widgets under the cursor inert
-        // for the whole frame (the overlay depth band keeps it on top).
-        self.editor.drag_drop.begin_frame(
-            ctx.ui.mouse_pos(),
-            ctx.ui.mouse_down(),
-            ctx.ui.mouse_just_released(),
-        );
-        panel_renderer::render_drag_ghost(&mut self.editor, ctx);
-
-        // Menu bar + action dispatch
+        self.prepare_frame(ctx);
+        self.render_early_overlays(ctx);
         self.handle_menu_bar(ctx, window_size);
-
-        // Toolbar + play controls
         self.render_toolbar_and_play_controls(ctx);
-
-        // Command-API requests: answered here, with
-        // pre-panel state settled and before any per-frame widget mutation;
-        // skipped (left queued) while a gizmo drag is live.
         self.drain_api_requests(ctx);
-
-        // Dock panels + content
-        let content_areas = self.render_panels(ctx);
-
-        // Viewport input (pan, zoom, click, rectangle selection)
-        self.handle_viewport_picking(ctx);
-
-        // Gizmo interaction for the selected entity
+        // Built once per frame: after the last handler that can delete an
+        // entity (menu bar, command API) and before the first consumer
+        // (panels, picking). A click must not receive a deleted entity, so
+        // panel rendering must never delete one. Moves are harmless: a
+        // pickable's position is its GlobalTransform2D, which only the
+        // transform system writes, in prepare_frame.
+        let pickables = if self.editor.is_playing() {
+            Vec::new()
+        } else {
+            build_pickable_entities(ctx.world)
+        };
+        let content_areas = self.render_panels(ctx, &pickables);
+        self.handle_viewport_picking(ctx.ui, ctx.input, ctx.world, &pickables);
         self.handle_gizmo(ctx, &content_areas);
-
-        // (Q/W/E/R tool switching moved to the event path — one shortcut
-        // system, resolved through EditorInputMapping in handle_editor_key.)
-
-        // Delegate to inner game (only when Playing)
         self.update_inner_game(ctx);
-
-        // Re-sync the dirty mirror: menu actions, panel edits, and gizmo
-        // releases above recorded commands AFTER the dirty sync — the status
-        // bar and title below must show this frame's state, not last frame's.
-        self.editor.set_dirty(self.command_history.is_dirty());
-
-        // Status bar
-        self.render_status_bar(ctx, window_size);
-
-        // Publish the scene name + dirty indicator as the OS window
-        // title (title_bar_text() finally has a caller).
-        // While Playing the running game owns the title (it may write
-        // ctx.set_window_title itself); forgetting ours makes Stop republish
-        // even if the game changed the OS title in the meantime.
-        if self.editor.is_playing() {
-            self.last_window_title = None;
-        } else if !ctx.window_title_requested() {
-            if let Some(title) = self.pending_title_update() {
-                ctx.set_window_title(title);
-            }
-        }
-
-        // Clip the engine's post-update draws (the frame tail's
-        // UiLabel/UiPanel/UiButton pass and toasts run after this method
-        // returns and painted over editor chrome). A plain
-        // trailing push_clip_rect would poison later-flushed UI layers
-        // (Floating menus, the Modal dialog — bands reorder at end_frame),
-        // so the engine wraps only its own tail draws in this rect.
-        let bounds = self
-            .editor
-            .scene_view_bounds()
-            .unwrap_or(common::Rect::new(0.0, 0.0, 0.0, 0.0));
-        ctx.clip_engine_ui(bounds);
+        self.finish_frame(ctx);
     }
 
     fn render(&mut self, ctx: &mut RenderContext) {
@@ -541,7 +536,7 @@ pub fn run_game_with_editor_opts<G: Game>(
 ) -> Result<(), engine_core::EngineError> {
     let config = clamp_editor_window_size(config);
     let mut editor_game = EditorGame::new(game);
-    editor_game.api_rx = opts.api_rx;
+    editor_game.api.receiver = opts.api_rx;
     editor_game.initial_scene = opts.initial_scene;
     engine_core::run_game(editor_game, config)
 }
@@ -554,6 +549,8 @@ mod tests;
 mod api_tests;
 #[cfg(test)]
 mod camera_follow_tests;
+#[cfg(test)]
+mod gizmo_drag_tests;
 #[cfg(test)]
 mod play_session_tests;
 #[cfg(test)]

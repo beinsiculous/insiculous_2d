@@ -4,8 +4,7 @@
 use glam::Vec2;
 use winit::keyboard::KeyCode;
 
-use editor::world_snapshot::WorldSnapshot;
-use editor::{EditorAction, EditorPlayState, EditorTool, PlayControlAction};
+use editor::{EditorAction, EditorTool, PlayControlAction};
 use engine_core::contexts::GameContext;
 use engine_core::Game;
 
@@ -13,167 +12,15 @@ use crate::entity_ops;
 
 use super::EditorGame;
 
-impl<G: Game> EditorGame<G> {
-    /// Handle a play control action (Play, Pause, Stop).
-    ///
-    /// Returns `true` if a Stop was performed (world restored from snapshot),
-    /// so the caller can notify the inner game via `on_play_stopped`.
-    pub(super) fn handle_play_action(&mut self, action: PlayControlAction, world: &mut ecs::World) -> bool {
-        // Any play-state transition kills an in-flight viewport gesture:
-        // handle_input runs in BOTH play and edit modes, so a
-        // button held across a transition could otherwise complete a
-        // phantom click/marquee in the new state.
-        if !matches!(action, PlayControlAction::ToggleCameraFollow) {
-            self.editor.viewport_input.cancel_marquee();
-        }
-        match action {
-            PlayControlAction::Play => {
-                if self.editor.is_editing() {
-                    // Cancel any in-progress gizmo drag (state only — the
-                    // world already holds the dragged values; Play snapshots
-                    // them and Stop restores)
-                    self.gizmo_drag = None;
-                    self.editor.gizmo.cancel();
-                    // Defensive: entering Play drops a pending confirm —
-                    // unreachable through the blocked UI, cheap insurance.
-                    self.pending_scene_action = None;
-                    // Dropping a live drag is a gesture boundary too:
-                    // pre-Play and post-Stop nudges must not merge
-                    // into one undo entry across the discarded drag.
-                    self.command_history.break_merge();
-                    // An open command-API batch commits NOW: its commands
-                    // are already applied to the world the snapshot is
-                    // about to capture, and a macro pushed after Stop's
-                    // restore would undo against the wrong world.
-                    if let Some(batch) = self.api_batch.take() {
-                        if !batch.commands.is_empty() {
-                            // The macro carries the batch's own pre-batch
-                            // selection snapshot.
-                            self.command_history.push_already_executed_with_before(
-                                Box::new(editor::commands::MacroCommand::new(
-                                    batch.name,
-                                    batch.commands,
-                                )),
-                                batch.selection_before,
-                            );
-                        }
-                        self.editor.status_bar.show_message("API batch committed by Play");
-                    }
-                    // Starting a new play session — capture snapshot.
-                    // (Resume-from-pause takes the branch below and must
-                    // never re-capture: the paused world is mid-simulation.)
-                    let snapshot = WorldSnapshot::capture(world);
-                    if let Some(warning) = snapshot.loss_warning() {
-                        self.editor.status_bar.show_message(warning);
-                    }
-                    self.world_snapshot = Some(snapshot);
-                    // Save the editing pan/zoom and adopt the game camera's
-                    // pose — position AND zoom (the ecs Camera carries zoom;
-                    // the runtime stopped dropping it). No main-camera entity:
-                    // zoom 1.0, parity with how such a game renders outside
-                    // the editor. Follow re-arms at every SESSION START only
-                    // (pause→resume preserves a user's toggle).
-                    self.editing_camera = Some((
-                        self.editor.viewport.camera_position(),
-                        self.editor.viewport.camera_zoom(),
-                    ));
-                    self.editor.set_camera_follow(true);
-                    match engine_core::main_camera_pose(world) {
-                        Some((pos, zoom)) => {
-                            self.editor.viewport.set_camera_position(pos);
-                            self.editor.viewport.adopt_camera_zoom(zoom);
-                        }
-                        None => self.editor.viewport.set_camera_zoom(1.0),
-                    }
-                    self.editor.set_play_state(EditorPlayState::Playing);
-                    self.editor.close_add_component_popup();
-                    // Scene-authored UI (UiLabel/UiPanel/UiButton) draws only
-                    // while the game actually runs.
-                    world.remove_resource::<engine_core::UiElementsHidden>();
-                    log::info!("Play: snapshot captured, entering play mode");
-                } else if self.editor.is_paused() {
-                    // Resuming from pause
-                    self.editor.set_play_state(EditorPlayState::Playing);
-                    self.editor.close_add_component_popup();
-                    log::info!("Play: resumed from pause");
-                }
-                false
-            }
-            PlayControlAction::Pause => {
-                if self.editor.is_playing() {
-                    self.editor.set_play_state(EditorPlayState::Paused);
-                    log::info!("Paused");
-                }
-                false
-            }
-            PlayControlAction::Stop => {
-                if self.editor.in_play_session() {
-                    // An API batch opened while Paused holds commands
-                    // referencing the mid-simulation world the restore below
-                    // discards — a later `batch end` would push a macro that
-                    // undoes against the wrong world. Drop it with the
-                    // runtime state.
-                    if let Some(batch) = self.api_batch.take() {
-                        if !batch.commands.is_empty() {
-                            self.editor
-                                .status_bar
-                                .show_message("Open API batch discarded by Stop");
-                        }
-                    }
-                    // Restore world from snapshot
-                    if let Some(snapshot) = self.world_snapshot.take() {
-                        // The loss happens HERE, so report it here too — the
-                        // Play-time warning is easy to miss.
-                        let drop_report = snapshot.drop_report();
-                        let dropped_full_paths = snapshot.uncaptured_types().join(", ");
-                        snapshot.restore(world);
-                        // The world was wholesale-replaced: drop the transform
-                        // system's propagation baselines so no stale cache
-                        // entry survives the restore.
-                        self.transform_system.reset();
-                        log::info!("Stop: world restored from snapshot");
-                        if let Some(report) = drop_report {
-                            // Status bar gets display names; the log keeps the
-                            // full type paths (matching the capture-time log).
-                            log::warn!("Stop: dropped unregistered component type(s): {}", dropped_full_paths);
-                            self.editor.status_bar.show_message(report);
-                        }
-                    }
-                    // Restore the pan/zoom the user had while editing, and
-                    // re-arm the camera follow for the next session.
-                    if let Some((position, zoom)) = self.editing_camera.take() {
-                        self.editor.viewport.set_camera_position(position);
-                        self.editor.viewport.set_camera_zoom(zoom);
-                    }
-                    self.editor.set_camera_follow(true);
-                    // Re-hide scene-authored UI (the marker was removed when
-                    // Play started; resources survive the snapshot restore).
-                    world.insert_resource(engine_core::UiElementsHidden);
-                    // Spring-grid backdrops rebuild at rest: entity ids survive
-                    // the restore, so without this a grid stopped mid-ripple
-                    // would stay deformed and frozen.
-                    engine_core::grid::request_backdrop_reset(world);
-                    self.editor.set_play_state(EditorPlayState::Editing);
-                    true
-                } else {
-                    false
-                }
-            }
-            PlayControlAction::ToggleCameraFollow => {
-                if self.editor.in_play_session() {
-                    self.editor.toggle_camera_follow();
-                    let message = if self.editor.is_camera_following() {
-                        "Following game camera"
-                    } else {
-                        "Free camera — Ctrl+Shift+F or Follow to re-follow"
-                    };
-                    self.editor.status_bar.show_message(message);
-                }
-                false
-            }
-        }
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum KeyRoute {
+    Consumed,
+    PlayControl(PlayControlAction),
+    ForwardToGame,
+    Editor { action: EditorAction, shift: bool },
+}
 
+impl<G: Game> EditorGame<G> {
     /// Apply the selection undo/redo wants restored: platform
     /// convention is that undoing a Delete/Cut brings the selection back.
     pub(super) fn apply_selection_restore(&mut self) {
@@ -183,52 +30,50 @@ impl<G: Game> EditorGame<G> {
         }
     }
 
-    /// Top-level key handler: every editor shortcut resolves through the
-    /// ONE rebindable table (`EditorInputMapping::resolve`).
-    /// Play controls always work; while Playing the raw key forwards to the
-    /// game WITHOUT resolving editor actions (Q must reach the playtested
-    /// game); unresolved keys forward to the game while Editing too.
-    pub(super) fn handle_editor_key(&mut self, key: KeyCode, ctx: &mut GameContext) {
-        // A focused text input (inspector value box) owns the keyboard:
-        // Delete/Backspace edit the buffer, they must not delete the entity.
-        // Enter/Tab/Escape are handled by the widget itself, which clears focus.
+    /// Resolve how a keypress should be handled: dialog, text focus,
+    /// play control, forward to game, or editor action.
+    pub(super) fn route_editor_key(
+        &mut self,
+        key: KeyCode,
+        keyboard_owned: bool,
+        modifiers: editor::Modifiers,
+    ) -> KeyRoute {
         // A pending confirm dialog owns the keyboard — checked BEFORE the
         // text-focus gate (a focused field must not swallow
         // the modal's keys): Escape cancels, Enter saves, everything else
         // is swallowed.
         if self.confirm_dialog_consumes_key(key) {
-            return;
-        }
-        if ctx.ui.wants_keyboard() {
-            return;
+            return KeyRoute::Consumed;
         }
 
-        let modifiers = editor::Modifiers::read(ctx.input);
+        // A focused text input (inspector value box) owns the keyboard:
+        // Delete/Backspace edit the buffer, they must not delete the entity.
+        // Enter/Tab/Escape are handled by the widget itself, which clears focus.
+        if keyboard_owned {
+            return KeyRoute::Consumed;
+        }
+
         let action = self.editor.input_mapping.resolve(key, modifiers.ctrl, modifiers.shift);
 
         // Play-control actions (always intercepted, in any play state)
         match action {
             Some(EditorAction::StopPlay) => {
-                if self.handle_play_action(PlayControlAction::Stop, ctx.world) {
-                    self.inner.on_play_stopped(ctx);
-                }
-                return;
+                return KeyRoute::PlayControl(PlayControlAction::Stop);
             }
             Some(EditorAction::TogglePlayPause) => {
-                if self.editor.is_playing() {
-                    self.handle_play_action(PlayControlAction::Pause, ctx.world);
+                let play_action = if self.editor.is_playing() {
+                    PlayControlAction::Pause
                 } else {
-                    self.handle_play_action(PlayControlAction::Play, ctx.world);
-                }
-                return;
+                    PlayControlAction::Play
+                };
+                return KeyRoute::PlayControl(play_action);
             }
-            // Always intercepted (Ctrl+Shift+F must work while Playing);
-            // a no-op outside a play session.
             Some(EditorAction::ToggleCameraFollow) => {
-                if self.editor.in_play_session() {
-                    self.handle_play_action(PlayControlAction::ToggleCameraFollow, ctx.world);
-                }
-                return;
+                return if self.editor.in_play_session() {
+                    KeyRoute::PlayControl(PlayControlAction::ToggleCameraFollow)
+                } else {
+                    KeyRoute::Consumed
+                };
             }
             _ => {}
         }
@@ -236,60 +81,186 @@ impl<G: Game> EditorGame<G> {
         // While Playing the raw key belongs to the game — editor actions
         // are deliberately NOT dispatched here.
         if self.editor.is_playing() {
-            self.inner.on_key_pressed(key, ctx);
-            return;
+            return KeyRoute::ForwardToGame;
         }
 
         match action {
-            Some(action) => self.dispatch_editor_action(action, modifiers.shift, ctx),
-            None => self.inner.on_key_pressed(key, ctx),
+            Some(action) => KeyRoute::Editor {
+                action,
+                shift: modifiers.shift,
+            },
+            None => KeyRoute::ForwardToGame,
         }
     }
 
-    /// Execute one resolved editor action (Editing/Paused only — the caller
-    /// has already peeled off play controls and the Playing state).
-    ///
-    /// Guards: file-replacing actions rely on the `in_play_session`
-    /// choke points (refused while Paused too); entity edits run while
-    /// Paused by design (warn-don't-block); transform/existence-mutating
-    /// actions are suppressed while a gizmo drag is live — a mid-drag nudge
-    /// would be silently swallowed by the drag's start→final commit.
-    pub(super) fn dispatch_editor_action(&mut self, action: EditorAction, shift: bool, ctx: &mut GameContext) {
-        use EditorAction as A;
-        let drag_live = self.gizmo_drag.is_some();
-        let drag_guard = |game: &mut Self| {
-            if drag_live {
-                game.editor
-                    .status_bar
-                    .show_message("Finish or Escape the drag first");
+    /// Top-level key handler: every editor shortcut resolves through the
+    /// ONE rebindable table (`EditorInputMapping::resolve`).
+    /// Play controls always work; while Playing the raw key forwards to the
+    /// game WITHOUT resolving editor actions (Q must reach the playtested
+    /// game); unresolved keys forward to the game while Editing too.
+    pub(super) fn handle_editor_key(&mut self, key: KeyCode, ctx: &mut GameContext) {
+        let wants_keyboard = ctx.ui.wants_keyboard();
+        let modifiers = editor::Modifiers::read(ctx.input);
+        match self.route_editor_key(key, wants_keyboard, modifiers) {
+            KeyRoute::Consumed => {}
+            KeyRoute::PlayControl(play_action) => {
+                let stopped = play_action == PlayControlAction::Stop;
+                if self.handle_play_action(play_action, ctx.world) && stopped {
+                    self.inner.on_play_stopped(ctx);
+                }
             }
-            drag_live
-        };
+            KeyRoute::ForwardToGame => {
+                self.inner.on_key_pressed(key, ctx);
+            }
+            KeyRoute::Editor { action, shift } => {
+                self.dispatch_editor_action(action, shift, ctx);
+            }
+        }
+    }
+
+    /// Whether a gizmo drag is live, telling the user to finish or Escape it
+    /// first: a transform- or existence-mutating action landing mid-drag
+    /// would be silently swallowed by the drag's start→final commit.
+    fn refuse_during_drag(&mut self) -> bool {
+        let drag_live = self.gizmo_drag.is_some();
+        if drag_live {
+            self.editor
+                .status_bar
+                .show_message("Finish or Escape the drag first");
+        }
+        drag_live
+    }
+
+    fn select_all_entities(&mut self, world: &ecs::World) {
+        let all = entity_ops::selectable_entities(world);
+        if !all.is_empty() {
+            let count = all.len();
+            self.editor.selection.select_multiple(all);
+            self.editor
+                .status_bar
+                .show_message(format!("Selected {count} entities"));
+        }
+    }
+
+    fn begin_rename_of_primary(&mut self, world: &ecs::World, ui: &mut ui::UIContext) {
+        // Inline-rename the primary selection in the hierarchy.
+        // The field opens pre-focused with the current name selected;
+        // an entity without a Name opens empty and only materializes
+        // one on a non-empty commit (Escape stays a true no-op).
+        if let Some(entity) = self.editor.selection.primary() {
+            let initial = world
+                .get::<ecs::Name>(entity)
+                .map(|name| name.as_str().to_string())
+                .unwrap_or_default();
+            self.editor.hierarchy.begin_rename(entity);
+            ui.focus_text_input(
+                editor::HierarchyPanel::rename_widget_id(entity).as_str(),
+                &initial,
+            );
+        }
+    }
+
+    fn create_entity_at_view_center(&mut self, archetype: editor::Archetype, world: &mut ecs::World) {
+        let spawn_pos = self.editor.viewport.camera_position();
+        let entity = entity_ops::create_archetype(
+            archetype,
+            world,
+            &mut self.editor.selection,
+            spawn_pos,
+            &mut self.entity_counter,
+        );
+        let cmd = editor::commands::CreateEntityCommand::already_created(world, entity);
+        self.command_history.push_already_executed(Box::new(cmd));
+    }
+
+    fn reset_layout_with_feedback(&mut self) {
+        self.editor.reset_layout();
+        self.editor.status_bar.show_message("Layout reset to defaults");
+    }
+
+    fn cycle_game_locale_with_feedback(&mut self, strings: &mut engine_core::localization::Strings) {
+        strings.cycle_locale();
+        self.editor.status_bar.show_message(format!(
+            "Game locale: {}",
+            strings.current_display_name()
+        ));
+    }
+
+    fn report_save_result(&mut self, result: Result<(), super::scene_io::SceneIoError>) {
+        if let Err(error) = result {
+            self.editor.status_bar.show_error(format!("Save failed: {error}"));
+            log::error!("Failed to save: {error}");
+        }
+    }
+
+    fn dispatch_edit_action(
+        &mut self,
+        action: EditorAction,
+        shift: bool,
+        ctx: &mut GameContext,
+    ) {
+        use EditorAction as A;
         match action {
             A::Undo => {
-                if drag_guard(self) {
+                if self.refuse_during_drag() {
                     return;
                 }
                 self.undo_with_feedback(ctx.world);
             }
             A::Redo => {
-                if drag_guard(self) {
+                if self.refuse_during_drag() {
                     return;
                 }
                 self.redo_with_feedback(ctx.world);
             }
-            A::Save => {
-                if let Err(e) = self.save_scene(ctx.world, ctx.assets) {
-                    self.editor.status_bar.show_error(format!("Save failed: {}", e));
-                    log::error!("Failed to save: {}", e);
+            A::Duplicate => {
+                if self.refuse_during_drag() {
+                    return;
                 }
+                self.duplicate_selected_entities(ctx.world);
+            }
+            A::Delete => {
+                if self.refuse_during_drag() {
+                    return;
+                }
+                self.delete_selected_entities(ctx.world);
+            }
+            A::Copy => self.copy_selection(ctx.world),
+            A::Paste => {
+                if self.refuse_during_drag() {
+                    return;
+                }
+                self.paste_clipboard(ctx.world);
+            }
+            A::Cut => {
+                if self.refuse_during_drag() {
+                    return;
+                }
+                self.cut_selection(ctx.world);
+            }
+            A::SelectAll => self.select_all_entities(ctx.world),
+            A::Cancel => self.cancel_cascade(ctx.world),
+            A::NudgeLeft => self.nudge_selection(ctx.world, Vec2::new(-1.0, 0.0), shift),
+            A::NudgeRight => self.nudge_selection(ctx.world, Vec2::new(1.0, 0.0), shift),
+            A::NudgeUp => self.nudge_selection(ctx.world, Vec2::new(0.0, 1.0), shift),
+            A::NudgeDown => self.nudge_selection(ctx.world, Vec2::new(0.0, -1.0), shift),
+            A::RenameSelected => self.begin_rename_of_primary(ctx.world, ctx.ui),
+            A::CreateEntity(archetype) => self.create_entity_at_view_center(archetype, ctx.world),
+            other => log::error!("{other:?} is not an edit action"),
+        }
+    }
+
+    fn dispatch_file_action(&mut self, action: EditorAction, ctx: &mut GameContext) {
+        use EditorAction as A;
+        match action {
+            A::Save => {
+                let result = self.save_scene(ctx.world, ctx.assets);
+                self.report_save_result(result);
             }
             A::SaveAs => {
                 let path = self.default_scene_path();
-                if let Err(e) = self.save_scene_as(ctx.world, ctx.assets, path) {
-                    self.editor.status_bar.show_error(format!("Save failed: {}", e));
-                    log::error!("Failed to save: {}", e);
-                }
+                let result = self.save_scene_as(ctx.world, ctx.assets, path);
+                self.report_save_result(result);
             }
             A::NewScene => {
                 if self.request_scene_replace(super::scene_confirm::PendingSceneAction::NewScene) {
@@ -303,77 +274,87 @@ impl<G: Game> EditorGame<G> {
                     self.perform_scene_action(ctx, action);
                 }
             }
-            A::Duplicate => {
-                if drag_guard(self) {
-                    return;
-                }
-                self.duplicate_selected_entities(ctx.world);
-            }
-            A::Delete => {
-                if drag_guard(self) {
-                    return;
-                }
-                self.delete_selected_entities(ctx.world);
-            }
-            A::Copy => self.copy_selection(ctx.world),
-            A::Paste => {
-                if drag_guard(self) {
-                    return;
-                }
-                self.paste_clipboard(ctx.world);
-            }
-            A::Cut => {
-                if drag_guard(self) {
-                    return;
-                }
-                self.cut_selection(ctx.world);
-            }
-            A::SelectAll => {
-                let all = entity_ops::selectable_entities(ctx.world);
-                if !all.is_empty() {
-                    let count = all.len();
-                    self.editor.selection.select_multiple(all);
-                    self.editor
-                        .status_bar
-                        .show_message(format!("Selected {count} entities"));
-                }
-            }
-            A::Cancel => self.cancel_cascade(ctx.world),
-            A::NudgeLeft => self.nudge_selection(ctx.world, Vec2::new(-1.0, 0.0), shift),
-            A::NudgeRight => self.nudge_selection(ctx.world, Vec2::new(1.0, 0.0), shift),
-            A::NudgeUp => self.nudge_selection(ctx.world, Vec2::new(0.0, 1.0), shift),
-            A::NudgeDown => self.nudge_selection(ctx.world, Vec2::new(0.0, -1.0), shift),
+            A::Exit => ctx.request_exit(),
+            other => log::error!("{other:?} is not a file action"),
+        }
+    }
+
+    fn dispatch_view_action(&mut self, action: EditorAction, ctx: &mut GameContext) {
+        use EditorAction as A;
+        match action {
             A::ZoomIn => self.editor.zoom_camera(1.1),
             A::ZoomOut => self.editor.zoom_camera(0.9),
             A::ResetZoom => self.editor.reset_camera(),
             A::ToggleGrid => self.editor.toggle_grid(),
             A::ToggleColliders => self.editor.toggle_colliders(),
             A::ToggleSnap => self.toggle_snap_with_feedback(),
-            A::RenameSelected => {
-                // Inline-rename the primary selection in the hierarchy.
-                // The field opens pre-focused with the current name selected;
-                // an entity without a Name opens empty and only materializes
-                // one on a non-empty commit (Escape stays a true no-op).
-                if let Some(entity) = self.editor.selection.primary() {
-                    let initial = ctx
-                        .world
-                        .get::<ecs::Name>(entity)
-                        .map(|n| n.as_str().to_string())
-                        .unwrap_or_default();
-                    self.editor.hierarchy.begin_rename(entity);
-                    ctx.ui.focus_text_input(
-                        editor::HierarchyPanel::rename_widget_id(entity).as_str(),
-                        &initial,
-                    );
-                }
-            }
-            A::PlayResume => {
-                self.handle_play_action(PlayControlAction::Play, ctx.world);
-            }
+            A::TogglePanel(id) => self.editor.dock_area.toggle_panel_visible(id),
+            A::ResetLayout => self.reset_layout_with_feedback(),
+            A::CycleGameLocale => self.cycle_game_locale_with_feedback(ctx.strings),
+            other => log::error!("{other:?} is not a view action"),
+        }
+    }
+
+    fn dispatch_tool_action(&mut self, action: EditorAction) {
+        use EditorAction as A;
+        match action {
             A::ToolSelect => self.editor.set_tool(EditorTool::Select),
             A::ToolMove => self.editor.set_tool(EditorTool::Move),
             A::ToolRotate => self.editor.set_tool(EditorTool::Rotate),
             A::ToolScale => self.editor.set_tool(EditorTool::Scale),
+            other => log::error!("{other:?} is not a tool action"),
+        }
+    }
+
+    /// Execute one resolved editor action (Editing/Paused only — the caller
+    /// has already peeled off play controls and the Playing state).
+    ///
+    /// Guards: file-replacing actions rely on the `in_play_session`
+    /// choke points (refused while Paused too); entity edits run while
+    /// Paused by design (warn-don't-block); transform/existence-mutating
+    /// actions are suppressed while a gizmo drag is live — a mid-drag nudge
+    /// would be silently swallowed by the drag's start→final commit.
+    pub(super) fn dispatch_editor_action(&mut self, action: EditorAction, shift: bool, ctx: &mut GameContext) {
+        use EditorAction as A;
+        match action {
+            A::Undo
+            | A::Redo
+            | A::Duplicate
+            | A::Delete
+            | A::Copy
+            | A::Paste
+            | A::Cut
+            | A::SelectAll
+            | A::Cancel
+            | A::NudgeLeft
+            | A::NudgeRight
+            | A::NudgeUp
+            | A::NudgeDown
+            | A::RenameSelected
+            | A::CreateEntity(_) => self.dispatch_edit_action(action, shift, ctx),
+
+            A::Save | A::SaveAs | A::NewScene | A::OpenScene | A::Exit => {
+                self.dispatch_file_action(action, ctx);
+            }
+
+            A::ZoomIn
+            | A::ZoomOut
+            | A::ResetZoom
+            | A::ToggleGrid
+            | A::ToggleColliders
+            | A::ToggleSnap
+            | A::TogglePanel(_)
+            | A::ResetLayout
+            | A::CycleGameLocale => self.dispatch_view_action(action, ctx),
+
+            A::ToolSelect | A::ToolMove | A::ToolRotate | A::ToolScale => {
+                self.dispatch_tool_action(action);
+            }
+
+            A::PlayResume => {
+                self.handle_play_action(PlayControlAction::Play, ctx.world);
+            }
+
             // Poll-only actions: CONSUMED here (no-op) so an editor-bound
             // key never also reaches the inner game — the viewport polling
             // is their authoritative handler.
@@ -383,33 +364,9 @@ impl<G: Game> EditorGame<G> {
             | A::Select
             | A::AddToSelection
             | A::ToggleSelection => {}
+
             // Peeled off by the caller before dispatch.
             A::TogglePlayPause | A::StopPlay | A::ToggleCameraFollow => {}
-            A::CreateEntity(archetype) => {
-                let spawn_pos = self.editor.viewport.camera_position();
-                let entity = entity_ops::create_archetype(
-                    archetype,
-                    ctx.world,
-                    &mut self.editor.selection,
-                    spawn_pos,
-                    &mut self.entity_counter,
-                );
-                let cmd = editor::commands::CreateEntityCommand::already_created(ctx.world, entity);
-                self.command_history.push_already_executed(Box::new(cmd));
-            }
-            A::Exit => ctx.request_exit(),
-            A::TogglePanel(id) => self.editor.dock_area.toggle_panel_visible(id),
-            A::ResetLayout => {
-                self.editor.reset_layout();
-                self.editor.status_bar.show_message("Layout reset to defaults");
-            }
-            A::CycleGameLocale => {
-                ctx.strings.cycle_locale();
-                self.editor.status_bar.show_message(format!(
-                    "Game locale: {}",
-                    ctx.strings.current_display_name()
-                ));
-            }
         }
     }
 

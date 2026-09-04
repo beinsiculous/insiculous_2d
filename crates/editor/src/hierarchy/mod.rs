@@ -301,108 +301,169 @@ impl HierarchyPanel {
         let is_expanded = self.is_expanded(entity);
         let row_visible = y + ROW_HEIGHT >= bounds.y && y <= bounds.y + bounds.height;
         if row_visible {
-            let x = bounds.x + BASE_PADDING + (depth as f32 * INDENT_PER_DEPTH);
-            let has_children = ctx.world.get_children(entity).is_some_and(|c| !c.is_empty());
-            let is_selected = ctx.selection.contains(entity);
-            let is_primary = ctx.selection.primary() == Some(entity);
-
-            // Row background for selection (full width); the primary row gets
-            // its own fill plus a left accent bar.
-            let row_rect = common::Rect::new(bounds.x, y, bounds.width, ROW_HEIGHT);
-            if is_primary {
-                ctx.ui.rect(row_rect, ctx.fills.primary);
-                let accent_rect = common::Rect::new(bounds.x, y, PRIMARY_ACCENT_WIDTH, ROW_HEIGHT);
-                ctx.ui.rect(accent_rect, ctx.fills.accent);
-            } else if is_selected {
-                ctx.ui.rect(row_rect, ctx.fills.secondary);
-            }
-
-            // Check arrow interaction FIRST for entities with children. The
-            // arrow goes inert while this row is being renamed — collapsing the
-            // tree under an active text field would reflow it mid-edit.
-            let mut arrow_clicked = false;
-            if has_children {
-                if self.renaming != Some(entity) {
-                    let arrow_rect = common::Rect::new(x, y, ARROW_WIDTH, ROW_HEIGHT);
-                    let arrow_id = format!("hierarchy_arrow_{}", entity.value());
-                    let arrow_interaction = ctx.ui.interact(arrow_id.as_str(), arrow_rect, true);
-
-                    if arrow_interaction.clicked {
-                        self.toggle_expanded(entity);
-                        arrow_clicked = true;
-                    }
-                }
-
-                // Draw arrow (baseline near bottom of row)
-                let arrow = if is_expanded { "▼" } else { "▶" };
-                ctx.ui.label(arrow, Vec2::new(x, y + ROW_HEIGHT - 4.0));
-            }
-
-            let name_x = x + if has_children { ARROW_WIDTH } else { 0.0 };
-
-            if self.renaming == Some(entity) {
-                // Inline rename replaces the label AND the row's click handling —
-                // the text field owns the row while it is open.
-                let rename_id = Self::rename_widget_id(entity);
-                let field_rect = ui::Rect::new(
-                    name_x,
-                    y + 1.0,
-                    (bounds.x + bounds.width - name_x - BASE_PADDING).max(60.0),
-                    ROW_HEIGHT - 2.0,
-                );
-                let current = ctx
-                    .world
-                    .get::<Name>(entity)
-                    .map(|n| n.as_str().to_string())
-                    .unwrap_or_default();
-                if let Some(committed) = ctx.ui.text_input(rename_id.as_str(), &current, field_rect) {
-                    self.renaming = None;
-                    *ctx.rename_committed = Some((entity, committed));
-                } else if !ctx.ui.is_focused(rename_id.as_str()) {
-                    // Escape (or focus lost without a commit) — plain cancel.
-                    self.renaming = None;
-                }
-            } else {
-                // Row interaction - use area after arrow for entities with children
-                let row_interact_x = if has_children { x + ARROW_WIDTH } else { bounds.x };
-                let row_interact_width = bounds.x + bounds.width - row_interact_x;
-                let row_interact_rect =
-                    common::Rect::new(row_interact_x, y, row_interact_width, ROW_HEIGHT);
-
-                let row_id = format!("hierarchy_row_{}", entity.value());
-                let row_interaction = ctx.ui.interact(row_id.as_str(), row_interact_rect, true);
-
-                if row_interaction.clicked && !arrow_clicked {
-                    ctx.clicked_entities.push(entity);
-                }
-
-                // Hover highlight (full row width for visual consistency)
-                if row_interaction.state == ui::WidgetState::Hovered && !is_selected {
-                    ctx.ui.rect(row_rect, ctx.theme.hover_fill);
-                }
-
-                // Entity name (baseline near bottom of row)
-                let name = Self::entity_display_name(ctx.world, entity);
-                ctx.ui.label(&name, Vec2::new(name_x, y + ROW_HEIGHT - 4.0));
-            }
+            self.render_row(ctx, entity, depth, y, is_expanded);
         }
 
         // Render children if expanded
-        let mut next_y = y + ROW_HEIGHT;
+        let next_y = y + ROW_HEIGHT;
         if is_expanded {
-            if let Some(children) = ctx.world.get_children(entity) {
-                // Clone to avoid borrow issues
-                let children_vec: Vec<EntityId> = children.to_vec();
-                for child in children_vec {
-                    next_y = self.render_node(ctx, child, depth + 1, next_y);
-                }
-            }
+            self.render_children(ctx, entity, depth, next_y)
+        } else {
+            next_y
+        }
+    }
+
+    fn render_row(
+        &mut self,
+        ctx: &mut NodeRenderCtx<'_>,
+        entity: EntityId,
+        depth: usize,
+        y: f32,
+        is_expanded: bool,
+    ) {
+        let bounds = ctx.bounds;
+        let x = bounds.x + BASE_PADDING + (depth as f32 * INDENT_PER_DEPTH);
+        let has_children = ctx.world.get_children(entity).is_some_and(|children| !children.is_empty());
+        let is_selected = ctx.selection.contains(entity);
+        let is_primary = ctx.selection.primary() == Some(entity);
+
+        // Row background for selection (full width); the primary row gets
+        // its own fill plus a left accent bar.
+        let row_rect = common::Rect::new(bounds.x, y, bounds.width, ROW_HEIGHT);
+        if is_primary {
+            ctx.ui.rect(row_rect, ctx.fills.primary);
+            let accent_rect = common::Rect::new(bounds.x, y, PRIMARY_ACCENT_WIDTH, ROW_HEIGHT);
+            ctx.ui.rect(accent_rect, ctx.fills.accent);
+        } else if is_selected {
+            ctx.ui.rect(row_rect, ctx.fills.secondary);
         }
 
+        // Check arrow interaction FIRST for entities with children. The
+        // arrow goes inert while this row is being renamed — collapsing the
+        // tree under an active text field would reflow it mid-edit.
+        let mut arrow_clicked = false;
+        if has_children {
+            if self.renaming != Some(entity) {
+                let arrow_rect = common::Rect::new(x, y, ARROW_WIDTH, ROW_HEIGHT);
+                let arrow_id = format!("hierarchy_arrow_{}", entity.value());
+                let arrow_interaction = ctx.ui.interact(arrow_id.as_str(), arrow_rect, true);
+
+                if arrow_interaction.clicked {
+                    self.toggle_expanded(entity);
+                    arrow_clicked = true;
+                }
+            }
+
+            // Draw arrow (baseline near bottom of row)
+            let arrow = if is_expanded { "▼" } else { "▶" };
+            ctx.ui.label(arrow, Vec2::new(x, y + ROW_HEIGHT - 4.0));
+        }
+
+        let name_x = x + if has_children { ARROW_WIDTH } else { 0.0 };
+        let geometry = RowGeometry {
+            x,
+            name_x,
+            row_rect,
+            has_children,
+            is_selected,
+        };
+
+        if self.renaming == Some(entity) {
+            self.render_rename_field(ctx, entity, name_x, y);
+        } else {
+            Self::render_row_label(ctx, entity, &geometry, arrow_clicked);
+        }
+    }
+
+    fn render_rename_field(
+        &mut self,
+        ctx: &mut NodeRenderCtx<'_>,
+        entity: EntityId,
+        name_x: f32,
+        y: f32,
+    ) {
+        let bounds = ctx.bounds;
+        // Inline rename replaces the label AND the row's click handling —
+        // the text field owns the row while it is open.
+        let rename_id = Self::rename_widget_id(entity);
+        let field_rect = ui::Rect::new(
+            name_x,
+            y + 1.0,
+            (bounds.x + bounds.width - name_x - BASE_PADDING).max(60.0),
+            ROW_HEIGHT - 2.0,
+        );
+        let current = ctx
+            .world
+            .get::<Name>(entity)
+            .map(|name| name.as_str().to_string())
+            .unwrap_or_default();
+        if let Some(committed) = ctx.ui.text_input(rename_id.as_str(), &current, field_rect) {
+            self.renaming = None;
+            *ctx.rename_committed = Some((entity, committed));
+        } else if !ctx.ui.is_focused(rename_id.as_str()) {
+            // Escape (or focus lost without a commit) — plain cancel.
+            self.renaming = None;
+        }
+    }
+
+    fn render_row_label(
+        ctx: &mut NodeRenderCtx<'_>,
+        entity: EntityId,
+        row: &RowGeometry,
+        arrow_clicked: bool,
+    ) {
+        let bounds = ctx.bounds;
+        // Row interaction - use area after arrow for entities with children
+        let row_interact_x = if row.has_children { row.x + ARROW_WIDTH } else { bounds.x };
+        let row_interact_width = bounds.x + bounds.width - row_interact_x;
+        let row_interact_rect =
+            common::Rect::new(row_interact_x, row.row_rect.y, row_interact_width, ROW_HEIGHT);
+
+        let row_id = format!("hierarchy_row_{}", entity.value());
+        let row_interaction = ctx.ui.interact(row_id.as_str(), row_interact_rect, true);
+
+        if row_interaction.clicked && !arrow_clicked {
+            ctx.clicked_entities.push(entity);
+        }
+
+        // Hover highlight (full row width for visual consistency)
+        if row_interaction.state == ui::WidgetState::Hovered && !row.is_selected {
+            ctx.ui.rect(row.row_rect, ctx.theme.hover_fill);
+        }
+
+        // Entity name (baseline near bottom of row)
+        let name = Self::entity_display_name(ctx.world, entity);
+        ctx.ui.label(&name, Vec2::new(row.name_x, row.row_rect.y + ROW_HEIGHT - 4.0));
+    }
+
+    fn render_children(
+        &mut self,
+        ctx: &mut NodeRenderCtx<'_>,
+        entity: EntityId,
+        depth: usize,
+        y: f32,
+    ) -> f32 {
+        let mut next_y = y;
+        if let Some(children) = ctx.world.get_children(entity) {
+            // Clone to avoid borrow issues
+            let children_vec: Vec<EntityId> = children.to_vec();
+            for child in children_vec {
+                next_y = self.render_node(ctx, child, depth + 1, next_y);
+            }
+        }
         next_y
     }
 }
 
+/// One row's placement, computed once so the label half of the row does
+/// not take it as seven parameters.
+struct RowGeometry {
+    x: f32,
+    name_x: f32,
+    row_rect: common::Rect,
+    has_children: bool,
+    is_selected: bool,
+}
 
 #[cfg(test)]
 mod tests;

@@ -99,40 +99,9 @@ macro_rules! registry_edit_block {
     };
 }
 
-/// Category grouping for the add-component popup.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ComponentCategory {
-    Core,
-    Rendering,
-    Physics,
-    Audio,
-    Gameplay,
-    Ui,
-}
+mod category;
 
-impl ComponentCategory {
-    /// All categories in display order.
-    pub const ALL: [ComponentCategory; 6] = [
-        ComponentCategory::Core,
-        ComponentCategory::Rendering,
-        ComponentCategory::Physics,
-        ComponentCategory::Audio,
-        ComponentCategory::Gameplay,
-        ComponentCategory::Ui,
-    ];
-
-    /// Display name for the category header.
-    pub fn label(self) -> &'static str {
-        match self {
-            ComponentCategory::Core => "Core",
-            ComponentCategory::Rendering => "Rendering",
-            ComponentCategory::Physics => "Physics",
-            ComponentCategory::Audio => "Audio",
-            ComponentCategory::Gameplay => "Gameplay",
-            ComponentCategory::Ui => "UI",
-        }
-    }
-}
+pub use category::{categorized_components, ComponentCategory};
 
 /// Generates the editor's component dispatch from a single component list.
 ///
@@ -306,7 +275,7 @@ macro_rules! editor_component_registry {
             // a remove [X] — typed field editors are the opt-in overlay this
             // registry provides, and game types don't have one.
             let mut dynamic_removals: Vec<String> = Vec::new();
-            y = render_dynamic_edit_blocks(
+            y = dynamic::render_dynamic_edit_blocks(
                 frame, world, entity, y,
                 &mut component_index, &mut dynamic_removals,
             );
@@ -489,36 +458,6 @@ pub mod dynamic;
 
 pub use dynamic::available_dynamic_components;
 
-/// Render the read-only edit blocks for every dynamic-tier component on the
-/// entity: registry-name header with a remove [X] plus the serde value
-/// display. Removals are returned by name for the caller to execute as
-/// `RemoveComponentCommand::dynamic`s.
-fn render_dynamic_edit_blocks(
-    frame: &mut InspectorFrame<'_>,
-    world: &World,
-    entity: EntityId,
-    mut y: f32,
-    component_index: &mut usize,
-    removals: &mut Vec<String>,
-) -> f32 {
-    for name in dynamic::dynamic_components_on(world, entity) {
-        let Some(value) = dynamic::dynamic_value(world, entity, &name) else {
-            continue;
-        };
-        y += frame.section_gap;
-        let mut inspector = EditableInspector::new(frame.ui, frame.field_style, frame.x, y)
-            .with_component_index(*component_index)
-            .with_width(frame.width);
-        if inspector.header_with_remove(&name) {
-            removals.push(name.clone());
-        }
-        y = inspector.y();
-        y = inspect_component(frame.ui, "", &value, frame.x + 16.0, y, frame.inspect_style);
-        *component_index += 1;
-    }
-    y
-}
-
 /// Restore a set of stored components onto an entity.
 pub fn restore_components(world: &mut World, entity: EntityId, components: &[StoredComponent]) {
     for component in components {
@@ -533,23 +472,6 @@ pub fn available_components(world: &World, entity: EntityId) -> Vec<ComponentKin
         .iter()
         .copied()
         .filter(|kind| !kind.is_present(world, entity))
-        .collect()
-}
-
-/// Returns all component kinds grouped by category, in display order.
-/// Categories with no components are omitted.
-pub fn categorized_components() -> Vec<(ComponentCategory, Vec<ComponentKind>)> {
-    ComponentCategory::ALL
-        .iter()
-        .map(|&category| {
-            let kinds: Vec<ComponentKind> = ComponentKind::ALL
-                .iter()
-                .copied()
-                .filter(|kind| kind.category() == category)
-                .collect();
-            (category, kinds)
-        })
-        .filter(|(_, kinds)| !kinds.is_empty())
         .collect()
 }
 

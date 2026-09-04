@@ -9,8 +9,12 @@ use std::path::Path;
 
 use glam::Vec2;
 
-use editor::{fit_rect, scan_assets, AssetKind, CommandHistory, DragPayload, EditorContext};
+use editor::{
+    fit_rect, scan_assets, AssetKind, CommandHistory, DragDropState, DragPayload, EditorContext,
+    EditorTheme,
+};
 use engine_core::contexts::GameContext;
+use engine_core::AssetManager;
 use renderer::texture::TextureHandle;
 
 use crate::entity_ops;
@@ -48,41 +52,9 @@ pub(super) fn render_asset_browser(
     bounds: common::Rect,
     command_history: &mut CommandHistory,
 ) {
-    // ── Scan (first open or Rescan click) ───────────────────────────
-    let rescan_bounds = ui::Rect::new(bounds.x + PADDING, bounds.y + 2.0, 70.0, 20.0);
-    let rescan_clicked = ctx.ui.button("asset_rescan", "Rescan", rescan_bounds);
-    if !editor.asset_browser.scanned || rescan_clicked {
-        let entries = scan_assets(Path::new(ctx.assets.base_path()));
-        editor.asset_browser.apply_scan(entries);
-    }
+    render_header(editor, ctx.ui, ctx.assets, bounds);
+    load_pending_thumbnails(&mut editor.asset_browser.entries, ctx.assets);
 
-    let count_label = format!("{} assets", editor.asset_browser.entries.len());
-    ctx.ui.label_styled(
-        &count_label,
-        Vec2::new(rescan_bounds.x + rescan_bounds.width + 10.0, bounds.y + 16.0),
-        editor.theme.text_muted,
-        editor.theme.fonts.small,
-    );
-
-    // ── Lazy thumbnail loading (bounded per frame) ──────────────────
-    let mut loads = 0;
-    for entry in editor.asset_browser.entries.iter_mut() {
-        if loads >= MAX_THUMBNAIL_LOADS_PER_FRAME {
-            break;
-        }
-        if entry.kind == AssetKind::Image && entry.texture_handle.is_none() && !entry.load_failed {
-            match ctx.assets.load_texture(&entry.relative_path) {
-                Ok(handle) => entry.texture_handle = Some(handle.id),
-                Err(e) => {
-                    entry.load_failed = true;
-                    log::warn!("Asset browser: failed to load '{}': {e}", entry.relative_path);
-                }
-            }
-            loads += 1;
-        }
-    }
-
-    // ── Scroll (shared ScrollState) ────────────────────────────────
     let grid_origin = Vec2::new(bounds.x + PADDING, bounds.y + HEADER_HEIGHT + PADDING);
     let columns = (((bounds.width - PADDING * 2.0) / (TILE_SIZE + TILE_GAP)) as usize).max(1);
     let rows = editor.asset_browser.entries.len().div_ceil(columns);
@@ -98,105 +70,185 @@ pub(super) fn render_asset_browser(
         viewport_height,
     );
 
-    // ── Tiles ───────────────────────────────────────────────────────
     let is_playing = editor.is_playing();
     let mouse_pos = ctx.ui.mouse_pos();
     let mut assign: Option<(u32, String)> = None;
 
-    for i in 0..editor.asset_browser.entries.len() {
-        let slot = tile_rect(i, columns, grid_origin, scroll);
+    for index in 0..editor.asset_browser.entries.len() {
+        let slot = tile_rect(index, columns, grid_origin, scroll);
         // Cull tiles fully outside the panel (the clip rect trims partials)
         if slot.y + TILE_SIZE + TILE_LABEL_HEIGHT < bounds.y || slot.y > bounds.y + bounds.height {
             continue;
         }
 
-        let entry = &editor.asset_browser.entries[i];
-        let slot_ui = ui::Rect::new(slot.x, slot.y, slot.width, slot.height);
+        let entry = &editor.asset_browser.entries[index];
+        render_tile(ctx.ui, &editor.theme, ctx.assets, entry, slot);
 
-        // Tile background + content
-        ctx.ui.rect_rounded(slot_ui, editor.theme.surface_3, 4.0);
-        match (entry.kind, entry.texture_handle) {
-            (AssetKind::Image, Some(handle)) => {
-                let (w, h) = ctx
-                    .assets
-                    .get_texture(TextureHandle { id: handle })
-                    .map(|t| (t.width, t.height))
-                    .unwrap_or((1, 1));
-                let img = fit_rect(w, h, common::Rect::new(slot.x + 3.0, slot.y + 3.0, slot.width - 6.0, slot.height - 6.0));
-                ctx.ui.image(
-                    ui::Rect::new(img.x, img.y, img.width, img.height),
-                    handle,
-                    ui::Color::WHITE,
-                );
-            }
-            (AssetKind::Image, None) => {
-                let color = if entry.load_failed { editor.theme.error_red } else { editor.theme.text_muted };
-                ctx.ui.label_in_bounds_styled(
-                    if entry.load_failed { "!" } else { "…" },
-                    slot_ui,
-                    ui::TextAlign::Center,
-                    color,
-                    editor.theme.fonts.heading,
-                    0.0,
-                );
-            }
-            (AssetKind::Scene, _) => {
-                // Simple scene glyph: an accent page outline with a fold tick
-                let page = ui::Rect::new(slot.x + 20.0, slot.y + 12.0, slot.width - 40.0, slot.height - 24.0);
-                ctx.ui.rect_border(page, editor.theme.accent_cyan, 1.5, 2.0);
-                ctx.ui.rect(
-                    ui::Rect::new(page.x + page.width - 12.0, page.y, 12.0, 2.0),
-                    editor.theme.accent_cyan,
-                );
-            }
-        }
-
-        // Filename label under the tile (clipped by the panel rect)
-        ctx.ui.label_in_bounds_styled(
-            &entry.name,
-            ui::Rect::new(slot.x, slot.y + TILE_SIZE, TILE_SIZE, TILE_LABEL_HEIGHT),
-            ui::TextAlign::Center,
-            editor.theme.text_secondary,
-            editor.theme.fonts.small,
-            0.0,
-        );
-
-        if is_playing {
-            continue;
-        }
-
-        // Interaction: press arms a drag (images only), plain click assigns
-        let result = ctx.ui.interact(ui::WidgetId::from_str_index("asset_tile", i), slot_ui, true);
-        let hovered = slot_ui.contains(mouse_pos);
-        if hovered {
-            ctx.ui.rect_border(slot_ui, editor.theme.hover_fill, 1.5, 4.0);
-        }
-
-        if let (AssetKind::Image, Some(handle)) = (entry.kind, entry.texture_handle) {
-            if result.state == ui::WidgetState::Active && ctx.ui.mouse_just_pressed() {
-                editor.drag_drop.arm(
-                    DragPayload::Texture { handle, path: entry.relative_path.clone() },
-                    mouse_pos,
-                );
-            }
-            if result.clicked && !editor.drag_drop.suppresses_click() {
-                assign = Some((handle, entry.relative_path.clone()));
+        if !is_playing {
+            let assignment = tile_interaction(
+                ctx.ui, &mut editor.drag_drop, &editor.theme, entry, index, slot, mouse_pos,
+            );
+            if let Some(assignment) = assignment {
+                assign = Some(assignment);
             }
         }
     }
 
     // Click-to-assign: set the selected entity's sprite texture
     if let Some((handle, path)) = assign {
-        match editor.selection.primary() {
-            Some(entity) if entity_ops::assign_sprite_texture(ctx.world, entity, handle, command_history) => {
-                editor.status_bar.show_message(format!("Assigned {path}"));
+        assign_clicked_texture(editor, ctx.world, command_history, handle, &path);
+    }
+}
+
+fn render_header(
+    editor: &mut EditorContext,
+    ui: &mut ui::UIContext,
+    assets: &AssetManager,
+    bounds: common::Rect,
+) {
+    let rescan_bounds = ui::Rect::new(bounds.x + PADDING, bounds.y + 2.0, 70.0, 20.0);
+    let rescan_clicked = ui.button("asset_rescan", "Rescan", rescan_bounds);
+    if !editor.asset_browser.scanned || rescan_clicked {
+        let entries = scan_assets(Path::new(assets.base_path()));
+        editor.asset_browser.apply_scan(entries);
+    }
+
+    let count_label = format!("{} assets", editor.asset_browser.entries.len());
+    ui.label_styled(
+        &count_label,
+        Vec2::new(rescan_bounds.x + rescan_bounds.width + 10.0, bounds.y + 16.0),
+        editor.theme.text_muted,
+        editor.theme.fonts.small,
+    );
+}
+
+fn load_pending_thumbnails(
+    entries: &mut [editor::AssetEntry],
+    assets: &mut AssetManager,
+) {
+    let mut loads = 0;
+    for entry in entries.iter_mut() {
+        if loads >= MAX_THUMBNAIL_LOADS_PER_FRAME {
+            break;
+        }
+        if entry.kind == AssetKind::Image && entry.texture_handle.is_none() && !entry.load_failed {
+            match assets.load_texture(&entry.relative_path) {
+                Ok(handle) => entry.texture_handle = Some(handle.id),
+                Err(error) => {
+                    entry.load_failed = true;
+                    log::warn!("Asset browser: failed to load '{}': {error}", entry.relative_path);
+                }
             }
-            Some(_) => {
-                editor.status_bar.show_message("Select an entity with a Sprite to assign textures");
-            }
-            None => {
-                editor.status_bar.show_message("Select an entity first (or drag onto the scene)");
-            }
+            loads += 1;
+        }
+    }
+}
+
+fn render_tile(
+    ui: &mut ui::UIContext,
+    theme: &editor::EditorTheme,
+    assets: &AssetManager,
+    entry: &editor::AssetEntry,
+    slot: common::Rect,
+) {
+    let slot_ui = ui::Rect::new(slot.x, slot.y, slot.width, slot.height);
+
+    // Tile background + content
+    ui.rect_rounded(slot_ui, theme.surface_3, 4.0);
+    match (entry.kind, entry.texture_handle) {
+        (AssetKind::Image, Some(handle)) => {
+            let (width, height) = assets
+                .get_texture(TextureHandle { id: handle })
+                .map(|t| (t.width, t.height))
+                .unwrap_or((1, 1));
+            let img = fit_rect(width, height, common::Rect::new(slot.x + 3.0, slot.y + 3.0, slot.width - 6.0, slot.height - 6.0));
+            ui.image(
+                ui::Rect::new(img.x, img.y, img.width, img.height),
+                handle,
+                ui::Color::WHITE,
+            );
+        }
+        (AssetKind::Image, None) => {
+            let color = if entry.load_failed { theme.error_red } else { theme.text_muted };
+            ui.label_in_bounds_styled(
+                if entry.load_failed { "!" } else { "…" },
+                slot_ui,
+                ui::TextAlign::Center,
+                color,
+                theme.fonts.heading,
+                0.0,
+            );
+        }
+        (AssetKind::Scene, _) => {
+            // Simple scene glyph: an accent page outline with a fold tick
+            let page = ui::Rect::new(slot.x + 20.0, slot.y + 12.0, slot.width - 40.0, slot.height - 24.0);
+            ui.rect_border(page, theme.accent_cyan, 1.5, 2.0);
+            ui.rect(
+                ui::Rect::new(page.x + page.width - 12.0, page.y, 12.0, 2.0),
+                theme.accent_cyan,
+            );
+        }
+    }
+
+    // Filename label under the tile (clipped by the panel rect)
+    ui.label_in_bounds_styled(
+        &entry.name,
+        ui::Rect::new(slot.x, slot.y + TILE_SIZE, TILE_SIZE, TILE_LABEL_HEIGHT),
+        ui::TextAlign::Center,
+        theme.text_secondary,
+        theme.fonts.small,
+        0.0,
+    );
+}
+
+/// Press arms a drag (images only), a plain click assigns: the clicked
+/// tile's texture handle and path, if any.
+fn tile_interaction(
+    ui: &mut ui::UIContext,
+    drag_drop: &mut DragDropState,
+    theme: &EditorTheme,
+    entry: &editor::AssetEntry,
+    index: usize,
+    slot: common::Rect,
+    mouse_pos: Vec2,
+) -> Option<(u32, String)> {
+    let slot_ui = ui::Rect::new(slot.x, slot.y, slot.width, slot.height);
+    let result = ui.interact(ui::WidgetId::from_str_index("asset_tile", index), slot_ui, true);
+    let hovered = slot_ui.contains(mouse_pos);
+    if hovered {
+        ui.rect_border(slot_ui, theme.hover_fill, 1.5, 4.0);
+    }
+
+    if let (AssetKind::Image, Some(handle)) = (entry.kind, entry.texture_handle) {
+        if result.state == ui::WidgetState::Active && ui.mouse_just_pressed() {
+            drag_drop.arm(
+                DragPayload::Texture { handle, path: entry.relative_path.clone() },
+                mouse_pos,
+            );
+        }
+        if result.clicked && !drag_drop.suppresses_click() {
+            return Some((handle, entry.relative_path.clone()));
+        }
+    }
+    None
+}
+
+fn assign_clicked_texture(
+    editor: &mut EditorContext,
+    world: &mut ecs::World,
+    command_history: &mut CommandHistory,
+    handle: u32,
+    path: &str,
+) {
+    match editor.selection.primary() {
+        Some(entity) if entity_ops::assign_sprite_texture(world, entity, handle, command_history) => {
+            editor.status_bar.show_message(format!("Assigned {path}"));
+        }
+        Some(_) => {
+            editor.status_bar.show_message("Select an entity with a Sprite to assign textures");
+        }
+        None => {
+            editor.status_bar.show_message("Select an entity first (or drag onto the scene)");
         }
     }
 }

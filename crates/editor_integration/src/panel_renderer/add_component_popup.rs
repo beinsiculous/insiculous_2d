@@ -2,12 +2,12 @@
 
 use glam::Vec2;
 
-use ecs::EntityId;
+use ecs::{EntityId, World};
 use editor::{
     available_components, categorized_components, layout, CommandHistory,
     ComponentKind, EditorContext, FieldId,
 };
-use engine_core::contexts::GameContext;
+use ui::UIContext;
 
 /// One row of the popup, in draw order.
 #[derive(Debug, PartialEq, Eq)]
@@ -29,13 +29,11 @@ fn popup_rows(available: &[ComponentKind], available_dynamic: &[String]) -> Vec<
             .copied()
             .filter(|k| available.contains(k))
             .collect();
-        if visible.is_empty() {
-            continue;
-        }
-
-        rows.push(PopupRow::Heading(category.label()));
-        for kind in visible {
-            rows.push(PopupRow::Typed(kind));
+        if !visible.is_empty() {
+            rows.push(PopupRow::Heading(category.label()));
+            for kind in visible {
+                rows.push(PopupRow::Typed(kind));
+            }
         }
     }
 
@@ -49,19 +47,20 @@ fn popup_rows(available: &[ComponentKind], available_dynamic: &[String]) -> Vec<
     rows
 }
 
-/// Height of the popup for these rows: top padding plus heading and button rows.
+/// Estimate the popup's rendered height from its rows:
+/// vertical padding (8px) + each row's height (18px heading, 24px item).
 fn popup_height(rows: &[PopupRow]) -> f32 {
     let mut height = 8.0;
     for row in rows {
-        match row {
-            PopupRow::Heading(_) => height += 18.0,
-            PopupRow::Typed(_) | PopupRow::Game(_) => height += 24.0,
-        }
+        height += match row {
+            PopupRow::Heading(_) => 18.0,
+            PopupRow::Typed(_) | PopupRow::Game(_) => 24.0,
+        };
     }
     height
 }
 
-/// Where the popup opens: below its anchor when it fits the window,
+/// Top Y for the popup: opened below the [+ Add Component] button when it fits;
 /// flipped above (`anchor - button_height - popup`) otherwise, clamped to
 /// the window top. The popup is window-anchored (not panel-anchored)
 /// because the Floating layer frees it from the panel clip.
@@ -78,31 +77,33 @@ fn popup_anchor_y(below_y: f32, button_height: f32, popup_height: f32, window_bo
 /// next y for the inspector's scroll measurement.
 pub(super) fn render_add_component_section(
     editor: &mut EditorContext,
-    ctx: &mut GameContext,
-    entity_id: EntityId,
+    ui: &mut UIContext,
+    world: &mut World,
     command_history: &mut CommandHistory,
-    content_x: f32,
-    mut y: f32,
+    entity_id: EntityId,
+    origin: Vec2,
     component_index: usize,
 ) -> f32 {
+    let content_x = origin.x;
+    let mut y = origin.y;
     // --- [+ Add Component] button ---
     y += layout::LINE_HEIGHT;
     let button_bounds = ui::Rect::new(content_x, y, 160.0, 24.0);
     let add_button_id = FieldId::slot(component_index, editor::WidgetSlot::AddButton);
-    if ctx.ui.button(add_button_id, "+ Add Component", button_bounds) {
+    if ui.button(add_button_id, "+ Add Component", button_bounds) {
         editor.toggle_add_component_popup();
     }
     y += 28.0;
 
     // --- Add Component Popup ---
     if editor.is_add_component_popup_open() {
-        let available = available_components(ctx.world, entity_id);
+        let available = available_components(world, entity_id);
         // Dynamic-tier (game-registered) components get their own popup
         // section.
         let available_dynamic =
-            editor::stored_component::available_dynamic_components(ctx.world, entity_id);
+            editor::stored_component::available_dynamic_components(world, entity_id);
         if available.is_empty() && available_dynamic.is_empty() {
-            ctx.ui.label(
+            ui.label(
                 "(all components added)",
                 Vec2::new(content_x + layout::PADDING, y),
             );
@@ -113,12 +114,12 @@ pub(super) fn render_add_component_section(
             // the button, flip up when it would overflow the window bottom.
             let rows = popup_rows(&available, &available_dynamic);
             let height = popup_height(&rows);
-            let popup_y0 = popup_anchor_y(y, 28.0, height, ctx.window_size.y);
+            let popup_y0 = popup_anchor_y(y, 28.0, height, ui.window_size().y);
             let popup_bounds = ui::Rect::new(content_x, popup_y0, 180.0, height);
             // Floating layer + input blocking: escapes the inspector clip
             // rect and widgets underneath go inert while the mouse is on it.
-            ctx.ui.begin_overlay(popup_bounds);
-            ctx.ui.panel_styled(
+            ui.begin_overlay(popup_bounds);
+            ui.panel_styled(
                 popup_bounds,
                 editor.theme.surface_4,
                 editor.theme.popup_border,
@@ -131,7 +132,7 @@ pub(super) fn render_add_component_section(
             for row in &rows {
                 match row {
                     PopupRow::Heading(label) => {
-                        ctx.ui.label_styled(
+                        ui.label_styled(
                             label,
                             Vec2::new(content_x + layout::PADDING, popup_y),
                             editor.theme.text_muted,
@@ -145,9 +146,9 @@ pub(super) fn render_add_component_section(
                             component_index,
                             editor::WidgetSlot::PopupRow(popup_button_index),
                         );
-                        if ctx.ui.button(button_id, kind.display_name(), button_bounds) {
+                        if ui.button(button_id, kind.display_name(), button_bounds) {
                             let cmd = editor::commands::AddComponentCommand::new(entity_id, *kind);
-                            command_history.execute(Box::new(cmd), ctx.world);
+                            command_history.execute(Box::new(cmd), world);
                             editor.close_add_component_popup();
                             log::info!("Added component: {}", kind.display_name());
                         }
@@ -160,12 +161,12 @@ pub(super) fn render_add_component_section(
                             component_index,
                             editor::WidgetSlot::PopupRow(popup_button_index),
                         );
-                        if ctx.ui.button(button_id, name, button_bounds) {
+                        if ui.button(button_id, name, button_bounds) {
                             let cmd = editor::commands::AddComponentCommand::dynamic(
                                 entity_id,
                                 name.clone(),
                             );
-                            command_history.execute(Box::new(cmd), ctx.world);
+                            command_history.execute(Box::new(cmd), world);
                             editor.close_add_component_popup();
                             log::info!("Added dynamic component: {}", name);
                         }
@@ -174,7 +175,7 @@ pub(super) fn render_add_component_section(
                     }
                 }
             }
-            ctx.ui.end_overlay();
+            ui.end_overlay();
         }
     }
 

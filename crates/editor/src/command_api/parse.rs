@@ -104,39 +104,146 @@ fn entity_ref(token: &str) -> Result<EntityRef, ApiError> {
     }
 }
 
+fn parse_set(line: &str) -> Result<Request, ApiError> {
+    let (fixed, rest) = split_fixed_tokens(line, 3)?;
+    if fixed.len() < 3 || rest.is_empty() {
+        return Err(ApiError::Parse(
+            "usage: set <entity> <Component> <json>".to_string(),
+        ));
+    }
+    Ok(Request::Write(WriteCmd::Pure(PureWrite::Set {
+        entity: entity_ref(&fixed[1])?,
+        component: fixed[2].clone(),
+        patch: parse_json_rest(rest, "set")?,
+    })))
+}
+
+fn parse_add(line: &str) -> Result<Request, ApiError> {
+    let (fixed, rest) = split_fixed_tokens(line, 3)?;
+    if fixed.len() < 3 {
+        return Err(ApiError::Parse(
+            "usage: add <entity> <Component> [json]".to_string(),
+        ));
+    }
+    let value = if rest.is_empty() { None } else { Some(parse_json_rest(rest, "add")?) };
+    Ok(Request::Write(WriteCmd::Pure(PureWrite::Add {
+        entity: entity_ref(&fixed[1])?,
+        component: fixed[2].clone(),
+        value,
+    })))
+}
+
+fn parse_describe(tokens: &mut impl Iterator<Item = String>) -> Result<Request, ApiError> {
+    let target = tokens
+        .next()
+        .ok_or_else(|| ApiError::Parse("describe needs an entity (name or #id)".to_string()))?;
+    Ok(Request::Query(Query::Describe { entity: entity_ref(&target)? }))
+}
+
+fn parse_remove(tokens: &mut impl Iterator<Item = String>) -> Result<Request, ApiError> {
+    let (entity, component) = (tokens.next(), tokens.next());
+    let (Some(entity), Some(component)) = (entity, component) else {
+        return Err(ApiError::Parse("usage: remove <entity> <Component>".to_string()));
+    };
+    Ok(Request::Write(WriteCmd::Pure(PureWrite::Remove {
+        entity: entity_ref(&entity)?,
+        component,
+    })))
+}
+
+fn parse_rename(tokens: &mut impl Iterator<Item = String>) -> Result<Request, ApiError> {
+    let (entity, name) = (tokens.next(), tokens.next());
+    let (Some(entity), Some(name)) = (entity, name) else {
+        return Err(ApiError::Parse("usage: rename <entity> <name>".to_string()));
+    };
+    Ok(Request::Write(WriteCmd::Pure(PureWrite::Rename { entity: entity_ref(&entity)?, name })))
+}
+
+/// A trailing `x y` numeric pair is a position; anything before it (or a lone token) is the name.
+fn split_trailing_position(remaining: &mut Vec<String>) -> Option<(f32, f32)> {
+    if remaining.len() >= 2 {
+        let maybe_y = remaining[remaining.len() - 1].parse::<f32>();
+        let maybe_x = remaining[remaining.len() - 2].parse::<f32>();
+        match (maybe_x, maybe_y) {
+            (Ok(x), Ok(y)) if x.is_finite() && y.is_finite() => {
+                remaining.truncate(remaining.len() - 2);
+                Some((x, y))
+            }
+            _ => None,
+        }
+    } else {
+        None
+    }
+}
+
+fn parse_create(tokens: &mut impl Iterator<Item = String>) -> Result<Request, ApiError> {
+    let archetype_token = tokens
+        .next()
+        .ok_or_else(|| ApiError::Parse("usage: create <archetype> [name] [x y]".to_string()))?;
+    let archetype = Archetype::from_kebab(&archetype_token).ok_or_else(|| {
+        ApiError::Invalid(format!(
+            "unknown archetype \"{archetype_token}\" — known: {}",
+            ARCHETYPES.join(", ")
+        ))
+    })?;
+    let mut remaining: Vec<String> = tokens.collect();
+    let position = split_trailing_position(&mut remaining);
+    let name = match remaining.len() {
+        0 => None,
+        1 => Some(remaining.remove(0)),
+        _ => {
+            return Err(ApiError::Parse(
+                "usage: create <archetype> [name] [x y] (quote a name with spaces)"
+                    .to_string(),
+            ))
+        }
+    };
+    Ok(Request::Write(WriteCmd::Hosted(HostedWrite::Create {
+        archetype,
+        name,
+        position,
+    })))
+}
+
+fn parse_delete(tokens: &mut impl Iterator<Item = String>) -> Result<Request, ApiError> {
+    let entity = tokens
+        .next()
+        .ok_or_else(|| ApiError::Parse("usage: delete <entity>".to_string()))?;
+    Ok(Request::Write(WriteCmd::Pure(PureWrite::Delete { entity: entity_ref(&entity)? })))
+}
+
+fn parse_select(tokens: &mut impl Iterator<Item = String>) -> Result<Request, ApiError> {
+    let target = tokens
+        .next()
+        .ok_or_else(|| ApiError::Parse("usage: select <entity>|none".to_string()))?;
+    let entity = if target == "none" { None } else { Some(entity_ref(&target)?) };
+    Ok(Request::Write(WriteCmd::Pure(PureWrite::Select { entity })))
+}
+
+fn parse_batch(tokens: &mut impl Iterator<Item = String>) -> Result<Request, ApiError> {
+    let sub = tokens
+        .next()
+        .ok_or_else(|| ApiError::Parse("usage: batch begin [name] | end | abort".to_string()))?;
+    match sub.as_str() {
+        "begin" => Ok(Request::Write(WriteCmd::Pure(PureWrite::BatchBegin { name: tokens.next() }))),
+        "end" => Ok(Request::Write(WriteCmd::Pure(PureWrite::BatchEnd))),
+        "abort" => Ok(Request::Write(WriteCmd::Pure(PureWrite::BatchAbort))),
+        other => {
+            Err(ApiError::Parse(format!(
+                "unknown batch action \"{other}\" — expected begin, end, or abort"
+            )))
+        }
+    }
+}
+
 /// Parse one request line into a [`Request`].
 pub fn parse_line(line: &str) -> Result<Request, ApiError> {
     // `set`/`add` carry rest-of-line JSON: peel their fixed tokens without
     // tokenizing the remainder.
     let first = line.split_whitespace().next().unwrap_or("");
     match first {
-        "set" => {
-            let (fixed, rest) = split_fixed_tokens(line, 3)?;
-            if fixed.len() < 3 || rest.is_empty() {
-                return Err(ApiError::Parse(
-                    "usage: set <entity> <Component> <json>".to_string(),
-                ));
-            }
-            return Ok(Request::Write(WriteCmd::Pure(PureWrite::Set {
-                entity: entity_ref(&fixed[1])?,
-                component: fixed[2].clone(),
-                patch: parse_json_rest(rest, "set")?,
-            })));
-        }
-        "add" => {
-            let (fixed, rest) = split_fixed_tokens(line, 3)?;
-            if fixed.len() < 3 {
-                return Err(ApiError::Parse(
-                    "usage: add <entity> <Component> [json]".to_string(),
-                ));
-            }
-            let value = if rest.is_empty() { None } else { Some(parse_json_rest(rest, "add")?) };
-            return Ok(Request::Write(WriteCmd::Pure(PureWrite::Add {
-                entity: entity_ref(&fixed[1])?,
-                component: fixed[2].clone(),
-                value,
-            })));
-        }
+        "set" => return parse_set(line),
+        "add" => return parse_add(line),
         _ => {}
     }
 
@@ -148,105 +255,19 @@ pub fn parse_line(line: &str) -> Result<Request, ApiError> {
 
     let request = match verb.as_str() {
         "list" => Request::Query(Query::ListEntities { filter: tokens.next() }),
-        "describe" => {
-            let target = tokens
-                .next()
-                .ok_or_else(|| ApiError::Parse("describe needs an entity (name or #id)".to_string()))?;
-            Request::Query(Query::Describe { entity: entity_ref(&target)? })
-        }
+        "describe" => parse_describe(&mut tokens)?,
         "selection" => Request::Query(Query::Selection),
         "scene" => Request::Query(Query::SceneInfo),
         "commands" => Request::Query(Query::ListCommands),
-        "remove" => {
-            let (entity, component) = (tokens.next(), tokens.next());
-            let (Some(entity), Some(component)) = (entity, component) else {
-                return Err(ApiError::Parse("usage: remove <entity> <Component>".to_string()));
-            };
-            Request::Write(WriteCmd::Pure(PureWrite::Remove {
-                entity: entity_ref(&entity)?,
-                component,
-            }))
-        }
-        "rename" => {
-            let (entity, name) = (tokens.next(), tokens.next());
-            let (Some(entity), Some(name)) = (entity, name) else {
-                return Err(ApiError::Parse("usage: rename <entity> <name>".to_string()));
-            };
-            Request::Write(WriteCmd::Pure(PureWrite::Rename { entity: entity_ref(&entity)?, name }))
-        }
-        "create" => {
-            let archetype_token = tokens
-                .next()
-                .ok_or_else(|| ApiError::Parse("usage: create <archetype> [name] [x y]".to_string()))?;
-            let archetype = Archetype::from_kebab(&archetype_token).ok_or_else(|| {
-                ApiError::Invalid(format!(
-                    "unknown archetype \"{archetype_token}\" — known: {}",
-                    ARCHETYPES.join(", ")
-                ))
-            })?;
-            let mut remaining: Vec<String> = tokens.by_ref().collect();
-            // A trailing `x y` numeric pair is a position; anything before
-            // it (or a lone token) is the name.
-            let position = if remaining.len() >= 2 {
-                let maybe_y = remaining[remaining.len() - 1].parse::<f32>();
-                let maybe_x = remaining[remaining.len() - 2].parse::<f32>();
-                match (maybe_x, maybe_y) {
-                    (Ok(x), Ok(y)) if x.is_finite() && y.is_finite() => {
-                        remaining.truncate(remaining.len() - 2);
-                        Some((x, y))
-                    }
-                    _ => None,
-                }
-            } else {
-                None
-            };
-            let name = match remaining.len() {
-                0 => None,
-                1 => Some(remaining.remove(0)),
-                _ => {
-                    return Err(ApiError::Parse(
-                        "usage: create <archetype> [name] [x y] (quote a name with spaces)"
-                            .to_string(),
-                    ))
-                }
-            };
-            return Ok(Request::Write(WriteCmd::Hosted(HostedWrite::Create {
-                archetype,
-                name,
-                position,
-            })));
-        }
-        "delete" => {
-            let entity = tokens
-                .next()
-                .ok_or_else(|| ApiError::Parse("usage: delete <entity>".to_string()))?;
-            Request::Write(WriteCmd::Pure(PureWrite::Delete { entity: entity_ref(&entity)? }))
-        }
-        "select" => {
-            let target = tokens
-                .next()
-                .ok_or_else(|| ApiError::Parse("usage: select <entity>|none".to_string()))?;
-            let entity = if target == "none" { None } else { Some(entity_ref(&target)?) };
-            Request::Write(WriteCmd::Pure(PureWrite::Select { entity }))
-        }
+        "remove" => parse_remove(&mut tokens)?,
+        "rename" => parse_rename(&mut tokens)?,
+        "create" => return parse_create(&mut tokens),
+        "delete" => parse_delete(&mut tokens)?,
+        "select" => parse_select(&mut tokens)?,
         "undo" => Request::Write(WriteCmd::Pure(PureWrite::Undo)),
         "redo" => Request::Write(WriteCmd::Pure(PureWrite::Redo)),
         "save" => Request::Write(WriteCmd::Hosted(HostedWrite::Save { path: tokens.next() })),
-        "batch" => {
-            let sub = tokens
-                .next()
-                .ok_or_else(|| ApiError::Parse("usage: batch begin [name] | end | abort".to_string()))?;
-            match sub.as_str() {
-                "begin" => Request::Write(WriteCmd::Pure(PureWrite::BatchBegin { name: tokens.next() })),
-                "end" => Request::Write(WriteCmd::Pure(PureWrite::BatchEnd)),
-                "abort" => Request::Write(WriteCmd::Pure(PureWrite::BatchAbort)),
-                other => {
-                    return Err(ApiError::Parse(format!(
-                        "unknown batch action \"{other}\" — expected begin, end, or abort"
-                    )))
-                }
-            }
-        }
+        "batch" => parse_batch(&mut tokens)?,
         other => {
             return Err(ApiError::Parse(format!(
                 "unknown verb \"{other}\" — expected one of: {}",
