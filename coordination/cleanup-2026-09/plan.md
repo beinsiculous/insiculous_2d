@@ -739,7 +739,7 @@ says what it now governs), `crates/editor_integration/CLAUDE.md:37` (`panel_rend
 `editor_demo` visual pass after the commit — Jesse's check, because a wrong theme token or a
 border stroke on the wrong edge is invisible to tests.
 
-## Batch 8 — SRP splits, engine side (~900 lines moved; §A; this section is the whole spec, re-verified against the tree Sep 3 2026) — DONE EXCEPT 8.3, Sep 3 2026 (edde064; reviews 26 and 26-claude, rebuttal-26, fixes applied by Claude per Jesse's standing ruling; 8.3 was reported done and had not landed — it is out to gemini as `review/cleanup-2026-09/8-fixes-for-gemini.md`, its own review round; Jesse's native `hello_world`/`editor_demo` run is owed after it)
+## Batch 8 — SRP splits, engine side (~900 lines moved; §A; this section is the whole spec, re-verified against the tree Sep 3 2026) — DONE Sep 3 2026 (edde064 without 8.3 — reviews 26 and 26-claude, rebuttal-26, fixes applied by Claude per Jesse's standing ruling; 8.3 was reported done and had not landed, went back to gemini as `8-fixes-for-gemini.md` and landed as ef10209 — reviews 27 and 27-claude, rebuttal-27, no fix hunks; Jesse's 8.2 hand-diff of the golden fixture and the native `hello_world`/`editor_demo` run are still his)
 
 Re-verification notes, so the executor does not chase what earlier batches already did or
 what the design got wrong:
