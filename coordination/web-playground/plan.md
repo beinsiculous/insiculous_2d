@@ -43,7 +43,7 @@ late-put base recording; deterministic instance order with resets applied before
 `pagehide`, a terminal *conflicted* state, the textarea's own dirty flag, backslash zip paths,
 zero-vector `normalize`. **This is v7, the settled plan** (Jesse, 2026-09-04: no round 7;
 corrections from here go into the acting batch section before its handoff, and every batch's
-staged diff is reviewed by kimi and Claude). Batch 2 landed (936bcf9). Batch 3's section was re-verified against the tree before its handoff (2026-09-04): the corrections are listed at the top of that section, and batch 4's and 7's cross-references to the two replaced hooks were updated with it. Batch 3 landed (1462cbe). Batch 4's section was re-verified the same way before its handoff (2026-09-04); its corrections are listed at the top of that section, and the conflicted-path download control it deferred is recorded in batch 5. Batch 4 landed (e362625 in insiculous_2d, f69f09e in insiculous_web): kimi reviews 14–17, Claude review-14-claude, rebuttals 14–17; it is marked done once Jesse's browser check on staging passes. Batch 5's section was re-verified against the tree 2026-09-05; its corrections are listed at the top of that section (the `flate2` backend line, the headless dry-run resolver, the bundle rebuild, the page's script file, the conflicted-paths export), and batch 7's docs bullet gained the export README's second link. Batch 6's section was re-verified against the tree 2026-09-05; its corrections are listed at the top of that section (the response struct that already exists, the host file that does not, the add-in-the-same-undo-entry drop, the prefs field the save path would wipe, the scroll-into-view mechanism). Batch 6 landed (d4b384a): kimi reviews 21–22, Claude review-21-claude, rebuttals 21–22; two follow-ups filed — #102 (`ide_command` set only by hand, lost to autosave) and #103 (edits made while Paused are erased by Stop, audit §1.5, the standing rule kimi re-raised against the new drop path). Batch 5 landed (ceb77be in insiculous_2d, 227a5f2 in insiculous_web): kimi reviews 19–22, Claude review-19-claude, rebuttals 19–21; the export-cap parity follow-up is insiculous_2d#101; it is marked done once Jesse's browser check on staging passes.
+staged diff is reviewed by kimi and Claude). Batch 2 landed (936bcf9). Batch 3's section was re-verified against the tree before its handoff (2026-09-04): the corrections are listed at the top of that section, and batch 4's and 7's cross-references to the two replaced hooks were updated with it. Batch 3 landed (1462cbe). Batch 4's section was re-verified the same way before its handoff (2026-09-04); its corrections are listed at the top of that section, and the conflicted-path download control it deferred is recorded in batch 5. Batch 4 landed (e362625 in insiculous_2d, f69f09e in insiculous_web): kimi reviews 14–17, Claude review-14-claude, rebuttals 14–17; it is marked done once Jesse's browser check on staging passes. Batch 5's section was re-verified against the tree 2026-09-05; its corrections are listed at the top of that section (the `flate2` backend line, the headless dry-run resolver, the bundle rebuild, the page's script file, the conflicted-paths export), and batch 7's docs bullet gained the export README's second link. Batch 6's section was re-verified against the tree 2026-09-05; its corrections are listed at the top of that section (the response struct that already exists, the host file that does not, the add-in-the-same-undo-entry drop, the prefs field the save path would wipe, the scroll-into-view mechanism). Batch 6 landed (d4b384a): kimi reviews 21–22, Claude review-21-claude, rebuttals 21–22; two follow-ups filed — #102 (`ide_command` set only by hand, lost to autosave) and #103 (edits made while Paused are erased by Stop, audit §1.5, the standing rule kimi re-raised against the new drop path). Batch 7's section was re-verified against the tree 2026-09-05; its corrections are listed at the top of that section (the one context macro, the physics feature gate, the host signature, the bridge's missing hook setter, the error mirror, the `mod.rs` budget, the catalog's scan and build site, the resource rule). Batch 5 landed (ceb77be in insiculous_2d, 227a5f2 in insiculous_web): kimi reviews 19–22, Claude review-19-claude, rebuttals 19–21; the export-cap parity follow-up is insiculous_2d#101; it is marked done once Jesse's browser check on staging passes.
 
 ## Context
 
@@ -1313,34 +1313,173 @@ audit §4.10.
 
 ## Batch 7 — scripting Stage 3: registry, runner, Rhai
 
+**Re-verified against the tree 2026-09-05 before the handoff** (batches 3–6 landed since this
+section was written). Corrections, each restated where it applies below:
+
+- `GameContext` is built by ONE macro, `build_context!` (`game.rs:270-289`), expanded at
+  `game.rs:477` and `game/app_handler.rs:211`; no other construction site exists in `crates/` or
+  `../games/`, so the new field is one macro line. The runner is a `GameRunner` field built in
+  `GameRunner::new` (`game.rs:294`), where `register_scripts` runs — before `init`, which
+  `initialize_and_update` (`:477-484`) calls on the first frame.
+- `behavior_runner` is `#[cfg(feature = "physics")]` (`lib.rs:25-26`, re-export `:75-76`) and
+  `cargo check -p engine_core --no-default-features` passes today. `scripting` takes
+  `Option<&mut PhysicsSystem>`, so it carries the same gate: the module and its re-exports,
+  `GameContext.scripts`, `Game::register_scripts`, the runner field, its construction and the
+  macro line. The no-default-features check joins the gates. `editor_integration` and every game
+  build with default features, so nothing outside `engine_core` is gated.
+- `ProjectHost::update_frame` (`project_host.rs:50-54`) takes `(world, input, delta_time)`; it
+  grows `players: &InputSettings`, `scripts: &mut ScriptRunner` and `asset_base: &str`, and its
+  three tests (`:135-256`) build the new arguments (`InputSettings::default_two_player()`,
+  `input/src/player.rs:237`; `ScriptRunner::new()`). The collision drain is
+  `PhysicsSystem::take_collision_events()` (`physics_system/mod.rs:168`); the physics verbs the
+  commands map onto are `reset_body(entity, position)` (`:204`), `set_velocity(entity, linear,
+  angular)` (`:179`) and `set_kinematic_target(entity, position, rotation)` (`:194`);
+  `CollisionData { event: CollisionEvent { entity_a, entity_b, started, stopped }, contacts }`
+  is `physics/src/components.rs:405`.
+- The bridge's `HOOKS` cell (`bridge.rs:31`) has two readers (`:149`, `:302`) and no writer:
+  `pub fn set_hooks(hooks: Hooks)` is added beside `setup_bridge` (`:35`) and `web_entry.rs`
+  calls it after `setup_bridge`. `SourceCheckFn` is `fn(&str) -> Result<(), String>` (`:16`),
+  so the installed hook is a non-capturing closure over `check_source` mapping the
+  `ScriptError` to its `Display` string — `check_source` keeps the typed return named below;
+  `ScriptErrorsFn` is `Rc<dyn Fn() -> Vec<String>>` (`:18`).
+- The error channel this section left to design follows the `dirty_flag` precedent
+  (`EditorRunOptions.dirty_flag`, `editor_game/mod.rs:532`, copied into `EditorGame` at `:551`,
+  written by `sync_dirty_mirror` `:358`): `EditorRunOptions.script_errors:
+  Option<Arc<Mutex<Vec<String>>>>` (`None` natively) → `EditorGame.script_errors`, overwritten
+  from `ctx.scripts.errors()` every Playing frame and CLEARED in `stop_play_session`
+  (`play_session.rs:142`), so the page never reports a stopped run's errors; while Paused it
+  keeps the last Playing frame's list, which is correct because nothing runs. The mirror exists
+  for the bridge only: the native status bar reads `ctx.scripts.errors()` directly.
+  `web_entry.rs` allocates the `Arc`, passes it in the options and installs
+  `Hooks.script_errors = Some(Rc::new(move || …))` reading it. A poisoned lock yields its inner
+  value (`unwrap_or_else(PoisonError::into_inner)`), never an `unwrap`.
+- `editor_game/mod.rs` is 577 lines. It takes the `mod script_status;` line beside its siblings
+  (`:28-37`), two fields (`script_errors` above and `play_frames: u32`, beside `:88-89`), the
+  `register_scripts` forward in the `Game` impl (`:373`), one `self.track_script_status(ctx)`
+  call in `update_inner_game` (`:233`, already inside the `is_playing()` branch, after
+  `self.inner.update(ctx)` at `:248`) and the options copy line beside `:551` — under 600, but
+  with little slack: if the staged draft lands `mod.rs` over 590 lines, `EditorRunOptions` and
+  `run_game_with_editor_opts` (`:521-560`) move to new `editor_game/run_options.rs` and are
+  re-exported unchanged, so a review-round fix cannot trip the ceiling. The lie-detector and
+  the mirror copy live in new `editor_game/script_status.rs` (`track_script_status`, which
+  also shows each NEW runner error once on the status bar through a `shown_script_errors:
+  usize` watermark); `play_frames` and the watermark reset to 0 in `start_play_session`
+  (`play_session.rs:12`) and NOT in `resume_from_pause` (`:90`).
+- The catalog's `.rhai` list comes from the asset scan (`editor.asset_browser.entries`,
+  `AssetEntry` at `editor/src/asset_browser.rs:27`; `AssetKind::Script` covers `.rhai` AND
+  `.rs`, `:78` — the catalog takes `.rhai` only), which today runs on first asset-browser open
+  or Rescan (`panel_renderer/asset_browser.rs:111-113`). That scan-and-apply moves into one
+  `ensure_scanned(editor, assets)` in the same file, called from there and from the inspector
+  host, so the picker is populated before the asset browser was ever opened. The `// @param`
+  header parse lives in `engine_core::scripting`, which the `editor` crate cannot see, and the
+  panel hosts are free functions over `&mut EditorContext` that cannot see `EditorGame`
+  (`panel_renderer/inspector.rs:126-141`, `asset_browser.rs:49-54`): so `ScriptCatalogEntry
+  { id: String, display_name: String, category: String, params: BTreeMap<String, ScriptValue>,
+  source_path: Option<String> }` is an `editor` type (`script_editor.rs`), the catalog is HELD
+  on `EditorContext.script_catalog: Vec<ScriptCatalogEntry>` (beside `asset_browser`), and it
+  is BUILT by a pure `build_script_catalog(entries: &[AssetEntry], registry: &ScriptRegistry,
+  asset_base: &str) -> Vec<ScriptCatalogEntry>` in new `panel_renderer/script_catalog.rs`
+  (registry descriptors plus one entry per scanned `.rhai`, its params from the header read
+  through `vfs` at `{asset_base}/{path}`; a header that fails to parse yields an entry with no
+  params and a status-bar warning) — testable headless with a temp directory. One
+  `refresh_assets(editor, assets, registry)` in `panel_renderer/asset_browser.rs` does scan,
+  `apply_scan` and the catalog build; it is called from the Rescan/first-open site and from the
+  inspector host ONLY when `!editor.asset_browser.scanned` (the inspector renders every frame;
+  a scan per frame would walk the asset tree per frame). `render_asset_browser` already holds
+  `ctx` (`:51`), so `ctx.scripts.registry()` is in hand at both sites. A `.rhai` header edited
+  without a Rescan refreshes at the next Rescan (the runtime reads the header fresh at Play).
+  `InspectorExtras` gains `script_catalog: &'a [ScriptCatalogEntry]` (in; `&editor.script_catalog`
+  beside `&mut editor.drag_drop` is a disjoint field borrow in `build_inspector_extras`) and
+  `script_picker_open: bool` (in/out, backed by `EditorContext.script_picker_open` beside
+  `inspector_scroll_request`, `context/mod.rs:86`, and written BACK at the readback site
+  `inspector.rs:233-236` before `drop(extras)` — an out field nobody copies back resets every
+  frame); the literals at `panel_renderer/inspector.rs:135` and `editor/src/test_support.rs:63`
+  are compile-forced.
+- Resources never reach a scene file unless `scene_data` names them (`PhysicsSettings` is the
+  only one, `scene_data.rs:41`), and `WorldSnapshot` (`editor/src/world_snapshot.rs`) captures
+  components only; `register_transient` (`component_registry/mod.rs:96`) is for components.
+  `Blackboard` therefore needs no registration at all — "transient-equivalent" means: no
+  `scene_data` field, no snapshot entry. A World resource can only be cleared through the
+  world, so `reset` takes it: `reset(&mut self, world: &mut World, asset_base: &str)` inserts a
+  fresh `Blackboard` (`insert_resource` replaces), and a stale one left in the world after Stop
+  is harmless because the next Play clears it first.
+- `archive.rs` is `crates/playground/src/archive.rs`; its README string is at `:130` and gains
+  the `docs/SCRIPTING.md` link beside the `WEB_PLAYGROUND.md` one. Docs that describe the
+  pre-batch state and are therefore part of this batch: `docs/WEB_PLAYGROUND.md:144` (the
+  `playground_script_errors` row, "empty until batch 7") and `:184` (item 13),
+  `crates/playground/CLAUDE.md:19` (`Hooks` "for batch 7"), `crates/ecs/CLAUDE.md:29` ("nothing
+  executes it yet") plus a `blackboard.rs` row, `crates/editor_integration/CLAUDE.md`'s file map
+  (`script_status.rs`), `crates/editor/CLAUDE.md`'s `script_editor.rs` row (the picker),
+  `crates/engine_core/CLAUDE.md`'s file map (a `scripting/` row beside `behavior_runner/`,
+  `:43`), `PROJECT_ROADMAP.md:165-177` and `training.md` (a `### Script Pattern` under
+  § Patterns Reference).
+- `cargo search rhai` returns 1.26.0 today; the pin holds, and `cargo info rhai@1.26.0` lists
+  the `wasm-bindgen` feature the hedge names (it enables `getrandom/wasm_js`, which only
+  `ahash/runtime-rng` — off without default features — would need); timing goes through the
+  non-optional `web-time`, so no wasm clock panic lurks in `StandardPackage`. Rhai's `INT` is
+  `i64`: a value converted back to `ScriptValue::I32` goes through `i32::try_from`, and an
+  out-of-range one is a named `ScriptError`, never an `as` truncation. `theme.error_red` exists
+  (`theme/mod.rs:106`). The `behavior_runner` references hold (`BehaviorCommands` `:40-54`,
+  `apply_commands` `:211`, the kinematic/dynamic/no-physics fallback `:222-249`). Names the
+  shapes below rely on: `Name(pub String)` (`ecs/src/sprite_components.rs:16`), `UiLabel.text`
+  (`ecs/src/ui_components.rs:123`), `InputSettings` (`input/src/player.rs`: `move_x` /
+  `move_y(player, input)`, `is_active` and `just_activated(player, action, input)`,
+  `player_count()`), `PlayerId(pub u8)` (`:38`), `GameAction` (`input_mapping.rs:61`),
+  `ScriptValueData::Entity(String)` (`script_data.rs:30`, the wire form the Rhai param map's
+  Entity→name mirrors), `vfs::read_to_string` (`common/src/vfs/mod.rs:54`),
+  `AssetManager::base_path()` (`assets.rs:403`), `World::validate_entity` (`world.rs:377`, the
+  liveness check the prune uses). The `EditorGame` constructor is private
+  (`fn new`, `mod.rs:93`), so the wrapper test lives in `editor_game/tests.rs`.
+- Size budgets: `game.rs` 505, `bridge.rs` 374, `script_editor.rs` 305, `project_host.rs` 257,
+  `web_entry.rs` 255, `contexts.rs` 222 all take their lines under 600; `editor_game/mod.rs` is
+  budgeted above. `scripting/` is seven files by design so that none nears the ceiling.
+
 Files: new `crates/engine_core/src/scripting/{mod.rs, registry.rs, runner.rs, view.rs,
-commands.rs, rhai_backend.rs, builtin/rotate.rs}`, `crates/ecs/src/blackboard.rs` (new
-resource), `crates/engine_core/src/contexts.rs` (`GameContext.scripts`),
-`crates/engine_core/src/game.rs` (`Game::register_scripts`, defaulted; runner
-construction at the `GameContext` build site `:271`), `crates/editor/src/texture_field.rs`
-(`InspectorExtras.script_catalog`), `crates/editor/src/script_editor.rs` ("+ Add Script"
-picker grouped by category; unresolved ids in `theme.error_red`),
-`crates/editor_integration/src/project_host.rs` (the runner call), status-bar
-lie-detector in `editor_integration`. `Cargo.toml` (`engine_core`): `rhai = { version
-= "1.26", default-features = false, features = ["std", "f32_float"] }` — if the wasm
-gate needs it, the target block adds `features = ["wasm-bindgen"]`.
+commands.rs, rhai_backend.rs, builtin/rotate.rs}` (the module line and its re-exports in
+`crates/engine_core/src/lib.rs`, feature-gated like `behavior_runner`), `crates/ecs/src/blackboard.rs` (new
+resource, its `mod` and re-export in `crates/ecs/src/lib.rs`), `crates/engine_core/src/contexts.rs` (`GameContext.scripts`),
+`crates/engine_core/src/game.rs` (`Game::register_scripts`, defaulted; the `GameRunner` field,
+built in `new` at `:294`; the one line in the `build_context!` macro at `:270-289`),
+`crates/editor_integration/src/project_host.rs` (the runner calls; `update_frame`'s three new
+arguments and its tests), `crates/editor_integration/src/editor_game/{mod.rs, play_session.rs,
+tests.rs}` and new `crates/editor_integration/src/editor_game/script_status.rs` (the
+`register_scripts` forward, the lie-detector, the error mirror and its Stop clear; if `mod.rs`
+lands over 590 lines, new `editor_game/run_options.rs` takes `EditorRunOptions`),
+`crates/editor_integration/src/panel_renderer/{mod.rs, inspector.rs, asset_browser.rs}` and new
+`crates/editor_integration/src/panel_renderer/script_catalog.rs` (the extras literal and the
+`script_picker_open` write-back; `refresh_assets`; `build_script_catalog`),
+`crates/editor/src/texture_field.rs` (`InspectorExtras.script_catalog`, `.script_picker_open`),
+`crates/editor/src/script_editor.rs` (`ScriptCatalogEntry`; "+ Add Script" picker grouped by
+category; unresolved ids in `theme.error_red`), `crates/editor/src/context/mod.rs`
+(`script_catalog`, `script_picker_open`),
+`crates/editor/src/test_support.rs` (the extras literal), `crates/playground/src/bridge.rs`
+(`set_hooks`), `crates/playground/src/web_entry.rs` (the hooks and the error mirror),
+`crates/playground/src/archive.rs` (`:130`, the README's second link), and the docs listed in
+the Docs bullet. `Cargo.toml` (`engine_core`): `rhai = { version = "1.26", default-features =
+false, features = ["std", "f32_float"] }` — if the wasm gate needs it, the target block adds
+`features = ["wasm-bindgen"]`.
 
 Target shapes:
 
 - `pub trait ScriptBehavior { fn early_update(&mut self, me: &SelfView, view: &ScriptView,
   params: &BTreeMap<String, ScriptValue>, out: &mut ScriptCommands) {} fn update(&mut
   self, me: &SelfView, view: &ScriptView, params: &BTreeMap<String, ScriptValue>, out:
-  &mut ScriptCommands) {} }` (both defaulted, no `&mut World`). `SelfView { entity,
+  &mut ScriptCommands) {} }` (both defaulted, no `&mut World`; a Rust script reads the frame's
+  `dt` as `view.delta_time` — the view carries it per the decision — where a Rhai hook receives
+  it as its fifth argument for convenience). `SelfView { entity,
   name: Option<String>, transform, velocity }` is per instance; `ScriptView` is per phase
-  and shared. Every `ScriptCommands` verb takes a `Target` first argument built from
+  and shared. The verbs are the decision's list plus `set_rotation(target, radians)`, which
+  `engine::rotate` needs: a direct `Transform2D.rotation` write applied with the positions; a
+  physics body's rotation belongs to physics and is not this verb's job. Every `ScriptCommands` verb takes a `Target` first argument built from
   `&SelfView` (`Target::Entity(id)`) or a name (`Target::Named(String)`) — Rhai sees
   overloads `out.set_position(me, p)` / `out.set_position("Ball", p)`, never a `Target`
   value; `apply` resolves names through the world's `Name` components once per phase
   and reports a missing or ambiguous name as a deduplicated error.
 - `EditorGame::register_scripts` FORWARDS to the inner game (a new defaulted trait method
   behind a transparent wrapper is otherwise a silent no-op); `ProjectHost::register_scripts`
-  registers the built-ins. Test: a game registering a descriptor, wrapped in `EditorGame`,
-  exposes it through the runner's registry.
+  registers the built-ins. Test (in `editor_game/tests.rs`, where the private constructor is
+  reachable): a game registering a descriptor, wrapped in `EditorGame`, exposes it through
+  the runner's registry.
   `pub struct ScriptDescriptor { pub id: &'static str, pub display_name: &'static str,
   pub category: &'static str, pub params: &'static [ParamSpec], pub make: fn() ->
   Box<dyn ScriptBehavior> }`; `pub struct ParamSpec { pub name: &'static str, pub
@@ -1352,8 +1491,9 @@ Target shapes:
   mirrors `BehaviorCommands::apply` incl. the kinematic/dynamic/no-physics fallback
   (`behavior_runner/mod.rs:222-249`, which integrates `velocity * delta_time` into
   `Transform2D` when there is no physics), which is what keeps it headless-testable —
-  and applies by KIND, not by arrival: resets first, then positions, then velocities and
-  kinematic targets (a velocity aimed at an entity reset in this call is dropped), then
+  and applies by KIND, not by arrival: resets first (`PhysicsSystem::reset_body`), then
+  positions, then velocities (`set_velocity`) and kinematic targets (`set_kinematic_target`;
+  a velocity aimed at an entity reset in this call is dropped), then
   sprite/label/blackboard writes, then despawns. A hook whose call returned `Err` has its
   commands for that call discarded before `apply` runs.
 - `ScriptRunner { registry, instances: BTreeMap<(EntityId, usize), Instance>, rhai:
@@ -1362,20 +1502,29 @@ Target shapes:
   commands lands last); two entry points,
   `early_update(&mut self, world, input, players, delta_time, physics)` and
   `update(&mut self, world, input, players, delta_time, collisions: &[CollisionData],
-  physics: Option<&mut PhysicsSystem>)`, each building ONE shared view for its phase
+  physics: Option<&mut PhysicsSystem>)` (`input: &InputHandler`, `players: &InputSettings`
+  — per-player axes and just-activated actions for `0..players.player_count()`), each building ONE shared view for its phase
   (pre-step transforms and no collisions for `early_update`; post-step transforms and
   the drained collisions for `update` — a counter test pins "one view per phase, two per
   frame") plus a `SelfView` per instance, calling the matching hook, then applying the
-  commands. At the start of each frame an instance whose entity no longer exists or no
-  longer carries `Scripts` is pruned, so a despawning game does not grow the map. Resolution per `ScriptRef`:
-  `source_path` ending `.rhai` → Rhai, read through `vfs` at
+  commands. At the start of EACH entry point (not once per frame: a despawn issued in
+  `early_update` is applied before `update` runs) an instance whose entity fails
+  `World::validate_entity`, no longer carries `Scripts`, or whose recorded `(script_id,
+  source_path)` no longer matches the ref at its index is pruned and, in the last case,
+  re-resolved on that call — so a despawning game does not grow the map and a `Scripts` edit
+  made while Paused (the standing rule, filed as #103) cannot run one script's state under
+  another's ref. Resolution per `ScriptRef`:
+  `source_path` ending `.rhai` → Rhai, read through `vfs::read_to_string` at
   `{asset_base}/{source_path}` (relative keys never resolve on the web); else registry by
   `script_id`; unresolved → one `log::warn!` per id per Play and an entry in `errors()`.
   `ScriptErrors` deduplicates every error by (file, line, kind) per Play — a script that
   trips the operation budget every frame is reported once; the status bar and the page's
-  `playground_script_errors` read the same list. `reset(asset_base: &str)` at Play start
-  records the base, clears instances, the blackboard, `frames_run` and `errors`; the host
-  passes `ctx.assets.base_path()`.
+  `playground_script_errors` are two consumers of one list — `errors(&self) ->
+  &[ScriptError]`, `ScriptError: Display` with file, line, kind and message; the status bar
+  through `script_status.rs`'s watermark, the page through the mirror below. `reset(&mut self,
+  world: &mut World, asset_base: &str)` at Play start records the base, clears instances,
+  `frames_run` and `errors` and inserts a fresh `Blackboard` into the world; the host passes
+  `ctx.assets.base_path()`.
 - `RhaiBackend`: one `rhai::Engine::new()` — which already carries Rhai's
   `StandardPackage`, so `sqrt`, `abs`, `min`, `max`, `clamp` need no registration — with
   the `Rc<SelfView>`, `Rc<ScriptView>` and `ScriptCommandsHandle` types registered
@@ -1387,12 +1536,15 @@ Target shapes:
   `length()`, `normalize()` (the zero vector normalises to itself, never NaN), `dot()` —
   because Rhai has no vector; `AST` cache keyed by `source_path` + content hash (a changed
   file recompiles on the next Play). Compiling also parses the `// @param name: type =
-  default` header block into the script's `ParamSpec`s — the defaults channel for `.rhai`
-  scripts: the catalog shows them, the attach paths (batch 6's drop and the picker)
-  pre-fill `ScriptRef.params` from them, a declared param missing on a ref takes the
+  default` header block into the compiled unit's OWNED defaults (`BTreeMap<String,
+  ScriptValue>`; `ParamSpec`'s `&'static str` is for built-ins only — a runtime-parsed name
+  would have to be leaked to fit it) — the defaults channel for `.rhai`
+  scripts: the catalog shows them, the attach paths (batch 6's drop at
+  `panel_renderer/mod.rs:301-305`, and the picker) pre-fill `ScriptRef.params` from them, a
+  declared param missing on a ref takes the
   default at run time, and a param declared nowhere is a named `ScriptError`. Params travel as an ARGUMENT, not scope variables (Rhai `fn`s cannot
   read the calling scope): a `rhai::Map` built per call from the `ScriptRef` (F32→float,
-  I32→int, Bool, Str, Vec2→`vec2` type, Entity→the target's name, Color→array). `out` is
+  I32→int, Bool, Str, Vec2→`vec2` type, Entity→the target's name as `ScriptValueData` persists it, Color→array). `out` is
   a `ScriptCommandsHandle(Rc<RefCell<Vec<ScriptCommand>>>)` because `call_fn` passes by
   value — the runner drains the shared buffer after the call; a plain struct would lose
   every command silently. Contract: the script defines `fn early_update(me, view, params,
@@ -1410,32 +1562,58 @@ Target shapes:
   and (`FLOAT`,`INT`) pair, F32 params are always `FLOAT`, and every command method that
   takes a float has an `INT` overload — `dt * 450` and `out.set_velocity_x("Ball", 250)`
   both work. `pub fn check_source(text: &str) -> Result<(), ScriptError>` is
-  the pure compile check the playground bridge runs on every `.rhai` save, so errors show
+  the pure compile check the playground bridge runs on every `.rhai` save (installed as
+  `Hooks.source_check` through a non-capturing closure that maps the error to its
+  `Display` string, the `fn(&str) -> Result<(), String>` the bridge declares), so errors show
   in Edit mode, not only in Play.
-- `ecs::Blackboard(BTreeMap<String, ScriptValue>)` World resource, registered
-  transient-equivalent (never written to scene files). Reads take a default —
+- `ecs::Blackboard(BTreeMap<String, ScriptValue>)` World resource, never written to scene
+  files or snapshots — it needs no registration; `scene_data` names the only persisted resource
+  and `WorldSnapshot` captures components only. Only the world can clear it, which is why
+  `reset` takes `&mut World` and inserts a fresh one. Reads take a default —
   `view.blackboard_bool("serving", true)`, `_int`, `_float`, `_str` — so an unset key is
   a value, never an error (an empty blackboard at Play start must not deadlock a game).
   UiLabel text set through `ScriptCommands::set_label_text(target, text)`.
-- `GameContext.scripts: &mut ScriptRunner` (engine-owned; built once in `GameRunner`,
-  `Game::register_scripts(&mut self, registry: &mut ScriptRegistry)` called before
-  `init`). `ProjectHost::update` order per Playing frame: (first frame only: build
-  physics from the scene's settings and `ctx.scripts.reset(ctx.assets.base_path())`)
-  → behaviors → `ctx.scripts.early_update(...)` → physics step → drain collisions once →
-  `ctx.scripts.update(...)` with that Vec → transform hierarchy. The bridge hooks batch 3
-  left `None` are populated here: `playground::bridge::Hooks.source_check =
-  Some(scripting::check_source)` and `Hooks.script_errors` reads the runner's list (the
-  bridge never holds the editor, so batch 7 designs the channel that copies the list out
-  of `ctx.scripts` each frame), and `playground_script_errors` ships. This is pong's own order
+- `GameContext.scripts: &mut ScriptRunner` (engine-owned; a `GameRunner` field built once in
+  `GameRunner::new`, where `Game::register_scripts(&mut self, registry: &mut ScriptRegistry)`
+  is called — before `init`; one line in the `build_context!` macro, which is the only
+  construction site). Module, field, trait method and runner field are
+  `#[cfg(feature = "physics")]` like `behavior_runner`, and `cargo check -p engine_core
+  --no-default-features` stays green.
+  `ProjectHost::update_frame(world, input, players, scripts, asset_base, delta_time)` order per
+  Playing frame: (first frame only: build
+  physics from the scene's settings and `scripts.reset(world, asset_base)`)
+  → behaviors → `scripts.early_update(...)` → physics step → `take_collision_events()` once →
+  `scripts.update(...)` with that Vec → transform hierarchy; `ProjectHost::update` passes
+  `&*ctx.players` (a shared reborrow of the context's `&mut InputSettings` — the host never
+  needs the mutable one), `ctx.scripts` and `ctx.assets.base_path()`. The bridge hooks batch 3
+  left `None` are populated here through a new `bridge::set_hooks(Hooks)` (the cell had no
+  writer): `Hooks.source_check = Some(<the check_source closure above>)` and `Hooks.script_errors`
+  reads the error MIRROR — `EditorRunOptions.script_errors: Option<Arc<Mutex<Vec<String>>>>`
+  (`None` natively), copied onto `EditorGame.script_errors` like `dirty_flag`, overwritten from
+  `ctx.scripts.errors()` every Playing frame by `script_status.rs` and cleared by
+  `stop_play_session`; the native status bar never reads it; `web_entry.rs` allocates
+  it, passes it in the options and installs the reading closure — and `playground_script_errors` ships. This is pong's own order
   (paddles → physics → drain → rules): a paddle's kinematic target set in `early_update`
   is where the collider is when the ball arrives this frame, and the goal's reaction in
   `update` sees this frame's contacts.
-- Lie-detector: `EditorGame` records, at Play frame 60, whether any entity carries
+- Lie-detector (`editor_game/script_status.rs`, `EditorGame.play_frames` counted per Playing
+  frame, reset by `start_play_session` only): at Play frame 60, whether any entity carries
   `Scripts` while `ctx.scripts.frames_run() == 0`, and shows "scripts attached but the
   game never ran the script runner" on the status bar once per Play.
-- Catalog: `InspectorExtras.script_catalog: &[ScriptCatalogEntry]` (built-ins from the
-  registry + every `.rhai` under `assets/scripts/` from the asset scan); "+ Add Script"
-  becomes a picker grouped by category; typing a free id remains possible.
+- Catalog: `InspectorExtras.script_catalog: &[ScriptCatalogEntry]` (`ScriptCatalogEntry` in
+  `script_editor.rs`, shape in the preamble; built-ins from the registry + every `.rhai` under
+  `assets/scripts/` from the asset scan, built by `panel_renderer/script_catalog.rs`'s pure
+  `build_script_catalog` onto `EditorContext.script_catalog` inside `refresh_assets`, which
+  runs on Rescan, on first asset-browser open and from the inspector host when nothing has
+  scanned yet — so the picker is never empty for want of an opened asset browser, and a
+  Rescan while Editing refreshes it); "+ Add Script" becomes a picker: the click toggles
+  `script_picker_open` (written back to the context before the extras drop), an open picker
+  renders one heading row per category and one action
+  button per entry (`script_pick_{id}`), a pick appends a `ScriptRef` pre-filled from the
+  entry's params and closes the picker, and a last row `custom id…` appends the empty ref
+  today's button appends — so typing a free id remains possible. `edit_one_script` draws the
+  id in `theme.error_red` when it matches no catalog id and `source_path` does not end
+  `.rhai`.
 - Tests (contract-named, headless): a Rhai script that moves its entity toward a named
   target advances the transform over three frames; two instances of one script on two
   entities each move THEIR OWN entity (the `me` contract); a script on entity A that
@@ -1452,17 +1630,30 @@ Target shapes:
   rotates by `degrees_per_second * dt`; an unresolved id is reported once; `reset()`
   clears the blackboard; `early_update`'s kinematic target lands before the step and
   `update` sees an injected collision; kinematic target routes through physics when
-  present and to `Transform2D` when absent.
+  present and to `Transform2D` when absent; the picker's pick appends a pre-filled ref and
+  the custom row an empty one (a `click_scripts`-style test beside the existing ones in
+  `script_editor.rs`); the lie-detector fires once at frame 60 for a `Scripts` entity under
+  a runner that never ran and stays silent when it did; a `Scripts` edit between two frames
+  that swaps the refs runs each instance under its own ref; an entity despawned in
+  `early_update` gets no `update` call that frame; `build_script_catalog` over a temp directory
+  with one headed `.rhai` and one built-in lists both with their params.
 - Docs: new `docs/SCRIPTING.md` — the author-facing contract (the `update` signature,
-  linked from the export README `archive.rs` generates, beside the `WEB_PLAYGROUND.md` link
-  batch 5 wrote;
+  linked from the export README `crates/playground/src/archive.rs:130` generates, beside the
+  `WEB_PLAYGROUND.md` link batch 5 wrote;
   every view getter and command method with types, params by name, the built-in list,
-  error surfacing, "one bundle, many projects"); `PROJECT_ROADMAP.md` § Scripting
+  error surfacing, "syntax OK — runtime errors show during Play", "one bundle, many
+  projects"); `PROJECT_ROADMAP.md` § Scripting (`:165-177`)
   updated (Rhai decision, Stages 2–3 shipped, game-run ruling); `training.md` gains a
-  Script Pattern section; `crates/engine_core/CLAUDE.md` file map.
+  `### Script Pattern` section under § Patterns Reference; `crates/engine_core/CLAUDE.md`
+  file map (`scripting/` beside `behavior_runner/`); `crates/ecs/CLAUDE.md` (`:29` no longer
+  says nothing executes it; a `blackboard.rs` row); `crates/editor_integration/CLAUDE.md`
+  file map (`script_status.rs`); `crates/editor/CLAUDE.md` (`script_editor.rs` row);
+  `crates/playground/CLAUDE.md:19` (`Hooks` is no longer "for batch 7");
+  `docs/WEB_PLAYGROUND.md:144` (the `playground_script_errors` row) and `:184` (item 13).
 
 Gates: standard + wasm + games (`GameContext` grew a field; every game constructs
-none, so `check_games.sh` suffices) . Leaves out: pong (batch 8), web textarea.
+none, so `check_games.sh` suffices) + `cargo check -p engine_core --no-default-features`
+(the physics gate). Leaves out: pong (batch 8), web textarea.
 
 ## Batch 8 — pong's gameplay as a project, and script editing on the page
 
