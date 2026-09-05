@@ -25,6 +25,7 @@ crates into the wasm gate.
 - `persist/mod.rs` — `Chains`: one chain per path, the five path states, `is_pending` vs `has_active`, the DOM banner; the wasm driver and listeners.
 - `persist/tests/` — `mod.rs`, `chains.rs` (hand-polled state-machine tests), and `stores.rs` (native directory double tests).
 - `projects.rs` — `ProjectManifest`, `ProjectEntry`, `list_projects` (pure merge), `validate_slug`, the computed project root.
+- `archive.rs` — target-agnostic project zip export and import validation; `archive/tests.rs`.
 
 ## Pitfalls and their guard tests
 
@@ -43,6 +44,8 @@ crates into the wasm gate.
 | On wasm every started put must be spawned and its result fed back, or the chain sits in flight forever (the round-1 defect) | — none; browser check |
 | A dependent IndexedDB request must be issued inside the previous `onsuccess`, never after an `await` (the transaction is inactive by then) | — none; wasm-only |
 | The adapter's abort handler must surface the CAS result cell, or a `StaleRevision` arrives as `Backend` | — none; wasm-only |
+| An import's `replace_project` failure must restore the epoch, or the current project stops saving until reload | — none; browser check |
+| A zip's decompressed size is capped as it is read, not after | `archive/tests.rs test_import_project_refuses_archive_exceeding_decompressed_cap` |
 
 ## Godot Oracle
 Godot keeps projects on a real filesystem; the closest reference is `editor/editor_file_system.cpp`

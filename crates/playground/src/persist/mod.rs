@@ -293,8 +293,24 @@ impl Chains {
         self.sync_pending_flag();
     }
 
+    /// Return all paths currently in Conflicted state, sorted.
+    pub fn conflicted_paths(&self) -> Vec<String> {
+        let mut paths: Vec<String> = self
+            .chains
+            .iter()
+            .filter(|(_, chain)| chain.state == PathState::Conflicted)
+            .map(|(path, _)| path.clone())
+            .collect();
+        paths.sort();
+        paths
+    }
+
     /// Re-issue put for stranded paths (triggered on `visibilitychange` -> hidden).
     pub fn reissue_stranded(&mut self) {
+        if self.draining {
+            return;
+        }
+
         let stranded_paths: Vec<(String, Vec<u8>)> = self
             .chains
             .iter()

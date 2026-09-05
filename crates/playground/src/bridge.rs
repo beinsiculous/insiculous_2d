@@ -58,11 +58,28 @@ pub fn validate_bridge_path(project_root: &Path, relative_path: &str) -> Result<
             Component::RootDir | Component::Prefix(_) => {
                 return Err("root/prefix path components are forbidden".to_string())
             }
-            Component::CurDir | Component::Normal(_) => {}
+            Component::CurDir => {}
+            Component::Normal(segment) => {
+                // On this target a Windows drive letter is an ordinary segment, so `C:x`
+                // never reaches the `Prefix` arm; an archive written on Windows can carry one.
+                let segment_bytes = segment.as_encoded_bytes();
+                if segment_bytes.len() >= 2
+                    && segment_bytes[1] == b':'
+                    && segment_bytes[0].is_ascii_alphabetic()
+                {
+                    return Err("drive prefix is forbidden".to_string());
+                }
+            }
         }
     }
 
     Ok(project_root.join(path))
+}
+
+/// The same rule as [`validate_bridge_path`] with no root to join: the archive importer
+/// asks it about every entry name before anything is stored.
+pub fn relative_path_is_safe(relative_path: &str) -> bool {
+    validate_bridge_path(Path::new(""), relative_path).is_ok()
 }
 
 /// Pure helper: decide whether an incoming line can be dispatched.
@@ -218,6 +235,69 @@ pub fn playground_reset_project(slug: String) -> js_sys::Promise {
 
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
+pub fn playground_export_zip() -> Result<Vec<u8>, JsValue> {
+    let project_root = CURRENT_PROJECT_ROOT.with(|root_cell| {
+        root_cell.borrow().clone().ok_or_else(|| JsValue::from_str("no active project root"))
+    })?;
+    let manifest = crate::web_entry::active_manifest()
+        .ok_or_else(|| JsValue::from_str("no active project manifest"))?;
+    crate::archive::export_project(&project_root, &manifest)
+        .map_err(|error| JsValue::from_str(&error.to_string()))
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn playground_import_zip(bytes: Vec<u8>) -> js_sys::Promise {
+    wasm_bindgen_futures::future_to_promise(async move {
+        let (manifest, files) = crate::archive::import_project(&bytes, crate::web_entry::BUNDLE_VERSION)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+
+        let store = crate::web_entry::active_store()
+            .ok_or_else(|| JsValue::from_str("no active project store"))?;
+
+        crate::persist::drain_then_epoch()
+            .await
+            .map_err(|error| JsValue::from_str(&error))?;
+
+        let slug = manifest.slug.clone();
+        if let Err(store_error) = store.replace_project(&slug, files, manifest).await {
+            crate::persist::with_active_chains(|chains| chains.restore_epoch());
+            return Err(JsValue::from_str(&store_error.to_string()));
+        }
+
+        Ok(JsValue::from_str(&slug))
+    })
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn playground_read_file_bytes(path: String) -> Result<Vec<u8>, JsValue> {
+    let project_root = CURRENT_PROJECT_ROOT.with(|root_cell| {
+        root_cell.borrow().clone().ok_or_else(|| JsValue::from_str("no active project root"))
+    })?;
+
+    let full_path = validate_bridge_path(&project_root, &path)
+        .map_err(|error| JsValue::from_str(&error))?;
+
+    common::vfs::read(&full_path)
+        .map_err(|error| JsValue::from_str(&format!("failed to read file: {error}")))
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn playground_conflicted_paths() -> Vec<JsValue> {
+    crate::persist::with_active_chains(|chains| {
+        chains
+            .conflicted_paths()
+            .into_iter()
+            .map(|path| JsValue::from_str(&path))
+            .collect()
+    })
+    .unwrap_or_default()
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
 pub fn playground_script_errors() -> Vec<String> {
     HOOKS.with(|hooks_cell| {
         if let Some(errors_fn) = &hooks_cell.borrow().script_errors {
@@ -278,5 +358,17 @@ mod tests {
         assert!(dirty_or(true, false));
         assert!(dirty_or(false, true));
         assert!(dirty_or(true, true));
+    }
+
+    #[test]
+    fn test_relative_path_is_safe_rules() {
+        assert!(relative_path_is_safe("assets/scenes/main.scene.ron"));
+        assert!(relative_path_is_safe("project.ron"));
+        assert!(!relative_path_is_safe(""));
+        assert!(!relative_path_is_safe("/etc/passwd"));
+        assert!(!relative_path_is_safe("\\windows\\system32"));
+        assert!(!relative_path_is_safe("../escaped"));
+        assert!(!relative_path_is_safe("assets/../../outside"));
+        assert!(!relative_path_is_safe("C:drive"));
     }
 }

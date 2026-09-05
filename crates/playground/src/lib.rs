@@ -1,5 +1,6 @@
 //! Playground crate: web entry, IndexedDB project store, and bridge for the editor in the browser.
 
+pub mod archive;
 pub mod bridge;
 pub mod persist;
 pub mod projects;

@@ -399,3 +399,72 @@ fn test_write_under_a_sibling_slug_sharing_the_root_prefix_is_ignored() {
     assert!(!chains.is_pending(), "a sibling slug's write must not start a put under this project");
     assert!(!chains.chains.contains_key("2/scenes/x.ron"), "the root is a directory boundary, not a string prefix");
 }
+
+#[test]
+fn test_stranded_path_is_not_reissued_during_drain_and_is_again_after_restore_epoch() {
+    let memory = MemoryStore::new();
+    let gated = GatedStore::new(memory);
+    let mut chains = Chains::new(
+        "pong".to_string(),
+        "/projects/pong".to_string(),
+        "v1".to_string(),
+        test_manifest("pong"),
+        Arc::new(gated.clone()),
+        None,
+    );
+    let waker = Waker::noop();
+    let mut context = Context::from_waker(waker);
+
+    // Make stranded path: single put fails with Backend
+    gated.pause();
+    gated.set_fail_next_put(true);
+    let stranded_path = std::path::Path::new("/projects/pong/stranded.txt");
+    chains.on_vfs_write(stranded_path, b"stranded_bytes").unwrap();
+    gated.release();
+    chains.poll_all(&mut context);
+    assert_eq!(chains.path_state("stranded.txt"), PathState::Stranded);
+
+    // Start drain: draining becomes true
+    chains.start_drain();
+
+    // Reissue while draining: must NOT reissue
+    chains.reissue_stranded();
+    assert_eq!(chains.path_state("stranded.txt"), PathState::Stranded);
+
+    // Restore epoch: draining becomes false
+    chains.restore_epoch();
+
+    // Reissue after restore_epoch: stranded path becomes InFlight
+    chains.reissue_stranded();
+    assert_eq!(chains.path_state("stranded.txt"), PathState::InFlight);
+}
+
+#[test]
+fn test_conflicted_paths_returns_sorted_conflicted_paths() {
+    let memory = MemoryStore::new();
+    let mut chains = Chains::new(
+        "pong".to_string(),
+        "/projects/pong".to_string(),
+        "v1".to_string(),
+        test_manifest("pong"),
+        Arc::new(memory),
+        None,
+    );
+
+    assert_eq!(chains.conflicted_paths(), Vec::<String>::new());
+
+    // Two paths conflict the way production does: a put completes with StaleRevision.
+    for path in ["scenes/b.scene.ron", "scenes/a.scene.ron"] {
+        chains.chains.insert(
+            path.to_string(),
+            super::super::PathChain::new(path.to_string(), 1),
+        );
+        chains.handle_put_completion(path, Err(StoreError::StaleRevision { stored: 2, base: 1 }));
+        assert_eq!(chains.path_state(path), PathState::Conflicted);
+    }
+
+    assert_eq!(
+        chains.conflicted_paths(),
+        vec!["scenes/a.scene.ron".to_string(), "scenes/b.scene.ron".to_string()]
+    );
+}

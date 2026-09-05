@@ -137,6 +137,10 @@ The command channel is a 1024-line FIFO; responses come back in order.
 | `playground_list_projects()` | `→ ProjectEntry[]` | bundled merged with stored; stored wins on a slug clash; `has_stored_files` gates Reset. The stored list is a boot snapshot: an edit's first put upserts a manifest the list shows after the next reload |
 | `playground_open_project(slug)` | `→ Promise` | drains, then resolves; the PAGE sets `?project=<slug>` and reloads |
 | `playground_reset_project(slug)` | `→ Promise` | drains, `remove_project`, resolves; the page reloads and the bundled files come back |
+| `playground_export_zip()` | `→ Result<Uint8Array>` | the open project's `assets/**` plus `project.ron` and a README as zip bytes; refuses an archive over 64 MiB (the importer's archive cap; its decompressed-bytes cap is not mirrored, so a highly compressible project over 64 MiB unpacked exports but does not re-import) |
+| `playground_import_zip(bytes)` | `→ Promise<string>` | validates, drains, replaces the project in the store, resolves with the slug; the PAGE then sets `?project=<slug>` and reloads — REQUIRED, same slug or not, as for switch and reset: the drain leaves writes refused until the reload |
+| `playground_read_file_bytes(path)` | `→ Result<Uint8Array>` | project-relative binary read through `vfs::read` |
+| `playground_conflicted_paths()` | `→ string[]` | sorted project-relative paths currently in conflicted state |
 | `playground_script_errors()` | `→ string[]` | empty until batch 7 fills the bridge's `Hooks` |
 
 The engine cannot swap a running project; every switch is a page reload with the query
@@ -153,4 +157,32 @@ takes the viewport), after Stop, and on exit. Nothing is written during Play or 
 
 ## Export and import
 
-Batch 5. The zip layout and the import validation are specified there, not here.
+Projects export and import as standard zip archives (`<slug>.zip`). This is the layout the template repo conforms to:
+
+```
+<slug>.zip
+├── project.ron     # the ProjectManifest
+├── README.md       # generated: the title and the docs URL
+└── assets/         # scenes, .sheet.ron sidecars, scripts, images, sounds, fonts, locales
+```
+
+### Validation
+
+On import, the archive is validated in order before touching any persistence store:
+1. Archive file size is capped at 64 MiB and refused before parsing.
+2. Entry names are normalized: `\` becomes `/` and a leading `./` is stripped.
+3. Directory entries are skipped.
+4. Traversal is refused (any `..` component, leading `/` or `\`, or drive prefix).
+5. The name is made canonical — `.` segments and repeated `/` dropped — so `assets/./x` is stored as `assets/x`, the key a scene uses.
+6. `README.md` at the root is skipped.
+7. A canonical name that repeats is refused.
+8. Every other entry must be `project.ron` or lie under `assets/`; any other root entry is refused naming the entry.
+9. Cumulative decompressed bytes across entries are capped at 64 MiB as entries are read (`Read::take` at the remaining budget; exceeding the budget refuses).
+10. `project.ron` is required, parsed as `ProjectManifest`, and its `slug` must pass slug validation (`^[a-z0-9_-]{1,32}$`).
+11. Every `*.sheet.ron` runs through `engine_core::sheet_file::parse_sheet_file`.
+12. Every `*.scene.ron` runs through `SceneLoader::parse` followed by dry-run instantiation via `SceneLoader::instantiate(&data, &mut World::new(), &mut HeadlessAssets::new())`.
+13. `.rhai` entries are stored without execution check until scripting arrives.
+
+### Failure contract
+
+A refused archive touches nothing; a failed `replace_project` restores the epoch and the current project keeps saving — a save attempted during its drain window was refused, as on switch and reset, and is re-issued by saving again.

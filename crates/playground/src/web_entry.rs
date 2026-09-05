@@ -35,10 +35,15 @@ thread_local! {
     static BUNDLED_MANIFESTS: RefCell<Vec<ProjectManifest>> = const { RefCell::new(Vec::new()) };
     static STORED_MANIFESTS: RefCell<Vec<ProjectManifest>> = const { RefCell::new(Vec::new()) };
     static DIRTY_FLAG: RefCell<Option<Arc<AtomicBool>>> = const { RefCell::new(None) };
+    static ACTIVE_MANIFEST: RefCell<Option<ProjectManifest>> = const { RefCell::new(None) };
 }
 
 pub fn active_store() -> Option<Arc<dyn ProjectStore>> {
     ACTIVE_STORE.with(|store_cell| store_cell.borrow().clone())
+}
+
+pub fn active_manifest() -> Option<ProjectManifest> {
+    ACTIVE_MANIFEST.with(|manifest_cell| manifest_cell.borrow().clone())
 }
 
 pub fn bundled_manifests() -> Vec<ProjectManifest> {
@@ -161,6 +166,8 @@ async fn run_playground() -> Result<(), String> {
             content_hash: String::new(),
             origin: ProjectOrigin::Saved,
         });
+
+    ACTIVE_MANIFEST.with(|manifest_cell| *manifest_cell.borrow_mut() = Some(manifest.clone()));
 
     let root_string = project_root(ASSET_BASE, &project_slug);
     let root_path = PathBuf::from(&root_string);
