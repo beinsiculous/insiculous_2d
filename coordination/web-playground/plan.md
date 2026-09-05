@@ -43,7 +43,7 @@ late-put base recording; deterministic instance order with resets applied before
 `pagehide`, a terminal *conflicted* state, the textarea's own dirty flag, backslash zip paths,
 zero-vector `normalize`. **This is v7, the settled plan** (Jesse, 2026-09-04: no round 7;
 corrections from here go into the acting batch section before its handoff, and every batch's
-staged diff is reviewed by kimi and Claude). Batch 2 landed (936bcf9). Batch 3's section was re-verified against the tree before its handoff (2026-09-04): the corrections are listed at the top of that section, and batch 4's and 7's cross-references to the two replaced hooks were updated with it. Batch 3 landed (1462cbe). Batch 4's section was re-verified the same way before its handoff (2026-09-04); its corrections are listed at the top of that section, and the conflicted-path download control it deferred is recorded in batch 5.
+staged diff is reviewed by kimi and Claude). Batch 2 landed (936bcf9). Batch 3's section was re-verified against the tree before its handoff (2026-09-04): the corrections are listed at the top of that section, and batch 4's and 7's cross-references to the two replaced hooks were updated with it. Batch 3 landed (1462cbe). Batch 4's section was re-verified the same way before its handoff (2026-09-04); its corrections are listed at the top of that section, and the conflicted-path download control it deferred is recorded in batch 5. Batch 4 landed (e362625 in insiculous_2d, f69f09e in insiculous_web): kimi reviews 14–17, Claude review-14-claude, rebuttals 14–17; it is marked done once Jesse's browser check on staging passes.
 
 ## Context
 
@@ -775,7 +775,7 @@ Gates: standard + wasm (the crate must build for wasm32 and natively) + games
 (`common`'s public surface grows by the observer hook, `engine_core::web` is wasm-only
 and needs none). Leaves out: the build script, the page (batch 4), zip (batch 5).
 
-## Batch 4 — bundle build and the `/playground/` page
+## Batch 4 — bundle build and the `/playground/` page — LANDED 2026-09-04 (e362625 engine, f69f09e site); Jesse's browser check pending
 
 **Re-verified against the tree 2026-09-04 before the handoff.** Corrections, each stated
 where it applies below: `build_wasm.sh` is 177 lines (batch 0's device gate added four) and
