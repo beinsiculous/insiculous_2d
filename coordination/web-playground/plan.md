@@ -43,7 +43,7 @@ late-put base recording; deterministic instance order with resets applied before
 `pagehide`, a terminal *conflicted* state, the textarea's own dirty flag, backslash zip paths,
 zero-vector `normalize`. **This is v7, the settled plan** (Jesse, 2026-09-04: no round 7;
 corrections from here go into the acting batch section before its handoff, and every batch's
-staged diff is reviewed by kimi and Claude). Batch 2 landed (936bcf9). Batch 3's section was re-verified against the tree before its handoff (2026-09-04): the corrections are listed at the top of that section, and batch 4's and 7's cross-references to the two replaced hooks were updated with it. Batch 3 landed (1462cbe). Batch 4's section was re-verified the same way before its handoff (2026-09-04); its corrections are listed at the top of that section, and the conflicted-path download control it deferred is recorded in batch 5. Batch 4 landed (e362625 in insiculous_2d, f69f09e in insiculous_web): kimi reviews 14–17, Claude review-14-claude, rebuttals 14–17; it is marked done once Jesse's browser check on staging passes. Batch 5's section was re-verified against the tree 2026-09-05; its corrections are listed at the top of that section (the `flate2` backend line, the headless dry-run resolver, the bundle rebuild, the page's script file, the conflicted-paths export), and batch 7's docs bullet gained the export README's second link.
+staged diff is reviewed by kimi and Claude). Batch 2 landed (936bcf9). Batch 3's section was re-verified against the tree before its handoff (2026-09-04): the corrections are listed at the top of that section, and batch 4's and 7's cross-references to the two replaced hooks were updated with it. Batch 3 landed (1462cbe). Batch 4's section was re-verified the same way before its handoff (2026-09-04); its corrections are listed at the top of that section, and the conflicted-path download control it deferred is recorded in batch 5. Batch 4 landed (e362625 in insiculous_2d, f69f09e in insiculous_web): kimi reviews 14–17, Claude review-14-claude, rebuttals 14–17; it is marked done once Jesse's browser check on staging passes. Batch 5's section was re-verified against the tree 2026-09-05; its corrections are listed at the top of that section (the `flate2` backend line, the headless dry-run resolver, the bundle rebuild, the page's script file, the conflicted-paths export), and batch 7's docs bullet gained the export README's second link. Batch 5 landed (ceb77be in insiculous_2d, 227a5f2 in insiculous_web): kimi reviews 19–22, Claude review-19-claude, rebuttals 19–21; the export-cap parity follow-up is insiculous_2d#101; it is marked done once Jesse's browser check on staging passes.
 
 ## Context
 
@@ -954,7 +954,7 @@ switch, reset. Leaves out: export/import (batch 5) and, with them, the "download
 file" control the conflicted-path banner names (the page needs export's Blob-download
 shape and `playground_read_file`; batch 5 carries it); scripts.
 
-## Batch 5 — project export and import (#49 items 1–2)
+## Batch 5 — project export and import (#49 items 1–2) — LANDED 2026-09-05 (ceb77be engine, 227a5f2 site); Jesse's browser check pending
 
 **Re-verified against the tree 2026-09-05 before the handoff.** Corrections, each stated
 where it applies below: `persist.rs` is `persist/mod.rs` (484 lines) and gains one method,
