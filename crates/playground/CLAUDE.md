@@ -15,12 +15,12 @@ crates into the wasm gate.
 
 ## File Map
 - `lib.rs` — module list; `web_entry` is wasm-only.
-- `web_entry.rs` (wasm) — `ASSET_BASE`, `BUNDLE_VERSION` (the five-place version contract in the header), boot order: logging → preload → open the store (memory fallback + banner) → sweep orphans → manifests → pick the project from `?project=` → load stored files onto `MemFs` → seed the chains → observer + listeners → bridge channels → `run_game_with_editor_opts`.
+- `web_entry.rs` (wasm) — `ASSET_BASE`, `BUNDLE_VERSION` (the five-place version contract in the header), boot order: logging → preload → open the store (memory fallback + banner) → sweep orphans → manifests → pick the project from `?project=` → load stored files onto `MemFs` → seed the chains → observer + listeners → bridge channels → dispatch `playground-ready` → `run_game_with_editor_opts`.
 - `bridge.rs` — the `playground_*` exports and the pure rules behind them (`validate_bridge_path`, `can_dispatch`, `dirty_or`); `Hooks` for batch 7's `source_check` / `script_errors`.
 - `store.rs` — `ProjectStore`, `StoredFile`, `StoreError`, `Fut`.
 - `store/directory.rs` — native test double, lock file per project.
 - `store/memory.rs` — every target; the fallback when IndexedDB will not open.
-- `store/indexed_db.rs` (wasm) — database `beinsiculous.playground` v1, stores `files` and `projects`; the CAS `put`.
+- `store/indexed_db/{mod,cursors}.rs` (wasm) — database `beinsiculous.playground` v1, stores `files` and `projects`; the CAS `put`.
 - `store/idb_transaction.rs` (wasm) — the transaction-to-future adapter; the only place web-sys IndexedDB verbosity lives.
 - `persist/mod.rs` — `Chains`: one chain per path, the five path states, `is_pending` vs `has_active`, the DOM banner; the wasm driver and listeners.
 - `persist/tests/` — `mod.rs`, `chains.rs` (hand-polled state-machine tests), and `stores.rs` (native directory double tests).

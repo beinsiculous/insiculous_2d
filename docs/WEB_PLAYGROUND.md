@@ -3,8 +3,43 @@
 The Web Playground (`/playground/`) runs the editor on wasm32 + WebGPU over a project kept
 in the browser's IndexedDB. The crate is `crates/playground`; the engine side of the
 contract is `docs/EDITOR_COMMAND_API.md` (Stage D is the bridge below) and
-`docs/WEB_SAVES.md` (the preferences key). Batch 4 of `coordination/web-playground/plan.md`
-adds the build script and the page; this file describes what the crate exports today.
+`docs/WEB_SAVES.md` (the preferences key).
+
+## The bundle
+
+The bundle layout is:
+```
+playground/<version>/
+├── game.js
+├── game_bg.wasm
+└── assets/
+    ├── manifest.json
+    ├── projects.json
+    └── projects/
+        └── <slug>/
+            └── assets/
+                └── ...
+```
+
+Invocation of record, run from the engine root:
+```sh
+scripts/build_wasm.sh crates/playground playground --kind playground --version v1 \
+    --project examples=Examples=examples --sync ../insiculous_web/public
+```
+
+`assets/projects.json` is the bundled project manifest list (a JSON array of `ProjectManifest`).
+Each entry carries:
+```json
+{
+  "slug": "examples",
+  "title": "Examples",
+  "bundle_version": "v1",
+  "content_hash": "<sha256-hex>",
+  "origin": "bundled"
+}
+```
+`content_hash` is computed as sha256 (hex) over the sorted relative file list and bytes of
+the project's `<dir>/assets`.
 
 ## The bundle contract
 
@@ -14,7 +49,6 @@ version token appears in five places, listed in that file's header: the deployed
 `bundle_version`, the build script's output directory, and every `StoredFile`'s
 `bundle_version`. Bumping it is a coordinated change across all five.
 
-`{ASSET_BASE}/projects.json` is the bundled project list (a JSON array of `ProjectManifest`).
 A project's root is computed, never stored: `{ASSET_BASE}/projects/<slug>` on the web,
 `<dir>/projects/<slug>` natively; its asset base is `{root}/assets`. Every file the engine
 reads or writes is keyed by that base-joined string (`common::vfs`'s canonical key), e.g.
@@ -26,7 +60,9 @@ project's asset base first.
 are module-level singletons; a second `playground_*` module on the same page would share
 them. The page provides two elements by id: `game-loading` (boot status text, from
 `engine_core::web::set_boot_status`) and `playground-banner` (persistence warnings, written
-by `persist::set_dom_banner`; an absent element is a silent no-op).
+by `persist::set_dom_banner`; an absent element is a silent no-op). The entry dispatches the
+`playground-ready` event on `window` immediately after the bridge is set up, signaling that
+bridge channels are ready and manifests are loaded.
 
 ## The store
 

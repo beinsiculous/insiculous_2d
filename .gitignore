@@ -29,3 +29,6 @@ review/*/*
 
 # Local editor preferences
 editor_prefs.json
+
+# Web playground build output
+crates/playground/dist/

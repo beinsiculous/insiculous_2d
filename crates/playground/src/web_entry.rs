@@ -218,6 +218,14 @@ async fn run_playground() -> Result<(), String> {
     let (response_sender, response_receiver) = channel::<String>();
     crate::bridge::setup_bridge(request_sender, response_receiver, root_path.clone());
 
+    // The page's `await init()` resolves before this spawned future has run: without
+    // this event a select populated right after `init()` reads empty manifests forever.
+    if let Some(window) = web_sys::window() {
+        if let Ok(event) = web_sys::Event::new("playground-ready") {
+            let _ = window.dispatch_event(&event);
+        }
+    }
+
     // 9. Initial scene and options
     let scenes_directory = root_path.join("assets").join("scenes");
     let initial_scene = find_first_scene(&scenes_directory);
