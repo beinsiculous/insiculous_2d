@@ -43,7 +43,7 @@ late-put base recording; deterministic instance order with resets applied before
 `pagehide`, a terminal *conflicted* state, the textarea's own dirty flag, backslash zip paths,
 zero-vector `normalize`. **This is v7, the settled plan** (Jesse, 2026-09-04: no round 7;
 corrections from here go into the acting batch section before its handoff, and every batch's
-staged diff is reviewed by kimi and Claude). Batch 2 landed (936bcf9). Batch 3's section was re-verified against the tree before its handoff (2026-09-04): the corrections are listed at the top of that section, and batch 4's and 7's cross-references to the two replaced hooks were updated with it. Batch 3 landed (1462cbe). Batch 4's section was re-verified the same way before its handoff (2026-09-04); its corrections are listed at the top of that section, and the conflicted-path download control it deferred is recorded in batch 5. Batch 4 landed (e362625 in insiculous_2d, f69f09e in insiculous_web): kimi reviews 14–17, Claude review-14-claude, rebuttals 14–17; it is marked done once Jesse's browser check on staging passes. Batch 5's section was re-verified against the tree 2026-09-05; its corrections are listed at the top of that section (the `flate2` backend line, the headless dry-run resolver, the bundle rebuild, the page's script file, the conflicted-paths export), and batch 7's docs bullet gained the export README's second link. Batch 5 landed (ceb77be in insiculous_2d, 227a5f2 in insiculous_web): kimi reviews 19–22, Claude review-19-claude, rebuttals 19–21; the export-cap parity follow-up is insiculous_2d#101; it is marked done once Jesse's browser check on staging passes.
+staged diff is reviewed by kimi and Claude). Batch 2 landed (936bcf9). Batch 3's section was re-verified against the tree before its handoff (2026-09-04): the corrections are listed at the top of that section, and batch 4's and 7's cross-references to the two replaced hooks were updated with it. Batch 3 landed (1462cbe). Batch 4's section was re-verified the same way before its handoff (2026-09-04); its corrections are listed at the top of that section, and the conflicted-path download control it deferred is recorded in batch 5. Batch 4 landed (e362625 in insiculous_2d, f69f09e in insiculous_web): kimi reviews 14–17, Claude review-14-claude, rebuttals 14–17; it is marked done once Jesse's browser check on staging passes. Batch 5's section was re-verified against the tree 2026-09-05; its corrections are listed at the top of that section (the `flate2` backend line, the headless dry-run resolver, the bundle rebuild, the page's script file, the conflicted-paths export), and batch 7's docs bullet gained the export README's second link. Batch 6's section was re-verified against the tree 2026-09-05; its corrections are listed at the top of that section (the response struct that already exists, the host file that does not, the add-in-the-same-undo-entry drop, the prefs field the save path would wipe, the scroll-into-view mechanism). Batch 5 landed (ceb77be in insiculous_2d, 227a5f2 in insiculous_web): kimi reviews 19–22, Claude review-19-claude, rebuttals 19–21; the export-cap parity follow-up is insiculous_2d#101; it is marked done once Jesse's browser check on staging passes.
 
 ## Context
 
@@ -1196,33 +1196,120 @@ check on import (batch 7's hook).
 
 ## Batch 6 — scripting Stage 2: scripts visible in the hierarchy and the asset browser
 
-Files: `crates/editor/src/hierarchy/mod.rs` (`render` at `:231`),
-`crates/editor/src/asset_browser.rs` (`AssetKind`, `:13-18`, `kind_for_extension`
-`:69-75`), `crates/editor/src/drag_drop.rs` (`DragPayload`, `:18-23`),
-`crates/editor/src/script_editor.rs`, `crates/editor_integration/src/panel_renderer/
-{hierarchy.rs, asset_browser.rs}`, `crates/editor/src/editor_preferences.rs`,
-`crates/editor_integration/src/editor_game/shortcuts.rs`.
+**Re-verified against the tree 2026-09-05 before the handoff** (batches 3–5 landed since this
+section was written). Corrections, each stated where it applies below: `render` already returns
+`HierarchyResponse { clicked: Vec<EntityId>, rename_committed }` — the audit's bare `Vec<EntityId>`
+is gone — so the struct stays and its `clicked` element type widens; the hierarchy has no host
+file of its own (`render_hierarchy` is `panel_renderer/mod.rs:143-190`, 292 lines, and stays
+there); `SetComponentCommand::execute` is a no-op on an entity without the component
+(`set_commands.rs:44-48`), so a drop on a script-less entity needs the add in the same undo entry;
+`capture_preferences` (`editor_game/preferences.rs:40-55`) rebuilds prefs from live state, so a
+field nothing holds is wiped on the next save; `ScrollState` has no setter and the inspector host
+cannot see where a block was drawn; `AssetKind` is at `:16-21` and `kind_for_extension` at
+`:72-78`; `render_tile` (`panel_renderer/asset_browser.rs:147`, its match at `:158`) matches `(kind,
+handle)` exhaustively, so a new kind is a compile-forced arm; `editor_game/mod.rs` is 575 lines
+and takes exactly two — the `mod open_source;` line beside its siblings (`:28-37`) and the
+per-frame call in `finish_frame` (`:320`); hierarchy row clicks have no `suppresses_click()` guard
+today (`hierarchy/mod.rs:425`) because rows were never drop targets, and `dragging_payload()` is
+`None` on the release frame (`drag_drop.rs:88-93`), so a drop cannot be gated on it.
 
-Target shapes (audit §6.4 rows, adjusted for the web):
+Files: `crates/editor/src/hierarchy/{mod.rs, tests.rs}` (`render` at `mod.rs:231`, the harness
+`render_frame` at `tests.rs:12-21`), `crates/editor/src/asset_browser.rs`,
+`crates/editor/src/drag_drop.rs` (`DragPayload`, `:18-23`), `crates/editor/src/script_editor.rs`,
+`crates/editor/src/texture_field.rs` (`InspectorExtras`, `:16-26`),
+`crates/editor/src/editable_inspector.rs` (`header`, `:236`), `crates/editor/src/scroll.rs`,
+`crates/editor/src/test_support.rs` (`extras`, `:62-64`, an exact `InspectorExtras` literal),
+`crates/editor/src/context/mod.rs`, `crates/editor/src/editor_preferences.rs`,
+`crates/editor_integration/src/panel_renderer/{mod.rs, asset_browser.rs, inspector.rs}`,
+`crates/editor_integration/src/editor_game/{mod.rs, preferences.rs}`, new
+`crates/editor_integration/src/editor_game/open_source.rs`, `crates/editor/CLAUDE.md`,
+`crates/editor_integration/CLAUDE.md`.
 
-- Hierarchy emits one pseudo-row per `ScriptRef` under its entity at `depth + 1`,
-  labelled by `script_id` (or the `.rhai` file stem), non-selectable as an entity;
-  `render` returns `Vec<HierarchyClick>` where `HierarchyClick::Entity(id) |
-  Script { entity, index }`; a script click selects the entity and asks the inspector
-  to scroll its `Scripts` block into view (`ScrollState` already shared).
-- `AssetKind::Script` for `rhai` (and `rs`, display-only), `DragPayload::Script { path }`;
-  dropping a `.rhai` on a hierarchy entity row appends a `ScriptRef { script_id: <stem>,
-  source_path: <relative path> }` through `SetScriptsCommand` (undoable).
-- "Open in IDE": native only — `EditorPreferences.ide_command: Option<String>` and a
-  `#[cfg(not(target_arch = "wasm32"))] std::process::Command` spawn in
-  `editor_integration`; on wasm the button is absent and the page's textarea is the
-  editor (batch 8). Inspector button label "Open source", status-bar message names the
-  file either way.
-- Tests: hierarchy rows for an entity with two scripts render two pseudo-rows and a
-  click on the second reports `Script { index: 1 }`; a `.rhai` drop appends exactly one
-  ref and undo removes it.
+Target shapes (audit §6.4 rows, adjusted for the web and for the tree as it stands):
 
-Gates: standard + wasm. Leaves out: execution (batch 7).
+- **Hierarchy rows.** `render_node` emits one pseudo-row per `ScriptRef` of the entity's
+  `Scripts` component, directly under the entity's row at `depth + 1` and before its children,
+  labelled by `script_id`, or the `source_path` file stem when the id is empty, or `script` when
+  both are; widget id `hierarchy_script_{entity}_{index}`. Pseudo-rows are culled and scrolled
+  like rows, stay visible when the entity is collapsed (they are the entity's attributes, not
+  its children, and an entity with scripts and no children has no arrow), never enter
+  `visible_order` (Shift ranges stay entity ranges) and never carry a selection fill.
+  `#[derive(Debug, Clone, Copy, PartialEq, Eq)] pub enum HierarchyClick { Entity(EntityId),
+  Script { entity: EntityId, index: usize } }`; `HierarchyResponse.clicked` becomes
+  `Vec<HierarchyClick>`. Entity-row and pseudo-row clicks push nothing while
+  `drag_drop.suppresses_click()` is true — the release frame of a drop is also the frame
+  `ui::interact` reports the click, and the viewport (`viewport_interaction.rs:43`) and asset
+  tiles (`asset_browser.rs:229`) already guard the same way. The host
+  (`render_hierarchy`) routes `Entity` through the existing Ctrl/Shift modes unchanged and, for
+  `Script`, calls `selection.select(entity)` and sets `EditorContext.inspector_scroll_request =
+  Some("Scripts")` (new field beside `inspector_scroll_entity`).
+- **Scroll into view.** `ScrollState::scroll_to(offset: f32)` (clamped by the next
+  `begin_frame`). `InspectorExtras` gains `scroll_target: Option<&'static str>` (in) and
+  `scroll_target_y: Option<f32>` (out); `EditableInspector::header` records the header's TOP —
+  `current_y` before `component_header` advances it (`editable_inspector.rs:237`), not `y()`
+  after — into the out field when `type_name` equals the target and the field is still `None`
+  (first header wins; `header_with_remove` goes through `header`, so every block is covered). The inspector host, after `edit_all_components`, converts a
+  recorded `y` to an offset (`y + offset_this_frame - (bounds.y + padding)`), calls `scroll_to`
+  and clears the request — also clearing it when the block was not found or the inspector is
+  read-only (Playing). The scroll lands the frame after the click, the lag `scroll.rs` already
+  documents.
+- **Asset browser.** `AssetKind::Script` for `rhai` and `rs` (ordered after `Scene`);
+  `render_tile`'s new `(AssetKind::Script, _)` arm draws a text glyph (the extension, upper-case,
+  `theme.accent_cyan`, `theme.fonts.heading`, centered); `tile_interaction` arms
+  `DragPayload::Script { path }` for `.rhai` tiles only (`.rs` is display-only: no drag, no
+  click); `render_drag_ghost` draws a `Script` drag as the file name following the cursor. The
+  `Texture`-only `if let`s in `texture_field.rs:50,74` and `viewport_interaction.rs:34-35` are
+  unchanged: a `Script` dropped on the viewport is consumed by nobody and lapses after its one
+  frame. The scan test named in `crates/editor/CLAUDE.md`'s pitfall table gains a `.rhai` and an
+  `.rs` fixture and keeps its name.
+- **Drop on an entity row.** `render` gains `drag_drop: &mut DragDropState` (host at
+  `panel_renderer/mod.rs:151`, harness at `tests.rs:12-21`); each entity row calls
+  `take_drop_in(row_rect)` unconditionally and acts only when the returned payload is `Script`
+  — a `Texture` dropped on a row is consumed and discarded (today it lapses unconsumed; the same
+  outcome for the user) — highlights as a drop target while `dragging_payload()` is a `Script`
+  and the row is hovered, and reports `HierarchyResponse.script_dropped: Option<(EntityId,
+  String)>`.
+  The host appends `ScriptRef { script_id: <stem>, source_path: <asset-relative path>, params:
+  empty }` (batch 7's `// @param` defaults pre-fill it later): with `Scripts` present, one
+  `SetScriptsCommand::new(entity, old, new, "script_drop")`; without it, one `MacroCommand` of
+  `AddComponentCommand::new(entity, ComponentKind::Scripts)` then the set; both go through
+  `history.execute` (`commands/mod.rs:182`), which pushes without `try_merge`, so every drop is
+  its own undo entry — the discrete-entry rule `assign_sprite_texture` (`entity_ops.rs:161-186`)
+  states. Status bar: `Attached <stem> to <entity display name>`.
+- **Open source.** `EditorPreferences.ide_command: Option<String>` with `#[serde(default)]`
+  (the legacy-prefs test at `editor_preferences.rs:196` gains the field); `capture_preferences`
+  copies it from `last_saved_prefs` — nothing else holds it, and a save that rebuilt prefs
+  without it would wipe a hand-edited command. `InspectorExtras` gains `can_open_source: bool`
+  (in) and `open_source: Option<String>` (out, a `source_path`); `edit_one_script` renders an
+  `Open source` action button under the Source row only when `can_open_source` is true AND
+  `source_path` is non-empty (a fresh `+ Add Script` ref has none; an empty path would resolve
+  to the asset root and open the IDE on the whole folder). Host:
+  `can_open_source = cfg!(not(target_arch = "wasm32"))`; a request goes to
+  `EditorContext.pending_open_source: Option<String>`, consumed each frame by
+  `EditorGame::open_pending_source` in the new `open_source.rs`: the path resolves like
+  `scene_io.rs:255-260` (absolute passes, relative joins `asset_base`); with an `ide_command`
+  (an empty or whitespace-only value counts as none), `#[cfg(not(target_arch = "wasm32"))]` splits it on whitespace and spawns
+  `std::process::Command::new(program).args(rest).arg(path)` — `Opened <path> with <program>`
+  on success, `show_error` naming the path and the error otherwise; without one, `show_message`
+  `Source: <path> (set ide_command in the editor prefs to open it)`. On wasm the button is absent
+  and the page's textarea is the editor (batch 8).
+- **Docs.** `crates/editor/CLAUDE.md`: the `drag_drop.rs`, `hierarchy/`, `asset_browser.rs` and
+  `editor_preferences.rs` rows and the asset-scan pitfall row; `crates/editor_integration/CLAUDE.md`:
+  the asset browser pattern line (`:43`) and the file map (`open_source.rs`).
+- **Tests** (contract-named, `test_` prefix): an entity with two scripts renders two pseudo-rows
+  and a click on the second reports `Script { index: 1 }` while `visible_order` holds the entity
+  once; a `.rhai` drop on an entity with `Scripts` appends exactly one ref and undo removes it;
+  the same drop on an entity without `Scripts` adds the component with one ref and ONE undo
+  removes the component; `kind_for_extension` classifies `rhai` and `RS` as `Script`; prefs JSON
+  without `ide_command` loads with `None` and a set command round-trips; `scroll_to` past the
+  content clamps at the next `begin_frame`.
+
+Gates: standard + wasm (every touched crate root is under the gate); `scripts/check_games.sh`
+(check only — no public item of the systems crates changes, but the games' `--features editor`
+builds pull `editor_integration`). Leaves out: execution (batch 7), the `// @param` pre-fill
+(batch 7), the bundle rebuild (nothing in `game.js` changes; the deployed playground picks these
+rows up at batch 8's rebuild), drag-to-reparent and every other absent hierarchy affordance of
+audit §4.10.
 
 ## Batch 7 — scripting Stage 3: registry, runner, Rhai
 
