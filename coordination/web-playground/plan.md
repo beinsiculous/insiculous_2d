@@ -43,7 +43,7 @@ late-put base recording; deterministic instance order with resets applied before
 `pagehide`, a terminal *conflicted* state, the textarea's own dirty flag, backslash zip paths,
 zero-vector `normalize`. **This is v7, the settled plan** (Jesse, 2026-09-04: no round 7;
 corrections from here go into the acting batch section before its handoff, and every batch's
-staged diff is reviewed by kimi and Claude). Batch 2 landed (936bcf9). Batch 3's section was re-verified against the tree before its handoff (2026-09-04): the corrections are listed at the top of that section, and batch 4's and 7's cross-references to the two replaced hooks were updated with it. Batch 3 landed (1462cbe). Batch 4's section was re-verified the same way before its handoff (2026-09-04); its corrections are listed at the top of that section, and the conflicted-path download control it deferred is recorded in batch 5. Batch 4 landed (e362625 in insiculous_2d, f69f09e in insiculous_web): kimi reviews 14–17, Claude review-14-claude, rebuttals 14–17; it is marked done once Jesse's browser check on staging passes.
+staged diff is reviewed by kimi and Claude). Batch 2 landed (936bcf9). Batch 3's section was re-verified against the tree before its handoff (2026-09-04): the corrections are listed at the top of that section, and batch 4's and 7's cross-references to the two replaced hooks were updated with it. Batch 3 landed (1462cbe). Batch 4's section was re-verified the same way before its handoff (2026-09-04); its corrections are listed at the top of that section, and the conflicted-path download control it deferred is recorded in batch 5. Batch 4 landed (e362625 in insiculous_2d, f69f09e in insiculous_web): kimi reviews 14–17, Claude review-14-claude, rebuttals 14–17; it is marked done once Jesse's browser check on staging passes. Batch 5's section was re-verified against the tree 2026-09-05; its corrections are listed at the top of that section (the `flate2` backend line, the headless dry-run resolver, the bundle rebuild, the page's script file, the conflicted-paths export), and batch 7's docs bullet gained the export README's second link.
 
 ## Context
 
@@ -287,7 +287,8 @@ What the exploration established (Sep 4 2026, tree at `0f052b9`):
 
 - Gates: `cargo test --workspace` (0 failed, 0 ignored), `cargo clippy --workspace
   --all-targets` (0 warnings), every touched file ≤ 600 lines, no new `#[allow]`, no
-  `unwrap()` outside tests, no new dependency beyond `rhai` (batch 7), `zip` (batch 5)
+  `unwrap()` outside tests, no new dependency beyond `rhai` (batch 7), `zip` with its
+  `flate2` backend line (batch 5)
   and the wasm-target-only bridge family (`wasm-bindgen`, `wasm-bindgen-futures`,
   `web-sys`, `js-sys`) in `crates/playground` (batch 3). `/finish-task` is the checklist.
 - Comment-tag gate on every batch:
@@ -955,55 +956,243 @@ shape and `playground_read_file`; batch 5 carries it); scripts.
 
 ## Batch 5 — project export and import (#49 items 1–2)
 
-Files: `crates/playground/src/{archive.rs, bridge.rs, persist.rs, projects.rs}`,
-`crates/playground/Cargo.toml` (`zip = { version = "4", default-features = false,
-features = ["deflate-flate2"] }`), `insiculous_web/src/components/PlaygroundEmbed.astro`.
+**Re-verified against the tree 2026-09-05 before the handoff.** Corrections, each stated
+where it applies below: `persist.rs` is `persist/mod.rs` (484 lines) and gains one method,
+nothing more — `restore_epoch` (`:338-343`) and the draining refusal (`:152-154`) already
+exist; `zip` 4.6.1's `deflate-flate2` feature declares `flate2` with `default-features =
+false`, and `flate2` with no backend feature is a `compile_error!` ("You need to choose a
+zlib backend", `flate2-1.1.5/src/lib.rs:97-98`) — today the crate would compile only by
+feature unification with `png`'s `flate2`, so the crate names the backend itself; the
+import's dry run reuses `editor_integration::HeadlessAssets`, not the editor's GPU asset
+manager; `docs/SCRIPTING.md` does not exist until batch 7, so the export README links
+`docs/WEB_PLAYGROUND.md` alone and batch 7 adds the second link; the Rust hunks change
+`game.js`'s exports, so the shipped bundle must be rebuilt and re-synced or the page calls
+functions the deployed glue does not have; `PlaygroundEmbed.astro` is 544 lines and would
+exceed the 600 ceiling with the new controls, so its script moves to its own file first; the
+conflicted-path control needs the list of conflicted paths, which nothing exports today;
+`project.ron` needs `ron` in the crate (a workspace dependency already); export needs the
+open project's manifest, which only `Chains` holds, privately; the section's tests were
+called "directory store" tests but touch no store — they are pure. The corrected section was
+reviewed in code mode by kimi (`review-18.md`, 5 findings) and gemini (`review-18-gemini.md`,
+7), adjudicated in `rebuttal-18.md`, all accepted: an import stamps an empty `content_hash`
+(a round-tripped bundled hash left `differs_from_bundle` false, so the "imported over"
+note could never show); export archives `assets/**` only and import returns `assets/**` only
+(a project tree holding `project.ron` or `README.md` would have produced duplicate entries
+that the importer then refuses); the bridge takes the store BEFORE the drain (a `None` store
+after it left `draining` set for the rest of the session); `reissue_stranded` is gated on
+`draining` (a tab-hide during the import window could re-put stale bytes over the import);
+leading `./` is stripped (`zip -r x.zip .`); downloads are built on click, not ahead (a
+pre-built Blob of a conflicted file went stale as the user kept editing; an `<a>` cannot be
+`disabled`); the file input is cleared after a rejection (an unchanged value fires no
+`change`); the glue's type annotation gains the four exports; the poll is 100 ms, not 50;
+the failure contract is worded exactly.
+
+Repos: `insiculous_2d` and `insiculous_web`.
+
+Files (engine): `crates/playground/Cargo.toml`, `Cargo.lock`, `crates/playground/src/lib.rs`
+(the module list gains `archive`), `crates/playground/src/archive.rs` (new; if the
+validation and its tests together pass 600 lines, the tests go to `archive/tests.rs` as
+`persist/tests/` does), `crates/playground/src/bridge.rs` (282 lines; four exports),
+`crates/playground/src/web_entry.rs` (248; one cell, one hunk), `crates/playground/src/persist/mod.rs`
+(one method, one guard), `crates/playground/src/persist/tests/chains.rs` (one test),
+`docs/WEB_PLAYGROUND.md`, `crates/playground/CLAUDE.md`. Files (site):
+`src/components/PlaygroundEmbed.astro`, `src/scripts/playground-embed.ts` (new),
+`public/playground/v1/**` (the re-synced bundle — every changed file staged), `README.md`
+§ "The editor bundle" (one bullet).
+
+**Dependencies** (`crates/playground/Cargo.toml` `[dependencies]`, every target):
+```toml
+zip = { version = "4", default-features = false, features = ["deflate-flate2"] }
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+ron = { workspace = true }
+```
+`flate2` is `zip`'s backend line, not a second archive library: `rust_backend` is
+`miniz_oxide`, already in `Cargo.lock` (`:1623`), and `flate2` 1.1.5 is there too (via
+`png`), so the lockfile gains `zip` and nothing C. The ground rule's "no new dependency
+beyond … `zip` (batch 5)" reads as `zip` plus this backend line. `[dev-dependencies]` gains
+`tempfile = "3"` (three crates already carry it). No new `web-sys` feature: bytes cross the
+bridge as `Vec<u8>` ↔ `Uint8Array`, and the Blob is built page-side. Gate: `cargo tree -p
+playground --target wasm32-unknown-unknown -i flate2 -e features` lists `rust_backend`.
 
 Target shapes:
 
-- `archive.rs`: `pub fn export_project(project_root: &Path, manifest: &ProjectManifest)
-  -> Result<Vec<u8>, ArchiveError>` writes every file under the project's root
-  (`assets/**`: scenes, `.sheet.ron` sidecars, scripts, images), a generated `README.md`
-  (project title, the URL of `docs/SCRIPTING.md` and `docs/WEB_PLAYGROUND.md` on GitHub —
-  NOT the template repo, which does not exist until batch 10 adds that sentence) and
-  `project.ron` (the manifest passed in — the VFS holds no title or hash); `pub fn
-  import_project(bytes) -> Result<(ProjectManifest, Vec<StoredFile>), ArchiveError>`
-  validates every entry (entry names normalised `\` → `/` first — Windows archivers emit
-  backslashes; path traversal refused, `project.ron` required and its slug is the
-  project's identity, `.sheet.ron` sidecars run through `sheet_file::parse_sheet_file`
-  and every `*.scene.ron` through `SceneLoader::parse` plus a dry-run instantiate into a
-  scratch `World` — the same guard `load_scene` uses — so schema drift or a typo in a
-  scene fails loud naming the file instead of committing a project the editor cannot
-  open, the slug must
-  match `^[a-z0-9_-]{1,32}$`, archives over 64 MiB refused AND cumulative decompressed
-  bytes capped at 64 MiB as entries are read — a 1 MiB zip of zeros must not OOM the
-  tab, directory entries skipped — `zip -r` and Finder emit them) and returns the files;
-  it does not touch the VFS. Tests
-  (native, directory store): export then import yields byte-identical contents; a zip
-  with `../` is refused; a bad sidecar names the file in the error.
-- Persistence of an import: the bridge calls the SAME `drain_then_epoch()` as switch and
-  reset (nothing queued before the import is lost; nothing written after it persists),
-  then awaits `store.replace_project(slug, files, manifest)` (ONE transaction). On success
-  it resolves and the page reloads with `?project=<slug from project.ron>`. **On failure
-  it touches nothing**: no `remove_prefix`, no `MemFs` insert, the epoch is restored so
-  the current project keeps saving, the banner shows the store's reason, and the page
-  offers the uploaded archive back as a download (it still holds the `File`) — the
-  running session is exactly as it was before the import.
-- Bridge: `playground_export_zip() -> Vec<u8>` and `playground_import_zip(bytes: &[u8])
-  -> Promise<String /* slug */>`; the page offers the export as a Blob download link and
-  an `<input type="file" accept=".zip">` for import, confirming through
-  `playground_is_dirty` first. The same Blob-download shape gives the conflicted-path
-  banner its "download this file" control (deferred here from batch 4): the page reads
-  the named file and offers it, so THIS tab's version can be kept before a reload
-  discards it. It reads BYTES — a new `playground_read_file_bytes(path) -> Vec<u8>` beside
-  the text one (`playground_read_file` goes through `read_to_string`, which would corrupt
-  a conflicted `.png` or `.wav` under `assets/`).
-- `docs/WEB_PLAYGROUND.md` § Export layout — the layout is the template repo's
-  (batch 10), stated here first so batch 10 conforms to it.
+- **`archive.rs`** — target-agnostic, no `wasm_bindgen`, touches neither the VFS nor the
+  store beyond reading files for export:
+  - `pub fn export_project(project_root: &Path, manifest: &ProjectManifest) -> Result<Vec<u8>,
+    ArchiveError>` walks `common::vfs::list_files(project_root)` (disk natively, a `MemFs`
+    prefix scan on wasm, depth capped at 6 — `crates/common/src/vfs/mod.rs:109`) and reads
+    each file with `vfs::read` (bytes, `:42`), so the export carries the newest bytes,
+    including a conflicted path's (design: "`MemFs` keeps the bytes for the export"). ONLY
+    files whose project-relative path starts with `assets/` are archived — a tree that also
+    holds a `project.ron` or `README.md` (a native checkout, the template repo) must not
+    produce them twice, since the importer refuses a repeated name. Each file is written
+    under its project-relative path (`assets/scenes/x.scene.ron`), plus
+    `project.ron` (the manifest passed in, `ron::ser::to_string_pretty`) and a generated
+    `README.md` (the title, one sentence on what the archive is, and the URL
+    `https://github.com/beinsiculous/insiculous_2d/blob/main/docs/WEB_PLAYGROUND.md` —
+    NOT `docs/SCRIPTING.md`, which batch 7 creates and links from here, and NOT the template
+    repo, which batch 10 adds). Deflate via `SimpleFileOptions::default().compression_method(
+    CompressionMethod::Deflated)`; archive bytes need not be deterministic — the round-trip
+    test compares contents, not archives.
+  - `pub fn import_project(bytes: &[u8], bundle_version: &str) -> Result<(ProjectManifest,
+    Vec<StoredFile>), ArchiveError>` validates and returns; it does not touch the VFS or the
+    store. `bundle_version` is a parameter because `web_entry::BUNDLE_VERSION` is wasm-only.
+    In order: an archive over 64 MiB is refused before parsing; every entry name is
+    normalised `\` → `/` (Windows archivers emit backslashes) and a leading `./` is stripped
+    (`zip -r x.zip .` writes `./project.ron`); directory entries are skipped
+    (`zip -r` and Finder emit them); traversal is refused — a `..` component, a leading `/`
+    or `\`, a drive prefix — by the same component rules `bridge::validate_bridge_path`
+    applies (extract them into a pure `fn relative_path_is_safe(&str) -> bool` both call);
+    a name that repeats after normalisation is refused; `README.md` at the root is skipped;
+    every other entry must be `project.ron` or lie under `assets/`, else it is refused
+    naming the entry; cumulative decompressed bytes are capped at 64 MiB AS ENTRIES ARE READ
+    (`Read::take` at the remaining budget; a read that hits the budget refuses) — a 1 MiB zip
+    of zeros must not OOM the tab; `project.ron` is required, parsed as `ProjectManifest`,
+    and its `slug` must pass `projects::validate_slug`; every `*.sheet.ron` runs through
+    `engine_core::sheet_file::parse_sheet_file(entry_name, text)`; every `*.scene.ron` runs
+    through `SceneLoader::parse` and then `SceneLoader::instantiate(&data, &mut World::new(),
+    &mut editor_integration::HeadlessAssets::new())` — the same parse-then-dry-run guard the
+    editor's load uses (`crates/editor_integration/src/editor_game/scene_io.rs:164-169`), with
+    the headless resolver (`editor_integration/src/lib.rs:29`; every texture ref resolves, no
+    sidecar lookup; `instantiate` registers the engine components itself) — so schema drift,
+    an unknown prefab or a typo fails loud naming the entry instead of committing a project
+    the editor cannot open. The dry run does NOT prove a referenced image is in the archive;
+    the editor's own load reports that at open. `.rhai` entries are stored unchecked (the
+    `source_check` hook is `None` until batch 7). The returned files are the `assets/**`
+    entries ONLY — `project.ron` is consumed into the manifest and `README.md` is dropped —
+    as `StoredFile { project: slug, path, bytes, revision: 1, bundle_version }`; the returned
+    manifest keeps `slug` and `title` from `project.ron` and sets `content_hash:
+    String::new()` (the design's "empty for user projects" — a round-tripped bundled hash
+    would leave `list_projects`'s `differs_from_bundle` (`projects.rs:82`) false and hide the
+    "you imported over the bundled project" note), `origin: Imported`, and `bundle_version` to
+    the parameter — the stores' `replace_project` writes records exactly as given
+    (`store/memory.rs:98-103`, `store/indexed_db/cursors.rs:133-137`) and normalises
+    nothing.
+  - `pub enum ArchiveError`, a plain enum with `Display` like `StoreError` (`thiserror` is not
+    a playground dependency): at least `TooLarge`, `Zip(String)`, `UnsafePath(String)`,
+    `DuplicateEntry(String)`, `OutsideProject(String)`, `MissingManifest`,
+    `InvalidManifest(String)`, `InvalidSlug(String)`, `InvalidSheet { entry: String, reason:
+    String }`, `InvalidScene { entry: String, reason: String }`, `Io(String)`. Every message
+    that concerns an entry names it.
+  - Tests, native and pure (no store): a `tempfile` directory holding
+    `assets/scenes/hello.scene.ron` (the text of `examples/assets/scenes/hello_world.scene.ron`),
+    `assets/images/x.png` (arbitrary bytes) and a hand-written valid `.sheet.ron` → export →
+    import yields the manifest's `slug`/`title`, an empty `content_hash`, `origin: Imported`,
+    exactly the `assets/**` paths (no `project.ron`, no `README.md` in the returned files) and
+    byte-identical contents per path; a tree holding its own `project.ron` exports without a
+    duplicate entry; `./assets/x` imports as `assets/x`; an entry named `assets/../x` is `UnsafePath`; a bad
+    sidecar is `InvalidSheet` naming the entry; a scene naming an unknown component is
+    `InvalidScene` naming the entry; a backslash name imports under `/`; a directory entry is
+    skipped; a `foo.txt` at the root is `OutsideProject`; no `project.ron` is
+    `MissingManifest`; a deflated archive of 70 MiB of zeros (written with `zip` itself in the
+    test — it compresses to tens of KiB) is `TooLarge` from the cumulative cap.
+- **The open project's manifest** (`web_entry.rs`): a `static ACTIVE_MANIFEST:
+  RefCell<Option<ProjectManifest>>` beside `DIRTY_FLAG` (`:37`), set where `manifest` is
+  resolved (`:155`, before `Chains::new` at `:190` takes it) and read by `pub fn
+  active_manifest() -> Option<ProjectManifest>`. Export writes that manifest.
+- **Conflicted paths and the stranded guard** (`persist/mod.rs`): `pub fn conflicted_paths(&self)
+  -> Vec<String>` on `Chains` — the paths whose state is `Conflicted`, sorted; and
+  `reissue_stranded` (`:297`) returns at once while `self.draining` — a `visibilitychange`
+  during the import's drain-and-replace window must not re-put stale bytes with a stale base
+  over the freshly imported file (or, on the failure path, into a project the contract says
+  was untouched). Test in `persist/tests/chains.rs`: a stranded path is not re-issued during
+  a drain, and is again after `restore_epoch`. The file stays under 600 (484 today).
+- **Bridge** (`bridge.rs`; wasm-only `#[wasm_bindgen]` exports like the existing ones):
+  - `playground_export_zip() -> Result<Vec<u8>, JsValue>`: root from `CURRENT_PROJECT_ROOT`,
+    manifest from `web_entry::active_manifest()` (an error if either is `None`), then
+    `archive::export_project`.
+  - `playground_import_zip(bytes: Vec<u8>) -> js_sys::Promise` resolving to the slug string:
+    `archive::import_project(&bytes, BUNDLE_VERSION)` FIRST — a refused archive rejects
+    before anything drains, and the running session is untouched; then `active_store()`,
+    rejecting if `None` — BEFORE the drain, so a rejection here leaves `draining` unset; then the SAME
+    `persist::drain_then_epoch().await` as switch and reset (nothing queued before the import
+    is lost; nothing written after it persists); then `store.replace_project(&slug, files,
+    manifest).await` — ONE transaction (`store/indexed_db/mod.rs:349`). On `Ok`: resolve with
+    the slug; the page navigates; `draining` stays set, so a late write is refused with
+    "project is being replaced — save again after the reload" (`persist/mod.rs:152-154`),
+    exactly as after a switch. On `Err` from `replace_project`: **touch nothing** —
+    `with_active_chains(|chains| chains.restore_epoch())` (`:338-343`) so the current project
+    keeps saving, then reject with the store error's text; no `remove_prefix`, no
+    `vfs::insert`, no banner written from Rust (the page shows the rejection in the banner
+    region and offers the uploaded archive back).
+  - `playground_read_file_bytes(path: String) -> Result<Vec<u8>, JsValue>`:
+    `validate_bridge_path`, then `common::vfs::read` — `playground_read_file` (`:146-157`)
+    goes through `read_to_string`, which would corrupt a conflicted `.png` or `.wav`.
+  - `playground_conflicted_paths() -> Vec<JsValue>`: `with_active_chains(|chains|
+    chains.conflicted_paths())`, as strings.
+- **The page** (`insiculous_web`). FIRST the file move: `PlaygroundEmbed.astro`'s inline
+  `<script>` body (`:90-304`, 215 lines, already TypeScript-typed) moves verbatim to
+  `src/scripts/playground-embed.ts`, and the component keeps `<script>import
+  '../scripts/playground-embed.ts';</script>` (Astro bundles a module import inside a script
+  tag; the site's precedent for a moved block is `src/pages/profile.astro:7` importing a
+  stylesheet). The moved script's glue type (the `dynamicImport` cast, `:120-136`) gains the
+  four exports: `playground_export_zip: () => Uint8Array`, `playground_import_zip: (bytes:
+  Uint8Array) => Promise<string>`, `playground_read_file_bytes: (path: string) => Uint8Array`,
+  `playground_conflicted_paths: () => string[]` — `astro check` runs in `npm run verify`.
+  Then the controls — static HTML, labelled, `disabled` until the `playground-ready` listener
+  enables them, in the toolbar `role="group"` (`:25-38`). **Every download is built on click,
+  never ahead**: one helper `downloadBytes(bytes: Uint8Array, filename: string)` makes the
+  Blob (`type: 'application/zip'` for archives, `application/octet-stream` otherwise), an
+  object URL, a temporary `<a download>` it clicks and removes, and revokes the URL — no
+  static `<a>` in the markup (an anchor cannot be `disabled`, and a Blob built when a link
+  was rendered goes stale as the user keeps editing).
+  - an "Export project" `<button type="button" id="export-button">`: on click
+    `playground_export_zip()` → `downloadBytes(bytes, slug + '.zip')`; a thrown export writes
+    its reason to the banner region;
+  - an "Import project" `<input type="file" id="import-input" accept=".zip,application/zip">`
+    with its `<label>`: on `change`, if `playground_is_dirty()` confirm first (a cancel clears
+    the input); `await file.arrayBuffer()` → `new Uint8Array(...)` → `await
+    playground_import_zip(bytes)`; on resolve set `leavingByChoice = true` (`:145`; the
+    page's `beforeunload` must not ask a second time) and `location.search = '?project=' +
+    slug` — nothing runs after it; on reject write the reason to the banner region and render
+    a "Download <file.name>" `<button>` whose click hands the still-held `File` to the
+    download helper, so the archive can be saved back; the select is left as it was —
+    nothing changed; in every case (`finally`) `importInput.value = ''`, or re-selecting the
+    same fixed file fires no `change`;
+  - the conflicted-path control (deferred from batch 4): the 100 ms response poll
+    (`pollResponses`, `:148`; `setInterval(pollResponses, 100)` at `:212`) also calls
+    `playground_conflicted_paths()` and, when the list differs from the last one rendered,
+    renders one "Download <basename>" `<button>` per path under the banner; ITS CLICK reads
+    `playground_read_file_bytes(path)` and calls the download helper — the bytes are read at
+    click time, so THIS tab's newest version is what gets kept before a reload discards it.
+  Copy uses curly apostrophes; exactly one `<h1>`; no duplicate ids. `README.md` § "The
+  editor bundle" (`:195-208`) gains one bullet: projects export and import as zip, layout in
+  the engine's `docs/WEB_PLAYGROUND.md` § "Export and import".
+- **The bundle**: after the engine gates, the invocation of record (`docs/WEB_PLAYGROUND.md:24-28`:
+  `scripts/build_wasm.sh crates/playground playground --kind playground --version v1
+  --project examples=Examples=examples --sync ../insiculous_web/public`), its `wasm size:`
+  line reported (6.86 MiB after batch 4; the gate warns past 20 MiB), and every changed file
+  under `public/playground/v1/` staged in the site repo. `git -C ../insiculous_web status
+  --porcelain -- public/games` stays empty.
+- **Docs**: `docs/WEB_PLAYGROUND.md` § "Export and import" (`:154-156`, the stub) becomes the
+  layout —
+  ```
+  <slug>.zip
+  ├── project.ron     # the ProjectManifest
+  ├── README.md       # generated: the title and the docs URL
+  └── assets/         # scenes, .sheet.ron sidecars, scripts, images, sounds, fonts, locales
+  ```
+  — the validation list in order, both 64 MiB caps, the failure contract stated exactly ("a
+  refused archive touches nothing; a failed `replace_project` restores the epoch and the
+  current project keeps saving — a save attempted during its drain window was refused, as on
+  switch and reset, and is re-issued by saving again"), and the sentence "this
+  is the layout the template repo conforms to" (batch 10 reads it); the bridge table
+  (`:129-140`) gains the four exports. `crates/playground/CLAUDE.md`: the file map gains the
+  `archive.rs` row; the pitfalls table gains "an import's `replace_project` failure must
+  restore the epoch, or the current project stops saving until reload — none; browser check"
+  and "a zip's decompressed size is capped as it is read, not after — the zeros test".
 
-Gates: standard + wasm. **Jesse's browser check:** export, edit something, import the
-zip, the edit is gone and the export's state is back; reload — still back; the project
-list shows the imported slug. Leaves out: template repo.
+Gates: `cargo test --workspace`, `cargo clippy --workspace --all-targets`,
+`scripts/check_wasm.sh` (the diff touches `crates/playground`), the comment-tag grep, the
+`cargo tree` line above, every touched file ≤ 600 lines (`archive.rs` is the one near it;
+the component is ~330 after its script moves out), the bundle rebuild and sync with its `wasm
+size:` line, `npm run verify` in the site, `public/games` untouched. No public item of an
+engine crate changes, so the games gate does not apply. **Jesse's browser check:** export;
+edit something and save; import the zip — the edit is gone and the export's state is back;
+reload — still back; the project list shows the slug with the "you imported over the bundled
+project" note; import a zip with a broken scene — refused, the banner names the file, the
+session continues and the upload is offered back. Leaves out: the template repo; the `.rhai`
+check on import (batch 7's hook).
 
 ## Batch 6 — scripting Stage 2: scripts visible in the hierarchy and the asset browser
 
@@ -1178,6 +1367,8 @@ Target shapes:
   `update` sees an injected collision; kinematic target routes through physics when
   present and to `Transform2D` when absent.
 - Docs: new `docs/SCRIPTING.md` — the author-facing contract (the `update` signature,
+  linked from the export README `archive.rs` generates, beside the `WEB_PLAYGROUND.md` link
+  batch 5 wrote;
   every view getter and command method with types, params by name, the built-in list,
   error surfacing, "one bundle, many projects"); `PROJECT_ROADMAP.md` § Scripting
   updated (Rhai decision, Stages 2–3 shipped, game-run ruling); `training.md` gains a
