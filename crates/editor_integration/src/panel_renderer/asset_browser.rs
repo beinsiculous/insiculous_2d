@@ -188,6 +188,21 @@ fn render_tile(
                 theme.accent_cyan,
             );
         }
+        (AssetKind::Script, _) => {
+            let extension = std::path::Path::new(&entry.name)
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .unwrap_or("")
+                .to_ascii_uppercase();
+            ui.label_in_bounds_styled(
+                &extension,
+                slot_ui,
+                ui::TextAlign::Center,
+                theme.accent_cyan,
+                theme.fonts.heading,
+                0.0,
+            );
+        }
     }
 
     // Filename label under the tile (clipped by the panel rect)
@@ -201,7 +216,7 @@ fn render_tile(
     );
 }
 
-/// Press arms a drag (images only), a plain click assigns: the clicked
+/// Press arms a drag (images and .rhai scripts), a plain click assigns: the clicked
 /// tile's texture handle and path, if any.
 fn tile_interaction(
     ui: &mut ui::UIContext,
@@ -229,6 +244,18 @@ fn tile_interaction(
         if result.clicked && !drag_drop.suppresses_click() {
             return Some((handle, entry.relative_path.clone()));
         }
+    } else if entry.kind == AssetKind::Script
+        && std::path::Path::new(&entry.relative_path)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("rhai"))
+        && result.state == ui::WidgetState::Active
+        && ui.mouse_just_pressed()
+    {
+        drag_drop.arm(
+            DragPayload::Script { path: entry.relative_path.clone() },
+            mouse_pos,
+        );
     }
     None
 }
@@ -253,20 +280,44 @@ fn assign_clicked_texture(
     }
 }
 
-/// Draw the drag ghost (a translucent thumbnail following the cursor) while
-/// a texture drag is in flight. The overlay's blocking rect also makes
-/// widgets and viewport picking under the cursor inert for the frame.
+/// Draw the drag ghost following the cursor while a drag is in flight.
+/// The overlay's blocking rect also makes widgets and viewport picking
+/// under the cursor inert for the frame.
 pub(crate) fn render_drag_ghost(editor: &mut EditorContext, ctx: &mut GameContext) {
-    let Some(DragPayload::Texture { handle, .. }) = editor.drag_drop.dragging_payload() else {
-        return;
-    };
-    let handle = *handle;
-    let mouse = ctx.ui.mouse_pos();
-    let ghost = ui::Rect::new(mouse.x - 24.0, mouse.y - 24.0, 48.0, 48.0);
-    // DragGhost band: the ghost rides above even an open dropdown.
-    ctx.ui.begin_overlay_in(ui::UiLayer::DragGhost, ghost);
-    ctx.ui.image(ghost, handle, ui::Color::new(1.0, 1.0, 1.0, 0.8));
-    ctx.ui.end_overlay();
+    match editor.drag_drop.dragging_payload() {
+        Some(DragPayload::Texture { handle, .. }) => {
+            let handle = *handle;
+            let mouse = ctx.ui.mouse_pos();
+            let ghost = ui::Rect::new(mouse.x - 24.0, mouse.y - 24.0, 48.0, 48.0);
+            // DragGhost band: the ghost rides above even an open dropdown.
+            ctx.ui.begin_overlay_in(ui::UiLayer::DragGhost, ghost);
+            ctx.ui.image(ghost, handle, ui::Color::new(1.0, 1.0, 1.0, 0.8));
+            ctx.ui.end_overlay();
+        }
+        Some(DragPayload::Script { path }) => {
+            let file_name = std::path::Path::new(path)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or(path.as_str());
+            let mouse = ctx.ui.mouse_pos();
+            let text_width =
+                (ctx.ui.measure_text_styled(file_name, editor.theme.fonts.small).x + 16.0).max(48.0);
+            let ghost = ui::Rect::new(mouse.x - text_width / 2.0, mouse.y - 12.0, text_width, 24.0);
+            ctx.ui.begin_overlay_in(ui::UiLayer::DragGhost, ghost);
+            ctx.ui.rect_rounded(ghost, editor.theme.surface_3, 4.0);
+            ctx.ui.rect_border(ghost, editor.theme.accent_blue, 1.0, 4.0);
+            ctx.ui.label_in_bounds_styled(
+                file_name,
+                ghost,
+                ui::TextAlign::Center,
+                editor.theme.text_primary,
+                editor.theme.fonts.small,
+                0.0,
+            );
+            ctx.ui.end_overlay();
+        }
+        None => {}
+    }
 }
 
 #[cfg(test)]

@@ -154,10 +154,15 @@ fn render_hierarchy(
         &mut editor.selection,
         bounds,
         &editor.theme,
+        &mut editor.drag_drop,
     );
 
     if let Some((entity, raw)) = response.rename_committed {
         apply_hierarchy_rename(editor, ctx, command_history, entity, &raw);
+    }
+
+    if let Some((entity, path)) = response.script_dropped {
+        apply_script_drop(editor, ctx.world, command_history, entity, &path);
     }
 
     let clicked = response.clicked;
@@ -168,25 +173,33 @@ fn render_hierarchy(
     // either Shift, Ctrl wins a chord.
     let modifiers = editor::Modifiers::read(ctx.input);
     let mode = hierarchy_click_mode(modifiers.ctrl, modifiers.shift);
-    for entity_id in clicked {
-        match mode {
-            HierarchyClickMode::Toggle => editor.selection.toggle(entity_id),
-            // Range from the anchor row through the clicked one (anchor stays
-            // primary); with no selected row visible, Shift ADDS like the
-            // Shift+marquee does — never a silent collapse to one row.
-            HierarchyClickMode::Range => {
-                match editor.hierarchy.shift_click_range(&editor.selection, entity_id) {
-                    Some(range) => editor.selection.select_multiple(range),
-                    None => editor.selection.add(entity_id),
+    for click in clicked {
+        match click {
+            editor::HierarchyClick::Entity(entity_id) => {
+                match mode {
+                    HierarchyClickMode::Toggle => editor.selection.toggle(entity_id),
+                    // Range from the anchor row through the clicked one (anchor stays
+                    // primary); with no selected row visible, Shift ADDS like the
+                    // Shift+marquee does — never a silent collapse to one row.
+                    HierarchyClickMode::Range => {
+                        match editor.hierarchy.shift_click_range(&editor.selection, entity_id) {
+                            Some(range) => editor.selection.select_multiple(range),
+                            None => editor.selection.add(entity_id),
+                        }
+                    }
+                    HierarchyClickMode::Select => editor.selection.select(entity_id),
                 }
+                log::info!(
+                    "Selected entity: {} ({})",
+                    HierarchyPanel::entity_display_name(ctx.world, entity_id),
+                    entity_id.value()
+                );
             }
-            HierarchyClickMode::Select => editor.selection.select(entity_id),
+            editor::HierarchyClick::Script { entity, .. } => {
+                editor.selection.select(entity);
+                editor.inspector_scroll_request = Some("Scripts");
+            }
         }
-        log::info!(
-            "Selected entity: {} ({})",
-            HierarchyPanel::entity_display_name(ctx.world, entity_id),
-            entity_id.value()
-        );
     }
 }
 
@@ -268,6 +281,70 @@ pub(super) fn warn_if_name_ambiguous(
     }
 }
 
+/// Attach a script to an entity via drag-drop.
+///
+/// If the entity already carries a `Scripts` component, appends the new
+/// script reference via `SetScriptsCommand`. Otherwise, adds a default
+/// `Scripts` component and sets its scripts as a single macro command so
+/// one undo reverts the entire attachment.
+pub(super) fn apply_script_drop(
+    editor: &mut EditorContext,
+    world: &mut ecs::World,
+    command_history: &mut CommandHistory,
+    entity: ecs::EntityId,
+    path: &str,
+) {
+    let stem = std::path::Path::new(path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("script");
+    let script_ref = ecs::script::ScriptRef {
+        script_id: stem.to_string(),
+        source_path: path.to_string(),
+        params: std::collections::BTreeMap::new(),
+    };
+
+    let display_name = HierarchyPanel::entity_display_name(world, entity);
+
+    // Attaching is idempotent, like assigning a texture: the same file
+    // dropped twice does not bind the script twice.
+    let already_attached = world
+        .get::<ecs::script::Scripts>(entity)
+        .is_some_and(|scripts| scripts.0.iter().any(|existing| existing.source_path == path));
+    if already_attached {
+        editor
+            .status_bar
+            .show_message(format!("{stem} is already attached to {display_name}"));
+        return;
+    }
+
+    if let Some(old) = world.get::<ecs::script::Scripts>(entity).cloned() {
+        let mut new = old.clone();
+        new.0.push(script_ref);
+        let cmd = editor::commands::SetScriptsCommand::new(entity, old, new, "script_drop");
+        command_history.execute(Box::new(cmd), world);
+    } else {
+        let old = ecs::script::Scripts::default();
+        let new = ecs::script::Scripts(vec![script_ref]);
+        let add_cmd = Box::new(editor::commands::AddComponentCommand::new(
+            entity,
+            editor::ComponentKind::Scripts,
+        ));
+        let set_cmd = Box::new(editor::commands::SetScriptsCommand::new(
+            entity,
+            old,
+            new,
+            "script_drop",
+        ));
+        let macro_cmd = editor::commands::MacroCommand::new("Attach script", vec![add_cmd, set_cmd]);
+        command_history.execute(Box::new(macro_cmd), world);
+    }
+
+    editor
+        .status_bar
+        .show_message(format!("Attached {stem} to {display_name}"));
+}
+
 /// Fallback for unknown panels.
 fn render_default(ctx: &mut GameContext, content_x: f32, y: f32) {
     ctx.ui.label("Panel", Vec2::new(content_x, y));
@@ -281,6 +358,7 @@ use inspector::render_inspector;
 #[cfg(test)]
 mod click_mode_tests {
     use super::{hierarchy_click_mode, HierarchyClickMode};
+    use editor::{CommandHistory, EditorContext};
 
     #[test]
     fn test_ctrl_beats_shift_like_the_marquee() {
@@ -288,5 +366,94 @@ mod click_mode_tests {
         assert_eq!(hierarchy_click_mode(true, false), HierarchyClickMode::Toggle);
         assert_eq!(hierarchy_click_mode(false, true), HierarchyClickMode::Range);
         assert_eq!(hierarchy_click_mode(false, false), HierarchyClickMode::Select);
+    }
+
+    #[test]
+    fn test_script_drop_on_entity_with_scripts_appends_ref_and_undo_removes_it() {
+        let mut world = ecs::World::new();
+        let entity = world.create_entity();
+        world.add_component(&entity, ecs::Name::new("Player")).ok();
+        world
+            .add_component(
+                &entity,
+                ecs::script::Scripts(vec![ecs::script::ScriptRef::new("existing")]),
+            )
+            .ok();
+
+        let mut editor = EditorContext::new();
+        let mut history = CommandHistory::new();
+
+        super::apply_script_drop(
+            &mut editor,
+            &mut world,
+            &mut history,
+            entity,
+            "assets/scripts/mover.rhai",
+        );
+
+        let scripts = world
+            .get::<ecs::script::Scripts>(entity)
+            .expect("scripts should exist");
+        assert_eq!(scripts.0.len(), 2);
+        assert_eq!(scripts.0[1].script_id, "mover");
+        assert_eq!(scripts.0[1].source_path, "assets/scripts/mover.rhai");
+        assert_eq!(
+            editor.status_bar.message(),
+            Some("Attached mover to Player")
+        );
+
+        history.undo(&mut world);
+        let scripts_after_undo = world
+            .get::<ecs::script::Scripts>(entity)
+            .expect("scripts should still exist");
+        assert_eq!(scripts_after_undo.0.len(), 1);
+        assert_eq!(scripts_after_undo.0[0].script_id, "existing");
+    }
+
+    #[test]
+    fn test_script_drop_on_entity_without_scripts_adds_component_and_one_undo_removes_it() {
+        let mut world = ecs::World::new();
+        let entity = world.create_entity();
+        world.add_component(&entity, ecs::Name::new("Enemy")).ok();
+
+        let mut editor = EditorContext::new();
+        let mut history = CommandHistory::new();
+
+        super::apply_script_drop(
+            &mut editor,
+            &mut world,
+            &mut history,
+            entity,
+            "scripts/ai.rhai",
+        );
+
+        let scripts = world
+            .get::<ecs::script::Scripts>(entity)
+            .expect("scripts component should be added");
+        assert_eq!(scripts.0.len(), 1);
+        assert_eq!(scripts.0[0].script_id, "ai");
+        assert_eq!(scripts.0[0].source_path, "scripts/ai.rhai");
+        assert_eq!(editor.status_bar.message(), Some("Attached ai to Enemy"));
+
+        history.undo(&mut world);
+        assert!(world.get::<ecs::script::Scripts>(entity).is_none());
+    }
+
+    #[test]
+    fn test_script_drop_of_an_attached_script_records_nothing() {
+        let mut world = ecs::World::new();
+        let entity = world.create_entity();
+        world.add_component(&entity, ecs::Name::new("Enemy")).ok();
+        let mut editor = EditorContext::new();
+        let mut history = CommandHistory::new();
+        super::apply_script_drop(&mut editor, &mut world, &mut history, entity, "scripts/ai.rhai");
+
+        super::apply_script_drop(&mut editor, &mut world, &mut history, entity, "scripts/ai.rhai");
+
+        let scripts = world.get::<ecs::script::Scripts>(entity).expect("scripts component exists");
+        assert_eq!(scripts.0.len(), 1, "the second drop binds nothing");
+        assert_eq!(editor.status_bar.message(), Some("ai is already attached to Enemy"));
+        assert!(history.undo(&mut world), "the first attach is the only entry");
+        assert!(!history.undo(&mut world), "the second drop recorded no entry");
     }
 }

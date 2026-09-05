@@ -40,6 +40,9 @@ pub struct EditorPreferences {
     /// Per-panel layout state (absent in prefs files from older versions)
     #[serde(default)]
     pub panels: Vec<PanelPrefs>,
+    /// IDE command for opening script source files in an external editor.
+    #[serde(default)]
+    pub ide_command: Option<String>,
 }
 
 fn default_grid_visible() -> bool {
@@ -56,6 +59,7 @@ impl Default for EditorPreferences {
             grid_size: 32.0,
             grid_visible: true,
             panels: Vec::new(),
+            ide_command: None,
         }
     }
 }
@@ -148,6 +152,7 @@ mod tests {
             grid_size: 64.0,
             grid_visible: false,
             panels: Vec::new(),
+            ide_command: None,
         };
         prefs.capture_panels(&dock);
 
@@ -208,6 +213,28 @@ mod tests {
         assert_eq!(prefs.camera_position, (10.0, 20.0));
         assert!(prefs.panels.is_empty());
         assert!(prefs.grid_visible, "prefs files predating the drawn grid default to visible");
+        assert_eq!(prefs.ide_command, None);
+    }
+
+    #[test]
+    fn test_prefs_without_ide_command_loads_with_none_and_roundtrips_when_set() {
+        let without_ide = r#"{
+            "camera_position": [0.0, 0.0],
+            "camera_zoom": 1.0,
+            "last_scene_path": null,
+            "snap_to_grid": false,
+            "grid_size": 32.0,
+            "grid_visible": true,
+            "panels": []
+        }"#;
+        let prefs = EditorPreferences::from_json(without_ide).expect("valid prefs without ide_command");
+        assert_eq!(prefs.ide_command, None);
+
+        let mut with_ide = prefs;
+        with_ide.ide_command = Some("code --wait".to_string());
+        let json = with_ide.to_json().expect("serializes with ide_command");
+        let roundtripped = EditorPreferences::from_json(&json).expect("deserializes with ide_command");
+        assert_eq!(roundtripped.ide_command, Some("code --wait".to_string()));
     }
 
     #[test]

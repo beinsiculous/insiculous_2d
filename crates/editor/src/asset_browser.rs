@@ -18,6 +18,8 @@ pub enum AssetKind {
     Image,
     /// A scene file (.ron)
     Scene,
+    /// A script file (.rhai or .rs)
+    Script,
 }
 
 /// One file found under the asset root.
@@ -73,6 +75,7 @@ fn kind_for_extension(ext: &str) -> Option<AssetKind> {
     match ext.to_ascii_lowercase().as_str() {
         "png" | "jpg" | "jpeg" | "bmp" => Some(AssetKind::Image),
         "ron" => Some(AssetKind::Scene),
+        "rhai" | "rs" => Some(AssetKind::Script),
         _ => None,
     }
 }
@@ -164,6 +167,8 @@ mod tests {
             "brick.JPG",
             "sprites/nested/coin.png",
             "scenes/level1.scene.ron",
+            "scripts/paddle.rhai",
+            "scripts/main.rs",
             "fonts/font.ttf",
             "notes.txt",
         ] {
@@ -183,14 +188,25 @@ mod tests {
                 ("coin.png", AssetKind::Image, "sprites/nested/coin.png"),
                 ("player.png", AssetKind::Image, "player.png"),
                 ("level1.scene.ron", AssetKind::Scene, "scenes/level1.scene.ron"),
+                ("main.rs", AssetKind::Script, "scripts/main.rs"),
+                ("paddle.rhai", AssetKind::Script, "scripts/paddle.rhai"),
             ],
-            "images first by name, then scenes; nested files have forward-slash relative paths; txt is ignored"
+            "images first by name, then scenes, then scripts; nested files have forward-slash relative paths; txt is ignored"
         );
         assert!(
             scan_assets(Path::new("/definitely/not/a/real/dir")).is_empty(),
             "a missing folder is an empty browser, not a crash"
         );
         Ok(())
+    }
+
+    #[test]
+    fn test_kind_for_extension_classifies_rhai_and_rs_as_script() {
+        assert_eq!(kind_for_extension("rhai"), Some(AssetKind::Script));
+        assert_eq!(kind_for_extension("RS"), Some(AssetKind::Script));
+        assert_eq!(kind_for_extension("png"), Some(AssetKind::Image));
+        assert_eq!(kind_for_extension("ron"), Some(AssetKind::Scene));
+        assert_eq!(kind_for_extension("txt"), None);
     }
 
     #[test]

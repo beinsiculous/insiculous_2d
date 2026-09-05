@@ -23,6 +23,14 @@ pub struct InspectorExtras<'a> {
     /// range) — the host surfaces them on the status bar, which the
     /// editor crate's widgets cannot see.
     pub warnings: Vec<String>,
+    /// Component header name requested to be scrolled into view.
+    pub scroll_target: Option<&'static str>,
+    /// Top Y position of the target component header, recorded during rendering.
+    pub scroll_target_y: Option<f32>,
+    /// Whether opening script source files in an external IDE is supported.
+    pub can_open_source: bool,
+    /// Script source file requested to be opened in the external editor.
+    pub open_source: Option<String>,
 }
 
 /// Render a texture slot: label + a boxed value showing the texture's path

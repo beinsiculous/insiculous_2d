@@ -24,7 +24,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 - `context/` — EditorContext struct (selection, tools, state, theme, fonts, inspector_scroll).
 - `theme/` — EditorTheme: WCAG surface ladder `surface_0..surface_4` with luminance guard tests (≥1.35:1 adjacent / ≥3:1 border), style converters, and `ui_theme()`.
 - `command_api/` — CLI/API dispatch (query list/describe/selection/scene/commands and write set/add/remove/rename/delete/select/undo/redo/batch) through CommandHistory; `docs/EDITOR_COMMAND_API.md`.
-- `drag_drop.rs` — `DragDropState`/`DragPayload` cross-panel drag state machine (Idle→Armed→Dragging→Dropped-1-frame).
+- `drag_drop.rs` — `DragDropState`/`DragPayload` (`Texture`, `Script`) cross-panel drag state machine (Idle→Armed→Dragging→Dropped-1-frame).
 - `dock/` — multi-panel docking: state, layout, collapse/visibility toggles, chevrons, and clamped resize grabbers.
 - `menu/` — top menu bar; action items carry checked flag and map labels to `EditorAction`.
 - `editor_input.rs` — shortcut chord model (exact chord beats any-mods) and `allowed_while_playing()` action deny list.
@@ -40,7 +40,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 
 ### Scene + selection
 - `selection.rs` — Selection set (IndexSet preserving insertion order, deterministic primary fallback).
-- `hierarchy/` — hierarchy panel tree view, F2 inline rename, `RowGeometry`, and `normalized_rename` guard.
+- `hierarchy/` — hierarchy panel tree view, F2 inline rename, `RowGeometry`, `normalized_rename` guard, `Scripts` pseudo-rows, and script drop targets.
 - `viewport/` — scene viewport with camera pan/zoom; `to_window_render_camera`/`world_to_screen` equivalence locked by overlay tests.
 - `picking/` — `EntityPicker` and `PickableEntity` (AABB from absolute size, flip scales stay clickable).
 - `gizmo/` — transform gizmos (annulus rotate ring with dead-center fallthrough, cumulative delta, ratio-based scale, and cancel latch).
@@ -50,8 +50,8 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 
 ### Persistence + commands
 - `commands/` — `EditorCommand` trait, `CommandHistory` dirty tracking watermark, `SetComponentCommand` merge-by-hint, and `break_merge()` gesture boundary.
-- `editor_preferences.rs` — `EditorPreferences` JSON serialization (`from_json`/`to_json`), panel layout capture/apply, camera/grid state (IO handled by integration layer via save_store).
-- `asset_browser.rs` — `AssetEntry` and `scan_assets` walking `common::vfs::list_files` for images and scenes.
+- `editor_preferences.rs` — `EditorPreferences` JSON serialization (`from_json`/`to_json`), panel layout capture/apply, camera/grid state, `ide_command` (IO handled by integration layer via save_store).
+- `asset_browser.rs` — `AssetEntry`, `AssetKind` (`Image`, `Scene`, `Script`), and `scan_assets` walking `common::vfs::list_files` for images, scenes, and scripts (`.rhai`, `.rs`).
 - `stored_component/` — typed registry overlay (`editor_component_registry!`), `category.rs`, and `dynamic.rs` falling through to ECS dynamic registry.
 - `world_snapshot.rs` — `WorldSnapshot` save/restore with uncaptured component type detection and drop reporting.
 

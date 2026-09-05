@@ -50,6 +50,10 @@ impl<G: Game> super::EditorGame<G> {
             grid_size: self.editor.grid_size(),
             grid_visible: self.editor.is_grid_visible(),
             panels: Vec::new(),
+            ide_command: self
+                .last_saved_prefs
+                .as_ref()
+                .and_then(|prefs| prefs.ide_command.clone()),
         };
         prefs.capture_panels(&self.editor.dock_area);
         prefs

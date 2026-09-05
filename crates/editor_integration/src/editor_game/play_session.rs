@@ -15,6 +15,11 @@ impl<G: Game> EditorGame<G> {
         // them and Stop restores)
         self.gizmo_drag = None;
         self.editor.gizmo.cancel();
+        // An asset drag armed before the Play keypress dies here: a drop
+        // consumed by a hierarchy row after Play would mutate the live world,
+        // and Stop's restore would erase the attachment the status bar had
+        // just confirmed.
+        self.editor.drag_drop = editor::DragDropState::new();
         // Defensive: entering Play drops a pending confirm —
         // unreachable through the blocked UI, cheap insurance.
         self.scene_confirm.pending_action = None;

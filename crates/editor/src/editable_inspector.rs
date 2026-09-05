@@ -192,6 +192,8 @@ pub struct EditableInspector<'a> {
     /// Soft-range warnings raised by this component's fields this frame;
     /// drained by the registry block into `InspectorExtras`.
     warnings: Vec<String>,
+    scroll_target: Option<&'static str>,
+    scroll_target_y: Option<f32>,
 }
 
 impl<'a> EditableInspector<'a> {
@@ -206,6 +208,8 @@ impl<'a> EditableInspector<'a> {
             x,
             width: DEFAULT_INSPECTOR_WIDTH,
             warnings: Vec::new(),
+            scroll_target: None,
+            scroll_target_y: None,
         }
     }
 
@@ -227,6 +231,17 @@ impl<'a> EditableInspector<'a> {
         self
     }
 
+    /// Set the target component header to look for during rendering.
+    pub fn with_scroll_target(mut self, target: Option<&'static str>) -> Self {
+        self.scroll_target = target;
+        self
+    }
+
+    /// Get the recorded Y position of the target header, if it was rendered.
+    pub fn scroll_target_y(&self) -> Option<f32> {
+        self.scroll_target_y
+    }
+
     /// Get the current Y position.
     pub fn y(&self) -> f32 {
         self.current_y
@@ -234,6 +249,9 @@ impl<'a> EditableInspector<'a> {
 
     /// Add a component header.
     pub fn header(&mut self, type_name: &str) {
+        if self.scroll_target == Some(type_name) && self.scroll_target_y.is_none() {
+            self.scroll_target_y = Some(self.current_y);
+        }
         self.current_y = component_header(self.ui, type_name, self.x, self.current_y, self.style);
         self.field_index = 0;
     }

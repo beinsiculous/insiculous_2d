@@ -82,6 +82,10 @@ pub struct EditorContext {
     /// The entity the inspector scroll belongs to — a selection change
     /// resets the scroll so each entity opens at the top.
     pub inspector_scroll_entity: Option<ecs::EntityId>,
+    /// Header title to scroll into view on the next inspector pass.
+    pub inspector_scroll_request: Option<&'static str>,
+    /// Source file path requested to be opened in the host's IDE.
+    pub pending_open_source: Option<String>,
 }
 
 impl Default for EditorContext {
@@ -151,6 +155,8 @@ impl EditorContext {
             fonts: crate::fonts::EditorFonts::default(),
             inspector_scroll: crate::ScrollState::default(),
             inspector_scroll_entity: None,
+            inspector_scroll_request: None,
+            pending_open_source: None,
             drag_drop: crate::DragDropState::new(),
             asset_browser: crate::AssetBrowserState::default(),
         };

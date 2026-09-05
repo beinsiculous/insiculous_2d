@@ -45,9 +45,13 @@ macro_rules! registry_edit_block {
             $y += $frame.section_gap;
             let mut inspector = EditableInspector::new($frame.ui, $frame.field_style, $frame.x, $y)
                 .with_component_index($idx)
-                .with_width($frame.width);
+                .with_width($frame.width)
+                .with_scroll_target($extras.scroll_target);
             let edit = $edit_fn(&mut inspector, &value, &mut *$extras);
             $extras.warnings.append(&mut inspector.take_warnings());
+            if $extras.scroll_target_y.is_none() {
+                $extras.scroll_target_y = inspector.scroll_target_y();
+            }
             $y = inspector.y();
             crate::component_editors::apply_component_edit($world, $entity, &value, edit, $history, |e, old, new, hint| {
                 Box::new(crate::commands::SetComponentCommand::<$ty>::new(e, old, new, hint))
@@ -64,9 +68,13 @@ macro_rules! registry_edit_block {
             let header_y = $y;
             let mut inspector = EditableInspector::new($frame.ui, $frame.field_style, $frame.x, $y)
                 .with_component_index($idx)
-                .with_width($frame.width);
+                .with_width($frame.width)
+                .with_scroll_target($extras.scroll_target);
             let edit = $edit_fn(&mut inspector, &value, &mut *$extras);
             $extras.warnings.append(&mut inspector.take_warnings());
+            if $extras.scroll_target_y.is_none() {
+                $extras.scroll_target_y = inspector.scroll_target_y();
+            }
             $y = inspector.y();
             if crate::component_editors::remove_button($frame.ui, $idx, $frame.x, header_y, $frame.width) {
                 $removals.push(ComponentKind::$name);
@@ -86,9 +94,13 @@ macro_rules! registry_edit_block {
             $y += $frame.section_gap;
             let mut inspector = EditableInspector::new($frame.ui, $frame.field_style, $frame.x, $y)
                 .with_component_index($idx)
-                .with_width($frame.width);
+                .with_width($frame.width)
+                .with_scroll_target($extras.scroll_target);
             if inspector.header_with_remove(stringify!($name)) {
                 $removals.push(ComponentKind::$name);
+            }
+            if $extras.scroll_target_y.is_none() {
+                $extras.scroll_target_y = inspector.scroll_target_y();
             }
             $y = inspector.y();
             if let Some(value) = $world.get::<$ty>($entity) {

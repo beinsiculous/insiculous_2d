@@ -113,8 +113,8 @@ pub use editor_input::{
 };
 pub use gizmo::{Corner, Gizmo, GizmoHandle, GizmoInteraction, GizmoMode, GizmoPalette};
 pub use hierarchy::{
-    normalized_rename, HierarchyPanel, HierarchyResponse, NameResolution, SelectionRowFills,
-    PRIMARY_ACCENT_WIDTH,
+    normalized_rename, HierarchyClick, HierarchyPanel, HierarchyResponse, NameResolution,
+    SelectionRowFills, PRIMARY_ACCENT_WIDTH,
 };
 pub use clipboard::{
     capture_entity_tree, spawn_entity_tree, uncaptured_component_names, ClipboardEntity,

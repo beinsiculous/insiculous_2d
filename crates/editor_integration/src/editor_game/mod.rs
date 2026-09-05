@@ -29,6 +29,7 @@ mod api;
 mod gizmo_drag;
 pub mod headless;
 mod menu_actions;
+mod open_source;
 mod play_session;
 mod preferences;
 mod scene_confirm;
@@ -320,6 +321,7 @@ impl<G: Game> EditorGame<G> {
     fn finish_frame(&mut self, ctx: &mut GameContext) {
         self.sync_dirty_mirror();
         self.save_preferences_if_changed(ctx.delta_time);
+        self.open_pending_source();
 
         self.render_status_bar(ctx, ctx.window_size);
 

@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::test_support::{entity, frame, type_key};
-use input::prelude::KeyCode;
+use input::prelude::{KeyCode, MouseButton};
 
 const BOUNDS: common::Rect = common::Rect::new(0.0, 0.0, 220.0, 120.0);
 
@@ -15,9 +15,10 @@ fn render_frame(
     input: &input::InputHandler,
     world: &World,
     selection: &mut Selection,
+    drag_drop: &mut DragDropState,
 ) -> HierarchyResponse {
     let theme = crate::theme::EditorTheme::default();
-    frame(ui, input, |ui| panel.render(ui, world, selection, BOUNDS, &theme))
+    frame(ui, input, |ui| panel.render(ui, world, selection, BOUNDS, &theme, drag_drop))
 }
 
 /// A tree of four rows in draw order: `a`, `a_child`, `b`, `b_child`.
@@ -83,18 +84,19 @@ fn test_hierarchy_scrolls_rows_with_wheel_in_bounds() {
     let mut selection = Selection::new();
     let mut ui = ui::UIContext::new();
     let mut input = input::InputHandler::new();
+    let mut drag_drop = DragDropState::new();
 
     // Events are processed at frame START and the per-frame wheel delta is
     // cleared by `end_frame` AFTER the UI consumed it.
     input.queue_event(InputEvent::MouseMoved(50.0, 50.0));
     input.process_queued_events();
-    render_frame(&mut panel, &mut ui, &input, &world, &mut selection);
+    render_frame(&mut panel, &mut ui, &input, &world, &mut selection, &mut drag_drop);
     input.end_frame();
     assert_eq!(panel.scroll.offset(), 0.0, "the measuring frame does not scroll");
 
     input.queue_event(InputEvent::MouseWheelScrolled(-2.0));
     input.process_queued_events();
-    render_frame(&mut panel, &mut ui, &input, &world, &mut selection);
+    render_frame(&mut panel, &mut ui, &input, &world, &mut selection, &mut drag_drop);
     input.end_frame();
     let scrolled = panel.scroll.offset();
     assert!(scrolled > 0.0, "wheel in bounds must scroll the panel");
@@ -102,7 +104,7 @@ fn test_hierarchy_scrolls_rows_with_wheel_in_bounds() {
     input.queue_event(InputEvent::MouseMoved(500.0, 500.0));
     input.queue_event(InputEvent::MouseWheelScrolled(-2.0));
     input.process_queued_events();
-    render_frame(&mut panel, &mut ui, &input, &world, &mut selection);
+    render_frame(&mut panel, &mut ui, &input, &world, &mut selection, &mut drag_drop);
     input.end_frame();
     assert_eq!(panel.scroll.offset(), scrolled, "wheel outside the panel is not ours");
 
@@ -113,13 +115,13 @@ fn test_hierarchy_scrolls_rows_with_wheel_in_bounds() {
     input.queue_event(InputEvent::MouseMoved(50.0, 50.0));
     input.queue_event(InputEvent::MouseWheelScrolled(-1000.0));
     input.process_queued_events();
-    render_frame(&mut panel, &mut ui, &input, &world, &mut selection);
+    render_frame(&mut panel, &mut ui, &input, &world, &mut selection, &mut drag_drop);
     input.end_frame();
     assert_eq!(panel.scroll.offset(), max_scroll, "the last row stops at the panel bottom");
 
     input.queue_event(InputEvent::MouseWheelScrolled(1000.0));
     input.process_queued_events();
-    render_frame(&mut panel, &mut ui, &input, &world, &mut selection);
+    render_frame(&mut panel, &mut ui, &input, &world, &mut selection, &mut drag_drop);
     input.end_frame();
     assert_eq!(panel.scroll.offset(), 0.0, "scrolling back up stops at the first row");
 }
@@ -139,22 +141,23 @@ fn test_rename_commit_reports_new_name_and_exits_mode() {
     let mut selection = Selection::new();
     let mut ui = ui::UIContext::new();
     let mut input = input::InputHandler::new();
+    let mut drag_drop = DragDropState::new();
 
     // The host arms rename mode and pre-focuses the field.
     panel.begin_rename(named);
     ui.focus_text_input(HierarchyPanel::rename_widget_id(named).as_str(), "Old");
-    let response = render_frame(&mut panel, &mut ui, &input, &world, &mut selection);
+    let response = render_frame(&mut panel, &mut ui, &input, &world, &mut selection, &mut drag_drop);
     assert_eq!(response.rename_committed, None);
     assert_eq!(panel.renaming(), Some(named));
     assert!(ui.wants_keyboard(), "the rename field owns the keyboard");
 
     let theme = crate::theme::EditorTheme::default();
     let response = type_key(&mut ui, &mut input, KeyCode::KeyZ, |ui| {
-        panel.render(ui, &world, &mut selection, BOUNDS, &theme)
+        panel.render(ui, &world, &mut selection, BOUNDS, &theme, &mut drag_drop)
     });
     assert_eq!(response.rename_committed, None, "typing does not commit");
     let response = type_key(&mut ui, &mut input, KeyCode::Enter, |ui| {
-        panel.render(ui, &world, &mut selection, BOUNDS, &theme)
+        panel.render(ui, &world, &mut selection, BOUNDS, &theme, &mut drag_drop)
     });
     assert_eq!(response.rename_committed, Some((named, "z".to_string())));
     assert_eq!(panel.renaming(), None, "commit exits rename mode");
@@ -163,9 +166,9 @@ fn test_rename_commit_reports_new_name_and_exits_mode() {
     // Escape on an unnamed entity: no commit, no Name materialized.
     panel.begin_rename(unnamed);
     ui.focus_text_input(HierarchyPanel::rename_widget_id(unnamed).as_str(), "");
-    render_frame(&mut panel, &mut ui, &input, &world, &mut selection);
+    render_frame(&mut panel, &mut ui, &input, &world, &mut selection, &mut drag_drop);
     let response = type_key(&mut ui, &mut input, KeyCode::Escape, |ui| {
-        panel.render(ui, &world, &mut selection, BOUNDS, &theme)
+        panel.render(ui, &world, &mut selection, BOUNDS, &theme, &mut drag_drop)
     });
     assert_eq!(response.rename_committed, None, "escape must never commit");
     assert_eq!(panel.renaming(), None, "escape exits rename mode");
@@ -192,17 +195,18 @@ fn test_visible_order_follows_draw_order_and_skips_collapsed_subtrees() -> Resul
     let mut ui = ui::UIContext::new();
     let input = input::InputHandler::new();
     let mut selection = Selection::new();
+    let mut drag_drop = DragDropState::new();
 
-    render_frame(&mut panel, &mut ui, &input, &world, &mut selection);
+    render_frame(&mut panel, &mut ui, &input, &world, &mut selection, &mut drag_drop);
     assert_eq!(panel.visible_order(), &[a, a_child, b, b_child]);
 
     panel.toggle_expanded(a);
-    render_frame(&mut panel, &mut ui, &input, &world, &mut selection);
+    render_frame(&mut panel, &mut ui, &input, &world, &mut selection, &mut drag_drop);
     assert_eq!(panel.visible_order(), &[a, b, b_child], "a collapsed subtree has no rows");
     assert!(panel.is_expanded(b), "collapsing one subtree leaves the others alone");
 
     panel.toggle_expanded(a);
-    render_frame(&mut panel, &mut ui, &input, &world, &mut selection);
+    render_frame(&mut panel, &mut ui, &input, &world, &mut selection, &mut drag_drop);
     assert_eq!(panel.visible_order(), &[a, a_child, b, b_child], "toggling re-expands");
     assert!(panel.is_expanded(entity(99)), "an entity never touched starts expanded");
     Ok(())
@@ -219,15 +223,16 @@ fn test_shift_click_range_runs_anchor_first_in_either_direction() -> Result<(), 
     let mut ui = ui::UIContext::new();
     let input = input::InputHandler::new();
     let mut selection = Selection::new();
+    let mut drag_drop = DragDropState::new();
     selection.select(a_child);
-    render_frame(&mut panel, &mut ui, &input, &world, &mut selection);
+    render_frame(&mut panel, &mut ui, &input, &world, &mut selection, &mut drag_drop);
 
     assert_eq!(panel.shift_click_range(&selection, b_child), Some(vec![a_child, b, b_child]), "downwards");
     assert_eq!(panel.shift_click_range(&selection, a), Some(vec![a_child, a]), "upwards, anchor still first");
 
     selection.add(b);
     panel.toggle_expanded(a); // hides the primary
-    render_frame(&mut panel, &mut ui, &input, &world, &mut selection);
+    render_frame(&mut panel, &mut ui, &input, &world, &mut selection, &mut drag_drop);
     assert_eq!(
         panel.shift_click_range(&selection, b_child),
         Some(vec![b, b_child]),
@@ -235,7 +240,7 @@ fn test_shift_click_range_runs_anchor_first_in_either_direction() -> Result<(), 
     );
 
     selection.select(a_child);
-    render_frame(&mut panel, &mut ui, &input, &world, &mut selection);
+    render_frame(&mut panel, &mut ui, &input, &world, &mut selection, &mut drag_drop);
     assert_eq!(panel.shift_click_range(&selection, b_child), None, "no visible anchor: the host adds instead");
     Ok(())
 }
@@ -249,6 +254,7 @@ fn test_primary_row_fill_differs_from_secondary_rows_and_carries_an_accent() -> 
     let mut ui = ui::UIContext::new();
     let input = input::InputHandler::new();
     let mut selection = Selection::new();
+    let mut drag_drop = DragDropState::new();
     selection.select(a);
     selection.add(a_child);
     selection.add(b);
@@ -256,7 +262,7 @@ fn test_primary_row_fill_differs_from_secondary_rows_and_carries_an_accent() -> 
     let fills = theme.selection_row_fills();
 
     let rects: Vec<(common::Rect, ui::Color)> = frame(&mut ui, &input, |ui| {
-        panel.render(ui, &world, &mut selection, BOUNDS, &theme);
+        panel.render(ui, &world, &mut selection, BOUNDS, &theme, &mut drag_drop);
         ui.draw_list()
             .commands()
             .iter()
@@ -272,4 +278,60 @@ fn test_primary_row_fill_differs_from_secondary_rows_and_carries_an_accent() -> 
     assert_eq!(count(BOUNDS.width, fills.secondary), 2, "the other selected rows get the secondary fill");
     assert_eq!(count(PRIMARY_ACCENT_WIDTH, fills.accent), 1, "one accent bar, on the primary row");
     Ok(())
+}
+
+#[test]
+fn test_entity_with_scripts_renders_pseudo_rows_and_click_reports_script() {
+    let mut world = World::new();
+    let entity = world.create_entity();
+    world
+        .add_component(
+            &entity,
+            ecs::Scripts(vec![
+                ecs::ScriptRef::new("paddle"),
+                ecs::ScriptRef::new("scoring"),
+            ]),
+        )
+        .ok();
+
+    let mut panel = HierarchyPanel::new();
+    let mut ui = ui::UIContext::new();
+    let mut input = input::InputHandler::new();
+    let mut selection = Selection::new();
+    let mut drag_drop = DragDropState::new();
+
+    let response = render_frame(&mut panel, &mut ui, &input, &world, &mut selection, &mut drag_drop);
+    assert_eq!(
+        panel.visible_order(),
+        &[entity],
+        "visible_order holds the entity once (pseudo-rows are not entities)"
+    );
+    assert!(response.clicked.is_empty());
+
+    // Entity row: y = 0.0 + BASE_PADDING(6.0) = 6.0 .. 26.0
+    // Script 0 (paddle): y = 26.0 .. 46.0
+    // Script 1 (scoring): y = 46.0 .. 66.0
+    // Click inside the second script pseudo-row at (50.0, 50.0)
+    let click_pos = glam::Vec2::new(50.0, 50.0);
+    input.queue_event(input::InputEvent::MouseMoved(click_pos.x, click_pos.y));
+    input.queue_event(input::InputEvent::MouseButtonPressed(MouseButton::Left));
+    input.process_queued_events();
+    render_frame(&mut panel, &mut ui, &input, &world, &mut selection, &mut drag_drop);
+    input.end_frame();
+
+    input.queue_event(input::InputEvent::MouseButtonReleased(MouseButton::Left));
+    input.process_queued_events();
+    let response = render_frame(&mut panel, &mut ui, &input, &world, &mut selection, &mut drag_drop);
+    input.end_frame();
+
+    assert_eq!(
+        response.clicked,
+        vec![HierarchyClick::Script { entity, index: 1 }],
+        "clicking second script reports Script {{ entity, index: 1 }}"
+    );
+    assert_eq!(
+        panel.visible_order(),
+        &[entity],
+        "visible_order still holds the entity once"
+    );
 }

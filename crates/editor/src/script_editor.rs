@@ -25,14 +25,14 @@ const PARAM_RANGE: std::ops::RangeInclusive<f32> = -1_000_000.0..=1_000_000.0;
 pub fn edit_scripts(
     inspector: &mut EditableInspector<'_>,
     scripts: &Scripts,
-    _extras: &mut crate::InspectorExtras<'_>,
+    extras: &mut crate::InspectorExtras<'_>,
 ) -> Option<ComponentEdit<Scripts>> {
     inspector.header("Scripts");
 
     let mut edit: Option<ComponentEdit<Scripts>> = None;
 
     for (script_index, script) in scripts.0.iter().enumerate() {
-        if let Some(e) = edit_one_script(inspector, scripts, script_index, script) {
+        if let Some(e) = edit_one_script(inspector, scripts, script_index, script, extras) {
             edit = edit.or(Some(e));
         }
     }
@@ -56,6 +56,7 @@ fn edit_one_script(
     scripts: &Scripts,
     script_index: usize,
     script: &ScriptRef,
+    extras: &mut crate::InspectorExtras<'_>,
 ) -> Option<ComponentEdit<Scripts>> {
     if let EditResult::Changed(v) = inspector.string_edit("Script id", &script.script_id) {
         if v != script.script_id {
@@ -70,6 +71,13 @@ fn edit_one_script(
             new.0[script_index].source_path = v;
             return Some(ComponentEdit { new_value: new, field_hint: "scripts_source" });
         }
+    }
+
+    if extras.can_open_source
+        && !script.source_path.trim().is_empty()
+        && inspector.action_button("Open source")
+    {
+        extras.open_source = Some(script.source_path.clone());
     }
 
     let keys: Vec<String> = script.params.keys().cloned().collect();
@@ -266,5 +274,32 @@ mod tests {
         let scripts = Scripts(vec![ScriptRef::new("patrol")]);
         let edit = click_scripts(&scripts, action_button_center(3)).expect("− Remove script emits an edit");
         assert!(edit.new_value.0.is_empty(), "the script is gone");
+    }
+
+    #[test]
+    fn test_open_source_button_sets_extras_open_source() {
+        let mut scripts = Scripts(vec![ScriptRef::new("paddle")]);
+        scripts.0[0].source_path = "scripts/paddle.rhai".to_string();
+
+        let mut ui = ui::UIContext::new();
+        let mut input = input::InputHandler::new();
+        let mut drag_drop = crate::DragDropState::new();
+        let mut inspector_extras = extras(&mut drag_drop);
+        inspector_extras.can_open_source = true;
+
+        let style = EditableFieldStyle::default();
+        // Row 0: Id, Row 1: Source, Row 2: Open source action button
+        let button_point = action_button_center(2);
+
+        click_through(&mut ui, &mut input, button_point, |ui| {
+            let mut inspector = EditableInspector::new(ui, &style, ORIGIN.x, ORIGIN.y);
+            edit_scripts(&mut inspector, &scripts, &mut inspector_extras)
+        });
+
+        assert_eq!(
+            inspector_extras.open_source,
+            Some("scripts/paddle.rhai".to_string()),
+            "clicking Open source records the script source path"
+        );
     }
 }

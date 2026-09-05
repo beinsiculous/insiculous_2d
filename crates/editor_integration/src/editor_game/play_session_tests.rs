@@ -11,6 +11,36 @@ use glam::Vec2;
 
 use super::test_support::{dirty_editor, editor_game, position, spawn_at};
 
+/// A script drag armed before Play must not survive the transition: the
+/// asset browser refuses to arm one while Playing and the viewport refuses
+/// drops, so a drag straddling the Play keypress was the one path onto a
+/// PLAYING world. A drop while Paused is a paused edit like any inspector
+/// edit — accepted today and discarded by Stop's restore, the standing
+/// Paused rule this test does not touch.
+#[test]
+fn test_play_cancels_an_in_flight_asset_drag() {
+    let mut editor = editor_game();
+    let mut world = World::new();
+    editor
+        .editor
+        .drag_drop
+        .arm(editor::DragPayload::Script { path: "scripts/mover.rhai".into() }, Vec2::ZERO);
+    editor.editor.drag_drop.begin_frame(Vec2::new(20.0, 20.0), true, false);
+    assert!(editor.editor.drag_drop.dragging_payload().is_some(), "the drag is in flight before Play");
+
+    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    editor.editor.drag_drop.begin_frame(Vec2::new(30.0, 30.0), false, true);
+    assert!(editor.editor.drag_drop.dragging_payload().is_none(), "Play cancels the drag");
+    assert!(
+        editor
+            .editor
+            .drag_drop
+            .take_drop_in(common::Rect::new(0.0, 0.0, 1000.0, 1000.0))
+            .is_none(),
+        "no drop is consumable after Play"
+    );
+}
+
 #[test]
 fn test_play_pause_resume_stop_cycle_captures_one_snapshot() {
     let mut editor = editor_game();
