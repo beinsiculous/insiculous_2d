@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Build a game's or the playground's web (wasm) bundle in the site's drop-in layout.
 #
-# Also runs a host build of the game to export its achievements manifest
+# For a game, also runs a host build of it to export its achievements manifest (the
+# playground has no binary and registers no achievements, so that step is games-only)
 # (requires pkg-config, libasound2-dev and libudev-dev for alsa and libudev).
 #
 # Usage: scripts/build_wasm.sh <crate_dir> <slug> [--kind games|playground] [--project <slug>=<title>=<dir>]... [--version vN] [--serve] [--sync <site_public_dir>]
@@ -127,7 +128,7 @@ fi
 # The achievements manifest export builds the game natively for the host. On
 # Linux that links against alsa and libudev; other hosts use their own audio
 # and gamepad backends and link neither. Hard fail fast before the wasm build.
-if [[ "$(uname -s)" == "Linux" ]] && ! pkg-config --exists alsa libudev; then
+if [[ "$BUILD_KIND" == "games" && "$(uname -s)" == "Linux" ]] && ! pkg-config --exists alsa libudev; then
     echo "ERROR: the achievements export builds the game natively and needs alsa and libudev" >&2
     echo "Fix:   sudo apt install pkg-config libasound2-dev libudev-dev" >&2
     exit 1
@@ -246,12 +247,15 @@ fi
 # The site's /achievements/ board lists every achievement from this file (docs/WEB_SAVES.md
 # § The manifest). The native binary writes it from its own registry, so the list is what the
 # game registers — never a copy that can drift. This is a HOST build of the game (the preflight
-# above is what makes a missing system library fail fast).
-(cd "$GAME_DIR" && cargo run --quiet -- --achievements-manifest "$OUT_DIR/achievements.json")
-# An empty array is a game that registers nothing through Game::register_achievements — a
-# manifest the site would publish as "no achievements", so it fails here, not on the page.
-python3 -c 'import json, sys; sys.exit(0 if json.load(open(sys.argv[1])) else 1)' "$OUT_DIR/achievements.json" \
-    || { echo "ERROR: the achievements manifest at $OUT_DIR is missing or empty — does the game implement Game::register_achievements?" >&2; exit 1; }
+# above is what makes a missing system library fail fast). The playground is a library
+# with no binary and no achievements, so the step is games-only.
+if [[ "$BUILD_KIND" == "games" ]]; then
+    (cd "$GAME_DIR" && cargo run --quiet -- --achievements-manifest "$OUT_DIR/achievements.json")
+    # An empty array is a game that registers nothing through Game::register_achievements — a
+    # manifest the site would publish as "no achievements", so it fails here, not on the page.
+    python3 -c 'import json, sys; sys.exit(0 if json.load(open(sys.argv[1])) else 1)' "$OUT_DIR/achievements.json" \
+        || { echo "ERROR: the achievements manifest at $OUT_DIR is missing or empty — does the game implement Game::register_achievements?" >&2; exit 1; }
+fi
 
 # --- local test page (mirrors the site's embed contract; NOT deployed) ------
 if [[ "$BUILD_KIND" == "playground" ]]; then
