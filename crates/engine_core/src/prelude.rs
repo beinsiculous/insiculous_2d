@@ -7,7 +7,7 @@ pub use crate::{
     game_config::GameConfig,
     chaos_mode::ChaosMode,
     chaos_theme::ChaosTheme,
-    achievements::{Achievement, AchievementManager, AchievementError},
+    achievements::{Achievement, AchievementManager, AchievementError, ManifestFlagError},
     scores::{ScoreEntry, Scores, ScoresError, MAX_SCORES_PER_MODE},
     // Asset management
     assets::{AssetManager, AssetConfig, AssetError},

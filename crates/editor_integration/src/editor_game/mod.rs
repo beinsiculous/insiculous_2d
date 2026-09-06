@@ -380,6 +380,10 @@ impl<G: Game> EditorGame<G> {
 }
 
 impl<G: Game> Game for EditorGame<G> {
+    fn register_achievements(&self, achievements: &mut AchievementManager, strings: &Strings) {
+        self.inner.register_achievements(achievements, strings);
+    }
+
     fn init(&mut self, ctx: &mut GameContext) {
         // Editor look for generic ui widgets (buttons, sliders, inputs):
         // derive the ui theme from the editor palette once at startup.

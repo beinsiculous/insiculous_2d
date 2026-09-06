@@ -23,7 +23,7 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
   - `menu_panel.rs` - `MenuPanel`/`MenuStyle` shared menu window chrome (see Menu Chrome Pattern)
   - `spawn_helpers.rs` - Shared entity recipes (`spawn_background`); crate root exports `RENDER_UNIT = 80.0` (pixels per world unit)
   - `pickups.rs` - Generic pickup tracking (`Pickups<K>`, `EffectTimer`)
-  - `achievements/` - Achievement registry, atomic JSON persistence (temp file + rename), toasts
+  - `achievements/` - Achievement registry, atomic JSON persistence (temp file + rename), toasts, and the site's manifest export
   - `particles/` - Pooled particle system (ring buffer, config builder)
   - `grid/` - Deformable spring-mass grid effect (general-purpose visual)
   - `glyph_texture_cache.rs` - UI glyph bitmap → GPU texture cache
