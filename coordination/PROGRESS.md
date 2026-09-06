@@ -560,3 +560,19 @@ deletable with everything green and the editor binary broken; that became a gate
 executor's own deviation was accepted and written back into the section: the Coin is a
 `Dynamic` body, because a kinematic sensor fires no collision events. The planner's
 behaviour-changing fixes went back through kimi as review 32. Reviews and rebuttals 31–32.
+
+## 2026-09-06 — Web Playground on staging: Jesse's first browser check, and the deploy gate it tripped
+The merge to `dev` deployed to the staging Worker after one fix: M's new screen-reader gate
+(`scripts/lib/announce-tree.mjs`) knew `/url` as the only element-property line and threw on the
+Scripts panel's `/placeholder:`; the parser now matches any `/name:` line (insiculous_web
+1c23569, a test over `/url`, `/placeholder` and `/description`). A WebGPU-enabled Chromium probe
+of staging then booted the editor end to end — Examples with 16 entities, Game Template with 8,
+nine entries in the project select, no errors. **Jesse's check, Chromium on a trackpad laptop:
+the playground loads and runs, Game Template opens, objects select** — with three findings
+filed: insiculous_2d#116 (pointer hit-testing offset: the canvas is CSS-scaled to the column
+while its attributes stay 1280×800, so the cursor and the drawing live in two spaces),
+insiculous_2d#117 (a two-finger scroll zooms 1.1× per frame and drops the horizontal axis) and
+insiculous_web#52 (a fullscreen toggle and a chrome-less pop-out route). The save-and-reload,
+the export and the native drop-in were not part of this check and stay owed; his Firefox
+attempt showed a black canvas because Firefox on Linux has no WebGPU, as the page's own status
+line says. Production (`main`) is untouched until the promote step.
