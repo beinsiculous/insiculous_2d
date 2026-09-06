@@ -43,7 +43,7 @@ late-put base recording; deterministic instance order with resets applied before
 `pagehide`, a terminal *conflicted* state, the textarea's own dirty flag, backslash zip paths,
 zero-vector `normalize`. **This is v7, the settled plan** (Jesse, 2026-09-04: no round 7;
 corrections from here go into the acting batch section before its handoff, and every batch's
-staged diff is reviewed by kimi and Claude). Batch 2 landed (936bcf9). Batch 3's section was re-verified against the tree before its handoff (2026-09-04): the corrections are listed at the top of that section, and batch 4's and 7's cross-references to the two replaced hooks were updated with it. Batch 3 landed (1462cbe). Batch 4's section was re-verified the same way before its handoff (2026-09-04); its corrections are listed at the top of that section, and the conflicted-path download control it deferred is recorded in batch 5. Batch 4 landed (e362625 in insiculous_2d, f69f09e in insiculous_web): kimi reviews 14–17, Claude review-14-claude, rebuttals 14–17; it is marked done once Jesse's browser check on staging passes. Batch 5's section was re-verified against the tree 2026-09-05; its corrections are listed at the top of that section (the `flate2` backend line, the headless dry-run resolver, the bundle rebuild, the page's script file, the conflicted-paths export), and batch 7's docs bullet gained the export README's second link. Batch 6's section was re-verified against the tree 2026-09-05; its corrections are listed at the top of that section (the response struct that already exists, the host file that does not, the add-in-the-same-undo-entry drop, the prefs field the save path would wipe, the scroll-into-view mechanism). Batch 6 landed (d4b384a): kimi reviews 21–22, Claude review-21-claude, rebuttals 21–22; two follow-ups filed — #102 (`ide_command` set only by hand, lost to autosave) and #103 (edits made while Paused are erased by Stop, audit §1.5, the standing rule kimi re-raised against the new drop path). Batch 7's section was re-verified against the tree 2026-09-05; its corrections are listed at the top of that section (the one context macro, the physics feature gate, the host signature, the bridge's missing hook setter, the error mirror, the `mod.rs` budget, the catalog's scan and build site, the resource rule). Batch 7 landed (f2431ae): kimi reviews 24–25, Claude review-24-claude, rebuttals 24–25; the planner's round-3 hunks (the per-entity velocity fold) are not kimi-reviewed; one follow-up filed — insiculous_2d#105 (a `.rhai` entity header default pre-fills as a Str). Batch 5 landed (ceb77be in insiculous_2d, 227a5f2 in insiculous_web): kimi reviews 19–22, Claude review-19-claude, rebuttals 19–21; the export-cap parity follow-up is insiculous_2d#101; it is marked done once Jesse's browser check on staging passes.
+staged diff is reviewed by kimi and Claude). Batch 2 landed (936bcf9). Batch 3's section was re-verified against the tree before its handoff (2026-09-04): the corrections are listed at the top of that section, and batch 4's and 7's cross-references to the two replaced hooks were updated with it. Batch 3 landed (1462cbe). Batch 4's section was re-verified the same way before its handoff (2026-09-04); its corrections are listed at the top of that section, and the conflicted-path download control it deferred is recorded in batch 5. Batch 4 landed (e362625 in insiculous_2d, f69f09e in insiculous_web): kimi reviews 14–17, Claude review-14-claude, rebuttals 14–17; it is marked done once Jesse's browser check on staging passes. Batch 5's section was re-verified against the tree 2026-09-05; its corrections are listed at the top of that section (the `flate2` backend line, the headless dry-run resolver, the bundle rebuild, the page's script file, the conflicted-paths export), and batch 7's docs bullet gained the export README's second link. Batch 6's section was re-verified against the tree 2026-09-05; its corrections are listed at the top of that section (the response struct that already exists, the host file that does not, the add-in-the-same-undo-entry drop, the prefs field the save path would wipe, the scroll-into-view mechanism). Batch 6 landed (d4b384a): kimi reviews 21–22, Claude review-21-claude, rebuttals 21–22; two follow-ups filed — #102 (`ide_command` set only by hand, lost to autosave) and #103 (edits made while Paused are erased by Stop, audit §1.5, the standing rule kimi re-raised against the new drop path). Batch 7's section was re-verified against the tree 2026-09-05; its corrections are listed at the top of that section (the one context macro, the physics feature gate, the host signature, the bridge's missing hook setter, the error mirror, the `mod.rs` budget, the catalog's scan and build site, the resource rule). Batch 7 landed (f2431ae): kimi reviews 24–25, Claude review-24-claude, rebuttals 24–25; the planner's round-3 hunks (the per-entity velocity fold) are not kimi-reviewed; one follow-up filed — insiculous_2d#105 (a `.rhai` entity header default pre-fills as a Str). Batch 8's section was re-verified against the tree 2026-09-05; its corrections are listed at the top of that section (the page script the panel really lives in, the save that is one refusing call, the poll that cannot know Play, the Rhai clamp that does not exist, the lowercase action and header names, the scene shapes and coordinates pinned from the game, the test's crate and dev-dependencies, the tracked bundle in the site repo, the third repository); kimi review 26, gemini review-26-gemini, Claude review-26-claude, rebuttal 26 — ten accepted (the colliders' friction and restitution and the paddles' bodies that the section had left to defaults, the win test's one-phase lag, the path dev-dependencies, the background's true size, the serve hash, two status elements, the select's cancel reset), one rebutted (a Rhai `&str` parameter takes any string). Batch 5 landed (ceb77be in insiculous_2d, 227a5f2 in insiculous_web): kimi reviews 19–22, Claude review-19-claude, rebuttals 19–21; the export-cap parity follow-up is insiculous_2d#101; it is marked done once Jesse's browser check on staging passes.
 
 ## Context
 
@@ -1657,59 +1657,260 @@ none, so `check_games.sh` suffices) + `cargo check -p engine_core --no-default-f
 
 ## Batch 8 — pong's gameplay as a project, and script editing on the page
 
-Repos: `insiculous_2d` (`crates/playground/assets/projects/pong/`, `build_wasm.sh`
-project list), `insiculous_web` (textarea in `PlaygroundEmbed.astro`).
+**Re-verified against the tree 2026-09-05 before the handoff** (batch 7 landed since this
+section was written). Corrections, each restated where it applies below:
+
+- Three repositories, three staged diffs, one report: `insiculous_2d` (the project files, the
+  test and its dev-dependencies, the docs), `insiculous_web` (the panel's markup and script, the
+  page copy, the rebuilt bundle) and `games/pong` (its README — that directory is its own
+  repository, on its own `jesse` branch, clean today). The planner commits each separately.
+- The page's behaviour does not live in `PlaygroundEmbed.astro`: that file (421 lines) is markup
+  and styles, and every wasm call lives in `insiculous_web/src/scripts/playground-embed.ts`
+  (354 lines) inside the `playground-ready` handler's closure, where `wasm` is a local (`:98`)
+  whose export types are declared inline (`:72-96`). The panel's markup goes in the `.astro`
+  between the canvas and the console; its behaviour is a NEW module
+  `src/scripts/playground-scripts-panel.ts` (one file per panel) exporting one
+  `createScriptsPanel(bridge)` — `bridge` is the four exports it needs,
+  `playground_list_files`, `playground_read_file`, `playground_write_file`,
+  `playground_script_errors`, added to the inline type — returning `{ isDirty(): boolean,
+  enable(): void }`. `playground-embed.ts` constructs it once `wasm` exists, calls `enable()`
+  where the other controls are enabled (`:197-202`), and replaces its four
+  `wasm.playground_is_dirty()` calls — the switch confirm (`:210`), the import confirm
+  (`:286`), `beforeunload` (`:341`), and the reset confirm (`:236`), which today asks nothing
+  about unsaved edits and gains the same OR — with one `isDirty()` helper that ORs the
+  panel's flag in. Astro compiles both files; the site has no unit tests for page scripts
+  (`npm run test:data` is the Python data suite), so the panel's contracts are `astro check`
+  plus Jesse's browser check.
+- There is no separate check export: `playground_write_file` runs the `source_check` hook
+  itself for a `.rhai` path and REFUSES the write with the error string (`bridge.rs:157-162`,
+  documented at `docs/WEB_PLAYGROUND.md:134`), which surfaces in JS as a thrown value. Save is
+  therefore one call: on success `lastSaved = value` and the status reads "saved — syntax OK;
+  runtime errors show during Play"; on a throw the status is the thrown string (`ScriptError`'s
+  `Display`, `runner.rs:42-56`: `source:<line>: [Syntax] <message>` or
+  `header:<line>: [Header] <message>`), the file is not written and the textarea stays dirty.
+- The bridge has no Play-state export (`bridge.rs:109-307`), so the panel cannot poll "during
+  Play": it polls `playground_script_errors()` on its own 500 ms interval always — the list is
+  empty outside Play because batch 7's mirror clears on Stop — into its OWN `<output>`
+  (`#script-runtime-errors`), never the Save status element (a shared element would have the
+  poll's empty list erase "saved — syntax OK" within half a second), and rewrites it only when
+  the joined text changes, because an `aria-live` region re-announces every DOM write.
+- The page has no Play control (Play is `Ctrl+P` / `F5` inside the canvas, shortcuts list
+  `PlaygroundEmbed.astro:94`), so "focus returns to the canvas only via the Play control"
+  reduces to batch 4's standing rule: the page never moves focus. winit 0.30 (`Cargo.lock:4078`)
+  binds its keyboard listeners to the canvas element, so a keystroke in the textarea never
+  reaches the editor; Jesse's Delete / Ctrl+Z check below is the proof, and no page-side
+  guard is written.
+- Rhai has no `clamp` (`~/.cargo/registry/src/*/rhai-1.26.0/src/packages/`: `min` / `max` on
+  floats and ints in `logic.rs`, `to_float` on ints in `math_basic.rs`, nothing named clamp), so
+  the paddle clamps with `max(min(y, limit), -limit)`. The serve hash is
+  `(view.frame * 2654435761) % 4294967296` — `frame.wrapping_mul(2654435761)` exactly
+  (`balls.rs:13`) for every frame below 3.47 billion, which is 1.8 years of Play; Rhai integers
+  are `i64` and overflow-checked, so the product is exact and never wraps in that range — then
+  `let t = (hash >> 16).to_float() / 65535.0;` and
+  `let dir = vec2(dir_x, t * 1.2 - 0.6).normalize();` (`balls.rs:14-15`). `view.frame` is a
+  getter (`rhai_bindings.rs:98`), not a call.
+- Action names in the view are lowercase (`runner.rs:322-333`): `view.just_activated(0,
+  "action1")`. Player indices are 0-based; under `InputSettings::default()` (`player.rs:190`,
+  which is `default_two_player`, `:237-258`) player 0 is W/S + Space and player 1 is arrows +
+  Enter.
+- The `// @param` header's types are lowercase (`param_header.rs:44-146`,
+  `docs/SCRIPTING.md:28-45`): `// @param speed: f32 = 450.0`, `// @param ai: bool = false`,
+  `// @param side: str = "left"`, `// @param target: entity = "Ball"` — an `entity` default
+  reaches the script as the name string (`:104-107`; the inspector side of that is #105), which
+  is what the name overloads take (`view.position(params.target)`). A ref in the scene carries
+  only the params that differ from the header defaults; a missing param takes the default at
+  run time (batch 7). `docs/SCRIPTING.md` names the command argument `cmd` and the scripts
+  follow the doc; this section's earlier `out.` was that argument.
+- Scene shapes, from `scene_data.rs:136-360,527-541` and the example scenes: texture refs are
+  relative to the project's asset base (`assets.rs:218` joins them), so
+  `images/paddle_16px.png` and `images/ball_8px.png`, the two files copied from
+  `../games/pong/assets/` to `assets/images/`; the right paddle mirrors with
+  `Sprite(scale: (-1.0, 1.0))` (`spawning.rs:25`); a paddle is `RigidBody(body_type: Kinematic,
+  can_rotate: false)` — without the body, `set_kinematic_target` never reaches rapier
+  (`commands.rs:375-381`) and the collider stays where it spawned — with `Collider(shape:
+  CapsuleY(half_height: 50.0, radius: 10.0), friction: 0.0, restitution: 1.0)` (`capsule_y(120, 10)`,
+  `physics/src/components.rs:261-266`); the ball is `RigidBody(body_type: Dynamic, gravity_scale:
+  0.0, can_rotate: false, ccd_enabled: true)` with `Collider(shape: Circle(radius: 10.0), friction:
+  0.0, restitution: 1.0)`; a wall is `RigidBody(body_type: Static)` with `Collider(shape:
+  Box(half_extents: (400.0, 10.0)), friction: 0.0, restitution: 1.0)`; a goal is
+  `RigidBody(body_type: Static)` with `Collider(shape: Box(half_extents: (10.0, 300.0)), is_sensor:
+  true)`. The wire defaults are friction 0.5 and restitution 0 (`scene_data.rs:238-241`), and a
+  restitution-0 paddle kills the rally on first contact (the ball script's `vel.x.abs() < 0.1`
+  guard then returns forever), so every gameplay collider spells both, as `spawning.rs:40-41,60,91-92`
+  does; the label is
+  `UiLabel(text: "0 : 0", anchor: TopCenter, offset: (0.0, 24.0), font_size: 32.0)`; an entity
+  `Camera` carrying `Camera2D(is_main_camera: true, viewport_size: (800.0, 600.0))` frames the
+  800 × 600 field in Play (`play_session.rs:83` reads `main_camera_pose`);
+  `physics: Some(PhysicsSettings(gravity: (0.0, 0.0), pixels_per_meter: 100.0, timestep:
+  0.016666668))` matches `PhysicsConfig::top_down()`'s default scale
+  (`physics_world/mod.rs:30`). Coordinates from `lib.rs:79-98` and `constants.rs`: paddles at
+  x = ±370 with transform scale (0.25, 1.5); ball scale 0.25; walls at y = ±290, 800 × 20 —
+  `#white` at scale (10.0, 0.25), colour (0.35, 0.35, 0.42, 1.0), which is
+  `ChaosTheme::for_mode(Normal)`'s `structure_color` (`chaos_theme.rs:53`); goals at x = ±410;
+  a black 960 × 720 `#white` background at depth −100 (scale (12.0, 9.0) — `spawn_background`
+  oversizes the window by 20 %, `spawn_helpers.rs:18-24`); emissive 1.5 / 2.5 /
+  0.6 for paddles / ball / walls; paddle colours (1.0, 0.3, 0.3, 1.0) and (0.3, 0.5, 1.0, 1.0).
+  Names are the Rust game's: `Left Paddle`, `Right Paddle`, `Ball`, `Top Wall`, `Bottom Wall`,
+  `Left Goal`, `Right Goal`, plus `Scoreboard`, `Background`, `Camera`. A script attaches as
+  `Scripts([(script_id: "paddle", source_path: "scripts/paddle.rhai", params: {"x": F32(370.0),
+  "ai": Bool(true)})])` — the wire form `scene_serializer/dynamic_and_scripts_tests.rs:171-174`
+  writes (`ComponentData::Scripts(Vec<ScriptRefData>)`, `script_data.rs:36-42`; param values are
+  `ScriptValueData` variants), `script_id` the file stem as the `.rhai` drop and the catalog set
+  it (`panel_renderer/mod.rs:300-311`, `script_catalog.rs:33-36`), `source_path` relative to the
+  asset base. The scene's header comment says what the scripts do and which keys drive it.
+- The label needs no font in the project: `ProjectHost::init` loads none
+  (`project_host.rs:132-139`), so `game_base_font` is `None` and Play keeps the editor's face
+  (`editor_game/mod.rs:252-258`). The project ships no `fonts/`, `locales/` or `sounds/` — two
+  textures, one scene, four scripts.
+- The test lives in the crate that ships the project: new
+  `crates/playground/tests/pong_rules.rs` (the crate has no `tests/` today; a `cdylib` + `rlib`
+  crate runs integration tests natively). Dev-dependencies, the `editor_integration/Cargo.toml:30`
+  pattern: `engine_core = { path = "../engine_core", features = ["test-support"] }` for
+  `StubResolver` and `frame`, `ecs = { path = "../ecs" }` for `Blackboard` (`ecs/src/lib.rs:54`),
+  `input = { path = "../input" }` for `InputHandler` and `InputEvent` (path, not `workspace = true`:
+  the root `[workspace.dependencies]` names only `common`, `Cargo.toml:30-32`) — neither the blackboard nor
+  those two is in `engine_core::prelude`, which does carry `World`, `Name`, `Transform2D`,
+  `InputSettings`, `KeyCode`, `CollisionData`, `CollisionEvent` and `SceneLoader`;
+  `ScriptRunner` is `engine_core::ScriptRunner` (`lib.rs:80-85`). The project's asset base is
+  `concat!(env!("CARGO_MANIFEST_DIR"), "/assets/projects/pong/assets")`; `SceneLoader::load_from_file`
+  reads it through the native VFS (`vfs/mod.rs:54-57`), `SceneLoader::instantiate(&data, &mut
+  world, &mut StubResolver::default())` builds the world (every texture resolves to white), and
+  `runner.reset(&mut world, base)` records the base the `.rhai` reads use. With `physics: None`
+  the command fallback integrates `velocity * delta_time` into `Transform2D` and `reset_body`
+  writes the transform (`commands.rs:331-340,383-394`), and a script's own `me.velocity` reads
+  the `RigidBody` component's stored velocity, which the fallback never updates
+  (`commands.rs:435-444`) — so the ball's speed-maintenance guard (`vel.x.abs() < 0.1`, mirrored
+  from `balls.rs:30`) returns early in the test, which is the behaviour under test anyway. The
+  blackboard is read as `world.resource::<Blackboard>()` (`world.rs:464`) and written for the
+  win set-up with `resource_mut` (`:469`) and `Blackboard::set` (`blackboard.rs:25`).
+- `build_wasm.sh` has no project list to edit: each project is a `--project` flag, and the
+  invocation of record lives in `docs/WEB_PLAYGROUND.md:26-27` (its bundle tree at `:13-22`
+  shows one `<slug>`); those lines gain pong. `--sync ../insiculous_web/public` rewrites files
+  the site repo TRACKS — all sixteen under `public/playground/v1/`, `game_bg.wasm` and
+  `game.js` included — so the site diff carries whatever the sync changed plus the new
+  `projects/pong/assets/**`. The `<select>` needs no edit: it is populated from
+  `playground_list_projects` at boot (`playground-embed.ts:160-168`), and `?project=pong` is the
+  boot's own query parameter (`web_entry.rs:130-150`).
+- Docs that describe the pre-batch state and are therefore part of this batch:
+  `docs/WEB_PLAYGROUND.md:13-27`; `crates/playground/CLAUDE.md`'s file map (an
+  `assets/projects/pong/` row); `docs/SCRIPTING.md` (§ Worked example: pong, placed after
+  § Built-In Behaviors); `games/pong/README.md` (a short "Pong as data" section just before
+  § "The Deion Pivot: Tong" at `:68`); `insiculous_web/src/pages/playground.astro` (a § Scripts
+  paragraph beside § Command API, `:31-38`); the embed's shortcuts list (`PlaygroundEmbed.astro:95`
+  says `Ctrl+S` saves the scene — it gains "inside the Scripts panel, saves the script").
+  `PROJECT_ROADMAP.md` names none of this and waits for batch 10.
+- Size budgets: `PlaygroundEmbed.astro` 421 lines (+ ~30 markup, ~60 style) and
+  `playground-embed.ts` 354 (+ the type lines, the helper and the wiring) both stay under 600;
+  the new module is small by construction. No Rust file is touched except `Cargo.toml` and the
+  new test.
+
+Repos: `insiculous_2d` (`crates/playground/assets/projects/pong/`, `crates/playground/Cargo.toml`
+dev-dependencies, `crates/playground/tests/pong_rules.rs`, `docs/WEB_PLAYGROUND.md`,
+`docs/SCRIPTING.md`, `crates/playground/CLAUDE.md`), `insiculous_web`
+(`src/components/PlaygroundEmbed.astro`, `src/scripts/playground-embed.ts`, new
+`src/scripts/playground-scripts-panel.ts`, `src/pages/playground.astro`, the synced bundle under
+`public/playground/v1/`), `games/pong` (`README.md`).
 
 Target shapes:
 
-- Project `pong` under `crates/playground/assets/projects/pong/assets/`: `scenes/pong.scene.ron`
-  (background, two paddles, ball, two walls, two goal sensors, a `Scoreboard` UiLabel —
-  the shapes from `games/pong/src/spawning.rs` and `constants.rs`, textures
-  `paddle_16px.png` and `ball_8px.png` copied, `#white` for walls), `scripts/paddle.rhai`
-  (`early_update`; params `player: I32`, `x: F32`, `speed: F32 = 450`, `ai: Bool`,
-  `ai_speed: F32`, `dead_zone: F32`, `target: Entity = Ball`; kinematic target on `me`
-  clamped to the playfield with `clamp`), `scripts/ball.rhai` (`early_update` serves on
-  Action1 when `view.blackboard_bool("serving", true)` — absent means serving, so the
-  first Play is not a deadlock — AND `!view.blackboard_bool("game_over", false)`, so the
-  restart press cannot serve in the same frame the scoreboard resets; direction from
-  `blackboard_str("last_scorer", "left")`; `update` maintains speed as
-  `gameplay/balls.rs:27-45` does using `vec2` `length()`/`normalize()` — ONLY while not
-  `serving`, so it never fights the goal's reset in the same phase; params `speed: F32 =
-  250`, `max_vertical: F32 = 500`), `scripts/goal.rhai` (`update`; param `side: Str`; on
-  a started collision with `Ball`: award the point in the blackboard,
-  `out.reset_body("Ball", vec2(0.0, 0.0))`, set `serving`), `scripts/scoreboard.rhai`
-  (`update`; writes "L : R" to `out.set_label_text(me, …)`; at 7 writes "<LEFT|RIGHT>
-  WINS — Action1 to restart" for the side that reached 7 and sets `game_over`; on Action1
-  while `game_over` it zeros the score, clears `game_over`, sets `serving`). Every script
-  carries its `// @param` header with these defaults.
-  The pseudo-random serve spread comes from `view.frame` hashed as `serve_direction`
-  does.
-- `build_wasm.sh` invocation adds `--project pong=Pong=crates/playground/assets/projects/pong`.
-- Page: a "Scripts" panel — `<select>` of the project's `.rhai` files (via
-  `playground_list_files`), a `<textarea>` bound to `playground_read_file`/
-  `playground_write_file`, a Save button (Ctrl+S / Cmd+S inside the textarea
-  `preventDefault`s and runs the same Save), a dirty flag (`value !== lastSaved`) that
-  every switch/import/reset confirm ORs into `playground_is_dirty`, `aria-live` status:
-  Save shows `check_source`'s result immediately as "syntax OK — runtime errors show
-  during Play" or the error with line, and during Play the panel polls
-  `playground_script_errors()` for runtime errors. Focus returns to the canvas only via
-  the Play control, never while the textarea is being typed in.
-- Tests: the pong project's four scripts compile in a headless test that loads the
-  scene with no physics system, presses Action1 through a scripted input frame and
-  asserts the ball leaves centre (serve), then INJECTS a synthetic `CollisionData` for
-  the ball/left-goal pair into `ScriptRunner::update` and asserts the blackboard awards
-  the right side a point, the ball is back at centre and `serving` is set (no physics
-  detects anything here; the test pins the rules through the no-physics fallback, not
-  rapier).
-- Docs: `docs/SCRIPTING.md` § Worked example: pong; `games/pong/README.md` "Deion
-  Pivot"/playground note pointing at the project.
+- Project `pong` under `crates/playground/assets/projects/pong/assets/`:
+  `scenes/pong.scene.ron` (background, two paddles, ball, two walls, two goal sensors, a
+  `Scoreboard` UiLabel and a `Camera` — the shapes, coordinates and colours pinned in the
+  preamble, from `games/pong/src/spawning.rs`, `lib.rs:79-98` and `constants.rs`; textures
+  `images/paddle_16px.png` and `images/ball_8px.png` copied, `#white` for walls and
+  background), `scripts/paddle.rhai` (`early_update`; header `player: i32 = 0`, `x: f32 =
+  -370.0`, `speed: f32 = 450.0`, `ai: bool = false`, `ai_speed: f32 = 255.0`, `dead_zone: f32 =
+  2.0` — Medium, `types.rs:15-29` — `target: entity = "Ball"`; a human paddle moves by
+  `view.move_y(params.player) * params.speed * dt` (`paddles.rs:11-13`), an AI paddle chases
+  `view.position(params.target).y` at `ai_speed` outside the dead zone (`:47-55`); the new y
+  is `max(min(y, 230.0), -230.0)` — `PADDLE_MAX_Y`, `constants.rs:11` — and lands as
+  `cmd.set_kinematic_target(me, vec2(params.x, new_y))`; the scene's refs set `player: 0` on
+  the left, `x: 370.0, ai: true` on the right), `scripts/ball.rhai` (`early_update` serves on
+  `view.just_activated(0, "action1") || view.just_activated(1, "action1")` when
+  `view.blackboard_bool("serving", true)` — absent means serving, so the first Play is not a
+  deadlock — AND `!view.blackboard_bool("game_over", false)`, so the restart press cannot serve
+  in the same frame the scoreboard resets; direction x from `view.blackboard_str("last_scorer",
+  "left")` the way `flow.rs:38-41` does (`"left"` → −1.0), `dir` from the three hash lines in the
+  preamble, `cmd.set_velocity(me, dir * params.speed)` then `cmd.set_blackboard_bool("serving",
+  false)`; `update` maintains speed as `balls.rs:27-45` does — return when `me.velocity.x.abs()
+  < 0.1`, else pin x to `sign * speed` and clamp y to `±max_vertical` with `max(min())`, writing
+  only when the change is over 1.0 — ONLY while not `serving`, so it never fights the goal's
+  reset in the same phase; header `speed: f32 = 250.0`, `max_vertical: f32 = 500.0`),
+  `scripts/goal.rhai` (`update`; header `side: str = "left"`; on
+  `view.has_collision_started(me, "Ball")`: the OTHER side scores —
+  `cmd.set_blackboard_int("right_score", view.blackboard_int("right_score", 0) + 1)` for the
+  left goal — `cmd.set_blackboard_str("last_scorer", <that side>)`, `cmd.reset_body("Ball",
+  vec2(0.0, 0.0))`, `cmd.set_blackboard_bool("serving", true)`; the scene's right goal sets
+  `side: "right"`), `scripts/scoreboard.rhai` (`update`; writes `` `${left} : ${right}` `` to
+  `cmd.set_label_text(me, …)`; at 7 (`WIN_SCORE`) writes "LEFT WINS — Action1 to restart" or
+  "RIGHT WINS — Action1 to restart" for the side that reached it and
+  `cmd.set_blackboard_bool("game_over", true)`; on Action1 (either player) while `game_over` it
+  zeros both scores, clears `game_over` and sets `serving`). Every script carries its
+  `// @param` header with these defaults in the lowercase syntax of `docs/SCRIPTING.md:28-45`,
+  and every hook is `fn <hook>(me, view, params, cmd, dt)`.
+- `docs/WEB_PLAYGROUND.md:26-27`, the invocation of record, adds
+  `--project pong=Pong=crates/playground/assets/projects/pong` (the tree at `:13-22` shows both
+  slugs); the bundle is rebuilt with that invocation and synced into the site checkout.
+- Page: a "Scripts" panel between the canvas and the console — `<label>` + `<select
+  id="script-select">` of the project's `.rhai` files (from `playground_list_files`, filtered
+  on the extension, sorted), `<label>` + `<textarea id="script-source">` (monospace,
+  `spellcheck="false"`) bound to `playground_read_file` on selection and
+  `playground_write_file` on Save, a Save `<button>` (`Ctrl+S` / `Cmd+S` with the textarea
+  focused `preventDefault`s and runs the same Save — the browser's own save dialog otherwise
+  opens), a dirty flag (`value !== lastSaved`) exposed as `isDirty()` and ORed into the page's
+  `isDirty()` helper, which every switch / reset / import confirm and `beforeunload` reads, a
+  switch of the select while dirty confirming first — the panel keeps `currentPath`, and a
+  cancelled confirm sets `select.value = currentPath` and returns before touching the textarea
+  (the browser has already moved the select's value when `change` fires; without the reset a
+  later Save would write the old file's text under the new file's path) — and two
+  `<output aria-live="polite">` elements: `#script-status` carries Save's result immediately —
+  "saved — syntax OK; runtime errors show during Play" on success, the thrown `ScriptError`
+  string on refusal with the file left unwritten and dirty — and `#script-runtime-errors` carries
+  the 500 ms poll of `playground_script_errors()`, rewritten only when its joined text changes.
+  The behaviour is `src/scripts/playground-scripts-panel.ts`'s
+  `createScriptsPanel(bridge)`; the page never moves focus (batch 4's rule stands), and
+  `playground-embed.ts` only constructs the panel, enables it at `playground-ready` and ORs
+  its flag.
+- Tests (`crates/playground/tests/pong_rules.rs`, headless, no physics system): (1) load
+  `pong.scene.ron` through `StubResolver`, `reset` the runner on the project's asset base, run
+  one frame with no input and assert the ball is still at centre and `runner.errors()` is
+  empty — the four scripts compiled and every name resolved; press Space through
+  `test_support::frame` (`InputEvent::KeyPressed(KeyCode::Space)`, player 0's Action1), run
+  `early_update` at 1/60 s and assert the ball's `Transform2D` has left centre (the serve,
+  integrated by the no-physics fallback) and `serving` is now `Bool(false)`; then INJECT
+  `CollisionData { event: CollisionEvent { entity_a: ball, entity_b: left_goal, started: true,
+  stopped: false }, contacts: vec![] }` into `ScriptRunner::update` and assert the blackboard
+  reads `right_score == I32(1)`, `last_scorer == Str("right")`, `serving == Bool(true)`, the
+  ball is back at centre, and the label reads `"0 : 1"` after one more `update` — the rules
+  pinned through the fallback, not rapier. (2) with `left_score` set to 6 on the blackboard,
+  inject a right-goal collision, run one more no-input `update`, and assert the label starts
+  with "LEFT WINS" and `game_over == Bool(true)`; press Space, run both phases, and assert the
+  ball did NOT leave centre (the
+  restart press cannot serve), both scores are 0, `game_over` is false and `serving` is true.
+  Both tests assert `runner.errors()` is empty at the end. Every blackboard write lands when its
+  phase's commands apply, and the next phase's view is built from that (`runner.rs:296-299,483`),
+  so a rule that reads another script's write is observed one phase later: test (1) already reads
+  the label "after one more `update`", and test (2) runs one no-input `update` after the
+  collision injection BEFORE asserting the win — in the injection phase the scoreboard still saw
+  `left_score == 6`.
+- Docs: `docs/SCRIPTING.md` § Worked example: pong (the four scripts' contracts, the blackboard
+  keys `left_score` / `right_score` / `last_scorer` / `serving` / `game_over`, the same-frame
+  rules above, the keys that drive it); `docs/WEB_PLAYGROUND.md:13-27`;
+  `crates/playground/CLAUDE.md` file map; `games/pong/README.md` "Pong as data" before § "The
+  Deion Pivot: Tong" (`:68`) pointing at `insiculous_2d/crates/playground/assets/projects/pong/`
+  and `/playground/?project=pong`; `insiculous_web/src/pages/playground.astro` § Scripts;
+  the embed's shortcuts line.
 
-Gates: standard + wasm + `npm run verify` + bundle. **Jesse's browser check:** open
-`/playground/?project=pong`, Play, a rally with the AI, score, edit `paddle.rhai`'s
-speed in the textarea, Save, Stop, Play — the paddle is faster; **reload the tab** —
-the edit is still there; with an entity selected, type Delete and Ctrl+Z inside the
-textarea — the viewport is untouched (rebuttal 1, gemini F5). Leaves out: menus,
-power-ups, chaos modes, achievements (filed).
+Gates: standard (`cargo test --workspace` runs the new integration test; the comment-tag grep
+extended over `crates/playground/assets --include=*.rhai`) + wasm (the diff touches
+`crates/playground/Cargo.toml`, under a covered crate root) + `npm run verify` + bundle
+(`build_wasm.sh`'s size line under 20 MiB). No games gate: no public item changes, and the
+pong repo's diff is one README. **Jesse's browser check:** open `/playground/?project=pong`,
+Play, a rally with the AI (W/S move the left paddle, Space serves), score, edit
+`paddle.rhai`'s speed in the textarea, Save, Stop, Play — the paddle is faster; **reload the
+tab** — the edit is still there; with an entity selected, type Delete and Ctrl+Z inside the
+textarea — the viewport is untouched (rebuttal 1, gemini F5). Leaves out: menus, power-ups,
+chaos modes, achievements (filed in batch 10).
 
 ## Batch 9 — the six games as editor bundles (independent, droppable)
 
