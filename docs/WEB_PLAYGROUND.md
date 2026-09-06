@@ -208,9 +208,11 @@ takes the viewport), after Stop, and on exit. Nothing is written during Play or 
 
 Projects export and import as standard zip archives (`<slug>.zip`). This is the layout
 [the template repo](https://github.com/beinsiculous/game-template) conforms to, and it goes
-both ways: an export drops on a clone of the template with `unzip -o <slug>.zip -x README.md -d .`
-(the `-x` is load-bearing — every export carries a `README.md` and `unzip -o` would replace the
-clone's own), and a clone goes back to the browser with `zip -r <slug>.zip project.ron assets`
+both ways: an export drops on a clone of the template with
+`rm -rf assets/scenes assets/scripts && unzip -o <slug>.zip -x README.md -d .`
+(the `rm` is load-bearing — the template's own `main.scene.ron` would otherwise sort ahead of the
+export's scene and be the one loaded; the `-x` too — every export carries a `README.md` and
+`unzip -o` would replace the clone's own), and a clone goes back to the browser with `zip -r <slug>.zip project.ron assets`
 followed by Import project on `/playground/`.
 
 ```

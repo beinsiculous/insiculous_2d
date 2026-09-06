@@ -79,7 +79,7 @@ Engine status, test counts, and per-system capability detail live in
 | C/D | Games 7–20 | PAUSED until Phase G done (below) | This file § Paused phases |
 
 **Editor** work follows the UX-audit sprint order (its own section below);
-**Web Playground** is #48/#49.
+**Web Playground** shipped Sep 2026; `docs/WEB_PLAYGROUND.md`.
 
 ## Phase J — Insiculous Arcade (marketplace compilation) — OUTLINE ONLY
 
@@ -152,15 +152,16 @@ file — it was **pending the audit §5.1 gamma verification** (screen colors
 measured ~2× brighter than declared tokens); do not derive or re-pick colors
 from `crates/editor/IdealEditor.png` until that is settled.
 
-## Web Playground — the learn-to-code front (Aug 27 2026)
+## Web Playground — the learn-to-code front (Aug 27 2026 → SHIPPED Sep 6 2026)
 
-The open-source goal: people **learn to code and build their own games with
-this engine**, on beinsiculous.com — north star #2 given a shipping
-destination. Live items: **#48** (editor-on-wasm milestone: capability split,
-boot a bundled sample scene, embed behind the WebGPU gate) and **#49**
-(client-side project zip export/import + an org `game-template` repo).
-GitHub-App/OAuth publish-to-own-repo is deliberately not designed until the
-playground proves engagement.
+The open-source goal — people **learn to code and build their own games with
+this engine** — shipped as `/playground/` on beinsiculous.com: the editor on
+wasm32/WebGPU, projects persisted in IndexedDB, Rhai scripts edited on the page,
+zip export/import dropping onto `beinsiculous/game-template` to run natively, and
+an editor page per game at `/playground/<slug>/`. **#48** and **#49**, ten
+batches, Sep 4–6 2026; `docs/WEB_PLAYGROUND.md`, follow-ups on the board.
+GitHub-App/OAuth publish-to-own-repo stays undesigned until the playground proves
+engagement.
 
 ## Scripting — the ScriptRef seam
 
@@ -180,7 +181,8 @@ physics step — the editor's `ProjectHost` for every data project, a game's own
 `update` for a shipped game — and the six Rust games keep their compiled rules;
 they ship as per-game editor bundles rather than as scripts. Games register
 native descriptors through the defaulted `Game::register_scripts`, which
-`EditorGame` forwards.
+`EditorGame` forwards; `beinsiculous/game-template` is the game that runs an
+exported playground scene natively.
 
 
 ## Technical Debt
