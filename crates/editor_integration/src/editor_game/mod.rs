@@ -19,7 +19,7 @@ use editor::EditorContext;
 use editor::world_snapshot::WorldSnapshot;
 use engine_core::contexts::{GameContext, RenderContext};
 use engine_core::scene_data::PhysicsSettings;
-use engine_core::Game;
+use engine_core::{AchievementManager, Game, Strings};
 
 use crate::constants::EDITOR_PREFS_PATH;
 use crate::panel_renderer;
