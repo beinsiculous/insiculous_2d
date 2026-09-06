@@ -73,3 +73,37 @@ review file's mtime minus the dispatch timestamp.
 | batch 10 (Claude Code authored, four repositories) | kimi | 3 | 3 | 0 | 0 | "the template never applies the scene's `PhysicsSettings` — exports with gravity run with zero gravity": verified against `project_host.rs:63-73` and the Examples scene's `gravity: (0.0, -980.0)`; the headline drop-in would have floated an Examples export on the desktop while its own scene passed because its declared physics equalled the preset; also the coin script's editable divisor and the stale guide line | 7m13s (11:37:02 → 11:44:15) |
 | batch 10 (Claude Code authored, four repositories) | claude | 4 | 4 | 0 | 0 | the executor's own finding taken as a gate: no listed gate compiles `src/bin/editor.rs`, so a public item is deletable with everything green and the editor binary broken — the editor-feature clippy joins the ground rules; also the two stale guide lines and the spare image riding into the bundle's content hash | — |
 | batch 10 round 2 (planner fixes) | kimi | 2 | 2 | 0 | 0 | "`physics_for(None)` contradicts the parity it advertises — the playground runs no physics for a scene without a block, the desktop invents one": true of the comment, not the shipped flow, and taken as a narrowed comment; the second, the new test's inverted premise (the shipped scene declares a zero-gravity block), likewise a comment | 5m43s (11:47:06 → 11:52:49) |
+| batch 11 docs close-out (Claude Code authored, two repositories) | kimi | 2 | 2 | 0 | 0 | "review/rebuttal numbering contradicts the surviving artifacts between batches 5 and 6" — read the three surviving rebuttal headers and found rebuttal 21 claimed by both batches; the second, that "live at beinsiculous.com" was unverifiable from its checkout, was right in fact: `/playground/` was 404 on production at review time and becomes true with this session's merge | 5m56s (13:54:16 → 14:00:12) |
+| batch 11 docs close-out (Claude Code authored, two repositories) | gemini | 1 | 1 | 0 | 0 | "the documented export drop-in command silently runs the template's coin demo instead of the exported game" — `unzip -o` adds and does not empty, and `main.scene.ron` sorts ahead of `pong.scene.ron` under discovery; the command gains an `rm` in four documents, one of them the pushed template's README. Unique, and the effort's last real catch | 5m26s (13:54:16 → 13:59:42) |
+| batch 11 docs close-out (Claude Code authored, two repositories) | claude | 3 | 3 | 0 | 0 | the archive entry said gemini reviewed every staged diff and executed the effort (it reviewed no diff and executed batches 1–8); a lesson cited `api.rs`, which does not exist; five file suffixes rendered as prose | — |
+
+## Close-out (Sep 6 2026, the effort done)
+
+Totals over the effort, from the rows above: **kimi** 36 reviews, 180 findings, 150 real,
+13 false, 16 policy; **gemini** 15 reviews, 104 findings, 97 real, 5 false, 1 policy;
+**Claude** (the planner's own read, the same vendor as the author on batches 9–11) 17
+reviews, 103 findings, 98 real, 2 false. Kimi read every plan version, every section
+correction and every staged diff, including every planner-fix round; gemini read every plan
+version and every section correction and no staged diff until batch 11's, which the planner's
+own vendor had authored. Wall time held all effort: kimi 3–13 minutes a review, gemini 3–8.
+
+The unique catches split by kind. Kimi's were verification catches — it re-runs the suite,
+greps callers across crates and reads the surviving files: the get-then-put revision check
+that was not a CAS, the base-joined VFS keys that made a save land on a different key than
+the read, the `[profile.wasm-release]` ignored outside the workspace root, every Rhai instance
+recompiling twice a frame, the template that never applied the scene's physics block, and the
+rebuttal numbering that contradicted the files. Gemini's were design catches on the plan
+before a line was typed — Rhai functions cannot read outer-scope variables so the seeded
+params could never work, post-physics-only scripts lagging kinematic bodies a frame, the
+template that hardcoded its own scene file and so could not run an export, and, on the one
+diff it read, the drop-in command that would have played the coin demo instead of the export.
+Neither produced a false claim at code level after batch 5; kimi's policy rebuts (16) were all
+findings that re-raised a standing ruling, never wrong on the facts.
+
+**Recommendation, as a number:** kimi stays the default single reviewer on a staged diff —
+150 real over 180 at code and plan level, with the verification discipline that found the
+data-loss class — and **gemini reads every plan and every section correction**, where 97 of
+104 were real and the design-level flaws it alone found were the expensive ones. Run both on
+a diff whose author is the planner's own vendor (batches 9–11 here), because that is when the
+no-model-reviews-its-own-work rule has no other reader. The cleanup's recommendation holds,
+with the plan-side half made mandatory rather than advisory.
