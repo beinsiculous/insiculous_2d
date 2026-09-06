@@ -16,15 +16,18 @@ playground/<version>/
     ├── manifest.json
     ├── projects.json
     └── projects/
-        └── <slug>/
+        ├── examples/
+        │   └── assets/
+        └── pong/
             └── assets/
-                └── ...
 ```
 
 Invocation of record, run from the engine root:
 ```sh
 scripts/build_wasm.sh crates/playground playground --kind playground --version v1 \
-    --project examples=Examples=examples --sync ../insiculous_web/public
+    --project examples=Examples=examples \
+    --project pong=Pong=crates/playground/assets/projects/pong \
+    --sync ../insiculous_web/public
 ```
 
 `assets/projects.json` is the bundled project manifest list (a JSON array of `ProjectManifest`).

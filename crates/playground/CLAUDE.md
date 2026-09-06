@@ -26,6 +26,7 @@ crates into the wasm gate.
 - `persist/tests/` — `mod.rs`, `chains.rs` (hand-polled state-machine tests), and `stores.rs` (native directory double tests).
 - `projects.rs` — `ProjectManifest`, `ProjectEntry`, `list_projects` (pure merge), `validate_slug`, the computed project root.
 - `archive.rs` — target-agnostic project zip export and import validation; `archive/tests.rs`.
+- `assets/projects/pong/` — bundled project: pong scene (`scenes/pong.scene.ron`), paddle/ball textures, and gameplay scripts (`scripts/{paddle,ball,goal,scoreboard}.rhai`).
 
 ## Pitfalls and their guard tests
 

@@ -133,6 +133,32 @@ The engine provides built-in behaviors registered in the script catalog:
 
 ---
 
+## Worked example: pong
+
+The Pong sample (`crates/playground/assets/projects/pong/`) implements gameplay entirely with data and four Rhai scripts:
+
+1. **`paddle.rhai`** (`early_update`):
+   - Parameters: `player: i32 = 0`, `x: f32 = -370.0`, `speed: f32 = 450.0`, `ai: bool = false`, `ai_speed: f32 = 255.0`, `dead_zone: f32 = 2.0`, `target: entity = "Ball"`.
+   - Player control: reads vertical input via `view.move_y(params.player)` and scales by `params.speed * dt` (W/S for player 0, Up/Down arrows for player 1).
+   - AI control: tracks `params.target` (`view.position(params.target).y`) at `params.ai_speed` outside `params.dead_zone`.
+   - Motion: clamps vertical position to `[-230.0, 230.0]` and positions the paddle via `cmd.set_kinematic_target(me, vec2(params.x, new_y))`.
+2. **`ball.rhai`** (`early_update` and `update`):
+   - Parameters: `speed: f32 = 250.0`, `max_vertical: f32 = 500.0`.
+   - Serve (`early_update`): launches ball on Action1 (`view.just_activated(0, "action1")` or `1`, Space/Enter) while `serving` is `true` and `game_over` is `false`. Launch direction heads toward the last scorer (`last_scorer` on the blackboard, the Rust game's rule; absent or after a restart it is `"right"`, so the first serve goes right) with pseudo-random vertical spread derived from `view.frame`. Sets velocity via `cmd.set_velocity(me, dir * params.speed)` and clears `serving` (`cmd.set_blackboard_bool("serving", false)`).
+   - Speed maintenance (`update`): while not serving, pins horizontal speed to `sign * speed` and clamps vertical speed to `params.max_vertical`.
+3. **`goal.rhai`** (`update`):
+   - Parameters: `side: str = "left"`.
+   - On `view.has_collision_started(me, "Ball")`, increments the opposite player's score on the blackboard (`right_score` for left goal, `left_score` for right goal), updates `last_scorer`, teleports the ball back to center via `cmd.reset_body("Ball", vec2(0.0, 0.0))`, and sets `cmd.set_blackboard_bool("serving", true)`.
+4. **`scoreboard.rhai`** (`update`):
+   - Formats and displays current score on a `UiLabel` entity: `${left} : ${right}`.
+   - When either score reaches 7, declares the winner (`LEFT WINS — Action1 to restart` or `RIGHT WINS — Action1 to restart`) and sets `game_over` on the blackboard.
+   - On Action1 press during `game_over`, resets scores to 0, clears `game_over`, sets `serving`, resets `last_scorer` to `"right"`, and updates the label to `0 : 0`.
+
+**State Coordination & Timing**:
+Shared match state is coordinated via blackboard keys: `left_score` (`i32`), `right_score` (`i32`), `last_scorer` (`str`), `serving` (`bool`), and `game_over` (`bool`). Commands applied in one phase are committed to the world and blackboard before the next phase executes.
+
+---
+
 ## Error Handling & Quarantining
 
 - **Syntax & Header Errors**: Reported on file save (the playground's Save status says "syntax OK — runtime errors show during Play"), and a project import refuses an archive whose `.rhai` fails the check. Rhai is dynamic, so an unknown function or a misspelled getter is a runtime error, not a syntax error.

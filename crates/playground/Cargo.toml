@@ -43,5 +43,8 @@ web-sys = { version = "0.3", features = [
 ] }
 
 [dev-dependencies]
+engine_core = { path = "../engine_core", features = ["test-support"] }
+ecs = { path = "../ecs" }
+input = { path = "../input" }
 pollster = { workspace = true }
 tempfile = "3"

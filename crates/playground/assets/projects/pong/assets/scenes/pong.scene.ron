@@ -1,0 +1,222 @@
+// Pong - 2-Player / AI Paddle Game
+//
+// Left paddle: W/S to move, Space to serve (Action1)
+// Right paddle: AI ball-tracking (or Arrow keys / Enter in two-player)
+// Goal sensors detect score and reset ball to center. First to 7 wins.
+// Space / Enter restarts after game over.
+//
+SceneData(
+    name: "Pong",
+
+    physics: Some(PhysicsSettings(
+        gravity: (0.0, 0.0),
+        pixels_per_meter: 100.0,
+        timestep: 0.016666668,
+    )),
+
+    prefabs: {},
+
+    entities: [
+        EntityData(
+            name: Some("Camera"),
+            components: [
+                Transform2D(position: (0.0, 0.0)),
+                Camera2D(is_main_camera: true, viewport_size: (800.0, 600.0)),
+            ],
+        ),
+
+        EntityData(
+            name: Some("Background"),
+            components: [
+                Transform2D(position: (0.0, 0.0), scale: (12.0, 9.0)),
+                Sprite(
+                    texture: "#white",
+                    color: (0.0, 0.0, 0.0, 1.0),
+                    depth: -100.0,
+                ),
+            ],
+        ),
+
+        EntityData(
+            name: Some("Left Paddle"),
+            components: [
+                Transform2D(position: (-370.0, 0.0), scale: (0.25, 1.5)),
+                Sprite(
+                    texture: "images/paddle_16px.png",
+                    color: (1.0, 0.3, 0.3, 1.0),
+                    emissive: 1.5,
+                ),
+                RigidBody(
+                    body_type: Kinematic,
+                    can_rotate: false,
+                ),
+                Collider(
+                    shape: CapsuleY(half_height: 50.0, radius: 10.0),
+                    friction: 0.0,
+                    restitution: 1.0,
+                ),
+                Scripts([(
+                    script_id: "paddle",
+                    source_path: "scripts/paddle.rhai",
+                    params: {
+                        "player": I32(0),
+                    },
+                )]),
+            ],
+        ),
+
+        EntityData(
+            name: Some("Right Paddle"),
+            components: [
+                Transform2D(position: (370.0, 0.0), scale: (0.25, 1.5)),
+                Sprite(
+                    texture: "images/paddle_16px.png",
+                    scale: (-1.0, 1.0),
+                    color: (0.3, 0.5, 1.0, 1.0),
+                    emissive: 1.5,
+                ),
+                RigidBody(
+                    body_type: Kinematic,
+                    can_rotate: false,
+                ),
+                Collider(
+                    shape: CapsuleY(half_height: 50.0, radius: 10.0),
+                    friction: 0.0,
+                    restitution: 1.0,
+                ),
+                Scripts([(
+                    script_id: "paddle",
+                    source_path: "scripts/paddle.rhai",
+                    params: {
+                        "ai": Bool(true),
+                        "x": F32(370.0),
+                    },
+                )]),
+            ],
+        ),
+
+        EntityData(
+            name: Some("Ball"),
+            components: [
+                Transform2D(position: (0.0, 0.0), scale: (0.25, 0.25)),
+                Sprite(
+                    texture: "images/ball_8px.png",
+                    emissive: 2.5,
+                ),
+                RigidBody(
+                    body_type: Dynamic,
+                    gravity_scale: 0.0,
+                    can_rotate: false,
+                    ccd_enabled: true,
+                ),
+                Collider(
+                    shape: Circle(radius: 10.0),
+                    friction: 0.0,
+                    restitution: 1.0,
+                ),
+                Scripts([(
+                    script_id: "ball",
+                    source_path: "scripts/ball.rhai",
+                    params: {},
+                )]),
+            ],
+        ),
+
+        EntityData(
+            name: Some("Top Wall"),
+            components: [
+                Transform2D(position: (0.0, 290.0), scale: (10.0, 0.25)),
+                Sprite(
+                    texture: "#white",
+                    color: (0.35, 0.35, 0.42, 1.0),
+                    emissive: 0.6,
+                ),
+                RigidBody(
+                    body_type: Static,
+                ),
+                Collider(
+                    shape: Box(half_extents: (400.0, 10.0)),
+                    friction: 0.0,
+                    restitution: 1.0,
+                ),
+            ],
+        ),
+
+        EntityData(
+            name: Some("Bottom Wall"),
+            components: [
+                Transform2D(position: (0.0, -290.0), scale: (10.0, 0.25)),
+                Sprite(
+                    texture: "#white",
+                    color: (0.35, 0.35, 0.42, 1.0),
+                    emissive: 0.6,
+                ),
+                RigidBody(
+                    body_type: Static,
+                ),
+                Collider(
+                    shape: Box(half_extents: (400.0, 10.0)),
+                    friction: 0.0,
+                    restitution: 1.0,
+                ),
+            ],
+        ),
+
+        EntityData(
+            name: Some("Left Goal"),
+            components: [
+                Transform2D(position: (-410.0, 0.0)),
+                RigidBody(
+                    body_type: Static,
+                ),
+                Collider(
+                    shape: Box(half_extents: (10.0, 300.0)),
+                    is_sensor: true,
+                ),
+                Scripts([(
+                    script_id: "goal",
+                    source_path: "scripts/goal.rhai",
+                    params: {},
+                )]),
+            ],
+        ),
+
+        EntityData(
+            name: Some("Right Goal"),
+            components: [
+                Transform2D(position: (410.0, 0.0)),
+                RigidBody(
+                    body_type: Static,
+                ),
+                Collider(
+                    shape: Box(half_extents: (10.0, 300.0)),
+                    is_sensor: true,
+                ),
+                Scripts([(
+                    script_id: "goal",
+                    source_path: "scripts/goal.rhai",
+                    params: {
+                        "side": Str("right"),
+                    },
+                )]),
+            ],
+        ),
+
+        EntityData(
+            name: Some("Scoreboard"),
+            components: [
+                UiLabel(
+                    text: "0 : 0",
+                    anchor: TopCenter,
+                    offset: (0.0, 24.0),
+                    font_size: 32.0,
+                ),
+                Scripts([(
+                    script_id: "scoreboard",
+                    source_path: "scripts/scoreboard.rhai",
+                    params: {},
+                )]),
+            ],
+        ),
+    ],
+)
