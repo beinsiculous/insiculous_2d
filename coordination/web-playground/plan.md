@@ -2419,6 +2419,21 @@ the template's bundles on the site (it has no page, and needs none); a git-form 
 
 ## Batch 11 — docs close-out, the ledger, the board, the merge
 
+**Re-verified against the tree 2026-09-06 before the handoff** (written this morning, reviewed
+in round 30, and batch 10 landed since). Corrections, each restated where it applies below:
+`coordination/PROGRESS.md` appends its `## <date> — <title>` entries at the END, in date order
+(`:320-414`, the Sprint 5 and 6 entries), whatever the header's "most recent at top" says of the
+older bracket-line style — batch 11's eleven entries go after `:414`. The branch counts moved
+with batch 10: the engine is 38 ahead of `dev`, the site 11, the working set 1 (2 once the
+seat lands); the template has `main` only and no merge. insiculous_web#4's fix is acf3df4.
+Two site docs join the docs bullet: `docs/roadmap.md:129-135` still says "Scripting follows"
+and never names the template; `README.md:164-165` names the export layout and not where it
+drops. The engine guide's "Next actionable" (`CLAUDE.md:231`) still names Editor Sprint 5, two
+sprints stale, and is rewritten rather than appended to. One follow-up joins the list: a
+scene with no physics block runs no physics in the playground and the top-down preset in the
+template (`games/game-template/src/spawning.rs`, kimi's round-2 finding) — a documented
+divergence that wants one behaviour.
+
 - **Docs (executor):** `PROJECT_ROADMAP.md` § Web Playground (`:155-163`) becomes a
   shipped paragraph — the route, export/import, the template's URL, the six games' editor
   pages, the ten batches' dates, "follow-ups on the board" — and the Phase Map's sentence at
@@ -2438,10 +2453,16 @@ the template's bundles on the site (it has no page, and needs none); a git-form 
   FIFO with no request ids (rebuttal 1), the epoch that a failed import must restore
   (batch 5), the per-game editor bundle over scripts (the game-run ruling), the executor
   substitution in batch 9. `coordination/PROGRESS.md`: one entry per batch, 0 through 10,
-  most recent at top in the `## 2026-09-0N — <title>` shape (`:388`), each naming the
-  commit(s) from this plan's section headings and the reviews from the ledger, plus Jesse's
+  appended after the last entry (`:414`) in date order in the `## 2026-09-0N — <title>` shape
+  (`:388` is the shape), each naming the commit(s) from this plan's section headings and the
+  reviews from the ledger — this plan's § Context paragraph is the source — plus Jesse's
   browser-check lines for batches 4, 5, 8, 9 and 10 as Jesse reports them (a line per check,
-  every one naming the reload).
+  every one naming the reload). The engine guide's "Next actionable" sentence at `:231`
+  names Editor Sprint 5 and is two sprints stale: it is rewritten to point at the board, not
+  appended to. Site (`../insiculous_web`, gate `npm run verify`): `docs/roadmap.md:129-135`
+  drops "Scripting follows" for the shipped truth — scripts edited on the page, projects
+  exported as zip and dropped onto the game template — and `README.md:164-165` gains the
+  template's URL as where an export drops.
 - **The ledger (planner):** `coordination/web-playground/reviewer-comparison.md` closes the
   way the cleanup's did (`coordination/cleanup-2026-09/reviewer-comparison.md`, its last two
   paragraphs): totals per reviewer over this effort, the overlap, the unique catches, wall
@@ -2449,7 +2470,8 @@ the template's bundles on the site (it has no page, and needs none); a git-form 
 - **The board (planner):** close insiculous_2d#48 and #49 with a comment naming the commits
   (#48: batches 1–4, and 6–9 as the milestone the plan extended — § Context; #49: batches 5
   and 10), and insiculous_web#4 (batch 0's fix, the
-  `requestDevice` await in `GameEmbed.astro:92`, which shipped without the `fixes` trailer).
+  `requestDevice` await in `GameEmbed.astro:92`, commit acf3df4, which shipped without the
+  `fixes` trailer).
   File the follow-ups with `/file-issue`: the other five games as data projects; pong's
   menus, power-ups, chaos and achievements as data (needs menu and achievement script
   surfaces — the template's README exercise waits on the same); the eight `Behavior`s as
@@ -2458,14 +2480,19 @@ the template's bundles on the site (it has no page, and needs none); a git-form 
   today a file leaves a project only by re-import); contact points and normals in
   `ScriptView` for a game whose rules read them (pong's never did); a criterion bench for
   view-building + script dispatch at 200 named entities × 30 instances over the Rhai path
-  (a timing assertion is not a `cargo test`).
-- **The merge (planner, then Jesse):** `jesse → dev` in all nine repositories — the engine
-  (35 ahead of `dev` on Sep 6), the site (10), the six games (2–4 each), the working set —
-  every one a fast-forward today; Jesse pushes, and `dev → main` stays Jesse's call.
+  (a timing assertion is not a `cargo test`); a scene with no physics block, which runs no
+  physics in the playground and the top-down preset in the template — one behaviour, decided.
+- **The merge (planner, then Jesse):** `jesse → dev` in all nine repositories that carry
+  both — the engine (38 ahead of `dev` after batch 10), the site (11), the six games (2–4
+  each), the working set (1, 2 once the seat lands) — every one a fast-forward today; the
+  template has `main` only. Jesse pushes, and `dev → main` stays Jesse's call.
 
 Gates: the docs batch has no Rust and no bundle — the comment-tag grep, `cargo test
---workspace` unchanged, and a read of every changed paragraph against the tree (a guide
-that describes a thing wrongly is a defect). The board and merge steps have no executor.
+--workspace` unchanged, `npm run verify` for the site's two docs, and a read of every changed
+paragraph against the tree (a guide that describes a thing wrongly is a defect). Files:
+`PROJECT_ROADMAP.md`, `CLAUDE.md`, `README.md`, `log_archive.md`, `coordination/PROGRESS.md`
+in the engine; `docs/roadmap.md`, `README.md` in the site. The board and merge steps have no
+executor.
 
 ## Verification (end to end)
 
