@@ -67,6 +67,46 @@ by `persist::set_dom_banner`; an absent element is a silent no-op). The entry di
 `playground-ready` event on `window` immediately after the bridge is set up, signaling that
 bridge channels are ready and manifests are loaded.
 
+## The game bundles
+
+The six Rust games each ship a SECOND bundle: the same game crate compiled with its
+`editor` feature, so the game runs inside the scene editor in the browser. It is a game
+bundle, not a playground one — the game's own `assets/` tree, no `projects.json`, no
+project store, no `achievements.json`.
+
+Layout, deployed and built:
+
+```
+public/playground/<slug>/<version>/{game.js, game_bg.wasm, assets/...}
+```
+
+`EDITOR_ASSET_BASE = "/playground/<slug>/<version>/assets"` in the game's `web_entry.rs` is
+the compiled-in base. Its version is a FOUR-place contract — that constant, the build
+script's output directory, the site's `src/content/games/<slug>.md` `editor:` path, and the
+deployed directory — and is INDEPENDENT of the game's own `wasm:` version: the two bundles
+deploy separately.
+
+The invocations of record, from the engine root:
+
+```sh
+scripts/build_wasm.sh ../games/pong pong --kind editor --version v1 --sync ../insiculous_web/public
+scripts/build_wasm.sh ../games/snake snake --kind editor --version v1 --sync ../insiculous_web/public
+scripts/build_wasm.sh ../games/breakout breakout --kind editor --version v1 --sync ../insiculous_web/public
+scripts/build_wasm.sh ../games/frogger frogger --kind editor --version v1 --sync ../insiculous_web/public
+scripts/build_wasm.sh ../games/asteroids asteroids --kind editor --version v1 --sync ../insiculous_web/public
+scripts/build_wasm.sh ../games/space_invaders invaders --kind editor --version v1 --sync ../insiculous_web/public
+```
+
+(The site slug for `space_invaders` is `invaders`, as it is for its game bundle.)
+
+**What persists: only the editor's own preferences.** The session passes no save paths, so
+an editor session writes none of the game's `beinsiculous.games.<slug>.*` keys — no
+achievement the site's board would show, no high score, no rebound key — and takes the
+engine's default input bindings. Scene edits live in the in-memory VFS: a save inside the
+editor has nowhere to go, because a game bundle carries no project store, and a reload
+brings the game's own layout back. The one thing that survives is the editor's camera and
+panel layout, in the per-game preferences key (`docs/WEB_SAVES.md` § Keys).
+
 ## The store
 
 Database `beinsiculous.playground`, version 1, two object stores:

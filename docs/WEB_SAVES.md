@@ -37,6 +37,12 @@ The Web Playground (`/playground/`) stores editor UI preferences under the
 holds, written on the editor's settle rule. The project files themselves live in
 IndexedDB, not in `SaveStore`; `docs/WEB_PLAYGROUND.md` is that contract.
 
+A Rust game opened in the editor at `/playground/<slug>/` keeps its own editor
+preferences under `beinsiculous.playground.<slug>.editor_prefs` — one key per
+game, because the preferences carry the camera. That session writes nothing
+else: none of the `beinsiculous.games.<slug>.*` keys above are set, so no board
+on the site records an editor session.
+
 ## Values — byte-identical to the native save files
 
 Every value is exactly the pretty-printed JSON the engine writes natively

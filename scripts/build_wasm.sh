@@ -1,16 +1,23 @@
 #!/usr/bin/env bash
 # Build a game's or the playground's web (wasm) bundle in the site's drop-in layout.
 #
+# A game builds under two kinds: `games`, the plain game the site plays at
+# /games/<slug>/, and `editor`, the same game compiled with --features editor so
+# it runs inside the scene editor at /playground/<slug>/. The kind names the
+# layout and turns the feature on together — a separate --features flag would let
+# the two disagree and sync an editor bundle over a deployed game.
+#
 # For a game, also runs a host build of it to export its achievements manifest (the
 # playground has no binary and registers no achievements, so that step is games-only)
 # (requires pkg-config, libasound2-dev and libudev-dev for alsa and libudev).
 #
-# Usage: scripts/build_wasm.sh <crate_dir> <slug> [--kind games|playground] [--project <slug>=<title>=<dir>]... [--version vN] [--serve] [--sync <site_public_dir>]
+# Usage: scripts/build_wasm.sh <crate_dir> <slug> [--kind games|playground|editor] [--project <slug>=<title>=<dir>]... [--version vN] [--serve] [--sync <site_public_dir>]
 #   crate_dir  path to the crate (e.g. ../games/pong or crates/playground)
 #   slug       the site slug — for a game it names the output dir
-#              dist/games/<slug>/<version>/; for the playground it names the
-#              bundle in messages only (the output dir has no slug segment)
-#   --kind     games (default) or playground
+#              dist/games/<slug>/<version>/ or dist/playground/<slug>/<version>/;
+#              for the playground it names the bundle in messages only (the
+#              output dir has no slug segment)
+#   --kind     games (default), playground or editor
 #   --project  playground only, repeatable: <slug>=<title>=<dir>. <dir>/assets
 #              (relative to the caller's cwd) is copied to
 #              assets/projects/<slug>/assets/ and listed in assets/projects.json
@@ -18,14 +25,19 @@
 #   --version  bundle version dir, default v1. The version is a FOUR-place
 #              contract for a game (its src/web_entry.rs ASSET_BASE, this
 #              script's output dir, the site's <slug>.md wasm: path, the
-#              deployed public/games/<slug>/<version>/ dir) and a FIVE-place
-#              one for the playground (ASSET_BASE, BUNDLE_VERSION, the output
-#              dir, projects.json's bundle_version, the deployed
+#              deployed public/games/<slug>/<version>/ dir), a FOUR-place one
+#              for the editor bundle (the entry's EDITOR_ASSET_BASE, this
+#              script's output dir, the site's <slug>.md editor: path, the
+#              deployed public/playground/<slug>/<version>/ dir — independent
+#              of the game's own version) and a FIVE-place one for the
+#              playground (ASSET_BASE, BUNDLE_VERSION, the output dir,
+#              projects.json's bundle_version, the deployed
 #              public/playground/<version>/ dir); this script hard-fails if
 #              the crate's constants disagree, so drift is loud.
 #   --serve    serve dist/ on http://127.0.0.1:8080 after building
-#   --sync     also copy the bundle into <site_public_dir>/games/<slug>/<version>
-#              or <site_public_dir>/playground/<version> (e.g.
+#   --sync     also copy the bundle into <site_public_dir>/games/<slug>/<version>,
+#              <site_public_dir>/playground/<slug>/<version> or
+#              <site_public_dir>/playground/<version> (e.g.
 #              ../insiculous_web/public). Refuses nothing — remember the site
 #              rule: a version dir is immutable once DEPLOYED; only sync over a
 #              version before its first live deploy, bump to the next version
@@ -35,12 +47,14 @@
 # locally and deployed):
 #   games:      <crate_dir>/dist/games/<slug>/<version>/{game.js, game_bg.wasm, achievements.json, assets/...}
 #               <crate_dir>/dist/games/<slug>/index.html   (local test page — NOT deployed)
+#   editor:     <crate_dir>/dist/playground/<slug>/<version>/{game.js, game_bg.wasm, assets/...}
+#               <crate_dir>/dist/playground/<slug>/index.html (local test page — NOT deployed)
 #   playground: <crate_dir>/dist/playground/<version>/{game.js, game_bg.wasm, assets/...}
 #               <crate_dir>/dist/playground/index.html     (local test page — NOT deployed)
 set -euo pipefail
 
 if [[ $# -lt 2 ]]; then
-    echo "usage: $0 <crate_dir> <slug> [--kind games|playground] [--project <slug>=<title>=<dir>]... [--version vN] [--serve] [--sync <site_public_dir>]" >&2
+    echo "usage: $0 <crate_dir> <slug> [--kind games|playground|editor] [--project <slug>=<title>=<dir>]... [--version vN] [--serve] [--sync <site_public_dir>]" >&2
     exit 2
 fi
 
@@ -56,7 +70,7 @@ PROJECT_DEFINITIONS=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --kind)    BUILD_KIND="${2:?--kind needs games or playground}"; shift 2 ;;
+        --kind)    BUILD_KIND="${2:?--kind needs games, playground or editor}"; shift 2 ;;
         --project) PROJECT_DEFINITIONS+=("${2:?--project needs <slug>=<title>=<dir>}"); shift 2 ;;
         --serve)   SERVE="--serve"; shift ;;
         --sync)    SYNC_DIR="${2:?--sync needs a site public dir}"; shift 2 ;;
@@ -65,8 +79,12 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ "$BUILD_KIND" != "games" && "$BUILD_KIND" != "playground" ]]; then
-    echo "ERROR: --kind must be 'games' or 'playground'." >&2
+if [[ "$BUILD_KIND" != "games" && "$BUILD_KIND" != "playground" && "$BUILD_KIND" != "editor" ]]; then
+    echo "ERROR: --kind must be 'games', 'playground' or 'editor'." >&2
+    exit 2
+fi
+if [[ "$BUILD_KIND" == "editor" && ${#PROJECT_DEFINITIONS[@]} -gt 0 ]]; then
+    echo "ERROR: --kind editor takes no --project: the game's own assets are the bundle." >&2
     exit 2
 fi
 if [[ "$BUILD_KIND" == "playground" && ${#PROJECT_DEFINITIONS[@]} -eq 0 ]]; then
@@ -82,17 +100,21 @@ fi
 # header comment quotes the same string, and a check that matched the comment
 # would pass on a stale header after a real bump. Hard fail with the exact
 # remediation.
+# The editor bundle checks a DIFFERENTLY NAMED constant: the game's plain
+# ASSET_BASE stays in the same file under --kind editor, so a check on that name
+# would pass whichever kind was asked for.
 WEB_ENTRY="$GAME_DIR/src/web_entry.rs"
-if [[ "$BUILD_KIND" == "playground" ]]; then
-    EXPECTED_BASE="/playground/$VERSION/assets"
-else
-    EXPECTED_BASE="/games/$SLUG/$VERSION/assets"
-fi
+BASE_CONSTANT="ASSET_BASE"
+case "$BUILD_KIND" in
+    playground) EXPECTED_BASE="/playground/$VERSION/assets" ;;
+    editor)     EXPECTED_BASE="/playground/$SLUG/$VERSION/assets"; BASE_CONSTANT="EDITOR_ASSET_BASE" ;;
+    games)      EXPECTED_BASE="/games/$SLUG/$VERSION/assets" ;;
+esac
 if [[ -f "$WEB_ENTRY" ]]; then
-    if ! grep -q "const ASSET_BASE: &str = \"$EXPECTED_BASE\"" "$WEB_ENTRY"; then
-        ACTUAL_BASE=$(grep -o '"/\(games\|playground\)/[^"]*"' "$WEB_ENTRY" | head -1 || true)
-        echo "ERROR: $WEB_ENTRY ASSET_BASE ($ACTUAL_BASE) != \"$EXPECTED_BASE\"." >&2
-        echo "Fix:   set ASSET_BASE to \"$EXPECTED_BASE\" (the version is a multi-place contract; see the header)." >&2
+    if ! grep -q "const $BASE_CONSTANT: &str = \"$EXPECTED_BASE\"" "$WEB_ENTRY"; then
+        ACTUAL_BASE=$(grep "const $BASE_CONSTANT: &str = " "$WEB_ENTRY" | grep -o '"[^"]*"' | head -1 || true)
+        echo "ERROR: $WEB_ENTRY $BASE_CONSTANT ($ACTUAL_BASE) != \"$EXPECTED_BASE\"." >&2
+        echo "Fix:   set $BASE_CONSTANT to \"$EXPECTED_BASE\" (the version is a multi-place contract; see the header)." >&2
         exit 1
     fi
     if [[ "$BUILD_KIND" == "playground" ]] && ! grep -q "const BUNDLE_VERSION: &str = \"$VERSION\"" "$WEB_ENTRY"; then
@@ -146,16 +168,30 @@ CRATE_NAME="$(awk -F'"' '/^name = /{print $2; exit}' "$GAME_DIR/Cargo.toml")"
 TARGET_DIRECTORY="$(cargo metadata --manifest-path "$GAME_DIR/Cargo.toml" --no-deps --format-version 1 | python3 -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])')"
 WASM_FILE="$TARGET_DIRECTORY/wasm32-unknown-unknown/wasm-release/${CRATE_NAME}.wasm"
 
-if [[ "$BUILD_KIND" == "playground" ]]; then
-    DIST_BASE="$GAME_DIR/dist/playground"
-    SYNC_SUBPATH="playground/$VERSION"
-else
-    DIST_BASE="$GAME_DIR/dist/games/$SLUG"
-    SYNC_SUBPATH="games/$SLUG/$VERSION"
-fi
+case "$BUILD_KIND" in
+    playground)
+        DIST_BASE="$GAME_DIR/dist/playground"
+        SYNC_SUBPATH="playground/$VERSION"
+        ;;
+    editor)
+        DIST_BASE="$GAME_DIR/dist/playground/$SLUG"
+        SYNC_SUBPATH="playground/$SLUG/$VERSION"
+        ;;
+    games)
+        DIST_BASE="$GAME_DIR/dist/games/$SLUG"
+        SYNC_SUBPATH="games/$SLUG/$VERSION"
+        ;;
+esac
 OUT_DIR="$DIST_BASE/$VERSION"
 
-(cd "$GAME_DIR" && cargo build --lib --target wasm32-unknown-unknown --profile wasm-release)
+# The feature goes on only under the editor kind: the playground crate has no
+# such feature, and a plain game bundle must not gain the editor.
+FEATURE_ARGUMENTS=()
+if [[ "$BUILD_KIND" == "editor" ]]; then
+    FEATURE_ARGUMENTS=(--features editor)
+fi
+
+(cd "$GAME_DIR" && cargo build --lib --target wasm32-unknown-unknown --profile wasm-release "${FEATURE_ARGUMENTS[@]+"${FEATURE_ARGUMENTS[@]}"}")
 
 rm -rf "$DIST_BASE"
 mkdir -p "$OUT_DIR"
@@ -165,6 +201,8 @@ wasm-bindgen --target web --no-typescript --out-name game --out-dir "$OUT_DIR" "
 # manifest.json lists every asset file relative to assets/; the web boot
 # phase fetches each entry and stores it under {base}/{entry} (the canonical
 # VFS key scheme).
+# The editor bundle copies assets the games way: it is a game crate, with an
+# assets/ tree of its own and no projects.json.
 mkdir -p "$OUT_DIR/assets"
 if [[ "$BUILD_KIND" == "playground" ]]; then
     python3 - "$OUT_DIR/assets" "$VERSION" "${PROJECT_DEFINITIONS[@]}" <<'EOF'
@@ -258,17 +296,8 @@ if [[ "$BUILD_KIND" == "games" ]]; then
 fi
 
 # --- local test page (mirrors the site's embed contract; NOT deployed) ------
-if [[ "$BUILD_KIND" == "playground" ]]; then
-    PAGE_TITLE="playground"
-    CANVAS_WIDTH=1280
-    CANVAS_HEIGHT=800
-    IMPORT_URL="/playground/$VERSION/game.js"
-    # The site's PlaygroundEmbed provides this element; without it the
-    # persistence banner is a silent no-op and the local check never sees it.
-    BANNER_LINE='<p id="playground-banner" role="alert"></p>'
-else
-    PAGE_TITLE="$SLUG"
-    read -r CANVAS_WIDTH CANVAS_HEIGHT <<< "$(python3 - "$GAME_DIR" <<'EOF'
+read_game_window_size() {
+    python3 - "$GAME_DIR" <<'EOF'
 import re, sys
 # Best effort: pull WIN_W/WIN_H from the game's constants; fall back 800x600.
 try:
@@ -279,10 +308,48 @@ try:
 except OSError:
     print(800, 600)
 EOF
-)"
-    IMPORT_URL="/games/$SLUG/$VERSION/game.js"
-    BANNER_LINE=""
-fi
+}
+
+case "$BUILD_KIND" in
+    playground)
+        PAGE_TITLE="playground"
+        CANVAS_WIDTH=1280
+        CANVAS_HEIGHT=800
+        IMPORT_URL="/playground/$VERSION/game.js"
+        # The site's PlaygroundEmbed provides this element; without it the
+        # persistence banner is a silent no-op and the local check never sees it.
+        BANNER_LINE='<p id="playground-banner" role="alert"></p>'
+        ;;
+    editor)
+        PAGE_TITLE="$SLUG in the editor"
+        # The editor enlarges any window under its usable minimum
+        # (crates/editor_integration/src/constants.rs, MIN_EDITOR_WINDOW_WIDTH and
+        # MIN_EDITOR_WINDOW_HEIGHT), and on wasm winit sizes its canvas from that
+        # config — so the page must carry the CLAMPED size, not the game's. The
+        # site page derives it the same way. The numbers below are a copy of
+        # those constants, so the build asserts they still agree; the site's copy
+        # (src/pages/playground/[slug].astro) is held to the same pair by hand.
+        EDITOR_CONSTANTS="$(dirname "$0")/../crates/editor_integration/src/constants.rs"
+        for constant_line in "MIN_EDITOR_WINDOW_WIDTH: u32 = 1024" "MIN_EDITOR_WINDOW_HEIGHT: u32 = 720"; do
+            if ! grep -q "$constant_line" "$EDITOR_CONSTANTS"; then
+                echo "ERROR: $EDITOR_CONSTANTS no longer says '$constant_line'." >&2
+                echo "Fix:   update the clamp here and in the site's src/pages/playground/[slug].astro to the engine's new minimum." >&2
+                exit 1
+            fi
+        done
+        read -r GAME_WINDOW_WIDTH GAME_WINDOW_HEIGHT <<< "$(read_game_window_size)"
+        CANVAS_WIDTH=$(( GAME_WINDOW_WIDTH > 1024 ? GAME_WINDOW_WIDTH : 1024 ))
+        CANVAS_HEIGHT=$(( GAME_WINDOW_HEIGHT > 720 ? GAME_WINDOW_HEIGHT : 720 ))
+        IMPORT_URL="/playground/$SLUG/$VERSION/game.js"
+        BANNER_LINE=""
+        ;;
+    games)
+        PAGE_TITLE="$SLUG"
+        read -r CANVAS_WIDTH CANVAS_HEIGHT <<< "$(read_game_window_size)"
+        IMPORT_URL="/games/$SLUG/$VERSION/game.js"
+        BANNER_LINE=""
+        ;;
+esac
 
 cat > "$DIST_BASE/index.html" <<EOF
 <!doctype html>
