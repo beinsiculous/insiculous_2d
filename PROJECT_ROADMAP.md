@@ -164,17 +164,24 @@ playground proves engagement.
 
 ## Scripting — the ScriptRef seam
 
-Adopted from audit §6.3/§6.5/§6.6(4), Aug 27 2026. Stable serializable identity
-for game logic: `ScriptRef { script_id, source_path, params }` +
-`Scripts(Vec<ScriptRef>)`, string-keyed (every closed enum lives upstream of
-game crates). **Stage 1 — `Scripts` as inert, editor-editable data — SHIPPED
-Aug 28 2026 (#44)**; the scene file now carries game-logic bindings. Later
-stages: execution via a runtime `ScriptRegistry` + `ScriptBehavior` trait
-(`Game::register_scripts`, defaulted), then editor-owned build-and-relaunch
-(audit §6.5 Stage 5). Crate placement: data types in `ecs`, runtime in
-`engine_core`, catalog via `InspectorExtras`. **dylib hot-reload is dropped**
-(TypeId instability across reloads, FFI unwind UB, no `dlopen` on wasm32);
-revisit only if build-and-relaunch proves to be the actual bottleneck.
+Adopted Aug 27 2026. Stable serializable identity for game logic:
+`ScriptRef { script_id, source_path, params }` + `Scripts(Vec<ScriptRef>)`,
+string-keyed (every closed enum lives upstream of game crates). **Stage 1 —
+`Scripts` as inert, editor-editable data — SHIPPED Aug 28 2026 (#44)**; the scene
+file carries game-logic bindings. **Stages 2 and 3 — scripts visible in the
+editor, then executed — SHIPPED Sep 5 2026.** The interpreter is **Rhai**
+(pure Rust, runs on wasm32, an operation budget for runaway loops); dylib
+hot-reload was dropped for good (TypeId instability across reloads, FFI unwind
+UB, no `dlopen` on wasm32). Runtime `ScriptRegistry`, `ScriptRunner` and the
+`ScriptBehavior` trait live in `engine_core::scripting`, shared state in
+`ecs::Blackboard`; `docs/SCRIPTING.md` is the author-facing contract. **The
+game-run ruling:** the runner is engine-owned but stepped by whoever owns the
+physics step — the editor's `ProjectHost` for every data project, a game's own
+`update` for a shipped game — and the six Rust games keep their compiled rules;
+they ship as per-game editor bundles rather than as scripts. Games register
+native descriptors through the defaulted `Game::register_scripts`, which
+`EditorGame` forwards.
+
 
 ## Technical Debt
 

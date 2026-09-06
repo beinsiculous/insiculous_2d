@@ -30,6 +30,7 @@ input = { path = "../input" }
 physics = { path = "../physics", optional = true }
 audio = { path = "../audio" }
 ui = { path = "../ui" }
+rhai = { version = "1.26", default-features = false, features = ["std", "f32_float"] }
 
 # pollster only blocks at the native outer edge (render_manager init);
 # blocking is impossible on the browser main thread.

@@ -43,6 +43,8 @@ impl<G: Game> EditorGame<G> {
         self.adopt_game_camera(world);
         self.editor.set_play_state(EditorPlayState::Playing);
         self.editor.close_add_component_popup();
+        self.play_frames = 0;
+        self.script_error_watermark = 0;
         // Scene-authored UI (UiLabel/UiPanel/UiButton) draws only
         // while the game actually runs.
         world.remove_resource::<engine_core::UiElementsHidden>();
@@ -158,6 +160,11 @@ impl<G: Game> EditorGame<G> {
         // the restore, so without this a grid stopped mid-ripple
         // would stay deformed and frozen.
         engine_core::grid::request_backdrop_reset(world);
+        if let Some(errors) = &self.script_errors {
+            if let Ok(mut lock) = errors.lock() {
+                lock.clear();
+            }
+        }
         self.editor.set_play_state(EditorPlayState::Editing);
         true
     }

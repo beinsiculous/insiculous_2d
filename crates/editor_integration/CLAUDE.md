@@ -31,6 +31,8 @@ editor_integration ──→ editor, engine_core, ecs, ui, input, renderer, comm
 - `editor_game/api.rs` — command-API frame hook (`answer_api_lines`, `drain_api_requests` with ≤256 lines/frame cap, skipped during gizmo drags).
 - `editor_game/shortcuts.rs` — key dispatch: `route_editor_key` + four category dispatchers; Escape cancel cascade, arrow nudge merge/seal.
 - `editor_game/play_session.rs` — play transitions (`start_play_session`, `pause`, `resume_from_pause`, `stop_play_session`, camera follow).
+- `editor_game/script_status.rs` — track script errors during Play sessions, status bar notifications, mirror sync, and frame 60 lie detector.
+- `editor_game/run_options.rs` — `EditorRunOptions` configuration, `run_game_with_editor`, and `run_game_with_editor_opts`.
 - `editor_game/gizmo_drag.rs` — drag-start capture, `handle_gizmo`, `scale_collider`.
 - `editor_game/viewport_interaction.rs` — picking, marquee, framing, once-per-frame pickables.
 - `editor_game/test_support.rs` — fixture module: `DummyGame`, `editor_game()`, interaction builders.

@@ -26,7 +26,7 @@ Query types: Single<T>, Pair<T, U>, Triple<T, U, V>
 - `AudioSource`, `AudioListener` — audio components
 - `SpriteAnimation` — named-clip animation over a `SheetGrid` (`clips: Vec<(String, AnimationClip)>`, played by name via `play`/`ensure_playing`). `AnimationClip` is NOT a component — it lives inside. While a clip is selected and its frame resolves, the component owns `Sprite.tex_region`
 - `Tilemap` — row-major tile grid drawn from a tileset (`sprite_instances()` yields plain data; engine_core expands to the sprite batch)
-- `Scripts` (`script.rs`, #44 Stage 1) — `Scripts(Vec<ScriptRef>)`, `ScriptRef { script_id, source_path, params: BTreeMap<String, ScriptValue> }` — the scripting seam as INERT data (nothing executes it yet); Entity params live as ids at runtime, persist by Name on the wire
+- `Scripts` (`script.rs`) — `Scripts(Vec<ScriptRef>)`, `ScriptRef { script_id, source_path, params: BTreeMap<String, ScriptValue> }` — the scripting seam executed by `engine_core::scripting::ScriptRunner`; Entity params live as ids at runtime, persist by Name on the wire
 - `UiLabel` / `UiPanel` / `UiButton` — data-driven screen-space UI (`ui_components.rs`): `UiAnchor` 9-point anchor + pixel offset (NO Transform2D), serde defaults on every field; `@key` text localizes; drawn by engine_core's `ui_element_system`
 
 Note: `RigidBody` and `Collider` are NOT defined in this crate — they live in
@@ -34,6 +34,7 @@ Note: `RigidBody` and `Collider` are NOT defined in this crate — they live in
 components like any other type, but the physics crate owns their definitions.
 
 ## File Map
+- `blackboard.rs` — string-keyed `Blackboard` resource storing `ScriptValue`s for inter-script coordination.
 - `hierarchy_system.rs` — dirty-flagged transform propagation (value-compare cache; call `reset()` after wholesale world replacement).
 - `tilemap.rs` — row-major tile grid from tileset (top-left-tile anchor, tile 0 = empty, default depth -1.0).
 - `component_registry/` — dynamic component tier: name-keyed `register::<T>()` fn-pointer table; `register_transient` for editable-never-persisted components.

@@ -86,6 +86,10 @@ pub struct EditorContext {
     pub inspector_scroll_request: Option<&'static str>,
     /// Source file path requested to be opened in the host's IDE.
     pub pending_open_source: Option<String>,
+    /// Available scripts from registry and scanned assets.
+    pub script_catalog: Vec<crate::script_editor::ScriptCatalogEntry>,
+    /// Whether the script picker popup is currently open.
+    pub script_picker_open: bool,
 }
 
 impl Default for EditorContext {
@@ -159,6 +163,8 @@ impl EditorContext {
             pending_open_source: None,
             drag_drop: crate::DragDropState::new(),
             asset_browser: crate::AssetBrowserState::default(),
+            script_catalog: Vec::new(),
+            script_picker_open: false,
         };
         // Run the tool→gizmo mapping once so startup state is consistent
         // whatever the defaults are (today both are Move/Translate).

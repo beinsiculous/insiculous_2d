@@ -141,7 +141,7 @@ The command channel is a 1024-line FIFO; responses come back in order.
 | `playground_import_zip(bytes)` | `→ Promise<string>` | validates, drains, replaces the project in the store, resolves with the slug; the PAGE then sets `?project=<slug>` and reloads — REQUIRED, same slug or not, as for switch and reset: the drain leaves writes refused until the reload |
 | `playground_read_file_bytes(path)` | `→ Result<Uint8Array>` | project-relative binary read through `vfs::read` |
 | `playground_conflicted_paths()` | `→ string[]` | sorted project-relative paths currently in conflicted state |
-| `playground_script_errors()` | `→ string[]` | empty until batch 7 fills the bridge's `Hooks` |
+| `playground_script_errors()` | `→ string[]` | runtime errors recorded by `ScriptRunner` during the current Play session |
 
 The engine cannot swap a running project; every switch is a page reload with the query
 string naming the slug. An unknown `?project=` redirects to the first bundled project.
@@ -181,7 +181,7 @@ On import, the archive is validated in order before touching any persistence sto
 10. `project.ron` is required, parsed as `ProjectManifest`, and its `slug` must pass slug validation (`^[a-z0-9_-]{1,32}$`).
 11. Every `*.sheet.ron` runs through `engine_core::sheet_file::parse_sheet_file`.
 12. Every `*.scene.ron` runs through `SceneLoader::parse` followed by dry-run instantiation via `SceneLoader::instantiate(&data, &mut World::new(), &mut HeadlessAssets::new())`.
-13. `.rhai` entries are stored without execution check until scripting arrives.
+13. Every `*.rhai` runs through `engine_core::scripting::check_source` for param header and Rhai syntax validation.
 
 ### Failure contract
 

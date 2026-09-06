@@ -422,11 +422,33 @@ impl<'a> EditableInspector<'a> {
         clicked
     }
 
+    /// The field style this inspector draws with (the theme-derived colours).
+    pub fn style(&self) -> &EditableFieldStyle {
+        self.style
+    }
+
     /// Add an editable string field (free-form text input; commits on
     /// Enter/Tab/click-away, cancels on Escape).
     pub fn string_edit(&mut self, label: &str, value: &str) -> EditResult<String> {
+        self.string_edit_colored(label, value, None)
+    }
+
+    /// Add an editable string field with an optional label/value color override.
+    pub fn string_edit_colored(
+        &mut self,
+        label: &str,
+        value: &str,
+        color: Option<ui::Color>,
+    ) -> EditResult<String> {
         let (id, layout) = self.next_field();
-        let result = crate::text_field::edit_string(self.ui, id, label, value, layout, self.style);
+        let result = if let Some(c) = color {
+            let mut custom_style = self.style.clone();
+            custom_style.label_color = c;
+            custom_style.value_color = c;
+            crate::text_field::edit_string(self.ui, id, label, value, layout, &custom_style)
+        } else {
+            crate::text_field::edit_string(self.ui, id, label, value, layout, self.style)
+        };
         self.advance(self.style.row_height);
         result
     }

@@ -19,7 +19,8 @@ use std::path::PathBuf;
 use ecs::{Name, World};
 use engine_core::prelude::*;
 use engine_core::scene_data::PhysicsSettings;
-use input::InputHandler;
+use engine_core::scripting::ScriptRunner;
+use input::{InputHandler, InputSettings};
 use physics::{PhysicsConfig, PhysicsSystem};
 
 /// Data-only game host for the editor, running physics and behaviors during play mode.
@@ -45,13 +46,15 @@ impl ProjectHost {
 
     /// Step one playing frame: update behaviors, physics, and transform hierarchy.
     ///
-    /// Playing frame update order: behaviors -> physics step -> transform hierarchy.
-    /// Script runner integration fits around physics: behaviors -> scripts early_update ->
-    /// physics -> scripts update -> transform hierarchy.
+    /// Playing frame update order: behaviors -> scripts early_update -> physics step ->
+    /// collision event drain -> scripts update -> transform hierarchy.
     pub(crate) fn update_frame(
         &mut self,
         world: &mut World,
         input: &InputHandler,
+        players: &InputSettings,
+        scripts: &mut ScriptRunner,
+        asset_base: &str,
         delta_time: f32,
     ) {
         if !self.play_initialized {
@@ -69,6 +72,7 @@ impl ProjectHost {
                 }
                 self.physics = Some(physics);
             }
+            scripts.reset(world, asset_base);
         }
 
         // Rebuilt every frame, not once per session: the command API can
@@ -89,9 +93,30 @@ impl ProjectHost {
             self.physics.as_mut(),
         );
 
-        if let Some(physics) = &mut self.physics {
+        scripts.early_update(
+            world,
+            input,
+            players,
+            delta_time,
+            self.physics.as_mut(),
+        );
+
+        let collisions = if let Some(physics) = &mut self.physics {
             physics.update(world, delta_time);
-        }
+            physics.take_collision_events()
+        } else {
+            Vec::new()
+        };
+
+        scripts.update(
+            world,
+            input,
+            players,
+            delta_time,
+            &collisions,
+            self.physics.as_mut(),
+        );
+
         self.transform_hierarchy.update(world, delta_time);
     }
 
@@ -114,7 +139,14 @@ impl Game for ProjectHost {
     }
 
     fn update(&mut self, ctx: &mut GameContext) {
-        self.update_frame(ctx.world, ctx.input, ctx.delta_time);
+        self.update_frame(
+            ctx.world,
+            ctx.input,
+            &*ctx.players,
+            ctx.scripts,
+            ctx.assets.base_path(),
+            ctx.delta_time,
+        );
     }
 
     fn on_play_stopped(&mut self, _ctx: &mut GameContext) {
@@ -152,8 +184,10 @@ mod tests {
             )
             .expect("add Behavior");
 
+        let players = InputSettings::default_two_player();
+        let mut scripts = ScriptRunner::new();
         for _ in 0..10 {
-            host.update_frame(&mut world, &input, dt);
+            host.update_frame(&mut world, &input, &players, &mut scripts, "", dt);
         }
 
         let transform = world.get::<Transform2D>(entity).expect("entity has transform");
@@ -169,6 +203,8 @@ mod tests {
         let mut host = ProjectHost::new(PathBuf::from("."));
         let mut world = World::new();
         let input = InputHandler::new();
+        let players = InputSettings::default_two_player();
+        let mut scripts = ScriptRunner::new();
         let dt = 0.016;
 
         let target = world.spawn().id();
@@ -200,7 +236,7 @@ mod tests {
             )
             .expect("add Behavior");
 
-        host.update_frame(&mut world, &input, dt);
+        host.update_frame(&mut world, &input, &players, &mut scripts, "", dt);
 
         let follower_transform = world.get::<Transform2D>(follower).expect("transform");
         assert!(
@@ -225,7 +261,7 @@ mod tests {
             )
             .expect("add Behavior");
 
-        host.update_frame(&mut world, &input, dt);
+        host.update_frame(&mut world, &input, &players, &mut scripts, "", dt);
 
         let late_transform = world.get::<Transform2D>(late_follower).expect("transform");
         assert!(late_transform.position.y > 0.0, "a target named mid-Play resolves on the next frame");
@@ -239,6 +275,8 @@ mod tests {
         let mut host = ProjectHost::new(PathBuf::from("."));
         let mut world = World::new();
         let input = InputHandler::new();
+        let players = InputSettings::default_two_player();
+        let mut scripts = ScriptRunner::new();
         let dt = 0.016;
 
         world.insert_resource(PhysicsSettings {
@@ -248,7 +286,7 @@ mod tests {
         });
 
         assert!(host.physics.is_none());
-        host.update_frame(&mut world, &input, dt);
+        host.update_frame(&mut world, &input, &players, &mut scripts, "", dt);
         assert!(host.physics.is_some());
 
         host.reset_play_state();

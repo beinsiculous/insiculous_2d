@@ -45,6 +45,32 @@ pub(crate) fn tile_rect(index: usize, columns: usize, origin: Vec2, scroll: f32)
     )
 }
 
+/// Ensure assets have been scanned at least once; if not, refreshes assets and builds script catalog.
+pub(crate) fn ensure_scanned(
+    editor: &mut EditorContext,
+    assets: &AssetManager,
+    registry: &engine_core::scripting::ScriptRegistry,
+) {
+    if !editor.asset_browser.scanned {
+        refresh_assets(editor, assets, registry);
+    }
+}
+
+/// Rescan assets from filesystem, update asset browser entries, and rebuild script catalog.
+pub(crate) fn refresh_assets(
+    editor: &mut EditorContext,
+    assets: &AssetManager,
+    registry: &engine_core::scripting::ScriptRegistry,
+) {
+    let entries = scan_assets(Path::new(assets.base_path()));
+    editor.asset_browser.apply_scan(entries);
+    editor.script_catalog = super::script_catalog::build_script_catalog(
+        &editor.asset_browser.entries,
+        registry,
+        assets.base_path(),
+    );
+}
+
 /// Render the asset browser panel content.
 pub(super) fn render_asset_browser(
     editor: &mut EditorContext,
@@ -52,7 +78,7 @@ pub(super) fn render_asset_browser(
     bounds: common::Rect,
     command_history: &mut CommandHistory,
 ) {
-    render_header(editor, ctx.ui, ctx.assets, bounds);
+    render_header(editor, ctx.ui, ctx.assets, ctx.scripts.registry(), bounds);
     load_pending_thumbnails(&mut editor.asset_browser.entries, ctx.assets);
 
     let grid_origin = Vec2::new(bounds.x + PADDING, bounds.y + HEADER_HEIGHT + PADDING);
@@ -104,13 +130,15 @@ fn render_header(
     editor: &mut EditorContext,
     ui: &mut ui::UIContext,
     assets: &AssetManager,
+    registry: &engine_core::scripting::ScriptRegistry,
     bounds: common::Rect,
 ) {
     let rescan_bounds = ui::Rect::new(bounds.x + PADDING, bounds.y + 2.0, 70.0, 20.0);
     let rescan_clicked = ui.button("asset_rescan", "Rescan", rescan_bounds);
-    if !editor.asset_browser.scanned || rescan_clicked {
-        let entries = scan_assets(Path::new(assets.base_path()));
-        editor.asset_browser.apply_scan(entries);
+    if !editor.asset_browser.scanned {
+        ensure_scanned(editor, assets, registry);
+    } else if rescan_clicked {
+        refresh_assets(editor, assets, registry);
     }
 
     let count_label = format!("{} assets", editor.asset_browser.entries.len());

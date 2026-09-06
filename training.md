@@ -738,6 +738,50 @@ ecs::with_global_registry(|r| r.insert_component(&mut world, entity, "Health", j
 
 **Files:** `ecs/src/component_registry.rs`, `ecs/src/sprite_components.rs`, `ecs_macros/src/lib.rs`
 
+### Script Pattern
+Modular entity logic through Rhai scripts and native descriptors:
+
+```rust
+// Entities declare scripts via the Scripts component
+let mut paddle_ref = ScriptRef::new("paddle_controller");
+paddle_ref.source_path = "scripts/paddle.rhai".to_string();
+world.add_component(&entity, Scripts(vec![paddle_ref])).ok();
+
+// A game registers its own native descriptors (the engine's `engine::rotate`
+// is registered already — registering an id twice panics at startup)
+const SPIN: ScriptDescriptor = ScriptDescriptor {
+    id: "my_game::spin",
+    display_name: "Spin",
+    category: "Motion",
+    params: &[ParamSpec { name: "turns_per_second", default: ScriptValue::F32(1.0) }],
+    make: || Box::new(SpinBehavior),
+};
+impl Game for MyGame {
+    fn register_scripts(&mut self, registry: &mut ScriptRegistry) {
+        registry.register(SPIN);
+    }
+    fn update(&mut self, ctx: &mut GameContext) {
+        // The runner is engine-owned but the GAME steps it, because the game owns the
+        // physics step it wraps: early_update before, update after with the drained
+        // collisions. The editor's ProjectHost does exactly this for every project.
+        ctx.scripts.early_update(ctx.world, ctx.input, ctx.players, ctx.delta_time, Some(&mut self.physics));
+        self.physics.update(ctx.world, ctx.delta_time);
+        let collisions = self.physics.take_collision_events();
+        ctx.scripts.update(ctx.world, ctx.input, ctx.players, ctx.delta_time, &collisions, Some(&mut self.physics));
+    }
+}
+// At session start: ctx.scripts.reset(ctx.world, ctx.assets.base_path())
+
+// Rhai scripts define optional early_update (pre-physics) and update (post-physics) hooks:
+// // @param speed: f32 = 120.0
+// fn update(me, view, params, cmd, dt) {
+//     let dir = view.move_x(0);
+//     cmd.set_velocity_x(me, dir * params.speed);
+// }
+```
+
+**Files:** `engine_core/src/scripting/`, `ecs/src/blackboard.rs`, `docs/SCRIPTING.md`
+
 ## Current Known Limitations
 
 Open technical debt lives on the **Studio Board** as issues with the

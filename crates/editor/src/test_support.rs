@@ -68,6 +68,8 @@ pub(crate) fn extras(drag_drop: &mut DragDropState) -> InspectorExtras<'_> {
         scroll_target_y: None,
         can_open_source: false,
         open_source: None,
+        script_catalog: &[],
+        script_picker_open: false,
     }
 }
 

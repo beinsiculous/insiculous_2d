@@ -37,6 +37,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 - `component_editors.rs` — per-component editors returning `Option<ComponentEdit<T>>`; shape cycling carries dimensions with commit-before-cycle ordering.
 - `physical_floors.rs` — hard floors applied by inspector editors and command API `sanitize` (scale, collider extents, capsule half-height, volume, pitch).
 - `behavior_editor.rs` — `edit_behavior()`: variant cycle selector and per-variant editors; `CameraFollow.dead_zone` stays read-only.
+- `script_editor.rs` — `edit_scripts()`: `Scripts` component inspector editor, script catalog picker, parameter table, and Open Source button.
 
 ### Scene + selection
 - `selection.rs` — Selection set (IndexSet preserving insertion order, deterministic primary fallback).

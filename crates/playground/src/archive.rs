@@ -45,6 +45,8 @@ pub enum ArchiveError {
     InvalidSheet { entry: String, reason: String },
     /// Scene file failed parse or dry-run instantiation.
     InvalidScene { entry: String, reason: String },
+    /// A `.rhai` script failed the syntax or header check.
+    InvalidScript { entry: String, reason: String },
     /// Input/output error while reading or writing archive bytes.
     Io(String),
 }
@@ -68,6 +70,9 @@ impl std::fmt::Display for ArchiveError {
             }
             Self::InvalidScene { entry, reason } => {
                 write!(formatter, "invalid scene file in '{entry}': {reason}")
+            }
+            Self::InvalidScript { entry, reason } => {
+                write!(formatter, "invalid script in '{entry}': {reason}")
             }
             Self::Io(error) => write!(formatter, "io error: {error}"),
         }
@@ -127,7 +132,7 @@ pub fn export_project(
         .map_err(|error| ArchiveError::Io(error.to_string()))?;
 
     let readme_content = format!(
-        "# {}\n\nExported project archive for the Insiculous Web Playground.\n\nSee https://github.com/beinsiculous/insiculous_2d/blob/main/docs/WEB_PLAYGROUND.md for documentation on the project structure and editor usage.\n",
+        "# {}\n\nExported project archive for the Insiculous Web Playground.\n\nSee https://github.com/beinsiculous/insiculous_2d/blob/main/docs/WEB_PLAYGROUND.md for documentation on the project structure and editor usage.\nSee https://github.com/beinsiculous/insiculous_2d/blob/main/docs/SCRIPTING.md for the scripting API.\n",
         manifest.title
     );
     zip_writer
@@ -280,6 +285,19 @@ pub fn import_project(
                     reason: error.to_string(),
                 },
             )?;
+        } else if entry_name.ends_with(".rhai") {
+            let script_text = std::str::from_utf8(entry_bytes).map_err(|error| {
+                ArchiveError::InvalidScript {
+                    entry: entry_name.clone(),
+                    reason: error.to_string(),
+                }
+            })?;
+            engine_core::scripting::check_source(script_text).map_err(|error| {
+                ArchiveError::InvalidScript {
+                    entry: entry_name.clone(),
+                    reason: error.to_string(),
+                }
+            })?;
         }
     }
 

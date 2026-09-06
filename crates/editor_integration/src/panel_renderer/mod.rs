@@ -25,6 +25,9 @@ pub fn render_panel_content(
         PanelId::SCENE_VIEW => render_scene_view(editor, ctx, bounds, pickables),
         PanelId::HIERARCHY => render_hierarchy(editor, ctx, bounds, command_history),
         PanelId::INSPECTOR => {
+            if !editor.asset_browser.scanned {
+                asset_browser::ensure_scanned(editor, ctx.assets, ctx.scripts.registry());
+            }
             let texture_path = |handle: u32| ctx.assets.texture_path(handle).map(str::to_string);
             render_inspector(
                 editor,
@@ -298,10 +301,16 @@ pub(super) fn apply_script_drop(
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("script");
+    let params = editor
+        .script_catalog
+        .iter()
+        .find(|entry| entry.source_path.as_deref() == Some(path))
+        .map(|entry| entry.params.clone())
+        .unwrap_or_default();
     let script_ref = ecs::script::ScriptRef {
         script_id: stem.to_string(),
         source_path: path.to_string(),
-        params: std::collections::BTreeMap::new(),
+        params,
     };
 
     let display_name = HierarchyPanel::entity_display_name(world, entity);
@@ -353,7 +362,9 @@ fn render_default(ctx: &mut GameContext, content_x: f32, y: f32) {
 mod add_component_popup;
 mod asset_browser;
 mod inspector;
+pub mod script_catalog;
 use inspector::render_inspector;
+pub use script_catalog::build_script_catalog;
 
 #[cfg(test)]
 mod click_mode_tests {

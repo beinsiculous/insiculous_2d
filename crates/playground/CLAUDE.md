@@ -16,7 +16,7 @@ crates into the wasm gate.
 ## File Map
 - `lib.rs` — module list; `web_entry` is wasm-only.
 - `web_entry.rs` (wasm) — `ASSET_BASE`, `BUNDLE_VERSION` (the five-place version contract in the header), boot order: logging → preload → open the store (memory fallback + banner) → sweep orphans → manifests → pick the project from `?project=` → load stored files onto `MemFs` → seed the chains → observer + listeners → bridge channels → dispatch `playground-ready` → `run_game_with_editor_opts`.
-- `bridge.rs` — the `playground_*` exports and the pure rules behind them (`validate_bridge_path`, `can_dispatch`, `dirty_or`); `Hooks` for batch 7's `source_check` / `script_errors`.
+- `bridge.rs` — the `playground_*` exports and the pure rules behind them (`validate_bridge_path`, `can_dispatch`, `dirty_or`); `Hooks` for `source_check` / `script_errors`.
 - `store.rs` — `ProjectStore`, `StoredFile`, `StoreError`, `Fut`.
 - `store/directory.rs` — native test double, lock file per project.
 - `store/memory.rs` — every target; the fallback when IndexedDB will not open.

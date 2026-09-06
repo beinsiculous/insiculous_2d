@@ -140,6 +140,8 @@ fn build_inspector_extras<'a>(
         scroll_target_y: None,
         can_open_source: cfg!(not(target_arch = "wasm32")),
         open_source: None,
+        script_catalog: &editor.script_catalog,
+        script_picker_open: editor.script_picker_open,
     }
 }
 
@@ -233,7 +235,9 @@ fn render_inspector_editable(
     let target_y = extras.scroll_target_y;
     let source_path = extras.open_source.take();
     let warnings = std::mem::take(&mut extras.warnings);
+    let script_picker_open = extras.script_picker_open;
     drop(extras);
+    editor.script_picker_open = script_picker_open;
 
     if let Some(target_y) = target_y {
         let target_offset =

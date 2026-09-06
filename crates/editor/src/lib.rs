@@ -137,6 +137,7 @@ pub use stored_component::{
     edit_all_components, inspect_all_components, registered_component_type_ids,
     restore_components, ComponentCategory, ComponentKind, ComponentRef, StoredComponent,
 };
+pub use script_editor::ScriptCatalogEntry;
 pub use theme::EditorTheme;
 pub use toolbar::{toolbar_position_for, EditorTool, Toolbar};
 pub use viewport::SceneViewport;

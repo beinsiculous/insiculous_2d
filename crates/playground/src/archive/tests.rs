@@ -201,6 +201,23 @@ fn test_scene_naming_unknown_component_is_invalid_scene_naming_entry() {
 }
 
 #[test]
+fn test_broken_rhai_script_is_invalid_script_naming_entry() {
+    let manifest_text = valid_manifest_ron("bad-script");
+    let zip_bytes = create_test_zip(&[
+        ("project.ron", manifest_text.as_bytes()),
+        ("assets/scripts/broken.rhai", b"fn update(me, view, params, cmd, dt) { let x = ; }"),
+    ]);
+
+    let result = import_project(&zip_bytes, "v1");
+    match result {
+        Err(ArchiveError::InvalidScript { entry, .. }) => {
+            assert_eq!(entry, "assets/scripts/broken.rhai");
+        }
+        other => panic!("expected InvalidScript, got {other:?}"),
+    }
+}
+
+#[test]
 fn test_backslash_name_imports_under_slash() {
     let manifest_text = valid_manifest_ron("backslash-test");
     let zip_bytes = create_test_zip(&[

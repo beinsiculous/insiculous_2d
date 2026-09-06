@@ -20,9 +20,8 @@ use editor::world_snapshot::WorldSnapshot;
 use engine_core::contexts::{GameContext, RenderContext};
 use engine_core::scene_data::PhysicsSettings;
 use engine_core::Game;
-use engine_core::GameConfig;
 
-use crate::constants::{clamp_editor_window_size, EDITOR_PREFS_PATH};
+use crate::constants::EDITOR_PREFS_PATH;
 use crate::panel_renderer;
 
 mod api;
@@ -32,12 +31,15 @@ mod menu_actions;
 mod open_source;
 mod play_session;
 mod preferences;
+mod run_options;
 mod scene_confirm;
 mod scene_io;
+mod script_status;
 mod shortcuts;
 mod viewport_interaction;
 
 pub(crate) use viewport_interaction::{build_pickable_entities, chrome_owns_mouse};
+pub use run_options::{run_game_with_editor, run_game_with_editor_opts, EditorRunOptions};
 
 /// Wraps a user's `Game` with the full editor UI overlay.
 struct EditorGame<G: Game> {
@@ -87,6 +89,9 @@ struct EditorGame<G: Game> {
     pub(super) prefs_stable_time: f32,
     pub(super) dirty_flag: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     pub(super) persist_pending: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    pub(super) script_errors: Option<std::sync::Arc<std::sync::Mutex<Vec<String>>>>,
+    pub(super) play_frames: u32,
+    pub(super) script_error_watermark: usize,
 }
 
 impl<G: Game> EditorGame<G> {
@@ -117,6 +122,9 @@ impl<G: Game> EditorGame<G> {
             prefs_stable_time: 0.0,
             dirty_flag: None,
             persist_pending: None,
+            script_errors: None,
+            play_frames: 0,
+            script_error_watermark: 0,
         }
     }
 
@@ -253,6 +261,7 @@ impl<G: Game> EditorGame<G> {
         if self.editor.scene_view_bounds().is_some() {
             ctx.ui.pop_clip_rect();
         }
+        self.track_script_status(ctx.world, ctx.scripts);
     }
 
 
@@ -501,56 +510,10 @@ impl<G: Game> Game for EditorGame<G> {
         self.save_preferences_now();
         self.inner.on_exit();
     }
-}
 
-/// Run a game with the full editor UI overlay.
-///
-/// This wraps the given game in `EditorGame`, which intercepts all `Game` trait
-/// methods to add editor chrome (menu bar, toolbar, dock panels, hierarchy,
-/// inspector, gizmo, tool shortcuts, play/pause/stop) around the user's game.
-///
-/// # Minimum window size
-/// The editor needs at least 1024x720 to be usable. If the provided config
-/// specifies a smaller size, it will be enlarged.
-pub fn run_game_with_editor<G: Game>(game: G, config: GameConfig) -> Result<(), engine_core::EngineError> {
-    run_game_with_editor_opts(game, config, EditorRunOptions::default())
-}
-
-/// Options for [`run_game_with_editor_opts`].
-#[derive(Default)]
-pub struct EditorRunOptions {
-    /// Command-API request channel.
-    pub api_rx: Option<std::sync::mpsc::Receiver<String>>,
-    /// A scene to open through the editor's load path right after init —
-    /// how the standalone binary hands over its project's first scene.
-    pub initial_scene: Option<std::path::PathBuf>,
-    /// Command-API response channel (for web bridge FIFO responses).
-    pub api_responses: Option<std::sync::mpsc::Sender<String>>,
-    /// Path or storage slot key for editor preferences.
-    pub prefs_slot: Option<std::path::PathBuf>,
-    /// Dirty flag written by `sync_dirty_mirror`.
-    pub dirty_flag: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
-    /// Persistence-pending flag read by `sync_dirty_mirror`.
-    pub persist_pending: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
-}
-
-/// [`run_game_with_editor`] with the full option set.
-pub fn run_game_with_editor_opts<G: Game>(
-    game: G,
-    config: GameConfig,
-    options: EditorRunOptions,
-) -> Result<(), engine_core::EngineError> {
-    let config = clamp_editor_window_size(config);
-    let mut editor_game = EditorGame::new(game);
-    editor_game.api.receiver = options.api_rx;
-    editor_game.api.responses = options.api_responses;
-    editor_game.initial_scene = options.initial_scene;
-    if let Some(slot) = options.prefs_slot {
-        editor_game.prefs_slot = slot;
+    fn register_scripts(&mut self, registry: &mut engine_core::scripting::ScriptRegistry) {
+        self.inner.register_scripts(registry);
     }
-    editor_game.dirty_flag = options.dirty_flag;
-    editor_game.persist_pending = options.persist_pending;
-    engine_core::run_game(editor_game, config)
 }
 
 #[cfg(test)]

@@ -31,6 +31,10 @@ pub struct InspectorExtras<'a> {
     pub can_open_source: bool,
     /// Script source file requested to be opened in the external editor.
     pub open_source: Option<String>,
+    /// Available scripts from registry and scanned assets.
+    pub script_catalog: &'a [crate::script_editor::ScriptCatalogEntry],
+    /// Whether the script picker popup is currently open.
+    pub script_picker_open: bool,
 }
 
 /// Render a texture slot: label + a boxed value showing the texture's path

@@ -24,6 +24,8 @@
 
 #[cfg(feature = "physics")]
 pub mod behavior_runner;
+#[cfg(feature = "physics")]
+pub mod scripting;
 #[cfg(target_arch = "wasm32")]
 pub mod web;
 mod game;
@@ -74,6 +76,13 @@ pub mod prelude;
 // top-level names are visible at a glance.
 #[cfg(feature = "physics")]
 pub use behavior_runner::{BehaviorRunner, EntityCollected};
+#[cfg(feature = "physics")]
+pub use scripting::{
+    check_source, parse_param_header, ParamSpec, RhaiBackend, RhaiCompiledScript,
+    ScriptBehavior, ScriptCommand, ScriptCommands, ScriptCommandsHandle, ScriptDescriptor,
+    ScriptError, ScriptErrorKind, ScriptErrors, ScriptRegistry, ScriptRunner, ScriptView,
+    SelfView, Target,
+};
 pub use game::{run_game, Game};
 pub use scene::Scene;
 pub use lifecycle::{Lifecycle, LifecycleManager, LifecycleState};

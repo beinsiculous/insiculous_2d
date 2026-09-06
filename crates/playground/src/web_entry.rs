@@ -10,9 +10,10 @@
 
 use std::cell::RefCell;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{channel, sync_channel};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use editor_integration::{find_first_scene, run_game_with_editor_opts, EditorRunOptions, ProjectHost};
 use engine_core::prelude::GameConfig;
@@ -225,6 +226,21 @@ async fn run_playground() -> Result<(), String> {
     let (response_sender, response_receiver) = channel::<String>();
     crate::bridge::setup_bridge(request_sender, response_receiver, root_path.clone());
 
+    let script_errors_mirror = Arc::new(Mutex::new(Vec::<String>::new()));
+    let errors_for_hooks = Arc::clone(&script_errors_mirror);
+    let hooks = crate::bridge::Hooks {
+        source_check: Some(|source: &str| {
+            engine_core::scripting::check_source(source).map_err(|e| e.to_string())
+        }),
+        script_errors: Some(Rc::new(move || {
+            errors_for_hooks
+                .lock()
+                .map(|guard| guard.clone())
+                .unwrap_or_default()
+        })),
+    };
+    crate::bridge::set_hooks(hooks);
+
     // The page's `await init()` resolves before this spawned future has run: without
     // this event a select populated right after `init()` reads empty manifests forever.
     if let Some(window) = web_sys::window() {
@@ -244,6 +260,7 @@ async fn run_playground() -> Result<(), String> {
         prefs_slot: Some(PathBuf::from("beinsiculous.playground.editor_prefs")),
         dirty_flag: Some(dirty_atomic),
         persist_pending: Some(pending_atomic),
+        script_errors: Some(script_errors_mirror),
     };
 
     let config = GameConfig::new("Insiculous Playground")

@@ -11,6 +11,8 @@
 //! entity picker is a later stage), and a param's TYPE change resets its
 //! value to that variant's default.
 
+use std::collections::BTreeMap;
+
 use ecs::script::{ScriptRef, ScriptValue, Scripts};
 
 use crate::component_editors::ComponentEdit;
@@ -20,6 +22,16 @@ use crate::field_style::EditResult;
 /// Range for numeric script params: unconstrained scrub, soft by design —
 /// the engine cannot know a game parameter's meaningful bounds.
 const PARAM_RANGE: std::ops::RangeInclusive<f32> = -1_000_000.0..=1_000_000.0;
+
+/// Available script entry shown in the "+ Add Script" picker catalog.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScriptCatalogEntry {
+    pub id: String,
+    pub display_name: String,
+    pub category: String,
+    pub params: BTreeMap<String, ScriptValue>,
+    pub source_path: Option<String>,
+}
 
 /// Edit a `Scripts` component. One change per frame wins (full-value edit).
 pub fn edit_scripts(
@@ -38,12 +50,48 @@ pub fn edit_scripts(
     }
 
     if inspector.action_button("+ Add Script") && edit.is_none() {
-        let mut new = scripts.clone();
-        new.0.push(ScriptRef::new("new_script"));
-        edit = Some(ComponentEdit {
-            new_value: new,
-            field_hint: "scripts_structure",
-        });
+        extras.script_picker_open = !extras.script_picker_open;
+    }
+
+    if extras.script_picker_open && edit.is_none() {
+        let mut categories: BTreeMap<&str, Vec<&ScriptCatalogEntry>> = BTreeMap::new();
+        for entry in extras.script_catalog {
+            categories.entry(&entry.category).or_default().push(entry);
+        }
+
+        for (category, entries) in categories {
+            inspector.string(category, "");
+            for entry in entries {
+                if inspector.action_button(&entry.display_name) {
+                    let mut new = scripts.clone();
+                    let mut script_ref = ScriptRef::new(&entry.id);
+                    if let Some(src) = &entry.source_path {
+                        script_ref.source_path = src.clone();
+                    }
+                    script_ref.params = entry.params.clone();
+                    new.0.push(script_ref);
+                    extras.script_picker_open = false;
+                    edit = Some(ComponentEdit {
+                        new_value: new,
+                        field_hint: "scripts_structure",
+                    });
+                    break;
+                }
+            }
+            if edit.is_some() {
+                break;
+            }
+        }
+
+        if edit.is_none() && inspector.action_button("custom id…") {
+            let mut new = scripts.clone();
+            new.0.push(ScriptRef::new("new_script"));
+            extras.script_picker_open = false;
+            edit = Some(ComponentEdit {
+                new_value: new,
+                field_hint: "scripts_structure",
+            });
+        }
     }
 
     edit
@@ -58,7 +106,20 @@ fn edit_one_script(
     script: &ScriptRef,
     extras: &mut crate::InspectorExtras<'_>,
 ) -> Option<ComponentEdit<Scripts>> {
-    if let EditResult::Changed(v) = inspector.string_edit("Script id", &script.script_id) {
+    let is_known = script.source_path.ends_with(".rhai")
+        || extras
+            .script_catalog
+            .iter()
+            .any(|entry| entry.id == script.script_id);
+    let id_color = if is_known {
+        None
+    } else {
+        Some(inspector.style().error_color)
+    };
+
+    if let EditResult::Changed(v) =
+        inspector.string_edit_colored("Script id", &script.script_id, id_color)
+    {
         if v != script.script_id {
             let mut new = scripts.clone();
             new.0[script_index].script_id = v;
@@ -254,11 +315,29 @@ mod tests {
 
     #[test]
     fn test_structure_buttons_add_and_remove_scripts_and_params_without_name_collisions() {
-        // Empty component: "+ Add Script" is the first row under the header.
-        let edit = click_scripts(&Scripts::default(), action_button_center(0)).expect("+ Add Script emits an edit");
+        let mut ui = ui::UIContext::new();
+        let mut input = input::InputHandler::new();
+        let mut drag_drop = crate::DragDropState::new();
+        let mut inspector_extras = extras(&mut drag_drop);
+        let style = EditableFieldStyle::default();
+
+        // Empty component: "+ Add Script" is row 0. Clicking it toggles picker open.
+        click_through(&mut ui, &mut input, action_button_center(0), |ui| {
+            let mut inspector = EditableInspector::new(ui, &style, ORIGIN.x, ORIGIN.y);
+            edit_scripts(&mut inspector, &Scripts::default(), &mut inspector_extras)
+        });
+        assert!(inspector_extras.script_picker_open, "clicking + Add Script toggles picker open");
+
+        // When picker is open, row 1 is "custom id…". Clicking it emits an edit appending new_script.
+        let (_, release) = click_through(&mut ui, &mut input, action_button_center(1), |ui| {
+            let mut inspector = EditableInspector::new(ui, &style, ORIGIN.x, ORIGIN.y);
+            edit_scripts(&mut inspector, &Scripts::default(), &mut inspector_extras)
+        });
+        let edit = release.expect("custom id… emits an edit");
         assert_eq!(edit.field_hint, "scripts_structure", "structure edits never merge into value edits");
         let ids: Vec<&str> = edit.new_value.0.iter().map(|script| script.script_id.as_str()).collect();
         assert_eq!(ids, ["new_script"]);
+        assert!(!inspector_extras.script_picker_open, "picker closed after picking");
 
         // One script whose param_1 is taken: rows are Id(0), Source(1),
         // param name(2), type(3), value(4), remove-param(5), + Add param(6).
@@ -274,6 +353,57 @@ mod tests {
         let scripts = Scripts(vec![ScriptRef::new("patrol")]);
         let edit = click_scripts(&scripts, action_button_center(3)).expect("− Remove script emits an edit");
         assert!(edit.new_value.0.is_empty(), "the script is gone");
+    }
+
+    #[test]
+    fn test_picker_pick_appends_prefilled_ref_and_custom_row_appends_empty_ref() {
+        let mut ui = ui::UIContext::new();
+        let mut input = input::InputHandler::new();
+        let mut drag_drop = crate::DragDropState::new();
+        let mut inspector_extras = extras(&mut drag_drop);
+        let style = EditableFieldStyle::default();
+
+        let mut catalog_params = BTreeMap::new();
+        catalog_params.insert("degrees_per_second".to_string(), ScriptValue::F32(90.0));
+        let catalog = vec![ScriptCatalogEntry {
+            id: "engine::rotate".to_string(),
+            display_name: "Rotate".to_string(),
+            source_path: None,
+            category: "Built-in".to_string(),
+            params: catalog_params,
+        }];
+        inspector_extras.script_catalog = &catalog;
+        inspector_extras.script_picker_open = true;
+
+        // Rows when picker is open:
+        // Row 0: "+ Add Script"
+        // Row 1: "Built-in" category header (string)
+        // Row 2: the entry's display name as a button
+        // Row 3: "custom id…" button
+        let (_, release) = click_through(&mut ui, &mut input, action_button_center(2), |ui| {
+            let mut inspector = EditableInspector::new(ui, &style, ORIGIN.x, ORIGIN.y);
+            edit_scripts(&mut inspector, &Scripts::default(), &mut inspector_extras)
+        });
+        let edit = release.expect("picking catalog item emits an edit");
+        assert_eq!(edit.new_value.0.len(), 1);
+        assert_eq!(edit.new_value.0[0].script_id, "engine::rotate");
+        assert_eq!(
+            edit.new_value.0[0].params.get("degrees_per_second"),
+            Some(&ScriptValue::F32(90.0))
+        );
+        assert!(!inspector_extras.script_picker_open, "picker closed after catalog pick");
+
+        // Re-open picker and click "custom id…" (row 3)
+        inspector_extras.script_picker_open = true;
+        let (_, release) = click_through(&mut ui, &mut input, action_button_center(3), |ui| {
+            let mut inspector = EditableInspector::new(ui, &style, ORIGIN.x, ORIGIN.y);
+            edit_scripts(&mut inspector, &Scripts::default(), &mut inspector_extras)
+        });
+        let edit = release.expect("picking custom id emits an edit");
+        assert_eq!(edit.new_value.0.len(), 1);
+        assert_eq!(edit.new_value.0[0].script_id, "new_script");
+        assert!(edit.new_value.0[0].params.is_empty());
+        assert!(!inspector_extras.script_picker_open, "picker closed after custom id");
     }
 
     #[test]

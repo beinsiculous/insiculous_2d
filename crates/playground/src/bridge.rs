@@ -17,7 +17,8 @@ pub type SourceCheckFn = fn(&str) -> Result<(), String>;
 /// Callback to query current script runtime error messages.
 pub type ScriptErrorsFn = Rc<dyn Fn() -> Vec<String>>;
 
-/// Hooks for future scripting support (batch 7). Both remain `None` in batch 3.
+/// The scripting hooks the web entry installs: the syntax check a `.rhai` write runs, and
+/// the reader of the runner's error list. Both are `None` until `set_hooks` runs.
 #[derive(Default)]
 pub struct Hooks {
     pub source_check: Option<SourceCheckFn>,
@@ -40,6 +41,11 @@ pub fn setup_bridge(
     REQUEST_SENDER.with(|sender_cell| *sender_cell.borrow_mut() = Some(request_sender));
     RESPONSE_RECEIVER.with(|receiver_cell| *receiver_cell.borrow_mut() = Some(response_receiver));
     CURRENT_PROJECT_ROOT.with(|root_cell| *root_cell.borrow_mut() = Some(project_root));
+}
+
+/// Set the scripting hooks for syntax checking and runtime errors.
+pub fn set_hooks(hooks: Hooks) {
+    HOOKS.with(|h| *h.borrow_mut() = hooks);
 }
 
 /// Pure helper: validate that a relative path does not escape the project root.
