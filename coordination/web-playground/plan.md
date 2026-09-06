@@ -2135,7 +2135,7 @@ Save inside the editor writes the in-memory VFS only — there is no project sto
 bundle; filed if wanted), a link from `/games/<slug>/` to its editor page (filed), and, if
 dropped, the whole batch (batch 11's list).
 
-## Batch 10 — the template repo (#49 item 3) and the export README's link to it — LANDED 2026-09-06 (be328ee engine, f860116 the template's root commit, e8c4e69 site, b4d7049 plan; the root's seat commits once the remote exists; marked done once `scripts/setup.sh` runs clean and Jesse's browser check passes)
+## Batch 10 — the template repo (#49 item 3) and the export README's link to it — LANDED 2026-09-06 (be328ee engine, f860116 the template's root commit, e8c4e69 site, b4d7049 plan, 22a714f the working set's seat after the remote was created and `scripts/setup.sh` swept clean; marked done once Jesse's browser check passes)
 
 **Re-verified against the tree 2026-09-06 before the handoff** (every batch since 3 landed
 after this section was written on Sep 4, and it was five bullets — two of them planner's
