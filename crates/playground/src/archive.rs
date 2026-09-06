@@ -132,7 +132,7 @@ pub fn export_project(
         .map_err(|error| ArchiveError::Io(error.to_string()))?;
 
     let readme_content = format!(
-        "# {}\n\nExported project archive for the Insiculous Web Playground.\n\nSee https://github.com/beinsiculous/insiculous_2d/blob/main/docs/WEB_PLAYGROUND.md for documentation on the project structure and editor usage.\nSee https://github.com/beinsiculous/insiculous_2d/blob/main/docs/SCRIPTING.md for the scripting API.\n",
+        "# {}\n\nExported project archive for the Insiculous Web Playground.\n\nSee https://github.com/beinsiculous/insiculous_2d/blob/main/docs/WEB_PLAYGROUND.md for documentation on the project structure and editor usage.\nSee https://github.com/beinsiculous/insiculous_2d/blob/main/docs/SCRIPTING.md for the scripting API.\nTake it local: https://github.com/beinsiculous/game-template is a game whose gameplay is this archive; clone it (or press Use this template), unzip this archive over the clone, and `cargo run`.\n",
         manifest.title
     );
     zip_writer

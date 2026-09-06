@@ -18,7 +18,9 @@ playground/<version>/
     └── projects/
         ├── examples/
         │   └── assets/
-        └── pong/
+        ├── pong/
+        │   └── assets/
+        └── game-template/
             └── assets/
 ```
 
@@ -27,8 +29,12 @@ Invocation of record, run from the engine root:
 scripts/build_wasm.sh crates/playground playground --kind playground --version v1 \
     --project examples=Examples=examples \
     --project pong=Pong=crates/playground/assets/projects/pong \
+    --project game-template="Game Template"=../games/game-template \
     --sync ../insiculous_web/public
 ```
+
+The third project is the template repository's own tree, so the bundle needs it cloned
+beside the engine — `scripts/lib/repos.sh` in the working set puts it at `../games/game-template`.
 
 `assets/projects.json` is the bundled project manifest list (a JSON array of `ProjectManifest`).
 Each entry carries:
@@ -200,7 +206,12 @@ takes the viewport), after Stop, and on exit. Nothing is written during Play or 
 
 ## Export and import
 
-Projects export and import as standard zip archives (`<slug>.zip`). This is the layout the template repo conforms to:
+Projects export and import as standard zip archives (`<slug>.zip`). This is the layout
+[the template repo](https://github.com/beinsiculous/game-template) conforms to, and it goes
+both ways: an export drops on a clone of the template with `unzip -o <slug>.zip -x README.md -d .`
+(the `-x` is load-bearing — every export carries a `README.md` and `unzip -o` would replace the
+clone's own), and a clone goes back to the browser with `zip -r <slug>.zip project.ron assets`
+followed by Import project on `/playground/`.
 
 ```
 <slug>.zip

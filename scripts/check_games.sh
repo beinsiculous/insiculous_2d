@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Games verification gate: checks all six games with and without --features editor.
+# Games verification gate: checks every game below with and without --features editor.
 # Accepts optional --test flag to run `cargo test` instead of `cargo check`.
 #
 # Each game is also checked for the wasm32 target, with and without the feature:
@@ -20,7 +20,7 @@ if ! rustup target list --installed | grep -q wasm32-unknown-unknown; then
     exit 1
 fi
 
-GAMES=(pong snake breakout frogger asteroids space_invaders)
+GAMES=(pong snake breakout frogger asteroids space_invaders game-template)
 
 for game in "${GAMES[@]}"; do
     echo "==> cargo $CMD -p $game (default)"
@@ -37,4 +37,4 @@ for game in "${GAMES[@]}"; do
     cargo check --manifest-path "../games/$game/Cargo.toml" --lib --target wasm32-unknown-unknown --features editor
 done
 
-echo "All six games passed cargo $CMD + clippy (default + editor features) and both wasm32 --lib checks."
+echo "All the games passed cargo $CMD + clippy (default + editor features) and both wasm32 --lib checks."

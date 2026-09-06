@@ -15,8 +15,8 @@ use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{channel, sync_channel};
 use std::sync::{Arc, Mutex};
 
-use editor_integration::{find_first_scene, run_game_with_editor_opts, EditorRunOptions, ProjectHost};
-use engine_core::prelude::GameConfig;
+use editor_integration::{run_game_with_editor_opts, EditorRunOptions, ProjectHost};
+use engine_core::prelude::{GameConfig, SceneLoader};
 use engine_core::web::{init_web_logging, preload_assets, query_param, set_boot_status};
 use wasm_bindgen::prelude::*;
 
@@ -251,7 +251,7 @@ async fn run_playground() -> Result<(), String> {
 
     // 9. Initial scene and options
     let scenes_directory = root_path.join("assets").join("scenes");
-    let initial_scene = find_first_scene(&scenes_directory);
+    let initial_scene = SceneLoader::first_scene_in(&scenes_directory);
 
     let editor_options = EditorRunOptions {
         api_rx: Some(request_receiver),

@@ -332,8 +332,8 @@ cargo clippy --workspace             # Lint check
 cargo run --example hello_world      # Run platformer demo
 cargo run --example editor_demo --features editor  # Run editor demo
 cargo run --bin editor --features editor -- ../games/pong  # Standalone editor on a project
-scripts/check_games.sh               # Check all six games (default + editor features)
-scripts/check_games.sh --test        # Test all six games (default + editor features)
+scripts/check_games.sh               # Check every game in its GAMES list (default + editor features, both wasm checks)
+scripts/check_games.sh --test        # Test every game in its GAMES list (default + editor features, both wasm checks)
 ```
 
 **Key Files:**

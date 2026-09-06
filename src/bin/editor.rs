@@ -11,9 +11,7 @@
 use std::path::PathBuf;
 
 use engine_core::prelude::*;
-use editor_integration::{
-    find_first_scene, run_game_with_editor_opts, EditorRunOptions, ProjectHost,
-};
+use editor_integration::{run_game_with_editor_opts, EditorRunOptions, ProjectHost};
 
 /// Spawn the stdin reader feeding the command API.
 /// The thread only moves bytes; dispatch happens on the frame thread.
@@ -56,7 +54,7 @@ fn main() {
     if headless {
         // Logging stays on stderr (env_logger); stdout is protocol-clean.
         let scene =
-            editor_integration::find_first_scene(&project_path.join("assets").join("scenes"));
+            SceneLoader::first_scene_in(&project_path.join("assets").join("scenes"));
         let stdin = std::io::stdin();
         let stdout = std::io::stdout();
         if let Err(e) = editor_integration::run_headless_editor_api(
@@ -87,7 +85,7 @@ fn main() {
     // First scene in SORTED order: opened by EditorGame through its
     // real load path, so the title, physics block, and Ctrl+S target are
     // right from frame one.
-    let initial_scene = find_first_scene(&project_path.join("assets").join("scenes"));
+    let initial_scene = SceneLoader::first_scene_in(&project_path.join("assets").join("scenes"));
     if initial_scene.is_none() {
         log::info!("no scene found under assets/scenes — starting with an empty scene");
     }
