@@ -43,7 +43,7 @@ late-put base recording; deterministic instance order with resets applied before
 `pagehide`, a terminal *conflicted* state, the textarea's own dirty flag, backslash zip paths,
 zero-vector `normalize`. **This is v7, the settled plan** (Jesse, 2026-09-04: no round 7;
 corrections from here go into the acting batch section before its handoff, and every batch's
-staged diff is reviewed by kimi and Claude). Batch 2 landed (936bcf9). Batch 3's section was re-verified against the tree before its handoff (2026-09-04): the corrections are listed at the top of that section, and batch 4's and 7's cross-references to the two replaced hooks were updated with it. Batch 3 landed (1462cbe). Batch 4's section was re-verified the same way before its handoff (2026-09-04); its corrections are listed at the top of that section, and the conflicted-path download control it deferred is recorded in batch 5. Batch 4 landed (e362625 in insiculous_2d, f69f09e in insiculous_web): kimi reviews 14–17, Claude review-14-claude, rebuttals 14–17; it is marked done once Jesse's browser check on staging passes. Batch 5's section was re-verified against the tree 2026-09-05; its corrections are listed at the top of that section (the `flate2` backend line, the headless dry-run resolver, the bundle rebuild, the page's script file, the conflicted-paths export), and batch 7's docs bullet gained the export README's second link. Batch 6's section was re-verified against the tree 2026-09-05; its corrections are listed at the top of that section (the response struct that already exists, the host file that does not, the add-in-the-same-undo-entry drop, the prefs field the save path would wipe, the scroll-into-view mechanism). Batch 6 landed (d4b384a): kimi reviews 21–22, Claude review-21-claude, rebuttals 21–22; two follow-ups filed — #102 (`ide_command` set only by hand, lost to autosave) and #103 (edits made while Paused are erased by Stop, audit §1.5, the standing rule kimi re-raised against the new drop path). Batch 7's section was re-verified against the tree 2026-09-05; its corrections are listed at the top of that section (the one context macro, the physics feature gate, the host signature, the bridge's missing hook setter, the error mirror, the `mod.rs` budget, the catalog's scan and build site, the resource rule). Batch 7 landed (f2431ae): kimi reviews 24–25, Claude review-24-claude, rebuttals 24–25; the planner's round-3 hunks (the per-entity velocity fold) are not kimi-reviewed; one follow-up filed — insiculous_2d#105 (a `.rhai` entity header default pre-fills as a Str). Batch 8's section was re-verified against the tree 2026-09-05; its corrections are listed at the top of that section (the page script the panel really lives in, the save that is one refusing call, the poll that cannot know Play, the Rhai clamp that does not exist, the lowercase action and header names, the scene shapes and coordinates pinned from the game, the test's crate and dev-dependencies, the tracked bundle in the site repo, the third repository); kimi review 26, gemini review-26-gemini, Claude review-26-claude, rebuttal 26 — ten accepted (the colliders' friction and restitution and the paddles' bodies that the section had left to defaults, the win test's one-phase lag, the path dev-dependencies, the background's true size, the serve hash, two status elements, the select's cancel reset), one rebutted (a Rhai `&str` parameter takes any string). Batch 8 landed (59365d4 in insiculous_2d, 23c5471 in games/pong): kimi review 27, Claude review-27-claude, rebuttal 27; accepted: the serve doc was inverted and the plan's `"left"` last-scorer default sent the first serve the opposite way from the Rust game, so the default and the restart now match it, plus a test note on the two branches the no-physics fallback never runs; rebutted as policy: the ±230 paddle clamp's 10 px sink into the wall is the Rust game's own constant, filed as beinsiculous/pong#2; the planner's fix hunks are not re-reviewed; the site half (the Scripts panel, its module, the page copy, the re-synced bundle) landed as 6e67f93 in insiculous_web once `npm run verify` ran green under Node 24 via nvm (Iroh had only apt's Node 18; the log is review/web-playground/gates-8-site.log — astro check 0 errors, axe clean over 66 pages, no sideways scroll at four viewports); it is marked done once Jesse's browser check passes. Batch 5 landed (ceb77be in insiculous_2d, 227a5f2 in insiculous_web): kimi reviews 19–22, Claude review-19-claude, rebuttals 19–21; the export-cap parity follow-up is insiculous_2d#101; it is marked done once Jesse's browser check on staging passes.
+staged diff is reviewed by kimi and Claude). Batch 2 landed (936bcf9). Batch 3's section was re-verified against the tree before its handoff (2026-09-04): the corrections are listed at the top of that section, and batch 4's and 7's cross-references to the two replaced hooks were updated with it. Batch 3 landed (1462cbe). Batch 4's section was re-verified the same way before its handoff (2026-09-04); its corrections are listed at the top of that section, and the conflicted-path download control it deferred is recorded in batch 5. Batch 4 landed (e362625 in insiculous_2d, f69f09e in insiculous_web): kimi reviews 14–17, Claude review-14-claude, rebuttals 14–17; it is marked done once Jesse's browser check on staging passes. Batch 5's section was re-verified against the tree 2026-09-05; its corrections are listed at the top of that section (the `flate2` backend line, the headless dry-run resolver, the bundle rebuild, the page's script file, the conflicted-paths export), and batch 7's docs bullet gained the export README's second link. Batch 6's section was re-verified against the tree 2026-09-05; its corrections are listed at the top of that section (the response struct that already exists, the host file that does not, the add-in-the-same-undo-entry drop, the prefs field the save path would wipe, the scroll-into-view mechanism). Batch 6 landed (d4b384a): kimi reviews 21–22, Claude review-21-claude, rebuttals 21–22; two follow-ups filed — #102 (`ide_command` set only by hand, lost to autosave) and #103 (edits made while Paused are erased by Stop, audit §1.5, the standing rule kimi re-raised against the new drop path). Batch 7's section was re-verified against the tree 2026-09-05; its corrections are listed at the top of that section (the one context macro, the physics feature gate, the host signature, the bridge's missing hook setter, the error mirror, the `mod.rs` budget, the catalog's scan and build site, the resource rule). Batch 7 landed (f2431ae): kimi reviews 24–25, Claude review-24-claude, rebuttals 24–25; the planner's round-3 hunks (the per-entity velocity fold) are not kimi-reviewed; one follow-up filed — insiculous_2d#105 (a `.rhai` entity header default pre-fills as a Str). Batch 8's section was re-verified against the tree 2026-09-05; its corrections are listed at the top of that section (the page script the panel really lives in, the save that is one refusing call, the poll that cannot know Play, the Rhai clamp that does not exist, the lowercase action and header names, the scene shapes and coordinates pinned from the game, the test's crate and dev-dependencies, the tracked bundle in the site repo, the third repository); kimi review 26, gemini review-26-gemini, Claude review-26-claude, rebuttal 26 — ten accepted (the colliders' friction and restitution and the paddles' bodies that the section had left to defaults, the win test's one-phase lag, the path dev-dependencies, the background's true size, the serve hash, two status elements, the select's cancel reset), one rebutted (a Rhai `&str` parameter takes any string). Batch 8 landed (59365d4 in insiculous_2d, 23c5471 in games/pong): kimi review 27, Claude review-27-claude, rebuttal 27; accepted: the serve doc was inverted and the plan's `"left"` last-scorer default sent the first serve the opposite way from the Rust game, so the default and the restart now match it, plus a test note on the two branches the no-physics fallback never runs; rebutted as policy: the ±230 paddle clamp's 10 px sink into the wall is the Rust game's own constant, filed as beinsiculous/pong#2; the planner's fix hunks are not re-reviewed; the site half (the Scripts panel, its module, the page copy, the re-synced bundle) landed as 6e67f93 in insiculous_web once `npm run verify` ran green under Node 24 via nvm (Iroh had only apt's Node 18; the log is review/web-playground/gates-8-site.log — astro check 0 errors, axe clean over 66 pages, no sideways scroll at four viewports); it is marked done once Jesse's browser check passes. Batch 5 landed (ceb77be in insiculous_2d, 227a5f2 in insiculous_web): kimi reviews 19–22, Claude review-19-claude, rebuttals 19–21; the export-cap parity follow-up is insiculous_2d#101; it is marked done once Jesse's browser check on staging passes. Batch 9's section was re-verified against the tree 2026-09-06; its corrections are listed at the top of that section (the optional dependency every game already has, the third build kind and the differently named constant it checks, the clamped canvas size the page must carry, the save keys an editor session must not write and the prefs slot it must name, the `lib.rs` sentence, the `editor` field on the games collection in place of a new one, the static optgroup the population code must not wipe, the shortcuts list moved to a component, the bundle weight as a number, the lockfiles, the standing wasm editor check, the executor substitution). Batch 9 landed 2026-09-06 across the eight repositories (executor: Jesse's Claude Code session on Opus 5 at low effort): kimi review 29, Claude review-29-claude, rebuttal 29 — accepted: the shortcuts panel's Ctrl+S line now names what each surface saves to (a `saveLine` prop), the build script asserts the editor's minimum-size constants it mirrors, pong's README sentence moved after its list; rebutted: the games gate hard-requiring the wasm target (the section's own ruling) and the five lockfiles kimi thought unstaged (zero diff against HEAD); the planner's fix hunks are not re-reviewed; the six editor bundles weigh 8.66–9.35 MiB each; it is marked done once Jesse's browser check passes. The section correction (review 28) and this landing share one plan commit.
 
 ## Context
 
@@ -1912,25 +1912,225 @@ tab** — the edit is still there; with an entity selected, type Delete and Ctrl
 textarea — the viewport is untouched (rebuttal 1, gemini F5). Leaves out: menus, power-ups,
 chaos modes, achievements (filed in batch 10).
 
-## Batch 9 — the six games as editor bundles (independent, droppable)
+## Batch 9 — the six games as editor bundles (independent, droppable) — LANDED 2026-09-06 in eight repositories (the engine, the six games, the site; each repo's log carries its hash; marked done once Jesse's browser check passes)
 
-Repos: the six game repos (`src/web_entry.rs`, `Cargo.toml` if the optional dep is
-missing on any), `insiculous_2d/scripts/build_wasm.sh`, `insiculous_web`.
+**Re-verified against the tree 2026-09-06 before the handoff** (batches 3–8 landed since this
+section was written on Sep 4, and it was twenty lines against the three-hundred of its
+neighbours). Corrections, each restated where it applies below:
 
-Target shapes: each game's `web_entry.rs` selects `run_game_with_editor` under
-`#[cfg(feature = "editor")]` and `ASSET_BASE` under `--kind playground`
-(`/playground/<slug>/v1/assets`); `build_wasm.sh --features editor` passes the feature
-through; the site's `/playground/` project `<select>` lists the six as "Rust games
-(layout only — rules are compiled in)", each opening `/playground/<slug>/` (one embed
-per page, so a page per bundle: `src/pages/playground/[slug].astro` over a `playground`
-content collection). Six commits, one per game repo, each gated by that game's
-`cargo test` + `cargo clippy` with and without `--features editor` AND `cargo check
---manifest-path ../games/<g>/Cargo.toml --lib --target wasm32-unknown-unknown --features
-editor` (the editor path is otherwise never compiled for wasm until bundle time); one
-commit each in the engine and the site. Bundle gate on all six (expect +2–3 MiB each).
+- The optional dependency is already on every game: all six `Cargo.toml`s carry
+  `editor = ["dep:editor_integration"]` (`:9`) and the optional path dependency (`:17`), and
+  `scripts/check_games.sh:13-25` already builds each with and without it natively. No manifest
+  changes. What no gate compiles today is the editor feature ON THE WASM TARGET for a game
+  crate; the playground crate proves the editor's wasm path
+  (`crates/playground/src/web_entry.rs:18,271` runs `run_game_with_editor_opts` in the
+  browser), so the shape is sound, and this batch makes that check standing (below).
+- `build_wasm.sh` has no `--features` flag and no layout for a game under `/playground/`:
+  `--kind` takes `games` or `playground` (`:59,68`), `--kind playground` demands `--project`
+  (`:72-76`) and expects `ASSET_BASE = "/playground/<version>/assets"` plus a `BUNDLE_VERSION`
+  constant (`:86-87,97-101`), and its output directory has no slug segment (`:150-151`). So
+  the section's "`--features editor` passes the feature through" becomes a THIRD kind,
+  `--kind editor`, which names the layout and turns the feature on together — a separate flag
+  would let the two disagree. Its rules: no `--project`; the entry check greps
+  `const EDITOR_ASSET_BASE: &str = "/playground/<slug>/<version>/assets"` — a differently
+  named constant, because the game's plain `ASSET_BASE` stays in the same file and a check on
+  that name would pass under either kind; the cargo build line (`:158`) gains
+  `--features editor`; `DIST_BASE="$GAME_DIR/dist/playground/$SLUG"` and
+  `SYNC_SUBPATH="playground/$SLUG/$VERSION"`; assets copy the games way (`:231-235`, today's
+  `else` branch — a game's `assets/` tree, no `projects.json`); the achievements export stays
+  games-only (`:252`, already conditioned — the editor bundle registers the same
+  achievements, but the board reads `/games/<slug>/achievements.json`, which this bundle does
+  not replace); the local test page's `IMPORT_URL` is `/playground/$SLUG/$VERSION/game.js`,
+  no banner line, and its canvas is the clamped size (next item). Every one of the script's
+  kind branches (`:86-90`, `:149-155`, `:261-285`) becomes a three-way `case`: no `else` may
+  serve the new kind by default, because the games `else` would expect the plain
+  `ASSET_BASE`, write `dist/games/<slug>/` and sync an editor bundle OVER
+  `public/games/<slug>/<version>/`; `--features editor` is appended to the build line only
+  under `BUILD_KIND == editor` (the playground crate has no such feature and a plain game
+  build must not gain it); the mismatch diagnostic's `ACTUAL_BASE` (`:93`) greps the line of
+  the constant being checked, since after this batch a game's entry carries both; the `:59`
+  message and the `:43` usage line name the third kind. The usage header (`:8-33`)
+  documents it.
+- The editor enlarges any window under 1024 × 720
+  (`crates/editor_integration/src/constants.rs:16-26`, applied in `run_options.rs:55`), and on
+  wasm the placeholder canvas's `width`/`height` attributes are copied onto winit's canvas
+  (`crates/renderer/src/window.rs:91-98`) while winit sizes that canvas from the config
+  (`window_manager.rs:114-119`) — so the page's canvas must be the CLAMPED size, not the
+  game's: 1024 × 720 for the five 800 × 600 games and 1024 × 768 for frogger (720 × 768,
+  `../games/frogger/src/constants.rs:14-15`). The site page derives it as
+  `Math.max(width ?? 800, 1024)` × `Math.max(height ?? 600, 720)` from the games entry's own
+  `width`/`height` (`frogger.md:6-7` carries them; the other five default), and the script's
+  test page does the same over `WIN_W`/`WIN_H` (`:271-282`, the existing best-effort regex);
+  both mirrors name `constants.rs`'s pair in a comment, the DRY rule for a twin.
+- The six web entries (`../games/<g>/src/web_entry.rs`, 41–45 lines each) are near-identical:
+  one `ASSET_BASE` (`:23`) and one `start()` that preloads, builds `game_config(ASSET_BASE)`
+  with the game's localStorage save keys and calls `run_game` (`:25-41`; pong passes two keys,
+  the rest three). Under the feature the entry preloads `EDITOR_ASSET_BASE` instead, passes
+  `game_config(EDITOR_ASSET_BASE)` with NO save keys — an editor session must never write
+  `beinsiculous.games.<slug>.*`, which the site's achievements board reads
+  (`docs/WEB_SAVES.md:11-32`); with `input_settings_path` unset the engine takes the default
+  bindings (`crates/engine_core/src/game.rs:364`) — and calls
+  `editor_integration::run_game_with_editor_opts(game, config, EditorRunOptions { prefs_slot:
+  Some(PathBuf::from("beinsiculous.playground.<slug>.editor_prefs")), ..Default::default() })`,
+  because the default slot is the native filename `editor_prefs.json` (`constants.rs:13`,
+  `editor_game/mod.rs:119`), which on wasm would be a bare localStorage key outside the
+  contract; the playground's own key is `beinsiculous.playground.editor_prefs`
+  (`WEB_SAVES.md:34-38`), and each game gets its own because the preferences carry the
+  camera. The site slug for space_invaders is `invaders` (`WEB_SAVES.md:15-22`, the
+  `public/games/` directory name), so its base is `/playground/invaders/v1/assets`. Everything
+  the game does in Play — menus, chaos modes, achievements registering — is untouched.
+- Each game's `lib.rs:5-7` says the split "keeps `editor_integration` out of the library —
+  editor wiring lives in `main.rs` only"; after this batch the library's `web_entry.rs` carries
+  it too, behind the same feature, so the sentence changes in all six.
+- The site has no `playground` content collection and needs none: the games collection
+  (`../insiculous_web/src/content.config.ts:7-30`) already carries the slug, title and size, so
+  it gains one optional field, `editor: z.string().startsWith('/').optional()` — the editor
+  bundle's glue path, `/playground/<slug>/v1/game.js` — set on all six entries, and
+  `src/pages/playground/[slug].astro` builds one page per entry that has it (the pattern is
+  `src/pages/games/[slug].astro:7-13`). Six new files and a schema for one path each would be
+  the heavier shape, and the entry's `width`/`height` are what the clamp reads.
+- The `<select>` on `/playground/` is populated at boot from `playground_list_projects` by
+  `playground-embed.ts:168-181`, which clears it with `innerHTML = ''`, and its `change`
+  handler (`:215-242`) calls `playground_open_project` on the value. The six games are static:
+  `PlaygroundEmbed.astro` wraps the existing single option (`:32-34`) in
+  `<optgroup id="project-select-data" label="Projects">` and adds a second
+  `<optgroup label="Rust games (layout only — rules are compiled in)">` from an `editorGames`
+  prop — `playground.astro` calls `getCollection('games')`, filters on `editor`, sorts by
+  `order` and passes the list, so the embed stays presentational like `GameEmbed` — each
+  option's value the page path `/playground/<slug>/`; the population code clears and fills
+  the data optgroup only, and the handler treats a value starting with `/` as navigation:
+  the same dirty confirm, whose cancel resets `projectSelect.value = currentSlug` exactly as
+  the project branch does (`:224-226` — the browser has already moved the value when
+  `change` fires, and without the reset the cancelled option can never fire `change`
+  again), then `leavingByChoice = true; window.location.href = value`.
+- The keyboard-shortcuts list (`PlaygroundEmbed.astro:113-128`, with its `.shortcuts-panel`
+  and `.shortcuts-list` styles) is what the editor page needs verbatim, so it moves to
+  `src/components/EditorShortcuts.astro` and both embeds render it. `GameEmbed.astro` serves
+  the editor page as it is, with two additions: an optional `canvasLabel` prop whose default is
+  the current "game canvas; focus it to play" (`:41`) and a named slot `controls` whose
+  fallback is the current controls note (`:46-50`), so the editor page passes its own label
+  and note and GameEmbed's gate script (`:69-109`) is not written a third time.
+- Bundle weight: the plan's "+2–3 MiB each" was a guess. The playground bundle is 9.7 MiB and
+  a plain game 2.6–4.1 MiB (`public/playground/v1/`, `public/games/*/v2/`), so expect each
+  editor bundle near 9–10 MiB — six of them ~55 MiB raw under `public/playground/<slug>/v1/`,
+  tracked by the site repo like the rest of `public/` (114 bundle files today; the pack is
+  12 MiB because wasm compresses well). Each is under the 20 MiB gate with room; the total is
+  Jesse's call at adjudication — six, or a subset with the rest filed.
+- Each game's `Cargo.lock` gains the editor's wasm-side entries the first time the wasm build
+  resolves the feature (breakout's working tree already shows it from an earlier check: +98
+  lines, `const-random`, `getrandom 0.3`, unstaged); stage it in that game's diff and say so.
+- `check_games.sh` gains, per game, TWO wasm checks after its native four (`:13-25`):
+  `cargo check --manifest-path ../games/<g>/Cargo.toml --lib --target wasm32-unknown-unknown`
+  with and without `--features editor` — the plain one because `web_entry.rs` is
+  `cfg(target_arch = "wasm32")` and no native check ever compiles it, so a break in its
+  non-feature branch would surface only at bundle time; the feature one because a deployed
+  bundle now depends on it. The engine's `wasm-check.yml` runs `check_wasm.sh`, which never
+  sees a game. The script gains a preflight that the target is installed
+  (`rustup target list --installed | grep -q wasm32-unknown-unknown`, hard fail naming
+  `rustup target add wasm32-unknown-unknown`, `build_wasm.sh`'s style), and its header says
+  so the way `check_wasm.sh:14` does.
+- Docs that describe the pre-batch state and are therefore part of this batch:
+  `docs/WEB_PLAYGROUND.md` (a new § The game bundles between § The bundle contract, `:47`, and
+  § The store, `:70`: the layout, the six invocations of record, what does and does not
+  persist, the prefs key family); `docs/WEB_SAVES.md:34-38` (the per-game prefs key);
+  `scripts/build_wasm.sh`'s header; each game's `README.md` (pong § Editor Mode `:45-47` and
+  breakout `:85-87` gain the browser sentence; asteroids `:11`, frogger `:13`, snake `:9` and
+  space_invaders `:14` have only the command line, so one sentence follows their `## Running`
+  block) and `CLAUDE.md` (the "With `--features editor` the identical game runs inside the
+  engine's scene editor" sentence, `:19` or breakout's `:20`, gains "and at
+  `/playground/<slug>/` in the browser"); `../insiculous_web/README.md:142-160` § The editor
+  bundle (the per-game bundles and their directory); `../insiculous_web/docs/roadmap.md:129-132`
+  (the browser editor paragraph); `src/pages/playground.astro` (a § Rust games in the editor
+  paragraph after § Scripts, `:31-38`). `PROJECT_ROADMAP.md` waits for batch 10.
+- Size budgets: `build_wasm.sh` 347 (+ ~40), `PlaygroundEmbed.astro` 542 (− the panel, + the
+  optgroups: the extraction is what keeps it under 600), `playground-embed.ts` 365 (+ ~20),
+  `GameEmbed.astro` ~200 (+ ~10). No engine crate file is touched; the engine's diff is two
+  scripts and two docs.
+- Executor: gemini's weekly budget is nearly spent (7.8 % on Sep 6), so Jesse runs the
+  executor as a separate Claude Code session on Opus 5 at low effort, from the same handoff.
+  The loop is otherwise unchanged — kimi remains the different-vendor code reviewer — and the
+  ledger rows name the executor.
 
-**Jesse's browser check:** `/playground/pong/` opens the Rust pong inside the editor;
-Play runs the real game. Leaves out: nothing else; if dropped, file it.
+Repos: eight repositories, eight staged diffs, one report. The six game repos
+(`src/web_entry.rs`, `src/lib.rs` header comment, `Cargo.lock`, `README.md`, `CLAUDE.md`),
+`insiculous_2d` (`scripts/build_wasm.sh`, `scripts/check_games.sh`, `docs/WEB_PLAYGROUND.md`,
+`docs/WEB_SAVES.md`), `insiculous_web` (`src/content.config.ts`, the six
+`src/content/games/*.md`, new `src/pages/playground/[slug].astro`, new
+`src/components/EditorShortcuts.astro`, `src/components/GameEmbed.astro`,
+`src/components/PlaygroundEmbed.astro`, `src/scripts/playground-embed.ts`,
+`src/pages/playground.astro`, `README.md`, `docs/roadmap.md`, the six synced bundles under
+`public/playground/<slug>/v1/`). The planner lands each separately: the engine first (the
+script the six builds need), the six games, then the site.
+
+Target shapes:
+
+- `scripts/build_wasm.sh --kind editor` (the third kind, rules in the preamble): usage line
+  `[--kind games|playground|editor]`, the kind validated at `:68`, no `--project` requirement,
+  `EDITOR_ASSET_BASE` checked against `/playground/$SLUG/$VERSION/assets` with the same
+  hard-fail wording as the other two, `--features editor` on the cargo build, the
+  `dist/playground/<slug>/<version>/` layout and `playground/<slug>/<version>` sync subpath,
+  the games-style asset copy, no achievements export, and a test page at
+  `dist/playground/<slug>/index.html` importing `/playground/<slug>/<version>/game.js` with the
+  clamped canvas (`max(WIN_W, 1024)` × `max(WIN_H, 720)`, the constants named). The header's
+  version paragraph gains the editor bundle's FOUR places: the constant, this script's output
+  dir, the games entry's `editor:` path, the deployed `public/playground/<slug>/<version>/`.
+- `../games/<g>/src/web_entry.rs`, all six: `ASSET_BASE` and its checklist stay as they are;
+  `#[cfg(feature = "editor")] const EDITOR_ASSET_BASE: &str = "/playground/<slug>/v1/assets";`
+  with a doc comment stating its own four-place contract (its version is independent of the
+  game's `v2`); the feature selects the preload base, the config (save keys only WITHOUT the
+  feature), the runner (`run_game` / `run_game_with_editor_opts` with the prefs slot
+  `beinsiculous.playground.<slug>.editor_prefs`) — one `#[wasm_bindgen(start)] start()` stays
+  the entry, the error reporting through `set_boot_status` unchanged. The header comment says
+  what the editor bundle is and that it writes none of the game's keys. `lib.rs:5-7`'s
+  sentence becomes: the split keeps `editor_integration` behind the `editor` feature in both
+  entry points.
+- `scripts/check_games.sh`: the target preflight and the two wasm checks per game
+  (preamble), and its closing message names them.
+- Site: the `editor` field (`content.config.ts`, with a comment like `wasm`'s at `:16-19`);
+  `editor: '/playground/<slug>/v1/game.js'` on all six entries; `src/pages/playground/[slug].astro`
+  — `getStaticPaths` over the games with `editor`; `<h1>` "<title> in the editor"; a lede that
+  says what this is (the Rust game running inside the scene editor, in the browser: the
+  entities are live and editable, the rules are compiled in, and nothing persists — reload and
+  the game is itself again); `<GameEmbed src={game.data.editor} title={…} canvasLabel="scene
+  editor canvas; focus it to edit and play" width={…} height={…}>` with the clamped size and a
+  `controls` slot reading "Click the canvas to focus it, then F5 to play the real game; the
+  editor's shortcuts are listed below."; `<EditorShortcuts />`; links to `/games/<slug>/` and
+  `/playground/`. `EditorShortcuts.astro` is the moved list and styles, rendered by
+  `PlaygroundEmbed.astro` where the panel was. `PlaygroundEmbed.astro`'s two optgroups and
+  `playground-embed.ts`'s data-group population and path navigation (preamble).
+  `playground.astro` § Rust games in the editor: one paragraph — the six open inside the same
+  editor, layout only, rules compiled in, nothing persists, the group in the Project select.
+- The six bundles, from the engine root, the invocations of record in `WEB_PLAYGROUND.md`:
+  `scripts/build_wasm.sh ../games/<g> <slug> --kind editor --version v1 --sync
+  ../insiculous_web/public` for pong, snake, breakout, frogger, asteroids and
+  space_invaders (`invaders`); the sync writes `public/playground/<slug>/v1/{game.js,
+  game_bg.wasm, assets/…}` into the site checkout, all staged there. Every synced tree is
+  new (no version dir exists under `public/playground/<slug>/` today), so nothing deployed
+  is overwritten.
+- Docs: the list in the preamble.
+
+Gates: `scripts/check_games.sh --test` (the six native suites and clippy with and without
+the feature, plus the two new wasm checks per game — this is the games' Rust gate, and
+`--test` because the six repos' own suites are what stand behind their bundles; the engine
+diff has no Rust, so `cargo test --workspace` and `check_wasm.sh` are not required and the
+report says so); the
+comment-tag grep over `crates src examples` AND over each game's `src`; the bundle gate six
+times (each size line under 20 MiB, recorded in the report); `npm run verify` under Node 24
+(`nvm use 24` — batch 8's log). No engine wasm gate: no covered crate root is touched.
+**Jesse's browser check:** `/playground/`'s Project select shows the Rust games group;
+picking Pong opens `/playground/pong/`, the Rust pong is inside the editor with its entities
+in the hierarchy; F5 plays the real game (its menu, a rally); Stop restores the layout;
+select the ball, move it with the W tool, Play — it starts from there; **reload the tab** —
+the game is back to its own layout (nothing persists, by design); `/playground/frogger/`
+renders at 1024 × 768 with no sideways scroll on a phone; `/achievements/` shows no unlock
+earned inside the editor session; Ctrl+S inside `/playground/pong/` — the status bar reports
+the save, nothing breaks, and a reload forgets it; and the pages this batch's shared
+components already serve: `/games/pong/` still boots and plays, and `/playground/`'s select
+still opens Examples and Pong, with a cancelled dirty switch leaving the select on the
+current project. Leaves out: persistence of layout edits for a Rust game (a
+Save inside the editor writes the in-memory VFS only — there is no project store in a game
+bundle; filed if wanted), a link from `/games/<slug>/` to its editor page (filed), and, if
+dropped, the whole batch (batch 10's list).
 
 ## Batch 10 — the template repo (#49 item 3) and docs close-out
 
@@ -1961,7 +2161,8 @@ Play runs the real game. Leaves out: nothing else; if dropped, file it.
   clean on the final `jesse`.
 - Bundle: `scripts/build_wasm.sh crates/playground playground --kind playground
   --version v1 --project examples=... --project pong=... --sync ../insiculous_web/public`
-  under 20 MiB.
+  under 20 MiB; with batch 9, the six `scripts/build_wasm.sh ../games/<g> <slug> --kind
+  editor --version v1 --sync ../insiculous_web/public` builds, each under 20 MiB.
 - Site: `npm run verify` green; staging deploy; Jesse's browser checks for batches 4, 5,
   8 (and 9) recorded in `coordination/PROGRESS.md` — every one includes a reload, so
   persistence is proven, not assumed.
