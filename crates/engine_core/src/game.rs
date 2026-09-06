@@ -46,6 +46,9 @@ use ui::{DrawCommand, UIContext};
 use crate::contexts::{GameContext, RenderContext};
 use crate::assets::{AssetConfig, AssetManager};
 use crate::achievements::AchievementManager;
+use crate::localization::Strings;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::achievements::manifest_export_path;
 use crate::glyph_texture_cache::GlyphTextureCache;
 use crate::render_manager::RenderManager;
 use crate::window_manager::{WindowConfig, WindowManager};
@@ -57,6 +60,12 @@ use ecs::sprite_components::{Sprite as EcsSprite, Transform2D};
 ///
 /// Only `update` is required - all other methods have default implementations.
 pub trait Game: Sized + 'static {
+    /// Register the game's achievements. Called once by `run_game` before the window opens, so the
+    /// registry exists ahead of `init` and can be exported with no GPU (`--achievements-manifest`).
+    /// `strings` carries the configured locale; a game whose names are localized re-registers from
+    /// its own code on a locale switch, as before.
+    fn register_achievements(&self, _achievements: &mut AchievementManager, _strings: &Strings) {}
+
     /// Called once when the game starts, after the window and renderer are ready.
     /// Use this to set up your initial game state, create entities, load assets, etc.
     fn init(&mut self, _ctx: &mut GameContext) {}
@@ -154,16 +163,48 @@ pub fn run_game<G: Game>(game: G, config: GameConfig) -> Result<(), crate::Engin
     // Engine components reach the dynamic registry before any scene loads
     // or editor capture runs (idempotent).
     crate::component_registration::register_engine_components();
+
+    #[cfg(not(target_arch = "wasm32"))]
+    let (config, export) = {
+        let mut config = config;
+        let export = manifest_export_path()
+            .map_err(|e| crate::EngineError::InitializationError(e.to_string()))?;
+        if export.is_some() {
+            // An export reads and writes no save, and its names are the site's contract: always
+            // the fallback locale, whatever default a game's config carries.
+            config.achievement_save_path = None;
+            config.score_save_path = None;
+            config.input_settings_path = None;
+            config.locale = crate::localization::FALLBACK_LOCALE.to_string();
+        }
+        (config, export)
+    };
+
+    let mut runner = GameRunner::new(game, config);
+    runner.game.register_achievements(&mut runner.achievements, &runner.localization.strings);
+
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Some(path) = export {
+        runner
+            .achievements
+            .write_manifest(&path)
+            .map_err(|e| crate::EngineError::InitializationError(e.to_string()))?;
+        log::info!(
+            "Exported {} achievements to {}",
+            runner.achievements.total(),
+            path.display()
+        );
+        return Ok(());
+    }
+
     let event_loop =
         EventLoop::new().map_err(|e| crate::EngineError::InitializationError(e.to_string()))?;
-    let runner = GameRunner::new(game, config);
 
     // Native: block until the window closes. Web: hand the runner to the
     // browser's event loop and return immediately — `spawn_app` never blocks
     // (the wasm entry point has nothing left to do after this call).
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let mut runner = runner;
         event_loop
             .run_app(&mut runner)
             .map_err(|e| crate::EngineError::GameLoopError(e.to_string()))?;

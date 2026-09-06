@@ -19,8 +19,7 @@ use editor::EditorContext;
 use editor::world_snapshot::WorldSnapshot;
 use engine_core::contexts::{GameContext, RenderContext};
 use engine_core::scene_data::PhysicsSettings;
-use engine_core::Game;
-use engine_core::GameConfig;
+use engine_core::{AchievementManager, Game, GameConfig, Strings};
 
 use crate::constants::{clamp_editor_window_size, EDITOR_PREFS_PATH};
 use crate::panel_renderer;
@@ -374,6 +373,10 @@ impl<G: Game> EditorGame<G> {
 }
 
 impl<G: Game> Game for EditorGame<G> {
+    fn register_achievements(&self, achievements: &mut AchievementManager, strings: &Strings) {
+        self.inner.register_achievements(achievements, strings);
+    }
+
     fn init(&mut self, ctx: &mut GameContext) {
         // Editor look for generic ui widgets (buttons, sliders, inputs):
         // derive the ui theme from the editor palette once at startup.

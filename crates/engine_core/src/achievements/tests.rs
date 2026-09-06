@@ -155,3 +155,109 @@ fn hidden_achievement_stays_hidden_and_unlocked_across_a_save_round_trip() {
     assert!(restored.get("secret").expect("registered").hidden);
     assert!(restored.is_unlocked("secret"));
 }
+
+#[test]
+fn all_yields_registration_order_and_reregistering_keeps_the_place() {
+    let mut manager = AchievementManager::in_memory();
+    manager.register(Achievement::new("first", "First", "First description"));
+    manager.register(Achievement::new("second", "Second", "Second description"));
+    manager.register(Achievement::new("third", "Third", "Third description"));
+
+    manager.register(Achievement::new("first", "First Updated", "New description"));
+
+    let ids: Vec<&str> = manager.all().map(|achievement| achievement.id.as_str()).collect();
+    assert_eq!(ids, vec!["first", "second", "third"]);
+    assert_eq!(
+        manager.get("first").map(|achievement| achievement.name.as_str()),
+        Some("First Updated")
+    );
+}
+
+#[test]
+fn manifest_json_is_the_documented_array_in_registration_order() {
+    let mut manager = AchievementManager::in_memory();
+    manager.register(Achievement::new("first", "First Name", "First description."));
+    manager.register(Achievement::new("second", "Second Name", "Second description.").hidden());
+
+    let json = manager.manifest_json().expect("manifest_json succeeds");
+    let expected = "[\n  {\n    \"id\": \"first\",\n    \"name\": \"First Name\",\n    \"description\": \"First description.\",\n    \"hidden\": false\n  },\n  {\n    \"id\": \"second\",\n    \"name\": \"Second Name\",\n    \"description\": \"Second description.\",\n    \"hidden\": true\n  }\n]\n";
+    assert_eq!(json, expected);
+}
+
+#[test]
+fn manifest_export_path_reads_the_value_after_the_flag() {
+    let args = ["--other", "--achievements-manifest", "out/a.json", "tail"]
+        .into_iter()
+        .map(OsString::from);
+    let path = manifest_export_path_from(args).expect("manifest_export_path_from succeeds");
+    assert_eq!(path, Some(PathBuf::from("out/a.json")));
+}
+
+#[test]
+fn manifest_export_path_reads_the_equals_form() {
+    let args = ["--achievements-manifest=out/a.json"]
+        .into_iter()
+        .map(OsString::from);
+    let path = manifest_export_path_from(args).expect("manifest_export_path_from succeeds");
+    assert_eq!(path, Some(PathBuf::from("out/a.json")));
+}
+
+#[test]
+fn manifest_export_path_is_none_without_the_flag() {
+    let empty_args = std::iter::empty::<OsString>();
+    assert_eq!(
+        manifest_export_path_from(empty_args).expect("manifest_export_path_from succeeds"),
+        None
+    );
+
+    let other_args = ["--other"].into_iter().map(OsString::from);
+    assert_eq!(
+        manifest_export_path_from(other_args).expect("manifest_export_path_from succeeds"),
+        None
+    );
+}
+
+#[test]
+fn manifest_export_path_refuses_a_flag_without_a_value() {
+    let no_value = ["--achievements-manifest"].into_iter().map(OsString::from);
+    assert!(matches!(
+        manifest_export_path_from(no_value),
+        Err(ManifestFlagError)
+    ));
+
+    let followed_by_flag = ["--achievements-manifest", "--verbose"]
+        .into_iter()
+        .map(OsString::from);
+    assert!(matches!(
+        manifest_export_path_from(followed_by_flag),
+        Err(ManifestFlagError)
+    ));
+
+    let empty_equals = ["--achievements-manifest="].into_iter().map(OsString::from);
+    assert!(matches!(
+        manifest_export_path_from(empty_equals),
+        Err(ManifestFlagError)
+    ));
+}
+
+#[test]
+#[cfg(not(target_arch = "wasm32"))]
+fn write_manifest_creates_the_parent_directory() {
+    let mut manager = AchievementManager::in_memory();
+    manager.register(Achievement::new("first", "First", "Desc 1"));
+    manager.register(Achievement::new("second", "Second", "Desc 2"));
+
+    let dir = tempdir().expect("tempdir");
+    let manifest_path = dir.path().join("nested").join("deep").join("manifest.json");
+
+    assert!(!manifest_path.parent().expect("parent").exists());
+
+    manager.write_manifest(&manifest_path).expect("write manifest");
+
+    assert!(manifest_path.exists());
+    let content = std::fs::read_to_string(&manifest_path).expect("read manifest");
+    let parsed: Vec<Achievement> = serde_json::from_str(&content).expect("parse manifest");
+    assert_eq!(parsed.len(), 2);
+    assert_eq!(parsed[0].id, "first");
+    assert_eq!(parsed[1].id, "second");
+}

@@ -28,6 +28,7 @@ Cross-cutting glue biases toward `engine_core`: `ui` defines `DrawCommand` (rend
 - `gamepad_backend.rs` — gilrs hardware poll (0.15 dead zone rescale, stick +Y = up, pumped before `process_queued_events`).
 - `input_settings_io.rs` — JSON persistence for player bindings with missing/corrupt fallback to defaults.
 - `save_store/` — player save persistence seam (filesystem path natively, localStorage on wasm with fallback to `MemoryStore`; multi-tab merge-on-save via `JsonSaveSlot`).
+- `achievements/` — the registry, its `JsonSaveSlot` persistence, toasts in `toast.rs`, and the manifest export (`--achievements-manifest`, `docs/WEB_SAVES.md` § The manifest).
 - `scores.rs` — high scores (top-10 per mode) with merge-on-save for multi-tab safety, while `reset()` overwrites.
 - `glyph_texture_cache.rs` — GPU glyph texture cache (dual cache with ui crate's rasterized bitmap cache).
 - `render_manager.rs` — `sync_main_camera` copies pose (position and zoom, rotation excluded) onto render camera; device loss fail-stop stops frame loop after `MAX_SURFACE_ERROR_STREAK = 10` or `DeviceLost`.

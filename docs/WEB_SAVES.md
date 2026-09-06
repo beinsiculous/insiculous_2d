@@ -99,9 +99,31 @@ live while the game runs.
 - **Corrupt documents** are warned about and treated as empty; the next save
   replaces them.
 
-## Follow-up (not implemented)
+## The manifest
 
-If the site's boards ever want real achievement names/descriptions instead of
-prettified ids, the plan of record is a per-game `achievements.json` manifest
-exported beside the wasm bundle (definitions today live in each game's Rust
-registration and the localized games' locale RON files).
+Each game exports an `achievements.json` manifest beside its wasm bundle:
+`public/games/<slug>/<version>/achievements.json`.
+
+The file is a pretty-printed JSON array containing the serde form of `Achievement`
+in registration order:
+
+```json
+[
+  {
+    "id": "beat_cpu_easy",
+    "name": "Training Wheels",
+    "description": "Beat the CPU on Easy.",
+    "hidden": false
+  }
+]
+```
+
+- **How it is produced:** The native game binary is run with `--achievements-manifest <path>`,
+  which registers achievements through `Game::register_achievements()`, writes the JSON, and
+  returns before any window, GPU or event loop exists; it opens no save slot, and its names are
+  always the fallback locale (`en`), whatever default the game's config carries. The audio and
+  gamepad backends are still probed on the way (they degrade to disabled). `scripts/build_wasm.sh`
+  runs this host build on every bundle build and refuses an empty manifest.
+- **Who reads it:** The site (`insiculous_web`) reads each game's manifest at build time.
+  `/achievements/` lists every achievement (locked and unlocked) with full titles and descriptions;
+  `/games/` and `/profile/` take real names from the manifest for unlocked achievements.

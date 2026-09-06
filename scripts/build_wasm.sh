@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Build a game's web (wasm) bundle in the site's drop-in layout.
 #
+# Also runs a host build of the game to export its achievements manifest
+# (requires pkg-config, libasound2-dev and libudev-dev for alsa and libudev).
+#
 # Usage: scripts/build_wasm.sh <game_dir> <slug> [--version vN] [--serve] [--sync <site_public_dir>]
 #   game_dir   path to the game crate (e.g. ../games/pong)
 #   slug       the site slug — output lands in dist/games/<slug>/<version>/
@@ -18,7 +21,7 @@
 #
 # Output (mirrors production URLs so the hardcoded asset base works both
 # locally and deployed):
-#   <game_dir>/dist/games/<slug>/<version>/{game.js, game_bg.wasm, assets/...}
+#   <game_dir>/dist/games/<slug>/<version>/{game.js, game_bg.wasm, achievements.json, assets/...}
 #   <game_dir>/dist/games/<slug>/index.html   (local test page — NOT deployed)
 set -euo pipefail
 
@@ -72,6 +75,16 @@ if [[ "$CLI_VERSION" != "$LOCK_VERSION" ]]; then
     exit 1
 fi
 
+# --- host build prereqs for achievements export ---------------------------
+# The achievements manifest export builds the game natively for the host. On
+# Linux that links against alsa and libudev; other hosts use their own audio
+# and gamepad backends and link neither. Hard fail fast before the wasm build.
+if [[ "$(uname -s)" == "Linux" ]] && ! pkg-config --exists alsa libudev; then
+    echo "ERROR: the achievements export builds the game natively and needs alsa and libudev" >&2
+    echo "Fix:   sudo apt install pkg-config libasound2-dev libudev-dev" >&2
+    exit 1
+fi
+
 # --- build -----------------------------------------------------------------
 if ! grep -q '^\[profile\.wasm-release\]' "$GAME_DIR/Cargo.toml"; then
     echo "ERROR: $GAME_DIR/Cargo.toml has no [profile.wasm-release] section." >&2
@@ -100,6 +113,17 @@ fi
 (cd "$OUT_DIR/assets" && find . -type f ! -name manifest.json | sed 's|^\./||' | sort \
     | python3 -c 'import json,sys; print(json.dumps([l.strip() for l in sys.stdin if l.strip()], indent=2))' \
     > manifest.json)
+
+# --- achievements manifest -------------------------------------------------
+# The site's /achievements/ board lists every achievement from this file (docs/WEB_SAVES.md
+# § The manifest). The native binary writes it from its own registry, so the list is what the
+# game registers — never a copy that can drift. This is a HOST build of the game (the preflight
+# above is what makes a missing system library fail fast).
+(cd "$GAME_DIR" && cargo run --quiet -- --achievements-manifest "$OUT_DIR/achievements.json")
+# An empty array is a game that registers nothing through Game::register_achievements — a
+# manifest the site would publish as "no achievements", so it fails here, not on the page.
+python3 -c 'import json, sys; sys.exit(0 if json.load(open(sys.argv[1])) else 1)' "$OUT_DIR/achievements.json" \
+    || { echo "ERROR: the achievements manifest at $OUT_DIR is missing or empty — does the game implement Game::register_achievements?" >&2; exit 1; }
 
 # --- local test page (mirrors the site's GameEmbed contract) ---------------
 read -r WIDTH HEIGHT <<< "$(python3 - "$GAME_DIR" <<'EOF'

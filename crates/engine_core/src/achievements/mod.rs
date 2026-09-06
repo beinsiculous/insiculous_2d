@@ -33,7 +33,10 @@ pub use toast::{ToastStyle, DEFAULT_TOAST_DURATION};
 use toast::ToastQueue;
 
 use std::collections::HashMap;
+use std::ffi::OsString;
 use std::path::PathBuf;
+#[cfg(not(target_arch = "wasm32"))]
+use std::path::Path;
 
 use crate::save_store::{unix_seconds, JsonSaveSlot, MergeOnLoad, SaveError};
 use glam::Vec2;
@@ -41,6 +44,12 @@ use serde::{Deserialize, Serialize};
 use ui::UIContext;
 
 pub type AchievementError = SaveError;
+
+/// `--achievements-manifest` was given without a usable path — the export was asked for and
+/// cannot happen, which must never fall through to opening the game.
+#[derive(Debug, thiserror::Error)]
+#[error("--achievements-manifest needs a file path")]
+pub struct ManifestFlagError;
 
 /// An achievement definition.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -99,6 +108,8 @@ impl MergeOnLoad for SaveFile {
 pub struct AchievementManager {
     /// Registered achievement definitions, keyed by id.
     registered: HashMap<String, Achievement>,
+    /// Achievement ids in registration order.
+    registration_order: Vec<String>,
     /// Save slot for unlock records.
     slot: JsonSaveSlot<SaveFile>,
     /// Toasts queued for display (FIFO).
@@ -110,6 +121,7 @@ impl AchievementManager {
     pub fn in_memory() -> Self {
         Self {
             registered: HashMap::new(),
+            registration_order: Vec::new(),
             slot: JsonSaveSlot::in_memory(),
             toasts: ToastQueue::new(),
         }
@@ -122,6 +134,7 @@ impl AchievementManager {
     pub fn with_save_path(path: impl Into<PathBuf>) -> Self {
         Self {
             registered: HashMap::new(),
+            registration_order: Vec::new(),
             slot: JsonSaveSlot::with_path(path),
             toasts: ToastQueue::new(),
         }
@@ -144,9 +157,13 @@ impl AchievementManager {
 
     /// Register an achievement definition. Call once per achievement at startup.
     ///
-    /// Registering the same id twice overwrites the previous definition.
+    /// Registering the same id twice overwrites the previous definition while
+    /// keeping its position in registration order.
     pub fn register(&mut self, achievement: Achievement) {
-        self.registered.insert(achievement.id.clone(), achievement);
+        let id = achievement.id.clone();
+        if self.registered.insert(id.clone(), achievement).is_none() {
+            self.registration_order.push(id);
+        }
     }
 
     /// Returns the definition for an id, if registered.
@@ -154,9 +171,12 @@ impl AchievementManager {
         self.registered.get(id)
     }
 
-    /// All registered achievements (order not guaranteed).
+    /// All registered achievements in registration order; re-registering an id
+    /// keeps its place.
     pub fn all(&self) -> impl Iterator<Item = &Achievement> {
-        self.registered.values()
+        self.registration_order
+            .iter()
+            .filter_map(|id| self.registered.get(id))
     }
 
     /// Number of registered achievements.
@@ -234,6 +254,68 @@ impl AchievementManager {
     pub fn load(&mut self) -> Result<(), AchievementError> {
         self.slot.reload()
     }
+
+    /// The registry as the site's manifest: a JSON array of every registered achievement, in
+    /// registration order, each the serde form of `Achievement` — {id, name, description, hidden}.
+    /// Pretty-printed with a trailing newline. This is the file docs/WEB_SAVES.md § The manifest
+    /// specifies; the site parses these four fields and nothing else.
+    pub fn manifest_json(&self) -> Result<String, AchievementError> {
+        let entries: Vec<&Achievement> = self.all().collect();
+        let mut json = serde_json::to_string_pretty(&entries)?;
+        json.push('\n');
+        Ok(json)
+    }
+
+    /// Write manifest_json() to `path` through the save store's atomic write (temp file + rename,
+    /// parent directories created), so a reader never sees a half-written file and a build
+    /// script's output dir need not exist yet. Native only: the flag that asks for it has no web
+    /// form.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn write_manifest(&self, path: &Path) -> Result<(), AchievementError> {
+        let json = self.manifest_json()?;
+        crate::save_store::write(path, &json)?;
+        Ok(())
+    }
+}
+
+/// The path after `--achievements-manifest` in `args`, in either form —
+/// `--achievements-manifest <path>` or `--achievements-manifest=<path>`: Ok(None) when the flag
+/// is absent, Ok(Some(path)) when it carries a value, and Err(ManifestFlagError)
+/// when it is the last token, the next token starts with `--`, or the `=` form is empty — an
+/// export that was asked for and cannot happen must never fall through to opening the game.
+/// The space form refuses a value starting with `--` because that is how a forgotten path
+/// looks; a path that really starts with `--` takes the `=` form. Arguments arrive as
+/// `OsString` so a non-UTF-8 argument on a native launch is never a panic: the flag is matched
+/// through a lossy view and the path keeps its bytes. Pure, so the parse is tested without
+/// touching the real command line.
+pub fn manifest_export_path_from(
+    args: impl Iterator<Item = OsString>,
+) -> Result<Option<PathBuf>, ManifestFlagError> {
+    let mut args = args;
+    while let Some(arg) = args.next() {
+        let text = arg.to_string_lossy();
+        if text == "--achievements-manifest" {
+            let next_arg = args.next();
+            match next_arg {
+                Some(value) if !value.to_string_lossy().starts_with("--") => {
+                    return Ok(Some(PathBuf::from(value)))
+                }
+                _ => return Err(ManifestFlagError),
+            }
+        } else if let Some(value) = text.strip_prefix("--achievements-manifest=") {
+            if value.is_empty() {
+                return Err(ManifestFlagError);
+            }
+            return Ok(Some(PathBuf::from(value)));
+        }
+    }
+    Ok(None)
+}
+
+/// Parse `--achievements-manifest` from command-line arguments.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn manifest_export_path() -> Result<Option<PathBuf>, ManifestFlagError> {
+    manifest_export_path_from(std::env::args_os().skip(1))
 }
 
 impl Default for AchievementManager {
