@@ -576,3 +576,24 @@ insiculous_web#52 (a fullscreen toggle and a chrome-less pop-out route). The sav
 the export and the native drop-in were not part of this check and stay owed; his Firefox
 attempt showed a black canvas because Firefox on Linux has no WebGPU, as the page's own status
 line says. Production (`main`) is untouched until the promote step.
+
+## 2026-09-07 — Web Playground in production: the pointer offset and the trackpad zoom fixed, then `dev → main`
+Jesse's two findings fixed the same evening (insiculous_2d d82c6ab, insiculous_web 9fac950 —
+the seven bundles rebuilt). #116 was not the sizes: winit focuses the canvas on every press with
+a plain `focus()`, which scrolls a partly visible canvas into view between press and release,
+so every hit landed above the cursor by the scroll; a capture-phase listener now focuses a
+pressed canvas without scrolling before winit's does. The sizes were wrong too — a `Resized`
+carried the asked-for 1280×800 while the page held the box at 1014×634 and no observer event
+ever said so — and the canvas's client box is now the one size for the surface, the camera, the
+tracked window and the game, with the boot's forcing resize kept for the 1×1 pre-layout trap.
+#117: zoom is proportional to the wheel delta and clamped to one notch a frame. Kimi reviewed
+the diff three times (reviews 34–36: 4, 4 and 2 findings, all accepted; round 1 changed the
+design, because the first override would have re-opened the boot trap). Measured with a
+Playwright probe under WebGPU: attributes, box and texture agree at pixel ratios 1 and 2, and a
+click sweep down the hierarchy maps identically with the canvas on screen and below the fold.
+**Jesse's re-check on staging: clicks land.** Then `dev → main` in every repository, all
+fast-forwards; the site's `main` deploy went green and **`/playground/` is live on
+beinsiculous.com**, probed the same way. Follow-ups: insiculous_2d#118 (the games' live v2
+bundles need a v3 to carry the fix), #119 (a browser wheel notch is about a hundred pixels),
+#120 (a drag from outside the canvas). Still not reported by a person: the save-and-reload,
+the export, and the native drop-in; the production check covers load, run and select.
