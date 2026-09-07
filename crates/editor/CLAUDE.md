@@ -69,6 +69,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 | Rotate gizmo dead-center clicks must fall through to entity picking | `src/gizmo/tests.rs test_rotate_ring_is_an_annulus_so_a_dead_center_press_falls_through_to_picking` |
 | Hard floors for inspector editors and command API must clamp negative or zero dimensions | `src/command_api/write_tests.rs test_set_sanitizes_collider_extents_to_the_gui_floor` |
 | Asset scanning must use `common::vfs::list_files` instead of `std::fs` so recursive asset enumeration works on wasm; it never follows symlinks (assets are copies by convention), so a linked tree lists as empty | `src/asset_browser.rs test_nested_images_and_scenes_listed_with_slash_joined_relative_paths_while_txt_is_ignored`; `common/src/vfs/tests.rs test_vfs_list_files_never_follows_symlinks` |
+| Wheel zoom is proportional to the delta in notches and clamped to one notch per frame: a trackpad streams fractions of a line every frame, and a fixed factor per frame made a gentle scroll compound like sixty notches a second; a hard flick that delivers a line or more a frame still zooms a notch a frame, the mouse wheel's own ceiling | `src/viewport_input.rs test_a_fraction_of_a_wheel_line_zooms_by_the_same_fraction_of_the_factor`, `test_a_frame_of_wheel_zooms_at_most_one_notch` |
 
 
 ## Key Patterns

@@ -107,9 +107,20 @@ impl<G: Game> GameRunner<G> {
                 // Reconfiguring at the (always nonzero) GameConfig size
                 // resets the canvas attrs and breaks that feedback loop;
                 // genuine page-layout resizes still arrive as normal winit
-                // Resized events afterwards.
+                // Resized events afterwards, where the handler prefers the
+                // canvas's shown box — this call is the one that must not.
                 self.window_manager.resize(self.config.width, self.config.height);
                 self.render_manager.resize(self.config.width, self.config.height);
+                // Now the attributes are sane, the page may still hold the box
+                // smaller than the configured size, and since the box does not
+                // change from here no observer event will say so: read it once
+                // and follow it. In the 1x1 trap the box follows the attributes
+                // just reset, so it reads equal and this does nothing.
+                if let Some((width, height)) = self.shown_size() {
+                    if (width, height) != (self.config.width, self.config.height) {
+                        self.resize_everything(width, height);
+                    }
+                }
                 // The game draws its own frames from here on.
                 crate::web::set_boot_status("");
             }

@@ -96,6 +96,26 @@ impl<G: Game> GameRunner<G> {
         }
     }
 
+    /// The one place a new size reaches its three consumers — the tracked window size, the
+    /// surface and camera, the game — so the boot's correction and the `Resized` event can
+    /// never leave one of them behind.
+    pub(super) fn resize_everything(&mut self, width: u32, height: u32) {
+        self.window_manager.resize(width, height);
+        self.render_manager.resize(width, height);
+        self.game.on_resize(width, height);
+    }
+
+    /// The canvas's shown size on the web, `None` natively or before the canvas has a box.
+    #[cfg(target_arch = "wasm32")]
+    pub(super) fn shown_size(&self) -> Option<(u32, u32)> {
+        self.window_manager.window().and_then(|window| renderer::shown_size(window))
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(super) fn shown_size(&self) -> Option<(u32, u32)> {
+        None
+    }
+
     /// Clean shutdown: notify the game, persist input bindings, tear the
     /// scene down, and exit the event loop. Shared by the window close
     /// button and game-requested exits (`GameContext::request_exit`).
@@ -186,12 +206,13 @@ impl<G: Game> ApplicationHandler<()> for GameRunner<G> {
                 self.shutdown(event_loop);
             }
             WindowEvent::Resized(size) => {
-                // Update window manager's tracked size
-                self.window_manager.resize(size.width, size.height);
-                // Update render manager
-                self.render_manager.resize(size.width, size.height);
-                // Notify game
-                self.game.on_resize(size.width, size.height);
+                // On the web the event can carry the size the window was asked
+                // for while the page holds the canvas box smaller; the box is
+                // what is drawn, shown and pointed at, so every consumer below
+                // gets it (`renderer::shown_size` says why the boot's forcing
+                // resize is the one exception).
+                let (width, height) = self.shown_size().unwrap_or((size.width, size.height));
+                self.resize_everything(width, height);
             }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 self.window_manager.set_scale_factor(scale_factor);

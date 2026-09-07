@@ -191,19 +191,17 @@ impl ViewportInputHandler {
             self.state.panning = false;
         }
 
-        // Handle zoom input (scroll wheel)
+        // Zoom by the wheel delta in notches: a mouse notch is one line and zooms by the
+        // factor; a trackpad streams fractions of a line every frame and zooms by the same
+        // fraction of it. One frame zooms at most one notch, because a browser coalesces a
+        // fast flick into a single large delta. The fixed per-frame factor this replaced
+        // zoomed a full notch on any delta at all, so a gentle two-finger scroll compounded
+        // like sixty notches a second; a hard flick that delivers a line or more every
+        // frame still zooms a notch a frame, which is the mouse wheel's own ceiling.
         if input_state.scroll_delta.abs() > 0.001 {
-            let factor = if self.config.invert_zoom {
-                if input_state.scroll_delta > 0.0 {
-                    1.0 / self.config.zoom_factor
-                } else {
-                    self.config.zoom_factor
-                }
-            } else if input_state.scroll_delta > 0.0 {
-                self.config.zoom_factor
-            } else {
-                1.0 / self.config.zoom_factor
-            };
+            let notches = input_state.scroll_delta.clamp(-1.0, 1.0);
+            let signed_notches = if self.config.invert_zoom { -notches } else { notches };
+            let factor = self.config.zoom_factor.powf(signed_notches);
 
             viewport.zoom_at(factor, mouse_pos);
             result.consumed = true;
@@ -353,6 +351,30 @@ mod tests {
         assert!(!handler.is_panning());
         assert!(!released.clicked, "a pan is never a pick");
         assert_eq!(viewport.camera_position(), Vec2::new(-50.0, 20.0), "release moves nothing");
+    }
+
+    #[test]
+    fn test_a_fraction_of_a_wheel_line_zooms_by_the_same_fraction_of_the_factor() {
+        // A trackpad delivers quarter-lines every frame; sixty of them must not compound
+        // like sixty notches.
+        let (mut viewport, mapping, mut input, mut handler) = rig();
+        input.mouse_mut().update_position(600.0, 200.0);
+        input.mouse_mut().update_wheel_delta(0.25);
+        handler.handle_input_simple(&mut viewport, &mapping, &input);
+        assert!(
+            (viewport.target_camera_zoom() - 1.1f32.powf(0.25)).abs() < 1e-6,
+            "a quarter line zooms by the quarter power of the factor"
+        );
+    }
+
+    #[test]
+    fn test_a_frame_of_wheel_zooms_at_most_one_notch() {
+        // A coalesced flick arrives as one large delta; it is one notch, not forty.
+        let (mut viewport, mapping, mut input, mut handler) = rig();
+        input.mouse_mut().update_position(600.0, 200.0);
+        input.mouse_mut().update_wheel_delta(40.0);
+        handler.handle_input_simple(&mut viewport, &mapping, &input);
+        assert!((viewport.target_camera_zoom() - 1.1).abs() < 1e-6, "clamped to one notch");
     }
 
     #[test]
