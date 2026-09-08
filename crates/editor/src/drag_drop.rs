@@ -20,6 +20,8 @@ pub enum DragPayload {
     /// (used for labels and status messages); `handle` is the loaded
     /// renderer texture id.
     Texture { handle: u32, path: String },
+    /// A script from the asset browser. `path` is the asset-relative path.
+    Script { path: String },
 }
 
 #[derive(Debug, Default)]
@@ -181,5 +183,20 @@ mod tests {
         dd.arm(other, Vec2::ZERO);
 
         assert_eq!(dd.dragging_payload(), Some(&texture_payload()), "the in-flight drag wins");
+    }
+
+    #[test]
+    fn test_script_payload_drags_and_drops() {
+        let mut dd = DragDropState::new();
+        let payload = DragPayload::Script { path: "scripts/paddle.rhai".into() };
+        dd.arm(payload.clone(), Vec2::new(10.0, 10.0));
+        dd.begin_frame(Vec2::new(30.0, 30.0), true, false);
+        assert_eq!(dd.dragging_payload(), Some(&payload));
+
+        dd.begin_frame(Vec2::new(50.0, 50.0), false, true);
+        assert_eq!(
+            dd.take_drop_in(ANYWHERE),
+            Some((payload, Vec2::new(50.0, 50.0)))
+        );
     }
 }

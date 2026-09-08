@@ -27,6 +27,7 @@ mod world;
 // Domain modules - public for documentation, also re-exported at crate root
 pub mod audio_components;
 pub mod behavior;
+pub mod blackboard;
 pub mod lifetime;
 pub mod component_registry;
 pub mod event;
@@ -50,6 +51,7 @@ pub mod prelude;
 pub use query::*;
 pub use audio_components::*;
 pub use behavior::*;
+pub use blackboard::Blackboard;
 pub use lifetime::{Lifetime, LifetimeSystem};
 pub use component::*;
 // NOTE: `component_registry::ComponentRegistry` (the dynamic name-keyed

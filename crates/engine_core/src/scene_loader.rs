@@ -89,6 +89,16 @@ impl SceneLoader {
         Self::parse(&content)
     }
 
+    /// First `.ron` scene in a directory, in sorted order, or `None` when the
+    /// directory holds no scene or cannot be read. Reads through the VFS, so a
+    /// browser build finds the scenes its bundle preloaded.
+    ///
+    /// A game that names no scene file loads whatever this returns, which is
+    /// what lets a project exported from the playground drop onto it and run.
+    pub fn first_scene_in(scenes_dir: &Path) -> Option<std::path::PathBuf> {
+        common::vfs::list_dir_files(scenes_dir, "ron").into_iter().next()
+    }
+
     /// Parse scene data from a RON string
     pub fn parse(content: &str) -> Result<SceneData, SceneLoadError> {
         ron::from_str(content).map_err(SceneLoadError::RonError)
@@ -366,5 +376,26 @@ mod tests {
         assert_eq!(position_of(&all_three[0]), (500.0, 0.0));
         assert!(matches!(&all_three[1], ComponentData::EntityTag { tag } if tag == "ball"));
         assert!(matches!(&all_three[2], ComponentData::Sprite { .. }));
+    }
+
+    #[test]
+    fn first_scene_in_is_the_sorted_first_ron_whatever_the_dir_order() -> std::io::Result<()> {
+        // Which scene a game opens must not depend on `read_dir`'s order.
+        let dir = tempfile::tempdir()?;
+        std::fs::write(dir.path().join("zeta.ron"), "x")?;
+        std::fs::write(dir.path().join("alpha.RON"), "x")?;
+        std::fs::write(dir.path().join("aaa.txt"), "x")?;
+
+        let first = SceneLoader::first_scene_in(dir.path()).expect("a scene exists");
+        assert_eq!(first.file_name().and_then(|n| n.to_str()), Some("alpha.RON"));
+
+        let empty = tempfile::tempdir()?;
+        assert_eq!(SceneLoader::first_scene_in(empty.path()), None, "no .ron file, no scene");
+        assert_eq!(
+            SceneLoader::first_scene_in(&dir.path().join("missing")),
+            None,
+            "unreadable dir, no scene"
+        );
+        Ok(())
     }
 }

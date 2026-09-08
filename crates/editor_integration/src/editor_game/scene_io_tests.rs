@@ -156,7 +156,7 @@ fn test_load_instantiate_failure_preserves_the_live_world() -> std::io::Result<(
 
 #[test]
 fn test_load_replaces_the_world_publishes_physics_and_save_keeps_the_block() -> std::io::Result<()> {
-    // The old EditorApp bypass load left physics_settings None, so a
+    // An old bypass load left physics_settings None, so a
     // save silently DROPPED the scene's gravity/scale. Through the real
     // load path the block round-trips, and the settings reach the world as
     // a resource for the host game's lazy physics preview.
@@ -218,3 +218,53 @@ fn test_new_scene_resets_world_and_editor_state() {
     assert!(editor.physics_settings.is_none());
     assert!(!world.has_resource::<PhysicsSettings>(), "no inherited physics settings");
 }
+
+#[test]
+fn test_save_scene_with_creates_parent_directories_and_writes_valid_scene() -> std::io::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let nested_path = dir.path().join("nested/sub/deep/level.scene.ron");
+    let mut editor = editor_game();
+    let mut world = World::new();
+    let entity = spawn_at(&mut world, Vec2::new(10.0, 20.0));
+    world.add_component(&entity, ecs::Name::new("hero")).ok();
+
+    editor
+        .save_scene_with(&mut world, &test_texture_path, nested_path.clone())
+        .expect("save succeeds and creates parent directories");
+
+    assert!(nested_path.exists());
+    let written = std::fs::read_to_string(&nested_path)?;
+    assert!(written.contains("hero"));
+    Ok(())
+}
+
+#[test]
+fn test_default_scene_path_joins_asset_base() {
+    let mut editor = editor_game();
+    let base = PathBuf::from("/playground/v1/assets/projects/my_project/assets");
+    editor.asset_base = base.clone();
+
+    let default_path = editor.default_scene_path();
+    assert!(default_path.starts_with(&base), "default scene path must start with asset_base");
+    assert_eq!(default_path, base.join(crate::constants::DEFAULT_SCENE_PATH));
+}
+
+#[test]
+fn test_resolve_asset_path_joins_relative_path_under_base() {
+    let mut editor = editor_game();
+    let base = PathBuf::from("my_game/assets");
+    editor.asset_base = base.clone();
+
+    let relative_target = std::path::Path::new("scenes/x.scene.ron");
+    let resolved = editor.resolve_asset_path(relative_target);
+    assert_eq!(resolved, base.join("scenes/x.scene.ron"));
+
+    // Absolute path is untouched
+    let absolute_target = std::path::Path::new("/tmp/custom.scene.ron");
+    assert_eq!(editor.resolve_asset_path(absolute_target), absolute_target);
+
+    // Path already under base is untouched
+    let already_under_base = base.join("scenes/y.scene.ron");
+    assert_eq!(editor.resolve_asset_path(&already_under_base), already_under_base);
+}
+

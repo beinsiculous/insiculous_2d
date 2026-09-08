@@ -42,6 +42,7 @@ Cross-cutting glue biases toward `engine_core`: `ui` defines `DrawCommand` (rend
 - `assets/sprite_sheet.rs` — `AssetManager::load_sprite_sheet` order: read sidecar, parse, probe PNG dims, validate, then load texture so bad sheets leave no handle.
 - `assets.rs` — asset loading; `create_texture_from_rgba` validates before device with `"#rgba"` sentinel (does not survive save/load).
 - `behavior_runner/` — entity behavior system: runner dispatch loop, handlers, and `CameraFollow` with look-ahead.
+- `scripting/` — game scripting subsystem: `ScriptRegistry`, `ScriptRunner`, Rhai backend, and built-in behaviors.
 - `pause.rs` — shared `PauseMenu`; headless-testable via `&InputSettings + &InputHandler + window_size` (mouse reads live inside paused branch only).
 - `menu_panel.rs` — `MenuPanel` chrome; resting cursor never fights keyboard nav, click selects and confirms.
 - `menu_input.rs` — shared menu-screen input handling (keyboard, arrows, and gamepad navigation with wraparound).

@@ -19,22 +19,27 @@ use editor::EditorContext;
 use editor::world_snapshot::WorldSnapshot;
 use engine_core::contexts::{GameContext, RenderContext};
 use engine_core::scene_data::PhysicsSettings;
-use engine_core::{AchievementManager, Game, GameConfig, Strings};
+use engine_core::{AchievementManager, Game, Strings};
 
-use crate::constants::{clamp_editor_window_size, EDITOR_PREFS_PATH};
+use crate::constants::EDITOR_PREFS_PATH;
 use crate::panel_renderer;
 
 mod api;
 mod gizmo_drag;
 pub mod headless;
 mod menu_actions;
+mod open_source;
 mod play_session;
+mod preferences;
+mod run_options;
 mod scene_confirm;
 mod scene_io;
+mod script_status;
 mod shortcuts;
 mod viewport_interaction;
 
 pub(crate) use viewport_interaction::{build_pickable_entities, chrome_owns_mouse};
+pub use run_options::{run_game_with_editor, run_game_with_editor_opts, EditorRunOptions};
 
 /// Wraps a user's `Game` with the full editor UI overlay.
 struct EditorGame<G: Game> {
@@ -77,6 +82,16 @@ struct EditorGame<G: Game> {
     /// (the standalone binary passes it via `EditorRunOptions` so
     /// scene_path/physics/dirty-state are recorded like any other load).
     initial_scene: Option<std::path::PathBuf>,
+    pub(super) asset_base: std::path::PathBuf,
+    pub(super) prefs_slot: std::path::PathBuf,
+    pub(super) last_saved_prefs: Option<editor::EditorPreferences>,
+    pub(super) pending_prefs: Option<editor::EditorPreferences>,
+    pub(super) prefs_stable_time: f32,
+    pub(super) dirty_flag: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    pub(super) persist_pending: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    pub(super) script_errors: Option<std::sync::Arc<std::sync::Mutex<Vec<String>>>>,
+    pub(super) play_frames: u32,
+    pub(super) script_error_watermark: usize,
 }
 
 impl<G: Game> EditorGame<G> {
@@ -100,6 +115,16 @@ impl<G: Game> EditorGame<G> {
             api: api::ApiSession::default(),
             scene_confirm: scene_confirm::SceneConfirm::default(),
             initial_scene: None,
+            asset_base: std::path::PathBuf::new(),
+            prefs_slot: std::path::PathBuf::from(EDITOR_PREFS_PATH),
+            last_saved_prefs: None,
+            pending_prefs: None,
+            prefs_stable_time: 0.0,
+            dirty_flag: None,
+            persist_pending: None,
+            script_errors: None,
+            play_frames: 0,
+            script_error_watermark: 0,
         }
     }
 
@@ -236,39 +261,9 @@ impl<G: Game> EditorGame<G> {
         if self.editor.scene_view_bounds().is_some() {
             ctx.ui.pop_clip_rect();
         }
+        self.track_script_status(ctx.world, ctx.scripts);
     }
 
-    /// Load persisted editor preferences (camera, grid, panel layout).
-    fn load_preferences(&mut self) {
-        let prefs = editor::EditorPreferences::load(std::path::Path::new(EDITOR_PREFS_PATH));
-        self.editor.set_camera_offset(Vec2::new(prefs.camera_position.0, prefs.camera_position.1));
-        self.editor.set_camera_zoom(prefs.camera_zoom);
-        self.editor.set_snap_to_grid(prefs.snap_to_grid);
-        self.editor.set_grid_size(prefs.grid_size);
-        self.editor.set_grid_visible(prefs.grid_visible);
-        prefs.apply_panels(&mut self.editor.dock_area);
-    }
-
-    /// Capture and save editor preferences. Failures are logged, not fatal.
-    fn save_preferences(&self) {
-        let mut prefs = editor::EditorPreferences {
-            camera_position: (self.editor.camera_offset().x, self.editor.camera_offset().y),
-            camera_zoom: self.editor.camera_zoom(),
-            last_scene_path: self
-                .editor
-                .scene_path()
-                .and_then(|p| p.to_str())
-                .map(|s| s.to_string()),
-            snap_to_grid: self.editor.is_snap_to_grid(),
-            grid_size: self.editor.grid_size(),
-            grid_visible: self.editor.is_grid_visible(),
-            panels: Vec::new(),
-        };
-        prefs.capture_panels(&self.editor.dock_area);
-        if let Err(e) = prefs.save(std::path::Path::new(EDITOR_PREFS_PATH)) {
-            log::warn!("Failed to save editor preferences: {}", e);
-        }
-    }
 
     /// Update status bar stats and render it.
     fn render_status_bar(&mut self, ctx: &mut GameContext, window_size: Vec2) {
@@ -334,6 +329,8 @@ impl<G: Game> EditorGame<G> {
     /// window title on change, and clip engine UI to the scene viewport.
     fn finish_frame(&mut self, ctx: &mut GameContext) {
         self.sync_dirty_mirror();
+        self.save_preferences_if_changed(ctx.delta_time);
+        self.open_pending_source();
 
         self.render_status_bar(ctx, ctx.window_size);
 
@@ -368,7 +365,17 @@ impl<G: Game> EditorGame<G> {
     /// written; it runs in `finish_frame` and after a save or scene reset, so
     /// anything reading dirtiness earlier in a frame consults the history.
     pub(super) fn sync_dirty_mirror(&mut self) {
-        self.editor.set_dirty(self.command_history.is_dirty());
+        let is_command_dirty = self.command_history.is_dirty();
+        let is_persist_pending = self
+            .persist_pending
+            .as_ref()
+            .map(|flag| flag.load(std::sync::atomic::Ordering::Relaxed))
+            .unwrap_or(false);
+        let dirty = is_command_dirty || is_persist_pending;
+        self.editor.set_dirty(dirty);
+        if let Some(flag) = &self.dirty_flag {
+            flag.store(dirty, std::sync::atomic::Ordering::Relaxed);
+        }
     }
 }
 
@@ -392,6 +399,7 @@ impl<G: Game> Game for EditorGame<G> {
 
         // Delegate to inner game
         self.inner.init(ctx);
+        self.asset_base = std::path::PathBuf::from(ctx.assets.base_path());
 
         // Whatever font the game set up is the game view's baseline; locale
         // fonts layer on top of it during play (see update_inner_game).
@@ -427,7 +435,7 @@ impl<G: Game> Game for EditorGame<G> {
 
         // Open the initial scene through the REAL editor load path:
         // dry-run guard, scene_path, physics settings + resource, history
-        // reset — the old EditorApp bypass load recorded none of those, so
+        // reset — an old bypass load recorded none of those, so
         // the title stayed "Untitled" and a save silently dropped physics.
         if let Some(path) = self.initial_scene.take() {
             self.load_scene_with_feedback(ctx.world, ctx.assets, &path);
@@ -503,45 +511,13 @@ impl<G: Game> Game for EditorGame<G> {
     }
 
     fn on_exit(&mut self) {
-        self.save_preferences();
+        self.save_preferences_now();
         self.inner.on_exit();
     }
-}
 
-/// Run a game with the full editor UI overlay.
-///
-/// This wraps the given game in `EditorGame`, which intercepts all `Game` trait
-/// methods to add editor chrome (menu bar, toolbar, dock panels, hierarchy,
-/// inspector, gizmo, tool shortcuts, play/pause/stop) around the user's game.
-///
-/// # Minimum window size
-/// The editor needs at least 1024x720 to be usable. If the provided config
-/// specifies a smaller size, it will be enlarged.
-pub fn run_game_with_editor<G: Game>(game: G, config: GameConfig) -> Result<(), engine_core::EngineError> {
-    run_game_with_editor_opts(game, config, EditorRunOptions::default())
-}
-
-/// Options for [`run_game_with_editor_opts`].
-#[derive(Default)]
-pub struct EditorRunOptions {
-    /// Command-API request channel.
-    pub api_rx: Option<std::sync::mpsc::Receiver<String>>,
-    /// A scene to open through the editor's load path right after init —
-    /// how the standalone binary hands over its project's first scene.
-    pub initial_scene: Option<std::path::PathBuf>,
-}
-
-/// [`run_game_with_editor`] with the full option set.
-pub fn run_game_with_editor_opts<G: Game>(
-    game: G,
-    config: GameConfig,
-    opts: EditorRunOptions,
-) -> Result<(), engine_core::EngineError> {
-    let config = clamp_editor_window_size(config);
-    let mut editor_game = EditorGame::new(game);
-    editor_game.api.receiver = opts.api_rx;
-    editor_game.initial_scene = opts.initial_scene;
-    engine_core::run_game(editor_game, config)
+    fn register_scripts(&mut self, registry: &mut engine_core::scripting::ScriptRegistry) {
+        self.inner.register_scripts(registry);
+    }
 }
 
 #[cfg(test)]
@@ -556,6 +532,8 @@ mod camera_follow_tests;
 mod gizmo_drag_tests;
 #[cfg(test)]
 mod play_session_tests;
+#[cfg(test)]
+mod preferences_tests;
 #[cfg(test)]
 mod scene_confirm_tests;
 #[cfg(test)]

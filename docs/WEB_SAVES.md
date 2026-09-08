@@ -31,6 +31,18 @@ Keys are deliberately separate per game and per document type (the site's
 `myfort-store.js` precedent: sharing a key lets one document migrate into
 another when either changes shape).
 
+The Web Playground (`/playground/`) stores editor UI preferences under the
+`beinsiculous.playground.editor_prefs` key via the same `SaveStore` contract
+— the same JSON `EditorPreferences` document the native `editor_prefs.json`
+holds, written on the editor's settle rule. The project files themselves live in
+IndexedDB, not in `SaveStore`; `docs/WEB_PLAYGROUND.md` is that contract.
+
+A Rust game opened in the editor at `/playground/<slug>/` keeps its own editor
+preferences under `beinsiculous.playground.<slug>.editor_prefs` — one key per
+game, because the preferences carry the camera. That session writes nothing
+else: none of the `beinsiculous.games.<slug>.*` keys above are set, so no board
+on the site records an editor session.
+
 ## Values — byte-identical to the native save files
 
 Every value is exactly the pretty-printed JSON the engine writes natively

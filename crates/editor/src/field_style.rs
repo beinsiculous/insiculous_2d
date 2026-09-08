@@ -114,6 +114,8 @@ pub struct EditableFieldStyle {
     pub slot_bg: Color,
     /// Border highlight while a compatible drag hovers a drop target
     pub drop_highlight: Color,
+    /// Text colour for a value the editor cannot resolve, such as an unknown script id
+    pub error_color: Color,
     /// Font size for field name labels and values
     pub label_font: f32,
     /// Font size for component headers/section titles
@@ -164,6 +166,7 @@ impl Default for EditableFieldStyle {
             ],
             slot_bg: Color::new(0.18, 0.18, 0.18, 1.0),
             drop_highlight: Color::new(0.0, 0.47, 0.83, 1.0),
+            error_color: Color::new(1.0, 0.27, 0.27, 1.0),
             label_font: 14.0,
             header_font: 16.0,
             axis_font: 12.0,

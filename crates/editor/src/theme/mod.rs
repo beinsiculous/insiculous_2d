@@ -302,6 +302,7 @@ impl EditorTheme {
             channel_labels: self.channel_labels,
             slot_bg: self.surface_3,
             drop_highlight: self.accent_blue,
+            error_color: self.error_red,
             label_font: self.fonts.body,
             header_font: self.fonts.heading,
             axis_font: self.fonts.small,

@@ -67,6 +67,12 @@ impl ScrollState {
         self.offset
     }
 
+    /// Set a target scroll offset, to be clamped against content bounds during
+    /// the next frame.
+    pub fn scroll_to(&mut self, offset: f32) {
+        self.offset = offset;
+    }
+
     fn max_scroll(&self, viewport_height: f32) -> f32 {
         (self.last_content_height - viewport_height).max(0.0)
     }
@@ -127,5 +133,17 @@ mod tests {
         // panel never shows blank space past its last row.
         scroll.end_frame(120.0, 100.0);
         assert_eq!(scroll.offset(), 20.0);
+    }
+
+    #[test]
+    fn test_scroll_to_past_content_clamps_at_next_begin_frame() {
+        let mut scroll = ScrollState::default();
+        scroll.end_frame(200.0, 100.0);
+        scroll.scroll_to(500.0);
+        assert_eq!(scroll.offset(), 500.0, "scroll_to sets the offset directly");
+
+        let clamped = scroll.begin_frame(bounds(), Vec2::ZERO, 0.0, 100.0);
+        assert_eq!(clamped, 100.0, "the next begin_frame clamps to max_scroll");
+        assert_eq!(scroll.offset(), 100.0);
     }
 }

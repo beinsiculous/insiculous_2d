@@ -412,3 +412,188 @@ inverted the springs and exploded to NaN: `normalized()` keeps every physical co
 parented grid follows its rig; F3 `same_shape` + `apply_grid_tunables` — only a lattice
 change rebuilds, color/visibility/stiffness edits land on the live mesh and a ripple
 survives them.)
+
+## 2026-09-04 — Web Playground batch 0: branches, close-outs, the small site fix
+Planner-only opening of the Web Playground effort (`coordination/web-playground/plan.md`,
+milestone #48/#49): `jesse` fast-forwarded onto `dev` in the engine and the site, the effort
+directory created with its plan and its reviewer ledger, Editor Sprint 6's five issues
+(#46, #51, #54, #55, #66) closed against the PROGRESS entry and commit that shipped each, and
+`insiculous_web#4` fixed — the WebGPU gate must await `requestDevice` (`GameEmbed.astro:92`,
+commit acf3df4). No executor; every commit under the review threshold.
+(The plan itself took six rounds before a line was typed: kimi 54 findings across v1–v6,
+gemini 52, adjudicated in rebuttal 1 through rebuttal 7. Jesse settled it at v6 —
+"this is v7, the settled plan" — with the rule that every later correction goes into the
+acting batch's own section, never a side section.)
+
+## 2026-09-04 — Web Playground batch 1: the write and list seams (2cdbcc1)
+`vfs` gained the write and list seams the browser store would need — `remove_prefix`,
+`list_files`, empty-path refusal, file-at-prefix removal, and a native-only `MAX_LIST_DEPTH`
+— with `scene_serializer` and the editor's asset browser moved onto them, and
+`load_preferences_from(slot)` landed a batch early as the seam batch 3's `prefs_slot` needed.
+Authored by gemini from `handoff-1.md`; kimi review 4 (3 findings, 1 accepted and 2
+policy rebuts against the round-1 never-follow-symlinks ruling) and Claude's review 4
+(4 accepted — a magic number where a constant had been deleted, silent prefs-load failures,
+the lost "absent prefs start from defaults" test, and the deletion grep the report omitted);
+rebuttal 4.
+
+## 2026-09-04 — Web Playground batch 2: the data-only host (936bcf9)
+The host that runs a scene with no game crate moved into `editor_integration` as
+`project_host.rs`, and `src/bin/editor.rs` went thin behind it. **Ruling recorded:** the host
+never invents physics — a scene with no `physics:` block runs Play with no `PhysicsSystem` and
+behaviors move transforms directly, because with one present a body-less entity's velocity
+goes to a rapier body that does not exist, and the old platformer-gravity default froze every
+pure-behavior scene. Also landed: named entities rebuilt every Playing frame (the command API
+creates and renames mid-Play), a logged initialisation failure, and `update_frame` as the
+headless seam batch 7's script phases would hook.
+Authored by gemini; kimi review 8 (4 accepted) and Claude's review 8 (4);
+rebuttal 8. Both reviewers caught the same thing — the dropped platformer fallback was an
+unauthorised behaviour change and the round's mandated doc was missing — and the batch-2 miss
+became the loop's standing rule about where corrections are filed.
+
+## 2026-09-04 — Web Playground batch 3: the `playground` crate (1462cbe)
+The web entry, the IndexedDB project store and the JS bridge: per-path put chains with the CAS
+chained inside the IndexedDB callback (a transaction goes inactive across an await), a write
+epoch that `drain_then_epoch()` bumps on switch, reset and import, an orphan sweep that spares
+bundled slugs, and `prefs_slot` read on both the save and the load side. Three code rounds:
+the section correction (kimi review 9, 5 findings; gemini's review 9, 6;
+rebuttal 9), round 1 (kimi review 10 6, planner review 10 (Claude) 18 —
+the batch had shipped the put state machine with no driver, and the transaction adapter's
+abort handler never read the CAS cell, so a real `StaleRevision` landed as a backend error and
+was retried instead of surfaced), round 2 on gemini's fixes (review 11 6,
+review 11 (Claude) 4 — the round-1 prescription was itself a defect: a put callback's early
+`Ok` survived a quota abort and resolved as success, silent data loss), and round 3 on the
+planner's fixes (kimi review 12, 7). Rebuttals 9–12. (Reviews and rebuttals 1–19 were transient
+`review/` files and are gone from the checkout; they survive as the numbering in
+`coordination/web-playground/plan.md` and the per-round rows of its reviewer ledger.)
+
+## 2026-09-04 — Web Playground batch 4: the bundle build and the `/playground/` page (e362625 engine, f69f09e site)
+`scripts/build_wasm.sh` gained `--kind games|playground` (the playground deploys to
+`playground/<version>/` with no slug segment, matching the compiled-in `ASSET_BASE`), and the
+site got `/playground/` behind the WebGPU gate with project select, switch, reset and the
+shortcuts list. The page waits on a `playground-ready` event rather than `await init()`, which
+resolves before the spawned boot has loaded the manifests or installed the bridge.
+Section correction: kimi review 13 (3) and gemini's review 13 (4),
+rebuttal 13. Diffs: kimi on the engine half (4) and the site half (3 — the 50 ms response
+poll started before `wasm.default()` resolved and threw an uncaught TypeError per tick), Claude
+on both (11 — the shortcut list said Space plays when Space pans, and a dozen bindings a
+keyboard user needs were missing); two planner-fix rounds after. Reviews and rebuttals 14–17.
+This is the batch whose executor wrote the report three times, one copy under the wrong
+subject directory — the one-file-one-path rule dates from here.
+
+## 2026-09-05 — Web Playground batch 5: project export and import (ceb77be engine, 227a5f2 site)
+A project exports and imports as a zip, client-side: export archives `assets/**` only and
+takes the open project's manifest, import dry-runs every scene before touching the live store
+and touches nothing when it fails, and both sides share a 64 MiB cap. Section correction: kimi
+review 18 (5) and gemini's review 18 (7), all accepted — among them that
+exporting the whole root and then re-adding `project.ron` and `README.md` yields the duplicate
+entries the importer refuses, and that a round-tripped bundled `content_hash` leaves
+`differs_from_bundle` false so the "you imported over the bundled project" note could never
+show. Diffs reviewed by kimi (engine 5, site 4 — revoking the blob URL in the click's own task
+can silently drop the download in Firefox) and Claude (5 — the path rule had landed twice);
+two planner-fix rounds after; reviews and rebuttals 18–19 (the site and round-2 reviews were
+written under `--out` names that did not survive the checkout). Follow-up filed: insiculous_2d#101 (export-cap
+parity — the caps compare archive bytes on one side and decompressed bytes on the other).
+
+## 2026-09-05 — Web Playground batch 6: scripting Stage 2, scripts visible (d4b384a)
+`.rhai` scripts became first-class in the editor's surfaces: visible in the asset browser,
+draggable onto a hierarchy row, and editable on the `Scripts` component with the drop and the
+row click sharing one `suppresses_click()` rule so a drop's release frame does not also
+re-select. Reviews and rebuttals 20–22 — the section correction, the diff, the planner's round
+2. Section correction: kimi (5), Claude (7 — `header` recorded `current_y` after
+`component_header` had advanced it, so the scroll target would have hidden the block title),
+gemini (9, eight of them shared). Diff: kimi (5, 3 accepted and 2 policy — Play never cancels
+an in-flight drag) and Claude (3 — the report misdescribed two behaviours the code got right,
+and the spawned IDE child is never reaped). Two follow-ups filed: #102
+(`ide_command` set only by hand, lost to autosave) and #103 (edits made while Paused are
+erased by Stop — the standing Paused-is-editable rule, audit §1.5).
+
+## 2026-09-05 — Web Playground batch 7: scripting Stage 3, registry, runner, Rhai (f2431ae)
+Scripts execute. `ScriptRegistry`, `ScriptRunner` and `ScriptBehavior` in
+`engine_core::scripting`, shared state in `ecs::Blackboard`, Rhai as the interpreter with an
+operation budget for runaway loops, `// @param` headers for defaults, and the runner stepped by
+whoever owns the physics step. Section correction: kimi (6), gemini (7 — an entity despawned in
+`early_update` still got an `update` call the same frame), Claude (7 — the catalog was held on
+`EditorGame`, where the panel's free functions cannot reach it). Diff: kimi (8 — every Rhai
+instance re-read its file and recompiled twice a frame, with read failures compiled as an empty
+AST) and Claude (11 — `set_velocity_x("Ball", 250)` zeroed the ball's vertical velocity, which
+was the plan's own example, and an out-of-range Rhai integer became 0 on the blackboard); one
+planner-fix round after. Reviews and rebuttals 24–25. Follow-up filed: insiculous_2d#105 (a
+`.rhai` entity header default pre-fills as a Str).
+
+## 2026-09-05 — Web Playground batch 8: pong as a data project, and script editing on the page (59365d4 engine, 23c5471 pong, 6e67f93 site)
+Pong's gameplay shipped as a data project — the scene pinned from the Rust game down to the
+colliders' friction and restitution, its rules in Rhai — and the `/playground/` page gained a
+Scripts panel that opens, edits and saves a `.rhai` file through the bridge. Section
+correction: kimi (5 — the pinned scene omitted everything that makes the ball bounce), gemini
+(5), Claude (2 — the `Scripts` component's RON wire form had never been spelled, so the
+executor had no example to copy). Diff across three repositories: kimi (3) and Claude (5 — a
+failed `playground_read_file` left the select naming a file the panel had not opened, so a
+later Save would write the old text). Reviews and rebuttals 26–27; accepted, among others, that
+the plan's `"left"` last-scorer default sent the first serve the opposite way from the Rust
+game. The site half landed once `npm run verify` ran green under Node 24 via nvm
+(`review/web-playground/gates-8-site.log`: astro check 0 errors, axe clean over 66 pages, no
+sideways scroll at four viewports). Rebutted as policy and filed instead: beinsiculous/pong#2
+(the ±230 paddle clamp sinks 10 px into the wall — the Rust game's own constant).
+
+## 2026-09-06 — Web Playground batch 9: the six games as editor bundles (5977194 engine, d23f7a7 pong, a6b4126 snake, d144529 breakout, a643a76 frogger, f090b4d asteroids, 07c08d6 space_invaders, 4fba120 site)
+Each of the six games builds its own editor bundle and gets a page at `/playground/<slug>/`,
+independent and droppable; the bundles weigh 8.66–9.35 MiB each. Section correction: kimi (6),
+gemini (6 — the plain wasm build of a game is compiled nowhere but bundle time, so no native
+check would catch a break in `web_entry.rs`), Claude (5). Diff across eight repositories: kimi
+(3, after verifying the editor's wasm path, the slug regex against the `/` sentinel and both
+GameEmbed defaults byte-for-byte) and Claude (1 — pong's README sentence had been inserted
+between a list's lead-in colon and its first bullet). Review 29, `review-29-claude.md`,
+`rebuttal-29.md`. Executed by a Claude Code session (Opus 5, low effort) rather than gemini,
+with the handoff shape unchanged. Two follow-ups filed: insiculous_web#51 (a game's page does
+not link to its editor page) and insiculous_2d#107 (a game's editor bundle cannot persist
+layout edits; lean retire).
+
+## 2026-09-06 — Web Playground batch 10: the game template, and the close of #49 (be328ee engine, f860116 template, e8c4e69 site, b4d7049 plan, 22a714f working set)
+`beinsiculous/game-template` exists: a cargo project that runs an exported playground scene
+natively, with the export README pointing at it and the working set given a seat for it in
+`scripts/lib/repos.sh` and its two mirrors. Section correction: kimi (5), gemini (7 — the
+template as planned hardcoded `main.scene.ron` and `"coins"` and so could not run an export at
+all, the round's real catch), Claude (9). Diff across four repositories: kimi (3 — the template
+never applied the scene's `PhysicsSettings`, so an export with gravity would have run with
+none) and Claude (4 — no listed gate compiled `src/bin/editor.rs`, so a public item was
+deletable with everything green and the editor binary broken; that became a gate). The
+executor's own deviation was accepted and written back into the section: the Coin is a
+`Dynamic` body, because a kinematic sensor fires no collision events. The planner's
+behaviour-changing fixes went back through kimi as review 32. Reviews and rebuttals 31–32.
+
+## 2026-09-06 — Web Playground on staging: Jesse's first browser check, and the deploy gate it tripped
+The merge to `dev` deployed to the staging Worker after one fix: M's new screen-reader gate
+(`scripts/lib/announce-tree.mjs`) knew `/url` as the only element-property line and threw on the
+Scripts panel's `/placeholder:`; the parser now matches any `/name:` line (insiculous_web
+1c23569, a test over `/url`, `/placeholder` and `/description`). A WebGPU-enabled Chromium probe
+of staging then booted the editor end to end — Examples with 16 entities, Game Template with 8,
+nine entries in the project select, no errors. **Jesse's check, Chromium on a trackpad laptop:
+the playground loads and runs, Game Template opens, objects select** — with three findings
+filed: insiculous_2d#116 (pointer hit-testing offset: the canvas is CSS-scaled to the column
+while its attributes stay 1280×800, so the cursor and the drawing live in two spaces),
+insiculous_2d#117 (a two-finger scroll zooms 1.1× per frame and drops the horizontal axis) and
+insiculous_web#52 (a fullscreen toggle and a chrome-less pop-out route). The save-and-reload,
+the export and the native drop-in were not part of this check and stay owed; his Firefox
+attempt showed a black canvas because Firefox on Linux has no WebGPU, as the page's own status
+line says. Production (`main`) is untouched until the promote step.
+
+## 2026-09-07 — Web Playground in production: the pointer offset and the trackpad zoom fixed, then `dev → main`
+Jesse's two findings fixed the same evening (insiculous_2d d82c6ab, insiculous_web 9fac950 —
+the seven bundles rebuilt). #116 was not the sizes: winit focuses the canvas on every press with
+a plain `focus()`, which scrolls a partly visible canvas into view between press and release,
+so every hit landed above the cursor by the scroll; a capture-phase listener now focuses a
+pressed canvas without scrolling before winit's does. The sizes were wrong too — a `Resized`
+carried the asked-for 1280×800 while the page held the box at 1014×634 and no observer event
+ever said so — and the canvas's client box is now the one size for the surface, the camera, the
+tracked window and the game, with the boot's forcing resize kept for the 1×1 pre-layout trap.
+#117: zoom is proportional to the wheel delta and clamped to one notch a frame. Kimi reviewed
+the diff three times (reviews 34–36: 4, 4 and 2 findings, all accepted; round 1 changed the
+design, because the first override would have re-opened the boot trap). Measured with a
+Playwright probe under WebGPU: attributes, box and texture agree at pixel ratios 1 and 2, and a
+click sweep down the hierarchy maps identically with the canvas on screen and below the fold.
+**Jesse's re-check on staging: clicks land.** Then `dev → main` in every repository, all
+fast-forwards; the site's `main` deploy went green and **`/playground/` is live on
+beinsiculous.com**, probed the same way. Follow-ups: insiculous_2d#118 (the games' live v2
+bundles need a v3 to carry the fix), #119 (a browser wheel notch is about a hundred pixels),
+#120 (a drag from outside the canvas). Still not reported by a person: the save-and-reload,
+the export, and the native drop-in; the production check covers load, run and select.

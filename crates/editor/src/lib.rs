@@ -113,8 +113,8 @@ pub use editor_input::{
 };
 pub use gizmo::{Corner, Gizmo, GizmoHandle, GizmoInteraction, GizmoMode, GizmoPalette};
 pub use hierarchy::{
-    normalized_rename, HierarchyPanel, HierarchyResponse, NameResolution, SelectionRowFills,
-    PRIMARY_ACCENT_WIDTH,
+    normalized_rename, HierarchyClick, HierarchyPanel, HierarchyResponse, NameResolution,
+    SelectionRowFills, PRIMARY_ACCENT_WIDTH,
 };
 pub use clipboard::{
     capture_entity_tree, spawn_entity_tree, uncaptured_component_names, ClipboardEntity,
@@ -137,6 +137,7 @@ pub use stored_component::{
     edit_all_components, inspect_all_components, registered_component_type_ids,
     restore_components, ComponentCategory, ComponentKind, ComponentRef, StoredComponent,
 };
+pub use script_editor::ScriptCatalogEntry;
 pub use theme::EditorTheme;
 pub use toolbar::{toolbar_position_for, EditorTool, Toolbar};
 pub use viewport::SceneViewport;

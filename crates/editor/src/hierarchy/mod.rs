@@ -1,14 +1,17 @@
 //! Hierarchy panel for displaying entity tree structure.
 //!
 //! The HierarchyPanel displays all entities in the scene as a tree view,
-//! showing parent-child relationships and allowing entity selection.
+//! showing parent-child relationships and allowing entity selection. Each
+//! entity's `Scripts` appear as pseudo-rows beneath it, and an entity row
+//! accepts a dropped `.rhai` asset.
 
 use std::collections::HashSet;
 
-use ecs::{EntityId, Name, Sprite, World, WorldHierarchyExt};
+use ecs::{EntityId, Name, Scripts, Sprite, World, WorldHierarchyExt};
 use glam::Vec2;
 use physics::components::RigidBody;
 
+use crate::drag_drop::{DragDropState, DragPayload};
 use crate::layout::{LINE_HEIGHT, PADDING};
 use crate::theme::EditorTheme;
 use crate::Selection;
@@ -80,15 +83,26 @@ pub struct HierarchyPanel {
     visible_order: Vec<EntityId>,
 }
 
+/// What was clicked in the hierarchy panel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HierarchyClick {
+    /// An entity row was clicked.
+    Entity(EntityId),
+    /// A script pseudo-row was clicked.
+    Script { entity: EntityId, index: usize },
+}
+
 /// What one hierarchy render pass reported back to the host.
 #[derive(Debug, Default)]
 pub struct HierarchyResponse {
-    /// Entities clicked for selection this frame.
-    pub clicked: Vec<EntityId>,
+    /// Items clicked for selection this frame.
+    pub clicked: Vec<HierarchyClick>,
     /// An inline rename committed this frame (entity, new text). The text is
     /// raw — the host trims it, ignores empty commits, and records the undo
     /// command.
     pub rename_committed: Option<(EntityId, String)>,
+    /// A script asset dropped onto an entity row (entity, asset-relative path).
+    pub script_dropped: Option<(EntityId, String)>,
 }
 
 /// Shared state for one hierarchy render pass, threaded through the node recursion.
@@ -99,8 +113,10 @@ struct NodeRenderCtx<'a> {
     theme: &'a EditorTheme,
     fills: SelectionRowFills,
     bounds: common::Rect,
-    clicked_entities: &'a mut Vec<EntityId>,
+    drag_drop: &'a mut DragDropState,
+    clicked: &'a mut Vec<HierarchyClick>,
     rename_committed: &'a mut Option<(EntityId, String)>,
+    script_dropped: &'a mut Option<(EntityId, String)>,
 }
 
 impl HierarchyPanel {
@@ -227,7 +243,7 @@ impl HierarchyPanel {
 
     /// Render the hierarchy panel.
     ///
-    /// Returns the clicks and any committed inline rename.
+    /// Returns the clicks and any committed inline rename or script drop.
     pub fn render(
         &mut self,
         ui: &mut ui::UIContext,
@@ -235,9 +251,11 @@ impl HierarchyPanel {
         selection: &mut Selection,
         bounds: common::Rect,
         theme: &EditorTheme,
+        drag_drop: &mut DragDropState,
     ) -> HierarchyResponse {
-        let mut clicked_entities = Vec::new();
+        let mut clicked = Vec::new();
         let mut rename_committed = None;
+        let mut script_dropped = None;
 
         // A renamed entity that no longer exists (deleted mid-rename, or a
         // scene swap) must not leave the panel armed — a recycled id could
@@ -260,8 +278,10 @@ impl HierarchyPanel {
             theme,
             fills: theme.selection_row_fills(),
             bounds,
-            clicked_entities: &mut clicked_entities,
+            drag_drop,
+            clicked: &mut clicked,
             rename_committed: &mut rename_committed,
+            script_dropped: &mut script_dropped,
         };
 
         // Render each root and its descendants with top padding, offset by
@@ -280,7 +300,11 @@ impl HierarchyPanel {
         }
         self.scroll.end_frame(y - top + BASE_PADDING, bounds.height);
 
-        HierarchyResponse { clicked: clicked_entities, rename_committed }
+        HierarchyResponse {
+            clicked,
+            rename_committed,
+            script_dropped,
+        }
     }
 
     /// Render a single node and its children recursively.
@@ -304,13 +328,52 @@ impl HierarchyPanel {
             self.render_row(ctx, entity, depth, y, is_expanded);
         }
 
-        // Render children if expanded
-        let next_y = y + ROW_HEIGHT;
-        if is_expanded {
-            self.render_children(ctx, entity, depth, next_y)
-        } else {
-            next_y
+        let mut current_y = y + ROW_HEIGHT;
+        if let Some(scripts) = ctx.world.get::<Scripts>(entity) {
+            for (index, script) in scripts.0.iter().enumerate() {
+                let pseudo_row_visible =
+                    current_y + ROW_HEIGHT >= bounds.y && current_y <= bounds.y + bounds.height;
+                if pseudo_row_visible {
+                    self.render_script_row(ctx, entity, index, script, depth + 1, current_y);
+                }
+                current_y += ROW_HEIGHT;
+            }
         }
+
+        // Render children if expanded
+        if is_expanded {
+            self.render_children(ctx, entity, depth, current_y)
+        } else {
+            current_y
+        }
+    }
+
+    fn render_script_row(
+        &mut self,
+        ctx: &mut NodeRenderCtx<'_>,
+        entity: EntityId,
+        index: usize,
+        script: &ecs::ScriptRef,
+        depth: usize,
+        y: f32,
+    ) {
+        let bounds = ctx.bounds;
+        let x = bounds.x + BASE_PADDING + (depth as f32 * INDENT_PER_DEPTH);
+        let row_rect = common::Rect::new(bounds.x, y, bounds.width, ROW_HEIGHT);
+
+        let row_id = format!("hierarchy_script_{}_{}", entity.value(), index);
+        let row_interaction = ctx.ui.interact(row_id.as_str(), row_rect, true);
+
+        if row_interaction.clicked && !ctx.drag_drop.suppresses_click() {
+            ctx.clicked.push(HierarchyClick::Script { entity, index });
+        }
+
+        if row_interaction.state == ui::WidgetState::Hovered {
+            ctx.ui.rect(row_rect, ctx.theme.hover_fill);
+        }
+
+        let label = script_display_label(script);
+        ctx.ui.label(&label, Vec2::new(x, y + ROW_HEIGHT - 4.0));
     }
 
     fn render_row(
@@ -336,6 +399,21 @@ impl HierarchyPanel {
             ctx.ui.rect(accent_rect, ctx.fills.accent);
         } else if is_selected {
             ctx.ui.rect(row_rect, ctx.fills.secondary);
+        }
+
+        let is_hovered = row_rect.contains(ctx.ui.mouse_pos());
+        let dragging_script = matches!(ctx.drag_drop.dragging_payload(), Some(DragPayload::Script { .. }));
+        if dragging_script && is_hovered {
+            ctx.ui.rect_border(row_rect, ctx.theme.accent_blue, 1.5, 0.0);
+        }
+
+        if let Some((payload, _pos)) = ctx.drag_drop.take_drop_in(row_rect) {
+            match payload {
+                DragPayload::Script { path } => {
+                    *ctx.script_dropped = Some((entity, path));
+                }
+                DragPayload::Texture { .. } => {}
+            }
         }
 
         // Check arrow interaction FIRST for entities with children. The
@@ -422,8 +500,8 @@ impl HierarchyPanel {
         let row_id = format!("hierarchy_row_{}", entity.value());
         let row_interaction = ctx.ui.interact(row_id.as_str(), row_interact_rect, true);
 
-        if row_interaction.clicked && !arrow_clicked {
-            ctx.clicked_entities.push(entity);
+        if row_interaction.clicked && !arrow_clicked && !ctx.drag_drop.suppresses_click() {
+            ctx.clicked.push(HierarchyClick::Entity(entity));
         }
 
         // Hover highlight (full row width for visual consistency)
@@ -463,6 +541,23 @@ struct RowGeometry {
     row_rect: common::Rect,
     has_children: bool,
     is_selected: bool,
+}
+
+fn script_display_label(script: &ecs::ScriptRef) -> String {
+    let script_id = script.script_id.trim();
+    if !script_id.is_empty() {
+        return script_id.to_string();
+    }
+    let source_path = script.source_path.trim();
+    if !source_path.is_empty() {
+        if let Some(stem) = std::path::Path::new(source_path).file_stem().and_then(|s| s.to_str()) {
+            let stem = stem.trim();
+            if !stem.is_empty() {
+                return stem.to_string();
+            }
+        }
+    }
+    "script".to_string()
 }
 
 #[cfg(test)]

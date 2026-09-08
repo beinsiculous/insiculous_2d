@@ -60,7 +60,17 @@ pub(crate) fn test_viewport() -> SceneViewport {
 /// The extras an inspector editor needs when no texture is displayed and
 /// nothing is being dragged.
 pub(crate) fn extras(drag_drop: &mut DragDropState) -> InspectorExtras<'_> {
-    InspectorExtras { drag_drop, texture_display: None, warnings: Vec::new() }
+    InspectorExtras {
+        drag_drop,
+        texture_display: None,
+        warnings: Vec::new(),
+        scroll_target: None,
+        scroll_target_y: None,
+        can_open_source: false,
+        open_source: None,
+        script_catalog: &[],
+        script_picker_open: false,
+    }
 }
 
 /// Start the next input frame: last frame's just-pressed / just-released

@@ -190,9 +190,11 @@ fn save_scene_to_file_writes_a_parseable_file_and_reports_an_unwritable_path() {
     assert_eq!(parsed.name, "FileTest");
     assert_eq!(parsed.entities[0].name.as_deref(), Some("saved"));
 
-    // A path under a directory that does not exist is an error, not a panic.
-    let unwritable = dir.path().join("no_such_dir/level.scene.ron");
-    let err = super::save_scene_to_file(&scene, &unwritable).expect_err("missing parent dir");
+    // An unwritable path (parent is a regular file, so directory creation fails) is an error, not a panic.
+    let unwritable_parent = dir.path().join("file_parent");
+    std::fs::write(&unwritable_parent, b"not a directory").expect("fixture file");
+    let unwritable = unwritable_parent.join("level.scene.ron");
+    let err = super::save_scene_to_file(&scene, &unwritable).expect_err("parent is a file");
     assert!(err.contains("Failed to write scene file"), "{err}");
     assert!(!unwritable.exists());
 }

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
 
 /// A unique identifier for an entity with generation tracking
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct EntityId {
     /// The numeric ID of the entity
     id: u64,

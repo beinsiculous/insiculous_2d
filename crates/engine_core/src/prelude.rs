@@ -51,6 +51,8 @@ pub use glam::{Vec2, Vec4};
 
 // Re-export ECS types
 pub use ecs::{EntityId, World};
+// The script blackboard: a game reads what its scripts wrote without depending on `ecs`.
+pub use ecs::{Blackboard, ScriptValue};
 pub use ecs::sprite_components::{
     set_sprites_visible, AnimationClip, Name, SheetGrid, Sprite, SpriteAnimation,
 };

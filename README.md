@@ -101,6 +101,11 @@ changing its code: hierarchy panel, inspector with editable components and
 undo/redo, transform gizmos, play/pause/stop with world snapshot restore,
 scene save/load (RON), grid, and physics collider visualization.
 
+The same editor also runs in the browser at
+[beinsiculous.com/playground/](https://beinsiculous.com/playground/), where a
+project persists in IndexedDB and exports as a zip that drops onto the
+[game template](https://github.com/beinsiculous/game-template) to run natively.
+
 ```bash
 cargo run --example editor_demo --features editor
 ```
@@ -455,6 +460,7 @@ Run all tests: `cargo test --workspace` — headless, no GPU or window required.
 - **Test Status:** `cargo test --workspace` — 0 failed, 0 ignored is the invariant
 - **Lint Status:** `cargo clippy --workspace --all-targets` clean
 - **Editor:** entity CRUD, component management, undo/redo, play/pause/stop, scene save/load, collider visualization
+- **Web:** the engine, the six games and the editor build for wasm32/WebGPU; the Web Playground is live at `/playground/`, with an editor page per game at `/playground/<slug>/`
 - **Architecture:** Manager pattern, SRP-refactored core, all files under 600 lines
 
 See [PROJECT_ROADMAP.md](PROJECT_ROADMAP.md) for detailed technical debt tracking and priorities.

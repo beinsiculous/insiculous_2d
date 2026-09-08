@@ -46,7 +46,7 @@ Write verbs (Stage B — one undo entry each unless noted):
 | `delete <entity>` | delete (children reparent to the grandparent; undo resurrects; the selection drops it) |
 | `select <entity>` / `select none` | replace/clear the selection — never on the undo stack (GUI parity) |
 | `undo` / `redo` | `{"undid"/"redid": <command name>}`, `null` on an empty stack (not an error); `refused` while a batch is open |
-| `save [path]` | save through the editor's mandatory choke point |
+| `save [path]` | save through the editor's mandatory choke point (a relative path resolves against the asset root — it used to land in the process cwd; pass an absolute path to keep that) |
 | `batch begin [name]` / `batch end` / `batch abort` | group writes into ONE undo entry / roll them back |
 
 Write semantics worth knowing:
@@ -162,7 +162,7 @@ its key so the map stays total.
 - **Stage B (this document)** — write commands through `CommandHistory`
   (undoable in the GUI), `commands` self-description. Shipped.
 - **Stage C** — headless mode (below). Shipped.
-- **Stage D** — WebSocket transport for the web editor.
+- **Stage D** — function bridge for the web editor and playground (`crates/playground`). Shipped.
 
 ## Stage C — headless mode (issue #45)
 
@@ -201,7 +201,7 @@ Semantics identical to the windowed `--api` mode, with these limits:
 ### Decision of record — audit §6.6(5): the editor does not own the build
 
 Resolved with Stage C (they hinge on the same file, `src/bin/editor.rs`):
-the standalone binary stays a generic, data-only host wrapping `EditorApp`;
+the standalone binary stays a generic, data-only host wrapping `ProjectHost`;
 games that want in-process editing embed via `run_game_with_editor`. The
 API edits DATA (scenes), never code. Combined with §6.6(4)'s
 relaunch-over-dylib decision, any future editor-triggered rebuild is

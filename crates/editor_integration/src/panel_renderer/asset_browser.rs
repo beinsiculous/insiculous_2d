@@ -45,6 +45,32 @@ pub(crate) fn tile_rect(index: usize, columns: usize, origin: Vec2, scroll: f32)
     )
 }
 
+/// Ensure assets have been scanned at least once; if not, refreshes assets and builds script catalog.
+pub(crate) fn ensure_scanned(
+    editor: &mut EditorContext,
+    assets: &AssetManager,
+    registry: &engine_core::scripting::ScriptRegistry,
+) {
+    if !editor.asset_browser.scanned {
+        refresh_assets(editor, assets, registry);
+    }
+}
+
+/// Rescan assets from filesystem, update asset browser entries, and rebuild script catalog.
+pub(crate) fn refresh_assets(
+    editor: &mut EditorContext,
+    assets: &AssetManager,
+    registry: &engine_core::scripting::ScriptRegistry,
+) {
+    let entries = scan_assets(Path::new(assets.base_path()));
+    editor.asset_browser.apply_scan(entries);
+    editor.script_catalog = super::script_catalog::build_script_catalog(
+        &editor.asset_browser.entries,
+        registry,
+        assets.base_path(),
+    );
+}
+
 /// Render the asset browser panel content.
 pub(super) fn render_asset_browser(
     editor: &mut EditorContext,
@@ -52,7 +78,7 @@ pub(super) fn render_asset_browser(
     bounds: common::Rect,
     command_history: &mut CommandHistory,
 ) {
-    render_header(editor, ctx.ui, ctx.assets, bounds);
+    render_header(editor, ctx.ui, ctx.assets, ctx.scripts.registry(), bounds);
     load_pending_thumbnails(&mut editor.asset_browser.entries, ctx.assets);
 
     let grid_origin = Vec2::new(bounds.x + PADDING, bounds.y + HEADER_HEIGHT + PADDING);
@@ -104,13 +130,15 @@ fn render_header(
     editor: &mut EditorContext,
     ui: &mut ui::UIContext,
     assets: &AssetManager,
+    registry: &engine_core::scripting::ScriptRegistry,
     bounds: common::Rect,
 ) {
     let rescan_bounds = ui::Rect::new(bounds.x + PADDING, bounds.y + 2.0, 70.0, 20.0);
     let rescan_clicked = ui.button("asset_rescan", "Rescan", rescan_bounds);
-    if !editor.asset_browser.scanned || rescan_clicked {
-        let entries = scan_assets(Path::new(assets.base_path()));
-        editor.asset_browser.apply_scan(entries);
+    if !editor.asset_browser.scanned {
+        ensure_scanned(editor, assets, registry);
+    } else if rescan_clicked {
+        refresh_assets(editor, assets, registry);
     }
 
     let count_label = format!("{} assets", editor.asset_browser.entries.len());
@@ -188,6 +216,21 @@ fn render_tile(
                 theme.accent_cyan,
             );
         }
+        (AssetKind::Script, _) => {
+            let extension = std::path::Path::new(&entry.name)
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .unwrap_or("")
+                .to_ascii_uppercase();
+            ui.label_in_bounds_styled(
+                &extension,
+                slot_ui,
+                ui::TextAlign::Center,
+                theme.accent_cyan,
+                theme.fonts.heading,
+                0.0,
+            );
+        }
     }
 
     // Filename label under the tile (clipped by the panel rect)
@@ -201,7 +244,7 @@ fn render_tile(
     );
 }
 
-/// Press arms a drag (images only), a plain click assigns: the clicked
+/// Press arms a drag (images and .rhai scripts), a plain click assigns: the clicked
 /// tile's texture handle and path, if any.
 fn tile_interaction(
     ui: &mut ui::UIContext,
@@ -229,6 +272,18 @@ fn tile_interaction(
         if result.clicked && !drag_drop.suppresses_click() {
             return Some((handle, entry.relative_path.clone()));
         }
+    } else if entry.kind == AssetKind::Script
+        && std::path::Path::new(&entry.relative_path)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("rhai"))
+        && result.state == ui::WidgetState::Active
+        && ui.mouse_just_pressed()
+    {
+        drag_drop.arm(
+            DragPayload::Script { path: entry.relative_path.clone() },
+            mouse_pos,
+        );
     }
     None
 }
@@ -253,20 +308,44 @@ fn assign_clicked_texture(
     }
 }
 
-/// Draw the drag ghost (a translucent thumbnail following the cursor) while
-/// a texture drag is in flight. The overlay's blocking rect also makes
-/// widgets and viewport picking under the cursor inert for the frame.
+/// Draw the drag ghost following the cursor while a drag is in flight.
+/// The overlay's blocking rect also makes widgets and viewport picking
+/// under the cursor inert for the frame.
 pub(crate) fn render_drag_ghost(editor: &mut EditorContext, ctx: &mut GameContext) {
-    let Some(DragPayload::Texture { handle, .. }) = editor.drag_drop.dragging_payload() else {
-        return;
-    };
-    let handle = *handle;
-    let mouse = ctx.ui.mouse_pos();
-    let ghost = ui::Rect::new(mouse.x - 24.0, mouse.y - 24.0, 48.0, 48.0);
-    // DragGhost band: the ghost rides above even an open dropdown.
-    ctx.ui.begin_overlay_in(ui::UiLayer::DragGhost, ghost);
-    ctx.ui.image(ghost, handle, ui::Color::new(1.0, 1.0, 1.0, 0.8));
-    ctx.ui.end_overlay();
+    match editor.drag_drop.dragging_payload() {
+        Some(DragPayload::Texture { handle, .. }) => {
+            let handle = *handle;
+            let mouse = ctx.ui.mouse_pos();
+            let ghost = ui::Rect::new(mouse.x - 24.0, mouse.y - 24.0, 48.0, 48.0);
+            // DragGhost band: the ghost rides above even an open dropdown.
+            ctx.ui.begin_overlay_in(ui::UiLayer::DragGhost, ghost);
+            ctx.ui.image(ghost, handle, ui::Color::new(1.0, 1.0, 1.0, 0.8));
+            ctx.ui.end_overlay();
+        }
+        Some(DragPayload::Script { path }) => {
+            let file_name = std::path::Path::new(path)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or(path.as_str());
+            let mouse = ctx.ui.mouse_pos();
+            let text_width =
+                (ctx.ui.measure_text_styled(file_name, editor.theme.fonts.small).x + 16.0).max(48.0);
+            let ghost = ui::Rect::new(mouse.x - text_width / 2.0, mouse.y - 12.0, text_width, 24.0);
+            ctx.ui.begin_overlay_in(ui::UiLayer::DragGhost, ghost);
+            ctx.ui.rect_rounded(ghost, editor.theme.surface_3, 4.0);
+            ctx.ui.rect_border(ghost, editor.theme.accent_blue, 1.0, 4.0);
+            ctx.ui.label_in_bounds_styled(
+                file_name,
+                ghost,
+                ui::TextAlign::Center,
+                editor.theme.text_primary,
+                editor.theme.fonts.small,
+                0.0,
+            );
+            ctx.ui.end_overlay();
+        }
+        None => {}
+    }
 }
 
 #[cfg(test)]

@@ -83,7 +83,8 @@ pub fn serialize_to_ron(scene: &SceneData) -> Result<String, String> {
 /// Write SceneData to a file as RON.
 pub fn save_scene_to_file(scene: &SceneData, path: &Path) -> Result<(), String> {
     let ron_string = serialize_to_ron(scene)?;
-    std::fs::write(path, ron_string).map_err(|error| format!("Failed to write scene file: {error}"))
+    common::vfs::write_string(path, &ron_string)
+        .map_err(|error| format!("Failed to write scene file: {error}"))
 }
 
 #[cfg(test)]

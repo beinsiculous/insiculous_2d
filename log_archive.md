@@ -38,6 +38,50 @@ item moved to the Studio Board:
 - Non-task content moved to crate CLAUDE.mds (audio by-design limitations,
   renderer deferred-by-design, ecs GPP-02 decision-of-record).
 
+## Web Playground ☑ Sep 6 2026
+
+The editor runs in the browser. `/playground/` on beinsiculous.com boots the
+editor on wasm32/WebGPU with its projects in IndexedDB, scripts are Rhai edited
+on the page, a project exports and imports as a zip, an exported zip drops onto
+`beinsiculous/game-template` to run natively, and each of the six games has its
+own editor page at `/playground/<slug>/`. Closed #48 and #49 (and
+`beinsiculous/insiculous_web#4`, the WebGPU gate's missing `requestDevice`
+await). Ten batches Sep 4–6 2026 under the handoff loop — Claude planned and
+committed; kimi reviewed every plan version and every staged diff, gemini
+every plan version and section correction; gemini executed batches 1–8 and
+Claude Code sessions batches 9–11 — across eight repositories plus a new one. The contracts are
+`docs/WEB_PLAYGROUND.md`, `docs/SCRIPTING.md` and `docs/WEB_SAVES.md`;
+`coordination/web-playground/plan.md` is the effort's record and
+`reviewer-comparison.md` its reviewer ledger.
+
+Lessons the rounds paid for:
+
+- A correction filed anywhere but the section the executor actually reads is a
+  correction that never happened — batch 2 lost one that way (rebuttal 8), and
+  from then on every correction went into the acting batch's own section before
+  its handoff.
+- The report is one file at one path, named in the handoff: batch 4's executor
+  wrote three byte-identical copies, one under the wrong subject directory, and
+  the planner had to find and delete two (rebuttals 14–17).
+- Rebutting a redundancy costs a later round: request ids over the bridge's FIFO
+  were rebutted in round 1, and round 3 found that one blank console line skips a
+  response and desyncs that same FIFO (`crates/playground/src/bridge.rs:93-96`).
+- A failed import must restore the write epoch it bumped, or the store stays
+  wedged with no switch and no reset — batch 5's rule became "a failed import
+  touches nothing" (rebuttals 19–21).
+- The six Rust games keep their compiled rules and ship as per-game editor
+  bundles rather than as scripts — the game-run ruling, settled before batch 9
+  built the bundles and re-stated in `PROJECT_ROADMAP.md` § Scripting.
+- The executor is a role, not a vendor: batch 9 was authored by a Claude Code
+  session instead of gemini with the handoff shape unchanged (review 28), and
+  the loop's no-model-reviews-its-own-work rule is what actually holds.
+- A template that hardcodes its own scene file and entity names cannot run an
+  export — gemini caught it in the batch-10 plan round (rebuttal 30), before a
+  line of it was typed.
+- A kinematic sensor fires no collision events, so the template's coin is a
+  `Dynamic` body: the executor's own deviation from the section, accepted and
+  written back into it (rebuttal 31).
+
 ## Roadmap slimmed Aug 28 2026 — archived completed-phase detail
 
 The following completed-work records moved here verbatim-ish from

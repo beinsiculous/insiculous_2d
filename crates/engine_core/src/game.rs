@@ -136,6 +136,10 @@ pub trait Game: Sized + 'static {
 
     /// Called when the game is about to exit. Clean up resources here.
     fn on_exit(&mut self) {}
+
+    /// Register custom script behaviors with the script runner's registry.
+    #[cfg(feature = "physics")]
+    fn register_scripts(&mut self, _registry: &mut crate::scripting::ScriptRegistry) {}
 }
 
 /// Run a game with the given configuration.
@@ -305,6 +309,8 @@ struct GameRunner<G: Game> {
     pending_ui_events: Vec<crate::ui_element_system::UiButtonPressed>,
     /// Whether the game's init() has been called
     initialized: bool,
+    #[cfg(feature = "physics")]
+    scripts: crate::scripting::ScriptRunner,
 }
 
 macro_rules! build_context {
@@ -326,6 +332,8 @@ macro_rules! build_context {
             particles: &mut $runner.particles,
             lines: &mut $runner.lines,
             strings: &mut $runner.localization.strings,
+            #[cfg(feature = "physics")]
+            scripts: &mut $runner.scripts,
         }
     };
 }
@@ -365,6 +373,13 @@ impl<G: Game> GameRunner<G> {
         strings.set_locale(config.locale.clone());
         let localization = locale_font::Localization::new(strings);
 
+        #[cfg(feature = "physics")]
+        let mut scripts = crate::scripting::ScriptRunner::new();
+        #[cfg(feature = "physics")]
+        let mut game = game;
+        #[cfg(feature = "physics")]
+        game.register_scripts(scripts.registry_mut());
+
         Self {
             game,
             config,
@@ -397,6 +412,8 @@ impl<G: Game> GameRunner<G> {
             localization,
             pending_ui_events: Vec::new(),
             initialized: false,
+            #[cfg(feature = "physics")]
+            scripts,
         }
     }
 

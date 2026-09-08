@@ -81,6 +81,7 @@ pub(super) fn render_inspector(
 
     let content_width = bounds.width - 2.0 * padding;
     let final_y = if editor.is_playing() {
+        editor.inspector_scroll_request = None;
         render_inspector_readonly(ui, world, entity_id, content_x, y, &editor.theme.inspector_style())
     } else {
         render_inspector_editable(
@@ -93,6 +94,8 @@ pub(super) fn render_inspector(
                 x: content_x,
                 width: content_width,
                 y,
+                bounds,
+                scroll_offset: offset,
             },
             command_history,
         )
@@ -133,6 +136,12 @@ fn build_inspector_extras<'a>(
         drag_drop: &mut editor.drag_drop,
         texture_display,
         warnings: Vec::new(),
+        scroll_target: editor.inspector_scroll_request,
+        scroll_target_y: None,
+        can_open_source: cfg!(not(target_arch = "wasm32")),
+        open_source: None,
+        script_catalog: &editor.script_catalog,
+        script_picker_open: editor.script_picker_open,
     }
 }
 
@@ -174,6 +183,8 @@ struct InspectorLayout {
     x: f32,
     width: f32,
     y: f32,
+    bounds: common::Rect,
+    scroll_offset: f32,
 }
 
 /// Editable inspector with live writeback (used during Editing/Paused).
@@ -221,7 +232,22 @@ fn render_inspector_editable(
         layout.y,
         &mut extras,
     );
+    let target_y = extras.scroll_target_y;
+    let source_path = extras.open_source.take();
     let warnings = std::mem::take(&mut extras.warnings);
+    let script_picker_open = extras.script_picker_open;
+    drop(extras);
+    editor.script_picker_open = script_picker_open;
+
+    if let Some(target_y) = target_y {
+        let target_offset =
+            target_y + layout.scroll_offset - (layout.bounds.y + layout::PADDING);
+        editor.inspector_scroll.scroll_to(target_offset);
+    }
+    editor.inspector_scroll_request = None;
+    if let Some(source_path) = source_path {
+        editor.pending_open_source = Some(source_path);
+    }
 
     warn_after_edit(
         editor,

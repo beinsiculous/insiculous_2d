@@ -24,7 +24,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 - `context/` — EditorContext struct (selection, tools, state, theme, fonts, inspector_scroll).
 - `theme/` — EditorTheme: WCAG surface ladder `surface_0..surface_4` with luminance guard tests (≥1.35:1 adjacent / ≥3:1 border), style converters, and `ui_theme()`.
 - `command_api/` — CLI/API dispatch (query list/describe/selection/scene/commands and write set/add/remove/rename/delete/select/undo/redo/batch) through CommandHistory; `docs/EDITOR_COMMAND_API.md`.
-- `drag_drop.rs` — `DragDropState`/`DragPayload` cross-panel drag state machine (Idle→Armed→Dragging→Dropped-1-frame).
+- `drag_drop.rs` — `DragDropState`/`DragPayload` (`Texture`, `Script`) cross-panel drag state machine (Idle→Armed→Dragging→Dropped-1-frame).
 - `dock/` — multi-panel docking: state, layout, collapse/visibility toggles, chevrons, and clamped resize grabbers.
 - `menu/` — top menu bar; action items carry checked flag and map labels to `EditorAction`.
 - `editor_input.rs` — shortcut chord model (exact chord beats any-mods) and `allowed_while_playing()` action deny list.
@@ -37,10 +37,11 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 - `component_editors.rs` — per-component editors returning `Option<ComponentEdit<T>>`; shape cycling carries dimensions with commit-before-cycle ordering.
 - `physical_floors.rs` — hard floors applied by inspector editors and command API `sanitize` (scale, collider extents, capsule half-height, volume, pitch).
 - `behavior_editor.rs` — `edit_behavior()`: variant cycle selector and per-variant editors; `CameraFollow.dead_zone` stays read-only.
+- `script_editor.rs` — `edit_scripts()`: `Scripts` component inspector editor, script catalog picker, parameter table, and Open Source button.
 
 ### Scene + selection
 - `selection.rs` — Selection set (IndexSet preserving insertion order, deterministic primary fallback).
-- `hierarchy/` — hierarchy panel tree view, F2 inline rename, `RowGeometry`, and `normalized_rename` guard.
+- `hierarchy/` — hierarchy panel tree view, F2 inline rename, `RowGeometry`, `normalized_rename` guard, `Scripts` pseudo-rows, and script drop targets.
 - `viewport/` — scene viewport with camera pan/zoom; `to_window_render_camera`/`world_to_screen` equivalence locked by overlay tests.
 - `picking/` — `EntityPicker` and `PickableEntity` (AABB from absolute size, flip scales stay clickable).
 - `gizmo/` — transform gizmos (annulus rotate ring with dead-center fallthrough, cumulative delta, ratio-based scale, and cancel latch).
@@ -50,6 +51,8 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 
 ### Persistence + commands
 - `commands/` — `EditorCommand` trait, `CommandHistory` dirty tracking watermark, `SetComponentCommand` merge-by-hint, and `break_merge()` gesture boundary.
+- `editor_preferences.rs` — `EditorPreferences` JSON serialization (`from_json`/`to_json`), panel layout capture/apply, camera/grid state, `ide_command` (IO handled by integration layer via save_store).
+- `asset_browser.rs` — `AssetEntry`, `AssetKind` (`Image`, `Scene`, `Script`), and `scan_assets` walking `common::vfs::list_files` for images, scenes, and scripts (`.rhai`, `.rs`).
 - `stored_component/` — typed registry overlay (`editor_component_registry!`), `category.rs`, and `dynamic.rs` falling through to ECS dynamic registry.
 - `world_snapshot.rs` — `WorldSnapshot` save/restore with uncaptured component type detection and drop reporting.
 
@@ -65,6 +68,8 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 | World snapshot restore must detect and report unregistered component types that cannot be captured | `src/world_snapshot/tests.rs test_loss_messages_name_every_dropped_type_or_nothing` |
 | Rotate gizmo dead-center clicks must fall through to entity picking | `src/gizmo/tests.rs test_rotate_ring_is_an_annulus_so_a_dead_center_press_falls_through_to_picking` |
 | Hard floors for inspector editors and command API must clamp negative or zero dimensions | `src/command_api/write_tests.rs test_set_sanitizes_collider_extents_to_the_gui_floor` |
+| Asset scanning must use `common::vfs::list_files` instead of `std::fs` so recursive asset enumeration works on wasm; it never follows symlinks (assets are copies by convention), so a linked tree lists as empty | `src/asset_browser.rs test_nested_images_and_scenes_listed_with_slash_joined_relative_paths_while_txt_is_ignored`; `common/src/vfs/tests.rs test_vfs_list_files_never_follows_symlinks` |
+| Wheel zoom is proportional to the delta in notches and clamped to one notch per frame: a trackpad streams fractions of a line every frame, and a fixed factor per frame made a gentle scroll compound like sixty notches a second; a hard flick that delivers a line or more a frame still zooms a notch a frame, the mouse wheel's own ceiling | `src/viewport_input.rs test_a_fraction_of_a_wheel_line_zooms_by_the_same_fraction_of_the_factor`, `test_a_frame_of_wheel_zooms_at_most_one_notch` |
 
 
 ## Key Patterns

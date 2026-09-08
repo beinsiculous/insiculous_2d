@@ -105,6 +105,9 @@ pub struct GameContext<'a> {
     /// games can switch locales at runtime (`set_locale`/`cycle_locale` —
     /// the engine applies any per-locale font after `update()`).
     pub strings: &'a mut crate::localization::Strings,
+    /// Script runner subsystem for entity script behaviors.
+    #[cfg(feature = "physics")]
+    pub scripts: &'a mut crate::scripting::ScriptRunner,
 }
 
 /// Render context passed to the render method.

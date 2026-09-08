@@ -33,25 +33,6 @@ pub(crate) const MIN_ENTITY_SCALE: f32 = 0.01;
 /// next to the original.
 pub(crate) const DUPLICATE_OFFSET: Vec2 = Vec2::new(20.0, -20.0);
 
-/// First `.ron` scene in a directory, in SORTED order — `read_dir`'s order
-/// is platform-nondeterministic, and "which scene opens on launch" must not
-/// depend on it. Byte-wise sort (Rust `str` order): deterministic on
-/// every platform, never locale-dependent.
-pub fn find_first_scene(scenes_dir: &std::path::Path) -> Option<std::path::PathBuf> {
-    let entries = std::fs::read_dir(scenes_dir).ok()?;
-    let mut scenes: Vec<std::path::PathBuf> = entries
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| {
-            p.extension()
-                .and_then(|e| e.to_str())
-                .is_some_and(|e| e.eq_ignore_ascii_case("ron"))
-        })
-        .collect();
-    scenes.sort();
-    scenes.into_iter().next()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -67,22 +48,5 @@ mod tests {
             let config = clamp_editor_window_size(GameConfig::new("Test").with_size(width, height));
             assert_eq!((config.width, config.height), expected, "requested {width}x{height}");
         }
-    }
-
-    #[test]
-    fn test_first_scene_is_the_byte_wise_first_ron_file_whatever_the_dir_order() -> std::io::Result<()> {
-        // Which scene opens on launch must not depend on `read_dir`.
-        let dir = tempfile::tempdir()?;
-        std::fs::write(dir.path().join("zeta.ron"), "x")?;
-        std::fs::write(dir.path().join("alpha.RON"), "x")?;
-        std::fs::write(dir.path().join("aaa.txt"), "x")?;
-
-        let first = find_first_scene(dir.path()).expect("a scene exists");
-        assert_eq!(first.file_name().and_then(|n| n.to_str()), Some("alpha.RON"));
-
-        let empty = tempfile::tempdir()?;
-        assert_eq!(find_first_scene(empty.path()), None, "no .ron file, no scene");
-        assert_eq!(find_first_scene(&dir.path().join("missing")), None, "unreadable dir, no scene");
-        Ok(())
     }
 }

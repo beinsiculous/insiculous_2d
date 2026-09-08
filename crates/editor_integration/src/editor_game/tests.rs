@@ -166,3 +166,89 @@ fn test_render_writes_zero_scissor_when_scene_panel_hidden() {
     let rect = scissor.expect("editor always writes a scissor");
     assert_eq!((rect.width, rect.height), (0.0, 0.0));
 }
+
+#[test]
+fn test_preferences_start_from_defaults_when_the_slot_is_absent_or_corrupt() -> std::io::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let mut editor = editor_game();
+
+    // First run: no slot at all. Whatever the session held is replaced by defaults.
+    editor.editor.set_camera_zoom(2.5);
+    editor.load_preferences_from(&dir.path().join("absent.json"));
+    assert_eq!(editor.editor.camera_zoom(), 1.0, "an absent slot is a first run");
+
+    // A corrupt slot never blocks startup and leaks no partial values.
+    let corrupt = dir.path().join("corrupt.json");
+    std::fs::write(&corrupt, r#"{"camera_position": [100.0, 200.0], "camera_zo"#)?;
+    editor.editor.set_camera_zoom(2.5);
+    editor.load_preferences_from(&corrupt);
+    assert_eq!(editor.editor.camera_zoom(), 1.0);
+    assert_eq!(editor.editor.camera_offset(), Vec2::ZERO, "no partial values leak from a corrupt file");
+    Ok(())
+}
+
+#[test]
+fn test_register_scripts_forwards_to_inner_game() {
+    struct CustomGame;
+    impl engine_core::Game for CustomGame {
+        fn update(&mut self, _ctx: &mut engine_core::contexts::GameContext) {}
+        fn register_scripts(&mut self, registry: &mut engine_core::scripting::ScriptRegistry) {
+            registry.register(engine_core::scripting::ScriptDescriptor {
+                id: "custom::behavior",
+                display_name: "Custom Behavior",
+                category: "Test",
+                params: &[],
+                make: || Box::new(engine_core::scripting::builtin::rotate::RotateBehavior),
+            });
+        }
+    }
+
+    let mut editor = super::EditorGame::new(CustomGame);
+    let mut registry = engine_core::scripting::ScriptRegistry::new();
+    engine_core::Game::register_scripts(&mut editor, &mut registry);
+    assert!(registry.get("custom::behavior").is_some(), "register_scripts must forward to inner game");
+}
+
+#[test]
+fn test_lie_detector_fires_once_at_frame_60_and_stays_silent_when_runner_ran() {
+    let mut editor = editor_game();
+    let mut world = World::new();
+    let entity = world.create_entity();
+    world.add_component(&entity, ecs::script::Scripts(vec![ecs::script::ScriptRef::new("patrol")])).unwrap();
+
+    editor.handle_play_action(PlayControlAction::Play, &mut world);
+
+    let idle_scripts = engine_core::scripting::ScriptRunner::new();
+    // Advance 59 frames: no lie detector error yet
+    for _ in 0..59 {
+        editor.track_script_status(&world, &idle_scripts);
+    }
+    assert_ne!(
+        editor.editor.status_bar.message(),
+        Some("scripts attached but the game never ran the script runner")
+    );
+
+    // Frame 60: lie detector fires!
+    editor.track_script_status(&world, &idle_scripts);
+    assert_eq!(
+        editor.editor.status_bar.message(),
+        Some("scripts attached but the game never ran the script runner")
+    );
+
+    // Test case 2: when runner ran, lie detector stays silent
+    let mut editor2 = editor_game();
+    let mut active_scripts = engine_core::scripting::ScriptRunner::new();
+    let input = input::InputHandler::new();
+    let players = input::InputSettings::default_two_player();
+    editor2.handle_play_action(PlayControlAction::Play, &mut world);
+    for _ in 0..60 {
+        active_scripts.early_update(&mut world, &input, &players, 0.016, None);
+        active_scripts.update(&mut world, &input, &players, 0.016, &[], None);
+        editor2.track_script_status(&world, &active_scripts);
+    }
+    assert_ne!(
+        editor2.editor.status_bar.message(),
+        Some("scripts attached but the game never ran the script runner"),
+        "lie detector must stay silent when runner ran"
+    );
+}

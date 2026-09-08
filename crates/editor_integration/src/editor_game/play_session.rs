@@ -15,6 +15,11 @@ impl<G: Game> EditorGame<G> {
         // them and Stop restores)
         self.gizmo_drag = None;
         self.editor.gizmo.cancel();
+        // An asset drag armed before the Play keypress dies here: a drop
+        // consumed by a hierarchy row after Play would mutate the live world,
+        // and Stop's restore would erase the attachment the status bar had
+        // just confirmed.
+        self.editor.drag_drop = editor::DragDropState::new();
         // Defensive: entering Play drops a pending confirm —
         // unreachable through the blocked UI, cheap insurance.
         self.scene_confirm.pending_action = None;
@@ -38,6 +43,8 @@ impl<G: Game> EditorGame<G> {
         self.adopt_game_camera(world);
         self.editor.set_play_state(EditorPlayState::Playing);
         self.editor.close_add_component_popup();
+        self.play_frames = 0;
+        self.script_error_watermark = 0;
         // Scene-authored UI (UiLabel/UiPanel/UiButton) draws only
         // while the game actually runs.
         world.remove_resource::<engine_core::UiElementsHidden>();
@@ -153,6 +160,11 @@ impl<G: Game> EditorGame<G> {
         // the restore, so without this a grid stopped mid-ripple
         // would stay deformed and frozen.
         engine_core::grid::request_backdrop_reset(world);
+        if let Some(errors) = &self.script_errors {
+            if let Ok(mut lock) = errors.lock() {
+                lock.clear();
+            }
+        }
         self.editor.set_play_state(EditorPlayState::Editing);
         true
     }
@@ -184,6 +196,7 @@ impl<G: Game> EditorGame<G> {
         match action {
             PlayControlAction::Play => {
                 if self.editor.is_editing() {
+                    self.save_preferences_now();
                     self.start_play_session(world);
                 } else if self.editor.is_paused() {
                     self.resume_from_pause();
@@ -194,7 +207,11 @@ impl<G: Game> EditorGame<G> {
                 self.pause();
                 false
             }
-            PlayControlAction::Stop => self.stop_play_session(world),
+            PlayControlAction::Stop => {
+                let stopped = self.stop_play_session(world);
+                self.save_preferences_now();
+                stopped
+            }
             PlayControlAction::ToggleCameraFollow => {
                 self.toggle_camera_follow_with_feedback();
                 false

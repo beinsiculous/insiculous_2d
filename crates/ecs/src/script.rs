@@ -1,8 +1,7 @@
-//! The scripting seam, Stage 1: scripts as
-//! INERT DATA. `Scripts` is one component holding N string-keyed
-//! [`ScriptRef`]s — attach, edit, save, reload, undo, duplicate — and
-//! nothing here executes anything. The runtime registry/runner and
-//! `ParamSpec`-driven catalogs are later stages (engine_core).
+//! The scripting seam's data: `Scripts` is one component holding N string-keyed
+//! [`ScriptRef`]s — attach, edit, save, reload, undo, duplicate. Nothing here
+//! executes anything; `engine_core::scripting::ScriptRunner` resolves each ref
+//! (a `.rhai` path, or a registry id) and runs it during Play.
 //!
 //! String ids on purpose: every closed enum (`Behavior`, `ComponentData`,
 //! `ComponentKind`) lives upstream of the game crates and cannot be extended
@@ -81,10 +80,9 @@ impl ScriptValue {
 
 /// A named script binding with its tunable parameters.
 ///
-/// `script_id` is the string key a future runtime registry resolves
-/// (Stage 3); `source_path` points at the script's source file for the
-/// editor's Open-in-IDE affordance (Stage 2). In Stage 1 both are plain
-/// editable data.
+/// A `source_path` ending in `.rhai` is the script the runner compiles and runs;
+/// otherwise `script_id` is the key the runtime registry resolves. Both stay
+/// plain editable strings, so a scene can name a script that does not exist yet.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct ScriptRef {
     pub script_id: String,
