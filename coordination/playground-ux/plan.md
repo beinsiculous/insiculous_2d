@@ -253,10 +253,28 @@ Site:
 
 ## Batch 1 — engine: Stop keeps or discards paused edits; the inspector heading (2d#103, 2d#128)
 
+**Re-verified against the tree 2026-09-09 before the handoff** (after the plan commit
+f193c04): `SetComponentCommand`, `RenameEntityCommand` and `NudgeCommand` live in
+`commands/set_commands.rs` (`:23`, `:105`, `:160`); `AddComponentCommand` and
+`SetComponentValueCommand` in `commands/component_commands.rs` (`:16`, `:147`);
+`CreateEntityCommand`, `DeleteEntityCommand` and `MacroCommand` in
+`commands/entity_commands.rs` (`:22`, `:76`, `:147`); **`SpawnTreeCommand` is in
+`crates/editor/src/clipboard.rs:164`**, not under `commands/`. `Selection::inspector_heading`
+is at `selection.rs:116`; `render_early_overlays` at `editor_game/mod.rs:317`;
+`confirm_dialog_consumes_key` at `scene_confirm.rs:126`; `undo_with_feedback` and
+`redo_with_feedback` at `shortcuts.rs:375` and `:385`; the API's `undo`/`redo` at
+`command_api/write/verbs.rs:231` and `:244`. **There is no API `stop` verb** — the pure
+writes are set, add, remove, rename, delete, select, undo, redo and the three batch
+verbs (`write/mod.rs:227-237`), the hosted ones create and save — so the "stop pending"
+response below applies only if a later batch adds one; the test asserts instead that the
+API cannot reach `stop_play_session` at all. `docs/EDITOR_COMMAND_API.md:68` states the
+rule this batch changes ("Stop DISCARDS a batch opened while Paused") and joins the docs
+list. `editor_game/test_support.rs` and `headless.rs` exist for the tests.
+
 Files: `crates/editor/src/commands/mod.rs` (378 → ~475; a new `session_tests.rs` beside
 it), the command files that carry a before-image (`commands/set_commands.rs`,
-`entity_commands.rs`, `component_commands.rs`, the nudge and rename commands, the macro,
-`command_api`'s `SetComponentValueCommand`), `crates/editor/src/confirm_dialog.rs` (166),
+`commands/entity_commands.rs`, `commands/component_commands.rs`, and `clipboard.rs` for
+`SpawnTreeCommand`), `crates/editor/src/confirm_dialog.rs` (166),
 `crates/editor_integration/src/editor_game/{play_session.rs (221), scene_confirm.rs (143),
 shortcuts.rs (434), mod.rs (544)}`, new `editor_game/stop_confirm.rs` and
 `stop_confirm_tests.rs`, `crates/editor/src/command_api/write/verbs.rs`,
@@ -370,9 +388,9 @@ shortcuts.rs (434), mod.rs (544)}`, new `editor_game/stop_confirm.rs` and
   `scene_confirm.pending_action`, and **`resume_from_pause` does the same** — the dialog
   parks the session Paused, and a Play from Paused resumes rather than starts, so a cancel
   only on the start path would let the simulation resume under a live modal and a queued
-  Keep restore a session the user had resumed. The hosted
-  API `stop` verb, when the dialog parks, answers `{"stop": "pending", "reason": "answer
-  the Keep/Discard dialog"}` instead of claiming success. Entries targeting an entity
+  Keep restore a session the user had resumed. No API verb stops a session today; if one
+  is ever added it answers `{"stop": "pending", "reason": "answer the Keep/Discard
+  dialog"}` when the dialog parks instead of claiming success. Entries targeting an entity
   that existed only during Play are dropped by the rebase and counted on the status line,
   never kept as no-ops (an undoable no-op resurrects phantoms); an entity created while
   paused and then simulated after a Resume comes back in its Stop-time state
@@ -420,9 +438,8 @@ Stop → the dialog counts them, Keep applies them, Discard drops them),
 `test_discard_restores_the_snapshot_and_truncates_the_history_to_the_play_boundary`,
 `test_cancel_keeps_the_session_paused_with_its_edits` (via Escape),
 `test_undo_while_paused_stops_at_the_play_boundary` (the GUI path and the API line),
-`test_every_stop_path_routes_through_the_dialog` (the play-control action, the shortcut
-and the API each reach `request_stop`, and the API line answers `stop: pending` when the
-dialog parks), `test_play_while_the_stop_dialog_is_pending_cancels_the_dialog` (driven
+`test_every_stop_path_routes_through_the_dialog` (the play-control action and the
+shortcut each reach `request_stop`, and no API line can reach `stop_play_session`), `test_play_while_the_stop_dialog_is_pending_cancels_the_dialog` (driven
 through the real Paused → Playing dispatcher path, which resumes; the session stays intact
 and every other key is swallowed meanwhile),
 `test_rebase_keeps_the_authored_y_when_only_x_was_edited_while_paused` (authored (0,0),
@@ -441,8 +458,10 @@ entity), `test_rebase_leaves_a_simulated_nested_sibling_leaf_alone`. The header 
 `play_session_tests.rs::test_play_cancels_an_in_flight_asset_drag` documents the old
 "discarded by Stop" rule and is updated.
 
-Docs: `crates/editor_integration/CLAUDE.md` — a File Map row for `stop_confirm.rs`; the
-Play/Stop pattern line gains "Stop with edits recorded since Play (only possible while
+Docs: `docs/EDITOR_COMMAND_API.md:68` ("Stop DISCARDS a batch opened while Paused")
+becomes "Stop commits a batch opened while Paused into the session and the Keep/Discard
+dialog decides its fate with the other paused edits". `crates/editor_integration/CLAUDE.md`
+— a File Map row for `stop_confirm.rs`; the Play/Stop pattern line gains "Stop with edits recorded since Play (only possible while
 Paused) asks Keep / Discard / Cancel on the Modal layer — Keep rebases them onto the
 restored world, Discard truncates to the Play boundary, Cancel stays Paused; undo and redo
 inside a session stop at that boundary; edits to entities that existed only during Play do
