@@ -163,6 +163,19 @@ batches, Sep 4–6 2026; `docs/WEB_PLAYGROUND.md`, follow-ups on the board.
 GitHub-App/OAuth publish-to-own-repo stays undesigned until the playground proves
 engagement.
 
+**Playground UX (Sep 8 2026).** Astra — the roster's artist and UI expert (the
+working set's `roles` skill) — reviewed the live page and the editor in two
+batches the week it shipped, and the gaps became the **Playground UX** sprint
+(milestone here and in `insiculous_web`; one order in its description): the
+editor gets the window and an edit-to-preview loop into a separate game-only
+window first, then the first-run path, the visual hierarchy (reconciling
+`docs/EDITOR_UX_AUDIT.md` before it becomes a task list again), the
+loading/saving/failure states, and browser usability plus a performance budget
+as acceptance criteria. The acceptance test: on an ordinary laptop, a new
+visitor changes a sample, plays that exact change in another window, returns
+safely, and exports their work without reading the docs. The sprint's plan is
+written as a handoff loop when it starts; Astra reviews it alongside kimi.
+
 ## Scripting — the ScriptRef seam
 
 Adopted Aug 27 2026. Stable serializable identity for game logic:
