@@ -35,10 +35,13 @@ Engine status, test counts, and per-system capability detail live in
 
 ## Settled Decisions (decisions of record — don't re-litigate)
 
-- **Art source: mix** (Jul 28 2026) — Jesse hand-draws hero assets (Aseprite →
-  PNG); simple tiles/props are code-generated **offline into PNGs** (never
-  runtime rgba). All 6 games get full Deion-world theming; ChaosTheme neon is
-  the FX/accent layer.
+- **Art source: Astra in Aseprite** (Sep 8 2026, superseding the Jul 28 "mix"):
+  Astra — the roster's lead artist, Codex on `gpt-6-astra` — draws every sheet,
+  tile and prop draft in Aseprite as a quarantined `ai_` study; Jesse draws the
+  concept files, rules on palette and castings, and does the per-frame cleanup
+  pass that carries a sheet across the paid line. Tiles/props stay **offline
+  PNGs** (never runtime rgba). All 6 games get full Deion-world theming;
+  ChaosTheme neon is the FX/accent layer.
 - **Web-first in the CURRENT look** (Jesse, Aug 19 2026): the six games shipped
   to the website as they were (neon look, AI stand-ins); Deion re-skins roll
   out to the site as updates. Free itch.io follows the site; Steam/iOS/Android
@@ -49,17 +52,18 @@ Engine status, test counts, and per-system capability detail live in
   (studio website, free itch.io) as part of the AI-workflow showcase; they
   **never ship in paid/marketplace releases**. Quarantine mechanics: `ai/` dir
   + `ai_` prefix + `check_no_ai_assets.sh` on paid publish paths. SSOT:
-  `../games/deion_assets/DEION_STYLE.md` §6.
+  `../deion_assets/DEION_STYLE.md` §6.
 - **Web assets fetch-by-default**; **WebGPU-only at launch** (WebGL2 fallback
   revisited at the post-launch review, issue #13); **games stay standalone**.
 - **Audio backend: rodio, FINAL** (H1 spike + Jesse's listen test, Jul 30
   2026 — `coordination/H1_SPIKE.md`).
 - **Asset metrics**: 16px base cell, nearest filter, 5× integer scale to
   `RENDER_UNIT = 80` — one art cell = one world unit = one collider unit.
-  Split: Jesse draws hero sheets, key characters, palette sign-off; agents do
-  everything else. Pixellab tooling lessons (validated workflows + the
-  create_character skeleton trap) are archived in `log_archive.md` § "Roadmap
-  slimmed" and DEION_STYLE.md.
+  Split: Jesse draws the concept files and signs off palette and castings,
+  Astra draws the sheets, agents do the sidecars and tooling
+  (`../deion_assets/DEION_STYLE.md` §7). Pixellab, Veo and ComfyUI were
+  retired Sep 8 2026; the pixellab lessons stay archived in `log_archive.md`
+  § "Roadmap slimmed".
 - **Perspective cameras permanently rejected**; isometric works via the
   project-and-y-sort pattern (see memory/log archive).
 
@@ -243,5 +247,5 @@ gh issue list -R beinsiculous/insiculous_2d              # the open work
 symlinks to it) · `training.md` (API patterns) · `log_archive.md` (completed
 history) · `docs/EDITOR_UX_AUDIT.md` · `docs/EDITOR_COMMAND_API.md` ·
 `docs/WEB_SAVES.md` · `coordination/H1_SPIKE.md` ·
-`../games/deion_assets/DEION_STYLE.md` (style + castings + tiered AI rule) ·
+`../deion_assets/DEION_STYLE.md` (style + castings + tiered AI rule) ·
 `../games/` (game projects) · `../insiculous_web/` (the site, Mily's repo).
