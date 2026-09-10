@@ -661,3 +661,18 @@ tab keeps answering. Executor: Jesse's Claude Code session from a handoff; revie
 accepted, 2 rebutted), codex 3 and the planner 5 on the diff, then kimi 2 and codex 1 on the
 planner's fix delta (the pump ran before the loop published its proxy — corrected). Gates green;
 the seven games pass `check_games.sh`. Owed: Jesse's browser checks on the hidden-tab paths.
+
+### 2026-09-10 — Playground UX batch 5: the site's application shell (web#57, web#52, web#59)
+
+Landed as insiculous_web 570eaab on `jesse`, closing web#57, web#52 and web#59. `/playground/`
+and `/playground/<slug>/` render on `AppLayout` — a three-row body grid whose middle row is the
+workspace — with an app bar (wordmark, Aa, the visible h1, the toolbar), a native Help dialog
+holding the page's prose and the shortcuts, the canvas filling a stage cell under the one
+`!important` rule that beats winit's inline size, and Scripts and Command in a details dock. A
+browser that fails the shared WebGPU probe gets a compatibility panel in the canvas's place with
+Try again while no event loop has started. Fullscreen takes the document with `aria-pressed`, and
+Save is the hosted save verb whose refusal reaches the banner through a sink queue. Executor:
+Jesse's Claude Code session from a handoff; reviews: kimi 6 (3 accepted, 1 false, 2 policy),
+codex 1 and the planner 5 on the diff, then kimi 2 and codex 1 on the planner's fix delta. Gates
+green (verify, axe 81 pages and scenarios, announce 59). Filed: web#61. Owed: Jesse's browser
+checks on the bar, Help, fullscreen, the stage at 390 and 320, the dock and 200% text.

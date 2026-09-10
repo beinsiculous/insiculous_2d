@@ -985,7 +985,30 @@ and `viewport_input.rs` at 500 — neither is in this batch.
 
 Gates: standard engine + wasm. Leaves out: the page (batch 6).
 
-## Batch 5 — site: the application shell, fullscreen, the compatibility panel (web#57, web#52, web#59)
+## Batch 5 — site: the application shell, fullscreen, the compatibility panel (web#57, web#52, web#59) — DONE 2026-09-10 (insiculous_web 570eaab)
+
+Authored by Jesse's Claude Code session in the other window from
+`insiculous_web/review/playground-ux/handoff-5.md`; reviewed there (numbering is per repo) by
+kimi (`review-1.md`, 6 findings: 3 accepted, 1 false — `init()` cannot reject after the loop
+starts, `web_entry.rs` spawns and returns — and 2 policy: `#save-status` is batch 11's, and the
+fill-mode `!important` does not fight the 1024×720 clamp because the engine follows the shown
+box), codex (`review-1-codex.md`, 1, accepted — Try again re-wired every control after a rejected
+init) and the planner (`review-1-claude.md`, 5, all accepted); adjudicated in `rebuttal-1.md`.
+The planner's fix hunks (8 files) went back through kimi (`review-2.md`, 2) and codex
+(`review-2-codex.md`, 1) as their own diff; the three one-line tightenings taken are enumerated in
+`rebuttal-2.md`, not re-reviewed. Landed as specified, plus what the reviews forced: **the
+controls are wired once** behind a flag, so a retry re-runs only the probe, the import and
+`default()`; **the stage hides under the compatibility panel** (the black canvas was web#59's own
+complaint); **the status carries the WebGPU reason**, so the live region announces it; a game
+with no still of its own takes the Pong default *with Pong's alt*; the panel's copy claims no
+subject, because six game pages render it too; **a save refusal on the banner — the engine's or
+the dispatch's — is cleared by the next save that succeeds** on an explicit `ok: true`; Help is
+audited at phone width as well. The executor's decisions, accepted: Aa third in the bar (the h1
+is not focusable; the painted order is Jesse's listed keyboard order), the h1 as a named slot,
+the toolbar's `projectControls` and Help's `projectHelp` props for the reduced slug-page shape,
+and the focusable, named `.dock-body` axe demanded. Filed: web#61 (the layout gate runs no
+opened-element scenario). **Owed: Jesse's browser checks** below — the batch's code is landed,
+the mark is not final until they are reported.
 
 No engine dependency: the shell is CSS and markup, and the engine already follows the
 canvas's CSS box. The compatibility panel joins this batch because the gates only ever
