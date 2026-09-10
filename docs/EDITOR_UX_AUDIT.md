@@ -138,7 +138,7 @@ Compounding: `EditorContext::title_bar_text()` (`context/mod.rs:398-402`) format
 
 ### 1.5 Paused is editable and Stop discards the edits with no warning
 
-**Status (2026-09-10):** shipped — #103 (f268bf4, closes on push) — Stop asks whether to keep or discard the edits made while Paused
+**Status (2026-09-10):** shipped — #103 (f268bf4, closes when `jesse` merges into `main`) — Stop asks whether to keep or discard the edits made while Paused
 
 `crates/editor/CLAUDE.md:67` states the design: `Paused` → editable. Every guard in the codebase tests `is_playing()`, not `in_play_session()`. Stop (`shortcuts.rs:78-102`) restores unconditionally. No dirty check, no prompt, no undo.
 
@@ -542,13 +542,13 @@ Across 12 chrome files: **28 distinct pixel literals in 198 occurrences**, inclu
 - **The active tool's label doesn't render.** In every screenshot, Select is an empty box with a cyan ring while Move/Rotate/Scale show labels. `toolbar.rs:147-159` draws a halo `rect_rounded` before `ui.button` and a `rect_border` after — reproduce and diagnose; the `rect_border(bounds, color, 1.0, 4.0)` argument order is worth checking against the `ui` crate signature.
   - **Status (2026-09-10):** open — #99 (the editor backlog) — undecided: the halo draws outside the button and the button paints its own label, so the 2026-08-27 symptom cannot be confirmed from the tree; it needs a screenshot of the strip #131 built
 - **Asset filenames overlap into an unreadable smear** in the Editor Demo (six tiles, labels not truncated to tile width). Non-image assets (`.ron`) render as empty cyan rectangles with no glyph.
-  - **Status (2026-09-10):** shipped — #130 (e5ad961, closes on push)
+  - **Status (2026-09-10):** shipped — #130 (e5ad961, closes when `jesse` merges into `main`)
 - **Toolbar floats inside the viewport** (`toolbar.rs:176`), permanently occluding the top-left ~250×70px, while `TOOLBAR_HEIGHT = 40.0` sits dead in `layout.rs`. `IdealEditor.png` has it as a top chrome band, which is correct.
-  - **Status (2026-09-10):** shipped — #131 (0e7c6bd, closes on push) — the strip is reserved above the viewport and `toolbar_position_for` is gone
+  - **Status (2026-09-10):** shipped — #131 (0e7c6bd, closes when `jesse` merges into `main`) — the strip is reserved above the viewport and `toolbar_position_for` is gone
 - **Q/W/E/R hints render on the bare viewport** — the toolbar background is `bounds.expand(4.0)`, the hints are 12px below it, so they have no backing plate. Play gets no hint despite `Ctrl+P`/`F5` both being bound.
-  - **Status (2026-09-10):** shipped — #131 (0e7c6bd, closes on push)
+  - **Status (2026-09-10):** shipped — #131 (0e7c6bd, closes when `jesse` merges into `main`)
 - **Play controls don't align with the toolbar.** `play_controls.rs:44` says *"matches toolbar button size"* and sets 40.0; `toolbar.rs:84` sets 56.0.
-  - **Status (2026-09-10):** shipped — #131 (0e7c6bd, closes on push)
+  - **Status (2026-09-10):** shipped — #131 (0e7c6bd, closes when `jesse` merges into `main`)
 - **Status bar:** FPS is documented "smoothed" and is a raw per-frame reciprocal with a `.min(999.0)` clamp (`editor_game/mod.rs:223`). All three sections draw into the same full-width rect with no measurement, so a long message runs into the centered stats. A persistent error can never be dismissed (`clear_message` is called from tests only). Missing: dirty indicator, scene name, cursor world position, zoom %, grid/snap state, active tool, selection count.
   - **Status (2026-09-10):** open — #99 (the editor backlog) — the title bar carries the dirty indicator and the scene name (#24) and an error persists until cleared; FPS is still a raw per-frame reciprocal, the three sections still draw into one unmeasured rect, and the cursor position, zoom, grid/snap state, tool and selection count are still missing
 - **Menu bar:** widths computed as `title.len() as f32 * 10.0` (bytes, not chars); submenus render an inert `"label >"` button and discard the click; separators consume full 24px rows; no hover-to-switch between open menus; no Escape-to-close; no mnemonics; no arrow-key nav; no command palette anywhere in the tree. Undo/Redo/Delete/Duplicate are always enabled regardless of state — `MenuBar::set_checked` exists, there's no `set_enabled` equivalent.

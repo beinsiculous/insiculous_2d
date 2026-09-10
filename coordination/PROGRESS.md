@@ -705,7 +705,7 @@ gate; the gates were the three mark counts, the pointer grep and the `.rs` tag g
 Jesse's Claude Code session from handoff-8.md; reviews: kimi 2 (one accepted, one policy
 rebut), codex 3 (all accepted), planner 4 (all accepted) — §3.6 and §1.2 had over-claimed, the
 archive entry had a byline the record does not support, and the eleven "no issue" marks gained
-their numbers once the issues existed. Closes #123 on push.
+their numbers once the issues existed. Closes #123 when `jesse` merges into `main`.
 
 ## 2026-09-10 — Playground UX batches 5–7: Jesse's browser checks passed
 

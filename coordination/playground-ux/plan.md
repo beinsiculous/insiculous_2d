@@ -1519,7 +1519,7 @@ disagree, the correction wins:
    the toolbar floats, the play controls misalign, the Q/W/E/R hints on the bare viewport) in
    0e7c6bd; #130 (§5.8's filename smear), #119 and #120 in e5ad961; #121 in e542875; #122 in
    18c0970. Each commit carries its `fixes` trailer, so the issue closes when Jesse pushes.
-   These are **shipped** (commit named, "closes on push"), never "open".
+   These are **shipped** (commit named, "closes when `jesse` merges into `main`" — the default branch is `main`, so a push of `jesse` closes nothing), never "open".
 4. **The remainder maps to this sprint's open issues** — #124 (§5.8's cursors, tooltips and
    panel-resize clamp), #129 and #133 (§3), #132 (§5.2's accents, §4.4), #125, #126 (§5.8's
    focus ring and disabled contrast), #127 — by reading each issue's body, not its title
