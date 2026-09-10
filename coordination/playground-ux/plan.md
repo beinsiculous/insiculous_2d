@@ -1494,6 +1494,74 @@ status banner naming the Studio Board as the only work order; `log_archive.md` g
 pointer; `PROJECT_ROADMAP.md` § "Editor — UX Audit & Work Order" points at the sprint
 instead of the audit. No source changes. Astra reviews the result.
 
+**Re-verified against the tree, 2026-09-10** (`insiculous_2d` at `37b5e86` on `jesse`, eight
+commits ahead of `origin/jesse`). Ten corrections; where the paragraph above and a correction
+disagree, the correction wins:
+
+1. **The inventory.** §1–§5 are 35 `###` items (5 + 3 + 6 + 13 + 8); §5.8 is itself 16
+   bullets, each an item; §7 is 28 work-order lines (1–26 plus 7b and 14b). Every one is
+   marked. §6, §8 and §9 are design sections that became roadmap sections, not work items:
+   each gets one status line under its `##` heading — §6 → `PROJECT_ROADMAP.md` § "Scripting
+   — the ScriptRef seam" (#43, #44), §8 → § "Web Playground" (#48, #49), §9 →
+   `docs/EDITOR_COMMAND_API.md` § "Stages" (#25, #33, #45; that doc says what is left). §0
+   (vocabulary) and §10 (provenance) stay as written.
+2. **The mapping is in the issue titles, not in `git log -S`.** Sprints 1–5 filed one issue
+   per audit section with the section in the title — #18–#45, all closed (`gh issue list -R
+   beinsiculous/insiculous_2d --state closed --search "audit §" --limit 50`); sprint 6 added
+   #52 (§1.4 remainder), #54 and #55 (§3.5 remainders); #51, #53, #56 and #59 closed items
+   no earlier issue named. The closing commit of any issue is `git log --oneline -E
+   --grep="#N\b"`. `git log -S<symbol>` and a grep of the tree at HEAD are for the items no
+   issue names (§4.8, §4.12, §4.13, §5.7 and most of §5.8's bullets); the plan's "What the
+   exploration established" paragraph (2026-09-09) is a checked inventory to start from, and
+   the tree wins where they disagree.
+3. **Batches 1–7 of this sprint shipped audit items whose issues are still open on GitHub**,
+   because `jesse` is unpushed: #103 (§1.5) and #128 (§5.5's clip) in f268bf4; #131 (§5.8:
+   the toolbar floats, the play controls misalign, the Q/W/E/R hints on the bare viewport) in
+   0e7c6bd; #130 (§5.8's filename smear), #119 and #120 in e5ad961; #121 in e542875; #122 in
+   18c0970. Each commit carries its `fixes` trailer, so the issue closes when Jesse pushes.
+   These are **shipped** (commit named, "closes on push"), never "open".
+4. **The remainder maps to this sprint's open issues** — #124 (§5.8's cursors, tooltips and
+   panel-resize clamp), #129 and #133 (§3), #132 (§5.2's accents, §4.4), #125, #126 (§5.8's
+   focus ring and disabled contrast), #127 — by reading each issue's body, not its title
+   alone. An item still real that no issue names is marked **open — no issue** with a
+   one-line disposition and listed in the report under one heading, "still real, no issue";
+   the planner files them. An item not worth doing is **retired — <reason>**. The executor
+   files nothing.
+5. **The pointers the paragraph does not name are part of the batch** (docs match reality):
+   `PROJECT_ROADMAP.md:85` ("follows the UX-audit sprint order") and `:146-150` (the
+   paragraph adopting §7 as five sprints with "Sprint 5 … pending close-out" — stale twice:
+   sprint 5's five issues are closed, sprint 6 followed, and the Playground UX sprint is the
+   work order); `README.md:458`; the last sentence of `CLAUDE.md:231` (`AGENTS.md` is a
+   symlink to it — one edit); `crates/editor_integration/CLAUDE.md:65-69`. The roadmap's "Two
+   north stars" and "Editor colors" paragraphs stay: decisions of record, not pointers.
+   `PROJECT_ROADMAP.md:176` and `:248`, `docs/EDITOR_COMMAND_API.md:5,159,201` and
+   `log_archive.md:301,696` cite the audit as history and stay. No `.rs` file names it.
+6. **The banner** sits between the title and the `**Date:**` line, as a blockquote: status
+   historical; reconciled 2026-09-10 against `insiculous_2d` at the HEAD the executor reads
+   (`git rev-parse --short HEAD`); the Studio Board (the Playground UX milestone, `gh issue
+   list -R beinsiculous/insiculous_2d`) is the only work order; every item below carries a
+   status line; the file:line anchors are of 2026-08-27 and are not maintained. The Date,
+   Basis and Purpose lines stay — provenance.
+7. **The mark's shape**, so it can be counted: under each `###` heading of §1–§5 and each `##`
+   heading of §6, §8 and §9, one line `**Status (2026-09-10):** shipped — #N (sha)` /
+   `open — #N (this sprint)` / `open — no issue: <disposition>` / `retired — <reason>`; under
+   each §5.8 bullet, an indented sub-bullet `  - **Status (2026-09-10):** …` of the same
+   shape; on each §7 line, a trailing ` — shipped #N` / ` — open #N` / ` — retired`. Gates:
+   `grep -c "^\*\*Status (2026-09-10):\*\*"` = 38 and `grep -c "^  - \*\*Status
+   (2026-09-10):\*\*"` = 16 over the audit.
+8. **The archive pointer** is the newest entry, first after the convention block's `---`
+   (`log_archive.md:13`), in the archive's heading shape (`## Editor UX audit reconciled ☑ Sep
+   10 2026`): what the audit was, the tally the reconciliation produced (shipped / open /
+   retired), and that the remainder lives only on the board.
+9. **No cargo gate applies** — no `.rs` file changes, and the diff is `.md` only, which
+   `git diff --cached --stat` must show. The pointer grep is the gate instead: `grep -rn -E
+   "EDITOR_UX_AUDIT|UX-audit sprint order|UX Audit & Work Order" --include=*.md . | grep -v
+   -E "^\./(review|coordination|target)/"` — every hit must read as history or as this
+   reconciliation. The 600-line ceiling is a source rule; the audit stays one file and grows
+   by its marks.
+10. **Reviewers**: kimi and codex (Astra, as the section says). The report's "still real, no
+    issue" list is the planner's filing input, converted after the review.
+
 ## Batch 9 — engine: the inspector during Play, sections and the colour editor (2d#129, 2d#133)
 
 - **2d#129.** One renderer: `edit_all_components` gains a `read_only` flag on the frame it
