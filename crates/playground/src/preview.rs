@@ -226,13 +226,21 @@ mod tests {
         // scene comes from `SceneLoader::first_scene_in(<root>/assets/scenes)`.
         // A bundled project that nested its scenes deeper would make those two
         // disagree without any test failing.
-        let projects_directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../insiculous_web/public/playground/v1/assets/projects");
-        let Ok(entries) = std::fs::read_dir(&projects_directory) else {
+        // Every deployed version directory is audited, not one named by a literal: a
+        // literal kept pointing at a superseded bundle after a version bump, and the
+        // constant that knows the current version lives in the wasm-only entry module.
+        let playground_directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../insiculous_web/public/playground");
+        let Ok(version_directories) = std::fs::read_dir(&playground_directory) else {
             // The deployed bundle is not in every checkout of the engine.
             return;
         };
-        for entry in entries.flatten() {
+        let bundled_projects = version_directories
+            .flatten()
+            .filter(|version| version.file_name().to_string_lossy().starts_with('v'))
+            .filter_map(|version| std::fs::read_dir(version.path().join("assets/projects")).ok())
+            .flat_map(|projects| projects.flatten());
+        for entry in bundled_projects {
             let scenes = entry.path().join("assets/scenes");
             let Ok(scene_files) = std::fs::read_dir(&scenes) else {
                 continue;
