@@ -732,3 +732,11 @@ issues (2d#134 scrub-through, four lines in 2d#99). Gates green at every round; 
 Owed: Jesse's headed check — Play with an entity selected shows the same rows greyed with
 " · live"; collapse a section and reopen the editor; scrub a colour slider and undo once.
 Closes #129 and #133 when `jesse` merges into `main`.
+
+## 2026-09-10 — Playground UX batch 9: Jesse's headed check passed
+
+The colour slider and its undo, and the inspector greyed during Play and editable when Paused,
+checked in a headed run. The one question it raised — whether a channel takes a typed value —
+was user error; two tests pin click-to-type while Editing and while Paused, and the colour
+editor's tests moved to `color_editor_tests.rs` to keep the inspector's test file under the
+ceiling. Nothing is owed on batch 9.

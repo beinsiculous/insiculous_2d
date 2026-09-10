@@ -76,3 +76,5 @@ directory (`insiculous_2d/review/playground-ux/`, `insiculous_web/review/playgro
 | engine · batch 9 fix delta 4 | codex | 1 | 1 | 0 | 0 | "hidden panels never advance the rename timeout" — a narrow-mode tab or a hidden panel never renders, so the settlement never ran; the frame now runs it when the dock leaves the hierarchy out | ~1 min |
 | engine · batch 9 fix delta 5 | codex | 0 | 0 | 0 | 0 | none — "Mergeable"; static, tests not run | ~1 min |
 | engine · batch 9 fix delta 5 | kimi | 2 | 2 | 0 | 0 | "F2 starts a rename the new settle is guaranteed to kill" — with the hierarchy not rendered, the shortcut opens a field that never draws and ends after the grace; and hiding the panel mid-rename now drops the typed text silently (the intended semantic, minus an affordance) — both to the editor backlog #99 | ~4.5 min |
+| engine · batch 9 test split (tests only) | codex | 0 | 0 | 0 | 0 | none — "Mergeable based on static review" | <1 min |
+| engine · batch 9 test split (tests only) | kimi | 1 | 1 | 0 | 0 | "`inspector_tests.rs` module doc still claims the colour-editor contracts live there" — trimmed | ~4 min |
