@@ -494,7 +494,33 @@ resurrects simulation state" naming the rebase test; the inspector heading rule.
 
 Gates: standard engine + wasm. Leaves out: anything visual beyond the heading.
 
-## Batch 2 — engine: the toolbar strip (2d#131)
+## Batch 2 — engine: the toolbar strip (2d#131) — DONE 2026-09-09 (0e7c6bd)
+
+Authored by Jesse's Claude Code session in the other window from
+`review/playground-ux/handoff-2.md`; reviewed by kimi (`review-8.md`, 4 findings, all
+accepted), codex (`review-8-codex.md`, 5, all accepted) and the planner (`review-8-claude.md`,
+2 of its own plus the executor's flagged gizmo rect, folded in on Jesse's ruling); adjudicated
+in `rebuttal-8.md`. The planner's fix hunks (15 files) went back through kimi (`review-9.md`, 2)
+and codex (`review-9-codex.md`, 2) as their own diff; those four corrections were applied and
+enumerated in `rebuttal-9.md`, not re-reviewed (Jesse's ruling, batch 1's precedent). Landed as
+specified, plus what the reviews forced: **layer-aware blocking in `ui`** — a blocking region
+carries the `UiLayer` that claimed it and a widget in an overlay scope is inert only under a
+higher layer's region, because the strip's own scope had exempted Play from the Stop dialog's
+scrim; the narrow overlay and its tabs start below the centre's header AND strip (the section's
+"below the strip" measured from the dock top) and run to the dock's bottom; the overlay closes
+from its chevron; a collapsed panel opens whole through `expanded_content_bounds` without its
+persisted flag changing; the centred play controls clamp to the right edge between 323 and
+367 px; Escape closes the overflow menu in the key router, in every play state;
+`scene_view_bounds()` is `None` for an empty viewport; the gizmo clips to the viewport; and
+`Toolbar`'s position API is gone with `toolbar_position_for`. The strip's band is a
+`begin`/`end` scope, not the single `render` this section named (the executor's deviation,
+accepted: the band must cover the widgets, and scopes cannot nest). Every gate green
+(`gates-2-final.log`); all seven games pass `check_games.sh` (`gates-2-final-games.log`;
+`game-template` is cloned in this working set after all). Filed: `#134` (`float_input`'s
+drag-scrub ignores blocking regions — pre-existing, found by the acceptance test). Owed:
+Jesse's browser check — the strip at a desktop width, the overflow menu at a narrow one, the
+inspector opening over the viewport at 390 and 320 px and closing from its chevron, and Play
+inert behind the Stop dialog — on the next playground bundle.
 
 **Re-verified against the tree 2026-09-09 before the handoff** (after batch 1, f268bf4):
 `toolbar_position_for` is `crates/editor/src/toolbar.rs:186` with two tests of its own at

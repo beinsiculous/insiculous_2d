@@ -615,3 +615,21 @@ API share. Executor: Jesse's Claude Opus session from a handoff; reviews: kimi 4
 1 policy rebut) and codex 5 (all accepted) on the diff, then kimi 4 and codex 3 on the
 planner's fix delta, all accepted. Gates green; the six games pass `check_games.sh`. Owed:
 Jesse's browser check of the heading and the dialog on the next playground bundle.
+
+## 2026-09-09 — Playground UX batch 2: the toolbar strip, and the dock's narrow mode
+
+Landed as 0e7c6bd on `jesse`, closing #131. The tools and the play controls moved from the
+scene's corner into an opaque strip on the PanelChrome band — compact buttons, tools left,
+Play/Pause/Stop at the centre while there is room and from the right edge where there is not,
+shed tools in an overflow menu that Escape closes in every play state; `toolbar_strip::split`
+is the one place the strip is cut from the viewport, and `scene_view_bounds()` is the viewport
+below it, so no overlay, pick or scissor reaches the band. Below the strip's minimum width the
+dock goes narrow: side panels become edge tabs, one opens at a time as an overlay from the
+strip's bottom to the dock's, closed from its chevron, its collapse flag untouched. The review
+forced layer-aware blocking in `ui`: a region carries its `UiLayer`, and a scoped widget is
+inert under a higher layer's region, so the Stop dialog's scrim reaches the strip. Executor:
+Jesse's Claude Code session from a handoff; reviews: kimi 4 and codex 5 on the diff (all
+accepted), then kimi 2 and codex 2 on the planner's fix delta (all accepted). Gates green; the
+seven games pass `check_games.sh`. Filed #134 (float scrub through overlays). Owed: Jesse's
+browser check of the strip, the overflow menu, the narrow overlay and Play behind the dialog.
+
