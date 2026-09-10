@@ -1562,7 +1562,7 @@ disagree, the correction wins:
 10. **Reviewers**: kimi and codex (Astra, as the section says). The report's "still real, no
     issue" list is the planner's filing input, converted after the review.
 
-## Batch 9 — engine: the inspector during Play, sections and the colour editor (2d#129, 2d#133)
+## Batch 9 — engine: the inspector during Play, sections and the colour editor (2d#129, 2d#133) — DONE 2026-09-10 (cc9b5da)
 
 - **2d#129.** One renderer: `edit_all_components` gains a `read_only` flag on the frame it
   takes (the executor names the type from `stored_component/mod.rs:270` and

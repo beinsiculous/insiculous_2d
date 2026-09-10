@@ -714,3 +714,21 @@ and the compatibility panel; Play ↗ opening the preview window and returning s
 first-run hint and its Dismiss across a reload, the hierarchy's names, Play framing the arena,
 the preview centring it, the game page's line — were done by Jesse in a headed WebGPU browser on
 2026-09-10 and passed. Nothing is owed on those three batches now except the push.
+
+## 2026-09-10 — Playground UX batch 9: the inspector during Play, sections, the colour editor (cc9b5da)
+
+One inspector renderer: while a play session runs the same rows draw with their controls
+replaced by the values they hold, at the same heights, so nothing typed reaches the live world
+and the scroll offset survives; the read-only serde path is deleted. The add-component button
+stays, disabled, while Playing; every path into Playing closes the popups, the script picker and
+an open rename; a rename field that is not drawn — cancelled, scrolled off, in a panel the dock
+does not render — ends within half a second and releases the keyboard. Sections collapse from
+their header and the set persists; rarely used fields sit behind Advanced; the colour swatch
+opens a popup drawn first in the frame on the Modal band, keyed by component name, clamped to
+the window, writing through the row's own result. Executor: Jesse's Claude Code session from
+handoff-9.md, then 9-fixes-for-executor.md; reviews: six rounds (18–23), kimi 4+4+5+3+2+2,
+codex 3+2+2+1+1+0, planner 4+1 — every finding accepted, two scoped to existing or backlog
+issues (2d#134 scrub-through, four lines in 2d#99). Gates green at every round; 934 tests.
+Owed: Jesse's headed check — Play with an entity selected shows the same rows greyed with
+" · live"; collapse a section and reopen the editor; scrub a colour slider and undo once.
+Closes #129 and #133 when `jesse` merges into `main`.
