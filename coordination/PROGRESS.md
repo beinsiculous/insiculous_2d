@@ -706,3 +706,11 @@ Jesse's Claude Code session from handoff-8.md; reviews: kimi 2 (one accepted, on
 rebut), codex 3 (all accepted), planner 4 (all accepted) — §3.6 and §1.2 had over-claimed, the
 archive entry had a byline the record does not support, and the eleven "no issue" marks gained
 their numbers once the issues existed. Closes #123 on push.
+
+## 2026-09-10 — Playground UX batches 5–7: Jesse's browser checks passed
+
+The checks the batch 5, 6 and 7 entries above list as owed — the application shell, fullscreen
+and the compatibility panel; Play ↗ opening the preview window and returning safely; the
+first-run hint and its Dismiss across a reload, the hierarchy's names, Play framing the arena,
+the preview centring it, the game page's line — were done by Jesse in a headed WebGPU browser on
+2026-09-10 and passed. Nothing is owed on those three batches now except the push.
