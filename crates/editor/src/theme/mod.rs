@@ -296,6 +296,7 @@ impl EditorTheme {
         crate::EditableFieldStyle {
             label_color: self.text_secondary,
             value_color: self.text_primary,
+            muted_color: self.text_muted,
             header_color: self.accent_cyan,
             axis_x_label: self.axis_x_label,
             axis_y_label: self.axis_y_label,

@@ -337,3 +337,154 @@ fn test_entity_with_scripts_renders_pseudo_rows_and_click_reports_script() {
         "visible_order still holds the entity once"
     );
 }
+
+/// A rename cancelled from outside the panel — entering Playing does it —
+/// leaves a field that is no longer drawn holding the keyboard. Every key
+/// then stops at the editor's text-focus guard, and the game never sees the
+/// input the user is pressing.
+#[test]
+fn test_a_rename_cancelled_from_outside_releases_the_keyboard_on_the_next_frame() {
+    let mut world = World::new();
+    let named = world.create_entity();
+    world.add_component(&named, Name::new("Old")).ok();
+    let mut panel = HierarchyPanel::new();
+    let mut selection = Selection::new();
+    let mut ui = ui::UIContext::new();
+    let input = input::InputHandler::new();
+    let mut drag_drop = DragDropState::new();
+
+    panel.begin_rename(named);
+    ui.focus_text_input(HierarchyPanel::rename_widget_id(named).as_str(), "Old");
+    render_frame(&mut panel, &mut ui, &input, &world, &mut selection, &mut drag_drop);
+    assert!(ui.wants_keyboard(), "the rename field owns the keyboard");
+
+    panel.cancel_rename();
+    render_frame(&mut panel, &mut ui, &input, &world, &mut selection, &mut drag_drop);
+
+    assert_eq!(panel.renaming(), None);
+    assert!(!ui.wants_keyboard(), "the cancelled field released the keyboard");
+}
+
+#[test]
+fn test_a_rename_scrolled_off_the_panel_ends_and_releases_the_keyboard() {
+    // Only a drawn field can take the Escape that would release it, so a
+    // rename whose row has scrolled out of the panel must not keep the
+    // keyboard: the game would never see a key again.
+    let mut world = World::new();
+    let named = world.create_entity();
+    world.add_component(&named, Name::new("First")).ok();
+    for _ in 0..12 {
+        world.create_entity();
+    }
+    let mut panel = HierarchyPanel::new();
+    let mut selection = Selection::new();
+    let mut ui = ui::UIContext::new();
+    let input = input::InputHandler::new();
+    let mut drag_drop = DragDropState::new();
+
+    panel.begin_rename(named);
+    ui.focus_text_input(HierarchyPanel::rename_widget_id(named).as_str(), "First");
+    render_frame(&mut panel, &mut ui, &input, &world, &mut selection, &mut drag_drop);
+    assert!(ui.wants_keyboard(), "the drawn rename field owns the keyboard");
+
+    panel.scroll.scroll_to(f32::MAX);
+    render_frame(&mut panel, &mut ui, &input, &world, &mut selection, &mut drag_drop);
+    assert!(panel.scroll.offset() > 0.0, "the fixture scrolls the first row out of the panel");
+    render_frame(&mut panel, &mut ui, &input, &world, &mut selection, &mut drag_drop);
+
+    assert_eq!(panel.renaming(), None, "the undrawn rename ended");
+    assert!(!ui.wants_keyboard(), "and released the keyboard");
+}
+
+#[test]
+fn test_a_rename_hidden_behind_its_own_script_rows_ends_and_releases_the_keyboard() {
+    // Script rows are rows: a panel showing only them has drawn content
+    // without the rename field, so the field is gone, not merely unseen.
+    let mut world = World::new();
+    let scripted = world.create_entity();
+    world.add_component(&scripted, Name::new("Scripted")).ok();
+    let scripts = (0..10).map(|index| ecs::ScriptRef::new(format!("script_{index}"))).collect();
+    world.add_component(&scripted, ecs::Scripts(scripts)).ok();
+    let mut panel = HierarchyPanel::new();
+    let mut selection = Selection::new();
+    let mut ui = ui::UIContext::new();
+    let input = input::InputHandler::new();
+    let mut drag_drop = DragDropState::new();
+
+    panel.begin_rename(scripted);
+    ui.focus_text_input(HierarchyPanel::rename_widget_id(scripted).as_str(), "Scripted");
+    render_frame(&mut panel, &mut ui, &input, &world, &mut selection, &mut drag_drop);
+    assert!(ui.wants_keyboard(), "the drawn rename field owns the keyboard");
+
+    panel.scroll.scroll_to(ROW_HEIGHT * 2.0);
+    render_frame(&mut panel, &mut ui, &input, &world, &mut selection, &mut drag_drop);
+    assert!(panel.scroll.offset() >= ROW_HEIGHT, "the entity row is above the panel, its script rows fill it");
+    render_frame(&mut panel, &mut ui, &input, &world, &mut selection, &mut drag_drop);
+
+    assert_eq!(panel.renaming(), None, "the undrawn rename ended");
+    assert!(!ui.wants_keyboard(), "and released the keyboard");
+}
+
+#[test]
+fn test_a_rename_survives_a_splitter_through_zero_but_not_a_panel_left_there() {
+    // A pass that drew no rows says nothing about the field, for a few
+    // frames; a panel that stays empty would otherwise hold the keyboard
+    // with no field left to take the Escape.
+    let mut world = World::new();
+    let named = world.create_entity();
+    world.add_component(&named, Name::new("Old")).ok();
+    let mut panel = HierarchyPanel::new();
+    let mut selection = Selection::new();
+    let mut ui = ui::UIContext::new();
+    let input = input::InputHandler::new();
+    let mut drag_drop = DragDropState::new();
+    let theme = crate::theme::EditorTheme::default();
+    let zero = common::Rect::new(0.0, 0.0, 220.0, 0.0);
+
+    panel.begin_rename(named);
+    ui.focus_text_input(HierarchyPanel::rename_widget_id(named).as_str(), "Old");
+    render_frame(&mut panel, &mut ui, &input, &world, &mut selection, &mut drag_drop);
+
+    frame(&mut ui, &input, |ui| panel.render(ui, &world, &mut selection, zero, &theme, &mut drag_drop));
+    frame(&mut ui, &input, |ui| panel.render(ui, &world, &mut selection, zero, &theme, &mut drag_drop));
+    assert_eq!(panel.renaming(), Some(named), "two empty passes are a splitter passing through");
+    render_frame(&mut panel, &mut ui, &input, &world, &mut selection, &mut drag_drop);
+    assert_eq!(panel.renaming(), Some(named), "and the rename is still there when the rows return");
+    assert!(ui.wants_keyboard());
+
+    for _ in 0..40 {
+        frame(&mut ui, &input, |ui| panel.render(ui, &world, &mut selection, zero, &theme, &mut drag_drop));
+    }
+    assert_eq!(panel.renaming(), None, "a panel left empty ends the rename");
+    assert!(!ui.wants_keyboard(), "and releases the keyboard");
+}
+
+#[test]
+fn test_a_rename_in_a_panel_the_dock_does_not_render_ends_after_the_grace() {
+    // A narrow-mode tab or a hidden panel never renders, so the frame
+    // settles the rename on the panel's behalf; after the grace the
+    // undrawn field ends and the keyboard is free.
+    let mut world = World::new();
+    let named = world.create_entity();
+    world.add_component(&named, Name::new("Old")).ok();
+    let mut panel = HierarchyPanel::new();
+    let mut selection = Selection::new();
+    let mut ui = ui::UIContext::new();
+    let input = input::InputHandler::new();
+    let mut drag_drop = DragDropState::new();
+
+    panel.begin_rename(named);
+    ui.focus_text_input(HierarchyPanel::rename_widget_id(named).as_str(), "Old");
+    render_frame(&mut panel, &mut ui, &input, &world, &mut selection, &mut drag_drop);
+    assert!(ui.wants_keyboard());
+
+    for _ in 0..2 {
+        panel.settle_rename_focus(&mut ui);
+    }
+    assert_eq!(panel.renaming(), Some(named), "a frame or two without the panel is the grace");
+    for _ in 0..40 {
+        panel.settle_rename_focus(&mut ui);
+    }
+    assert_eq!(panel.renaming(), None, "a panel the dock keeps leaving out ends the rename");
+    assert!(!ui.wants_keyboard(), "and releases the keyboard");
+}

@@ -424,6 +424,9 @@ impl<G: Game> EditorGame<G> {
     /// overflow menu is closed before this, in [`Self::route_editor_key`],
     /// because it must close while Playing too and Playing never reaches here.
     pub(super) fn cancel_cascade(&mut self, world: &mut ecs::World) {
+        if self.editor.inspector_state.close_color_editor() {
+            return;
+        }
         if self.cancel_gizmo_drag(world) {
             return;
         }

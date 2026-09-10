@@ -66,8 +66,7 @@ impl<G: Game> EditorGame<G> {
         }
         self.world_snapshot = Some(snapshot);
         self.adopt_game_camera(world);
-        self.editor.set_play_state(EditorPlayState::Playing);
-        self.editor.close_add_component_popup();
+        self.enter_playing();
         self.play_frames = 0;
         self.script_error_watermark = 0;
         // Scene-authored UI (UiLabel/UiPanel/UiButton) draws only
@@ -119,9 +118,20 @@ impl<G: Game> EditorGame<G> {
         // is asking about, and a queued Keep would then restore it.
         self.stop_confirm.pending = false;
         self.stop_confirm.pending_choice = None;
+        self.enter_playing();
+        log::info!("Play: resumed from pause");
+    }
+
+    /// The step both entries into Playing share. Every editing affordance
+    /// that could still reach the world once the simulation runs closes
+    /// here: a popup's sliders would write into the live world, and a
+    /// rename field keeps focus and eats the game's keys.
+    fn enter_playing(&mut self) {
         self.editor.set_play_state(EditorPlayState::Playing);
         self.editor.close_add_component_popup();
-        log::info!("Play: resumed from pause");
+        self.editor.script_picker_open = false;
+        self.editor.inspector_state.close_color_editor();
+        self.editor.hierarchy.cancel_rename();
     }
 
     fn pause(&mut self) {

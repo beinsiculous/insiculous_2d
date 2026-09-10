@@ -13,6 +13,9 @@ use ui::{Color, Rect, UIContext};
 use crate::field_style::{EditResult, EditableFieldStyle, FieldEdit, FieldId};
 use crate::row_layout::{pair_slots, PairSlot, RowLayout};
 
+/// Subfield id of the swatch, past the four the channel inputs claim.
+const SWATCH_SUBFIELD: usize = 8;
+
 /// Render an editable Vec2 value as one composite row:
 /// `label | X [input] Y [input]`, right-bounded by the panel edge.
 pub fn edit_vec2(
@@ -83,8 +86,18 @@ pub fn edit_vec2(
     FieldEdit { result, warnings }
 }
 
+/// One colour row's frame: what the channel grid edited, the swatch's
+/// bounds (where the colour editor anchors), and whether the swatch was
+/// clicked this frame.
+pub struct ColorRow {
+    pub result: EditResult<Vec4>,
+    pub swatch: Rect,
+    pub swatch_clicked: bool,
+}
+
 /// Render an editable color (Vec4) as a preview swatch plus a 2×2 channel
 /// grid (R/G over B/A) whose columns share x positions so the grid aligns.
+/// The swatch is a button onto the colour editor.
 pub fn edit_color(
     ui: &mut UIContext,
     id: FieldId,
@@ -92,7 +105,7 @@ pub fn edit_color(
     value: Vec4,
     layout: RowLayout,
     style: &EditableFieldStyle,
-) -> EditResult<Vec4> {
+) -> ColorRow {
     let y = layout.pos.y;
     crate::editable_inspector::draw_field_label(ui, label, &layout, style);
 
@@ -104,6 +117,13 @@ pub fn edit_color(
         style.color_preview_size,
     );
     ui.rect_rounded(preview_bounds, Color::new(value.x, value.y, value.z, value.w), 2.0);
+    let swatch_clicked = ui
+        .interact(
+            FieldId::new(id.component_index, id.field_index, SWATCH_SUBFIELD),
+            preview_bounds,
+            true,
+        )
+        .clicked;
 
     // The channel grid occupies the span right of the preview. Column badge
     // widths are the max of the two badges sharing that column, so R/B and
@@ -163,9 +183,13 @@ pub fn edit_color(
         }
     }
 
-    if changed {
-        EditResult::Changed(new_value)
-    } else {
-        EditResult::Unchanged
+    ColorRow {
+        result: if changed {
+            EditResult::Changed(new_value)
+        } else {
+            EditResult::Unchanged
+        },
+        swatch: preview_bounds,
+        swatch_clicked,
     }
 }

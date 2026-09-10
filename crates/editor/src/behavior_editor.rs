@@ -313,6 +313,7 @@ mod tests {
         let mut ui = ui::UIContext::new();
         let input = input::InputHandler::new();
         let mut drag_drop = DragDropState::new();
+        let mut inspector_state = crate::InspectorState::default();
         let style = EditableFieldStyle::default();
         let window = glam::Vec2::new(800.0, 600.0);
 
@@ -320,7 +321,7 @@ mod tests {
             let behavior = Behavior::default_for_variant(index);
             ui.begin_frame(&input, window);
             let mut inspector = EditableInspector::new(&mut ui, &style, 10.0, 10.0);
-            let mut test_extras = extras(&mut drag_drop);
+            let mut test_extras = extras(&mut drag_drop, &mut inspector_state);
             let edit = edit_behavior(&mut inspector, &behavior, &mut test_extras);
             ui.end_frame();
             assert!(

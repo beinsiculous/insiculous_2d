@@ -63,12 +63,13 @@ fn test_string_fields_commit_on_enter_with_their_field_hint() {
     let mut ui = ui::UIContext::new();
     let mut input = input::InputHandler::new();
     let mut drag_drop = DragDropState::new();
+    let mut inspector_state = crate::InspectorState::default();
     let style = EditableFieldStyle::default();
 
     type_and_enter(&mut ui, &mut input, FieldId::new(0, 0, 0), "enemy");
     let tag_edit = frame(&mut ui, &input, |ui| {
         let mut inspector = EditableInspector::new(ui, &style, ORIGIN.x, ORIGIN.y);
-        edit_entity_tag(&mut inspector, &EntityTag("player".into()), &mut extras(&mut drag_drop))
+        edit_entity_tag(&mut inspector, &EntityTag("player".into()), &mut extras(&mut drag_drop, &mut inspector_state))
     })
     .expect("Enter commits the tag");
     assert_eq!((tag_edit.new_value.0.as_str(), tag_edit.field_hint), ("enemy", "tag"));
@@ -76,7 +77,7 @@ fn test_string_fields_commit_on_enter_with_their_field_hint() {
     type_and_enter(&mut ui, &mut input, FieldId::new(0, 4, 0), "p1");
     let behavior_edit = frame(&mut ui, &input, |ui| {
         let mut inspector = EditableInspector::new(ui, &style, ORIGIN.x, ORIGIN.y);
-        edit_behavior(&mut inspector, &platformer("old"), &mut extras(&mut drag_drop))
+        edit_behavior(&mut inspector, &platformer("old"), &mut extras(&mut drag_drop, &mut inspector_state))
     })
     .expect("Enter commits the behavior tag");
     assert_eq!(behavior_edit.field_hint, "tag");
@@ -96,6 +97,7 @@ fn test_cycle_rows_step_the_variant_and_carry_collider_dimensions() {
     let mut ui = ui::UIContext::new();
     let mut input = input::InputHandler::new();
     let mut drag_drop = DragDropState::new();
+    let mut inspector_state = crate::InspectorState::default();
     let style = EditableFieldStyle::default();
     let row = first_row();
 
@@ -103,7 +105,7 @@ fn test_cycle_rows_step_the_variant_and_carry_collider_dimensions() {
     let body = RigidBody::default();
     let (press, release) = click_through(&mut ui, &mut input, row.next_btn_center, |ui| {
         let mut inspector = EditableInspector::new(ui, &style, ORIGIN.x, ORIGIN.y);
-        edit_rigid_body(&mut inspector, &body, &mut extras(&mut drag_drop))
+        edit_rigid_body(&mut inspector, &body, &mut extras(&mut drag_drop, &mut inspector_state))
     });
     assert!(press.is_none(), "press frame must not fire the cycle");
     let edit = release.expect("release frame cycles the body type");
@@ -115,7 +117,7 @@ fn test_cycle_rows_step_the_variant_and_carry_collider_dimensions() {
     let mut input = input::InputHandler::new();
     let (_, release) = click_through(&mut ui, &mut input, row.prev_btn_center, |ui| {
         let mut inspector = EditableInspector::new(ui, &style, ORIGIN.x, ORIGIN.y);
-        edit_collider(&mut inspector, &collider, &mut extras(&mut drag_drop))
+        edit_collider(&mut inspector, &collider, &mut extras(&mut drag_drop, &mut inspector_state))
     });
     let edit = release.expect("release frame cycles the shape");
     assert_eq!(edit.field_hint, "shape");
@@ -135,6 +137,7 @@ fn test_pending_string_edit_commits_before_variant_cycle_applies() {
     let mut ui = ui::UIContext::new();
     let mut input = input::InputHandler::new();
     let mut drag_drop = DragDropState::new();
+    let mut inspector_state = crate::InspectorState::default();
     let style = EditableFieldStyle::default();
     let behavior = platformer("old");
     let field: ui::WidgetId = FieldId::new(0, 4, 0).into();
@@ -144,7 +147,7 @@ fn test_pending_string_edit_commits_before_variant_cycle_applies() {
 
     let (press, release) = click_through(&mut ui, &mut input, row.next_btn_center, |ui| {
         let mut inspector = EditableInspector::new(ui, &style, ORIGIN.x, ORIGIN.y);
-        edit_behavior(&mut inspector, &behavior, &mut extras(&mut drag_drop))
+        edit_behavior(&mut inspector, &behavior, &mut extras(&mut drag_drop, &mut inspector_state))
     });
 
     let committed = press.expect("press frame commits the pending tag edit");

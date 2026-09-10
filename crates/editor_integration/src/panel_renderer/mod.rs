@@ -390,8 +390,11 @@ fn render_default(ctx: &mut GameContext, content_x: f32, y: f32) {
 
 mod add_component_popup;
 mod asset_browser;
+pub(crate) mod color_editor;
 mod drag_ghost;
 mod inspector;
+#[cfg(test)]
+mod inspector_tests;
 pub mod script_catalog;
 use inspector::render_inspector;
 pub use script_catalog::build_script_catalog;

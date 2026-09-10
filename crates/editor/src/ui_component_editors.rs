@@ -122,6 +122,7 @@ mod tests {
         let mut ui = UIContext::new();
         let mut input = input::InputHandler::new();
         let mut drag_drop = crate::DragDropState::new();
+        let mut inspector_state = crate::InspectorState::default();
         let field: ui::WidgetId = FieldId::new(0, 0, 0).into();
         ui.focus_text_input(field, "@hud.score");
         input.keyboard_mut().handle_key_press(KeyCode::Enter);
@@ -129,7 +130,7 @@ mod tests {
         let style = EditableFieldStyle::default();
         let edit = frame(&mut ui, &input, |ui| {
             let mut inspector = EditableInspector::new(ui, &style, 10.0, 10.0);
-            edit_ui_label(&mut inspector, &UiLabel::default(), &mut extras(&mut drag_drop))
+            edit_ui_label(&mut inspector, &UiLabel::default(), &mut extras(&mut drag_drop, &mut inspector_state))
         })
         .expect("Enter commits the label text");
 

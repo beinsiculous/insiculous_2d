@@ -307,7 +307,7 @@ The `editor_integration` crate bridges `engine_core` and `editor` without circul
 - `EditorGame<G: Game>` — transparent wrapper that implements `Game`, intercepts all methods to add editor chrome
 - `run_game_with_editor(game, config)` — public entry point, wraps game and enforces min window size (1024x720)
 - `panel_renderer/` — panel content rendering (scene view, hierarchy, inspector)
-- `EditorPlayState` (`Editing`/`Playing`/`Paused`): game logic runs only during Playing; `WorldSnapshot` typed-clone capture on Play, restore on Stop; inspector read-only while Playing
+- `EditorPlayState` (`Editing`/`Playing`/`Paused`): game logic runs only during Playing; `WorldSnapshot` typed-clone capture on Play, restore on Stop; while Playing the inspector draws its ordinary rows read-only (same rows, same heights, muted, no widget ids) and the heading says " · live"
 
 **Dependency graph:**
 ```

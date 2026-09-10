@@ -184,6 +184,7 @@ pub(super) fn render_dynamic_edit_blocks(
     mut y: f32,
     component_index: &mut usize,
     removals: &mut Vec<String>,
+    state: &mut crate::InspectorState,
 ) -> f32 {
     for name in dynamic_components_on(world, entity) {
         let Some(value) = dynamic_value(world, entity, &name) else {
@@ -192,12 +193,20 @@ pub(super) fn render_dynamic_edit_blocks(
         y += frame.section_gap;
         let mut inspector = crate::EditableInspector::new(frame.ui, frame.field_style, frame.x, y)
             .with_component_index(*component_index)
-            .with_width(frame.width);
+            .with_width(frame.width)
+            .with_read_only(frame.read_only)
+            .with_collapsed(state.is_collapsed(&name));
         if inspector.header_with_remove(&name) {
             removals.push(name.clone());
         }
+        let collapsed = state.is_collapsed(&name);
+        if inspector.take_toggles().header {
+            state.toggle_collapsed(&name);
+        }
         y = inspector.y();
-        y = crate::inspect_component(frame.ui, "", &value, frame.x + 16.0, y, frame.inspect_style);
+        if !collapsed {
+            y = crate::inspect_component(frame.ui, "", &value, frame.x + 16.0, y, frame.inspect_style);
+        }
         *component_index += 1;
     }
     y

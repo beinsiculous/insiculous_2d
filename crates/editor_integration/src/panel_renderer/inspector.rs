@@ -1,21 +1,26 @@
 //! Inspector panel: editable component fields with undo-recorded writeback,
-//! read-only view during play, remove buttons, and the add-component popup.
+//! remove buttons, and the add-component popup. One renderer serves both
+//! states — while a play session runs it draws the same rows read-only.
 
 use glam::Vec2;
 
 use ecs::World;
 use editor::{
-    edit_all_components, inspect_all_components, layout, CommandHistory,
-    EditorContext, InspectorFrame, InspectorStyle,
+    edit_all_components, layout, CommandHistory, EditorContext, InspectorFrame,
 };
 use ui::UIContext;
 
 use super::add_component_popup;
 
+/// Appended to the inspector heading's detail line while a play session
+/// runs: the values on screen are the simulation's, not the scene's.
+pub(super) const LIVE_MARKER: &str = " \u{b7} live";
+
 /// Inspector — component inspection for the selected entity.
 ///
-/// During Editing/Paused: renders editable fields with live writeback.
-/// During Playing: renders read-only view via `inspect_component()`.
+/// During Editing/Paused the fields write back live; during Playing the
+/// same rows draw read-only, so the panel measures — and scrolls —
+/// identically either way.
 pub(super) fn render_inspector(
     editor: &mut EditorContext,
     ui: &mut UIContext,
@@ -41,6 +46,7 @@ pub(super) fn render_inspector(
     if editor.inspector_scroll_entity != Some(entity_id) {
         editor.inspector_scroll = Default::default();
         editor.inspector_scroll_entity = Some(entity_id);
+        editor.inspector_state.close_color_editor();
     }
 
     // Panel scroll: offset the whole walk; content height is
@@ -67,10 +73,15 @@ pub(super) fn render_inspector(
     // the BASELINE, so a heading placed at the content top loses its
     // ascenders off the panel edge.
     let display_name = editor::entity_display_name(world, entity_id);
-    let (heading, detail) = editor
+    let (heading, mut detail) = editor
         .selection
         .inspector_heading(&display_name)
         .unwrap_or_else(|| (display_name.clone(), format!("Entity {}", entity_id.value())));
+    // The rows look the same in both states, so the heading is where the
+    // panel says which one it is in.
+    if editor.is_playing() {
+        detail.push_str(LIVE_MARKER);
+    }
     let heading_size = editor.theme.fonts.heading;
     let heading_rect = common::Rect::new(content_x, y, bounds.width - 2.0 * padding, heading_size);
     match editor.fonts.bold {
@@ -104,45 +115,24 @@ pub(super) fn render_inspector(
     y += line_height;
 
     let content_width = bounds.width - 2.0 * padding;
-    let final_y = if editor.is_playing() {
-        editor.inspector_scroll_request = None;
-        render_inspector_readonly(ui, world, entity_id, content_x, y, &editor.theme.inspector_style())
-    } else {
-        render_inspector_editable(
-            editor,
-            ui,
-            world,
-            texture_path,
-            entity_id,
-            InspectorLayout {
-                x: content_x,
-                width: content_width,
-                y,
-                bounds,
-                scroll_offset: offset,
-            },
-            command_history,
-        )
-    };
+    let final_y = render_inspector_rows(
+        editor,
+        ui,
+        world,
+        texture_path,
+        entity_id,
+        InspectorLayout {
+            x: content_x,
+            width: content_width,
+            y,
+            bounds,
+            scroll_offset: offset,
+        },
+        command_history,
+    );
     editor
         .inspector_scroll
         .end_frame(final_y - top + padding, bounds.height);
-}
-
-/// Read-only inspector using the editor's component registry (used during
-/// Playing). Returns the next Y (for scroll content measurement).
-fn render_inspector_readonly(
-    ui: &mut UIContext,
-    world: &World,
-    entity_id: ecs::EntityId,
-    content_x: f32,
-    y: f32,
-    style: &InspectorStyle,
-) -> f32 {
-    let line_height = layout::LINE_HEIGHT;
-    inspect_all_components(
-        ui, world, entity_id, content_x, y, style, line_height * 0.5,
-    )
 }
 
 /// Build inspector extras: texture display path resolved up front and the
@@ -158,6 +148,7 @@ fn build_inspector_extras<'a>(
         .and_then(|sprite| texture_path(sprite.texture_handle));
     editor::InspectorExtras {
         drag_drop: &mut editor.drag_drop,
+        inspector_state: &mut editor.inspector_state,
         texture_display,
         warnings: Vec::new(),
         scroll_target: editor.inspector_scroll_request,
@@ -211,9 +202,10 @@ struct InspectorLayout {
     scroll_offset: f32,
 }
 
-/// Editable inspector with live writeback (used during Editing/Paused).
-/// Returns the next Y (for scroll content measurement).
-fn render_inspector_editable(
+/// The inspector's one component walk. Writes back live while Editing or
+/// Paused; while Playing every row draws read-only. Returns the next Y
+/// (for scroll content measurement).
+fn render_inspector_rows(
     editor: &mut EditorContext,
     ui: &mut UIContext,
     world: &mut World,
@@ -227,6 +219,7 @@ fn render_inspector_editable(
     // Numeric inputs render in the crate-shipped monospace face.
     let field_style = editor.theme.editable_field_style().with_numeric_font(editor.fonts.mono);
 
+    let playing = editor.is_playing();
     let mut extras = build_inspector_extras(editor, world, entity_id, texture_path);
 
     // A Name edit landing this frame must trigger the same ambiguity
@@ -247,6 +240,7 @@ fn render_inspector_editable(
         x: layout.x,
         width: layout.width,
         section_gap: line_height * 0.5,
+        read_only: playing,
     };
     let (next_y, component_index) = edit_all_components(
         &mut frame,
@@ -289,76 +283,10 @@ fn render_inspector_editable(
         world,
         command_history,
         entity_id,
-        Vec2::new(layout.x, next_y),
-        component_index,
+        add_component_popup::AddComponentSection {
+            origin: Vec2::new(layout.x, next_y),
+            component_index,
+            enabled: !playing,
+        },
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::render_inspector;
-    use ecs::World;
-    use editor::{CommandHistory, EditorContext};
-    use glam::Vec2;
-    use ui::UIContext;
-
-    #[test]
-    fn test_inspector_offers_add_component_while_editing_and_not_while_playing() {
-        let mut editor = EditorContext::new();
-        let mut world = World::new();
-        let mut command_history = CommandHistory::new();
-        let entity = world.create_entity();
-        world
-            .add_component(&entity, common::Transform2D::new(Vec2::ZERO))
-            .ok();
-        editor.selection.select(entity);
-
-        let bounds = common::Rect::new(0.0, 0.0, 300.0, 600.0);
-        let window = Vec2::new(800.0, 600.0);
-        let no_texture = |_| None;
-
-        let has_add_component = |ui: &UIContext| {
-            ui.draw_list().commands().iter().any(|command| match command {
-                ui::DrawCommand::TextPlaceholder { text, .. } => text == "+ Add Component",
-                ui::DrawCommand::Text { data, .. } => data.text == "+ Add Component",
-                _ => false,
-            })
-        };
-
-        // 1. While Editing: Add Component button is rendered.
-        let mut ui = UIContext::new();
-        let input = input::InputHandler::new();
-        ui.begin_frame(&input, window);
-        render_inspector(
-            &mut editor,
-            &mut ui,
-            &mut world,
-            &no_texture,
-            bounds,
-            &mut command_history,
-        );
-        ui.end_frame();
-        assert!(
-            has_add_component(&ui),
-            "editing inspector must offer + Add Component"
-        );
-
-        // 2. While Playing: Add Component button is not rendered.
-        editor.set_play_state(editor::EditorPlayState::Playing);
-        let mut ui = UIContext::new();
-        ui.begin_frame(&input, window);
-        render_inspector(
-            &mut editor,
-            &mut ui,
-            &mut world,
-            &no_texture,
-            bounds,
-            &mut command_history,
-        );
-        ui.end_frame();
-        assert!(
-            !has_add_component(&ui),
-            "playing inspector must not offer + Add Component"
-        );
-    }
 }

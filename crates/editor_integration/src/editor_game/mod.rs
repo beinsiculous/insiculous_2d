@@ -237,6 +237,12 @@ impl<G: Game> EditorGame<G> {
     fn render_panels(&mut self, ctx: &mut GameContext, pickables: &[editor::PickableEntity]) {
         let theme = &self.editor.theme;
         let content_areas = self.editor.dock_area.render(ctx.ui, theme);
+        // A panel the dock leaves out — a narrow-mode tab, a hidden panel —
+        // never renders, so its rename bookkeeping runs from here instead;
+        // an undrawn rename field would otherwise keep the keyboard.
+        if !content_areas.iter().any(|(panel_id, _)| *panel_id == editor::PanelId::HIERARCHY) {
+            self.editor.hierarchy.settle_rename_focus(ctx.ui);
+        }
 
         for (panel_id, bounds) in content_areas {
             ctx.ui.push_clip_rect(ui::Rect::new(bounds.x, bounds.y, bounds.width, bounds.height));
@@ -468,6 +474,12 @@ impl<G: Game> Game for EditorGame<G> {
         let window_size = ctx.window_size;
         self.prepare_frame(ctx);
         self.render_early_overlays(ctx);
+        // After the confirm dialogs, which own the frame while they are up,
+        // and before every other widget: a blocking rect is consulted at
+        // each widget's own interact call, so the popup's rect has to exist
+        // before the menu bar, the strip or any panel draws one under it.
+        let dialog_up = self.scene_confirm.pending_action.is_some() || self.stop_confirm.pending;
+        panel_renderer::color_editor::render_color_editor_pass(&mut self.editor, ctx.ui, dialog_up);
         self.handle_menu_bar(ctx, window_size);
         self.render_toolbar_and_play_controls(ctx);
         // Before the API drain, which skips mid-drag: this path only reads

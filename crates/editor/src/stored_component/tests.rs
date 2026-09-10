@@ -9,7 +9,9 @@ use glam::Vec2;
 
 use super::*;
 use crate::test_support::extras;
+use crate::inspector::InspectorStyle;
 use crate::EditableFieldStyle;
+use ui::UIContext;
 
 /// The registry's hidden entries: captured for snapshots but never
 /// surfaced as inspector blocks or API component values.
@@ -98,7 +100,8 @@ fn test_inspector_renders_one_block_per_present_component_and_records_no_edit() 
     let inspect_style = InspectorStyle::default();
     let field_style = EditableFieldStyle::default();
     let mut drag_drop = crate::DragDropState::new();
-    let mut extras = extras(&mut drag_drop);
+    let mut inspector_state = crate::InspectorState::default();
+    let mut extras = extras(&mut drag_drop, &mut inspector_state);
     let start_y = 40.0;
 
     let mut frame = InspectorFrame {
@@ -108,6 +111,7 @@ fn test_inspector_renders_one_block_per_present_component_and_records_no_edit() 
         x: 10.0,
         width: 400.0,
         section_gap: 10.0,
+        read_only: false,
     };
     let (y, count) = edit_all_components(
         &mut frame, &mut world, entity, &mut history,
@@ -193,4 +197,118 @@ fn test_stored_component_from_json_round_trips_all_settable_types() {
         "Name is set through `rename`, never `set`"
     );
     assert!(stored_component_from_json("Bogus", serde_json::Value::Null).is_err());
+}
+
+/// Every text drawn in the header or label column of one inspector pass, in
+/// draw order — the panel's rows, whatever control each of them carries.
+fn row_labels(ui: &UIContext, origin_x: f32, indent: f32) -> Vec<String> {
+    ui.draw_list()
+        .commands()
+        .iter()
+        .filter_map(|command| match command {
+            ui::DrawCommand::TextPlaceholder { text, position, .. } => Some((text, position.x)),
+            ui::DrawCommand::Text { data, .. } => Some((&data.text, data.position.x)),
+            _ => None,
+        })
+        .filter(|(_, x)| (x - origin_x).abs() < 0.01 || (x - origin_x - indent).abs() < 0.01)
+        .map(|(text, _)| text.clone())
+        .collect()
+}
+
+/// One `edit_all_components` pass over `entity`, read-only or not: the rows
+/// it drew, the Y it ended at, and how many blocks it rendered.
+fn inspector_pass(world: &mut World, entity: EntityId, read_only: bool) -> (Vec<String>, f32, usize) {
+    inspector_pass_with(world, entity, read_only, &mut crate::InspectorState::default())
+}
+
+/// [`inspector_pass`] over a given view state, so a test can collapse a
+/// section before the walk and read the toggles back after it.
+fn inspector_pass_with(
+    world: &mut World,
+    entity: EntityId,
+    read_only: bool,
+    state: &mut crate::InspectorState,
+) -> (Vec<String>, f32, usize) {
+    const ORIGIN_X: f32 = 10.0;
+    const START_Y: f32 = 40.0;
+    let mut ui = UIContext::new();
+    let input = input::InputHandler::new();
+    ui.begin_frame(&input, glam::Vec2::new(800.0, 600.0));
+    let mut history = CommandHistory::new();
+    let inspect_style = InspectorStyle::default();
+    let field_style = EditableFieldStyle::default();
+    let mut drag_drop = crate::DragDropState::new();
+    let mut inspector_extras = extras(&mut drag_drop, state);
+    let mut frame = InspectorFrame {
+        ui: &mut ui,
+        inspect_style: &inspect_style,
+        field_style: &field_style,
+        x: ORIGIN_X,
+        width: 400.0,
+        section_gap: 10.0,
+        read_only,
+    };
+    let (y, count) = edit_all_components(
+        &mut frame, world, entity, &mut history, START_Y, &mut inspector_extras,
+    );
+    ui.end_frame();
+    (row_labels(&ui, ORIGIN_X, field_style.indent), y - START_Y, count)
+}
+
+#[test]
+fn test_the_inspector_draws_the_same_rows_at_the_same_height_playing_as_editing() {
+    // A play session swaps every control for its value, and nothing else:
+    // a different row set would make the panel jump, and a shorter content
+    // height would clamp the scroll offset away.
+    let mut world = World::new();
+    let entity = entity_with_every_registry_type(&mut world);
+    world.add_component(&entity, Sprite::new(3)).ok();
+
+    let (_, editing_height, editing_count) = inspector_pass(&mut world, entity, false);
+    let (_, playing_height, playing_count) = inspector_pass(&mut world, entity, true);
+    assert_eq!(playing_height, editing_height, "the content height must not change");
+    assert_eq!(playing_count, editing_count, "the block count must not change");
+
+    // An action button's label rides centred inside its button while
+    // editing and sits in the label column while playing, so the row
+    // sequence is read off an entity without one; the height above covers
+    // the rows those buttons occupy.
+    world.remove_component::<ecs::script::Scripts>(&entity).ok();
+    let (editing_rows, _, _) = inspector_pass(&mut world, entity, false);
+    let (playing_rows, _, _) = inspector_pass(&mut world, entity, true);
+    assert!(editing_rows.contains(&"Color".to_string()), "the fixture carries a colour row");
+    assert_eq!(playing_rows, editing_rows, "the row set and order must not change");
+}
+
+#[test]
+fn test_a_collapsed_section_keeps_its_header_row_and_drops_every_field_row() {
+    // Collapsing happens inside the inspector, not by skipping the editor
+    // function: most editors draw their own header, so a skipped call would
+    // take the header — and its toggle — with it.
+    let mut world = World::new();
+    let entity = world.create_entity();
+    world.add_component(&entity, common::Transform2D::new(Vec2::new(1.0, 2.0))).ok();
+    world.add_component(&entity, Sprite::new(0)).ok();
+
+    let mut state = crate::InspectorState::default();
+    let (open_rows, open_height, open_count) = inspector_pass_with(&mut world, entity, false, &mut state);
+    assert!(open_rows.iter().any(|row| row.contains("Sprite")), "the section drew its header");
+    assert!(open_rows.contains(&"Offset".to_string()), "and its fields");
+
+    state.toggle_collapsed("Sprite");
+    let (collapsed_rows, collapsed_height, collapsed_count) =
+        inspector_pass_with(&mut world, entity, false, &mut state);
+
+    assert!(
+        collapsed_rows.iter().any(|row| row.contains("Sprite")),
+        "a collapsed section still draws its header, which is its toggle"
+    );
+    assert!(!collapsed_rows.contains(&"Offset".to_string()), "its field rows are gone");
+    assert!(
+        collapsed_rows.iter().any(|row| row.contains("Transform2D")),
+        "collapsing one section leaves the others alone"
+    );
+    assert!(collapsed_rows.contains(&"Position".to_string()));
+    assert_eq!(collapsed_count, open_count, "the block count is unchanged");
+    assert!(collapsed_height < open_height, "the panel is shorter by the skipped rows");
 }

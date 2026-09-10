@@ -90,6 +90,9 @@ pub struct EditorContext {
     pub script_catalog: Vec<crate::script_editor::ScriptCatalogEntry>,
     /// Whether the script picker popup is currently open.
     pub script_picker_open: bool,
+    /// Inspector view state: collapsed sections, open Advanced
+    /// disclosures, and the colour editor's target.
+    pub inspector_state: crate::InspectorState,
 }
 
 impl Default for EditorContext {
@@ -163,6 +166,7 @@ impl EditorContext {
             asset_browser: crate::AssetBrowserState::default(),
             script_catalog: Vec::new(),
             script_picker_open: false,
+            inspector_state: crate::InspectorState::default(),
         };
         // Run the tool→gizmo mapping once so startup state is consistent
         // whatever the defaults are (today both are Move/Translate).

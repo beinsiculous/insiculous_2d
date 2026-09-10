@@ -76,6 +76,23 @@ pub struct HierarchyPanel {
     pub scroll: crate::ScrollState,
     /// Row currently in inline-rename mode (F2), if any.
     renaming: Option<EntityId>,
+    /// The last row a rename was opened on, kept until that field's
+    /// keyboard focus has been accounted for.
+    last_rename: Option<EntityId>,
+    /// Whether the rename field was drawn in the last render pass. A field
+    /// that went undrawn — cancelled from outside, or scrolled off the
+    /// panel — would keep the keyboard forever, since only a drawn field
+    /// can handle the Escape that would release it.
+    rename_field_drawn: bool,
+    /// Rows drawn in the last render pass, script rows included. A pass that
+    /// drew none — the panel collapsed to a strip, a splitter dragged through
+    /// zero — says nothing about the rename field, so it does not end the
+    /// rename; a pass that drew rows without the field does.
+    rows_drawn: usize,
+    /// Consecutive passes that drew no rows while a rename was open. A
+    /// splitter dragged through zero is a frame or two; a panel left at
+    /// zero would otherwise hold the keyboard for as long as it sits there.
+    empty_passes: u8,
     /// Every row of the last render pass in draw order — collapsed
     /// subtrees excluded, off-panel rows included. Shift-click ranges are
     /// computed over it.
@@ -125,6 +142,10 @@ impl HierarchyPanel {
             collapsed: HashSet::new(),
             scroll: crate::ScrollState::default(),
             renaming: None,
+            last_rename: None,
+            rename_field_drawn: false,
+            rows_drawn: 0,
+            empty_passes: 0,
             visible_order: Vec::new(),
         }
     }
@@ -195,24 +216,6 @@ impl HierarchyPanel {
         }
     }
 
-    /// Widget id of an entity's inline rename field — shared by the panel's
-    /// render pass and the host's `focus_text_input` call so F2 lands in an
-    /// already-focused field.
-    pub fn rename_widget_id(entity: EntityId) -> String {
-        format!("hierarchy_rename_{}", entity.value())
-    }
-
-    /// Enter inline-rename mode for `entity` (the host focuses the field via
-    /// `UIContext::focus_text_input` with the same widget id).
-    pub fn begin_rename(&mut self, entity: EntityId) {
-        self.renaming = Some(entity);
-    }
-
-    /// Row currently in inline-rename mode, if any.
-    pub fn renaming(&self) -> Option<EntityId> {
-        self.renaming
-    }
-
     /// Render the hierarchy panel.
     ///
     /// Returns the clicks and any committed inline rename or script drop.
@@ -237,6 +240,12 @@ impl HierarchyPanel {
                 self.renaming = None;
             }
         }
+
+        // A rename field that is not drawn — cancelled from outside the
+        // panel, or scrolled out of it — would stay focused and swallow
+        // every key the editor and the game would otherwise see, with no
+        // field left to take the Escape. Focus follows the drawn field.
+        self.settle_rename_focus(ui);
 
         // Get root entities (no parent) and sort by ID for consistent ordering
         let mut roots = world.get_root_entities();
@@ -297,6 +306,7 @@ impl HierarchyPanel {
         let is_expanded = self.is_expanded(entity);
         let row_visible = y + ROW_HEIGHT >= bounds.y && y <= bounds.y + bounds.height;
         if row_visible {
+            self.rows_drawn += 1;
             self.render_row(ctx, entity, depth, y, is_expanded);
         }
 
@@ -306,6 +316,7 @@ impl HierarchyPanel {
                 let pseudo_row_visible =
                     current_y + ROW_HEIGHT >= bounds.y && current_y <= bounds.y + bounds.height;
                 if pseudo_row_visible {
+                    self.rows_drawn += 1;
                     self.render_script_row(ctx, entity, index, script, depth + 1, current_y);
                 }
                 current_y += ROW_HEIGHT;
@@ -433,6 +444,7 @@ impl HierarchyPanel {
         y: f32,
     ) {
         let bounds = ctx.bounds;
+        self.rename_field_drawn = true;
         // Inline rename replaces the label AND the row's click handling —
         // the text field owns the row while it is open.
         let rename_id = Self::rename_widget_id(entity);
@@ -531,6 +543,8 @@ fn script_display_label(script: &ecs::ScriptRef) -> String {
     }
     "script".to_string()
 }
+
+mod rename;
 
 #[cfg(test)]
 mod tests;

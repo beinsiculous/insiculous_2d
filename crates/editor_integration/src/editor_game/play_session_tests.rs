@@ -282,3 +282,27 @@ fn test_menu_actions_disallowed_while_playing_match_allowed_while_playing() {
         }
     }
 }
+
+/// A popup or a rename opened while Paused would otherwise survive Resume:
+/// the popup's rows write into the live world, and the rename field keeps
+/// focus and eats the keys the game is waiting for.
+#[test]
+fn test_resuming_closes_a_popup_and_a_rename_opened_while_paused() {
+    let mut editor = editor_game();
+    let mut world = World::new();
+    let entity = spawn_at(&mut world, Vec2::ZERO);
+
+    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    editor.handle_play_action(PlayControlAction::Pause, &mut world);
+    editor.editor.toggle_add_component_popup();
+    editor.editor.script_picker_open = true;
+    editor.editor.hierarchy.begin_rename(entity);
+    assert!(editor.editor.is_add_component_popup_open(), "the popup opened while Paused");
+
+    editor.handle_play_action(PlayControlAction::Play, &mut world);
+
+    assert!(editor.editor.is_playing(), "resumed");
+    assert!(!editor.editor.is_add_component_popup_open(), "resume closed the add-component popup");
+    assert!(!editor.editor.script_picker_open, "resume closed the script picker");
+    assert_eq!(editor.editor.hierarchy.renaming(), None, "resume cancelled the rename");
+}

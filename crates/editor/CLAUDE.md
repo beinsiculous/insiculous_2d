@@ -14,6 +14,9 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 ├── Gizmos: Translate, Rotate, Scale handles
 ├── Picking: EntityPicker, SelectionRect, screen_to_world()
 ├── Inspector: Generic serde-based + per-component editors with writeback
+│   (one renderer: `InspectorFrame.read_only` draws every row's value in
+│   place of its control while a play session runs; sections collapse and
+│   an Advanced disclosure hides the rarely-touched fields)
 ├── Undo/Redo: CommandHistory + EditorCommand trait, StoredComponent for restore
 ├── Theme: EditorTheme with 30+ color tokens (mockup-derived)
 └── Play state: EditorPlayState (Editing/Playing/Paused), WorldSnapshot
@@ -32,7 +35,12 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 - `archetype.rs` — `Archetype`: the nine entity factories shared by the Entity menu and command API `create`.
 
 ### Inspector / components
-- `editable_inspector.rs` — editable field widgets (f32 soft-range, angle degree field with wrap, cycle selector) and width-aware `EditableInspector`.
+- `editable_inspector.rs` — the width-aware `EditableInspector` walk: collapsible headers (the header row IS the toggle, in both play states), the `advanced()` disclosure, and the `read_only`/`collapsed` gates every field method runs first. `InspectorToggles` is what a block asks the view state for.
+- `field_widgets.rs` — the standalone field widgets the walk places (label column, f32 soft-range, angle degree field with wrap, boolean, cycle row, component header).
+- `read_only_rows.rs` — the read-only form of a row: label plus value in the muted colour, no widget id, the height its editable form would have taken.
+- `inspector_state.rs` — `InspectorState`: collapsed sections, open Advanced disclosures, and the open colour editor (`ColorEditorTarget` — entity, registry type NAME, field index, never a walk-time index — plus the swatch anchor and value its row reports each frame, the seen mark, and the edit waiting for that row). One field on `EditorContext`; only the collapsed set persists.
+- `color_editor_popup.rs` — the colour editor's widget (large swatch, four channels, a hex field) on the Modal band. It is drawn by a pass of its own BEFORE the panels (`editor_integration`'s `panel_renderer/color_editor.rs`), because a blocking rect is consulted at each widget's own `interact` and one pushed mid-walk cannot make the rows above it inert; the colour row still writes the edit, so one scrub is one undo entry.
+- `color_hex.rs` — `#rrggbb`/`#rrggbbaa` text for a `Vec4`, shared by the hex field and the read-only colour row.
 - `row_layout.rs` — row-layout math (`field_row`, `remove_button_x`, `pair_slots`, `ellipsize`; all horizontal placement goes through here, never hardcode offsets).
 - `field_style.rs` — `FieldId` (widget-ID mapping), `EditableFieldStyle`, and typed `EditResult<T>` returns (keeps the editor crate free of an engine_core dependency); `WidgetSlot` inside component ID stride.
 - `component_editors.rs` — per-component editors returning `Option<ComponentEdit<T>>`; shape cycling carries dimensions with commit-before-cycle ordering.
@@ -53,7 +61,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 ### Persistence + commands
 - `commands/` — `EditorCommand` trait, `CommandHistory` dirty tracking watermark, `SetComponentCommand` merge-by-hint, `break_merge()` gesture boundary, and the play-session floor (`begin_session`/`drop_session_entries`/`rebase_session_entries`) with the leaf-level rebase in `rebase.rs`.
 - `entity_names.rs` — `entity_display_name`: the one name the hierarchy row, the inspector heading and the command API's `display` field all read.
-- `editor_preferences.rs` — `EditorPreferences` JSON serialization (`from_json`/`to_json`), panel layout capture/apply, camera/grid state, `ide_command` (IO handled by integration layer via save_store).
+- `editor_preferences.rs` — `EditorPreferences` JSON serialization (`from_json`/`to_json`), panel layout capture/apply, camera/grid state, `collapsed_components` (the inspector's collapsed sections), `ide_command` (IO handled by integration layer via save_store).
 - `asset_browser.rs` — `AssetEntry`, `AssetKind` (`Image`, `Scene`, `Script`), `scan_assets` walking `common::vfs::list_files` for images, scenes, and scripts (`.rhai`, `.rs`), and `AssetBrowserState.selected` — the clicked tile, carried across a rescan by relative path and dropped when its file is gone.
 - `stored_component/` — typed registry overlay (`editor_component_registry!`), `category.rs`, and `dynamic.rs` falling through to ECS dynamic registry.
 - `world_snapshot.rs` — `WorldSnapshot` save/restore with uncaptured component type detection and drop reporting.
@@ -78,7 +86,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 ## Key Patterns
 - Inspector uses `serde_json::to_value()` to extract component fields generically
 - Component editors return `Option<ComponentEdit<T>>` (full new value + `field_hint` for undo merging) that the integration crate applies via `apply_component_edit()`
-- `EditorPlayState::Editing` → editable, `Playing` → read-only inspector, `Paused` → editable; `CommandHistory::begin_session` marks the Play boundary the editor's Stop dialog acts on
+- `EditorPlayState::Editing` → editable, `Playing` → the same rows drawn read-only, `Paused` → editable; `CommandHistory::begin_session` marks the Play boundary the editor's Stop dialog acts on
 - The inspector heading is two lines: `entity_display_name` on top, then `Selection::inspector_heading`'s detail line ("Entity 17", or "3 selected · Entity 17 primary")
 - Selection: `editor.selection.primary()` returns the main selected EntityId
 - Gizmo drag tracking: editor_integration's `GizmoDragState` captures start transform+collider for every selection root; frames apply `start + cumulative delta` (idempotent — what makes snapping residual-proof), ONE Macro/TransformGizmo command on release, Escape restores starts and pushes nothing

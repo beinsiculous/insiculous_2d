@@ -32,7 +32,7 @@ editor_integration ──→ editor, engine_core, ecs, ui, input, renderer, comm
 - `project_host/preview.rs` — the game-only runtime behind the preview window (`PreviewControls`, `PreviewHost`); a child module because it drives the host's `pub(crate)` frame step and play-state reset directly.
 - `editor_game/api.rs` — command-API frame hook (`answer_api_lines`, `drain_api_requests` with ≤256 lines/frame cap, skipped during gizmo drags).
 - `editor_game/shortcuts.rs` — key dispatch: `route_editor_key` + four category dispatchers; Escape cancel cascade, arrow nudge merge/seal.
-- `editor_game/play_session.rs` — play transitions (`start_play_session`, `pause`, `resume_from_pause`, `stop_with_paused_edits`, camera follow).
+- `editor_game/play_session.rs` — play transitions (`start_play_session`, `pause`, `resume_from_pause`, `stop_with_paused_edits`, camera follow). Both entries into Playing share `enter_playing`, which closes everything that must not survive the boundary: the add-component popup, the script picker, the colour editor and an open hierarchy rename.
 - `editor_game/stop_confirm.rs` — the Keep / Discard / Cancel flow at Stop (`request_stop`, the Modal-layer dialog, and the key policy shared with the scene dialog).
 - `editor_game/script_status.rs` — track script errors during Play sessions, status bar notifications, mirror sync, and frame 60 lie detector.
 - `editor_game/run_options.rs` — `EditorRunOptions` configuration, `run_game_with_editor`, and `run_game_with_editor_opts`.
@@ -40,7 +40,7 @@ editor_integration ──→ editor, engine_core, ecs, ui, input, renderer, comm
 - `editor_game/viewport_interaction.rs` — picking, marquee, framing, once-per-frame pickables.
 - `editor_game/test_support.rs` — fixture module: `DummyGame`, `editor_game()`, interaction builders.
 - `entity_ops.rs` — pure entity CRUD; UI entities get Name only (anchor+offset placement model, no Transform2D).
-- `panel_renderer/` — panel contents: scene view, hierarchy, inspector, add_component_popup, asset_browser, and `drag_ghost.rs` (the cursor-following ghost on the DragGhost band).
+- `panel_renderer/` — panel contents: scene view, hierarchy, inspector, add_component_popup, asset_browser, `color_editor.rs` (the colour editor's pass, run by `render_panels` BEFORE any panel so its Modal rect covers the rows it hangs over, narrow mode included) and `drag_ghost.rs` (the cursor-following ghost on the DragGhost band).
 
 ## Key Patterns
 - **Engine-time freeze (Jul 2026)**: `EditorGame::update` sets `ctx.time_scale = 0.0` whenever not Playing (`editor_time_scale()`, headless-testable), holding the game's own value in `frozen_time_scale` and handing it back on Play/Resume — particles AND sprite animations hold still while Editing/Paused, and a game that paused itself stays paused across an editor Pause.
@@ -51,12 +51,12 @@ editor_integration ──→ editor, engine_core, ecs, ui, input, renderer, comm
 - `EditorGame::update()` — main orchestration. Editor input → conditional game update (only if Playing) → render panels
 - Input routing: Editing/Paused → editor gets input. Playing → game gets input, editor hotkeys still work.
 - Dirty state: `CommandHistory::is_dirty()` is the source of truth; `EditorContext.is_dirty` is a per-frame mirror (synced once by `sync_dirty_mirror` before the status bar; `scene_io` reads the history); the OS window title renders `title_bar_text()` change-gated via `ctx.set_window_title` (game owns the title while Playing)
-- Inspector writeback: generated per-component by `editor_component_registry!` (editor crate) — `edit_*()` returns `Option<ComponentEdit<T>>` → `editor::apply_component_edit()` writes to world and records undo via `try_merge_or_push` (continuous edits merge by `field_hint`)
+- Inspector writeback: generated per-component by `editor_component_registry!` (editor crate) — `edit_*()` returns `Option<ComponentEdit<T>>` → `editor::apply_component_edit()` writes to world and records undo via `try_merge_or_push` (continuous edits merge by `field_hint`). One renderer serves both play states: while Playing the panel passes `read_only`, every row draws its value instead of its control, the add-component button draws disabled, and the heading's detail line gains " · live"
 - Play/Stop: snapshot world on Play (typed clone via `WorldSnapshot`), restore on Stop. Stop with edits recorded since Play (only possible while Paused) asks Keep / Discard / Cancel on the Modal layer — Keep rebases them onto the restored world, Discard truncates to the Play boundary, Cancel stays Paused; undo and redo inside a session stop at that boundary; edits to entities that existed only during Play do not survive Keep
 - Save/Load: Ctrl+S / Ctrl+Shift+S / Ctrl+O / Ctrl+N — `save_scene_with` (scene_io.rs) is the MANDATORY save choke point; save AND new/open are refused with a status-bar error during a play session (Playing or Paused — the world is mid-simulation). `SceneLoader` for load. Hardcoded paths (no file picker yet)
 - Status messages: `editor.status_bar.show_message("Saved")` after successful operations
 - Minimum window size: 1024x720 enforced for editor usability
-- **Editor prefs**: camera/grid/panel layout loaded in `init`, saved in `on_exit` (`editor_prefs.json`); menu Exit calls `ctx.request_exit()` (clean shutdown), never `process::exit`
+- **Editor prefs**: camera/grid/panel layout and the inspector's collapsed sections loaded in `init`, saved in `on_exit` (`editor_prefs.json`); menu Exit calls `ctx.request_exit()` (clean shutdown), never `process::exit`
 - **Font scoping**: editor font pinned at init and re-asserted every frame; `update_inner_game` swaps to `strings.active_font().or(game_base_font)` around `inner.update` so the game view localizes while chrome doesn't. View → "Cycle Game Locale" cycles `ctx.strings`
 - **Scene-authored UI**: `UiElementsHidden` inserted on init and Stop (after snapshot restore), removed on Play — UiLabel/UiPanel/UiButton only draw while the game runs
 

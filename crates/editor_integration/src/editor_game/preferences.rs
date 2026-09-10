@@ -30,6 +30,9 @@ impl<G: Game> super::EditorGame<G> {
         self.editor.set_snap_to_grid(prefs.snap_to_grid);
         self.editor.set_grid_size(prefs.grid_size);
         self.editor.set_grid_visible(prefs.grid_visible);
+        self.editor
+            .inspector_state
+            .set_collapsed_names(prefs.collapsed_components.clone());
         prefs.apply_panels(&mut self.editor.dock_area);
         self.last_saved_prefs = Some(prefs);
         self.pending_prefs = None;
@@ -50,6 +53,7 @@ impl<G: Game> super::EditorGame<G> {
             grid_size: self.editor.grid_size(),
             grid_visible: self.editor.is_grid_visible(),
             panels: Vec::new(),
+            collapsed_components: self.editor.inspector_state.collapsed_names(),
             ide_command: self
                 .last_saved_prefs
                 .as_ref()

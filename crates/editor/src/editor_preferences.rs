@@ -43,6 +43,10 @@ pub struct EditorPreferences {
     /// IDE command for opening script source files in an external editor.
     #[serde(default)]
     pub ide_command: Option<String>,
+    /// Registry type names whose inspector section is collapsed (absent in
+    /// prefs files from older versions)
+    #[serde(default)]
+    pub collapsed_components: Vec<String>,
 }
 
 fn default_grid_visible() -> bool {
@@ -60,6 +64,7 @@ impl Default for EditorPreferences {
             grid_visible: true,
             panels: Vec::new(),
             ide_command: None,
+            collapsed_components: Vec::new(),
         }
     }
 }
@@ -153,6 +158,7 @@ mod tests {
             grid_visible: false,
             panels: Vec::new(),
             ide_command: None,
+            collapsed_components: vec!["Sprite".to_string()],
         };
         prefs.capture_panels(&dock);
 
@@ -167,6 +173,7 @@ mod tests {
         assert!(loaded.snap_to_grid);
         assert_eq!(loaded.grid_size, 64.0);
         assert!(!loaded.grid_visible);
+        assert_eq!(loaded.collapsed_components, vec!["Sprite".to_string()], "a collapsed section survives a restart");
         // The Center panel is layout-derived and never persisted.
         assert_eq!(loaded.panels.len(), 2);
         assert!(loaded.panels.iter().all(|p| p.id != PanelId::SCENE_VIEW.0));
@@ -214,6 +221,7 @@ mod tests {
         assert!(prefs.panels.is_empty());
         assert!(prefs.grid_visible, "prefs files predating the drawn grid default to visible");
         assert_eq!(prefs.ide_command, None);
+        assert!(prefs.collapsed_components.is_empty(), "prefs files predating collapsible sections open every section");
     }
 
     #[test]
