@@ -52,6 +52,7 @@ mod gizmo;
 mod gizmo_math;
 mod clipboard;
 mod grid;
+mod entity_names;
 mod hierarchy;
 mod inspector;
 mod menu;
@@ -111,6 +112,7 @@ pub use ui_component_editors::{edit_ui_button, edit_ui_label, edit_ui_panel};
 pub use editor_input::{
     EditorAction, EditorBinding, EditorInputMapping, EditorInputState, Modifiers,
 };
+pub use entity_names::entity_display_name;
 pub use gizmo::{Corner, Gizmo, GizmoHandle, GizmoInteraction, GizmoMode, GizmoPalette};
 pub use hierarchy::{
     normalized_rename, HierarchyClick, HierarchyPanel, HierarchyResponse, NameResolution,

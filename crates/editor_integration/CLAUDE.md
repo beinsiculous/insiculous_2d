@@ -30,7 +30,8 @@ editor_integration ──→ editor, engine_core, ecs, ui, input, renderer, comm
 - `editor_game/scene_io.rs` — save/load/new scene (load dry-runs into a scratch World before touching the live one).
 - `editor_game/api.rs` — command-API frame hook (`answer_api_lines`, `drain_api_requests` with ≤256 lines/frame cap, skipped during gizmo drags).
 - `editor_game/shortcuts.rs` — key dispatch: `route_editor_key` + four category dispatchers; Escape cancel cascade, arrow nudge merge/seal.
-- `editor_game/play_session.rs` — play transitions (`start_play_session`, `pause`, `resume_from_pause`, `stop_play_session`, camera follow).
+- `editor_game/play_session.rs` — play transitions (`start_play_session`, `pause`, `resume_from_pause`, `stop_with_paused_edits`, camera follow).
+- `editor_game/stop_confirm.rs` — the Keep / Discard / Cancel flow at Stop (`request_stop`, the Modal-layer dialog, and the key policy shared with the scene dialog).
 - `editor_game/script_status.rs` — track script errors during Play sessions, status bar notifications, mirror sync, and frame 60 lie detector.
 - `editor_game/run_options.rs` — `EditorRunOptions` configuration, `run_game_with_editor`, and `run_game_with_editor_opts`.
 - `editor_game/gizmo_drag.rs` — drag-start capture, `handle_gizmo`, `scale_collider`.
@@ -48,7 +49,7 @@ editor_integration ──→ editor, engine_core, ecs, ui, input, renderer, comm
 - Input routing: Editing/Paused → editor gets input. Playing → game gets input, editor hotkeys still work.
 - Dirty state: `CommandHistory::is_dirty()` is the source of truth; `EditorContext.is_dirty` is a per-frame mirror (synced once by `sync_dirty_mirror` before the status bar; `scene_io` reads the history); the OS window title renders `title_bar_text()` change-gated via `ctx.set_window_title` (game owns the title while Playing)
 - Inspector writeback: generated per-component by `editor_component_registry!` (editor crate) — `edit_*()` returns `Option<ComponentEdit<T>>` → `editor::apply_component_edit()` writes to world and records undo via `try_merge_or_push` (continuous edits merge by `field_hint`)
-- Play/Stop: snapshot world on Play (typed clone via `WorldSnapshot`), restore on Stop
+- Play/Stop: snapshot world on Play (typed clone via `WorldSnapshot`), restore on Stop. Stop with edits recorded since Play (only possible while Paused) asks Keep / Discard / Cancel on the Modal layer — Keep rebases them onto the restored world, Discard truncates to the Play boundary, Cancel stays Paused; undo and redo inside a session stop at that boundary; edits to entities that existed only during Play do not survive Keep
 - Save/Load: Ctrl+S / Ctrl+Shift+S / Ctrl+O / Ctrl+N — `save_scene_with` (scene_io.rs) is the MANDATORY save choke point; save AND new/open are refused with a status-bar error during a play session (Playing or Paused — the world is mid-simulation). `SceneLoader` for load. Hardcoded paths (no file picker yet)
 - Status messages: `editor.status_bar.show_message("Saved")` after successful operations
 - Minimum window size: 1024x720 enforced for editor usability
@@ -83,6 +84,8 @@ Tracked on the Studio Board: issue #90 (all files < 600 lines since June 2026; r
 | Scene saves must reach `common::vfs` (via `scene_serializer`) so parent creation and wasm storage are handled uniformly | `src/editor_game/scene_io_tests.rs test_save_scene_with_creates_parent_directories_and_writes_valid_scene` |
 | The host never invents physics: a scene with no `physics:` block runs Play with no `PhysicsSystem` and behaviors move transforms directly (with physics present, a body-less entity's velocity goes to a rapier body that does not exist) | `src/project_host.rs test_physics_builds_only_when_the_scene_declares_physics_settings`, `test_patrol_entity_advances_over_playing_frames_without_physics` |
 | Editor shortcuts must respect text focus so typing in an inspector field does not trigger global shortcuts | `src/editor_game/shortcuts_tests.rs test_key_routing_respects_text_focus_play_state_and_the_dialog` |
+| Edits made while Paused must never be silently erased by Stop | `src/editor_game/stop_confirm_tests.rs test_keep_applies_the_paused_edit_to_the_restored_world_and_undo_returns_to_the_authored_value` |
+| Undo inside a play session must not cross the Play boundary | `src/editor_game/stop_confirm_tests.rs test_undo_while_paused_stops_at_the_play_boundary` |
 
 
 ## Godot Oracle — When Stuck

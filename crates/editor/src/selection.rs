@@ -110,16 +110,20 @@ impl Selection {
         self.primary = self.selected.first().copied();
     }
 
-    /// The inspector's heading for the primary entity, saying how many
-    /// others are selected with it: `Entity: 7` alone, `Entity: 7
-    /// (1 of 5 selected)` in a multi-selection.
-    pub fn inspector_heading(&self) -> Option<String> {
+    /// The inspector's two heading lines for the primary entity: the
+    /// entity's display name, then the detail line that says which id it
+    /// is and how many others are selected with it.
+    ///
+    /// The name leads because that is what the user named the thing; the
+    /// id is the detail that disambiguates it.
+    pub fn inspector_heading(&self, display_name: &str) -> Option<(String, String)> {
         let primary = self.primary()?;
-        Some(if self.len() > 1 {
-            format!("Entity: {}  (1 of {} selected)", primary.value(), self.len())
+        let detail = if self.len() > 1 {
+            format!("{} selected · Entity {} primary", self.len(), primary.value())
         } else {
-            format!("Entity: {}", primary.value())
-        })
+            format!("Entity {}", primary.value())
+        };
+        Some((display_name.to_string(), detail))
     }
 
     /// Set the primary selection (must be in the current selection).
@@ -216,24 +220,30 @@ mod tests {
     }
 
     #[test]
-    fn test_inspector_heading_names_the_primary_and_counts_the_rest_of_a_multi_selection() {
-        // The inspector heading is how the user tells WHICH of a
-        // multi-selection they are editing.
+    fn test_inspector_heading_leads_with_the_name_and_details_the_primary_id() {
+        // The heading is how the user tells WHICH entity — and which of a
+        // multi-selection — they are editing.
         let mut selection = Selection::new();
-        assert_eq!(selection.inspector_heading(), None, "nothing selected, no heading");
+        assert_eq!(selection.inspector_heading("Player"), None, "nothing selected, no heading");
 
         selection.select(entity(7));
-        assert_eq!(selection.inspector_heading().as_deref(), Some("Entity: 7"));
+        assert_eq!(
+            selection.inspector_heading("Player"),
+            Some(("Player".to_string(), "Entity 7".to_string()))
+        );
 
         selection.add(entity(8));
         selection.add(entity(9));
-        assert_eq!(selection.inspector_heading().as_deref(), Some("Entity: 7  (1 of 3 selected)"));
+        assert_eq!(
+            selection.inspector_heading("Player"),
+            Some(("Player".to_string(), "3 selected · Entity 7 primary".to_string()))
+        );
 
         selection.remove(entity(7));
         assert_eq!(
-            selection.inspector_heading().as_deref(),
-            Some("Entity: 8  (1 of 2 selected)"),
-            "the heading follows the primary fallback"
+            selection.inspector_heading("Crate"),
+            Some(("Crate".to_string(), "2 selected · Entity 8 primary".to_string())),
+            "the detail line follows the primary fallback"
         );
     }
 }

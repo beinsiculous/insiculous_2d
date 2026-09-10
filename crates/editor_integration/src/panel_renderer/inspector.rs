@@ -62,21 +62,45 @@ pub(super) fn render_inspector(
     let top = bounds.y + padding - offset;
     let mut y = top;
 
-    // "Entity: 7  (1 of 5 selected)" in a multi-selection — the
-    // inspector shows the primary, and says so.
-    let heading = editor
+    // The name leads, the id follows underneath. Both are drawn in a rect
+    // of their own line height rather than at a bare position: UI text y is
+    // the BASELINE, so a heading placed at the content top loses its
+    // ascenders off the panel edge.
+    let display_name = editor::entity_display_name(world, entity_id);
+    let (heading, detail) = editor
         .selection
-        .inspector_heading()
-        .unwrap_or_else(|| format!("Entity: {}", entity_id.value()));
+        .inspector_heading(&display_name)
+        .unwrap_or_else(|| (display_name.clone(), format!("Entity {}", entity_id.value())));
+    let heading_size = editor.theme.fonts.heading;
+    let heading_rect = common::Rect::new(content_x, y, bounds.width - 2.0 * padding, heading_size);
     match editor.fonts.bold {
-        Some(bold) => ui.label_with_font(
+        Some(bold) => ui.label_in_bounds_with_font(
             &heading,
-            Vec2::new(content_x, y),
+            heading_rect,
+            ui::TextAlign::Left,
+            editor.theme.text_primary,
             bold,
-            editor.theme.fonts.heading,
+            heading_size,
         ),
-        None => ui.label(&heading, Vec2::new(content_x, y)),
+        None => ui.label_in_bounds_styled(
+            &heading,
+            heading_rect,
+            ui::TextAlign::Left,
+            editor.theme.text_primary,
+            heading_size,
+            0.0,
+        ),
     }
+    y += heading_size;
+    let detail_size = editor.theme.fonts.small;
+    ui.label_in_bounds_styled(
+        &detail,
+        common::Rect::new(content_x, y, bounds.width - 2.0 * padding, detail_size),
+        ui::TextAlign::Left,
+        editor.theme.text_muted,
+        detail_size,
+        0.0,
+    );
     y += line_height;
 
     let content_width = bounds.width - 2.0 * padding;

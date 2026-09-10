@@ -388,6 +388,20 @@ macro_rules! editor_component_registry {
         }
 
         impl StoredComponent {
+            /// This stored value as serde JSON — the read half of the
+            /// paused-edit rebase, paired with [`stored_component_from_json`].
+            /// `None` when the component fails to serialize.
+            pub fn value(&self) -> Option<serde_json::Value> {
+                match self {
+                    // Hidden entries are internal bookkeeping, not editable
+                    // values — nothing rebases them.
+                    $( Self::$h(_) => None, )+
+                    $( Self::$b(c) => crate::inspector::component_value(c).ok(), )+
+                    $( Self::$r(c) => crate::inspector::component_value(c).ok(), )+
+                    Self::Dynamic { value, .. } => Some(value.clone()),
+                }
+            }
+
             /// The registry type name of this stored value (`&str`, not
             /// `&'static str` — dynamic names are owned).
             pub fn type_name(&self) -> &str {

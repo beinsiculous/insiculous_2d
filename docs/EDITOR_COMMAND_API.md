@@ -65,8 +65,8 @@ Write semantics worth knowing:
   error mid-batch leaves earlier effects applied and the batch open —
   `batch abort` reverse-undoes what was collected. Pressing Play commits
   an open batch (its commands are in the world the snapshot captures);
-  Stop DISCARDS a batch opened while Paused (its commands reference the
-  runtime world the snapshot restore throws away). A
+  Stop commits a batch opened while Paused into the session and the
+  Keep/Discard dialog decides its fate with the other paused edits. A
   GUI edit interleaved with an open cross-frame batch lands on the history
   BEFORE the batch's macro — known reordering limitation; keep batches
   within one request burst.

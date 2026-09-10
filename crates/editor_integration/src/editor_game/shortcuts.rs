@@ -373,6 +373,10 @@ impl<G: Game> EditorGame<G> {
     /// Undo the top entry and name it on the status bar ("Undo: Delete
     /// Entity") — Edit → Undo and Ctrl+Z share this, so both report it.
     pub(super) fn undo_with_feedback(&mut self, world: &mut ecs::World) {
+        if let Some(message) = self.play_boundary_refusal("Undo") {
+            self.editor.status_bar.show_message(message);
+            return;
+        }
         if let Some(name) = self.command_history.undo_name() {
             self.editor.status_bar.show_message(format!("Undo: {name}"));
         }
@@ -381,8 +385,24 @@ impl<G: Game> EditorGame<G> {
         }
     }
 
+    /// The line to show when `verb` is blocked by the Play boundary rather
+    /// than by an empty stack — undoing past it would rewrite the authored
+    /// scene while a simulation still holds the world.
+    fn play_boundary_refusal(&self, verb: &str) -> Option<String> {
+        let blocked = match verb {
+            "Undo" => !self.command_history.can_undo(),
+            _ => !self.command_history.can_redo(),
+        };
+        (self.command_history.in_session() && blocked)
+            .then(|| format!("{verb} stops at the Play boundary — Stop first"))
+    }
+
     /// Redo counterpart of [`Self::undo_with_feedback`].
     pub(super) fn redo_with_feedback(&mut self, world: &mut ecs::World) {
+        if let Some(message) = self.play_boundary_refusal("Redo") {
+            self.editor.status_bar.show_message(message);
+            return;
+        }
         if let Some(name) = self.command_history.redo_name() {
             self.editor.status_bar.show_message(format!("Redo: {name}"));
         }

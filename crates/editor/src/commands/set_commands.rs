@@ -10,7 +10,7 @@ use ecs::ui_components::{UiButton, UiLabel, UiPanel};
 use ecs::{EntityId, World};
 use physics::components::{Collider, RigidBody};
 
-use super::EditorCommand;
+use super::{patch_changed_leaves, script_references_resolve, EditorCommand, Rebase};
 
 // ---------------------------------------------------------------------------
 // SetComponentCommand (inspector property edits & gizmo drags)
@@ -20,7 +20,7 @@ use super::EditorCommand;
 /// Consecutive edits to the same entity AND the same `field_hint` merge into one undo
 /// entry. Distinct `T`s are distinct types, so `downcast_ref::<Self>` keeps merge
 /// isolation per component exactly as the thirteen macro-generated structs did.
-pub struct SetComponentCommand<T: ecs::Component + ComponentMeta + Clone + Send + 'static> {
+pub struct SetComponentCommand<T: ecs::Component + ComponentMeta + Clone + Send + serde::Serialize + serde::de::DeserializeOwned + 'static> {
     entity: EntityId,
     old: T,
     new: T,
@@ -28,7 +28,7 @@ pub struct SetComponentCommand<T: ecs::Component + ComponentMeta + Clone + Send 
     display: String,
 }
 
-impl<T: ecs::Component + ComponentMeta + Clone + Send + 'static> SetComponentCommand<T> {
+impl<T: ecs::Component + ComponentMeta + Clone + Send + serde::Serialize + serde::de::DeserializeOwned + 'static> SetComponentCommand<T> {
     pub fn new(entity: EntityId, old: T, new: T, field_hint: &'static str) -> Self {
         Self {
             entity,
@@ -40,7 +40,7 @@ impl<T: ecs::Component + ComponentMeta + Clone + Send + 'static> SetComponentCom
     }
 }
 
-impl<T: ecs::Component + ComponentMeta + Clone + Send + 'static> EditorCommand for SetComponentCommand<T> {
+impl<T: ecs::Component + ComponentMeta + Clone + Send + serde::Serialize + serde::de::DeserializeOwned + 'static> EditorCommand for SetComponentCommand<T> {
     fn execute(&mut self, world: &mut World) {
         if let Some(c) = world.get_mut::<T>(self.entity) {
             *c = self.new.clone();
@@ -55,6 +55,29 @@ impl<T: ecs::Component + ComponentMeta + Clone + Send + 'static> EditorCommand f
 
     fn display_name(&self) -> &str {
         &self.display
+    }
+
+    fn rebase_onto(&mut self, world: &mut World) -> Rebase {
+        let Some(authored) = world.get::<T>(self.entity).cloned() else {
+            return Rebase::DROP;
+        };
+        let (Ok(authored_value), Ok(before), Ok(after)) = (
+            serde_json::to_value(&authored),
+            serde_json::to_value(&self.old),
+            serde_json::to_value(&self.new),
+        ) else {
+            return Rebase::DROP;
+        };
+        let patched = patch_changed_leaves(&authored_value, &before, &after);
+        let Ok(rebased) = serde_json::from_value::<T>(patched) else {
+            return Rebase::DROP;
+        };
+        if !script_references_resolve(&rebased, world) {
+            return Rebase::DROP;
+        }
+        self.old = authored;
+        self.new = rebased;
+        Rebase::Apply
     }
 
     fn try_merge(&mut self, other: &dyn EditorCommand) -> bool {
@@ -131,6 +154,16 @@ impl EditorCommand for RenameEntityCommand {
         }
     }
 
+    fn rebase_onto(&mut self, world: &mut World) -> Rebase {
+        if !super::entity_is_alive(world, self.entity) {
+            return Rebase::DROP;
+        }
+        // The captured before-image is whatever the simulation left on the
+        // entity; undo after Keep must restore the AUTHORED name.
+        self.old = world.get::<Name>(self.entity).cloned();
+        Rebase::Apply
+    }
+
     fn display_name(&self) -> &str {
         "Rename Entity"
     }
@@ -183,6 +216,20 @@ impl EditorCommand for NudgeCommand {
                 t.position = *old_pos;
             }
         }
+    }
+
+    fn rebase_onto(&mut self, world: &mut World) -> Rebase {
+        // A nudge is a DELTA, not a destination: replay it from wherever
+        // the authored transform sits, not from the simulated pose.
+        for (entity, old_position, new_position) in &mut self.moves {
+            let Some(authored) = world.get::<common::Transform2D>(*entity) else {
+                return Rebase::DROP;
+            };
+            let delta = *new_position - *old_position;
+            *old_position = authored.position;
+            *new_position = authored.position + delta;
+        }
+        Rebase::Apply
     }
 
     fn display_name(&self) -> &str {

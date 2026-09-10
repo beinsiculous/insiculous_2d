@@ -7,9 +7,8 @@
 
 use std::collections::HashSet;
 
-use ecs::{EntityId, Name, Scripts, Sprite, World, WorldHierarchyExt};
+use ecs::{EntityId, Name, Scripts, World, WorldHierarchyExt};
 use glam::Vec2;
-use physics::components::RigidBody;
 
 use crate::drag_drop::{DragDropState, DragPayload};
 use crate::layout::{LINE_HEIGHT, PADDING};
@@ -170,40 +169,13 @@ impl HierarchyPanel {
         }
     }
 
-    /// Get the display name for an entity.
-    ///
-    /// Resolution order:
-    /// 1. Name component
-    /// 2. Sprite component → "Sprite (Entity {id})"
-    /// 3. RigidBody component → "RigidBody (Entity {id})"
-    /// 4. Fallback → "Entity {id}"
-    pub fn entity_display_name(world: &World, entity: EntityId) -> String {
-        // Check for Name component first
-        if let Some(name) = world.get::<Name>(entity) {
-            return name.as_str().to_string();
-        }
-
-        // Check for Sprite component
-        if world.get::<Sprite>(entity).is_some() {
-            return format!("Sprite (Entity {})", entity.value());
-        }
-
-        // Check for RigidBody component
-        if world.get::<RigidBody>(entity).is_some() {
-            return format!("RigidBody (Entity {})", entity.value());
-        }
-
-        // Fallback
-        format!("Entity {}", entity.value())
-    }
-
     /// Inverse of [`entity_display_name`], for name-first entity addressing:
     /// exact match on the `Name` component only — synthesized
     /// display names ("Sprite (Entity 5)") are addressable by id instead.
     /// Nothing enforces name uniqueness, so ambiguity is reported, never
     /// silently resolved to the first match.
     ///
-    /// [`entity_display_name`]: HierarchyPanel::entity_display_name
+    /// [`entity_display_name`]: crate::entity_names::entity_display_name
     pub fn resolve_by_name(world: &World, name: &str) -> NameResolution {
         let mut matches = world
             .entities()
@@ -510,7 +482,7 @@ impl HierarchyPanel {
         }
 
         // Entity name (baseline near bottom of row)
-        let name = Self::entity_display_name(ctx.world, entity);
+        let name = crate::entity_names::entity_display_name(ctx.world, entity);
         ctx.ui.label(&name, Vec2::new(row.name_x, row.row_rect.y + ROW_HEIGHT - 4.0));
     }
 

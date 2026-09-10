@@ -57,6 +57,17 @@ impl<G: Game> EditorGame<G> {
             }
             let response = match parse_line(line) {
                 Err(err) => error_response(&err),
+                // A dialog is asking about the world as it stands; a write
+                // landing under it would change the answer, and a batch
+                // opened under it would carry the wrong images across the
+                // restore or the reload the answer triggers.
+                Ok(Request::Write(_))
+                    if self.stop_confirm.pending || self.scene_confirm.pending_action.is_some() =>
+                {
+                    error_response(&ApiError::Refused(
+                        "a dialog is pending — answer it first".to_string(),
+                    ))
+                }
                 Ok(Request::Query(query)) => {
                     let ctx = command_api::QueryCtx {
                         world,

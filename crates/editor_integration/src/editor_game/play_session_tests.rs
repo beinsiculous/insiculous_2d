@@ -15,8 +15,8 @@ use super::test_support::{dirty_editor, editor_game, position, spawn_at};
 /// asset browser refuses to arm one while Playing and the viewport refuses
 /// drops, so a drag straddling the Play keypress was the one path onto a
 /// PLAYING world. A drop while Paused is a paused edit like any inspector
-/// edit — accepted today and discarded by Stop's restore, the standing
-/// Paused rule this test does not touch.
+/// edit — accepted, and offered to the Keep/Discard dialog at Stop like
+/// every other paused edit, the standing rule this test does not touch.
 #[test]
 fn test_play_cancels_an_in_flight_asset_drag() {
     let mut editor = editor_game();

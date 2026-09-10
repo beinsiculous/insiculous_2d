@@ -50,7 +50,8 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 - `collider_overlay.rs` — collider outline overlay mirroring rapier placement (offset is body-local, Transform2D.scale ignored).
 
 ### Persistence + commands
-- `commands/` — `EditorCommand` trait, `CommandHistory` dirty tracking watermark, `SetComponentCommand` merge-by-hint, and `break_merge()` gesture boundary.
+- `commands/` — `EditorCommand` trait, `CommandHistory` dirty tracking watermark, `SetComponentCommand` merge-by-hint, `break_merge()` gesture boundary, and the play-session floor (`begin_session`/`drop_session_entries`/`rebase_session_entries`) with the leaf-level rebase in `rebase.rs`.
+- `entity_names.rs` — `entity_display_name`: the one name the hierarchy row, the inspector heading and the command API's `display` field all read.
 - `editor_preferences.rs` — `EditorPreferences` JSON serialization (`from_json`/`to_json`), panel layout capture/apply, camera/grid state, `ide_command` (IO handled by integration layer via save_store).
 - `asset_browser.rs` — `AssetEntry`, `AssetKind` (`Image`, `Scene`, `Script`), and `scan_assets` walking `common::vfs::list_files` for images, scenes, and scripts (`.rhai`, `.rs`).
 - `stored_component/` — typed registry overlay (`editor_component_registry!`), `category.rs`, and `dynamic.rs` falling through to ECS dynamic registry.
@@ -64,6 +65,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 | Adjacent surfaces in the editor theme ladder must maintain WCAG contrast (≥1.35:1 adjacent / ≥3:1 border) | `src/theme/tests.rs test_adjacent_surfaces_are_distinguishable` |
 | Open menu dropdown renders in the overlay band and must block clicks from reaching underlying widgets | `src/menu/tests.rs test_open_dropdown_renders_in_overlay_band_and_blocks_input` |
 | Entity picking must compute AABB from absolute visual size so flip-scaled sprites remain clickable | `src/picking/tests.rs test_flip_scaled_sprite_is_picked_at_its_visual_bounds` |
+| A paused edit's before-image is the simulated value; a replay onto the restored world must `rebase_onto` first or Undo resurrects simulation state | `src/commands/session_tests.rs test_rebase_replays_only_the_changed_fields_over_the_authored_component` |
 | Confirm dialog scrim clicks must block input to underlying background widgets | `src/confirm_dialog.rs test_scrim_click_is_not_a_choice_and_blocks_input` |
 | World snapshot restore must detect and report unregistered component types that cannot be captured | `src/world_snapshot/tests.rs test_loss_messages_name_every_dropped_type_or_nothing` |
 | Rotate gizmo dead-center clicks must fall through to entity picking | `src/gizmo/tests.rs test_rotate_ring_is_an_annulus_so_a_dead_center_press_falls_through_to_picking` |
@@ -75,7 +77,8 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 ## Key Patterns
 - Inspector uses `serde_json::to_value()` to extract component fields generically
 - Component editors return `Option<ComponentEdit<T>>` (full new value + `field_hint` for undo merging) that the integration crate applies via `apply_component_edit()`
-- `EditorPlayState::Editing` → editable, `Playing` → read-only inspector, `Paused` → editable
+- `EditorPlayState::Editing` → editable, `Playing` → read-only inspector, `Paused` → editable; `CommandHistory::begin_session` marks the Play boundary the editor's Stop dialog acts on
+- The inspector heading is two lines: `entity_display_name` on top, then `Selection::inspector_heading`'s detail line ("Entity 17", or "3 selected · Entity 17 primary")
 - Selection: `editor.selection.primary()` returns the main selected EntityId
 - Gizmo drag tracking: editor_integration's `GizmoDragState` captures start transform+collider for every selection root; frames apply `start + cumulative delta` (idempotent — what makes snapping residual-proof), ONE Macro/TransformGizmo command on release, Escape restores starts and pushes nothing
 - Theme is on `EditorContext.theme` (public field); call `theme.gizmo_palette()`, `inspector_style()`, `editable_field_style()`, `grid_colors()`, `collider_overlay_colors()` instead of hardcoding colors. Menu/Toolbar/Hierarchy `render()` take `&EditorTheme`

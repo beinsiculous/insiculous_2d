@@ -194,7 +194,7 @@ fn render_hierarchy(
                 }
                 log::info!(
                     "Selected entity: {} ({})",
-                    HierarchyPanel::entity_display_name(ctx.world, entity_id),
+                    editor::entity_display_name(ctx.world, entity_id),
                     entity_id.value()
                 );
             }
@@ -313,7 +313,7 @@ pub(super) fn apply_script_drop(
         params,
     };
 
-    let display_name = HierarchyPanel::entity_display_name(world, entity);
+    let display_name = editor::entity_display_name(world, entity);
 
     // Attaching is idempotent, like assigning a texture: the same file
     // dropped twice does not bind the script twice.

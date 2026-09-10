@@ -48,6 +48,17 @@ impl ConfirmDialog {
         }
     }
 
+    /// The Stop prompt for edits recorded while the session was paused.
+    pub fn keep_paused_edits(count: usize) -> Self {
+        Self {
+            title: "Edits made while paused".to_string(),
+            message: format!("Keep the {count} edit(s) you made while paused?"),
+            confirm_label: "Keep".to_string(),
+            alt_label: "Discard".to_string(),
+            cancel_label: "Cancel".to_string(),
+        }
+    }
+
     /// The centered panel rect for a window of `window_size`.
     pub fn panel_rect(window_size: Vec2) -> Rect {
         Rect::new(

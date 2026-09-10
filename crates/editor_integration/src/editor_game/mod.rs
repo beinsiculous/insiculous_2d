@@ -34,6 +34,9 @@ mod preferences;
 mod run_options;
 mod scene_confirm;
 mod scene_io;
+mod stop_confirm;
+#[cfg(test)]
+mod stop_confirm_tests;
 mod script_status;
 mod shortcuts;
 mod viewport_interaction;
@@ -78,6 +81,7 @@ struct EditorGame<G: Game> {
     last_window_title: Option<String>,
     pub(super) api: api::ApiSession,
     pub(super) scene_confirm: scene_confirm::SceneConfirm,
+    pub(super) stop_confirm: stop_confirm::StopConfirm,
     /// Scene to open through the editor load path right after `init`
     /// (the standalone binary passes it via `EditorRunOptions` so
     /// scene_path/physics/dirty-state are recorded like any other load).
@@ -114,6 +118,7 @@ impl<G: Game> EditorGame<G> {
             last_window_title: None,
             api: api::ApiSession::default(),
             scene_confirm: scene_confirm::SceneConfirm::default(),
+            stop_confirm: stop_confirm::StopConfirm::default(),
             initial_scene: None,
             asset_base: std::path::PathBuf::new(),
             prefs_slot: std::path::PathBuf::from(EDITOR_PREFS_PATH),
@@ -316,6 +321,9 @@ impl<G: Game> EditorGame<G> {
     /// can arm a gesture, so no widget arms under a modal.
     fn render_early_overlays(&mut self, ctx: &mut GameContext) {
         self.render_scene_confirm_dialog(ctx);
+        if self.render_stop_confirm_dialog(ctx) {
+            self.inner.on_play_stopped(ctx);
+        }
 
         self.editor.drag_drop.begin_frame(
             ctx.ui.mouse_pos(),

@@ -39,6 +39,14 @@ impl ComponentRef {
         }
     }
 
+    /// Whether the entity currently carries this component.
+    pub(crate) fn is_present_on(&self, world: &World, entity: EntityId) -> bool {
+        match self {
+            Self::Typed(kind) => kind.is_present(world, entity),
+            Self::Dynamic(name) => super::dynamic::dynamic_value(world, entity, name).is_some(),
+        }
+    }
+
     pub(crate) fn remove(&self, world: &mut World, entity: EntityId) {
         match self {
             Self::Typed(kind) => kind.remove(world, entity),

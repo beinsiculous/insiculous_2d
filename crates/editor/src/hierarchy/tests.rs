@@ -4,7 +4,9 @@
 
 use super::*;
 use crate::test_support::{entity, frame, type_key};
+use ecs::sprite_components::Sprite;
 use input::prelude::{KeyCode, MouseButton};
+use physics::components::RigidBody;
 
 const BOUNDS: common::Rect = common::Rect::new(0.0, 0.0, 220.0, 120.0);
 
@@ -56,7 +58,7 @@ fn test_resolve_by_name_inverse_of_display_name() {
         (bare, "Entity", "an empty entity is just its id"),
     ];
     for (entity, prefix, why) in fallbacks {
-        let display = HierarchyPanel::entity_display_name(&world, entity);
+        let display = crate::entity_names::entity_display_name(&world, entity);
         assert!(display.starts_with(prefix), "{why}: {display:?}");
         let expected = if entity == named { NameResolution::One(named) } else { NameResolution::None };
         assert_eq!(HierarchyPanel::resolve_by_name(&world, &display), expected, "{display:?}");

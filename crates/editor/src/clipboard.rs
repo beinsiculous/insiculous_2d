@@ -19,7 +19,7 @@ use ecs::sprite_components::Name;
 use ecs::{EntityId, World, WorldHierarchyExt};
 use glam::Vec2;
 
-use crate::commands::EditorCommand;
+use crate::commands::{EditorCommand, Rebase};
 use crate::stored_component::{
     capture_all_components, registered_component_type_ids, restore_components, StoredComponent,
 };
@@ -171,6 +171,10 @@ pub struct SpawnTreeCommand {
     spawned_ids: Vec<EntityId>,
     /// Whether the spawned subtree is currently alive in the world.
     alive: bool,
+    /// Whether the spawned root was still in the world at the last undo.
+    /// A paste made while Paused that the simulation later destroyed comes
+    /// back `false`, and Keep drops it instead of respawning a ghost.
+    present_at_undo: bool,
     display_name: &'static str,
 }
 
@@ -184,6 +188,7 @@ impl SpawnTreeCommand {
             name_suffix: None,
             spawned_ids: Vec::new(),
             alive: false,
+            present_at_undo: true,
             display_name: "Paste Entity",
         }
     }
@@ -197,6 +202,7 @@ impl SpawnTreeCommand {
             name_suffix: Some(" (Copy)"),
             spawned_ids: Vec::new(),
             alive: false,
+            present_at_undo: true,
             display_name: "Duplicate Entity",
         }
     }
@@ -246,11 +252,20 @@ impl EditorCommand for SpawnTreeCommand {
             return;
         }
         if let Some(root) = self.spawned_root() {
+            self.present_at_undo = world.entities().contains(&root);
             // Depth-safe subtree removal: removing a child first would
             // promote grandchildren to roots and orphan them.
             world.remove_entity_hierarchy(&root).ok();
         }
         self.alive = false;
+    }
+
+    fn rebase_onto(&mut self, _world: &mut World) -> Rebase {
+        if self.present_at_undo {
+            Rebase::Apply
+        } else {
+            Rebase::DROP
+        }
     }
 
     fn display_name(&self) -> &str {
@@ -290,9 +305,16 @@ impl DeleteTreeCommand {
 
 impl EditorCommand for DeleteTreeCommand {
     fn execute(&mut self, world: &mut World) {
-        if let Some(root) = self.ids.first() {
-            world.remove_entity_hierarchy(root).ok();
-        }
+        // Re-capture from the world this runs on: a replay after Stop's
+        // restore must remember the AUTHORED subtree, or the later undo
+        // respawns the simulated one the cut was recorded against.
+        let Some(root) = self.ids.first().copied() else {
+            return;
+        };
+        self.tree = capture_entity_tree(world, root);
+        self.ids = tree_entity_ids(world, root);
+        self.parent = world.get_parent(root);
+        world.remove_entity_hierarchy(&root).ok();
     }
 
     fn undo(&mut self, world: &mut World) {
@@ -308,6 +330,15 @@ impl EditorCommand for DeleteTreeCommand {
             &mut respawned,
         );
         self.ids = ids;
+    }
+
+    fn rebase_onto(&mut self, world: &mut World) -> Rebase {
+        // Cutting a subtree the authored scene never had would let the
+        // later undo respawn every one of its entities as a phantom.
+        match self.ids.first() {
+            Some(root) if world.entities().contains(root) => Rebase::Apply,
+            _ => Rebase::DROP,
+        }
     }
 
     fn display_name(&self) -> &str {

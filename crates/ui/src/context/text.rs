@@ -192,6 +192,23 @@ impl UIContext {
         self.draw_text_at_baseline(text, position, color, font_size);
     }
 
+    /// [`label_in_bounds_styled`](Self::label_in_bounds_styled) drawn with a
+    /// specific font handle and no edge padding — a bold heading inside a
+    /// box. (A padding argument would make an eighth parameter; the callers
+    /// that need padding use the themed variant.)
+    pub fn label_in_bounds_with_font(
+        &mut self,
+        text: &str,
+        bounds: Rect,
+        align: TextAlign,
+        color: Color,
+        font: FontHandle,
+        font_size: f32,
+    ) {
+        let position = self.text_pos_in_bounds_with_font(text, bounds, align, font_size, 0.0, Some(font));
+        self.draw_text_with_font(Some(font), text, position, color, font_size);
+    }
+
     /// Create a text label centered horizontally at a position.
     ///
     /// Measures the text width and offsets so the text appears centered

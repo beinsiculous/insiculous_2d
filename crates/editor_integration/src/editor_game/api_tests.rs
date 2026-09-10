@@ -2,11 +2,12 @@
 //! line owes one response from live state, writes land on the same
 //! `CommandHistory` the GUI uses, hosted creates use the entity factories,
 //! saves route through the choke point, and batches follow the play
-//! session (committed by Play, discarded by Stop).
+//! session (committed by Play, and by Stop into the Keep/Discard dialog).
 
 use ecs::World;
 use editor::PlayControlAction;
 
+use super::play_session::PausedEdits;
 use super::test_support::{api_line, assert_ok, editor_game, press_mouse, ui_frame};
 
 #[test]
@@ -162,7 +163,7 @@ fn test_commands_query_advertises_archetypes_settable_components_and_batching() 
 }
 
 #[test]
-fn test_play_commits_an_open_batch_as_one_entry_and_stop_discards_a_paused_one() {
+fn test_play_commits_an_open_batch_as_one_entry_and_stop_hands_a_paused_one_to_the_dialog() {
     let mut editor = editor_game();
     let mut world = World::new();
 
@@ -180,19 +181,23 @@ fn test_play_commits_an_open_batch_as_one_entry_and_stop_discards_a_paused_one()
     assert!(world.entities().is_empty());
     assert!(!editor.command_history.can_undo());
 
-    // A batch opened while Paused references the mid-simulation
-    // world the restore discards — Stop drops it with the runtime state.
+    // A batch opened while Paused was applied to the paused world and is
+    // held outside the history: Stop commits it INTO the session so the
+    // Keep/Discard dialog counts it and decides its fate with the rest.
     assert_ok(&api_line(&mut editor, &mut world, "create empty Marker"));
     editor.handle_play_action(PlayControlAction::Play, &mut world);
     editor.handle_play_action(PlayControlAction::Pause, &mut world);
     assert_ok(&api_line(&mut editor, &mut world, "batch begin paused-edits"));
     assert_ok(&api_line(&mut editor, &mut world, "create empty Ghost"));
-    editor.handle_play_action(PlayControlAction::Stop, &mut world);
-    assert!(editor.api.batch.is_none(), "Stop drops the stale batch");
-    assert_eq!(world.entities().len(), 1, "snapshot restore discarded the paused-world entity");
+    assert!(!editor.handle_play_action(PlayControlAction::Stop, &mut world), "Stop parks the dialog");
+    assert!(editor.api.batch.is_none(), "Stop commits the open batch into the session");
+    assert_eq!(editor.command_history.session_entry_count(), 1, "the batch is one counted entry");
     let refused = api_line(&mut editor, &mut world, "batch end");
     assert!(refused.contains("\"refused\""), "no batch remains open: {refused}");
-    assert_ne!(editor.command_history.undo_name(), Some("paused-edits"), "the stale macro never reaches the history");
+
+    editor.stop_with_paused_edits(&mut world, PausedEdits::Discard);
+    assert_eq!(world.entities().len(), 1, "Discard restores the snapshot");
+    assert_ne!(editor.command_history.undo_name(), Some("paused-edits"), "the dropped macro leaves no entry");
 }
 
 #[test]
