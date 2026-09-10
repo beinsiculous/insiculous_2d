@@ -1358,15 +1358,17 @@ contract's prose). Files, each of the six game repos: `src/web_entry.rs` (one co
   window, the first untouched; reload the preview window → its 15 s message, the editor
   unaffected.
 
-## Batch 7 — engine + site: the first run (2d#122, web#51)
+## Batch 7 — engine + site: the first run (2d#122, web#51) — DONE 2026-09-10 (insiculous_2d 18c0970, insiculous_web 4863dcd)
 
 - Engine: `examples/assets/scenes/behavior_demo.scene.ron` names its five unnamed entities
   (`wall_top`, `wall_bottom`, `wall_left`, `wall_right`, `obstacle`) and frames the scene on
   the player through the scene's main camera; it stays the sample project's first scene. A
   test walks `examples/assets/scenes/*.ron` and pins "every entity in a bundled sample
   scene has a name".
-- Site: a dismissable contextual hint above the workspace ("Pick the player in the
-  Hierarchy, change its colour in the Inspector, then press Play ↗") — a `<p>` with a
+- Site: a dismissable contextual hint above the workspace ("Pick an entity in the
+  Hierarchy, change its colour in the Inspector, then press Play ↗" — the settled copy said
+  "the player", corrected at review-5 F1: the page opens whichever project the URL or the
+  select names, and Pong has no player) — a `<p>` with a
   Dismiss button, remembered in `localStorage` inside try/catch, present at load so no
   live region is needed; the console is already demoted by batch 5's dock and the
   "layout only" copy already sits beside the select — this batch checks both against the

@@ -676,3 +676,18 @@ Jesse's Claude Code session from a handoff; reviews: kimi 6 (3 accepted, 1 false
 codex 1 and the planner 5 on the diff, then kimi 2 and codex 1 on the planner's fix delta. Gates
 green (verify, axe 81 pages and scenarios, announce 59). Filed: web#61. Owed: Jesse's browser
 checks on the bar, Help, fullscreen, the stage at 390 and 320, the dock and 200% text.
+
+## 2026-09-10 — Playground UX batch 7: the first run (18c0970; site 4863dcd)
+
+The behavior demo names its four walls and centre obstacle and carries a static main camera at
+the origin, placed after the player so the hierarchy's first row is the entity a newcomer is told
+to pick; the parse test walks the scenes directory, sorted, scene files only, pins every entity
+named (children included), the boot scene and both demos' cameras. The site gains the first-run
+hint above the stage (static, hidden before first paint once dismissed, hidden on the WebGPU
+failure path and restored on a successful retry) and the game page's dim underlined link to its
+editor page; the examples project re-synced at v2. Executor: Jesse's Claude Code session from
+handoff-7.md; reviews: engine kimi 2, codex 0, planner 1; site kimi 2, codex 0, planner 2; the
+site fix delta kimi 2, codex 1 — every finding accepted, the planner's re-verification of the
+section itself refuted once by kimi (review-14: the player tags itself every frame). Gates green
+at every round. Owed: Jesse's browser checks — the hint and its Dismiss across a reload, the
+hierarchy's names, Play framing the arena, the preview centring it, the game page's line.
