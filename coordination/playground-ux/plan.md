@@ -614,10 +614,43 @@ Gates: standard engine + wasm. Leaves out: the View toggles in the strip (batch 
 
 ## Batch 3 — engine: asset browser, wheel notch, drag into the canvas (2d#130, 2d#119, 2d#120)
 
+**Re-verified against the tree 2026-09-09 before the handoff** (after batch 2, 0e7c6bd; every
+line count below still holds). **2d#130:** `AssetBrowserState` is `crates/editor/src/asset_browser.rs:44`
+with three fields — `entries`, `scanned`, `scroll` — and no selection yet; in
+`panel_renderer/asset_browser.rs`, `render_asset_browser` is `:75` (the scroll at `:91-96`, the
+tile loop `:102-121`, the assign at `:123-126`), `render_header` `:129` (the Rescan button at
+`:136-137`, 70×20 at `bounds.x + PADDING`, and the count label after it — the Assign button goes
+beside them), the filename label `:236-243` (`label_in_bounds_styled` into a
+`TILE_SIZE × TILE_LABEL_HEIGHT` rect, centred, which is where `ellipsize` applies),
+`tile_interaction` `:249` (the drag arms at `:266-269`, the click returns the assignment at
+`:272-274`, `suppresses_click` already guards it), `assign_clicked_texture` `:291` with its three
+status messages at `:300`, `:303`, `:306`, and `entity_ops::assign_sprite_texture` at
+`crates/editor_integration/src/entity_ops.rs:161` (returns false with no Sprite or an unchanged
+handle). `theme.selection_fill` exists (`theme/mod.rs:76`). **2d#119:** `SCROLL_PIXELS_PER_LINE`
+is a *private* const at `crates/input/src/input_handler.rs:43` (16.0), used once at `:256`;
+`WHEEL_STEP` is a module const in `crates/editor/src/scroll.rs:29` (30.0), not an associated
+const, applied at `:51` and pinned by the test at `:98`; the viewport's clamp is
+`viewport_input.rs:201-203`. The input guide's pitfalls row (`crates/input/CLAUDE.md:71`, "PixelDelta
+÷ 16") and its guard test `crates/input/tests/mouse.rs:47`
+(`test_wheel_lines_and_trackpad_pixels_accumulate_as_lines_and_clear_each_frame`) both change with
+the constant — they are in the batch. **2d#120:** `focus_before_winit_does` is
+`crates/renderer/src/window.rs:164` (wasm-only, `#[cfg(target_arch = "wasm32")]`), the pointerdown
+closure and its target discipline `:176-183`, the listener install `:184-191`;
+`crates/renderer/Cargo.toml:21-32` lists the web-sys features — `Document` and `Element` are there,
+**`MouseEvent` is not** (`buttons` needs it; the renderer guide's pitfalls row is `CLAUDE.md:52`).
+**What batch 2 changed underneath:** a drop into the canvas is taken with
+`drag_drop.take_drop_in(scene_bounds)` at `viewport_interaction.rs:33-35`, and `scene_bounds` is
+now `scene_view_bounds()` — the viewport BELOW the toolbar strip, and `None` when the strip eats
+the content — so a drag released over the strip is not a canvas drop; and a blocking region now
+carries its layer, so the drag ghost's DragGhost region makes widgets in Floating scopes under
+it inert too (rebuttal 8). Neither needs code here; both are why the drop test releases inside
+`scene_view_bounds()`, not the panel's content rect.
+
 Files: `crates/editor/src/asset_browser.rs` (236),
 `crates/editor_integration/src/panel_renderer/asset_browser.rs` (374),
 `crates/editor/src/row_layout.rs` (234, `ellipsize` at 123),
-`crates/input/src/input_handler.rs` (385), `crates/editor/src/scroll.rs` (149),
+`crates/input/src/input_handler.rs` (385), `crates/input/tests/mouse.rs`,
+`crates/input/CLAUDE.md`, `crates/editor/src/scroll.rs` (149),
 `crates/editor/src/viewport_input.rs` (500), `crates/renderer/src/window.rs` (194) and
 `crates/renderer/Cargo.toml` (web-sys features only).
 
@@ -632,7 +665,7 @@ Files: `crates/editor/src/asset_browser.rs` (236),
   line). A list view is left out and filed if Astra insists. Tests: a click no longer
   assigns; Assign does, through the history; an ellipsized label measures under the tile.
 - **2d#119.** `SCROLL_PIXELS_PER_LINE` → `SCROLL_PIXELS_PER_NOTCH = 100.0` (a browser
-  notch, the constant a notch actually is); `ScrollState::WHEEL_STEP` re-tuned so a mouse
+  notch, the constant a notch actually is); `scroll.rs`'s `WHEEL_STEP` re-tuned so a mouse
   notch moves a panel a readable amount (60–100 px) and a trackpad moves it about 1:1
   with the finger; the viewport's one-notch-per-frame clamp stays. Test: a 100 px pixel
   delta is one notch. Jesse's trackpad check is the acceptance: a hard flick zooms a few
@@ -640,7 +673,7 @@ Files: `crates/editor/src/asset_browser.rs` (236),
 - **2d#120.** `focus_before_winit_does` also listens to `pointermove` in the capture phase
   and focuses the canvas with `preventScroll` before winit's handler when **all** of:
   `buttons != 0`, `event.target` is the canvas (the same target discipline the `pointerdown`
-  handler keeps at `window.rs:177-184` — the drag is over the canvas, not merely happening
+  handler keeps at `window.rs:176-183` — the drag is over the canvas, not merely happening
   somewhere on the page), and the canvas is not `document.activeElement`; it bails when
   the active element is an input, textarea, select, button, summary, dialog or a
   contenteditable, so drag-selecting text in the dock's console or textarea never yanks
@@ -652,7 +685,8 @@ Files: `crates/editor/src/asset_browser.rs` (236),
 - Docs: `crates/editor/CLAUDE.md` asset browser line; `crates/input/CLAUDE.md` if it names
   the constant; `crates/renderer/CLAUDE.md` pitfall row for the focus listener.
 
-Gates: standard engine + wasm + `check_games.sh` (`input`'s public constant changes).
+Gates: standard engine + wasm + `check_games.sh` (the wheel normalization every game's input
+goes through changes, private though the constant is).
 
 ## Batch 4 — engine: the game-only preview (2d#121)
 
