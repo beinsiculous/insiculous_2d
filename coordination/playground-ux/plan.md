@@ -713,7 +713,7 @@ goes through changes, private though the constant is).
 
 Files: new `crates/editor_integration/src/editor_game/snapshot.rs` and
 `snapshot_tests.rs`, `editor_game/run_options.rs` (67), `editor_game/scene_io.rs` (289),
-`editor_game/play_session.rs`, `editor_game/mod.rs` (→ ~558), `project_host.rs` (295 →
+`editor_game/play_session.rs`, `editor_game/mod.rs` (557 → ~563), `project_host.rs` (295 →
 ~300) with new child `project_host/preview.rs`, `crates/editor_integration/src/lib.rs`;
 `crates/playground/src/archive.rs` (327 → ~390), new `crates/playground/src/preview.rs`
 (target-agnostic) and `preview_entry.rs` (wasm-only), `bridge.rs` (380 → ~455),
@@ -735,13 +735,13 @@ Files: new `crates/editor_integration/src/editor_game/snapshot.rs` and
   bytes before the preview's buffer is transferred to the window.
   `EditorGame::scene_snapshot(&mut self, world, texture_path_fn) -> Result<SceneSnapshot, SceneIoError>`:
   refused in a play session (`MidSimulation`); **serializes a named scratch world**:
-  `WorldSnapshot::capture(world)` restored into a fresh `World`, then
+  `editor::world_snapshot::WorldSnapshot::capture(world)` `restore`d into a fresh `World`, then
   `engine_core::script_data::ensure_script_target_names(&mut scratch)` (the pure naming
-  rule that already exists, `script_data.rs:195-246`; save applies it to the live world
+  rule that already exists, `script_data.rs:195-249`; save applies it to the live world
   through the history, the snapshot applies it to the scratch), then
   `world_to_scene_data(&scratch)` + `serialize_to_ron` — naming after serialization would
   be too late, because `scripts_to_data` drops a parameter whose target has no `Name`
-  (`:143-146`); the live world, the history, the dirty mark, `scene_path` and every file
+  (`:169-180`); the live world, the history, the dirty mark, `scene_path` and every file
   are untouched, also when serialization fails. `scene_entry` is the scene path (or `default_scene_path()`)
   stripped of the asset base and prefixed `assets/`; a path outside the base is
   `SceneIoError::OutsideProject(PathBuf)` (new variant). `answer_scene_snapshot(&mut self,
@@ -772,18 +772,19 @@ Files: new `crates/editor_integration/src/editor_game/snapshot.rs` and
   `pub fn export_snapshot(project_root, manifest, scene_entry: &str, scene_ron: &str) -> Result<Vec<u8>, ArchiveError>`
   **replaces only the entry at `scene_entry`** with the live scene and keeps every other
   file — the export is a project backup, and dropping the other scenes would lose authored
-  work on re-import; the entry must pass `relative_path_is_safe` and start with
-  `assets/scenes/`, else `ArchiveError::OutsideProject(String)` (new). Which scene the
+  work on re-import; the entry must pass `bridge::relative_path_is_safe` (`bridge.rs:87`) and start with
+  `assets/scenes/`, else `ArchiveError::OutsideProject(String)` (already a variant, `archive.rs:37`). Which scene the
   preview loads is named explicitly, never inferred from the archive.
 - **`preview.rs`** (~130 with tests):
   `pub struct UnpackedPreview { pub root: String, pub scene: PathBuf, pub files: Vec<(String, Vec<u8>)> }`;
   `pub fn unpack_preview(bytes, scene_entry: &str, asset_base, bundle_version) -> Result<UnpackedPreview, ArchiveError>`
-  through `import_project` (every refusal it has), `project_root(asset_base, &manifest.slug)`,
+  through `import_project` (every refusal it has), `projects::project_root(asset_base, &manifest.slug)`,
   keys `{root}/{path}`; `scene` is `{root}/{scene_entry}`, which must be one of the
   unpacked files, else `ArchiveError::MissingScene(String)` (new). A test over the bundled
   projects pins "scenes live directly under `assets/scenes/`" so `first_scene_in` and the
   editor's default scene keep agreeing.
-- **`preview_entry.rs`** (wasm-only, ~120): `start()` reads `query_param("mode")` and, on
+- **`preview_entry.rs`** (wasm-only, ~120): `web_entry::start()` (the cdylib's one
+  `#[wasm_bindgen(start)]`, `web_entry.rs:63`) reads `query_param("mode")` and, on
   `preview`, calls `announce_preview_mode()` (boot status "Waiting for the editor's
   snapshot…") and returns before `run_playground` — no store, no chains, no observer, no
   listeners, no preload. Exports:
@@ -801,7 +802,7 @@ Files: new `crates/editor_integration/src/editor_game/snapshot.rs` and
   (Err when nothing loaded). Stop = the page closes the window; the `pagehide` guard
   already latches the loop. **Hidden-document frames**: `request_redraw` is an animation
   frame under winit's web backend and a hidden tab gets none, so the hidden path does not
-  use it. `run_game` keeps the loop's `EventLoopProxy` in a wasm thread-local
+  use it. `run_game` gains a user-event type and keeps the loop's `EventLoopProxy` in a wasm thread-local
   (`engine_core::web`); a `visibilitychange` listener starts, on the transition to hidden,
   a 100 ms `setTimeout` loop that sends a `WakeUp` user event
   (`EventLoopProxy::send_event`, scheduled by winit through `web_sys/schedule.rs`, not
@@ -836,7 +837,7 @@ Files: new `crates/editor_integration/src/editor_game/snapshot.rs` and
   site's export handler (batch 6) follow the Promise.
 - Tests: `snapshot_tests.rs` —
   `test_scene_snapshot_serializes_the_live_world_with_unsaved_edits_and_leaves_file_history_and_path_alone`
-  (load from a tempdir via `load_scene` with the stub resolver, execute a `SetTransformCommand`
+  (load from a tempdir via `load_scene` with the stub resolver, execute a `SetComponentCommand<Transform>`
   through the history, the RON carries the new value, `scene_entry == "assets/scenes/<name>.scene.ron"`,
   the file bytes are unchanged, `is_dirty()` still true, `scene_path` unchanged),
   `test_scene_snapshot_names_unnamed_script_targets_in_the_scratch_world_and_keeps_their_parameters`
@@ -881,6 +882,77 @@ Files: new `crates/editor_integration/src/editor_game/snapshot.rs` and
   projects keep their scenes directly under `assets/scenes/` so the editor's default and
   `first_scene_in` agree" (naming the bundled-projects test) and "The preview page never
   opens the store or installs the write observer (browser check)".
+
+**Re-verified against the tree 2026-09-09 before the handoff** (after batch 3, e5ad961; every
+line count in the Files line holds — `run_options.rs` 67, `scene_io.rs` 289, `play_session.rs` 272,
+`project_host.rs` 295, `archive.rs` 327, `bridge.rs` 380, `web_entry.rs` 272 — except
+`editor_game/mod.rs`, which is **557** after batches 2–3, not on its way to 558: it takes the two
+fields and the one call and nothing else; `snapshot.rs` takes the rest). **Nothing of this batch
+exists yet**: no `snapshot.rs`, no `project_host/preview.rs`, no `preview.rs`/`preview_entry.rs`,
+no `EventLoopProxy` anywhere in the engine. **The snapshot:** `WorldSnapshot` is the editor
+crate's (`editor::world_snapshot`, `capture` `:75`, `restore` `:102`; `mod.rs:19` already imports
+it) and captures only registry-known components plus the hierarchy — the same set Play/Stop
+already loses, so the scratch world loses nothing a save would keep. The naming rule is
+`plan_script_target_names` (`script_data.rs:195`) applied by `ensure_script_target_names`
+(`:243-249`); `save_scene_with` (`scene_io.rs:83-124`) is the model — it plans at `:99`, executes
+through the history, then `world_to_scene_data` at `:124` — and the drop it guards against is
+`scripts_to_data`'s unnamed-target arm at `:169-180`. `texture_path_fn` is the closure
+`save_scene_as` builds at `:70-71` (`texture_ref_for_save(handle, assets.texture_path(handle))`),
+so the RON matches a saved scene byte for byte. `default_scene_path` is `pub(super)` at `:247`;
+`SceneIoError` has `MidSimulation`, `Write`, `Load` (`:13-17`) — `OutsideProject(PathBuf)` is
+new there. `handle_play_action` lives in **`play_session.rs:239`**, not `mod.rs`; the Play arm
+(`:248-255`) is the one place to refuse — the strip (`mod.rs:219`), the key router
+(`shortcuts.rs:116`) and the stop dialog's resume (`:363`) all route through it; the error goes
+through `status_bar.show_error` (`status_bar.rs:67`). `answer_scene_snapshot` goes in
+`EditorGame::update` before the `drain_api_requests(ctx)` call at `mod.rs:464`; the mid-drag skip
+is inside `take_api_lines` (`api.rs:222-224`), which the answer path does not call. The stub
+resolver is `engine_core::test_support::StubResolver` (`test_support.rs:36`, feature
+`test-support`, already a dev-dependency); `scene_io_tests.rs:60-80` is the tempdir + `load_scene`
+shape and `:67` pushes a command through the history. **The host:** `ProjectHost`'s fields are
+private and `update_frame` (`project_host.rs:51`), `reset_play_state` (`:124` — the "play state
+reset") are `pub(crate)`, which is why `preview.rs` is a child module; its `Game::init` (`:132`)
+sets the asset base from `project_path/assets` and initialises the hierarchy, and `load_scene`'s
+model is `scene_io.rs:150-200` (clear `:172`, instantiate `:173`, publish `PhysicsSettings`
+`:178-190`). `project_host.rs:165` already has a Patrol test to copy the shape from.
+`editor::fonts::EDITOR_FONT_REGULAR` is `fonts.rs:18` (`pub mod fonts`); the UI default is
+`load_font` + `set_default_font` (`ui/src/context/mod.rs:97`, `:112`). `GameContext.time_scale` is
+`contexts.rs:83`. **The archive:** `export_project(project_root: &Path, manifest)` `archive.rs:88`,
+`import_project(bytes, bundle_version) -> (ProjectManifest, Vec<StoredFile>)` `:162-165`;
+`archive/tests.rs` exists. `projects::project_root(base, slug)` is `projects.rs:56`;
+`SceneLoader::first_scene_in` is `engine_core` (`scene_loader.rs:98`), fed `<root>/assets/scenes`
+at `web_entry.rs:254`. `common::vfs::insert(path: String, bytes: Vec<u8>)` is `vfs/mod.rs:215`
+(the boot loop uses it at `web_entry.rs:188`). **The bridge:** `Hooks` (`bridge.rs:23`) has
+`source_check` and `script_errors`, set by `set_hooks` from `web_entry.rs:231-241`; the project
+root is the `CURRENT_PROJECT_ROOT` thread-local `setup_bridge` fills (`:227`); every Promise
+export uses `wasm_bindgen_futures::future_to_promise` (`:218`); `playground_export_zip` is the
+synchronous `Result<Vec<u8>, JsValue>` at `:244-253`. "The drain's polling shape" is
+`persist::drain_then_epoch` (`persist/mod.rs:415-447`): a 50 ms `set_timeout` promise awaited
+through `JsFuture`, `common::clock::Instant` for the 5 s cap, and its timeout text already blames
+tab visibility. `EditorRunOptions` (`run_options.rs:15-31`) has seven fields; the
+editor_integration guide's paragraph (`CLAUDE.md:15`) lists six — add `script_errors` with the two
+new ones. **The preview page:** the preview must not call `run_playground`, `setup_bridge`,
+`set_hooks` or `persist::install_listeners` (`persist/mod.rs:451`, the editor's own
+`visibilitychange`/`beforeunload` pair); with no `CURRENT_PROJECT_ROOT` the old exports refuse on
+that page by themselves. `set_boot_status` only writes `#game-loading` (`web/mod.rs:88-95`) and
+nothing reads it back: add a `boot_status() -> Option<String>` reader beside it (the same element's
+text) for the `failed:` branch of `playground_preview_state`; the renderer's failure write is
+`game/web.rs:125-130`. **The event loop:** `run_game` builds `EventLoop::new()` with the `()`
+user event (`game.rs:206`) and `GameRunner` is `ApplicationHandler<()>` (`app_handler.rs:143`); on
+the web the only frame driver is `RedrawRequested` → `drive_frame` (`:246-252`) and
+`request_redraw` is rAF (`:181`, `web.rs:86`); `about_to_wait` is native-only (`:258-266`). So the
+wake path is all new: `EventLoop::<WakeUp>::with_user_event().build()`, `ApplicationHandler<WakeUp>`,
+`create_proxy()` into a thread-local beside the page-exit guard (`web/mod.rs:27-77` is the shape:
+a static, an installer called from `run_game`'s web arm at `game.rs:219-222`), and a `user_event`
+that calls `drive_frame`. `Document::visibility_state` needs the **`VisibilityState`** web-sys
+feature in `engine_core`'s list (`Cargo.toml:46-61`; `Window`, `Document`, `Event`, `EventTarget`
+are there; a feature is not a dependency). **Docs:** `docs/WEB_PLAYGROUND.md` § The bridge is
+`:172` (the `playground_export_zip()` row `:189`), § Export and import `:207`, § The bundle
+contract `:53` with its "**One embed per page.**" paragraph at `:68`; the editor_integration
+guide's File Map is `:25-42` and its pitfalls table `:76+`; the playground guide's File Map `:16-28`
+(the boot line `:18`) and pitfalls `:31+`. **Earlier batches:** batch 1's stop dialog resumes Play
+through `handle_play_action` (`shortcuts.rs:363`), so the refusal covers it; batch 2's strip is the
+Play button's home and nothing here moves it; batch 3 left `panel_renderer/asset_browser.rs` at 580
+and `viewport_input.rs` at 500 — neither is in this batch.
 
 Gates: standard engine + wasm. Leaves out: the page (batch 6).
 
