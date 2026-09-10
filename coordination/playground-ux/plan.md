@@ -496,6 +496,37 @@ Gates: standard engine + wasm. Leaves out: anything visual beyond the heading.
 
 ## Batch 2 — engine: the toolbar strip (2d#131)
 
+**Re-verified against the tree 2026-09-09 before the handoff** (after batch 1, f268bf4):
+`toolbar_position_for` is `crates/editor/src/toolbar.rs:186` with two tests of its own at
+`:200-201` that go with it, its one production caller is
+`editor_game/mod.rs:190` inside `render_toolbar_and_play_controls` (`:186`), it is
+re-exported at `crates/editor/src/lib.rs:144`, and a comment at `context/mod.rs:139` names
+it — all four move or go, and the report shows the grep. `Toolbar { button_size: 56.0 }`
+(`toolbar.rs:66`, `:85`) with `bounds()` at `:112`, `chrome_bounds()` at `:121`, `render()`
+at `:130`; `PlayControls { button_size: 40.0 }` (`play_controls.rs:47`) with `chrome_bounds`
+at `:85` and `render` at `:104`. `EditorContext::update_layout` is `context/mod.rs:436`,
+`dock_area.layout()` at `:448`, `set_viewport_bounds` at `:452`, `scene_view_bounds()` at
+`:473`, `panel_content_bounds` at `:478`; the world scissor takes `scene_view_bounds()` at
+`editor_game/mod.rs:491-493` and the render camera comes from
+`viewport.to_window_render_camera(ctx.window_size)` at `:486` (the full window, as kimi's
+note said); `scene_view_bounds()`'s other callers are `mod.rs:250`, `:266` and `:366`.
+`render_scene_view` is `panel_renderer/mod.rs:51` with the grid at `:66`, colliders `:101`,
+selection `:127` and the play border `:139`. **The dock already has the collapse API narrow
+mode builds on**: `DockPanel::collapsed` (`dock/mod.rs:92`), `is_collapsible` (`:130`),
+`content_bounds` (`:150`, zero rect when collapsed), `DockArea::set_panel_collapsed` (`:237`),
+`toggle_panel_collapsed` (`:247`) and `layout()` (`:257`, the edge allocator over
+`remaining`). The default hierarchy is 200 px with a **150** minimum (not 200) and the
+inspector 280 with a 200 minimum (`context/mod.rs:104-113`). `UiLayer::PanelChrome` has
+no user yet; `ui.begin_overlay_in(UiLayer::…, rect)` is how a band is entered
+(`confirm_dialog.rs:98`, `asset_browser.rs:321`), and `menu/tests.rs:36` pins that an
+overlay band's own widgets work while widgets beneath it are blocked — the strip wants
+exactly that. The overlay-equivalence tests to run first are
+`crates/editor/src/viewport/tests.rs:105`
+(`test_overlay_matches_gpu_camera_at_a_panel_offset_and_the_play_follow_pose`),
+`grid.rs:425` and `collider_overlay.rs:259`. Line counts today: `context/mod.rs` 556,
+`editor_game/mod.rs` 552, `panel_renderer/mod.rs` 470, `toolbar.rs` 279,
+`play_controls.rs` 241, `dock/mod.rs` 317, `layout.rs` 30.
+
 Files: `crates/editor/src/layout.rs` (30), new `crates/editor/src/toolbar_strip.rs`,
 `crates/editor/src/toolbar.rs` (279), `crates/editor/src/play_controls.rs` (241),
 `crates/editor/src/context/mod.rs` (556 — one call and one accessor, no more),
