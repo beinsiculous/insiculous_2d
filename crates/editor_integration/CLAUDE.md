@@ -62,10 +62,10 @@ editor_integration ──→ editor, engine_core, ecs, ui, input, renderer, comm
 
 ## Phase 1 Status
 Phase 1A–1H **complete**: entity CRUD, component add/remove, undo/redo, play/pause/stop, scene save/load, theme, status bar.
-Current editor work follows the UX-audit sprint order (Aug 27 2026): see
-`PROJECT_ROADMAP.md` § "Editor — UX Audit & Work Order" and
-`docs/EDITOR_UX_AUDIT.md` (§7 = the 5-sprint work order; live items are Studio
-Board issues, Phase = Editor). The old "Phase 2 (Ideal Editor UI)" lettering is
+Current editor work follows the **Playground UX** sprint on the Studio Board
+(`gh issue list -R beinsiculous/insiculous_2d`); `docs/EDITOR_UX_AUDIT.md` is
+history, reconciled 2026-09-10 with every item marked in the file, and its §7 ran
+as sprints 1–5 and sprint 6. The old "Phase 2 (Ideal Editor UI)" lettering is
 retired.
 
 ## Known Tech Debt

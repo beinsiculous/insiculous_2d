@@ -12,6 +12,19 @@ TECH_DEBT/ROADMAP docs — is what the sections below refer to.)
 
 ---
 
+## Editor UX audit reconciled ☑ Sep 10 2026
+
+`docs/EDITOR_UX_AUDIT.md` was a file:line-anchored read of the editor on
+Aug 27 2026, every item with a symptom and a fix. Reconciled against the tree
+on Sep 10 2026 — 54 status lines and the 28 work-order lines of §7, 82 marks:
+**61 shipped**, **18 open**, each with an issue (seven in the Playground UX
+sprint, #136–#139 filed by the reconciliation, seven small remainders in the
+editor backlog #99), and **3 retired** as designs that became roadmap
+sections. Its §7 work order ran in full as sprints 1–5 (Aug 27–28 2026), and
+sprint 6 plus the Playground UX sprint took the remainders. The file is history
+now — every item carries a status line, and the remainder lives only on the
+Studio Board.
+
 ## Docs retirement — TECH_DEBT.md files + roadmap task tracking → issues (Aug 28 2026)
 
 All 13 `TECH_DEBT.md` files (root, `crates/*`, `../games`) were deleted and

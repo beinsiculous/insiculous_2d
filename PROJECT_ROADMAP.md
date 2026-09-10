@@ -82,7 +82,7 @@ Engine status, test counts, and per-system capability detail live in
 | K | Conductor — adaptive MIDI music | On board (K1 spike gates all) | #60–#65; architecture: `review/plan-conductor.md`, memory |
 | C/D | Games 7–20 | PAUSED until Phase G done (below) | This file § Paused phases |
 
-**Editor** work follows the UX-audit sprint order (its own section below);
+**Editor** work follows the Playground UX sprint (its own section below);
 **Web Playground** shipped Sep 2026; `docs/WEB_PLAYGROUND.md`.
 
 ## Phase J — Insiculous Arcade (marketplace compilation) — OUTLINE ONLY
@@ -143,11 +143,12 @@ design (the board carries actionable work); this table is the resumption point.
    builds, "Open in IDE") are fine as cfg-gated native features with the web
    replacement named up front (OPFS / VFS fetch / deferred remote build).
 
-The full file:line-anchored audit: `docs/EDITOR_UX_AUDIT.md` (2026-08-27). Its
-§7 work order is adopted as five sprints; **live items are Studio Board issues
-(Phase = Editor)**. Sprints 1–4 complete Aug 27–28 2026; Sprint 5
-("architecture": §4.2, §4.3, §6.7, §6.5 Stage 1, §9 Stage C) landed Aug 28 2026
-pending close-out. The old "Phase 2 (Ideal Editor UI)" lettering is retired
+The full file:line-anchored audit is `docs/EDITOR_UX_AUDIT.md` (2026-08-27), and
+it is **history**: reconciled 2026-09-10, with every item carrying a status line in
+the file itself. Its §7 work order ran as sprints 1–5 (Aug 27–28 2026) and sprint 6
+(Sep 1 2026). The **Playground UX** sprint on the Studio Board is the editor's work
+order now (`gh issue list -R beinsiculous/insiculous_2d`, the Playground UX
+milestone). The old "Phase 2 (Ideal Editor UI)" lettering is retired
 (history in `log_archive.md`).
 
 **Editor colors**: SSOT is `crates/editor/src/theme.rs` (`EditorTheme` tokens,
@@ -173,12 +174,13 @@ batches the week it shipped, and the gaps became the **Playground UX** sprint
 (milestone here and in `insiculous_web`; one order in its description): the
 editor gets the window and an edit-to-preview loop into a separate game-only
 window first, then the first-run path, the visual hierarchy (reconciling
-`docs/EDITOR_UX_AUDIT.md` before it becomes a task list again), the
-loading/saving/failure states, and browser usability plus a performance budget
-as acceptance criteria. The acceptance test: on an ordinary laptop, a new
-visitor changes a sample, plays that exact change in another window, returns
-safely, and exports their work without reading the docs. The sprint's plan is
-written as a handoff loop when it starts; Astra reviews it alongside kimi.
+`docs/EDITOR_UX_AUDIT.md` before it becomes a task list again — done
+2026-09-10), the loading/saving/failure states, and browser usability plus a
+performance budget as acceptance criteria. The acceptance test: on an ordinary
+laptop, a new visitor changes a sample, plays that exact change in another
+window, returns safely, and exports their work without reading the docs. The
+sprint's plan is written as a handoff loop when it starts; Astra reviews it
+alongside kimi.
 
 ## Scripting — the ScriptRef seam
 

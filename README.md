@@ -455,7 +455,7 @@ Run all tests: `cargo test --workspace` — headless, no GPU or window required.
 
 ## Project Status
 
-**Current State:** Functional editor (Phase 1 complete); work follows the UX-audit sprint order — see `PROJECT_ROADMAP.md` § "Editor — UX Audit & Work Order" and `docs/EDITOR_UX_AUDIT.md`
+**Current State:** Functional editor (Phase 1 complete); work follows the **Playground UX** sprint on the Studio Board (`gh issue list -R beinsiculous/insiculous_2d`), and `docs/EDITOR_UX_AUDIT.md` is history — reconciled 2026-09-10, every item marked in the file
 
 - **Test Status:** `cargo test --workspace` — 0 failed, 0 ignored is the invariant
 - **Lint Status:** `cargo clippy --workspace --all-targets` clean

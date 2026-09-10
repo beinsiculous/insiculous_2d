@@ -1,5 +1,11 @@
 # Insiculous 2D — Editor UI/UX Audit & Roadmap
 
+> **Status: historical.** Reconciled 2026-09-10 against `insiculous_2d` at `0f6b95e`.
+> The Studio Board is the only work order — `gh issue list -R beinsiculous/insiculous_2d`,
+> the Playground UX milestone — and nothing in this file is a task. Every item below
+> carries a status line saying whether it shipped, is still open, or was retired. The
+> file:line anchors are of 2026-08-27 and are not maintained.
+
 **Date:** 2026-08-27
 **Basis:** full read of `crates/editor` + `crates/editor_integration` at HEAD, plus six live screenshots of the Pong and Editor Demo instances taken 2026-08-27 08:17–08:29.
 **Purpose:** input for a Claude Code planning session. Every item has a file:line anchor, an observable symptom, and a concrete fix.
@@ -36,6 +42,8 @@ The point of this section: names for things that currently feel wrong but resist
 
 ### 1.1 Clicking a toolbar button silently reselects whatever sprite is underneath it
 
+**Status (2026-09-10):** shipped — #18 (2d46668)
+
 > **Confirmed by repro, 2026-08-27.** Selecting in the hierarchy and switching tools with Q/W/E/R works correctly. Clicking a toolbar button deselects the current object and **selects the Background instead.**
 
 The toolbar floats **inside** the scene-view rect (`toolbar.rs:176`), and viewport picking only guards against menu overlays:
@@ -71,6 +79,8 @@ if input_result.clicked {
 
 ### 1.2 Play → Stop permanently deletes components the engine doesn't enumerate
 
+**Status (2026-09-10):** shipped — #22 (32cb02f) — the registry drives `WorldSnapshot`, so every registered component type survives Stop, and an unregistered one is reported by name rather than lost silently
+
 ```rust
 // world_snapshot.rs:7-8
 // Known limitation: Custom component types not in the known list are lost on restore.
@@ -88,6 +98,8 @@ For an engine whose pitch is "build 2D games", the first custom component a user
 
 ### 1.3 `Save` and `Save As` are unguarded during Play
 
+**Status (2026-09-10):** shipped — #22 (32cb02f)
+
 Every neighbouring menu arm has `if !self.editor.is_playing()`. These two don't:
 
 ```rust
@@ -103,6 +115,8 @@ Every neighbouring menu arm has `if !self.editor.is_playing()`. These two don't:
 ---
 
 ### 1.4 Inspector edits never mark the scene dirty
+
+**Status (2026-09-10):** shipped — #24 (47194ff) — `CommandHistory` is the dirty source of truth and the title bar shows it; the confirm dialog followed as #52 (f4f2570)
 
 `panel_renderer/inspector.rs` contains **zero** `mark_dirty()` calls. `apply_component_edit` (`component_editors.rs:338-352`), `AddComponentCommand` (`inspector.rs:147`), and `RemoveComponentCommand` (`stored_component.rs:277`) all leave `is_dirty == false`.
 
@@ -124,6 +138,8 @@ Compounding: `EditorContext::title_bar_text()` (`context/mod.rs:398-402`) format
 
 ### 1.5 Paused is editable and Stop discards the edits with no warning
 
+**Status (2026-09-10):** shipped — #103 (f268bf4, closes on push) — Stop asks whether to keep or discard the edits made while Paused
+
 `crates/editor/CLAUDE.md:67` states the design: `Paused` → editable. Every guard in the codebase tests `is_playing()`, not `in_play_session()`. Stop (`shortcuts.rs:78-102`) restores unconditionally. No dirty check, no prompt, no undo.
 
 **Fix:** track "edited while paused" and either block it, or `status_bar.show_error` + confirm on Stop.
@@ -137,6 +153,8 @@ These are why the editor looks less finished than it is. Each is written, tested
 > **Both confirmed by repro, 2026-08-27:** `G` does nothing visible, and the scroll wheel does not zoom.
 
 ### 2.1 The grid is never drawn
+
+**Status (2026-09-10):** shipped — #36 (c20ddef)
 
 `grid.rs:135 generate_grid_sprites` and `:253 render_to_batcher` have **no callers outside `#[cfg(test)]`**. What the scene view actually does with the grid:
 
@@ -154,6 +172,8 @@ It prints the text `"Grid: 32px"`. That ghost string at the top-left of your vie
 > **Keep it square.** The deforming spring grid visible in the Pong play screenshot is a *game* render effect (the Geometry Wars look), not the editor grid. They are separate systems and should stay separate: the authoring grid is a square, axis-aligned, zoom-adaptive reference overlay with distinguished origin axes — its job is to make position and scale judgeable at a glance. `grid.rs` already implements exactly that (`calculate_lod_grid_size` at `:269`, red/green origin axes at `:229-247`); it just isn't called. Don't let the game's grid effect and the editor's reference grid converge — the moment the authoring grid deforms, it stops being a ruler.
 
 ### 2.2 The scroll wheel does nothing
+
+**Status (2026-09-10):** shipped — #20 (35ba599)
 
 ```rust
 // viewport.rs:125-143
@@ -173,6 +193,8 @@ Zoom-to-cursor is correctly implemented and completely unreachable. Same root ca
 
 ### 2.3 `F` (frame selected) is computed and discarded
 
+**Status (2026-09-10):** shipped — #21 (af3d0ee) — `F` frames the selection, Shift+F frames all
+
 `viewport_input.rs:152-155` sets `result.focus_requested = true`. **Never read** — `handle_viewport_picking` uses only `clicked`, `click_position`, `shift_held`, `ctrl_held`, and the marquee fields. `EditorContext::focus_on_selection` (`context/mod.rs:499`) has no callers, and delegates to a target-only method anyway (§2.2). `reset_requested` likewise unread. There is **no frame-all at all**.
 
 **This is visible in your own screenshot.** In the Pong instance, the hierarchy lists 8 entities and the viewport shows one ball glow — the paddles and walls are off-screen. With `F` dead, zoom dead, and Home dead, the only recovery is middle-drag panning until you find them.
@@ -187,17 +209,23 @@ The 08:29 screenshot is the single most damning image in the set. Everything bel
 
 ### 3.1 Label collision — labels overlap their input boxes
 
+**Status (2026-09-10):** shipped — #31 (28cbf06)
+
 "Linear Damping" and "Angular Damping" run *into* their fields; "Angular Damping" is clipped mid-word by the input rectangle. Cause: `EditableFieldStyle` uses a fixed `label_width` with no measurement, so any label longer than the budget overruns.
 
 **Fix:** measure the widest label in the component block and lay the column to that, or right-align labels to a fixed gutter and ellipsize. Same pass should fix the `[X]` button, whose position is `x + style.label_width + 90.0` (`editable_inspector.rs:337`, duplicated at `component_editors.rs:366`) — a magic offset that doesn't track panel width, which is why the X buttons float unaligned in the middle of the panel instead of sitting on the component header.
 
 ### 3.2 Axis letters render underneath their fields
 
+**Status (2026-09-10):** shipped — #31 (28cbf06)
+
 The tiny red `X` / gray `Y` on Position, Scale, Offset, Velocity all sit on top of or behind the input boxes rather than beside them. The RGBA block is worse: R/G on one row, B/A on the next, columns not aligned, letters colliding with boxes.
 
 **Fix:** treat a Vec2 row as one composite widget with its own internal layout (label gutter | X badge | field | Y badge | field), not four independently-positioned draws.
 
 ### 3.3 Inspector doesn't scroll — `+ Add Component` is unreachable
+
+**Status (2026-09-10):** shipped — #28 (9a3a24f) — one `ScrollState` per panel, and the add-component popup is window-anchored on the Floating layer
 
 `grep -rn "scroll"` finds offsets only in `asset_browser.rs:44-45` and camera zoom. The inspector walks `y` downward inside a hard clip rect (`editor_game/mod.rs:151`). In your screenshot, Collider's `Radius` field is cut off at the panel edge with no scrollbar — and `+ Add Component` (`panel_renderer/inspector.rs:106-108`) is below that, permanently unclickable on any entity with four components.
 
@@ -209,6 +237,8 @@ Worse: the Add-Component *popup* is drawn at the same running `y` inside the sam
 
 ### 3.4 Fake headers — sub-properties look like components
 
+**Status (2026-09-10):** shipped — #35 (2c38281)
+
 `inspector.header("  Shape: Circle")` (`component_editors.rs:208`) and `inspector.header(&format!("  Type: {}", type_str))` (`:157`) use the component-header style with two leading spaces as the indentation mechanism. In the screenshot, "Type: Dynamic" and "Shape: Circle" are visually indistinguishable from "RigidBody" and "Collider".
 
 They're also **read-only** — you cannot switch Dynamic↔Static or change a collider's shape in the editor. Comment at `:151`: *"read-only for now - would need dropdown widget."* **The widget exists**: `EditableInspector::cycle` (`editable_inspector.rs:455-503`) already drives `UiAnchor` and the `Behavior` variant selector.
@@ -216,6 +246,8 @@ They're also **read-only** — you cannot switch Dynamic↔Static or change a co
 **Fix:** style sub-properties as a distinct tier; wire `cycle` to `RigidBodyType` and `ColliderShape`.
 
 ### 3.5 Hostile numeric fields
+
+**Status (2026-09-10):** shipped — #30 (b4f0415) — drag-scrub, arrow nudge and no silent clamp; the remainders followed as #55 (207075e, the soft-range warning) and #54 (6ec55c7, the monospace face)
 
 Every numeric field is a text box (`editable_inspector.rs:29-38`). Missing, relative to Unity/Godot/Blender and to your own `IdealEditor.png`:
 
@@ -230,6 +262,8 @@ Every numeric field is a text box (`editable_inspector.rs:29-38`). Missing, rela
 **Fix, in value order:** drag-to-scrub in `ui::float_input` (one widget change lights up every field in the editor) → degrees at the boundary with a `°` suffix → soft ranges (clamp the scrub, allow typed values outside, warn) → `EditResult::Invalid` + red border → mono face.
 
 ### 3.6 Read-only islands, and one that blocks gameplay entirely
+
+**Status (2026-09-10):** shipped — #34 (2c38281), partly — `Behavior` strings and `EntityTag` are editable, and Type/Shape are cycle rows; `Camera`, `SpriteAnimation`, `Tilemap` and `AudioListener` are still read-only (`SpriteAnimation`'s wiring is #67)
 
 **Editable (9):** `Transform2D`, `Sprite`, `RigidBody`, `Collider`, `AudioSource`, `Behavior`, `UiLabel`, `UiPanel`, `UiButton`.
 **Display-only (5):** `Camera`, `SpriteAnimation`, `Tilemap`, `AudioListener`, `EntityTag` — the `{ readonly }` specs at `stored_component.rs:319, 321, 322, 326, 328`. Note `Create Camera` is a first-class menu item (`menu/mod.rs:232`) for a component you then can't adjust.
@@ -250,6 +284,8 @@ The stated reason is stale:
 
 ### 4.1 Chrome bleed — game UI draws on editor chrome
 
+**Status (2026-09-10):** shipped — #41 (c39323c, 241c757) — the scissor rect fixed the bleed at its root
+
 Visible in three of six screenshots:
 - Editor Demo in Play: an opaque game slider panel covers File/Edit/View and the top five hierarchy rows; `"HELLO WORLD"` renders in the menu-bar band; `"L cycles language"` collides with `v0.1.0` in the status bar.
 - Pong in Play: `"YOU 0 - 1 CPU"` renders over the `Scene` panel title.
@@ -266,11 +302,15 @@ That's curtains, not clipping — and it doesn't cover the menu bar or status ba
 
 ### 4.2 No viewport scissor — the game shades the entire window
 
+**Status (2026-09-10):** shipped — #41 (c39323c)
+
 `EditorGame::render` (`editor_game/mod.rs:340-349`) unconditionally overwrites the camera with `to_window_render_camera(ctx.window_size)`, rendering the world across the full window. In your Pong screenshot the game is shaded at 1040×790 and visible at ~545×470 — **3× the fragments needed**, with heavy additive glow overdraw.
 
 **Fix:** set a scissor rect on the sprite pass equal to `scene_view_bounds()`. Fixes chrome bleed and the overdraw in one change.
 
 ### 4.3 Shared camera — a game cannot zoom
+
+**Status (2026-09-10):** shipped — #42 (cb68098)
 
 There is exactly one camera. During Play, the game camera is demoted to a position feed (`mod.rs:108-115`) and zoom is forced to 1.0 (`shortcuts.rs:52-56`, comment: *"the game's own camera has no zoom source"*).
 
@@ -279,6 +319,8 @@ Consequences: any camera-zoom gameplay is impossible under the editor and behave
 The upside — `to_window_render_camera` guarantees overlay and GPU agree, locked by three tests (`viewport.rs:461-502`) — is worth keeping. **Fix:** two cameras; derive the render camera from whichever is authoritative for the play state; drive the overlay's `world_to_screen` from that same camera so picking stays truthful. **This one needs a design conversation, not a patch.**
 
 ### 4.4 No selection affordance in the viewport
+
+**Status (2026-09-10):** shipped — #19 (2494784) — selection and hover outlines for every sprite; reserving accent strength for selection is #132 in this sprint
 
 No outline, no bounds box, no tint, no handles. `theme.selection_fill` is used only for hierarchy row backgrounds. The only viewport feedback is indirect:
 
@@ -296,6 +338,8 @@ There is also **no hover feedback** anywhere in the viewport.
 
 ### 4.5 Gizmos
 
+**Status (2026-09-10):** shipped — #38 (a2e84a6)
+
 - **Off by default.** `EditorTool::default()` is `Select` → `GizmoMode::None` (`context/mod.rs:157-163`) → nothing draws. Note `GizmoMode::default()` is `Translate` — the two defaults disagree. Combined with §1.1 (the toolbar click that would fix it clears your selection), the gizmo is reachable only by: click in hierarchy → press `W`. Nothing teaches that.
 - **Rotate ring is a solid 148×148 square** (`gizmo.rs:375-382`) — `ui.interact` on a filled rect, not an annulus. Any click within 74px of the entity starts a rotation drag; you cannot click-select through it. No angle snapping, no numeric readout.
 - **Scale's `still_dragging` uses the wrong rect** (`gizmo.rs:482-486`): every corner re-registers its widget id with `centered_handle_rect(screen_pos)` — the *center* handle. The correct rect is in scope four lines up. The scale tool breaks one frame into the drag.
@@ -305,6 +349,8 @@ There is also **no hover feedback** anywhere in the viewport.
 - **`Gizmo::cancel()` exists (`gizmo.rs:497`) with zero callers** — Escape can't abort a mis-drag.
 
 ### 4.6 Snapping is unreachable, and broken if you reach it
+
+**Status (2026-09-10):** shipped — #37 (b15a7e6)
 
 `toggle_snap_to_grid` (`context/mod.rs:271`) has **no callers**. No menu item, no keyboard handler, no toolbar button. `EditorAction::ToggleSnap` is bound to bare `KeyS` (`editor_input.rs:174`) and never queried. The only way to enable snap is hand-editing `editor_prefs.json`.
 
@@ -322,11 +368,15 @@ The snapped value is written back into the authoritative position every frame. W
 
 ### 4.7 Marquee select is invisible
 
+**Status (2026-09-10):** shipped — #39 (93d0ab1)
+
 `SelectionRect::to_sprite` (`picking.rs:343`) and `to_border_sprite` (`:364`) have zero callers; `SelectionRect` is never instantiated in production. The consumer acts only on the release frame — during the entire drag, nothing renders.
 
 Two more defects in that condition (`viewport_interaction.rs:77-89`): `selection_start != Vec2::ZERO` is a sentinel, so a marquee starting exactly at screen (0,0) is silently dropped; and `ctrl_held` is ignored, so Ctrl+drag destructively replaces instead of toggling.
 
 ### 4.8 Picking
+
+**Status (2026-09-10):** open — #136 (filed 2026-09-10) — the equal-depth tie now breaks on `entity_id` (#23, 796f8e0) and `reset_cycle` is gone; the AABB still drops rotation, only sprites are pickable, and `pick_margin` is still 2.0 world units rather than pixels over zoom
 
 - **Unrotated AABB in world space** (`picking.rs:196`) — `global_t.rotation` is dropped. A 45°-rotated sprite has a hit box ~41% too large on the diagonals and misses its own corners.
 - **Sprites only** (`viewport_interaction.rs:279`). Cameras, empties, colliders-without-sprites, UI elements are unclickable — hierarchy-only.
@@ -335,6 +385,8 @@ Two more defects in that condition (`viewport_interaction.rs:77-89`): `selection
 - **`reset_cycle` (`picking.rs:271`) has no callers**, so cycle state never resets on selection change, and `last_pick_pos` is polluted by the asset-drop path (`viewport_interaction.rs:110-114`).
 
 ### 4.9 Two competing shortcut systems, one dead
+
+**Status (2026-09-10):** shipped — #40 (34be495) — one chord-aware mapping, arrow nudge, the Escape cascade and an entity clipboard
 
 `EditorInputMapping` (`editor_input.rs`) defines 22 actions with a rebinding API. **Two** are ever queried (`FocusSelection`, `ResetCamera`) and both outcomes are discarded (§2.2, §2.3). The real shortcuts are hardcoded `KeyCode` matches in `shortcuts.rs`.
 
@@ -346,6 +398,8 @@ The dead bindings are also wrong as written: `Duplicate → KeyD  // Ctrl+D`, `U
 
 ### 4.10 Hierarchy
 
+**Status (2026-09-10):** open — #137 (filed 2026-09-10) — `Name` became editable with F2 rename (#32, 1b958fd) and the panel scrolls (#28); search/filter, sibling reorder, visibility and lock toggles, type icons, a context menu and a scene root node are still absent
+
 Present: nesting with indent, expand/collapse, single-click select, Ctrl-click toggle.
 **Absent:** scrolling (§3.3), rename, search/filter, drag-to-reparent (`DragPayload` has one variant: `Texture`), sibling reorder (order is `sort_by_key(EntityId)` — not authored, not persisted), visibility toggle, lock, right-click context menu, type icons, a scene root node.
 
@@ -356,6 +410,8 @@ Present: nesting with indent, expand/collapse, single-click select, Ctrl-click t
 **Also observed:** hierarchy order changes during play. In the 08:17 Pong shot the order is Background, Left Paddle, Right Paddle, Ball, Top Wall…; in the 08:18 shot after play, Ball has moved to the bottom (recreated with a higher EntityId). Any UI that assumes stable row indices will misbehave.
 
 ### 4.11 Selection model
+
+**Status (2026-09-10):** shipped — #23 (796f8e0)
 
 `Selection` is genuinely multi (`HashSet` + `primary`), and both entry points feed it. Every consumer reads `primary()` only — inspector, gizmo, duplicate. Only delete honors the full set.
 
@@ -372,6 +428,8 @@ Rubber-band five entities, and the inspector shows an arbitrary one — a differ
 
 ### 4.12 Undo — the silent holes
 
+**Status (2026-09-10):** shipped — #40 (34be495) — duplicate spawns through `SpawnTreeCommand`, so undo removes the whole subtree and the rename rides inside the command; a live gizmo drag suppresses Undo
+
 Undoable: create, delete, duplicate (top-level), add/remove component, inspector field edits, gizmo transforms, texture drop.
 
 **Bypassing the command system:**
@@ -380,6 +438,8 @@ Undoable: create, delete, duplicate (top-level), add/remove component, inspector
 - `Name` mutation on duplicate (`entity_ops.rs:306-309`) outside any command.
 
 ### 4.13 Absent: multi-edit, component copy/paste, prefabs, reset-to-default
+
+**Status (2026-09-10):** open — #138 (filed 2026-09-10) — entity-level copy/paste shipped with the clipboard (#40) and prefabs became the typed `Archetype` enum rather than a match on menu labels; multi-edit, per-component copy/paste and reset-to-default are still absent
 
 All four absent, though three are nearly free given existing machinery: `ComponentKind::capture` returns a `StoredComponent` and `StoredComponent::apply_to` writes it back, so copy/paste-component is ~20 lines. `ComponentKind::add_default` already knows every default, so a "↺" per component header is nearly free.
 
@@ -391,9 +451,13 @@ All four absent, though three are nearly free given existing machinery: `Compone
 
 ### 5.1 Settle the gamma question first
 
+**Status (2026-09-10):** shipped — #26 (9a3a24f) — verified, and the cause was the Reinhard tonemap running over the UI pass, not an sRGB double-encode in `Color::from_hex`
+
 Backgrounds authored as `#1e1e1e` (30) measure **91** in the screenshots; `bg_header` at 0.12 measures 92. That's a linear→sRGB double-encode — colors authored as sRGB being treated as linear on output. **Verify the swapchain format and whether `Color::from_hex` linearizes.** Until that's settled every color decision is guesswork, and re-picking the palette before fixing it wastes the work.
 
 ### 5.2 No elevation model
+
+**Status (2026-09-10):** shipped — #26 (9a3a24f) — the `surface_0`–`surface_4` ladder with its guard test; reserving the accents for selection is #132 in this sprint
 
 ```rust
 // theme.rs:185-188
@@ -418,9 +482,13 @@ bg_header:   Color::new(0.12, 0.12, 0.12, 1.0), // 30.6,30.6,30.6
 
 ### 5.3 Invisible popups
 
+**Status (2026-09-10):** shipped — #26 (9a3a24f)
+
 Every floating surface uses the same token as the panel behind it (`theme.rs:344 theme.panel.background = self.bg_primary`), drawn via `ui.panel` at `menu/mod.rs:397`, `panel_renderer/inspector.rs:121`, `toolbar.rs:133`. **Contrast between an open dropdown and its backdrop: 1.00:1.** Border 1.32:1. No shadow, no radius, no scrim. The dropdown isn't translucent — it's opaque and identically colored, so you see floating text with no container.
 
 ### 5.4 One implicit z-band
+
+**Status (2026-09-10):** shipped — #29 (d8f398c) — `UiLayer` z-bands collected per layer and flushed in order
 
 There is no z/layer concept. Draw order *is* layering, defined by statement order in `EditorGame::update:313-337`. The only escape hatch is `ui.begin_overlay`, used twice — and it's a single band, not a stack, so the drag ghost and an open dropdown share it.
 
@@ -428,11 +496,15 @@ There is no z/layer concept. Draw order *is* layering, defined by statement orde
 
 ### 5.5 Panel titles are struck through
 
+**Status (2026-09-10):** open — #139 (filed 2026-09-10) — the header draws on `surface_2` now, but `HEADER_HEIGHT` is still 24.0 under a 14px face, the accent rule still sits at `y + height - 2`, the corner ticks still start at the title inset, and the header has no clip rect
+
 `HEADER_HEIGHT = 24.0` with a 14px face leaves descenders reaching ~y+22, and `draw_panel_chrome` paints the accent rule at exactly `y + height - 2` (`dock/render.rs:300-308`). The corner ticks start at `header_bounds.x` and run 10px against a title inset of 8px, so the tick's last 2px sit under the first glyph. There's also no clip rect on the header — a narrow panel spills its title into its neighbour.
 
 **Fix:** 28px header for a 14px face, rule as a 1px `border_subtle` line outside the text box, ticks moved to the outer 4px or removed, clip + ellipsize.
 
 ### 5.6 The serif font is one line
+
+**Status (2026-09-10):** shipped — #27 (9a3a24f) — the crate ships its own DejaVu chrome faces, with bold and monospace handles
 
 ```rust
 // editor_game/mod.rs:240-248
@@ -449,32 +521,54 @@ The editor's chrome font search starts in the game's asset directory. Pong ships
 
 ### 5.7 Magic-number spacing
 
+**Status (2026-09-10):** open — #124 (this sprint) — the six dead constants are gone and `layout.rs` is seven live ones, but the spacing, field-height, heading and button tokens #124 asks for do not exist yet
+
 `layout.rs` defines 12 constants; **six are entirely dead** (`PADDING_SMALL`, `SPACING`, `MENU_BAR_HEIGHT`, `MENU_ITEM_HEIGHT`, `TOOLBAR_HEIGHT`, `TOOLBAR_BUTTON_SIZE`). Two files import the module. Everything else re-invents the values, often differently: `MenuBar::height()` hardcodes `24.0`; `asset_browser.rs:27` redeclares `HEADER_HEIGHT = 26.0`, conflicting with the dock's 24 so the asset panel's header doesn't line up with any other; `panel_renderer/inspector.rs` declares `line_height = 20.0` **three times**, shadowing `InspectorStyle.line_height` which disagrees with `EditableFieldStyle.row_height` (24.0) — so read-only rows are 20px and editable rows are 24px in the same panel.
 
 Across 12 chrome files: **28 distinct pixel literals in 198 occurrences**, including 3, 5, 6, 10, 14, 18, 22, 26, 30, 70, 148. Not a multiple of 4 or 8 among them.
 
 ### 5.8 Smaller, all real
 
+**Status (2026-09-10):** open — #124 (this sprint) — the sixteen bullets are marked individually below; #124 and #126 carry most of what is left
+
 - **Disabled == pressed.** `background_disabled` and `background_pressed` are the same value (`theme.rs:336-342`). Disabled text is 4.49:1, failing AA. `View ▸ Scene View` and `View ▸ Console` are both permanently disabled and look held down.
+  - **Status (2026-09-10):** open — #126 (this sprint) — the two tokens diverged in 9a3a24f under a guard test; the disabled-text contrast is what remains
 - **No focus ring token** anywhere; no keyboard traversal to need one.
+  - **Status (2026-09-10):** open — #126 (this sprint) — still no token and still no keyboard traversal
 - **Zero `set_cursor` calls in the entire editor.** Splitters (an 8px hit strip) don't show a resize cursor — you can't tell panels are resizable. No I-beam, no grab cursor, no directional gizmo cursors.
+  - **Status (2026-09-10):** open — #124 (this sprint) — still zero across the editor
 - **No tooltips anywhere.** Which is why the toolbar uses text labels and had to widen to 56px; the fix is tooltips, not longer buttons.
+  - **Status (2026-09-10):** open — #124 (this sprint) — `UiLayer::Tooltip` is a band with nothing drawing into it
 - **The active tool's label doesn't render.** In every screenshot, Select is an empty box with a cyan ring while Move/Rotate/Scale show labels. `toolbar.rs:147-159` draws a halo `rect_rounded` before `ui.button` and a `rect_border` after — reproduce and diagnose; the `rect_border(bounds, color, 1.0, 4.0)` argument order is worth checking against the `ui` crate signature.
+  - **Status (2026-09-10):** open — #99 (the editor backlog) — undecided: the halo draws outside the button and the button paints its own label, so the 2026-08-27 symptom cannot be confirmed from the tree; it needs a screenshot of the strip #131 built
 - **Asset filenames overlap into an unreadable smear** in the Editor Demo (six tiles, labels not truncated to tile width). Non-image assets (`.ron`) render as empty cyan rectangles with no glyph.
+  - **Status (2026-09-10):** shipped — #130 (e5ad961, closes on push)
 - **Toolbar floats inside the viewport** (`toolbar.rs:176`), permanently occluding the top-left ~250×70px, while `TOOLBAR_HEIGHT = 40.0` sits dead in `layout.rs`. `IdealEditor.png` has it as a top chrome band, which is correct.
+  - **Status (2026-09-10):** shipped — #131 (0e7c6bd, closes on push) — the strip is reserved above the viewport and `toolbar_position_for` is gone
 - **Q/W/E/R hints render on the bare viewport** — the toolbar background is `bounds.expand(4.0)`, the hints are 12px below it, so they have no backing plate. Play gets no hint despite `Ctrl+P`/`F5` both being bound.
+  - **Status (2026-09-10):** shipped — #131 (0e7c6bd, closes on push)
 - **Play controls don't align with the toolbar.** `play_controls.rs:44` says *"matches toolbar button size"* and sets 40.0; `toolbar.rs:84` sets 56.0.
+  - **Status (2026-09-10):** shipped — #131 (0e7c6bd, closes on push)
 - **Status bar:** FPS is documented "smoothed" and is a raw per-frame reciprocal with a `.min(999.0)` clamp (`editor_game/mod.rs:223`). All three sections draw into the same full-width rect with no measurement, so a long message runs into the centered stats. A persistent error can never be dismissed (`clear_message` is called from tests only). Missing: dirty indicator, scene name, cursor world position, zoom %, grid/snap state, active tool, selection count.
+  - **Status (2026-09-10):** open — #99 (the editor backlog) — the title bar carries the dirty indicator and the scene name (#24) and an error persists until cleared; FPS is still a raw per-frame reciprocal, the three sections still draw into one unmeasured rect, and the cursor position, zoom, grid/snap state, tool and selection count are still missing
 - **Menu bar:** widths computed as `title.len() as f32 * 10.0` (bytes, not chars); submenus render an inert `"label >"` button and discard the click; separators consume full 24px rows; no hover-to-switch between open menus; no Escape-to-close; no mnemonics; no arrow-key nav; no command palette anywhere in the tree. Undo/Redo/Delete/Duplicate are always enabled regardless of state — `MenuBar::set_checked` exists, there's no `set_enabled` equivalent.
+  - **Status (2026-09-10):** open — #99 (the editor backlog) — `with_enabled` exists and Undo/Redo track the history; widths are still `len() as f32 * 10.0` over bytes, and submenus, mnemonics, arrow navigation and a command palette are still absent
 - **No file dialog.** `Open`, `Save As…`, `Ctrl+O`, `Ctrl+Shift+S` all hardcode `"scenes/scene.ron"` (`constants.rs:10`). "Save As…" silently overwrites the same file. Tracked as `UX-001`.
+  - **Status (2026-09-10):** open — #99 (the editor backlog) — "Save As…" now defaults beside the open scene rather than a hardcoded path, but there is still no picker, so it overwrites that default silently
 - **`last_scene_path` is written and never read** (`mod.rs:206-210` vs `:192-199`). The editor always opens empty.
+  - **Status (2026-09-10):** open — #99 (the editor backlog) — #53 (d94610f) made the path real, so the preference is written correctly; nothing reads it back on start
 - **`DockPosition::Floating` is unhandled in layout** (`dock/mod.rs:303-305, 315` — second pass only handles `Center`), so a floating panel gets `Rect::default()`. `PanelId::CONSOLE` is declared and never instantiated.
+  - **Status (2026-09-10):** open — #99 (the editor backlog) — the layout's second pass handles `Floating` beside `Center` since 3b136b3; `PanelId::CONSOLE` is still declared with no panel behind it
 - **Panel resize can zero the viewport.** The clamp is per-panel (`dock/render.rs:16-35`), not global — drag both edge panels to 50% and Center gets a zero-width rect while `scene_view_bounds()` still returns `Some(zero_rect)`.
+  - **Status (2026-09-10):** open — #124 (this sprint) — `scene_view_bounds()` returns `None` for an empty viewport since 0e7c6bd, but the clamp is still per-panel
 - **Not persisted but expected to be:** selected tool, grid visibility, collider overlay visibility, hierarchy expand state, selection, window geometry, recent files.
+  - **Status (2026-09-10):** open — #99 (the editor backlog) — grid visibility, snap, grid size, camera and panel layout persist; the selected tool, collider overlay visibility, hierarchy expand state, selection, window geometry and recent files still do not
 
 ---
 
 ## 6. The end state: authoring the game in the editor
+
+**Status (2026-09-10):** retired — the design became `PROJECT_ROADMAP.md` § "Scripting — the ScriptRef seam"; §6.7 shipped as #43 (50e39de) and §6.5 Stage 1 as #44 (95e260a)
 
 ### 6.1 Where game logic lives today
 
@@ -607,46 +701,48 @@ Hierarchy pseudo-rows; script-row click focuses its inspector block; "Open in ID
 Ordered by value per unit of risk, not by section number.
 
 **Sprint 1 — "the editor works"**
-1. §1.1 toolbar click clears selection — one guard flag; unblocks the entire gizmo workflow
-2. §4.4 selection outline — ~25 lines; the highest perceived-quality-per-line change in the codebase
-3. §2.2 call `update_viewport` — one line; restores scroll zoom, `F`, and Home simultaneously
-4. §2.3 consume `focus_requested` + add frame-all
-5. §1.3 Save/Save-As play guards, §1.2 `Tilemap` in `EntitySnapshot`
-6. §4.11 `IndexSet` for selection — deterministic primary
+1. §1.1 toolbar click clears selection — one guard flag; unblocks the entire gizmo workflow — shipped #18
+2. §4.4 selection outline — ~25 lines; the highest perceived-quality-per-line change in the codebase — shipped #19
+3. §2.2 call `update_viewport` — one line; restores scroll zoom, `F`, and Home simultaneously — shipped #20
+4. §2.3 consume `focus_requested` + add frame-all — shipped #21
+5. §1.3 Save/Save-As play guards, §1.2 `Tilemap` in `EntitySnapshot` — shipped #22
+6. §4.11 `IndexSet` for selection — deterministic primary — shipped #23
 
 **Sprint 2 — "the editor is honest"**
-7. §1.4 dirty tracking + `title_bar_text()` rendered — **same chokepoint as §9, do them together (§9.3a)**
-7b. §9 Stage A — query-only command API. Read-only, zero risk, and it makes everything after this verifiable without screenshots
-8. §5.1 settle the gamma question, then §5.2 the surface ladder and §5.3 popup surfaces
-9. §5.6 delete `"assets/fonts/font.ttf"` from the font search head; add bold + mono
-10. §3.3 shared `ScrollState` for hierarchy and inspector
-11. §5.4 `UiLayer` — needed before any modal, tooltip, or context menu
+7. §1.4 dirty tracking + `title_bar_text()` rendered — **same chokepoint as §9, do them together (§9.3a)** — shipped #24, #52
+7b. §9 Stage A — query-only command API. Read-only, zero risk, and it makes everything after this verifiable without screenshots — shipped #25
+8. §5.1 settle the gamma question, then §5.2 the surface ladder and §5.3 popup surfaces — shipped #26
+9. §5.6 delete `"assets/fonts/font.ttf"` from the font search head; add bold + mono — shipped #27
+10. §3.3 shared `ScrollState` for hierarchy and inspector — shipped #28
+11. §5.4 `UiLayer` — needed before any modal, tooltip, or context menu — shipped #29
 
 **Sprint 3 — "the inspector is a tool"**
-12. §3.5 drag-to-scrub in `ui::float_input`
-13. §3.1/§3.2 label gutter + composite Vec2/RGBA rows
-14. §4.10 `Name` editable + F2 rename — **prerequisite for §9 Stage B; entity addressing needs stable names (§9.3b)**
-14b. §9 Stage B — write verbs over the existing command types, once names are addressable
-15. §3.6 `string_edit` for Behavior strings; `cycle` for RigidBodyType and ColliderShape
-16. §3.4 sub-property tier distinct from component headers
+12. §3.5 drag-to-scrub in `ui::float_input` — shipped #30, #54, #55
+13. §3.1/§3.2 label gutter + composite Vec2/RGBA rows — shipped #31
+14. §4.10 `Name` editable + F2 rename — **prerequisite for §9 Stage B; entity addressing needs stable names (§9.3b)** — shipped #32
+14b. §9 Stage B — write verbs over the existing command types, once names are addressable — shipped #33
+15. §3.6 `string_edit` for Behavior strings; `cycle` for RigidBodyType and ColliderShape — shipped #34
+16. §3.4 sub-property tier distinct from component headers — shipped #35
 
 **Sprint 4 — "direct manipulation"**
-17. §2.1 draw the grid
-18. §4.6 snap residual + a way to toggle snap
-19. §4.5 gizmo: annulus hit-test, scale `still_dragging` rect, clip rect, multi-select, Escape-cancel
-20. §4.7 marquee rectangle
-21. §4.9 pick one shortcut system; add arrow-nudge, Escape, Ctrl+A
+17. §2.1 draw the grid — shipped #36
+18. §4.6 snap residual + a way to toggle snap — shipped #37
+19. §4.5 gizmo: annulus hit-test, scale `still_dragging` rect, clip rect, multi-select, Escape-cancel — shipped #38
+20. §4.7 marquee rectangle — shipped #39
+21. §4.9 pick one shortcut system; add arrow-nudge, Escape, Ctrl+A — shipped #40
 
 **Sprint 5 — "architecture"**
-22. §4.2 viewport scissor (fixes chrome bleed + overdraw)
-23. §4.3 split the camera — design conversation first
-24. §6.7 collapse the four parallel registries — prerequisite for everything in §6
-25. §6.5 Stage 1 onward
-26. §9 Stage C — headless `--api` mode. Needs a spike first on how tightly `EditorGame` is bound to the frame loop and `ui` context; resolve alongside §6.6(5), since both hinge on `src/bin/editor.rs`
+22. §4.2 viewport scissor (fixes chrome bleed + overdraw) — shipped #41
+23. §4.3 split the camera — design conversation first — shipped #42
+24. §6.7 collapse the four parallel registries — prerequisite for everything in §6 — shipped #43
+25. §6.5 Stage 1 onward — shipped #44
+26. §9 Stage C — headless `--api` mode. Needs a spike first on how tightly `EditorGame` is bound to the frame loop and `ui` context; resolve alongside §6.6(5), since both hinge on `src/bin/editor.rs` — shipped #45
 
 ---
 
 ## 8. Should the editor run on the web?
+
+**Status (2026-09-10):** retired — the design became `PROJECT_ROADMAP.md` § "Web Playground — the learn-to-code front"; it shipped as #48 and #49
 
 Short answer: **yes, and it converges neatly with the `ScriptRef` seam — but web is the second-best way to make the editor AI-friendly, and it's worth being clear about which problem each solves.**
 
@@ -715,6 +811,8 @@ The honest framing: **the scene format is the AI interface, the command layer is
 ---
 
 ## 9. The command layer — an AI-friendly production path
+
+**Status (2026-09-10):** retired — the design became `docs/EDITOR_COMMAND_API.md` § "Stages", which says what is left; Stages A, B and C shipped as #25 (b194e8d), #33 (84272b7) and #45 (0d7072f)
 
 §8.3 argues for this; this section is the plan. It's placed as a peer of §6 deliberately: **the script seam is how a game's logic becomes visible to the editor, and the command layer is how the editor becomes drivable by something that isn't a mouse.** They're independent and they compose.
 
