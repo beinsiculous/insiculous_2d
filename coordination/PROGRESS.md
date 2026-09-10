@@ -647,3 +647,17 @@ Code session from a handoff; reviews: kimi 3 (2 accepted, 1 rebutted in part) an
 diff, then kimi 2 minor and codex none on the planner's fix delta. Gates green; the seven games
 pass `check_games.sh`. Owed: Jesse's trackpad and drag-focus browser checks.
 
+## 2026-09-09 — Playground UX batch 4: the game-only preview
+
+Landed as e542875 on `jesse`, closing #121. The editor hands its live scene, unsaved edits
+included, to a preview window through a one-generation mailbox answered on the next frame from a
+named scratch world; the file, history, dirty mark and scene path never move. The answer is the
+project archive with only the active scene replaced, and Export is that same live-scene archive
+(a Promise now, refused during Play or Pause). The preview page boots on `?mode=preview` with none
+of the editor's machinery, loads the scene it is named, pauses, restarts from the top, and reports
+booting/running/failed by phase. Play in the editor is refused while a preview holds the scene.
+The engine gains a `WakeUp` user event and a hidden-frame pump on both pages, so a backgrounded
+tab keeps answering. Executor: Jesse's Claude Code session from a handoff; reviews: kimi 6 (4
+accepted, 2 rebutted), codex 3 and the planner 5 on the diff, then kimi 2 and codex 1 on the
+planner's fix delta (the pump ran before the loop published its proxy — corrected). Gates green;
+the seven games pass `check_games.sh`. Owed: Jesse's browser checks on the hidden-tab paths.

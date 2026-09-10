@@ -709,7 +709,36 @@ Files: `crates/editor/src/asset_browser.rs` (236),
 Gates: standard engine + wasm + `check_games.sh` (the wheel normalization every game's input
 goes through changes, private though the constant is).
 
-## Batch 4 — engine: the game-only preview (2d#121)
+## Batch 4 — engine: the game-only preview (2d#121) — DONE 2026-09-09 (e542875)
+
+Authored by Jesse's Claude Code session in the other window from
+`review/playground-ux/handoff-4.md`; reviewed by kimi (`review-12.md`, 6 findings: 4 accepted, 2
+rebutted — the old-page/new-wasm pairing is what versioned bundle directories exist for, and the
+`assets/scenes/` prefix is this section's own rule), codex (`review-12-codex.md`, 3, all accepted)
+and the planner (`review-12-claude.md`, 5); adjudicated in `rebuttal-12.md`. The planner's fix
+hunks (11 files) went back through kimi (`review-13.md`, 2) and codex (`review-13-codex.md`, 1) as
+their own diff; the one correction taken is enumerated in `rebuttal-13.md`, not re-reviewed. Landed
+as specified, plus what the reviews forced: **the completion is read, not taken** — every
+subscriber of a generation reads the same answer, so an Export joined behind a launch gets the
+bytes instead of a 5 s timeout (the executor's `take` had pinned the opposite); **the hidden-frame
+pump is on both pages**, the editor's first (the window hides the editor's tab before the frame
+that answers the snapshot), starts as soon as there is a loop to wake on a page hidden all through
+its boot, and runs one chain at a time; **readiness reads the boot status by phase** — after the
+first frame any status the engine writes ("Graphics device lost", "Game ended") is `failed:`, not
+a substring match; a failed `run_game` frees the controls slot; and Export's refusal during Play or
+Pause is documented (the saved-scene fallback was rebutted as the silent loss the live export
+exists to prevent). The executor's deviations, accepted: `Arc<Completion>` for `Rc` (the mailbox
+sits in an `Arc` and `Rc` would have forced `unsafe impl`); pendency read off the completion, not
+the `pending` field, so the generation stays owed during the frame that computes it; the scene-load
+failure recorded on `PreviewControls` rather than written over the renderer's boot status; the
+state test and the keep-every-scene test written in the crates whose code they test. Every gate
+green (`gates-4-final.log`, 907 tests); all seven games pass `check_games.sh`. Filed: nothing new.
+Owed: Jesse's browser checks — Play ↗ with the editor's tab going to the background answers the
+snapshot and the preview reaches "running"; a preview opened behind (a background tab) reaches
+"running" once its loop exists without being focused; Export a moment after Play ↗ returns the
+same bytes; the preview page writes no localStorage key and installs no write observer; a hidden
+editor keeps answering under Chrome's background-timer throttling.
+
 
 Files: new `crates/editor_integration/src/editor_game/snapshot.rs` and
 `snapshot_tests.rs`, `editor_game/run_options.rs` (67), `editor_game/scene_io.rs` (289),
