@@ -75,7 +75,7 @@ Engine status, test counts, and per-system capability detail live in
 | B | Engine gaps (CameraFollow, Lifetime, Tilemap) + game 6 Frogger | ☑ Jul 2026 | `log_archive.md` |
 | E | Asset pipeline (filter knob, SheetGrid, named clips, `.sheet.ron` — schema freeze Jul 30 2026) | ☑ core; remainders on board | #10 (E7 alpha-cutoff), #11 (E5 `#rgba` error, gated on #69), #67 (E8 inspector wiring) |
 | F | Deion style guide + asset production (parallel art track) | F1 ☑ (DEION_STYLE.md); rest on board | #68–#71 (sync `--check`, gen_tiles, placeholder sheets, first animated Deion) |
-| G | Re-skin games 1–6 (Tong, Chicken Coop, Food Pyramid, Hot Dog!, Burger Invaders, Meatieroids — identities settled Aug 9 2026) | On board | #72–#79; castings SSOT DEION_STYLE.md §5; per-game README "Deion Pivot" sections |
+| G | Re-skin games 1–6 (Tong, Chicken Coop, Food Pyramid, Bratdog, Burger Invaders, Meatieroids — identities settled Aug 9 2026) | On board | #72–#79; castings SSOT DEION_STYLE.md §5; per-game README "Deion Pivot" sections |
 | H | WASM port (engine + all 6 games on wasm32/WebGPU) | ☑ COMPLETE Aug 27 2026 | Port recipe + web footguns: `log_archive.md`, crate CLAUDE.mds (renderer/engine_core), memory |
 | I | Deployment (site live at beinsiculous.com, all 6 games playable) | I1/I2 ☑ Aug 19 2026; rest on board | #15 (itch.io), #16 (Steam checklist), #80 (paid-path purge gate), #13 (WebGL2 review). Site: `../insiculous_web/` (Mily's repo `milyramic`, Astro 5 on Cloudflare Workers; drop-in convention `public/games/<slug>/v1/`) |
 | J | Insiculous Arcade — marketplace compilation | OUTLINE ONLY (below) | This file § Phase J |
