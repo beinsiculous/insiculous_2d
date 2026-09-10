@@ -691,3 +691,18 @@ site fix delta kimi 2, codex 1 — every finding accepted, the planner's re-veri
 section itself refuted once by kimi (review-14: the player tags itself every frame). Gates green
 at every round. Owed: Jesse's browser checks — the hint and its Dismiss across a reload, the
 hierarchy's names, Play framing the arena, the preview centring it, the game page's line.
+
+## 2026-09-10 — Playground UX batch 8: the editor UX audit reconciled (c9cc265)
+
+`docs/EDITOR_UX_AUDIT.md` is history: a status banner, a status line under each of its 35 items,
+each of §5.8's sixteen bullets and each of §7's 28 work-order lines, one line under §6, §8 and
+§9 pointing at the roadmap sections their designs became. 61 marks shipped, 18 open with an
+issue (seven in this sprint; #136 picking, #137 hierarchy, #138 conveniences and #139 panel
+headers filed by the reconciliation; seven small §5.8 remainders as a checklist in the editor
+backlog #99), 3 retired. The archive carries the entry; the roadmap, README, CLAUDE.md and the
+editor_integration guide name the Playground UX sprint as the work order. Docs only, no cargo
+gate; the gates were the three mark counts, the pointer grep and the `.rs` tag grep. Executor:
+Jesse's Claude Code session from handoff-8.md; reviews: kimi 2 (one accepted, one policy
+rebut), codex 3 (all accepted), planner 4 (all accepted) — §3.6 and §1.2 had over-claimed, the
+archive entry had a byline the record does not support, and the eleven "no issue" marks gained
+their numbers once the issues existed. Closes #123 on push.

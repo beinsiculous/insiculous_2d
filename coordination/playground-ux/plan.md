@@ -1485,7 +1485,7 @@ bullets' meaning; where a bullet and a correction disagree, the correction wins:
   preview with the player at its centre; `/games/pong/` shows the editor line under the
   embed and it opens `/playground/pong/`.
 
-## Batch 8 — docs: the audit reconciled (2d#123)
+## Batch 8 — docs: the audit reconciled (2d#123) — DONE 2026-09-10 (c9cc265)
 
 The executor walks `docs/EDITOR_UX_AUDIT.md` §1–§5 and §7 item by item and marks each
 **shipped** (the closing issue or commit, found with `git log -S`), **open** (its issue in
