@@ -995,10 +995,69 @@ playground page.
 Files: new `src/layouts/AppLayout.astro`, new `src/components/PlaygroundToolbar.astro`,
 new `src/components/PlaygroundHelp.astro`, new `src/components/CompatibilityPanel.astro`,
 new `src/scripts/webgpu-gate.ts`, `src/components/PlaygroundEmbed.astro` (527),
-`src/components/GameEmbed.astro` (194), `src/components/EditorShortcuts.astro`,
+`src/components/GameEmbed.astro` (194), `src/components/EditorShortcuts.astro` (74),
 `src/pages/playground.astro` (81), `src/pages/playground/[slug].astro` (89),
+`src/pages/games/[slug].astro` (one prop on its `GameEmbed`),
 `src/scripts/playground-embed.ts` (378), `scripts/lib/a11y-scenarios.mjs` (250),
-`README.md` § The editor bundle, `docs/roadmap.md` L130-139.
+`README.md` § The editor bundle (L143-182), `docs/roadmap.md` L130-139.
+
+**Re-verified against the tree, 2026-09-10** (`insiculous_web` at `bbc95df` on `jesse`,
+clean; batches 1-4 touched nothing in this repo, so every line above is as the plan found
+it): the counts hold. `PlaygroundEmbed.astro:48-85` is the toolbar markup (ids
+`project-select`, `project-select-data`, `reset-button`, `reset-note`, `export-button`,
+`import-input`, all unchanged), its rules at L181-305 (`.toolbar`, `.field-group` L190-201
+with the width-bug comment, `.reset-group`, `.btn-reset`, `.reset-note`, `.archive-group`,
+`.btn-toolbar`, `.label-import`, `.input-file`) move with it; the optgroup label to shorten
+is L57; the Scripts section is L99-120 and its rules from L341, the Console L122-140 and its
+rules from L439; the canvas is L87-97 (its placeholder `width`/`height` attributes stay);
+the component's only script is `import '../scripts/playground-embed.ts'` at L148. The new
+controls take fixed ids: `save-button`, `play-button`, `fullscreen-button`, `help-button`,
+`playground-help`, `dock`, `compatibility-panel`, `compatibility-reason`,
+`compatibility-retry`. **The hosted save verb exists**: `crates/editor/src/command_api/parse.rs:269`
+maps `save` to `HostedWrite::Save`, and the integration layer answers **one JSON line per
+dispatched line, in order** (`editor_game/api.rs` pushes one response per request;
+`command_api/mod.rs:165-178` shape them `{"ok":true,"data":…}` and
+`{"ok":false,"error":…}`) — so the banner wiring is a sink queue in `playground-embed.ts`:
+every dispatch pushes who asked (`console` for the form at L340-360, `save` for the button),
+`pollResponses` (L116-126) shifts one sink per line, still appends every line to
+`#command-output`, and a `save` sink whose line parses to `ok: false` writes its `error`
+to `#playground-banner`; the button is enabled where Export is (L209). `webgpu-gate.ts`'s
+consumers today are `playground-embed.ts:60-70` and `GameEmbed.astro:84-100` (the same
+probe twice, same Firefox sentence); the preview page is batch 6's consumer and does not
+exist yet. `src/scripts/` is inside `astro check` (`tsconfig.json` excludes `src/lib`, not
+`src/scripts`), so the module is typed. `GameEmbed` renders playable on
+`src/pages/games/[slug].astro:32` (six pages) and `playground/[slug].astro:41`, so the panel
+reaches both through it; the `subject` prop becomes **`screenshot` and `screenshotAlt`**
+(a path and its alt) — the playground passes `/images/platformer-in-editor-2026-08.png`,
+both game pages pass the game's first `screenshots[]` entry (every game has one;
+`/images/pong-in-web.png` when the array is empty, the schema's default). With `fill`,
+`GameEmbed` renders no `.controls-note`; the slug page's line (L48-52) moves into its Help
+above the shortcuts, with the page's `saveLine`. `EditorShortcuts.astro` has a `saveLine`
+prop and an `<h2>` at L21; `headingLevel` is new. Page prose that moves: `playground.astro:17-24`
+(label, h1, lede — the h1 goes to the bar, the label and the lede are dropped, the
+`description` prop carries "saved in this browser"), L27-77 the four sections → Help;
+`[slug].astro:32-35` (label, h1, lede) and L56-62 Elsewhere → Help. "IndexedDB" is at
+`playground.astro:16,23,31` and `docs/roadmap.md:132` ("saved in this browser" there too);
+`README.md` § The editor bundle does not say it and keeps its technical register. The
+static gates the new markup meets (`postbuild-check.mjs` check 4-6): exactly one `<h1>` per
+page (the dialog's heading is an h2), no duplicate ids per page, alt on every `<img>`, no
+positive tabindex, curly apostrophes in prose, no word glued to an inline tag across a
+source line. `global.css:68-73` gives `canvas { max-width: 100%; height: auto; display:
+block }`, which the stage rule's `height: 100% !important` beats along with winit's inline
+height. `AppLayout` replicates `BaseLayout.astro:47-65` in its head (the two fontsource
+imports, `global.css`, `AccessibilityBootScript`, description/og/canonical/sitemap/rss,
+`<title>`); `noindex` adds `<meta name="robots" content="noindex">`. `BaseLayout`'s header
+is `position: sticky` (L151) and `AccessibilityControls`' panel is `position: absolute;
+top: calc(100% + 0.5rem)` against it (L138-143) — the app bar is `position: relative` so
+the panel drops below the bar. The scenario shape (`a11y-scenarios.mjs:122-140`) is
+`{ route, seed, label, viewport?, open, waitFor }`: `seed: {}` is required (destructured at
+`a11y-check.mjs:92` and `announce-check.mjs:124`), `open` runs in the page and returns
+`true` or a string that fails the gate; the phone viewport is `{ width: 390, height: 844 }`
+(L204). `screenshot-pages.mjs` imports only `addPopulatedStateInitScript` from that module
+and runs no scenarios — the hook is the planner's filing at take-back, not this batch's.
+Node here is v24.18.0; the commit hook's threshold is 100 lines
+(`scripts/commit-review-hook.sh:35`); `review/playground-ux/` exists in this repo and is
+empty, so review numbering starts at 1 there.
 
 - **`AppLayout.astro`** (FaceLayout is the precedent for a second layout): the skip link;
   `<header class="app-bar">` (banner) holding `<nav aria-label="Studio">` with the wordmark
@@ -1059,8 +1118,8 @@ new `src/scripts/webgpu-gate.ts`, `src/components/PlaygroundEmbed.astro` (527),
   chunked download failing mid-stream is the common case) started no loop, so Try again
   stays live for it; a failure after the init resolved says "reload the page" instead), a
   real labelled screenshot
-  (`/images/platformer-in-editor-2026-08.png`; `pong-in-web.png` for game pages via a
-  `subject` prop) and the game-template link as the honest native alternative — nothing in
+  (`screenshot` and `screenshotAlt` props: `/images/platformer-in-editor-2026-08.png` on
+  the playground, the game's own first screenshot on a game page) and the game-template link as the honest native alternative — nothing in
   the browser can demo without WebGPU. "saved in this browser" replaces "IndexedDB" in the
   page copy and the meta description.
 - **`/playground/<slug>/`** pages: `AppLayout`, a reduced bar (an editor-pages nav,
