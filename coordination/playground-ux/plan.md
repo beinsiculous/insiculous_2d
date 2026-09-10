@@ -1744,6 +1744,269 @@ where a bullet and a correction disagree, the correction wins:
   delay and clears on move; `ViewToggles` round-trips through the preferences.
 - Gates: standard engine + wasm. Two handoffs if large.
 
+**Re-verified against the tree, 2026-09-10** (`insiculous_2d` at `cf8685f` on `jesse`).
+Fifteen corrections; where a bullet and a correction disagree, the correction wins. The
+batch is **two handoffs**: **10a** is the #132 half (corrections 2–8), **10b** the #124 half
+(9–13); 10a lands and is reviewed before 10b is handed off.
+
+1. **What already exists.** The View menu carries Toggle Grid (G), Toggle Colliders (C) and
+   Snap to Grid (S) with check marks (`menu/mod.rs:216-218`, synced every frame by
+   `sync_view_menu_checks` at `menu_actions.rs:14-32`, labels mapped at
+   `menu/actions.rs:28-30`, bindings at `editor_input.rs:325-327`, dispatch at
+   `shortcuts.rs:296-298`, allowed while Playing at `:351-353`). Reset Layout is a View item
+   and `EditorContext::reset_layout` (`context/mod.rs:468`). The resize grabber already draws
+   a 2 px `accent_cyan` line with three dots while hovered or dragged
+   (`dock/render.rs:170-172`, `:259-300`); what is missing there is the cursor. The strip
+   holds 72 px clear at its right for exactly this group (`toolbar_strip.rs:28-32`,
+   `RIGHT_GROUP_RESERVE`, counted in `TOOLBAR_STRIP_MIN_WIDTH` = 323 =
+   `dock::MIN_CENTER_WIDTH`). `UiLayer::Tooltip` is a band (`draw/mod.rs:38`) nothing draws
+   into. No cursor path exists anywhere: `grep -rn "CursorIcon\|set_cursor" crates` is
+   empty. `context/mod.rs` is at **573**, not 556.
+2. **Only the game frame is new in the menu** (10a). A `Toggle Game Frame` item after
+   `Toggle Colliders` (the issue says "camera bounds"; correction 7 says why the name
+   changed), `EditorAction::ToggleGameFrame` with **no default key** (the issue's "camera
+   bounds keyboard toggle" does not exist — nothing binds one), mapped in
+   `action_for_menu_label`, allowed while Playing with the other three, dispatched to the
+   toggle. `editor_input.rs` is at **594** with its tests inline at `:461-594`: move them to
+   a sibling `editor_input_tests.rs` (batch 9's `color_editor_tests.rs` precedent) **before**
+   adding the variant.
+3. **`ViewToggles`: where the flags live today and what moves** (10a). Grid visibility is
+   `GridRenderer.visible` (`grid.rs:121-157` — `set_visible`, `is_visible`, `toggle_visible`;
+   `grid_segments` returns empty when hidden at `:180`, `render_grid_overlay` checks at
+   `:326`); colliders and snap are `EditorContext.show_colliders` / `snap_to_grid`
+   (`context/mod.rs:49-51`) behind nine accessors (`:245-300`) with 17 call sites in eight
+   files: `shortcuts.rs`, `preferences.rs`, `panel_renderer/mod.rs`, `gizmo_drag.rs`,
+   `menu_actions.rs`, `gizmo_drag_tests.rs`, `context/tests.rs`, `context/mod.rs`. Target:
+   `crates/editor/src/view_toggles.rs` with `pub struct ViewToggles { pub grid: bool, pub
+   colliders: bool, pub game_frame: bool, pub snap: bool }` (defaults on, on, **on**, off —
+   the game frame is the one overlay that tells a newcomer how much of the world the game
+   shows, and it is drawn muted; the artist's review rules on the default) and `pub enum
+   ViewToggle { Grid, Colliders, GameFrame, Snap }` with `ALL`, `menu_label()`, `name()`, `glyph()`
+   and `shortcut() -> Option<&'static str>`; `ViewToggles::{is_on, set, toggle}` and
+   `sync_menu(&self, &mut MenuBar)` — the three `set_checked` lines leave
+   `sync_view_menu_checks`, which keeps only its panel loop. `EditorContext` carries `pub
+   view: ViewToggles` and **deletes** the two fields and the nine accessors; callers read
+   and write `editor.view.grid` etc. (`snap_position` at `context/mod.rs:303` reads
+   `self.view.snap`). `GridRenderer` loses `visible` and its three methods and
+   `grid_segments` no longer checks it; the caller at `panel_renderer/mod.rs:95-100` gates
+   on `editor.view.grid` as the collider call at `:130` gates today. `axes_visible`
+   (`grid.rs:124`, never false, no setter) is left alone. The test at `grid.rs:453`
+   (`set_visible(false)` → no segments) is deleted with the grep; the caller-side gate is
+   covered by the overlay test in 7. Every deleted accessor shows its grep in the report.
+4. **Preferences: the alias as written cannot work; flatten instead** (10a).
+   `EditorPreferences` (`editor_preferences.rs:25-50`) holds `snap_to_grid` (no default) and
+   `grid_visible` (`#[serde(default = "default_grid_visible")]`) as **top-level keys**. A
+   serde `alias` renames a field of the same struct; a nested `"view": {…}` object cannot
+   read a top-level `snap_to_grid`. So: `#[serde(flatten)] pub view: ViewToggles` on
+   `EditorPreferences`, `ViewToggles` deriving `Serialize, Deserialize` with
+   `#[serde(default)]` at the struct level and per-field renames that keep the legacy keys —
+   `#[serde(rename = "grid_visible")] grid`, `#[serde(rename = "snap_to_grid")] snap`,
+   `#[serde(rename = "colliders_visible")] colliders`, `#[serde(rename =
+   "game_frame_visible")] game_frame`. The bare fields and `default_grid_visible`
+   leave `EditorPreferences`; its `Default` and the struct literals at `:150-162`, `:200`
+   and `:225` change; `preferences.rs:30-33` and `:52-54` in `editor_integration` become one
+   assignment each way (`self.editor.view = prefs.view`; `view: self.editor.view`). Tests:
+   `test_legacy_prefs_without_panels_or_grid_fields_still_load` (`:205`) asserts the legacy
+   `snap_to_grid: false` lands in `view.snap` and colliders and the game frame default on; a
+   new test loads a prefs file carrying **none** of the four keys and gets the defaults;
+   the round-trip test (`:150`) covers all four. `flatten` and `deny_unknown_fields` do not
+   mix — nothing here uses the latter.
+5. **Theme tokens: what exists and what changes** (10a). Existing: `grid_primary`
+   (0.3, 0.3, 0.3, 0.5), `grid_secondary` (0.25 at 0.3), `grid_axis_x/y` at 0.8 alpha,
+   `collider_outline` (0.2, 1.0, 0.4, 0.9), `collider_sensor`, `collider_selected`,
+   `selection_outline` orange, `border_panel` `#007acc` on **every** panel frame
+   (`dock/render.rs:228`, `:339`, `:366`) and the status bar's top line (`status_bar.rs:127`),
+   `draw_panel_chrome`'s `accent_cyan` header separator and corner ticks
+   (`dock/render.rs:303-330`), panel titles and the narrow tab's initial in `accent_cyan`,
+   `border_editing` (0, 0.48, 0.83, 0.5) around the viewport while Editing. Changes: the
+   grid lines to ~0.3 / ~0.15 alpha and the axes to ~0.45; `collider_outline` and
+   `collider_sensor` at ~0.45 alpha (the selected collider keeps its strength); a new
+   `game_frame: Color` (a grey near `text_secondary` at ~0.5 alpha); **`border_panel` is
+   deleted** — frames and the status bar line use `border_subtle`; the header separator
+   becomes `border_subtle` and the corner ticks go; panel titles move to `text_primary`, the
+   narrow tab's initial and chevron to `text_secondary`; **`border_editing` becomes the
+   quiet edge** (the `border_subtle` value — `play_state_border` still returns three distinct
+   colours, so `test_roles_that_must_read_apart_do` holds). `accent_cyan` keeps the gizmo
+   labels, the inspector headers and the hovered/pressed interactive states; `accent_blue`
+   keeps selection and focus. The luminance guard (`theme/tests.rs`) gains three contracts:
+   (a) the grid's primary line and the collider outline, each composited over `surface_0`,
+   contrast **less** against `surface_0` than `selection_outline` does — the accent wins; (b)
+   `game_frame` reads apart from `collider_outline`, `collider_selected` and
+   `selection_outline`; (c) `grid_primary` and `grid_secondary` differ and each axis is
+   brighter than the primary line. `Color` (`common/src/color.rs:97-160`) has `luminance`,
+   `contrast_ratio`, `with_alpha`, `lighten`, `darken` and **no compositing**: the test
+   composites with its own helper (`base + (c − base)·a`, test-only) — a public `over` on
+   `common` would trigger the games gate for nothing.
+6. **The strip's right group: the reserve is 72 px and cannot hold the plan's buttons**
+   (10a). Four 24 px toggles (WCAG 2.5.8's minimum target) at 4 px gaps, an 8 px gap and a
+   24 px Reset Layout button are **140 px**. Ruling: `RIGHT_GROUP_RESERVE` becomes the
+   group's real width `VIEW_GROUP_WIDTH` (140), still counted in the minimum — which becomes
+   **391**, so the dock goes narrow below a 741 px window instead of 673 — and `layout`
+   places the group from the right edge inward, giving the play controls the room left of
+   it (`from_right` becomes `right − VIEW_GROUP_WIDTH − GROUP_GAP − content_width`; the
+   centre is still preferred where it leaves them whole). **Below the minimum the group
+   sheds as a unit into the overflow menu**, which then exists even when every tool fits:
+   `StripLayout` gains `view_group: Option<Vec2>` (its origin; `None` = shed) and
+   `overflow_button` is `Some` when either sheds. The overflow menu (`toolbar.rs:250-322`)
+   lists the shed tools, then a separator, then the four toggles with a check mark and Reset
+   Layout — a row is `(label, hint, checked: Option<bool>)`. **Its `shed.is_empty()` early
+   return at `:263-268` goes** — the menu now opens for either shed reason, and its emptiness
+   test is "no tool and no group shed" — and its `Option<EditorTool>` return becomes
+   `Option<OverflowPick>` with `pub enum OverflowPick { Tool(EditorTool), Toggle(ViewToggle),
+   ResetLayout }`, mapped to an `EditorAction` at the existing call site in
+   `render_toolbar_and_play_controls`. `toolbar.rs` is at 448 and the menu likely moves to
+   `overflow_menu.rs`. Rendering: `view_toggles::render_group(ui,
+   theme, origin, &toggles) -> Option<ViewGroupAction>` inside the strip scope, `pub enum
+   ViewGroupAction { Toggle(ViewToggle), ResetLayout }`, dispatched through
+   `dispatch_editor_action` in `render_toolbar_and_play_controls` (`editor_game/mod.rs`); an
+   on toggle draws `toolbar_active` behind its glyph as a selected tool does
+   (`toolbar.rs:192-220`). Glyphs are single characters the chrome font carries — the
+   executor picks from DejaVu Sans and names them in the report; the artist's review judges
+   them. Tests in `toolbar_strip.rs`: `ANDROID` (360) and `NARROW` (390) are now **below**
+   the minimum — their doc comments and the "prefers the centre" test move accordingly,
+   `JUST_OVER_THE_MINIMUM` still is what it says; the four-widths non-overlap test gains the
+   group's bounds; new: at the minimum the group shows whole; one pixel under, it is shed and — through the
+   real open path, a click on the overflow button — every toggle and Reset Layout is a row in
+   the menu; the play controls do not move when a toggle flips.
+7. **The game-frame overlay: what it can honestly show** (10a; kimi F1 and codex F1 of
+   review 25 renamed it). `sync_main_camera` (`render_manager.rs:349-354`) copies position
+   and zoom only; the scene's `Camera.viewport_size` (`scene_data.rs:184`, default 800×600)
+   is never rendered from. Nor is "what the player sees" a fixed rect: the render camera's
+   viewport follows the window (`render_manager.rs:357`), the web boot follows the canvas's
+   shown box right after it forces the configured size (`game/web.rs:112-123`), the site's
+   preview stretches its 1280×800 canvas to its container (`preview.astro:47-48`,
+   `:150-151`), and nothing letterboxes — a player sees `surface / zoom`. In the editor
+   during Play the surface is the scene panel itself, so mirroring the live viewport would
+   draw the panel's outline: no information. The overlay is therefore the **game frame at
+   its configured size** — the world rect the game shows when it runs at the size its config
+   declares (`GameConfig.width/height`: the native window at boot, the preview when the page
+   gives the canvas its attributes' box) — centred on the main camera's position, half-extent
+   `frame / (2·zoom)`; the guide and the 10b tooltip say in one sentence that a resized
+   window or a preview box of another size shows more or less. The accepted mismatch is
+   recorded on 2d#132 as a comment before the handoff. `run_game_with_editor_opts`
+   (`run_options.rs:54-70`) holds the config **before** `clamp_editor_window_size` enlarges
+   it for the editor's window: capture `Vec2::new(config.width, config.height)` there into a
+   new `EditorGame.game_frame` (800×600 in `new`, the scene default). New
+   `crates/editor/src/game_frame_overlay.rs`: pure `game_frame_rect(position, zoom, frame)
+   -> Rect` (world units) and `render_game_frame_overlay(ui, viewport, rect, color, clip)`
+   drawing four `ui.line`s through `world_to_screen` as the collider overlay does; called
+   from `panel_renderer/mod.rs` after the collider overlay, gated on `editor.view.game_frame`,
+   pose from `engine_core::main_camera_pose(ctx.world)`, nothing drawn when the scene has no
+   main camera. Tests: the rect at zoom 2 is half the frame and centred on the camera; no
+   main camera draws nothing; the toggle off draws nothing. The overlay makes no claim about
+   the preview's box, so there is no test of agreement with it.
+8. **10a's other ends.** The audit's status lines that name #132 (`docs/EDITOR_UX_AUDIT.md:323`,
+   `:460`) are updated as batch 8's convention has them. Guides: `crates/editor/CLAUDE.md:27`
+   (context fields), `:28` (theme — the new contracts), `:32` (the strip: the group and the
+   minimum), `:57` (grid — no visibility flag), `:64` (preferences — the flattened view keys),
+   `:94` (the converter list); `crates/editor_integration/CLAUDE.md:28`, `:47` (the strip and
+   the overflow menu), `:59` (prefs); the root `CLAUDE.md:222` "View-menu toggles" line. No
+   public item of `engine_core`, `ecs`, `physics`, `input`, `common` or `renderer` changes in
+   10a — the games gate does not apply; if a compile forces one, stop and report.
+9. **Tooltip widget** (10b). `UIContext` has no hover timer but `begin_frame_dt` receives the
+   real `dt` (`game.rs:523`, kept by `InteractionManager` for key repeat). Shape:
+   `UIContext::tooltip(&mut self, anchor: Rect, text: &str)`, called by a widget's owner right
+   after the widget every frame; the method does nothing unless the pointer is inside
+   `anchor` **and the anchor is live** — the same `is_blocked_for_scope(overlay_scope,
+   mouse_pos)` test `interact` runs (`interaction/mod.rs:273-281`, `:320`), so a control under
+   a modal's scrim neither accumulates nor draws (codex F2). The context keeps `TooltipState
+   { anchor, text, hovered_for: f32, shown: bool }` in a new `context/tooltip.rs` (sibling of
+   `text_input.rs`; `context/mod.rs` is at 341). **Rest to show**: the same anchor as last
+   frame accumulates `dt` only while the pointer did not move; any movement before the
+   tooltip is visible restarts the delay, so a moving pointer never raises one; a different
+   anchor restarts at zero. **Once visible it stays** while the pointer is inside the anchor
+   (the desktop convention — codex F3) and clears the frame the pointer leaves the anchor, a
+   button is pressed, or no call names it. In `end_frame`, before `flush_layers`, a state at
+   or past `TOOLTIP_DELAY` (0.5 s) draws on `UiLayer::Tooltip`: a `theme.tooltip` panel with
+   one line of text, below-right of the pointer, clamped to the window. `ui::Theme` gains
+   `tooltip: TooltipStyle { background, border, text_color, font_size }` with a dark default;
+   `EditorTheme::ui_theme` maps `surface_4`, `popup_border`, `text_primary`, `fonts.small`.
+   Contract tests (a new `context/tooltip_tests.rs`, driven with `begin_frame_dt` at 0.1 s
+   steps): nothing on the Tooltip layer before the delay; the text after it; movement inside
+   the anchor before the delay restarts it; movement inside the anchor after it is shown
+   keeps it; leaving the anchor clears it that frame; a press clears it; two anchors hovered
+   in turn show only the last; a strip button under a Modal scrim rests for a second and the
+   layer stays empty. Placement: the tool buttons (one sentence per tool from a new
+   `EditorTool::hint()` — the button already shows the name and the shortcut), the play
+   controls (Play, Pause, Resume, Stop, Follow — with the shortcut where one exists), the
+   overflow button ("More"), the view toggles and Reset Layout (name, and the key where
+   there is one), the panel chevrons ("Collapse" / "Expand") and the header title rect
+   (`DockPanel.hint: &'static str`, one sentence per panel set in `default_dock_area`,
+   `context/mod.rs:106-130`), the narrow-mode tab (the panel's name).
+10. **The asset browser's hover moves to the tooltip** (10b). Today a hover writes the full
+    relative path to the status bar (`asset_browser.rs:142-143` → `show_full_name`, `:165-170`)
+    and a click does the same; the test at `:483` pins the hover. Switch: hover →
+    `ui.tooltip(tile, &entry.relative_path)`; the hover call to `show_full_name` goes; the
+    click keeps it, with its "never over a persistent error" rule. The test becomes: the
+    hovered tile's path is the tooltip's text; the click still writes the bar and leaves an
+    error alone. `asset_browser.rs` is at **580** and this shrinks it.
+    `crates/editor_integration/CLAUDE.md:50` describes the hover — update it.
+11. **The resize cursor rides the ui crate, not `FrameRequests`** (10b). The editor crate keeps
+    its no-`engine_core` rule, so the dock cannot ask the window directly. `ui` gains `pub
+    enum CursorIcon { Default, ColResize, RowResize, Pointer, Text, Grab, Grabbing }` (its
+    own, not winit's), `UIContext::request_cursor(icon)` (last writer wins, reset to
+    `Default` in `begin_frame`) and `requested_cursor() -> CursorIcon`; `handle_resize`
+    (`dock/render.rs:153-191`) requests `ColResize` for Left/Right and `RowResize` for
+    Top/Bottom while hovered or dragging. `engine_core` applies it in
+    `frame_tail.rs::apply_frame_requests` (`:70-83`) through a new
+    `WindowManager::set_cursor(icon)` beside `set_title` (`window_manager.rs:223-228`),
+    mapping to `winit::window::CursorIcon` and calling `Window::set_cursor` (winit 0.30; the
+    web backend sets the canvas's CSS cursor) **only when it differs from the last one
+    applied** — `WindowManager` keeps `current_cursor` — the title's one-round-trip rule.
+    `FrameRequests` stays what it is: the game's asks; the cursor is the UI's. No resting
+    hint is added — the hover line plus the cursor is the affordance. Test: a hover over a
+    Left panel's handle leaves `requested_cursor() == ColResize` after the frame and a
+    frame without the hover leaves `Default`.
+12. **Layout tokens: bounded and mechanical** (10b). Today `layout.rs` holds `PADDING 8`,
+    `HEADER_HEIGHT 24`, `LINE_HEIGHT 20`, `TOOLBAR_STRIP_HEIGHT 40`; elsewhere
+    `menu/mod.rs:15 DROPDOWN_ITEM_HEIGHT 24`, `toolbar.rs:327 OVERFLOW_ROW_HEIGHT 24`,
+    `hierarchy/mod.rs:20 ROW_HEIGHT = LINE_HEIGHT`, `color_editor_popup.rs:28,35 ROW_HEIGHT
+    22 / PADDING 8`, `confirm_dialog.rs:36-37 BUTTON_HEIGHT 26 / PADDING 14`,
+    `status_bar.rs:12 STATUS_BAR_HEIGHT 22`, `toolbar.rs:88 button_height 30`,
+    `editable_inspector.rs:46 HEADER_REMOVE_ZONE 24`, the inspector styles' `row_height`, and
+    `row_height − 4` for the input inside a row in five files (`field_widgets.rs:74`,
+    `text_field.rs:28`, `composite_rows.rs:40`, `texture_field.rs:61`,
+    `editable_inspector.rs:471`). Ruling: `layout.rs` gains `ROW_HEIGHT` (24 — menu rows,
+    overflow rows, popup rows, and the default of the inspector styles' `row_height`),
+    `FIELD_HEIGHT = ROW_HEIGHT − 4.0` (for the styleless popups only: the colour editor, the
+    confirm dialog), `BUTTON_HEIGHT` (26) and `GAP` (4). The five `row_height − 4` sites
+    subtract from the **runtime** `EditableFieldStyle.row_height` (`field_style.rs:80`) and
+    must keep doing so: the style gains `field_height(&self) -> f32` (`row_height − 4.0`) and
+    the five sites call it (kimi F3 — a free const there would fix the input height for any
+    second style). Every `const` naming a row, field, button height,
+    padding or gap in `crates/editor/src` and `crates/editor_integration/src` either equals a
+    token and is replaced by it, or keeps its own name with a doc comment saying why it
+    differs (the strip's 30 px band button, the 14 px dialog padding). The report shows
+    `grep -rn "const [A-Z_]*\(HEIGHT\|PADDING\|GAP\|SPACING\)[A-Z_]*: f32"
+    crates/editor/src crates/editor_integration/src` before and after. No panel changes
+    height by more than the difference this makes; a test that pins a row height updates
+    with it.
+13. **10b's other ends and its gates.** `ui::Theme` grows a field and `ui` and `engine_core`
+    grow public items: 10b runs `scripts/check_games.sh` (check mode) as well as the standard
+    engine and wasm gates. Guides: `crates/ui/CLAUDE.md:16-19` (the tooltip, the cursor
+    request), `crates/editor/CLAUDE.md:31` (the dock — cursor), the root `CLAUDE.md:218`
+    (UI capability line), `docs/EDITOR_UX_AUDIT.md:524`, `:532`, `:539`, `:541` (shipped);
+    `:563` — the per-panel resize clamp that can zero the viewport — is **not** in #124's
+    acceptance and stays open; the close-out batch files it. The `editor_game/mod.rs` file is
+    at **583**: the `game_frame` field (10a) and nothing else lands there; the group's
+    dispatch lives in the strip renderer's existing match.
+14. **Files near the ceiling** (both halves): `editor_input.rs` 594 (2), `editor_game/mod.rs`
+    583, `asset_browser.rs` 580 (shrinks), `context/mod.rs` 573 (shrinks by the accessors),
+    `panel_renderer/mod.rs` 505 (+~15), `menu/mod.rs` 476, `toolbar.rs` 448 (6),
+    `dock/render.rs` 407, `toolbar_strip.rs` 395, `ui/context/mod.rs` 341 (9), `game.rs` in
+    `engine_core` 573 — untouched by design (11 lands in `frame_tail.rs` and
+    `window_manager.rs`). A new module is the answer, never a squeeze.
+15. **Jesse's headed checks.** 10a: open the editor — the grid and axes read quieter, the
+    colliders are outlines not highlights, one muted frame shows the game's configured
+    1280×800 at the camera's zoom (the preview at that box matches it; a resized one does
+    not, by design); click the
+    strip's four toggles and Reset Layout; narrow the window until the group sheds and find
+    the toggles in the ⋯ menu with their check marks; restart and see the toggle states kept.
+    10b: rest on a tool, a play control, a panel header and an asset tile and see the tooltip
+    after half a second and none while the pointer moves; keep the pointer inside the button
+    and it stays, leave and it goes; open the Stop dialog and rest on a strip button beneath
+    it — nothing; hover a panel edge and see the resize cursor.
+
 ## Batch 11 — engine + site: save state (2d#125, web#60)
 
 - Engine: `playground_save_state() -> String` (JSON `{ "state": "unsaved" | "saving" |
