@@ -633,3 +633,17 @@ accepted), then kimi 2 and codex 2 on the planner's fix delta (all accepted). Ga
 seven games pass `check_games.sh`. Filed #134 (float scrub through overlays). Owed: Jesse's
 browser check of the strip, the overflow menu, the narrow overlay and Play behind the dialog.
 
+## 2026-09-09 — Playground UX batch 3: the asset browser selects, a notch is a notch, a drag focuses the canvas
+
+Landed as e5ad961 on `jesse`, closing #130, #119 and #120. A click in the asset browser selects
+the tile (highlight, full path on the status bar, carried by path across a rescan) and never
+assigns; the header's Assign button, enabled only for a loaded image over a Sprite entity, assigns
+as one undo entry; labels are ellipsized to the tile and neither hover nor click writes over a
+persistent error. Pixel scroll deltas normalize to a hundred-pixel notch, the panels' step is
+re-tuned and the accessors name the unit. On the web a held pointer crossing into the canvas
+focuses it with preventScroll before winit can scroll it, unless a text control holds focus or the
+page has a live text selection. The drag ghost renderer is its own module. Executor: Jesse's Claude
+Code session from a handoff; reviews: kimi 3 (2 accepted, 1 rebutted in part) and codex 2 on the
+diff, then kimi 2 minor and codex none on the planner's fix delta. Gates green; the seven games
+pass `check_games.sh`. Owed: Jesse's trackpad and drag-focus browser checks.
+

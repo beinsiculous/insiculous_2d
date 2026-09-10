@@ -612,7 +612,28 @@ Files: `crates/editor/src/layout.rs` (30), new `crates/editor/src/toolbar_strip.
 
 Gates: standard engine + wasm. Leaves out: the View toggles in the strip (batch 10).
 
-## Batch 3 — engine: asset browser, wheel notch, drag into the canvas (2d#130, 2d#119, 2d#120)
+## Batch 3 — engine: asset browser, wheel notch, drag into the canvas (2d#130, 2d#119, 2d#120) — DONE 2026-09-09 (e5ad961)
+
+Authored by Jesse's Claude Code session in the other window from
+`review/playground-ux/handoff-3.md`; reviewed by kimi (`review-10.md`, 3 findings: 2 accepted,
+1 rebutted in part — no consumer outside the editor reads the wheel delta, the unit went into the
+docs), codex (`review-10-codex.md`, 2 accepted) and the planner (`review-10-claude.md`, 2
+accepted); adjudicated in `rebuttal-10.md`. The planner's fix hunks (12 files) went back through
+kimi (`review-11.md`, 2 minor) and codex (`review-11-codex.md`, none) as their own diff; the one
+correction taken is enumerated in `rebuttal-11.md`, not re-reviewed. Landed as specified, plus:
+the hover shows the same relative path the click does and neither writes over a persistent
+error (`StatusBar::is_showing_error`); the pointermove listener also bails while the page has a
+non-collapsed text selection (the console log is an `<output>`, never the active element — the
+documented cost is that a stale selection keeps the canvas unfocused through a later cross-page
+drag until a click); the wheel accessors name their unit; the wheel-zoom test is named for a notch;
+the selection travels by relative path across a rescan and Assign is enabled only for a loaded
+image tile (the executor's deviations, accepted); and the drag ghost renderer moved to
+`panel_renderer/drag_ghost.rs` to keep `asset_browser.rs` under the ceiling. Every gate green
+(`gates-3-final.log`); all seven games pass `check_games.sh`. Filed: nothing new — a press/release
+test for the tile's click is the first item of the new editor_integration backlog, `#135`. Owed: Jesse's browser checks — a hard trackpad flick
+zooms a few times a second and the inspector still scrolls at a usable speed; a drag from the page
+background into a partly visible canvas on a scrolled page moves nothing; drag-selecting the
+console's text on a scrolled page keeps the selection and the focus.
 
 **Re-verified against the tree 2026-09-09 before the handoff** (after batch 2, 0e7c6bd; every
 line count below still holds). **2d#130:** `AssetBrowserState` is `crates/editor/src/asset_browser.rs:44`
