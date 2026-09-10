@@ -157,7 +157,7 @@ pub fn create_archetype(
 
 /// Assign a texture handle to an entity's Sprite, recording an undo entry.
 /// Returns false (and records nothing) when the entity has no Sprite or the
-/// texture is unchanged. Used by asset-browser click-to-assign and drops.
+/// texture is unchanged. Used by the asset browser's Assign button and drops.
 pub fn assign_sprite_texture(
     world: &mut World,
     entity: EntityId,

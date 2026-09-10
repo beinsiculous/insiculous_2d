@@ -1,5 +1,6 @@
-//! Asset browser panel: thumbnail grid of the project's assets with
-//! click-to-assign and drag-and-drop onto the scene/inspector.
+//! Asset browser panel: thumbnail grid of the project's assets. A click
+//! selects a tile; assigning is a drag onto the scene or the inspector's
+//! texture field, or the header's Assign button.
 //!
 //! The pure parts (fs scan, entry state, aspect fit) live in
 //! `editor::asset_browser`; this file owns the AssetManager interaction
@@ -27,8 +28,12 @@ const TILE_LABEL_HEIGHT: f32 = 16.0;
 const TILE_GAP: f32 = 10.0;
 /// Panel content padding.
 const PADDING: f32 = editor::layout::PADDING;
-/// Header row height (Rescan button + counts).
+/// Header row height (Rescan and Assign buttons + counts).
 const HEADER_HEIGHT: f32 = 26.0;
+/// Header button size, shared by Rescan and Assign.
+const HEADER_BUTTON_SIZE: Vec2 = Vec2::new(70.0, 20.0);
+/// Gap between the header's button and the label beside it.
+const HEADER_GAP: f32 = 10.0;
 /// Cap on texture loads per frame so a big folder doesn't hitch one frame.
 const MAX_THUMBNAIL_LOADS_PER_FRAME: usize = 4;
 
@@ -78,7 +83,14 @@ pub(super) fn render_asset_browser(
     bounds: common::Rect,
     command_history: &mut CommandHistory,
 ) {
-    render_header(editor, ctx.ui, ctx.assets, ctx.scripts.registry(), bounds);
+    let assign_clicked = render_header(
+        editor,
+        ctx.ui,
+        ctx.assets,
+        ctx.scripts.registry(),
+        ctx.world,
+        bounds,
+    );
     load_pending_thumbnails(&mut editor.asset_browser.entries, ctx.assets);
 
     let grid_origin = Vec2::new(bounds.x + PADDING, bounds.y + HEADER_HEIGHT + PADDING);
@@ -98,7 +110,8 @@ pub(super) fn render_asset_browser(
 
     let is_playing = editor.is_playing();
     let mouse_pos = ctx.ui.mouse_pos();
-    let mut assign: Option<(u32, String)> = None;
+    let mut clicked_tile: Option<usize> = None;
+    let mut hovered_tile: Option<usize> = None;
 
     for index in 0..editor.asset_browser.entries.len() {
         let slot = tile_rect(index, columns, grid_origin, scroll);
@@ -107,33 +120,81 @@ pub(super) fn render_asset_browser(
             continue;
         }
 
+        let selected = editor.asset_browser.selected == Some(index);
         let entry = &editor.asset_browser.entries[index];
-        render_tile(ctx.ui, &editor.theme, ctx.assets, entry, slot);
+        render_tile(ctx.ui, &editor.theme, ctx.assets, entry, slot, selected);
 
         if !is_playing {
-            let assignment = tile_interaction(
+            let tile = tile_interaction(
                 ctx.ui, &mut editor.drag_drop, &editor.theme, entry, index, slot, mouse_pos,
             );
-            if let Some(assignment) = assignment {
-                assign = Some(assignment);
+            if tile.hovered {
+                hovered_tile = Some(index);
+            }
+            if tile.clicked {
+                clicked_tile = Some(index);
             }
         }
     }
 
-    // Click-to-assign: set the selected entity's sprite texture
-    if let Some((handle, path)) = assign {
-        assign_clicked_texture(editor, ctx.world, command_history, handle, &path);
+    if let Some(index) = clicked_tile {
+        select_tile(editor, index);
+    } else if let Some(index) = hovered_tile {
+        show_full_name(editor, index);
+    }
+
+    if assign_clicked {
+        assign_selected_texture(editor, ctx.world, command_history);
     }
 }
 
+/// Select a tile and put its full relative path on the status bar — the
+/// label under the tile is ellipsized, so the path is only readable here.
+/// An error on the bar stays: selecting a tile is not clearing a failed save.
+fn select_tile(editor: &mut EditorContext, index: usize) {
+    editor.asset_browser.selected = Some(index);
+    if editor.status_bar.is_showing_error() {
+        return;
+    }
+    if let Some(entry) = editor.asset_browser.entries.get(index) {
+        let path = entry.relative_path.clone();
+        editor.status_bar.show_message(path);
+    }
+}
+
+/// Show a hovered tile's full relative path — the same text a click puts
+/// there, so the pointer resting on the tile it just clicked changes nothing.
+/// A persistent error keeps the bar: a hover must not erase a failed save.
+/// Re-showing the same text every frame would restart its timer and
+/// re-allocate the string.
+fn show_full_name(editor: &mut EditorContext, index: usize) {
+    let Some(entry) = editor.asset_browser.entries.get(index) else {
+        return;
+    };
+    if editor.status_bar.is_showing_error()
+        || editor.status_bar.message() == Some(entry.relative_path.as_str())
+    {
+        return;
+    }
+    let path = entry.relative_path.clone();
+    editor.status_bar.show_message(path);
+}
+
+/// Draw the header row and report whether Assign was clicked this frame.
 fn render_header(
     editor: &mut EditorContext,
     ui: &mut ui::UIContext,
     assets: &AssetManager,
     registry: &engine_core::scripting::ScriptRegistry,
+    world: &ecs::World,
     bounds: common::Rect,
-) {
-    let rescan_bounds = ui::Rect::new(bounds.x + PADDING, bounds.y + 2.0, 70.0, 20.0);
+) -> bool {
+    let rescan_bounds = ui::Rect::new(
+        bounds.x + PADDING,
+        bounds.y + 2.0,
+        HEADER_BUTTON_SIZE.x,
+        HEADER_BUTTON_SIZE.y,
+    );
     let rescan_clicked = ui.button("asset_rescan", "Rescan", rescan_bounds);
     if !editor.asset_browser.scanned {
         ensure_scanned(editor, assets, registry);
@@ -141,13 +202,42 @@ fn render_header(
         refresh_assets(editor, assets, registry);
     }
 
+    let assign_bounds = ui::Rect::new(
+        rescan_bounds.x + rescan_bounds.width + HEADER_GAP,
+        rescan_bounds.y,
+        HEADER_BUTTON_SIZE.x,
+        HEADER_BUTTON_SIZE.y,
+    );
+    let assign_clicked = ui.button_styled(
+        "asset_assign",
+        "Assign",
+        assign_bounds,
+        !editor.is_playing() && can_assign_selection(editor, world),
+    );
+
     let count_label = format!("{} assets", editor.asset_browser.entries.len());
     ui.label_styled(
         &count_label,
-        Vec2::new(rescan_bounds.x + rescan_bounds.width + 10.0, bounds.y + 16.0),
+        Vec2::new(assign_bounds.x + assign_bounds.width + HEADER_GAP, bounds.y + 16.0),
         editor.theme.text_muted,
         editor.theme.fonts.small,
     );
+
+    assign_clicked
+}
+
+/// Whether Assign has something to do: a loaded image tile is selected and
+/// the primary selection is an entity that carries a Sprite.
+fn can_assign_selection(editor: &EditorContext, world: &ecs::World) -> bool {
+    let has_texture = editor
+        .asset_browser
+        .selected_entry()
+        .is_some_and(|entry| entry.kind == AssetKind::Image && entry.texture_handle.is_some());
+    has_texture
+        && editor
+            .selection
+            .primary()
+            .is_some_and(|entity| world.get::<ecs::Sprite>(entity).is_some())
 }
 
 fn load_pending_thumbnails(
@@ -178,11 +268,13 @@ fn render_tile(
     assets: &AssetManager,
     entry: &editor::AssetEntry,
     slot: common::Rect,
+    selected: bool,
 ) {
     let slot_ui = ui::Rect::new(slot.x, slot.y, slot.width, slot.height);
 
     // Tile background + content
-    ui.rect_rounded(slot_ui, theme.surface_3, 4.0);
+    let background = if selected { theme.selection_fill } else { theme.surface_3 };
+    ui.rect_rounded(slot_ui, background, 4.0);
     match (entry.kind, entry.texture_handle) {
         (AssetKind::Image, Some(handle)) => {
             let (width, height) = assets
@@ -233,9 +325,13 @@ fn render_tile(
         }
     }
 
-    // Filename label under the tile (clipped by the panel rect)
+    // A name wider than the tile would bleed into its neighbours, so it is
+    // truncated here; the status bar carries the full path while hovered.
+    let label = tile_label(&entry.name, |text| {
+        ui.measure_text_styled(text, theme.fonts.small).x
+    });
     ui.label_in_bounds_styled(
-        &entry.name,
+        &label,
         ui::Rect::new(slot.x, slot.y + TILE_SIZE, TILE_SIZE, TILE_LABEL_HEIGHT),
         ui::TextAlign::Center,
         theme.text_secondary,
@@ -244,8 +340,20 @@ fn render_tile(
     );
 }
 
-/// Press arms a drag (images and .rhai scripts), a plain click assigns: the clicked
-/// tile's texture handle and path, if any.
+/// The filename as it is drawn under a tile: truncated with an ellipsis to
+/// the tile's own width according to the caller's measurement.
+fn tile_label(name: &str, measure: impl Fn(&str) -> f32) -> String {
+    editor::ellipsize(name, TILE_SIZE, measure)
+}
+
+/// What one tile did this frame.
+struct TileInteraction {
+    hovered: bool,
+    /// A press-and-release that did not turn into a drag.
+    clicked: bool,
+}
+
+/// Press arms a drag (images and .rhai scripts); a plain click selects the tile.
 fn tile_interaction(
     ui: &mut ui::UIContext,
     drag_drop: &mut DragDropState,
@@ -254,7 +362,7 @@ fn tile_interaction(
     index: usize,
     slot: common::Rect,
     mouse_pos: Vec2,
-) -> Option<(u32, String)> {
+) -> TileInteraction {
     let slot_ui = ui::Rect::new(slot.x, slot.y, slot.width, slot.height);
     let result = ui.interact(ui::WidgetId::from_str_index("asset_tile", index), slot_ui, true);
     let hovered = slot_ui.contains(mouse_pos);
@@ -269,9 +377,6 @@ fn tile_interaction(
                 mouse_pos,
             );
         }
-        if result.clicked && !drag_drop.suppresses_click() {
-            return Some((handle, entry.relative_path.clone()));
-        }
     } else if entry.kind == AssetKind::Script
         && std::path::Path::new(&entry.relative_path)
             .extension()
@@ -285,16 +390,30 @@ fn tile_interaction(
             mouse_pos,
         );
     }
-    None
+
+    TileInteraction {
+        hovered,
+        clicked: result.clicked && !drag_drop.suppresses_click(),
+    }
 }
 
-fn assign_clicked_texture(
+/// Assign the selected tile's texture to the primary selection, as one undo
+/// entry. The header's button is disabled unless this can succeed, so the
+/// refusals below are the safety net, not the usual path.
+fn assign_selected_texture(
     editor: &mut EditorContext,
     world: &mut ecs::World,
     command_history: &mut CommandHistory,
-    handle: u32,
-    path: &str,
 ) {
+    let Some((handle, path)) = editor
+        .asset_browser
+        .selected_entry()
+        .and_then(|entry| entry.texture_handle.map(|handle| (handle, entry.relative_path.clone())))
+    else {
+        editor.status_bar.show_message("Select a texture in the asset browser first");
+        return;
+    };
+
     match editor.selection.primary() {
         Some(entity) if entity_ops::assign_sprite_texture(world, entity, handle, command_history) => {
             editor.status_bar.show_message(format!("Assigned {path}"));
@@ -308,49 +427,136 @@ fn assign_clicked_texture(
     }
 }
 
-/// Draw the drag ghost following the cursor while a drag is in flight.
-/// The overlay's blocking rect also makes widgets and viewport picking
-/// under the cursor inert for the frame.
-pub(crate) fn render_drag_ghost(editor: &mut EditorContext, ctx: &mut GameContext) {
-    match editor.drag_drop.dragging_payload() {
-        Some(DragPayload::Texture { handle, .. }) => {
-            let handle = *handle;
-            let mouse = ctx.ui.mouse_pos();
-            let ghost = ui::Rect::new(mouse.x - 24.0, mouse.y - 24.0, 48.0, 48.0);
-            // DragGhost band: the ghost rides above even an open dropdown.
-            ctx.ui.begin_overlay_in(ui::UiLayer::DragGhost, ghost);
-            ctx.ui.image(ghost, handle, ui::Color::new(1.0, 1.0, 1.0, 0.8));
-            ctx.ui.end_overlay();
-        }
-        Some(DragPayload::Script { path }) => {
-            let file_name = std::path::Path::new(path)
-                .file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or(path.as_str());
-            let mouse = ctx.ui.mouse_pos();
-            let text_width =
-                (ctx.ui.measure_text_styled(file_name, editor.theme.fonts.small).x + 16.0).max(48.0);
-            let ghost = ui::Rect::new(mouse.x - text_width / 2.0, mouse.y - 12.0, text_width, 24.0);
-            ctx.ui.begin_overlay_in(ui::UiLayer::DragGhost, ghost);
-            ctx.ui.rect_rounded(ghost, editor.theme.surface_3, 4.0);
-            ctx.ui.rect_border(ghost, editor.theme.accent_blue, 1.0, 4.0);
-            ctx.ui.label_in_bounds_styled(
-                file_name,
-                ghost,
-                ui::TextAlign::Center,
-                editor.theme.text_primary,
-                editor.theme.fonts.small,
-                0.0,
-            );
-            ctx.ui.end_overlay();
-        }
-        None => {}
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use ecs::{Sprite, World};
+    use editor::AssetEntry;
+
+    /// One image entry with a loaded thumbnail, ready to be selected.
+    fn image_entry(name: &str, handle: u32) -> AssetEntry {
+        AssetEntry {
+            name: name.to_string(),
+            relative_path: format!("sprites/{name}"),
+            kind: AssetKind::Image,
+            texture_handle: Some(handle),
+            load_failed: false,
+        }
+    }
+
+    /// An editor with one selectable image and a sprite entity selected.
+    fn editor_with_sprite_and_asset() -> (EditorContext, World, ecs::EntityId) {
+        let mut world = World::new();
+        let entity = world.create_entity();
+        world.add_component(&entity, Sprite::new(0)).ok();
+
+        let mut editor = EditorContext::new();
+        editor.asset_browser.apply_scan(vec![image_entry("hero.png", 7)]);
+        editor.selection.select(entity);
+        (editor, world, entity)
+    }
+
+    #[test]
+    fn test_a_click_selects_the_tile_without_touching_the_entity() {
+        let (mut editor, world, entity) = editor_with_sprite_and_asset();
+
+        select_tile(&mut editor, 0);
+
+        assert_eq!(editor.asset_browser.selected, Some(0));
+        assert_eq!(
+            world.get::<Sprite>(entity).map(|sprite| sprite.texture_handle),
+            Some(0),
+            "selecting a tile must never assign its texture"
+        );
+        assert_eq!(
+            editor.status_bar.message(),
+            Some("sprites/hero.png"),
+            "the status bar carries the full relative path the tile label cannot show"
+        );
+    }
+
+    /// The hover hint is the same full path a click shows, so it survives the
+    /// pointer resting on the clicked tile, and neither the hover nor the click
+    /// writes over a persistent error — a failed save must stay readable.
+    #[test]
+    fn test_hover_shows_the_path_the_click_showed_and_leaves_an_error_alone() {
+        let (mut editor, _, _) = editor_with_sprite_and_asset();
+
+        select_tile(&mut editor, 0);
+        show_full_name(&mut editor, 0);
+        assert_eq!(
+            editor.status_bar.message(),
+            Some("sprites/hero.png"),
+            "hovering the clicked tile keeps its full path on the bar"
+        );
+
+        editor.status_bar.show_error("Failed to save");
+        show_full_name(&mut editor, 0);
+        assert_eq!(editor.status_bar.message(), Some("Failed to save"), "a hover never erases an error");
+        select_tile(&mut editor, 0);
+        assert_eq!(editor.status_bar.message(), Some("Failed to save"), "nor does a click");
+        assert!(editor.status_bar.is_showing_error());
+    }
+
+    #[test]
+    fn test_assign_sets_the_texture_and_undo_puts_the_old_one_back() {
+        let (mut editor, mut world, entity) = editor_with_sprite_and_asset();
+        let mut history = CommandHistory::new();
+        select_tile(&mut editor, 0);
+
+        assign_selected_texture(&mut editor, &mut world, &mut history);
+        assert_eq!(
+            world.get::<Sprite>(entity).map(|sprite| sprite.texture_handle),
+            Some(7)
+        );
+
+        assert!(history.undo(&mut world), "the assignment is one undo entry");
+        assert_eq!(
+            world.get::<Sprite>(entity).map(|sprite| sprite.texture_handle),
+            Some(0)
+        );
+    }
+
+    #[test]
+    fn test_assign_is_offered_only_for_a_loaded_image_over_a_sprite_entity() {
+        let (mut editor, world, _) = editor_with_sprite_and_asset();
+        assert!(!can_assign_selection(&editor, &world), "nothing is selected yet");
+
+        select_tile(&mut editor, 0);
+        assert!(can_assign_selection(&editor, &world));
+
+        editor.selection.clear();
+        assert!(!can_assign_selection(&editor, &world), "no entity to assign to");
+    }
+
+    #[test]
+    fn test_a_long_name_is_ellipsized_to_fit_under_its_tile() {
+        let measure = |text: &str| text.chars().count() as f32 * 7.0;
+
+        let short = tile_label("hero.png", measure);
+        assert_eq!(short, "hero.png", "a name that fits is drawn whole");
+
+        let long = tile_label("a_very_long_deion_sprite_name.png", measure);
+        assert!(measure(&long) <= TILE_SIZE, "the drawn label fits the tile");
+        assert!(long.ends_with('…'), "truncation is visible to the reader");
+    }
+
+    #[test]
+    fn test_a_rescan_keeps_the_selection_on_the_file_it_pointed_at() {
+        let mut editor = EditorContext::new();
+        editor.asset_browser.apply_scan(vec![image_entry("hero.png", 7)]);
+        select_tile(&mut editor, 0);
+
+        // A new file sorts ahead of the selected one, moving its index.
+        editor
+            .asset_browser
+            .apply_scan(vec![image_entry("armour.png", 8), image_entry("hero.png", 7)]);
+        assert_eq!(editor.asset_browser.selected, Some(1));
+
+        editor.asset_browser.apply_scan(vec![image_entry("armour.png", 8)]);
+        assert_eq!(editor.asset_browser.selected, None, "a deleted file drops the selection");
+    }
 
     #[test]
     fn test_tile_rect_grid_layout() {

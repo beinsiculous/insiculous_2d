@@ -38,9 +38,12 @@ use crate::mouse::MouseState;
 use std::collections::VecDeque;
 use winit::event::{ElementState, WindowEvent};
 
-/// Approximate pixels per scroll "line", used to normalize trackpad/pixel
-/// scroll deltas to the same scale as mouse wheel line deltas.
-const SCROLL_PIXELS_PER_LINE: f32 = 16.0;
+/// Pixels a mouse wheel notch reports where the platform sends pixels
+/// instead of lines. A browser notch is 100 px, and both scales in front of
+/// this value — the viewport's per-frame zoom clamp and the panels' scroll
+/// step — are notches, so normalizing to a notch keeps a trackpad's finger
+/// travel about 1:1 with the content instead of six times too fast.
+const SCROLL_PIXELS_PER_NOTCH: f32 = 100.0;
 
 /// Input events that can be queued for processing.
 ///
@@ -248,12 +251,12 @@ impl InputHandler {
                 self.queue_event(InputEvent::MouseMoved(position.x as f32, position.y as f32));
             }
             WindowEvent::MouseWheel { delta, .. } => {
-                // Normalize both variants to "lines" so scroll speed is
+                // Normalize both variants to notches so scroll speed is
                 // consistent across mice (LineDelta) and trackpads (PixelDelta)
                 let scroll_delta = match delta {
                     winit::event::MouseScrollDelta::LineDelta(_, y) => *y,
                     winit::event::MouseScrollDelta::PixelDelta(position) => {
-                        position.y as f32 / SCROLL_PIXELS_PER_LINE
+                        position.y as f32 / SCROLL_PIXELS_PER_NOTCH
                     }
                 };
                 self.queue_event(InputEvent::MouseWheelScrolled(scroll_delta));
@@ -378,7 +381,9 @@ impl InputHandler {
         self.mouse.movement_delta()
     }
 
-    /// Get mouse wheel scroll delta accumulated this frame
+    /// Get mouse wheel scroll delta accumulated this frame, in notches: a
+    /// mouse notch is 1.0; pixel deltas arrive as fractions of one at
+    /// `SCROLL_PIXELS_PER_NOTCH` px to the notch.
     pub fn mouse_wheel_delta(&self) -> f32 {
         self.mouse.wheel_delta()
     }

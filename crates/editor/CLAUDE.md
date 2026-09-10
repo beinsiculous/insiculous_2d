@@ -54,7 +54,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 - `commands/` — `EditorCommand` trait, `CommandHistory` dirty tracking watermark, `SetComponentCommand` merge-by-hint, `break_merge()` gesture boundary, and the play-session floor (`begin_session`/`drop_session_entries`/`rebase_session_entries`) with the leaf-level rebase in `rebase.rs`.
 - `entity_names.rs` — `entity_display_name`: the one name the hierarchy row, the inspector heading and the command API's `display` field all read.
 - `editor_preferences.rs` — `EditorPreferences` JSON serialization (`from_json`/`to_json`), panel layout capture/apply, camera/grid state, `ide_command` (IO handled by integration layer via save_store).
-- `asset_browser.rs` — `AssetEntry`, `AssetKind` (`Image`, `Scene`, `Script`), and `scan_assets` walking `common::vfs::list_files` for images, scenes, and scripts (`.rhai`, `.rs`).
+- `asset_browser.rs` — `AssetEntry`, `AssetKind` (`Image`, `Scene`, `Script`), `scan_assets` walking `common::vfs::list_files` for images, scenes, and scripts (`.rhai`, `.rs`), and `AssetBrowserState.selected` — the clicked tile, carried across a rescan by relative path and dropped when its file is gone.
 - `stored_component/` — typed registry overlay (`editor_component_registry!`), `category.rs`, and `dynamic.rs` falling through to ECS dynamic registry.
 - `world_snapshot.rs` — `WorldSnapshot` save/restore with uncaptured component type detection and drop reporting.
 
@@ -72,7 +72,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 | Rotate gizmo dead-center clicks must fall through to entity picking | `src/gizmo/tests.rs test_rotate_ring_is_an_annulus_so_a_dead_center_press_falls_through_to_picking` |
 | Hard floors for inspector editors and command API must clamp negative or zero dimensions | `src/command_api/write_tests.rs test_set_sanitizes_collider_extents_to_the_gui_floor` |
 | Asset scanning must use `common::vfs::list_files` instead of `std::fs` so recursive asset enumeration works on wasm; it never follows symlinks (assets are copies by convention), so a linked tree lists as empty | `src/asset_browser.rs test_nested_images_and_scenes_listed_with_slash_joined_relative_paths_while_txt_is_ignored`; `common/src/vfs/tests.rs test_vfs_list_files_never_follows_symlinks` |
-| Wheel zoom is proportional to the delta in notches and clamped to one notch per frame: a trackpad streams fractions of a line every frame, and a fixed factor per frame made a gentle scroll compound like sixty notches a second; a hard flick that delivers a line or more a frame still zooms a notch a frame, the mouse wheel's own ceiling | `src/viewport_input.rs test_a_fraction_of_a_wheel_line_zooms_by_the_same_fraction_of_the_factor`, `test_a_frame_of_wheel_zooms_at_most_one_notch` |
+| Wheel zoom is proportional to the delta in notches and clamped to one notch per frame: a trackpad streams fractions of a notch every frame, and a fixed factor per frame made a gentle scroll compound like sixty notches a second; a hard flick that delivers a notch or more a frame still zooms a notch a frame, the mouse wheel's own ceiling | `src/viewport_input.rs test_a_fraction_of_a_wheel_notch_zooms_by_the_same_fraction_of_the_factor`, `test_a_frame_of_wheel_zooms_at_most_one_notch` |
 
 
 ## Key Patterns

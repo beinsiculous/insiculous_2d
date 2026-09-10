@@ -82,6 +82,13 @@ impl StatusBar {
         self.message.as_deref()
     }
 
+    /// Whether the bar is showing an error, which stays until cleared. A
+    /// hover hint must not write over it: `show_message` would clear the
+    /// persistence along with the text.
+    pub fn is_showing_error(&self) -> bool {
+        self.message_persistent && self.message.is_some()
+    }
+
     /// Update runtime stats.
     pub fn update_stats(&mut self, entity_count: usize, fps: f32) {
         self.stats.entity_count = entity_count;

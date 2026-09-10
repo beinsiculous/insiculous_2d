@@ -46,6 +46,10 @@ pub struct AssetBrowserState {
     pub entries: Vec<AssetEntry>,
     /// Whether an initial scan has run
     pub scanned: bool,
+    /// Index of the tile the last click selected. Selecting is what a click
+    /// does; assigning takes a drag or the header's Assign button, so a
+    /// misclick can never overwrite an entity's texture.
+    pub selected: Option<usize>,
     /// Vertical scroll (shared panel pattern)
     pub scroll: crate::ScrollState,
 }
@@ -55,6 +59,12 @@ impl AssetBrowserState {
     /// handles and failure flags by relative path (rescans must not re-load
     /// textures — the texture manager does not dedupe by path).
     pub fn apply_scan(&mut self, new_entries: Vec<AssetEntry>) {
+        // The selection is an index into a list a rescan reorders, so it
+        // travels by path and is dropped when its file is gone.
+        let selected_path = self
+            .selected
+            .and_then(|index| self.entries.get(index))
+            .map(|entry| entry.relative_path.clone());
         let old: Vec<AssetEntry> = std::mem::take(&mut self.entries);
         self.entries = new_entries
             .into_iter()
@@ -66,7 +76,14 @@ impl AssetBrowserState {
                 e
             })
             .collect();
+        self.selected = selected_path
+            .and_then(|path| self.entries.iter().position(|entry| entry.relative_path == path));
         self.scanned = true;
+    }
+
+    /// The entry the last click selected, if it still exists.
+    pub fn selected_entry(&self) -> Option<&AssetEntry> {
+        self.selected.and_then(|index| self.entries.get(index))
     }
 }
 

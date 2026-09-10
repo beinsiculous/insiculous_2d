@@ -67,7 +67,7 @@ fn render_panel_body(
     }
 }
 
-pub(crate) use asset_browser::render_drag_ghost;
+pub(crate) use drag_ghost::render_drag_ghost;
 
 /// Scene view — grid info, viewport origin crosshair, and play-state border.
 ///
@@ -390,6 +390,7 @@ fn render_default(ctx: &mut GameContext, content_x: f32, y: f32) {
 
 mod add_component_popup;
 mod asset_browser;
+mod drag_ghost;
 mod inspector;
 pub mod script_catalog;
 use inspector::render_inspector;
