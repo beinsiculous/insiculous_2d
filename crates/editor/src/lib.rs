@@ -67,6 +67,7 @@ pub mod status_bar;
 pub mod stored_component;
 mod text_field;
 mod texture_field;
+pub mod toolbar_strip;
 mod ui_component_editors;
 pub mod theme;
 pub mod typography;
@@ -141,7 +142,7 @@ pub use stored_component::{
 };
 pub use script_editor::ScriptCatalogEntry;
 pub use theme::EditorTheme;
-pub use toolbar::{toolbar_position_for, EditorTool, Toolbar};
+pub use toolbar::{EditorTool, Toolbar};
 pub use viewport::SceneViewport;
 pub use viewport_input::{ViewportInputConfig, ViewportInputHandler, ViewportInputResult};
 pub use world_lines::{draw_world_line, draw_world_segments};

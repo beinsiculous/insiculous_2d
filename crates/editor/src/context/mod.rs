@@ -135,9 +135,7 @@ impl EditorContext {
         let mut editor = Self {
             selection: Selection::new(),
             gizmo,
-            // Position is set every frame from the scene view bounds
-            // (toolbar_position_for) — the default only covers frame 0.
-            toolbar: Toolbar::new().with_position(Vec2::new(220.0, 54.0)),
+            toolbar: Toolbar::new(),
             menu_bar: MenuBar::editor_default(),
             dock_area: default_dock_area(),
             viewport: SceneViewport::new(),
@@ -467,11 +465,26 @@ impl EditorContext {
         self.dock_area = default_dock_area();
     }
 
-    /// Get the scene view content bounds (where the game world is rendered).
+    /// The viewport: where the game world is rendered, the scene panel's
+    /// content area **below the toolbar strip**. Every overlay, the GPU
+    /// scissor and every pick map through this rect, so none of them can
+    /// reach into the strip.
     ///
-    /// Returns `None` when the panel is hidden or collapsed (no content area).
+    /// Returns `None` when the panel is hidden or collapsed, and when the
+    /// strip consumes the whole content area — a zero-height rect would
+    /// leave every consumer silently dead instead of on its `None` path.
     pub fn scene_view_bounds(&self) -> Option<common::Rect> {
         self.panel_content_bounds(PanelId::SCENE_VIEW)
+            .map(|content| crate::toolbar_strip::split(content).1)
+            .filter(|viewport| viewport.height > 0.0)
+    }
+
+    /// The toolbar strip: the band across the top of the scene panel holding
+    /// the tools and the play controls. `None` when the panel is hidden or
+    /// collapsed; present even when the strip leaves the viewport no height.
+    pub fn toolbar_strip_bounds(&self) -> Option<common::Rect> {
+        self.panel_content_bounds(PanelId::SCENE_VIEW)
+            .map(|content| crate::toolbar_strip::split(content).0)
     }
 
     /// Content bounds of a panel, or `None` when it is hidden or collapsed.

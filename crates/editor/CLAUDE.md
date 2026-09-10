@@ -8,8 +8,8 @@ This crate has NO dependency on engine_core. It depends on: ecs, ui, input, rend
 EditorContext (selection, tool state, play state, camera, theme, status_bar, fonts, inspector_scroll)
 │   (CommandHistory itself lives on editor_integration's EditorGame and is threaded into panel renderers)
 ├── Panels: SceneView, Hierarchy, Inspector, AssetBrowser, Console
-├── Dock layout: dock.rs (multi-panel docking)
-├── Menu / Toolbar / StatusBar (top + bottom chrome)
+├── Dock layout: dock.rs (multi-panel docking, narrow mode below MIN_CENTER_WIDTH)
+├── Menu / StatusBar (top + bottom chrome); Toolbar + PlayControls in the scene view's toolbar strip
 ├── Tools: Select, Move, Rotate, Scale (Q/W/E/R shortcuts)
 ├── Gizmos: Translate, Rotate, Scale handles
 ├── Picking: EntityPicker, SelectionRect, screen_to_world()
@@ -25,7 +25,8 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 - `theme/` — EditorTheme: WCAG surface ladder `surface_0..surface_4` with luminance guard tests (≥1.35:1 adjacent / ≥3:1 border), style converters, and `ui_theme()`.
 - `command_api/` — CLI/API dispatch (query list/describe/selection/scene/commands and write set/add/remove/rename/delete/select/undo/redo/batch) through CommandHistory; `docs/EDITOR_COMMAND_API.md`.
 - `drag_drop.rs` — `DragDropState`/`DragPayload` (`Texture`, `Script`) cross-panel drag state machine (Idle→Armed→Dragging→Dropped-1-frame).
-- `dock/` — multi-panel docking: state, layout, collapse/visibility toggles, chevrons, and clamped resize grabbers.
+- `dock/` — multi-panel docking: state, layout, collapse/visibility toggles, chevrons, and clamped resize grabbers. Below `MIN_CENTER_WIDTH` of centre it enters **narrow mode**: the side panels leave the edge allocation and one at a time shows as an overlay over the viewport on the floating band, opened from its header tab at the edge and closed from its own chevron (`narrow_overlay`, `open_narrow_overlay`, `close_narrow_overlay`); a collapsed panel opens as a full overlay (`expanded_content_bounds`) without touching its persisted collapse flag; the overlay runs to the dock's bottom, over a bottom panel.
+- `toolbar_strip.rs` — the scene view's toolbar strip: `split` (panel content → strip + viewport), the `begin`/`end` chrome scope on `UiLayer::PanelChrome`, and `layout` placing the tools left and the play controls at the centre (from the right edge, and shedding tools into an overflow menu, below `TOOLBAR_STRIP_MIN_WIDTH`).
 - `menu/` — top menu bar; action items carry checked flag and map labels to `EditorAction`.
 - `editor_input.rs` — shortcut chord model (exact chord beats any-mods) and `allowed_while_playing()` action deny list.
 - `archetype.rs` — `Archetype`: the nine entity factories shared by the Entity menu and command API `create`.
@@ -81,6 +82,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 - The inspector heading is two lines: `entity_display_name` on top, then `Selection::inspector_heading`'s detail line ("Entity 17", or "3 selected · Entity 17 primary")
 - Selection: `editor.selection.primary()` returns the main selected EntityId
 - Gizmo drag tracking: editor_integration's `GizmoDragState` captures start transform+collider for every selection root; frames apply `start + cumulative delta` (idempotent — what makes snapping residual-proof), ONE Macro/TransformGizmo command on release, Escape restores starts and pushes nothing
+- The toolbar and the play controls are NOT floating chrome: they render inside the strip's scope, positioned by `toolbar_strip::layout`. `scene_view_bounds()` is the viewport BELOW the strip — every overlay, the GPU scissor and every pick map through it, so none of them reach into the band; `toolbar_strip_bounds()` is the band itself.
 - Theme is on `EditorContext.theme` (public field); call `theme.gizmo_palette()`, `inspector_style()`, `editable_field_style()`, `grid_colors()`, `collider_overlay_colors()` instead of hardcoding colors. Menu/Toolbar/Hierarchy `render()` take `&EditorTheme`
 
 ## Testing

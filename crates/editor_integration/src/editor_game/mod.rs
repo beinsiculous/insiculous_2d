@@ -182,47 +182,54 @@ impl<G: Game> EditorGame<G> {
         }
     }
 
-    /// Render the toolbar and the play controls next to it.
+    /// Render the scene view's toolbar strip: the tools and the play
+    /// controls, laid out by the strip and drawn on its band.
     fn render_toolbar_and_play_controls(&mut self, ctx: &mut GameContext) {
-        // The toolbar floats inside the scene view — follow it as panels
-        // hide/collapse/resize.
-        if let Some(scene_bounds) = self.editor.scene_view_bounds() {
-            self.editor.toolbar.set_position(editor::toolbar_position_for(scene_bounds));
-        }
+        // The strip belongs to the scene panel — no panel, no strip.
+        let Some(strip) = self.editor.toolbar_strip_bounds() else {
+            return;
+        };
+        let play_state = self.editor.play_state();
+        let strip_layout = editor::toolbar_strip::layout(
+            strip,
+            &self.editor.toolbar,
+            &self.editor.play_controls,
+            play_state,
+        );
+        self.editor.play_controls.position = strip_layout.play_controls_origin;
 
-        if let Some(tool) = self.editor.toolbar.render(ctx.ui, &self.editor.theme) {
+        editor::toolbar_strip::begin(ctx.ui, strip, &self.editor.theme);
+        let picked_tool = self.editor.toolbar.render(ctx.ui, &self.editor.theme, &strip_layout);
+        let camera_follow = self.editor.is_camera_following();
+        let theme = &self.editor.theme;
+        let play_action =
+            self.editor.play_controls.render(ctx.ui, play_state, camera_follow, theme);
+        editor::toolbar_strip::end(ctx.ui);
+
+        // The shed tools' menu hangs below the strip on the floating band, so
+        // it is drawn after the strip's scope has closed.
+        let picked_from_menu =
+            self.editor.toolbar.render_overflow_menu(ctx.ui, &self.editor.theme, &strip_layout);
+
+        if let Some(tool) = picked_tool.or(picked_from_menu) {
             // set_tool keeps the gizmo mode in sync with the clicked tool.
             self.editor.set_tool(tool);
         }
-
-        let toolbar_bounds = self.editor.toolbar.bounds();
-        self.editor.play_controls.position = Vec2::new(
-            toolbar_bounds.x + toolbar_bounds.width + self.editor.play_controls.spacing * 4.0,
-            toolbar_bounds.y,
-        );
-        let play_state = self.editor.play_state();
-        let camera_follow = self.editor.is_camera_following();
-        let theme = &self.editor.theme;
-        if let Some(action) =
-            self.editor.play_controls.render(ctx.ui, play_state, camera_follow, theme)
-        {
+        if let Some(action) = play_action {
             if self.handle_play_action(action, ctx.world) {
                 self.inner.on_play_stopped(ctx);
             }
         }
     }
 
-    /// Render the dock panel frames and their content. Returns the panel
-    /// content areas for later viewport/gizmo hit testing.
-    fn render_panels(
-        &mut self,
-        ctx: &mut GameContext,
-        pickables: &[editor::PickableEntity],
-    ) -> Vec<(editor::PanelId, common::Rect)> {
+    /// Render the dock panel frames and their content. Picking and the gizmo
+    /// take their rect from `scene_view_bounds()`, not from here: the panel's
+    /// content area includes the toolbar strip, the viewport does not.
+    fn render_panels(&mut self, ctx: &mut GameContext, pickables: &[editor::PickableEntity]) {
         let theme = &self.editor.theme;
         let content_areas = self.editor.dock_area.render(ctx.ui, theme);
 
-        for (panel_id, bounds) in content_areas.clone() {
+        for (panel_id, bounds) in content_areas {
             ctx.ui.push_clip_rect(ui::Rect::new(bounds.x, bounds.y, bounds.width, bounds.height));
             panel_renderer::render_panel_content(
                 &mut self.editor,
@@ -237,8 +244,6 @@ impl<G: Game> EditorGame<G> {
 
         // After the content loop so the hover/drag grabber draws on top.
         self.editor.dock_area.handle_resize(ctx.ui, &self.editor.theme);
-
-        content_areas
     }
 
     /// Delegate the frame to the inner game — only while Playing, clipped to
@@ -468,9 +473,9 @@ impl<G: Game> Game for EditorGame<G> {
         } else {
             build_pickable_entities(ctx.world)
         };
-        let content_areas = self.render_panels(ctx, &pickables);
+        self.render_panels(ctx, &pickables);
         self.handle_viewport_picking(ctx.ui, ctx.input, ctx.world, &pickables);
-        self.handle_gizmo(ctx, &content_areas);
+        self.handle_gizmo(ctx);
         self.update_inner_game(ctx);
         self.finish_frame(ctx);
     }

@@ -78,6 +78,14 @@ impl<G: Game> EditorGame<G> {
             _ => {}
         }
 
+        // The toolbar's open overflow menu is the strip's own in every play
+        // state: Escape closes it and goes no further, or a game bound to
+        // Escape would pause under a menu that stays open.
+        if action == Some(EditorAction::Cancel) && self.editor.toolbar.is_overflow_open() {
+            self.editor.toolbar.close_overflow();
+            return KeyRoute::Consumed;
+        }
+
         // While Playing the raw key belongs to the game — editor actions
         // are deliberately NOT dispatched here.
         if self.editor.is_playing() {
@@ -412,7 +420,9 @@ impl<G: Game> EditorGame<G> {
     }
 
     /// Escape: cancel the most specific live thing, exactly one per press —
-    /// a gizmo drag, else a marquee, else the selection.
+    /// a gizmo drag, else a marquee, else the selection. The toolbar's open
+    /// overflow menu is closed before this, in [`Self::route_editor_key`],
+    /// because it must close while Playing too and Playing never reaches here.
     pub(super) fn cancel_cascade(&mut self, world: &mut ecs::World) {
         if self.cancel_gizmo_drag(world) {
             return;

@@ -17,12 +17,34 @@ pub fn render_panel_content(
     command_history: &mut CommandHistory,
     pickables: &[editor::PickableEntity],
 ) {
+    // A panel shown as the dock's narrow-mode overlay covers the viewport:
+    // its widgets have to live on the floating band, or the overlay's own
+    // blocking rect would make the field the visitor came to edit inert.
+    let narrow_overlay = editor.dock_area.narrow_overlay() == Some(panel_id);
+    if narrow_overlay {
+        ctx.ui.begin_overlay_in(ui::UiLayer::Floating, bounds);
+    }
+    render_panel_body(editor, ctx, panel_id, bounds, command_history, pickables);
+    if narrow_overlay {
+        ctx.ui.end_overlay();
+    }
+}
+
+/// The content itself, once the band it belongs on has been entered.
+fn render_panel_body(
+    editor: &mut EditorContext,
+    ctx: &mut GameContext,
+    panel_id: PanelId,
+    bounds: common::Rect,
+    command_history: &mut CommandHistory,
+    pickables: &[editor::PickableEntity],
+) {
     let padding = layout::PADDING;
     let content_x = bounds.x + padding;
     let y = bounds.y + padding;
 
     match panel_id {
-        PanelId::SCENE_VIEW => render_scene_view(editor, ctx, bounds, pickables),
+        PanelId::SCENE_VIEW => render_scene_view(editor, ctx, pickables),
         PanelId::HIERARCHY => render_hierarchy(editor, ctx, bounds, command_history),
         PanelId::INSPECTOR => {
             if !editor.asset_browser.scanned {
@@ -48,12 +70,19 @@ pub fn render_panel_content(
 pub(crate) use asset_browser::render_drag_ghost;
 
 /// Scene view — grid info, viewport origin crosshair, and play-state border.
+///
+/// Every overlay here maps through the VIEWPORT (the content area below the
+/// toolbar strip), never the panel's whole content rect, so the grid, the
+/// axes, the colliders and the outlines cannot draw into the strip. A panel
+/// too short to hold a viewport under its strip draws nothing here.
 fn render_scene_view(
     editor: &EditorContext,
     ctx: &mut GameContext,
-    bounds: common::Rect,
     pickables: &[editor::PickableEntity],
 ) {
+    let Some(bounds) = editor.scene_view_bounds() else {
+        return;
+    };
     let theme = &editor.theme;
     let padding = layout::PADDING;
     let content_x = bounds.x + padding;

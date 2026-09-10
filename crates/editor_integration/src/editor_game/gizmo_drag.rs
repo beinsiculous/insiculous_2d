@@ -7,7 +7,6 @@
 //! Escape cancel.
 
 use ecs::{EntityId, World};
-use editor::PanelId;
 use engine_core::contexts::GameContext;
 use engine_core::Game;
 use glam::Vec2;
@@ -43,18 +42,16 @@ impl<G: Game> EditorGame<G> {
     /// Deltas are cumulative from drag start and applied as `start + delta`
     /// (idempotent per frame) — never accumulated into the live transform,
     /// which is what let snapping annihilate sub-cell drag residuals.
-    pub(super) fn handle_gizmo(&mut self, ctx: &mut GameContext, content_areas: &[(PanelId, common::Rect)]) {
+    pub(super) fn handle_gizmo(&mut self, ctx: &mut GameContext) {
         if self.editor.is_playing() {
             return;
         }
         let Some(primary) = self.editor.selection.primary() else {
             return;
         };
-        let Some(scene_rect) = content_areas
-            .iter()
-            .find(|(id, _)| *id == PanelId::SCENE_VIEW)
-            .map(|(_, rect)| *rect)
-        else {
+        // The viewport below the toolbar strip, not the panel's whole content
+        // area: a handle panned under the strip is neither drawn nor grabbable.
+        let Some(scene_rect) = self.editor.scene_view_bounds() else {
             return;
         };
 
@@ -65,7 +62,7 @@ impl<G: Game> EditorGame<G> {
             return;
         };
 
-        // Clip the gizmo to the scene panel (it runs after render_panels has
+        // Clip the gizmo to the viewport (it runs after render_panels has
         // popped every panel clip) and refuse to START drags with the mouse
         // outside it — handles panned off the viewport edge must not draw
         // over, or stay draggable through, the neighboring panels.

@@ -248,7 +248,10 @@ impl UIContext {
     ///   all base UI regardless of submission order, and
     /// - `interact()` calls stay live while widgets *outside* the overlay
     ///   become inert whenever the mouse is inside `blocking_rect` (for the
-    ///   rest of the frame), so clicks don't pass through the overlay.
+    ///   rest of the frame), so clicks don't pass through the overlay. A
+    ///   later overlay on a LOWER layer is not exempt: a modal's scrim
+    ///   reaches into a Floating dropdown or a PanelChrome strip opened
+    ///   after it, while a scope on the same layer or above stays live.
     pub fn begin_overlay(&mut self, blocking_rect: Rect) {
         self.begin_overlay_in(UiLayer::Floating, blocking_rect);
     }
@@ -264,15 +267,15 @@ impl UIContext {
     /// overlays back-to-back instead.
     pub fn begin_overlay_in(&mut self, layer: UiLayer, blocking_rect: Rect) {
         self.draw_list.push_layer(layer);
-        self.interaction.push_blocking_rect(blocking_rect);
-        self.interaction.set_overlay_scope(true);
+        self.interaction.push_blocking_rect(blocking_rect, layer);
+        self.interaction.set_overlay_scope(Some(layer));
     }
 
     /// End the current overlay, returning to the base depth band and
     /// re-enabling input blocking for subsequent widgets.
     pub fn end_overlay(&mut self) {
         self.draw_list.pop_layer();
-        self.interaction.set_overlay_scope(false);
+        self.interaction.set_overlay_scope(None);
     }
 
     /// Whether mouse input at `pos` is swallowed by an open overlay

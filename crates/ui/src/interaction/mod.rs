@@ -7,7 +7,7 @@ use input::prelude::InputHandler;
 
 use crate::input_state::{InputState, KeyRepeat};
 use crate::text_edit::TextEditState;
-use crate::Rect;
+use crate::{Rect, UiLayer};
 
 /// Fallback frame delta for [`InteractionManager::begin_frame`] callers that
 /// don't thread a real dt (key repeat paces off this).
@@ -116,6 +116,14 @@ pub struct ScrubState {
     pub active: bool,
 }
 
+/// A region an open overlay claims for the rest of the frame, and the layer
+/// it claims it on.
+#[derive(Debug, Clone, Copy)]
+struct BlockingRegion {
+    rect: Rect,
+    layer: UiLayer,
+}
+
 /// Tracks interaction state for all widgets in the UI.
 pub struct InteractionManager {
     /// Currently active widget (being pressed/dragged)
@@ -126,12 +134,14 @@ pub struct InteractionManager {
     persistent_state: HashMap<WidgetId, WidgetPersistentState>,
     /// Widget that had keyboard focus
     focus_widget: Option<WidgetId>,
-    /// Regions (e.g. open dropdowns) that swallow mouse input for all
-    /// widgets outside the overlay scope. Cleared each frame.
-    blocking_rects: Vec<Rect>,
-    /// Whether interact() calls are currently inside an overlay (exempt
-    /// from blocking rects). Cleared each frame.
-    overlay_scope: bool,
+    /// Regions (an open dropdown, a modal's scrim) that swallow mouse input.
+    /// A widget outside any overlay scope is inert under every one of them;
+    /// a widget inside a scope is inert only under a region from a higher
+    /// layer. Cleared each frame.
+    blocking_regions: Vec<BlockingRegion>,
+    /// The layer of the overlay scope subsequent interact() calls belong
+    /// to, `None` outside any scope. Cleared each frame.
+    overlay_scope: Option<UiLayer>,
     /// Hold timers for key repeat (arrows, Backspace, Delete)
     key_repeat: KeyRepeat,
 }
@@ -150,8 +160,8 @@ impl InteractionManager {
             input: InputState::default(),
             persistent_state: HashMap::new(),
             focus_widget: None,
-            blocking_rects: Vec::new(),
-            overlay_scope: false,
+            blocking_regions: Vec::new(),
+            overlay_scope: None,
             key_repeat: KeyRepeat::default(),
         }
     }
@@ -168,8 +178,8 @@ impl InteractionManager {
         self.input = InputState::from_input_handler_with_repeat(input, &mut self.key_repeat, dt);
 
         // Blocking regions are re-registered each frame by whatever overlay is open
-        self.blocking_rects.clear();
-        self.overlay_scope = false;
+        self.blocking_regions.clear();
+        self.overlay_scope = None;
 
         // Don't clear active_widget here - let widgets check for clicks first
         // The active_widget will be cleared in end_frame() after click detection
@@ -232,22 +242,42 @@ impl InteractionManager {
         self.active_widget.is_some()
     }
 
-    /// Register a region that swallows mouse input for all widgets outside
-    /// the overlay scope (used by dropdown menus and popups). Cleared each frame.
-    pub fn push_blocking_rect(&mut self, rect: Rect) {
-        self.blocking_rects.push(rect);
+    /// Register a region that swallows mouse input, claimed by an overlay on
+    /// `layer` (a dropdown on Floating, a modal's scrim on Modal). Widgets
+    /// outside any overlay scope are inert under it; widgets inside a scope
+    /// are inert under it only when their scope's layer is lower. Cleared
+    /// each frame.
+    pub fn push_blocking_rect(&mut self, rect: Rect, layer: UiLayer) {
+        self.blocking_regions.push(BlockingRegion { rect, layer });
     }
 
-    /// Set whether subsequent interact() calls belong to an overlay and are
-    /// therefore exempt from blocking rects.
-    pub fn set_overlay_scope(&mut self, overlay: bool) {
-        self.overlay_scope = overlay;
+    /// Set the overlay scope subsequent interact() calls belong to: the
+    /// layer of the open overlay, or `None` outside any overlay.
+    pub fn set_overlay_scope(&mut self, scope: Option<UiLayer>) {
+        self.overlay_scope = scope;
     }
 
-    /// Check if mouse input at the given position is swallowed by a blocking
-    /// region (an open dropdown or popup).
+    /// Check if mouse input at the given position is swallowed by any
+    /// blocking region — the question a raw-input consumer (viewport
+    /// picking) asks, which lives outside every scope.
     pub fn is_blocked_at(&self, pos: Vec2) -> bool {
-        self.blocking_rects.iter().any(|r| r.contains(pos))
+        self.is_blocked_for_scope(None, pos)
+    }
+
+    /// Whether a widget in `scope` is inert at `pos`: some region contains
+    /// the point, and the widget is outside every scope or the region came
+    /// from a higher layer. A scope on its own layer or above a region is
+    /// exempt — a dropdown hanging over the toolbar strip stays live — but
+    /// a modal's scrim reaches every scope below it, or a Play button drawn
+    /// after the dialog would change the session while the dialog still asks.
+    fn is_blocked_for_scope(&self, scope: Option<UiLayer>, pos: Vec2) -> bool {
+        self.blocking_regions.iter().any(|region| {
+            region.rect.contains(pos)
+                && match scope {
+                    None => true,
+                    Some(scope_layer) => region.layer > scope_layer,
+                }
+        })
     }
 
     /// Set keyboard focus to a widget.
@@ -284,11 +314,10 @@ impl InteractionManager {
             };
         }
 
-        // Widgets outside an overlay are inert while the mouse is over a
-        // blocking region (open dropdown/popup): no hover, no click, no
-        // activation. An already-active widget keeps its slot — end_frame
-        // clears it on mouse release.
-        if !self.overlay_scope && self.is_blocked_at(self.input.mouse_pos) {
+        // A widget under a blocking region it is not exempt from is inert:
+        // no hover, no click, no activation. An already-active widget keeps
+        // its slot — end_frame clears it on mouse release.
+        if self.is_blocked_for_scope(self.overlay_scope, self.input.mouse_pos) {
             return InteractionResult::default();
         }
 

@@ -6,6 +6,10 @@
 /// Standard padding inside panels and containers
 pub const PADDING: f32 = 8.0;
 
+/// Height of the scene view's toolbar strip: the band at the top of the
+/// scene panel that holds the tools and the play controls.
+pub const TOOLBAR_STRIP_HEIGHT: f32 = 40.0;
+
 /// Panel header height
 pub const HEADER_HEIGHT: f32 = 24.0;
 
@@ -24,6 +28,7 @@ pub const DEFAULT_PANEL_WIDTH: f32 = 250.0;
 // Compile-time sanity checks on layout constants.
 const _: () = {
     assert!(PADDING > 0.0);
+    assert!(TOOLBAR_STRIP_HEIGHT > HEADER_HEIGHT);
     assert!(HEADER_HEIGHT > 0.0);
     assert!(LINE_HEIGHT > 0.0);
     assert!(MIN_PANEL_SIZE > 0.0);

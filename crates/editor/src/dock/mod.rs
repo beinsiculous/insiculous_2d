@@ -7,7 +7,16 @@
 
 use ui::{Rect, WidgetId};
 
-use crate::layout::{DEFAULT_PANEL_WIDTH, HEADER_HEIGHT, MIN_PANEL_SIZE, RESIZE_HANDLE_SIZE};
+use crate::layout::{DEFAULT_PANEL_WIDTH, HEADER_HEIGHT, MIN_PANEL_SIZE, PADDING, RESIZE_HANDLE_SIZE};
+
+/// The narrowest centre the dock will lay out. Below it the side panels stop
+/// taking an edge allocation (see [`DockArea::layout`]): the centre holds the
+/// toolbar strip, and a strip narrower than its own minimum could not show
+/// the play controls at all.
+pub const MIN_CENTER_WIDTH: f32 = crate::toolbar_strip::TOOLBAR_STRIP_MIN_WIDTH;
+
+/// Length of a narrow-mode header tab along the edge it sits on.
+const NARROW_TAB_LENGTH: f32 = 96.0;
 
 mod render;
 
@@ -151,6 +160,14 @@ impl DockPanel {
         if self.collapsed && self.is_collapsible() {
             return Rect::default();
         }
+        self.expanded_content_bounds()
+    }
+
+    /// The content bounds the panel has when shown expanded, whatever its
+    /// collapse flag says. The narrow-mode overlay renders with these: the
+    /// flag is a desktop-layout preference that the preferences autosave
+    /// persists, so opening a collapsed panel as an overlay must not clear it.
+    pub fn expanded_content_bounds(&self) -> Rect {
         Rect::new(
             self.bounds.x,
             self.bounds.y + HEADER_HEIGHT,
@@ -169,6 +186,12 @@ pub struct DockArea {
     bounds: Rect,
     /// Resize handle size
     resize_handle_size: f32,
+    /// Whether the last layout went narrow: the side panels left the edge
+    /// allocation because the centre would have fallen below
+    /// [`MIN_CENTER_WIDTH`].
+    narrow: bool,
+    /// The one side panel shown as an overlay over the viewport while narrow.
+    narrow_overlay: Option<PanelId>,
 }
 
 impl Default for DockArea {
@@ -184,6 +207,8 @@ impl DockArea {
             panels: Vec::new(),
             bounds: Rect::default(),
             resize_handle_size: RESIZE_HANDLE_SIZE,
+            narrow: false,
+            narrow_overlay: None,
         }
     }
 
@@ -253,16 +278,118 @@ impl DockArea {
         }
     }
 
+    /// Whether the dock is in narrow mode: the side panels are off the edge
+    /// allocation and reachable one at a time as an overlay.
+    pub fn is_narrow(&self) -> bool {
+        self.narrow
+    }
+
+    /// The side panel currently shown as a narrow-mode overlay, if any. Its
+    /// chrome and its content belong on the floating band, above the
+    /// viewport it covers.
+    pub fn narrow_overlay(&self) -> Option<PanelId> {
+        self.narrow.then_some(self.narrow_overlay).flatten()
+    }
+
+    /// Show `id` as the narrow-mode overlay, closing whichever panel was
+    /// open — two overlays at once would leave no viewport between them.
+    /// Opening the panel that is already open closes it.
+    pub fn open_narrow_overlay(&mut self, id: PanelId) {
+        self.narrow_overlay = (self.narrow_overlay != Some(id)).then_some(id);
+        self.layout();
+    }
+
+    /// Close the narrow-mode overlay, leaving the tabs at the edges.
+    pub fn close_narrow_overlay(&mut self) {
+        self.narrow_overlay = None;
+        self.layout();
+    }
+
+    /// A side panel's header tab while narrow: the edge-anchored strip that
+    /// opens it, below the centre's toolbar strip so the play controls stay
+    /// clickable.
+    fn narrow_tab_bounds(panel: &DockPanel, centre: Rect) -> Rect {
+        let y = Self::narrow_top(centre) + PADDING;
+        let x = match panel.position {
+            DockPosition::Right => centre.right() - HEADER_HEIGHT,
+            _ => centre.x,
+        };
+        Rect::new(x, y, HEADER_HEIGHT, NARROW_TAB_LENGTH)
+    }
+
+    /// A side panel's bounds while it is the narrow-mode overlay: its own
+    /// width at its edge, from the centre's toolbar strip down to the
+    /// DOCK's bottom — over a bottom panel, because a short window with the
+    /// assets panel up leaves the centre a few rows tall and a field has to
+    /// be editable there — never wider than the centre.
+    fn narrow_overlay_bounds(panel: &DockPanel, centre: Rect, dock_bottom: f32) -> Rect {
+        let width = panel.size.min(centre.width);
+        let x = match panel.position {
+            DockPosition::Right => centre.right() - width,
+            _ => centre.x,
+        };
+        let top = Self::narrow_top(centre);
+        Rect::new(x, top, width, (dock_bottom - top).max(0.0))
+    }
+
+    /// Where a narrow-mode panel may start: the bottom of the centre panel's
+    /// toolbar strip. The centre has a header like every panel, and the strip
+    /// is the top of the content below it — measuring from the dock's own top
+    /// put the tabs and the overlay over the play controls.
+    fn narrow_top(centre: Rect) -> f32 {
+        let centre_content = Rect::new(
+            centre.x,
+            centre.y + HEADER_HEIGHT,
+            centre.width,
+            (centre.height - HEADER_HEIGHT).max(0.0),
+        );
+        crate::toolbar_strip::split(centre_content).0.bottom()
+    }
+
+    /// Whether `position` is a side (left/right) edge — the panels narrow
+    /// mode moves off the edge allocation.
+    fn is_side(position: DockPosition) -> bool {
+        matches!(position, DockPosition::Left | DockPosition::Right)
+    }
+
+    /// Whether the centre would fall below [`MIN_CENTER_WIDTH`] once the
+    /// visible side panels have taken their width.
+    fn would_squeeze_the_center(&self) -> bool {
+        let side_width: f32 = self
+            .panels
+            .iter()
+            .filter(|panel| panel.visible && Self::is_side(panel.position))
+            .map(DockPanel::effective_size)
+            .sum();
+        self.bounds.width - side_width < MIN_CENTER_WIDTH
+    }
+
     /// Update panel layouts based on current dock positions.
+    ///
+    /// Below [`MIN_CENTER_WIDTH`] of centre the dock enters **narrow mode**:
+    /// the side panels leave the edge allocation (the centre takes the whole
+    /// width) and one of them at a time is shown as an overlay over the
+    /// viewport, opened from its header tab at the edge. Collapsing them
+    /// instead would thrash — an expanded panel violates the minimum again
+    /// and would collapse on the next frame, so the field a visitor came to
+    /// edit could never be reached.
     pub fn layout(&mut self) {
+        self.narrow = self.would_squeeze_the_center();
+        if !self.narrow {
+            self.narrow_overlay = None;
+        }
         let mut remaining = self.bounds;
 
         // First pass: allocate space for edge-docked panels
-        for panel in &mut self.panels {
-            if !panel.visible {
+        for index in 0..self.panels.len() {
+            if !self.panels[index].visible {
+                continue;
+            }
+            if self.narrow && Self::is_side(self.panels[index].position) {
                 continue;
             }
 
+            let panel = &mut self.panels[index];
             let size = panel.effective_size();
             match panel.position {
                 DockPosition::Left => {
@@ -311,6 +438,23 @@ impl DockArea {
 
             if panel.position == DockPosition::Center {
                 panel.bounds = remaining;
+            }
+        }
+
+        // The narrow side panels sit against the centre they overlay, so they
+        // are placed once the centre is known.
+        if self.narrow {
+            for index in 0..self.panels.len() {
+                let panel = &self.panels[index];
+                if !panel.visible || !Self::is_side(panel.position) {
+                    continue;
+                }
+                let bounds = if self.narrow_overlay == Some(panel.id) {
+                    Self::narrow_overlay_bounds(panel, remaining, self.bounds.bottom())
+                } else {
+                    Self::narrow_tab_bounds(panel, remaining)
+                };
+                self.panels[index].bounds = bounds;
             }
         }
     }

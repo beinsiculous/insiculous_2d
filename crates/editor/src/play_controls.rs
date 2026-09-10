@@ -22,13 +22,19 @@ pub enum PlayControlAction {
     ToggleCameraFollow,
 }
 
-/// Play control widget rendered to the right of the tool toolbar.
+/// Play control widget rendered in the scene view's toolbar strip.
+///
+/// The strip places it — at its centre where there is room, from the right
+/// edge where there is not — and it reports the width it needs so the strip
+/// can lay the tool group out around it.
 #[derive(Debug, Clone)]
 pub struct PlayControls {
-    /// Position (set each frame based on toolbar bounds).
+    /// Position of the first button (set each frame by the strip layout).
     pub position: Vec2,
-    /// Button size (matches toolbar button size).
+    /// Width of a plain button; the wider labels add to it.
     pub button_size: f32,
+    /// Height of every button — the compact strip button.
+    pub height: f32,
     /// Spacing between buttons.
     pub spacing: f32,
 }
@@ -44,10 +50,23 @@ impl PlayControls {
     pub fn new() -> Self {
         Self {
             position: Vec2::ZERO,
-            button_size: 40.0,
+            button_size: 48.0,
+            height: 30.0,
             spacing: 4.0,
         }
     }
+
+    /// Width the separator and the gap to the tool group occupy left of
+    /// [`position`](Self::position). Part of the group's footprint, so the
+    /// strip keeps it clear.
+    pub const LEAD_WIDTH: f32 = 9.0;
+
+    /// Content width of the widest state (`Paused`: Resume, Stop, Follow) at
+    /// the default sizing — the width the strip's minimum is built from.
+    ///
+    /// Held in step with [`content_width`](Self::content_width) by
+    /// `test_the_widest_state_is_the_constant_the_strip_budgets_for`.
+    pub const WIDEST_CONTENT_WIDTH: f32 = 176.0;
 
     /// Width of the first button in the given state ("Resume" needs extra
     /// room for its longer label). Shared by `render` and `chrome_bounds` so
@@ -56,6 +75,16 @@ impl PlayControls {
         match state {
             EditorPlayState::Paused => self.button_size + 10.0,
             _ => self.button_size,
+        }
+    }
+
+    /// Width from [`position`](Self::position) to the right edge of the last
+    /// button in `state` — what the strip must leave clear to its right.
+    pub fn content_width(&self, state: EditorPlayState) -> f32 {
+        if Self::has_stop_button(state) {
+            self.follow_x(state) + self.follow_width() - self.position.x
+        } else {
+            self.first_button_width(state)
         }
     }
 
@@ -83,13 +112,9 @@ impl PlayControls {
     /// the rightmost button. Everything inside consumes mouse gestures so
     /// clicks on control chrome never fall through to viewport picking.
     pub fn chrome_bounds(&self, state: EditorPlayState) -> Rect {
-        let right = if Self::has_stop_button(state) {
-            self.follow_x(state) + self.follow_width()
-        } else {
-            self.position.x + self.first_button_width(state)
-        };
-        let left = self.position.x - self.spacing * 2.0 - 1.0; // covers the separator line
-        Rect::new(left, self.position.y, right - left, self.button_size)
+        let right = self.position.x + self.content_width(state);
+        let left = self.position.x - Self::LEAD_WIDTH; // covers the separator line
+        Rect::new(left, self.position.y, right - left, self.height)
     }
 
     /// Render play controls and return the clicked action, if any.
@@ -116,39 +141,39 @@ impl PlayControls {
         let sep_x = x - self.spacing * 2.0;
         ui.line(
             Vec2::new(sep_x, y + 4.0),
-            Vec2::new(sep_x, y + self.button_size - 4.0),
+            Vec2::new(sep_x, y + self.height - 4.0),
             theme.separator,
             1.0,
         );
 
         match state {
             EditorPlayState::Editing => {
-                let button = Rect::new(x, y, self.first_button_width(state), self.button_size);
+                let button = Rect::new(x, y, self.first_button_width(state), self.height);
                 ui.rect_rounded(button, theme.play_button_bg, 4.0);
                 if ui.button("play_ctrl_play", "Play", button) {
                     action = Some(PlayControlAction::Play);
                 }
             }
             EditorPlayState::Playing => {
-                let pause_btn = Rect::new(x, y, self.first_button_width(state), self.button_size);
+                let pause_btn = Rect::new(x, y, self.first_button_width(state), self.height);
                 if ui.button("play_ctrl_pause", "Pause", pause_btn) {
                     action = Some(PlayControlAction::Pause);
                 }
 
-                let stop_btn = Rect::new(self.stop_x(state), y, self.button_size, self.button_size);
+                let stop_btn = Rect::new(self.stop_x(state), y, self.button_size, self.height);
                 ui.rect_rounded(stop_btn, theme.stop_button_bg, 4.0);
                 if ui.button("play_ctrl_stop", "Stop", stop_btn) {
                     action = Some(PlayControlAction::Stop);
                 }
             }
             EditorPlayState::Paused => {
-                let resume_btn = Rect::new(x, y, self.first_button_width(state), self.button_size);
+                let resume_btn = Rect::new(x, y, self.first_button_width(state), self.height);
                 ui.rect_rounded(resume_btn, theme.play_button_bg, 4.0);
                 if ui.button("play_ctrl_resume", "Resume", resume_btn) {
                     action = Some(PlayControlAction::Play);
                 }
 
-                let stop_btn = Rect::new(self.stop_x(state), y, self.button_size, self.button_size);
+                let stop_btn = Rect::new(self.stop_x(state), y, self.button_size, self.height);
                 ui.rect_rounded(stop_btn, theme.stop_button_bg, 4.0);
                 if ui.button("play_ctrl_stop2", "Stop", stop_btn) {
                     action = Some(PlayControlAction::Stop);
@@ -160,7 +185,7 @@ impl PlayControls {
         // while the viewport mirrors the game camera; plain while free.
         if Self::has_stop_button(state) {
             let follow_btn =
-                Rect::new(self.follow_x(state), y, self.follow_width(), self.button_size);
+                Rect::new(self.follow_x(state), y, self.follow_width(), self.height);
             if camera_follow {
                 ui.rect_rounded(follow_btn, theme.play_button_bg, 4.0);
             }
@@ -185,6 +210,28 @@ mod tests {
 
     const ORIGIN: Vec2 = Vec2::new(300.0, 20.0);
 
+    /// The strip budgets for the play controls with two constants rather
+    /// than a live widget (its minimum width is a `const`). Both must stay
+    /// true of the real layout, or the strip reserves the wrong room and the
+    /// controls it exists to protect clip.
+    #[test]
+    fn test_the_widest_state_is_the_constant_the_strip_budgets_for() {
+        let controls = controls();
+        let widest = [EditorPlayState::Editing, EditorPlayState::Playing, EditorPlayState::Paused]
+            .into_iter()
+            .map(|state| controls.content_width(state))
+            .fold(0.0_f32, f32::max);
+
+        assert_eq!(widest, PlayControls::WIDEST_CONTENT_WIDTH);
+        assert_eq!(controls.content_width(EditorPlayState::Paused), widest, "Paused is the widest");
+        let chrome = controls.chrome_bounds(EditorPlayState::Paused);
+        assert_eq!(
+            ORIGIN.x - chrome.x,
+            PlayControls::LEAD_WIDTH,
+            "the separator's lead is what the strip keeps clear"
+        );
+    }
+
     fn controls() -> PlayControls {
         let mut controls = PlayControls::new();
         controls.position = ORIGIN;
@@ -204,7 +251,7 @@ mod tests {
         let mut input = input::InputHandler::new();
 
         // Press on the separator line left of the buttons — chrome, no button.
-        let separator = Vec2::new(ORIGIN.x - 8.0, ORIGIN.y + 20.0);
+        let separator = Vec2::new(ORIGIN.x - 8.0, ORIGIN.y + controls.height * 0.5);
         let action = press_at(&mut ui, &mut input, separator, |ui| {
             controls.render(ui, EditorPlayState::Editing, true, &theme)
         });
@@ -214,14 +261,21 @@ mod tests {
 
         // Editing: [Play] only — the viewport right of Play stays pickable.
         let editing = controls.chrome_bounds(EditorPlayState::Editing);
+        let button_middle = ORIGIN.y + controls.height * 0.5;
         assert!(editing.contains(separator), "the separator is chrome");
-        assert!(editing.contains(Vec2::new(339.0, 40.0)), "the Play button is chrome");
-        assert!(!editing.contains(Vec2::new(360.0, 40.0)), "right of Play is the viewport");
+        assert!(editing.contains(Vec2::new(ORIGIN.x + 1.0, button_middle)), "the Play button is chrome");
+        assert!(
+            !editing.contains(Vec2::new(editing.right() + 1.0, button_middle)),
+            "right of Play is the viewport"
+        );
 
         // Paused is the widest layout: [Resume +10] [Stop] [Follow].
         let paused = controls.chrome_bounds(EditorPlayState::Paused);
-        let stop_center = Vec2::new(ORIGIN.x + 50.0 + 4.0 + 20.0, 40.0);
-        let follow_center = Vec2::new(ORIGIN.x + 50.0 + 4.0 + 40.0 + 4.0 + 27.0, 40.0);
+        let stop_center = Vec2::new(controls.stop_x(EditorPlayState::Paused) + 1.0, button_middle);
+        let follow_center = Vec2::new(
+            controls.follow_x(EditorPlayState::Paused) + controls.follow_width() * 0.5,
+            button_middle,
+        );
         assert!(paused.contains(stop_center), "Stop is chrome");
         assert!(paused.contains(follow_center), "the Follow toggle is chrome");
         assert!(!editing.contains(follow_center), "no Follow toggle outside a play session");
@@ -229,7 +283,7 @@ mod tests {
         // Clicking Follow while Playing returns the toggle action on release.
         let follow_center = Vec2::new(
             controls.follow_x(EditorPlayState::Playing) + controls.follow_width() * 0.5,
-            ORIGIN.y + controls.button_size * 0.5,
+            ORIGIN.y + controls.height * 0.5,
         );
         let pressed = press_at(&mut ui, &mut input, follow_center, |ui| {
             controls.render(ui, EditorPlayState::Playing, true, &theme)
