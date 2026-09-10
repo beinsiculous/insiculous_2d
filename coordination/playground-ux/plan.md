@@ -1592,6 +1592,132 @@ disagree, the correction wins:
 - Gates: standard engine + wasm. Split into two handoffs if the diff passes a few thousand
   lines.
 
+**Re-verified against the tree, 2026-09-10** (`insiculous_2d` at `86834c0` on `jesse`, pushed;
+revised after review 17 — kimi 5, codex 2 — see `rebuttal-17.md`). Thirteen corrections;
+where a bullet and a correction disagree, the correction wins:
+
+1. **The renderer split lives in `crates/editor_integration`**, not `crates/editor`:
+   `panel_renderer/inspector.rs:107-124` picks `render_inspector_readonly` (→
+   `inspect_all_components`, `:143`) while Playing and `render_inspector_editable` (→
+   `edit_all_components`, `:251`) otherwise. The frame `edit_all_components` takes is
+   `InspectorFrame<'a>` (`crates/editor/src/editable_inspector.rs:24`: `ui`, `inspect_style`,
+   `field_style`, `x`, `width`, `section_gap`); the flag is a `read_only: bool` field there
+   (constructed at `panel_renderer/inspector.rs:240-247` and in `stored_component/tests.rs`),
+   and each registry arm (`stored_component/mod.rs:40-112`) hands it to
+   `EditableInspector::new` through a builder like `with_scroll_target`.
+2. **No `crates/ui` change.** `float_input` (`ui/src/context/text_input.rs:119-127`) and the
+   `edit_field` path `text_input` delegates to (`ui/src/context/edit_field.rs:79`) call
+   `interact(id, bounds, true)` with no flag; `WidgetState::Disabled` and `interact(id,
+   bounds, enabled)` serve buttons only (`context/widgets.rs:39-60`). A disabled field is the
+   row `EditableInspector::u32` and `::string` already draw (`editable_inspector.rs:395-410`:
+   label plus formatted value, no widget): with `read_only` set, every field method — `f32`,
+   `f32_hard`, `angle`, `bool`, `vec2`, `string_edit`, `string_edit_colored`, `cycle`,
+   `color`, `texture`, and **`action_button` (`:411`), which returns `false`** — draws that row
+   in `text_muted` (`theme/mod.rs:48`; `text_color_disabled` is already that token, `:329`)
+   and returns `Unchanged` before any widget id exists, so nothing can take focus;
+   `header_with_remove` draws `header`, and the removable arm skips its direct
+   `remove_button` call (`mod.rs:79`). **Every read-only row advances by the height its
+   editable form would** — `row_height` for every row but the colour row, which advances
+   `color_block_height` (`:517`) — so the content height is identical in both states.
+   `action_button` is what `edit_scripts` is built on (`script_editor.rs:52-89,139,151,159,257`:
+   Add Script, the picker's entries, Remove script, Add param, Open source), so without it
+   the flag leaves a live mutation path into `Scripts`. `editable_inspector.rs` is at 552:
+   if the flag pushes it past 600, the read-only row helpers move to a new `read_only_rows.rs`.
+3. **`inspect_all_components` is deleted**, not kept for the dynamic tier: its only caller is
+   the Play path, and `edit_all_components` already renders that tier through
+   `render_dynamic_edit_blocks` (`stored_component/dynamic.rs:200`). The re-export at
+   `crates/editor/src/lib.rs:140`, the doc line at `panel_renderer/inspector.rs:18` and the
+   doc line at `stored_component/mod.rs:420` ("the data half of `inspect_all_components`")
+   go with it; `inspect_component` (`crates/editor/src/inspector.rs`) stays — the readonly arm
+   (`mod.rs:107`) and the dynamic tier use it. The grep goes in the report.
+4. **The "every other entry point" list, against the tree.** The add-component button
+   (`add_component_popup.rs:89-96`, called at `panel_renderer/inspector.rs:286`) **stays in
+   Play, drawn disabled** through `button_styled(…, enabled = !playing)`, so the section's
+   height is the same in both states and a click opens nothing; the test at
+   `inspector.rs:346-361` ("must not offer") becomes "present, and a click while Playing
+   leaves `is_add_component_popup_open()` false". The Name field is `edit_name`
+   (`component_editors.rs:87`), a builtin arm — the flag covers it; the script picker
+   (`extras.script_picker_open`, `script_editor.rs:52-89`) is gated by the flag too. **F2 is
+   already unreachable while Playing**: `shortcuts.rs:89-92` forwards every key to the game
+   before `RenameSelected` is matched. **Two paths enter Playing**: `start_play_session`
+   (`play_session.rs:31-40,70`) and `resume_from_pause` (`:117-125`), and both already close
+   the add-component popup; they share one `enter_playing` step that closes the
+   add-component popup, the script picker (`editor.script_picker_open`), the colour editor
+   and an open hierarchy rename (`HierarchyPanel` keeps the row at `hierarchy/mod.rs:77`;
+   `begin_rename` at `:207` — add the cancel beside it). A rename or a popup opened while
+   Paused survives resume otherwise: the rename field keeps focus and eats the game's keys
+   (`shortcuts.rs:50-54`), the popup's sliders write into the live world. Test: pause → open
+   the popup and a rename → resume → both closed. **No context menu exists** (that is
+   #137); the clause is dropped. The Edit menu's verbs are guarded at `menu_actions.rs:45`
+   and the asset browser's assign at `asset_browser.rs:215`; the report shows
+   `grep -rn "is_playing" crates/editor_integration/src/panel_renderer crates/editor_integration/src/editor_game`.
+5. **The live marker** goes on the heading's detail line: `Selection::inspector_heading`
+   (`selection.rs:119-127`) returns `(name, detail)`; while Playing the caller
+   (`panel_renderer/inspector.rs:70-75`) appends " · live" to the detail. Extend the heading
+   test where `inspector_heading` is already tested (grep the tests for it).
+6. **The scroll offset** resets only when the entity changes (`inspector.rs:41-44`), so it did
+   survive Play; what #129 saw was the readonly path's different row heights, and a shorter
+   content height also clamps the offset in `ScrollState::end_frame`. Corrections 2 and 4
+   make the heights equal by construction; the test pins `end_frame`'s content height equal
+   in both states for an entity with a colour field, and an offset near the maximum
+   surviving Editing → Play → Editing.
+7. **The collapsed set** is `collapsed_components: Vec<String>` (registry type names,
+   `stringify!($name)`) on `EditorPreferences` (`editor_preferences.rs:24-45`) with
+   `#[serde(default)]` — the convention at `:35-45`; `capture_preferences`
+   (`editor_game/preferences.rs:40`) writes it and its apply side reads it; the struct
+   literals at `open_source.rs:98,118` and in the preferences tests gain the field. Extend
+   `test_legacy_prefs_without_panels_or_grid_fields_still_load` (`:201`) for the old-format
+   load and `test_prefs_round_trip_through_json_including_the_panel_layout` (`:142`) for the
+   round trip. The live state does **not** go on `EditorContext` directly — `context/mod.rs`
+   is at 569 — but in a new `crates/editor/src/inspector_state.rs` (the collapsed set, the
+   advanced-open set, the colour editor's target) held as one field on the context.
+8. **Collapse happens inside `EditableInspector`, not by skipping the editor fn**: thirteen of
+   the nineteen arms draw their header inside the editor fn (`inspector.header("Sprite")`,
+   `component_editors.rs:157`), so skipping the fn would draw no header and no toggle. The
+   arm sets `collapsed` on the inspector from the state (it knows the type name);
+   `header` (`editable_inspector.rs:251`) and `header_with_remove` (`:262`) always draw, become
+   the toggle (an `interact` on the header row; ▸/▾ in the header font), and the field
+   methods, `advanced` and `action_button` draw nothing and advance nothing while collapsed
+   — the same gate as `read_only`. The readonly arm (`mod.rs:99`) and the dynamic tier
+   (`dynamic.rs:196-200`) collapse the same way, and the arm's direct `remove_button`
+   (`mod.rs:79`) still draws on a collapsed header. Extend the `edit_all_components` test at
+   `stored_component/tests.rs:112`: a collapsed edit-arm component still renders its header
+   row and none of its field rows.
+9. **`advanced` is not a registry attribute** — the registry (`mod.rs:130-131`) lists
+   components, and fields are the calls inside each editor fn (`component_editors.rs:126-340`).
+   The disclosure is an `EditableInspector` method, `advanced(|inspector| { … })`, drawing an
+   "Advanced" row and skipping the closure unless open; the open set lives in
+   `inspector_state`, not persisted. The candidates, by file: `edit_rigid_body` — Gravity
+   Scale, Linear Damping, Angular Damping, CCD Enabled (`:200-210`); `edit_sprite` — Depth
+   (`:166`; `tex_region` has no row today and gains none); `edit_collider` — Friction,
+   Restitution, Groups, Filter (`:292-303`); `edit_audio_source` — the three spatial fields
+   (`:333-335`). The `EditResult::assign` chains stay as they are inside the closure.
+10. **The colour editor**: the swatch (`composite_rows.rs:99-106`, a `rect_rounded`) gains an
+    `interact` on its bounds and opens the popup on click; the popup is a new
+    `crates/editor_integration/src/panel_renderer/color_editor_popup.rs` modelled on
+    `add_component_popup.rs:63-125` (window-anchored, flipped above when it would overflow,
+    `ui.begin_overlay(bounds)` — the input-blocking overlay at `:121`, the same Floating layer
+    `panel_renderer/mod.rs:25` names). Contents: a larger swatch, four `float_input` sliders
+    with the channel opts at `composite_rows.rs:136-137`, a hex `text_input` parsed on commit
+    (`#rrggbb` or `#rrggbbaa`). Its target `(entity, component index, field index)` sits in
+    `inspector_state`; it closes on Escape, a click outside, an entity change and on entering
+    Playing through the shared step of correction 4. Writes go through the same
+    `EditResult::Changed(Vec4)` the row returns, so `apply_component_edit` →
+    `SetComponentCommand` with hint `"color"` merges the gesture (`set_commands.rs:20-37,85`)
+    and the frame's `take_edit_commit` seal (`inspector.rs:189-193`) ends it — "one undo entry
+    per gesture" is that seal; the test asserts one history entry after a scrub and two after
+    a second gesture.
+11. **Files near the ceiling**: `asset_browser.rs` 580 (untouched), `context/mod.rs` 569,
+    `editable_inspector.rs` 552, `hierarchy/mod.rs` 536, `stored_component/mod.rs` 508,
+    `panel_renderer/mod.rs` 500. Room: `component_editors.rs` 398, `inspector.rs`
+    (integration) 364, `add_component_popup.rs` 242, `composite_rows.rs` 171.
+12. **Gates**: the standard engine set and the wasm gate (`crates/playground` depends on the
+    editor crates, `check_wasm.sh:7`); no games gate — no public item of `engine_core`, `ecs`,
+    `physics`, `input`, `common` or `renderer` changes, and `crates/ui` is not touched.
+13. **Two halves, one handoff.** The #129 half (corrections 1–6) lands first; the executor
+    reports its `git diff --cached --stat` tail at that point and stops there, marking the
+    report INCOMPLETE with the #133 half untouched, only if the diff has passed 3000 lines.
+
 ## Batch 10 — engine: quieter overlays, View toggles, tooltips, resizing, Reset Layout (2d#132, 2d#124)
 
 - **2d#132.** Theme tokens: `grid_primary`/`grid_secondary` and the axes dimmed,
