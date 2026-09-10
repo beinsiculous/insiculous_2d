@@ -79,7 +79,7 @@ Engine status, test counts, and per-system capability detail live in
 | H | WASM port (engine + all 6 games on wasm32/WebGPU) | ☑ COMPLETE Aug 27 2026 | Port recipe + web footguns: `log_archive.md`, crate CLAUDE.mds (renderer/engine_core), memory |
 | I | Deployment (site live at beinsiculous.com, all 6 games playable) | I1/I2 ☑ Aug 19 2026; rest on board | #15 (itch.io), #16 (Steam checklist), #80 (paid-path purge gate), #13 (WebGL2 review). Site: `../insiculous_web/` (Mily's repo `milyramic`, Astro 5 on Cloudflare Workers; drop-in convention `public/games/<slug>/v1/`) |
 | J | Insiculous Arcade — marketplace compilation | OUTLINE ONLY (below) | This file § Phase J |
-| K | Conductor — adaptive MIDI music | On board (K1 spike gates all) | #60–#65; architecture: `review/plan-conductor.md`, memory |
+| K | Conductor — shared MIDI parts, custom instruments and in-editor composition | On board (K1 spike gates all) | [Conductor milestone](https://github.com/beinsiculous/insiculous_2d/milestone/2): #60–#65, #140 (sample instruments), #141 (composer); the tickets carry the settled design and dependency order |
 | C/D | Games 7–20 | PAUSED until Phase G done (below) | This file § Paused phases |
 
 **Editor** work follows the Playground UX sprint (its own section below);
