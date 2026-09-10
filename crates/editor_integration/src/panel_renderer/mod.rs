@@ -395,6 +395,8 @@ mod drag_ghost;
 mod inspector;
 #[cfg(test)]
 mod inspector_tests;
+#[cfg(test)]
+mod color_editor_tests;
 pub mod script_catalog;
 use inspector::render_inspector;
 pub use script_catalog::build_script_catalog;
