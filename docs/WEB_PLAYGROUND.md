@@ -26,7 +26,7 @@ playground/<version>/
 
 Invocation of record, run from the engine root:
 ```sh
-scripts/build_wasm.sh crates/playground playground --kind playground --version v1 \
+scripts/build_wasm.sh crates/playground playground --kind playground --version v2 \
     --project examples=Examples=examples \
     --project pong=Pong=crates/playground/assets/projects/pong \
     --project game-template="Game Template"=../games/game-template \
@@ -42,7 +42,7 @@ Each entry carries:
 {
   "slug": "examples",
   "title": "Examples",
-  "bundle_version": "v1",
+  "bundle_version": "v2",
   "content_hash": "<sha256-hex>",
   "origin": "bundled"
 }
@@ -52,16 +52,16 @@ the project's `<dir>/assets`.
 
 ## The bundle contract
 
-`ASSET_BASE = "/playground/v1/assets"` and `BUNDLE_VERSION = "v1"` (`web_entry.rs`). The
+`ASSET_BASE = "/playground/v2/assets"` and `BUNDLE_VERSION = "v2"` (`web_entry.rs`). The
 version token appears in five places, listed in that file's header: the deployed directory
-`public/playground/v1/`, the asset URLs the engine fetches, `projects.json`'s
+`public/playground/v2/`, the asset URLs the engine fetches, `projects.json`'s
 `bundle_version`, the build script's output directory, and every `StoredFile`'s
 `bundle_version`. Bumping it is a coordinated change across all five.
 
 A project's root is computed, never stored: `{ASSET_BASE}/projects/<slug>` on the web,
 `<dir>/projects/<slug>` natively; its asset base is `{root}/assets`. Every file the engine
 reads or writes is keyed by that base-joined string (`common::vfs`'s canonical key), e.g.
-`/playground/v1/assets/projects/examples/assets/scenes/behavior_demo.scene.ron`. A relative
+`/playground/v2/assets/projects/examples/assets/scenes/behavior_demo.scene.ron`. A relative
 key never resolves; relative paths given to the editor or the API are joined to the open
 project's asset base first.
 
@@ -96,12 +96,12 @@ deploy separately.
 The invocations of record, from the engine root:
 
 ```sh
-scripts/build_wasm.sh ../games/pong pong --kind editor --version v1 --sync ../insiculous_web/public
-scripts/build_wasm.sh ../games/snake snake --kind editor --version v1 --sync ../insiculous_web/public
-scripts/build_wasm.sh ../games/breakout breakout --kind editor --version v1 --sync ../insiculous_web/public
-scripts/build_wasm.sh ../games/frogger frogger --kind editor --version v1 --sync ../insiculous_web/public
-scripts/build_wasm.sh ../games/asteroids asteroids --kind editor --version v1 --sync ../insiculous_web/public
-scripts/build_wasm.sh ../games/space_invaders invaders --kind editor --version v1 --sync ../insiculous_web/public
+scripts/build_wasm.sh ../games/pong pong --kind editor --version v2 --sync ../insiculous_web/public
+scripts/build_wasm.sh ../games/snake snake --kind editor --version v2 --sync ../insiculous_web/public
+scripts/build_wasm.sh ../games/breakout breakout --kind editor --version v2 --sync ../insiculous_web/public
+scripts/build_wasm.sh ../games/frogger frogger --kind editor --version v2 --sync ../insiculous_web/public
+scripts/build_wasm.sh ../games/asteroids asteroids --kind editor --version v2 --sync ../insiculous_web/public
+scripts/build_wasm.sh ../games/space_invaders invaders --kind editor --version v2 --sync ../insiculous_web/public
 ```
 
 (The site slug for `space_invaders` is `invaders`, as it is for its game bundle.)
