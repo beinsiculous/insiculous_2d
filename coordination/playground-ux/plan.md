@@ -1178,11 +1178,70 @@ site moves in one change: `PlaygroundEmbed`'s default `src`, the six `editor:` f
 paths and `postbuild-check.mjs`'s `PLAYGROUND_PROJECTS` constant, with the `v2` dirs in
 `public/` in the same diff.
 
-Files: new `src/pages/playground/preview.astro`, new `src/scripts/playground-preview.ts`,
-`src/scripts/playground-embed.ts`, `src/components/PlaygroundToolbar.astro`,
-`astro.config.mjs` (the sitemap filter), `scripts/postbuild-check.mjs` (the constant and
-its comment), `src/content/games/*.md` (the six `editor:` paths), `README.md`,
-`docs/roadmap.md`.
+Files, `insiculous_web`: new `src/pages/playground/preview.astro`, new
+`src/scripts/playground-preview.ts`, new `src/scripts/playground-preview-protocol.ts`, new
+`src/scripts/playground-preview-launch.ts` (the opener's launch and window lifetimes),
+`src/scripts/playground-embed.ts`, `src/components/PlaygroundEmbed.astro` (the blocked-popup
+alert), `src/components/PlaygroundToolbar.astro`, `astro.config.mjs` (the sitemap filter),
+`scripts/postbuild-check.mjs` (the constant and its comment), `src/content/games/*.md` (the
+six `editor:` paths), `README.md`, `docs/roadmap.md`, and the seven `public/playground/**/v2/`
+directories the builds sync. Files, `insiculous_2d`: `crates/playground/src/web_entry.rs`
+(the two constants and the header), `docs/WEB_PLAYGROUND.md` (the invocations and the
+contract's prose). Files, each of the six game repos: `src/web_entry.rs` (one constant).
+
+**Re-verified against the tree, 2026-09-10** (`insiculous_web` at `570eaab`, `insiculous_2d` at
+`11d3d27`, the six games clean on `jesse`; batch 4's exports are the engine's contract, at
+`docs/WEB_PLAYGROUND.md:189-215`). Six corrections, each folded into the bullets' meaning:
+
+1. **The v2 bump is source in eight repositories, not only `public/`.** `build_wasm.sh:106-123`
+   hard-fails unless the compiled-in base matches `--version`: the playground's
+   `crates/playground/src/web_entry.rs:30` (`ASSET_BASE`) and `:32` (`BUNDLE_VERSION`) with
+   the header's five lines (`:4-9`) that quote them; each game's `EDITOR_ASSET_BASE`
+   (`games/pong/src/web_entry.rs:48`, `snake:47`, `breakout:46`, `frogger:47`, `asteroids:47`,
+   `space_invaders:48`; their header comment is generic and needs nothing). `game-template`
+   is a *project source* of the playground bundle, not an editor bundle: its constants stay.
+   The docs that quote v1: `docs/WEB_PLAYGROUND.md:29` and `:99-104` (the invocations),
+   `:55-64` (the contract's prose), and `insiculous_web/README.md:154`. Each game is its own
+   repository on `jesse`: stage the one line there, do not commit; the planner commits each
+   (under a hundred lines, no review gate). A `Cargo.lock` a build touches is reported, not
+   staged. Bundle sizes to beat: v1 is 10.2 MiB (playground) and 9.8 MiB (pong), the gate
+   is 20 MiB. The bundles are tracked (`public/playground/v1` is 28 files in git), so the v2
+   dirs are staged; the reviewers' diff excludes `public/` (`git diff --cached -- . ':!public'`)
+   and the report carries `git diff --cached --stat -- public` on its own.
+2. **The preview page never receives `playground-ready`.** In preview mode `start()` returns
+   right after `announce_preview_mode()` (`web_entry.rs:62-71`); the event is dispatched only
+   inside `run_playground` (`:258`). So `await wasm.default()` **resolving is the ready
+   signal**: `playground-preview.ts` posts `preview-ready` right after it, and registers no
+   `playground-ready` listener.
+3. **`playground_snapshot(generation: u64)` takes a BigInt.** wasm-bindgen maps `u64` to a JS
+   `bigint`, so the call is `wasm.playground_snapshot(BigInt(generation))` with the page's own
+   counter kept as a number; type the export
+   `(generation: bigint) => Promise<{ sceneEntry: string; bytes: Uint8Array }>`.
+4. **There is no cancel export.** `finishLaunch`'s "cancels the pending request" is the page
+   dropping the envelope: every continuation checks the generation, and the engine's request
+   caps itself at 5 s (`bridge.rs:248`, "the editor did not answer — is its tab visible?").
+   A second Play ↗ inside that window after a closure is refused by the engine as another
+   generation pending; that rejection goes through `finishLaunch(failed)` and its text lands
+   on the banner — correct behaviour, not a defect to work around.
+5. **`playground_export_zip()` is already a Promise** (`bridge.rs:380`), and the site's handler
+   (`playground-embed.ts:354-363`) still treats it as bytes — against the v2 bundle it would
+   zip a Promise object. The `await` is part of this diff, and Export is disabled from the
+   click until it settles.
+6. **Placement.** `playground-embed.ts` is 489 lines; the opener's two lifetimes go into the
+   new `playground-preview-launch.ts`, wired from `wireControls` and given the wasm module,
+   the banner, `#play-button`, the blocked alert and the canvas (the exact export shape is the
+   executor's one reportable decision). `#play-button` already exists
+   (`PlaygroundToolbar.astro:555-560`, `disabled`, with a `title` this batch deletes) and
+   enables on `playground-ready` beside Export (`playground-embed.ts:267`). `#preview-blocked`
+   is static markup in `PlaygroundEmbed.astro`'s `.banner-region` (`:778-783`), `hidden`, with
+   `#preview-retry` inside. `AppLayout` already carries `noindex` (`AppLayout.astro:25`) and the
+   `heading` and `bar` slots; the sitemap filter is the regex at `astro.config.mjs:13`;
+   `postbuild-check.mjs:148-153` resolves every `data-wasm-src` verbatim (the reason the query
+   rides on the page URL), `:155` wants exactly one `<h1>`, `:171` checks duplicate ids per
+   file, and `PLAYGROUND_PROJECTS` is `:41-42`. `PlaygroundEmbed.astro:769` is the default
+   `src`; the six `editor:` paths are line 6 of each `src/content/games/<slug>.md`. The
+   preview page boots orphan check → `probeWebGpu()` → glue, so the audits, which load it with
+   no opener, see `#preview-orphan` and a hidden compatibility panel.
 
 - **`preview.astro`** (`AppLayout`, `noindex`, title "Game preview"): the bar slot with
   `<output id="preview-project" aria-live="polite">`, Pause (`aria-pressed`), Restart,
