@@ -1377,6 +1377,112 @@ contract's prose). Files, each of the six game repos: `src/web_entry.rs` (one co
   verify`; the playground bundle is re-synced at the sprint's current version so the
   renamed entities reach the site.
 
+**Re-verified against the tree, 2026-09-10** (`insiculous_2d` at `61ef805`, `insiculous_web` at
+`ce06776`, both on `jesse`; `v2` is **not deployed** — `origin/main` sits at `c1acf81`, before
+batch 5 — so the v2 directory may be re-synced). Twelve corrections, each folded into the
+bullets' meaning; where a bullet and a correction disagree, the correction wins:
+
+1. **The scene has no camera entity at all**, so "frames the scene on the player through the
+   scene's main camera" means adding one: `EntityData(name: Some("camera"), components:
+   [Transform2D(position: (0.0, 0.0)), Camera2D(is_main_camera: true)])` — the syntax is
+   `scene_data.rs:176-189` (zoom defaults to 1.0; `viewport_size` is render-managed and
+   ignored, `render_manager.rs:343-354`; `hello_world.scene.ron:152-166` is the worked example).
+   The player starts at the origin and the arena is 800×600 around it, so a static camera at
+   the origin frames the whole arena in the 1024×720 preview and on every native frame. What
+   a main camera changes in the editor: Play adopts its pose and zoom and re-arms follow
+   (`editor_game/play_session.rs:108-113`); without one, Play only resets zoom to 1.0. The
+   editor's viewport at open comes from the prefs, never the scene (`preferences.rs:28-29`;
+   `SceneData.editor` is not read at load), so the open view is unchanged. **No
+   `CameraFollow`**: the arena is smaller than the viewport, and a following camera would show
+   empty space past the walls.
+2. **The player needs no tag; add none.** `ChaseTagged` resolves its target by `EntityTag`
+   alone (`behavior_runner/mod.rs:283-295`) and the `Player` prefab carries none in the file,
+   but `update_player_top_down` tags its own entity `player` every frame
+   (`behavior_runner/handlers.rs:97`, applied at `mod.rs:217-220`; the serde default
+   `default_player_tag`), so the chasers already chase from the second frame, in the editor's
+   Play and in the preview alike. The first draft of this paragraph called that a defect;
+   `review-14.md` F1 refuted it. The scene's behaviours change nothing in this batch.
+3. **The five unnamed entities are the four walls and the centre obstacle**,
+   `behavior_demo.scene.ron:164-195`; the hierarchy shows them as `Sprite (Entity N)`
+   (`crates/editor/src/entity_names.rs:21-22`). The names are the bullet's: `wall_top`,
+   `wall_bottom`, `wall_left`, `wall_right`, `obstacle`. The header comment's list of what the
+   scene demonstrates gains the camera line. It stays the sorted-first scene: `behavior_demo`
+   sorts before `hello_world` (`SceneLoader::first_scene_in`, `scene_loader.rs:98-100`).
+4. **No test walks the directory today**; `crates/engine_core/tests/scene_loader_parse.rs:68-96`
+   (`bundled_example_scenes_parse_and_hello_world_follows_its_player`, file at 165 lines)
+   loads the two scenes by name. Extend that test rather than add a file: walk the directory
+   with `std::fs::read_dir` for `.ron` entries (a third scene is covered without a code
+   change), **sort the entries by file name before any positional assertion** — `read_dir`'s
+   order is the filesystem's, and the test's hello_world assertions key off `scenes[0]`
+   (`:80-94`) — or find each scene by its name; assert every `EntityData.name` is `Some` and
+   non-empty, and assert `behavior_demo` carries a `Camera2D { is_main_camera: true, .. }`. `tests/behavior_fixture.rs:119-133`, `hello_world_golden.rs`
+   and `common/src/vfs/tests.rs:239-253` read the scene's name or its path only — untouched.
+5. **Engine gates for this batch**: `cargo test --workspace` and both clippy runs as the ground
+   rules say; the comment-tag grep; `scripts/check_wasm.sh` is **not** required — no crate
+   source changes — and the rebuilt playground bundle is the wasm gate, as in batch 6. The
+   games gate does not apply (no public item changes). `editor_prefs.json` at the engine root
+   is modified by a local editor run and belongs to nobody: never stage it.
+6. **The re-sync is the invocation of record, unchanged**: `docs/WEB_PLAYGROUND.md:28-33` at
+   `--version v2` (it rebuilds the wasm and re-copies the three projects). Only
+   `public/playground/v2/` moves: the six game editor bundles carry their own game's assets,
+   not the examples project, and are not rebuilt. `projects.json`'s `content_hash` for
+   `examples` changes with the scene — that hash is how a stored copy is reported as differing
+   from the bundle (`playground/src/projects.rs:82`), and no visitor holds a v2 store because
+   v2 is not deployed. `git diff --cached --stat -- public` will show `projects.json`, the
+   scene file, and `game_bg.wasm`/`game.js` if the build is not byte-stable — the report
+   says which. Size to beat 10.2 MiB, gate 20 MiB; no version constant moves.
+7. **Site placement of the hint.** `/playground/` is `src/pages/playground.astro` (25 lines):
+   `AppLayout` with `PlaygroundToolbar` in the `bar` slot, then `PlaygroundHelp`, then
+   `PlaygroundEmbed`. `main.workspace` is a one-row grid (`AppLayout.astro:139-144`), so a
+   `<p>` slotted beside the embed would need a second row; the embed's `.head-region`
+   (`PlaygroundEmbed.astro:34-49`) is the auto row above the stage and already holds the
+   banners and the status line — "above the workspace" is that region, first. New
+   `src/components/PlaygroundHint.astro`, rendered first in `.head-region`: a `<p>` carrying
+   the settled copy and a `<button type="button">Dismiss</button>`, static markup present at
+   load, `hidden` toggled by its own script (the `AccessibilityControls.astro:37-40` and
+   `:66-69` pattern — `try`/`catch` around every storage access). Key
+   `beinsiculous.playground.hint`, beside `beinsiculous.playground.preview`
+   (`playground-preview-protocol.ts:15`). To keep a returning visitor from seeing the hint
+   flash before it hides, read the key before first paint with `<script is:inline>` (the
+   `AccessibilityBootScript.astro:8` pattern) — that script's shape is the executor's one
+   reportable decision. Dismiss hides the button that has focus, so it moves focus to `#main`
+   (`tabindex="-1"`, `AppLayout.astro:68`); no live region, nothing announced.
+   The game editor pages (`/playground/<slug>/`, `GameEmbed`) do **not** get the hint: its copy
+   names the Hierarchy's player and Play ↗, both the Web Playground's.
+8. **The two "check against the shipped shell" items hold; nothing to do.** The console is
+   behind the closed `<details id="dock">` "Scripts and console" (`PlaygroundEmbed.astro:65-66`)
+   and Help names it there (`PlaygroundHelp.astro:62-64`); the "layout only" copy sits beside
+   the select (`PlaygroundToolbar.astro:48`, `.bar-note`) and in Help § Rust games in the
+   editor (`:53-58`). The report records both as checked.
+9. **The game page paragraph.** `src/pages/games/[slug].astro` (170 lines) renders `<GameEmbed>`
+   at `:32-39` and `<article>` after it; the paragraph goes between them, conditional on
+   `game.data.editor` (schema `content.config.ts:28`; all six entries carry it at line 6),
+   the whole sentence inside the `<a>` to `/playground/<slug>/` so no word glues to
+   the tag, `.editor-link` styled as `.empty` is there (`:139-143`: `--text-dim`,
+   `--font-mono`, 0.9rem). The glued-tag and curly-apostrophe rules are enforced by
+   `postbuild-check.mjs:15-21`. The `/games/` list's "edit … on the playground →" button
+   (`GameRow.astro:24`) is a different link — the scripts project — and stays.
+10. **Docs**: web `docs/roadmap.md:138-139` says "the first run and the save status are what is
+    left" — after this batch the save status alone is; web `README.md` § The editor bundle
+    (`:143-205`) names the sessionStorage key at `:184-185` — the hint's localStorage key goes
+    beside it. No engine doc describes the demo's entities (`README.md:471` names the example
+    only); `docs/WEB_PLAYGROUND.md:64` quotes the scene's path, which does not change.
+11. **Site gates**: `npm run verify` under Node 24; the hint is present at load, so axe and
+    announce audit it on the static page and the screenshot gate checks it wraps at 320 and
+    390 px; the comment-tag grep over the touched site files. Touched-file sizes:
+    `PlaygroundEmbed.astro` 419, `games/[slug].astro` 170, `playground-embed.ts` 515 (not
+    touched by this batch — the hint has its own script).
+12. **Reviews and the report.** Two diffs, one per repo, each reviewed in its own subject by
+    kimi and codex: the engine's (scene + test) as `insiculous_2d/review/playground-ux/draft-7.diff`
+    (numbering continues from 13), the site's excluding `public/` as
+    `insiculous_web/review/playground-ux/draft-7.diff` (numbering continues from 4). **One
+    report**, `insiculous_2d/review/playground-ux/report-7.md`, carrying both repos' status.
+- Jesse's check: on `/playground/` in a fresh profile the hint shows above the stage, Dismiss
+  hides it and a reload keeps it hidden; the Hierarchy lists `wall_top` … `obstacle` and
+  `camera`; the editor's own Play frames the arena; Play ↗ shows the arena centred in the
+  preview with the player at its centre; `/games/pong/` shows the editor line under the
+  embed and it opens `/playground/pong/`.
+
 ## Batch 8 — docs: the audit reconciled (2d#123)
 
 The executor walks `docs/EDITOR_UX_AUDIT.md` §1–§5 and §7 item by item and marks each
