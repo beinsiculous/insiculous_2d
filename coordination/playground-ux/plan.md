@@ -1166,7 +1166,7 @@ empty, so review numbering starts at 1 there.
   editor's panels re-lay rather than a squeezed image; one screen-reader listen of the
   dialog and the dock; 200% text on a phone.
 
-## Batch 6 — site: Play ↗ opens the preview window, and the v2 bundles (web#58)
+## Batch 6 — site: Play ↗ opens the preview window, and the v2 bundles (web#58) — DONE 2026-09-10 (insiculous_web f519f3b, insiculous_2d edf055b, one commit per game)
 
 After batch 4 lands. The seven bundles are rebuilt at **`v2`**:
 `scripts/build_wasm.sh crates/playground playground --kind playground --version v2
