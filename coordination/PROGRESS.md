@@ -597,3 +597,21 @@ beinsiculous.com**, probed the same way. Follow-ups: insiculous_2d#118 (the game
 bundles need a v3 to carry the fix), #119 (a browser wheel notch is about a hundred pixels),
 #120 (a drag from outside the canvas). Still not reported by a person: the save-and-reload,
 the export, and the native drop-in; the production check covers load, run and select.
+
+## 2026-09-09 — Playground UX batch 1: Stop keeps or discards paused edits; the inspector heading
+
+The first batch of the Playground UX sprint (`coordination/playground-ux/plan.md`, settled
+after five plan-review rounds — kimi three, codex five, 63 findings all accepted). Landed as
+f268bf4 on `jesse`, closing #103 and #128: the history marks the Play boundary as a stack
+position and an id floor, undo and redo stop at it and seal merging, eviction is suspended
+for the session, and Stop with paused edits asks Keep / Discard / Cancel on the Modal layer;
+Keep rebases each entry onto the restored world through the history's own undo-then-redo
+path — changed leaves over authored values, a nudge as a delta, a creation at its
+creation-time components, a macro child by child, and a command whose precondition fails is
+dropped and counted. API writes are refused under either dialog. The inspector heading is the
+entity's display name over its id, drawn in a rect of its own line height in the bold face,
+and the display-name rule lives in one function the hierarchy, the inspector and the command
+API share. Executor: Jesse's Claude Opus session from a handoff; reviews: kimi 4 (3 accepted,
+1 policy rebut) and codex 5 (all accepted) on the diff, then kimi 4 and codex 3 on the
+planner's fix delta, all accepted. Gates green; the six games pass `check_games.sh`. Owed:
+Jesse's browser check of the heading and the dialog on the next playground bundle.

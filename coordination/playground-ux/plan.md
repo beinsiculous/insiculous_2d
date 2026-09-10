@@ -251,7 +251,26 @@ Site:
    `coordination/playground-ux/`.
 5. Claim each issue (assign Jesse, comment the batch and this path) as its batch goes out.
 
-## Batch 1 — engine: Stop keeps or discards paused edits; the inspector heading (2d#103, 2d#128)
+## Batch 1 — engine: Stop keeps or discards paused edits; the inspector heading (2d#103, 2d#128) — DONE 2026-09-09 (f268bf4)
+
+Authored by Jesse's Claude Opus session from `review/playground-ux/handoff-1.md`; reviewed
+by kimi (`review-4.md`, 4 findings: 3 accepted, 1 policy rebut — post-session eviction is
+the cap doing its job), codex (`review-6-codex.md`, 5 accepted) and the planner
+(`review-4-claude.md`, 2 accepted, 2 observations); adjudicated in `rebuttal-4-code.md`.
+The planner's fix hunks (11 files) went back through kimi (`review-5.md`, 4) and codex
+(`review-7-codex.md`, 3) as their own diff; those seven corrections were applied and
+enumerated, not re-reviewed (Jesse's ruling). Landed as specified, plus: `rebase_onto`
+takes `&mut World` so a macro can rebase child by child (the executor's deviation,
+accepted); `Rebase::Drop` carries an entry count and `Rebase::Partial` a macro's dropped
+children; `StopOutcome { kept, dropped }` feeds the status line; the cut re-captures its
+subtree at execute; a kept creation replays its creation-time components (reversing this
+plan's round-5 ruling, with Jesse); a one-key object whose key changed is replaced whole;
+API writes are refused under either dialog; the heading keeps its bold face through
+`ui::UIContext::label_in_bounds_with_font`. Every gate green (`gates-1-final.log`); the six
+games pass `check_games.sh` (`gates-1-games.log`; `game-template` is not cloned in this
+working set). Jesse's browser check — the heading on a named, an unnamed and a
+multi-selected entity; the Keep/Discard/Cancel dialog after an edit while Paused — is
+owed on the next playground bundle.
 
 **Re-verified against the tree 2026-09-09 before the handoff** (after the plan commit
 f193c04): `SetComponentCommand`, `RenameEntityCommand` and `NudgeCommand` live in
