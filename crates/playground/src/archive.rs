@@ -37,6 +37,8 @@ pub enum ArchiveError {
     OutsideProject(String),
     /// The archive is missing a project.ron manifest.
     MissingManifest,
+    /// The scene entry the preview was asked for is not in the archive.
+    MissingScene(String),
     /// The project.ron file could not be parsed as a ProjectManifest.
     InvalidManifest(String),
     /// Project slug in manifest failed slug validation.
@@ -63,6 +65,9 @@ impl std::fmt::Display for ArchiveError {
                 "entry '{entry}' is outside project; entries must be project.ron or under assets/"
             ),
             Self::MissingManifest => write!(formatter, "archive is missing project.ron manifest"),
+            Self::MissingScene(entry) => {
+                write!(formatter, "archive has no scene at '{entry}'")
+            }
             Self::InvalidManifest(error) => write!(formatter, "invalid project.ron manifest: {error}"),
             Self::InvalidSlug(slug) => write!(formatter, "invalid project slug in manifest: '{slug}'"),
             Self::InvalidSheet { entry, reason } => {
@@ -89,14 +94,45 @@ pub fn export_project(
     project_root: &Path,
     manifest: &ProjectManifest,
 ) -> Result<Vec<u8>, ArchiveError> {
-    let mut buffer = Cursor::new(Vec::new());
-    let mut zip_writer = ZipWriter::new(&mut buffer);
-    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    write_archive(collect_asset_entries(project_root)?, manifest)
+}
 
+/// Export the open project with the live scene in place of the one on disk.
+///
+/// Only the entry at `scene_entry` is replaced; every other file is carried
+/// over unchanged. The export is a project backup, so dropping the other
+/// scenes would lose authored work the visitor never previewed.
+pub fn export_snapshot(
+    project_root: &Path,
+    manifest: &ProjectManifest,
+    scene_entry: &str,
+    scene_ron: &str,
+) -> Result<Vec<u8>, ArchiveError> {
+    if !crate::bridge::relative_path_is_safe(scene_entry)
+        || !scene_entry.starts_with("assets/scenes/")
+    {
+        return Err(ArchiveError::OutsideProject(scene_entry.to_string()));
+    }
+
+    let mut entries = collect_asset_entries(project_root)?;
+    let live_bytes = scene_ron.as_bytes().to_vec();
+    match entries.iter_mut().find(|(entry_path, _)| entry_path == scene_entry) {
+        Some((_, bytes)) => *bytes = live_bytes,
+        None => {
+            entries.push((scene_entry.to_string(), live_bytes));
+            entries.sort_by(|(first, _), (second, _)| first.cmp(second));
+        }
+    }
+    write_archive(entries, manifest)
+}
+
+/// Every file under the project's `assets/`, keyed by its archive entry path.
+///
+/// Sorted so two exports of the same tree produce the same entry order.
+fn collect_asset_entries(project_root: &Path) -> Result<Vec<(String, Vec<u8>)>, ArchiveError> {
     let files = common::vfs::list_files(project_root)
         .map_err(|error| ArchiveError::Io(error.to_string()))?;
 
-    // Sorted so two exports of the same tree produce the same entry order.
     let mut asset_files: Vec<(String, PathBuf)> = Vec::new();
     for file_path in files {
         let relative_path = match file_path.strip_prefix(project_root) {
@@ -111,9 +147,25 @@ pub fn export_project(
     }
     asset_files.sort_by(|(path_first, _), (path_second, _)| path_first.cmp(path_second));
 
+    let mut entries = Vec::with_capacity(asset_files.len());
     for (entry_path, full_path) in asset_files {
         let file_bytes = common::vfs::read(&full_path)
             .map_err(|error| ArchiveError::Io(error.to_string()))?;
+        entries.push((entry_path, file_bytes));
+    }
+    Ok(entries)
+}
+
+/// Zip `entries` together with the manifest and the generated README.
+fn write_archive(
+    entries: Vec<(String, Vec<u8>)>,
+    manifest: &ProjectManifest,
+) -> Result<Vec<u8>, ArchiveError> {
+    let mut buffer = Cursor::new(Vec::new());
+    let mut zip_writer = ZipWriter::new(&mut buffer);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+
+    for (entry_path, file_bytes) in entries {
         zip_writer
             .start_file(&entry_path, options)
             .map_err(|error| ArchiveError::Zip(error.to_string()))?;

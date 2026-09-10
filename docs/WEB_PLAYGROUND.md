@@ -65,9 +65,10 @@ reads or writes is keyed by that base-joined string (`common::vfs`'s canonical k
 key never resolves; relative paths given to the editor or the API are joined to the open
 project's asset base first.
 
-**One embed per page.** The VFS, the store, the bridge channels and the persistence chains
-are module-level singletons; a second `playground_*` module on the same page would share
-them. The page provides two elements by id: `game-loading` (boot status text, from
+**One embed per page, and one runtime: a page is the editor or, with `?mode=preview`, the
+preview.** The VFS, the store, the bridge channels and the persistence chains are
+module-level singletons; a second `playground_*` module on the same page would share
+them. winit allows one event loop per page, which is the other half of the same rule. The page provides two elements by id: `game-loading` (boot status text, from
 `engine_core::web::set_boot_status`) and `playground-banner` (persistence warnings, written
 by `persist::set_dom_banner`; an absent element is a silent no-op). The entry dispatches the
 `playground-ready` event on `window` immediately after the bridge is set up, signaling that
@@ -186,7 +187,9 @@ The command channel is a 1024-line FIFO; responses come back in order.
 | `playground_list_projects()` | `→ ProjectEntry[]` | bundled merged with stored; stored wins on a slug clash; `has_stored_files` gates Reset. The stored list is a boot snapshot: an edit's first put upserts a manifest the list shows after the next reload |
 | `playground_open_project(slug)` | `→ Promise` | drains, then resolves; the PAGE sets `?project=<slug>` and reloads |
 | `playground_reset_project(slug)` | `→ Promise` | drains, `remove_project`, resolves; the page reloads and the bundled files come back |
-| `playground_export_zip()` | `→ Result<Uint8Array>` | the open project's `assets/**` plus `project.ron` and a README as zip bytes; refuses an archive over 64 MiB (the importer's archive cap; its decompressed-bytes cap is not mirrored, so a highly compressible project over 64 MiB unpacked exports but does not re-import) |
+| `playground_export_zip()` | `→ Promise<Uint8Array>` | the open project's `assets/**` plus `project.ron` and a README as zip bytes, with the **live** scene in place of the saved one — the visitor exports the work they are looking at. A snapshot already in flight is joined, not refused, so Export a moment after Play ↗ works. Refused during Play or Pause, like `playground_snapshot`: the live world is the simulation then, and the saved scene would drop the unsaved edits made before Play — stop first. Refuses an archive over 64 MiB (the importer's archive cap; its decompressed-bytes cap is not mirrored, so a highly compressible project over 64 MiB unpacked exports but does not re-import) |
+| `playground_snapshot(generation)` | `→ Promise<{ sceneEntry, bytes }>` | the project archive with the active scene's entry replaced by the live world as RON, every other file kept. Answered on the editor's next frame, 5 s cap, then rejected with "the editor did not answer — is its tab visible?". Refused during Play or Pause, and while another generation is pending. **Reserves the preview as it files**, and clears the reservation if it rejects |
+| `playground_set_preview_open(open)` | `→ void` | while true, in-editor Play is refused with "A preview window is open — close it to Play here". The page clears it on `preview-failed`, `preview-closed`, or a window it finds closed — never on silence |
 | `playground_import_zip(bytes)` | `→ Promise<string>` | validates, drains, replaces the project in the store, resolves with the slug; the PAGE then sets `?project=<slug>` and reloads — REQUIRED, same slug or not, as for switch and reset: the drain leaves writes refused until the reload |
 | `playground_read_file_bytes(path)` | `→ Result<Uint8Array>` | project-relative binary read through `vfs::read` |
 | `playground_conflicted_paths()` | `→ string[]` | sorted project-relative paths currently in conflicted state |
@@ -194,6 +197,30 @@ The command channel is a 1024-line FIFO; responses come back in order.
 
 The engine cannot swap a running project; every switch is a page reload with the query
 string naming the slug. An unknown `?project=` redirects to the first bundled project.
+
+## The preview window
+
+`?mode=preview` on the page URL boots the game-only runtime instead of the editor: no
+store, no persistence chains, no write observer, no bridge, no asset preload, and every
+save path of its `GameConfig` left `None`, so the preview writes no storage key. It boots
+to "Waiting for the editor's snapshot…" and does nothing until the editor's page hands it
+an archive.
+
+| export | shape | notes |
+|---|---|---|
+| `playground_load_preview(bytes, sceneEntry)` | `→ Result` | unpacks the archive through the importer's full validation, keys every file under the project root, and starts the game on `sceneEntry`. Refused when one is already loaded — one runtime per page. `Ok` means **scheduled**, not running |
+| `playground_preview_state()` | `→ string` | `"booting"` until the first frame has actually stepped, then `"running"`; `"failed: <text>"` from a scene that would not load or the renderer's boot-status failure |
+| `playground_preview_pause()` | `→ bool` | toggles; returns the new paused state |
+| `playground_preview_restart()` | `→ Result` | reloads the scene from the top and clears the pause; `Err` when nothing is loaded |
+
+The preview loads the scene entry it is handed and never infers one from the archive.
+Stop is the page closing the window; the `pagehide` guard already latches the loop for
+good. A hidden document gets no animation frames, so both pages install
+`engine_core::web::install_hidden_frame_pump`: while a tab is in the background a 100 ms
+timer drives its frames through a user event instead. The editor's page needs it most —
+opening the preview window hides the editor's tab before the frame that answers the
+snapshot — and on a page that is already hidden the pump starts as soon as there is a loop to
+wake.
 
 ## Preferences
 
@@ -206,7 +233,11 @@ takes the viewport), after Stop, and on exit. Nothing is written during Play or 
 
 ## Export and import
 
-Projects export and import as standard zip archives (`<slug>.zip`). This is the layout
+`playground_export_zip()` is a Promise, and the scene it carries is the live world, not
+the file on disk: the acceptance test is "exports their work", and the saved scene would
+drop the very edit the visitor previewed. For the same reason it is refused during Play or
+Pause — stop first. Projects export and import as standard zip
+archives (`<slug>.zip`). This is the layout
 [the template repo](https://github.com/beinsiculous/game-template) conforms to, and it goes
 both ways: an export drops on a clone of the template with
 `rm -rf assets/scenes assets/scripts && unzip -o <slug>.zip -x README.md -d .`

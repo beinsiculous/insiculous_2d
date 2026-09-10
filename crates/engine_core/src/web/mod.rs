@@ -70,6 +70,105 @@ pub fn install_page_exit_guard() {
     on_pageshow.forget();
 }
 
+thread_local! {
+    /// The running loop's proxy, published by `run_game` before the browser
+    /// takes the loop over. `None` until then, and on a page that never ran
+    /// a game.
+    static WAKE_PROXY: std::cell::RefCell<Option<winit::event_loop::EventLoopProxy<crate::game::WakeUp>>> =
+        const { std::cell::RefCell::new(None) };
+    /// Whether a pump timer is scheduled, so however many callers ask —
+    /// the installer, a visibility change, the proxy's arrival — one chain
+    /// runs, never two driving double frames.
+    static PUMP_ARMED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Publish the loop's proxy so the hidden-document timer can drive frames.
+/// The pump is installed before the loop exists, so a page hidden all
+/// through its boot is started from here, once there is a loop to wake.
+pub fn set_wake_proxy(proxy: winit::event_loop::EventLoopProxy<crate::game::WakeUp>) {
+    WAKE_PROXY.with(|slot| *slot.borrow_mut() = Some(proxy));
+    start_pump_if_hidden();
+}
+
+/// Ask the loop for one frame. `false` once the loop is gone.
+fn send_wake_up() -> bool {
+    WAKE_PROXY.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .map(|proxy| proxy.send_event(crate::game::WakeUp).is_ok())
+            .unwrap_or(false)
+    })
+}
+
+/// Keep frames coming while the document is hidden.
+///
+/// `request_redraw` is an animation frame under winit's web backend and a
+/// hidden tab gets none, so a game whose page is backgrounded would freeze
+/// mid-answer. The timer starts on the transition to hidden — a frame that
+/// rAF had already scheduled and will never deliver does not matter — and
+/// stops as soon as the document is visible again, leaving the ordinary
+/// browser-paced loop in charge. A page that is already hidden when this
+/// installs had its transition before anyone listened, so the pump also
+/// starts right here in that case.
+pub fn install_hidden_frame_pump() {
+    use wasm_bindgen::closure::Closure;
+    let Some(window) = web_sys::window() else { return };
+    let Some(document) = window.document() else { return };
+
+    let on_visibility_change = Closure::<dyn FnMut(web_sys::Event)>::new(move |_event| {
+        let Some(window) = web_sys::window() else { return };
+        let Some(document) = window.document() else { return };
+        if document.visibility_state() != web_sys::VisibilityState::Hidden {
+            return;
+        }
+        start_pump_if_hidden();
+    });
+    let _ = document.add_event_listener_with_callback(
+        "visibilitychange",
+        on_visibility_change.as_ref().unchecked_ref(),
+    );
+    on_visibility_change.forget();
+    start_pump_if_hidden();
+}
+
+/// Start a pump chain unless one is already scheduled.
+fn start_pump_if_hidden() {
+    if PUMP_ARMED.with(|armed| armed.get()) {
+        return;
+    }
+    pump_while_hidden();
+}
+
+/// One tick of the hidden-document pump: drive a frame, then re-arm in
+/// 100 ms while the document is still hidden and the loop still lives. With
+/// no proxy yet the chain simply ends; `set_wake_proxy` restarts it.
+fn pump_while_hidden() {
+    use wasm_bindgen::closure::Closure;
+    PUMP_ARMED.with(|armed| armed.set(false));
+    let Some(window) = web_sys::window() else { return };
+    let Some(document) = window.document() else { return };
+    if document.visibility_state() != web_sys::VisibilityState::Hidden || page_exited() {
+        return;
+    }
+    if !send_wake_up() {
+        return;
+    }
+    let on_timeout = Closure::once_into_js(pump_while_hidden);
+    if window
+        .set_timeout_with_callback_and_timeout_and_arguments_0(
+            on_timeout.as_ref().unchecked_ref(),
+            HIDDEN_FRAME_INTERVAL_MILLISECONDS,
+        )
+        .is_ok()
+    {
+        PUMP_ARMED.with(|armed| armed.set(true));
+    }
+}
+
+/// How often a hidden document is driven. Browsers clamp background timers,
+/// so a shorter interval buys nothing.
+const HIDDEN_FRAME_INTERVAL_MILLISECONDS: i32 = 100;
+
 /// A failure during the web boot phase (fetch, HTTP, or manifest parse).
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
@@ -92,6 +191,16 @@ pub fn set_boot_status(text: &str) {
     {
         el.set_text_content(Some(text));
     }
+}
+
+/// Read the page's `#game-loading` status text, if the element is there.
+/// The boot status is where the renderer writes its own failure, so it is
+/// also where a page reads whether the runtime came up.
+pub fn boot_status() -> Option<String> {
+    web_sys::window()
+        .and_then(|window| window.document())
+        .and_then(|document| document.get_element_by_id("game-loading"))
+        .and_then(|element| element.text_content())
 }
 
 /// Read a URL search query parameter value by key.

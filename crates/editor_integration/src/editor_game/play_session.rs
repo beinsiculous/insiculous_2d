@@ -232,6 +232,14 @@ impl<G: Game> EditorGame<G> {
         }
     }
 
+    /// Whether a preview window currently owns the simulation.
+    fn preview_is_open(&self) -> bool {
+        self.preview_open
+            .as_ref()
+            .map(|flag| flag.load(std::sync::atomic::Ordering::Relaxed))
+            .unwrap_or(false)
+    }
+
     /// Handle a play control action (Play, Pause, Stop, ToggleCameraFollow).
     ///
     /// Returns `true` if a Stop was performed (world restored from snapshot),
@@ -247,6 +255,12 @@ impl<G: Game> EditorGame<G> {
         match action {
             PlayControlAction::Play => {
                 if self.editor.is_editing() {
+                    if self.preview_is_open() {
+                        self.editor
+                            .status_bar
+                            .show_error("A preview window is open — close it to Play here");
+                        return false;
+                    }
                     self.save_preferences_now();
                     self.start_play_session(world);
                 } else if self.editor.is_paused() {

@@ -300,3 +300,96 @@ fn test_import_project_refuses_archive_exceeding_decompressed_cap() {
     let result = import_project(&zip_bytes, "v1");
     assert_eq!(result, Err(ArchiveError::TooLarge));
 }
+
+/// A two-scene project on disk, and the manifest that describes it.
+fn two_scene_project(root: &std::path::Path) -> ProjectManifest {
+    let scenes = root.join("assets/scenes");
+    std::fs::create_dir_all(&scenes).unwrap();
+    std::fs::write(
+        scenes.join("main.scene.ron"),
+        r#"SceneData(name: "main", entities: [])"#,
+    )
+    .unwrap();
+    std::fs::write(
+        scenes.join("other.scene.ron"),
+        r#"SceneData(name: "other", entities: [EntityData(name: Some("keeper"), components: [])])"#,
+    )
+    .unwrap();
+    ProjectManifest {
+        slug: "two-scenes".to_string(),
+        title: "Two Scenes".to_string(),
+        bundle_version: "v1".to_string(),
+        content_hash: String::new(),
+        origin: ProjectOrigin::Bundled,
+    }
+}
+
+#[test]
+fn test_export_snapshot_carries_only_the_live_scene_and_reimports() {
+    // Only the active scene is replaced: the export is a project backup, and
+    // dropping the other scenes would lose authored work on re-import.
+    let temp_dir = tempfile::tempdir().unwrap();
+    let root = temp_dir.path();
+    let manifest = two_scene_project(root);
+    let live = r#"SceneData(name: "main", entities: [EntityData(name: Some("live"), components: [])])"#;
+
+    let zip_bytes =
+        export_snapshot(root, &manifest, "assets/scenes/main.scene.ron", live).unwrap();
+    let (_, stored_files) = import_project(&zip_bytes, "v1").unwrap();
+
+    let scene_of = |path: &str| {
+        stored_files
+            .iter()
+            .find(|file| file.path == path)
+            .map(|file| String::from_utf8(file.bytes.clone()).unwrap())
+    };
+    assert_eq!(
+        scene_of("assets/scenes/main.scene.ron").as_deref(),
+        Some(live),
+        "the active scene carries the live world"
+    );
+    assert!(
+        scene_of("assets/scenes/other.scene.ron")
+            .expect("the other scene is still in the archive")
+            .contains("keeper"),
+        "every other file is kept as it was on disk"
+    );
+}
+
+#[test]
+fn test_export_snapshot_keeps_every_other_scene() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let root = temp_dir.path();
+    let manifest = two_scene_project(root);
+    let live = r#"SceneData(name: "main", entities: [])"#;
+
+    let zip_bytes =
+        export_snapshot(root, &manifest, "assets/scenes/main.scene.ron", live).unwrap();
+    let (_, stored_files) = import_project(&zip_bytes, "v1").unwrap();
+
+    let mut paths: Vec<String> = stored_files.iter().map(|file| file.path.clone()).collect();
+    paths.sort();
+    assert_eq!(
+        paths,
+        vec![
+            "assets/scenes/main.scene.ron".to_string(),
+            "assets/scenes/other.scene.ron".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn test_export_snapshot_refuses_a_scene_entry_outside_assets_scenes() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let root = temp_dir.path();
+    let manifest = two_scene_project(root);
+    let live = r#"SceneData(name: "main", entities: [])"#;
+
+    for entry in ["assets/images/x.png", "../escaped.scene.ron", "project.ron", ""] {
+        let result = export_snapshot(root, &manifest, entry, live);
+        assert!(
+            matches!(result, Err(ArchiveError::OutsideProject(_))),
+            "'{entry}' must be refused, got {result:?}"
+        );
+    }
+}

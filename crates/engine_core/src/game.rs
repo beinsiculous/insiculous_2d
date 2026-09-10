@@ -201,8 +201,9 @@ pub fn run_game<G: Game>(game: G, config: GameConfig) -> Result<(), crate::Engin
         return Ok(());
     }
 
-    let event_loop =
-        EventLoop::new().map_err(|e| crate::EngineError::InitializationError(e.to_string()))?;
+    let event_loop = EventLoop::<WakeUp>::with_user_event()
+        .build()
+        .map_err(|e| crate::EngineError::InitializationError(e.to_string()))?;
 
     // Native: block until the window closes. Web: hand the runner to the
     // browser's event loop and return immediately — `spawn_app` never blocks
@@ -219,10 +220,19 @@ pub fn run_game<G: Game>(game: G, config: GameConfig) -> Result<(), crate::Engin
         // Stop-for-good on pagehide/bfcache restore — must be
         // installed before the browser owns the loop.
         crate::web::install_page_exit_guard();
+        // A hidden document gets no animation frames, so the only way to
+        // drive one is a user event; the proxy must be published before the
+        // browser takes the loop, because after that it cannot be made.
+        crate::web::set_wake_proxy(event_loop.create_proxy());
         event_loop.spawn_app(runner);
     }
     Ok(())
 }
+
+/// The event that drives a frame when animation frames are not coming — a
+/// hidden browser tab. Native builds never send one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WakeUp;
 
 /// Internal game runner that implements ApplicationHandler.
 ///

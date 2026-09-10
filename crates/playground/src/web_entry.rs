@@ -62,6 +62,13 @@ pub fn dirty_flag() -> Option<Arc<AtomicBool>> {
 #[wasm_bindgen(start)]
 pub fn start() {
     init_web_logging();
+    // The preview is a second runtime on the same bundle, not a second
+    // entry point: winit allows one event loop per page, so this branch
+    // returns before anything the editor owns is built.
+    if query_param("mode").as_deref() == Some("preview") {
+        crate::preview_entry::announce_preview_mode();
+        return;
+    }
     wasm_bindgen_futures::spawn_local(async {
         if let Err(error) = run_playground().await {
             log::error!("playground startup failed: {error}");
@@ -228,6 +235,8 @@ async fn run_playground() -> Result<(), String> {
 
     let script_errors_mirror = Arc::new(Mutex::new(Vec::<String>::new()));
     let errors_for_hooks = Arc::clone(&script_errors_mirror);
+    let scene_snapshot = Arc::new(editor_integration::SceneSnapshotRequest::default());
+    let preview_open = Arc::new(AtomicBool::new(false));
     let hooks = crate::bridge::Hooks {
         source_check: Some(|source: &str| {
             engine_core::scripting::check_source(source).map_err(|e| e.to_string())
@@ -238,6 +247,8 @@ async fn run_playground() -> Result<(), String> {
                 .map(|guard| guard.clone())
                 .unwrap_or_default()
         })),
+        scene_snapshot: Some(Arc::clone(&scene_snapshot)),
+        preview_open: Some(Arc::clone(&preview_open)),
     };
     crate::bridge::set_hooks(hooks);
 
@@ -261,11 +272,17 @@ async fn run_playground() -> Result<(), String> {
         dirty_flag: Some(dirty_atomic),
         persist_pending: Some(pending_atomic),
         script_errors: Some(script_errors_mirror),
+        scene_snapshot: Some(scene_snapshot),
+        preview_open: Some(preview_open),
     };
 
     let config = GameConfig::new("Insiculous Playground")
         .with_size(1280, 800)
         .with_asset_base_path(&asset_base_string);
+
+    // Opening the preview window hides this tab, and a hidden tab gets no
+    // animation frames: the frame that answers the snapshot must still come.
+    engine_core::web::install_hidden_frame_pump();
 
     let host = ProjectHost::new(root_path);
     run_game_with_editor_opts(host, config, editor_options).map_err(|error| format!("{error}"))

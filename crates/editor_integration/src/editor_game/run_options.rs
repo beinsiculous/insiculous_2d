@@ -28,6 +28,10 @@ pub struct EditorRunOptions {
     pub persist_pending: Option<Arc<AtomicBool>>,
     /// Web error mirror for script errors.
     pub script_errors: Option<Arc<Mutex<Vec<String>>>>,
+    /// Mailbox the web bridge files preview snapshot requests in.
+    pub scene_snapshot: Option<Arc<super::SceneSnapshotRequest>>,
+    /// Raised while a preview window owns the simulation.
+    pub preview_open: Option<Arc<AtomicBool>>,
 }
 
 /// Run a game with the full editor UI overlay.
@@ -63,5 +67,7 @@ pub fn run_game_with_editor_opts<G: Game>(
     editor_game.dirty_flag = options.dirty_flag;
     editor_game.persist_pending = options.persist_pending;
     editor_game.script_errors = options.script_errors;
+    editor_game.scene_snapshot = options.scene_snapshot;
+    editor_game.preview_open = options.preview_open;
     engine_core::run_game(editor_game, config)
 }

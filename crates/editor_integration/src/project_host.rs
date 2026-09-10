@@ -23,6 +23,10 @@ use engine_core::scripting::ScriptRunner;
 use input::{InputHandler, InputSettings};
 use physics::{PhysicsConfig, PhysicsSystem};
 
+mod preview;
+
+pub use preview::{PreviewControls, PreviewHost};
+
 /// Data-only game host for the editor, running physics and behaviors during play mode.
 pub struct ProjectHost {
     project_path: PathBuf,

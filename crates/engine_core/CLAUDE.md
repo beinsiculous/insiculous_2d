@@ -19,9 +19,9 @@ Cross-cutting glue biases toward `engine_core`: `ui` defines `DrawCommand` (rend
 
 ## File Map
 - `game.rs` — Game trait, `run_game()`, and `GameRunner` orchestration; new render passes go in their own module like `tilemap_render.rs`.
-- `game/app_handler.rs` — winit `ApplicationHandler`: native frame driving uses `about_to_wait` while wasm uses `RedrawRequested`; never unify them (an occluded native window stops receiving redraws).
+- `game/app_handler.rs` — winit `ApplicationHandler<WakeUp>`: native frame driving uses `about_to_wait` while wasm uses `RedrawRequested`; never unify them (an occluded native window stops receiving redraws). A hidden document gets no animation frames, so on wasm `user_event` drives a frame from the `WakeUp` events `web::install_hidden_frame_pump` sends through the proxy `run_game` publishes.
 - `game/web.rs` (wasm-only) — async renderer bring-up (adopted surface starts 1×1) and gesture-gated audio enable (retries capped at 5 failures, hooked pre-match so audio is live before `on_key_pressed`).
-- `web/mod.rs` (wasm-only) — `preload_assets` fetches manifest and entries into `common::vfs` under `{base}/{entry}` keys before `run_game`.
+- `web/mod.rs` (wasm-only) — `preload_assets` fetches manifest and entries into `common::vfs` under `{base}/{entry}` keys before `run_game`; the page-exit latch; `set_boot_status`/`boot_status` over the page's `game-loading` element; the wake proxy and `install_hidden_frame_pump` (a 100 ms timer that drives frames while the document is hidden; one chain at a time, started by the visibility change, or by the proxy's arrival when the page was hidden all through its boot).
 - `game/frame_tail.rs` — post-update tail: particles and `ecs::SpriteAnimationSystem` step on `delta_time * time_scale` so pausing freezes both.
 - `localization.rs` — `Strings`: RON locale tables with `current→en→key` fallback, per-locale font tracking, and `@key` resolution.
 - `ui_element_system.rs` — draws `UiLabel`/`UiPanel`/`UiButton` and buffers `UiButtonPressed` on the event bus after the next frame's flush; suppressed by `UiElementsHidden`.

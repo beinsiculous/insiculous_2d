@@ -34,6 +34,7 @@ mod preferences;
 mod run_options;
 mod scene_confirm;
 mod scene_io;
+mod snapshot;
 mod stop_confirm;
 #[cfg(test)]
 mod stop_confirm_tests;
@@ -43,6 +44,7 @@ mod viewport_interaction;
 
 pub(crate) use viewport_interaction::{build_pickable_entities, chrome_owns_mouse};
 pub use run_options::{run_game_with_editor, run_game_with_editor_opts, EditorRunOptions};
+pub use snapshot::{Completion, SceneSnapshot, SceneSnapshotRequest};
 
 /// Wraps a user's `Game` with the full editor UI overlay.
 struct EditorGame<G: Game> {
@@ -96,6 +98,11 @@ struct EditorGame<G: Game> {
     pub(super) script_errors: Option<std::sync::Arc<std::sync::Mutex<Vec<String>>>>,
     pub(super) play_frames: u32,
     pub(super) script_error_watermark: usize,
+    /// The preview's snapshot mailbox, when the web bridge installed one.
+    pub(super) scene_snapshot: Option<std::sync::Arc<snapshot::SceneSnapshotRequest>>,
+    /// Set while a preview window holds the simulation. Play here is refused
+    /// so two simulations of one scene never run at once.
+    pub(super) preview_open: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl<G: Game> EditorGame<G> {
@@ -130,6 +137,8 @@ impl<G: Game> EditorGame<G> {
             script_errors: None,
             play_frames: 0,
             script_error_watermark: 0,
+            scene_snapshot: None,
+            preview_open: None,
         }
     }
 
@@ -461,6 +470,9 @@ impl<G: Game> Game for EditorGame<G> {
         self.render_early_overlays(ctx);
         self.handle_menu_bar(ctx, window_size);
         self.render_toolbar_and_play_controls(ctx);
+        // Before the API drain, which skips mid-drag: this path only reads
+        // the world, and the bridge's caller gives up after five seconds.
+        self.answer_scene_snapshot(ctx);
         self.drain_api_requests(ctx);
         // Built once per frame: after the last handler that can delete an
         // entity (menu bar, command API) and before the first consumer
@@ -551,6 +563,8 @@ mod preferences_tests;
 mod scene_confirm_tests;
 #[cfg(test)]
 mod scene_io_tests;
+#[cfg(test)]
+mod snapshot_tests;
 #[cfg(test)]
 mod shortcuts_tests;
 #[cfg(test)]

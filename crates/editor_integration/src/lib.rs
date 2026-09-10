@@ -26,6 +26,9 @@ mod panel_renderer;
 mod project_host;
 
 pub use editor_game::headless::{run_headless_editor_api, HeadlessAssets};
-pub use editor_game::{run_game_with_editor, run_game_with_editor_opts, EditorRunOptions};
+pub use editor_game::{
+    run_game_with_editor, run_game_with_editor_opts, Completion, EditorRunOptions, SceneSnapshot,
+    SceneSnapshotRequest,
+};
 pub use panel_renderer::build_script_catalog;
-pub use project_host::ProjectHost;
+pub use project_host::{PreviewControls, PreviewHost, ProjectHost};

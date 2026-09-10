@@ -13,7 +13,7 @@ use winit::{
     window::WindowId,
 };
 
-use super::{Game, GameRunner};
+use super::{Game, GameRunner, WakeUp};
 
 impl<G: Game> GameRunner<G> {
     /// One frame: update + render, honor exit requests, pace (native only),
@@ -140,7 +140,7 @@ impl<G: Game> GameRunner<G> {
     }
 }
 
-impl<G: Game> ApplicationHandler<()> for GameRunner<G> {
+impl<G: Game> ApplicationHandler<WakeUp> for GameRunner<G> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         // Only create window once
         if self.window_manager.is_created() {
@@ -253,6 +253,15 @@ impl<G: Game> ApplicationHandler<()> for GameRunner<G> {
             }
             _ => {}
         }
+    }
+
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, _event: WakeUp) {
+        // The one frame driver a hidden document still has: `request_redraw`
+        // is an animation frame there and never fires.
+        #[cfg(target_arch = "wasm32")]
+        self.drive_frame(event_loop);
+        #[cfg(not(target_arch = "wasm32"))]
+        let _ = event_loop;
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
