@@ -293,8 +293,15 @@ impl<G: Game> EditorGame<G> {
             A::ZoomIn => self.editor.zoom_camera(1.1),
             A::ZoomOut => self.editor.zoom_camera(0.9),
             A::ResetZoom => self.editor.reset_camera(),
-            A::ToggleGrid => self.editor.toggle_grid(),
-            A::ToggleColliders => self.editor.toggle_colliders(),
+            A::ToggleGrid => {
+                self.editor.view.toggle(editor::ViewToggle::Grid);
+            }
+            A::ToggleColliders => {
+                self.editor.view.toggle(editor::ViewToggle::Colliders);
+            }
+            A::ToggleGameFrame => {
+                self.editor.view.toggle(editor::ViewToggle::GameFrame);
+            }
             A::ToggleSnap => self.toggle_snap_with_feedback(),
             A::TogglePanel(id) => self.editor.dock_area.toggle_panel_visible(id),
             A::ResetLayout => self.reset_layout_with_feedback(),
@@ -350,6 +357,7 @@ impl<G: Game> EditorGame<G> {
             | A::ResetZoom
             | A::ToggleGrid
             | A::ToggleColliders
+            | A::ToggleGameFrame
             | A::ToggleSnap
             | A::TogglePanel(_)
             | A::ResetLayout

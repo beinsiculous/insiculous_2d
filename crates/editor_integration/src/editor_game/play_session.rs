@@ -293,4 +293,22 @@ impl<G: Game> EditorGame<G> {
             }
         }
     }
+
+    /// While Playing WITH camera-follow armed, mirror the game's main-camera
+    /// entity — position AND zoom — onto the editor viewport so
+    /// the rendered view (derived from the viewport in `render`) follows the
+    /// game camera. Free camera (follow broken by a manual pan/zoom) and
+    /// Paused keep the user's view — picking stays truthful either way,
+    /// because render always derives from the same viewport.
+    pub(super) fn sync_viewport_from_main_camera(&mut self, world: &ecs::World) {
+        if !self.editor.is_playing() || !self.editor.is_camera_following() {
+            return;
+        }
+        if let Some((pos, zoom)) = engine_core::main_camera_pose(world) {
+            self.editor.viewport.set_camera_position(pos);
+            // adopt_ skips the interactive zoom clamp: parity with the
+            // shipped game even at extreme authored zooms.
+            self.editor.viewport.adopt_camera_zoom(zoom);
+        }
+    }
 }

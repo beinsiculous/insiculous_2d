@@ -148,8 +148,9 @@ fn phone_dock(width: f32) -> DockArea {
 
 /// At the width a 390px page produces, both default side panels docked would
 /// leave the centre nothing at all — 480px of panels in 390px of window. The
-/// dock goes narrow instead: the centre takes the whole width and keeps at
-/// least the strip's minimum, and the side panels become tabs at the edges.
+/// dock goes narrow instead: the centre takes the whole width (leaving the
+/// play controls room to lay out, with the view group shed into overflow),
+/// and the side panels become tabs at the edges.
 #[test]
 fn test_a_390px_page_gives_the_centre_the_whole_width_instead_of_nothing() {
     let area = phone_dock(390.0);
@@ -157,11 +158,6 @@ fn test_a_390px_page_gives_the_centre_the_whole_width_instead_of_nothing() {
     assert!(area.is_narrow(), "480px of side panels in 390px must trigger narrow mode");
     let centre = bounds_of(&area, PanelId::SCENE_VIEW);
     assert_eq!(centre.width, 390.0, "the centre takes the width the panels left");
-    assert!(
-        centre.width >= MIN_CENTER_WIDTH,
-        "the centre must hold the toolbar strip ({} < {MIN_CENTER_WIDTH})",
-        centre.width
-    );
     assert_eq!(area.narrow_overlay(), None, "narrow mode opens with both panels closed");
 
     for id in [PanelId::HIERARCHY, PanelId::INSPECTOR] {

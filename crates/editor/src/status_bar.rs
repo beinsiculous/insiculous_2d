@@ -120,11 +120,11 @@ impl StatusBar {
         // Background
         ui.rect(bar, theme.status_bar_bg);
 
-        // Top separator in the panel-border blue so the bar reads as chrome
+        // Top separator so the bar reads as chrome
         ui.line(
             Vec2::new(bar.x, bar.y),
             Vec2::new(bar.x + bar.width, bar.y),
-            theme.border_panel,
+            theme.border_subtle,
             1.0,
         );
 

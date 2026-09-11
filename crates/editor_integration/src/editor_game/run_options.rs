@@ -56,8 +56,10 @@ pub fn run_game_with_editor_opts<G: Game>(
     config: GameConfig,
     options: EditorRunOptions,
 ) -> Result<(), engine_core::EngineError> {
+    let raw_frame = glam::Vec2::new(config.width as f32, config.height as f32);
     let config = clamp_editor_window_size(config);
     let mut editor_game = EditorGame::new(game);
+    editor_game.editor.game_frame = raw_frame;
     editor_game.api.receiver = options.api_rx;
     editor_game.api.responses = options.api_responses;
     editor_game.initial_scene = options.initial_scene;

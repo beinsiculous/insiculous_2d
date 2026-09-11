@@ -45,10 +45,10 @@ pub struct EditorContext {
     pub input_mapping: EditorInputMapping,
     /// Hierarchy panel for entity tree view
     pub hierarchy: HierarchyPanel,
-    /// Snap to grid enabled
-    snap_to_grid: bool,
-    /// Whether collider outlines are drawn in the scene view
-    show_colliders: bool,
+    /// View toggles (grid, colliders, game frame, snap)
+    pub view: crate::view_toggles::ViewToggles,
+    /// Configured game frame resolution (GameConfig width × height).
+    pub game_frame: glam::Vec2,
     /// Current play state (Editing / Playing / Paused)
     play_state: EditorPlayState,
     /// Whether the viewport follows the game's main camera during a play
@@ -147,8 +147,8 @@ impl EditorContext {
             viewport_input: ViewportInputHandler::new(),
             input_mapping: EditorInputMapping::new(),
             hierarchy: HierarchyPanel::new(),
-            snap_to_grid: false,
-            show_colliders: true,
+            view: crate::view_toggles::ViewToggles::default(),
+            game_frame: glam::Vec2::new(800.0, 600.0),
             play_state: EditorPlayState::default(),
             camera_follow: true,
             play_controls: PlayControls::new(),
@@ -242,21 +242,6 @@ impl EditorContext {
     // ================== Grid Methods ==================
     // These delegate to the GridRenderer
 
-    /// Check if the grid is visible.
-    pub fn is_grid_visible(&self) -> bool {
-        self.grid.is_visible()
-    }
-
-    /// Set grid visibility.
-    pub fn set_grid_visible(&mut self, visible: bool) {
-        self.grid.set_visible(visible);
-    }
-
-    /// Toggle grid visibility.
-    pub fn toggle_grid(&mut self) {
-        self.grid.toggle_visible();
-    }
-
     /// Get the grid size.
     pub fn grid_size(&self) -> f32 {
         self.grid.grid_size()
@@ -267,41 +252,9 @@ impl EditorContext {
         self.grid.set_grid_size(size);
     }
 
-    // ================== Collider Overlay Methods ==================
-
-    /// Check if collider outlines are visible in the scene view.
-    pub fn is_colliders_visible(&self) -> bool {
-        self.show_colliders
-    }
-
-    /// Set collider outline visibility.
-    pub fn set_colliders_visible(&mut self, visible: bool) {
-        self.show_colliders = visible;
-    }
-
-    /// Toggle collider outline visibility.
-    pub fn toggle_colliders(&mut self) {
-        self.show_colliders = !self.show_colliders;
-    }
-
-    /// Check if snap to grid is enabled.
-    pub fn is_snap_to_grid(&self) -> bool {
-        self.snap_to_grid
-    }
-
-    /// Set snap to grid.
-    pub fn set_snap_to_grid(&mut self, snap: bool) {
-        self.snap_to_grid = snap;
-    }
-
-    /// Toggle snap to grid.
-    pub fn toggle_snap_to_grid(&mut self) {
-        self.snap_to_grid = !self.snap_to_grid;
-    }
-
     /// Snap a position to the grid when the snap flag is enabled.
     pub fn snap_position(&self, pos: Vec2) -> Vec2 {
-        if self.snap_to_grid {
+        if self.view.snap {
             self.snap_to_grid_position(pos)
         } else {
             pos

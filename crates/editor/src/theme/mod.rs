@@ -34,8 +34,6 @@ pub struct EditorTheme {
     pub accent_cyan: Color,
 
     // ── Borders ─────────────────────────────────────────────────
-    /// Panel borders — bright blue (`#007acc`)
-    pub border_panel: Color,
     /// Grid lines, separators (`#333333`)
     pub border_subtle: Color,
 
@@ -147,6 +145,10 @@ pub struct EditorTheme {
     /// Collider outline on selected entities
     pub collider_selected: Color,
 
+    // ── Game-frame overlay ──────────────────────────────────────
+    /// Configured camera bounds overlay rect in the scene view
+    pub game_frame: Color,
+
     // ── Selection outline ───────────────────────────────────────
     /// Viewport outline of selected entities (primary; secondary and hover
     /// derive from it in `selection_outline_colors()`)
@@ -186,7 +188,6 @@ impl Default for EditorTheme {
             accent_cyan: Color::from_hex(0x00d9ff),
 
             // Borders
-            border_panel: Color::from_hex(0x007acc),
             border_subtle: Color::from_hex(0x333333),
 
             // Text
@@ -245,23 +246,26 @@ impl Default for EditorTheme {
             separator: Color::new(0.4, 0.4, 0.4, 0.6),
 
             // Grid
-            grid_primary: Color::new(0.3, 0.3, 0.3, 0.5),
-            grid_secondary: Color::new(0.25, 0.25, 0.25, 0.3),
-            grid_axis_x: Color::new(0.8, 0.2, 0.2, 0.8),
-            grid_axis_y: Color::new(0.2, 0.8, 0.2, 0.8),
+            grid_primary: Color::new(0.3, 0.3, 0.3, 0.3),
+            grid_secondary: Color::new(0.25, 0.25, 0.25, 0.15),
+            grid_axis_x: Color::new(0.8, 0.2, 0.2, 0.45),
+            grid_axis_y: Color::new(0.2, 0.8, 0.2, 0.45),
 
             // Status bar
             status_bar_bg: surface_2,
 
             // Play-state viewport borders
-            border_editing: Color::new(0.0, 0.48, 0.83, 0.5),
+            border_editing: Color::from_hex(0x333333),
             border_playing: Color::new(0.0, 0.8, 0.27, 0.8),
             border_paused: Color::new(1.0, 0.8, 0.0, 0.8),
 
             // Collider overlay
-            collider_outline: Color::new(0.2, 1.0, 0.4, 0.9),
-            collider_sensor: Color::new(0.2, 0.85, 1.0, 0.9),
+            collider_outline: Color::new(0.2, 1.0, 0.4, 0.45),
+            collider_sensor: Color::new(0.2, 0.85, 1.0, 0.45),
             collider_selected: Color::new(1.0, 0.85, 0.2, 1.0),
+
+            // Game-frame overlay
+            game_frame: Color::new(0.8, 0.8, 0.8, 0.5),
 
             // Selection outline — orange: distinct from the collider overlay's
             // yellow/green and the grid's cyan

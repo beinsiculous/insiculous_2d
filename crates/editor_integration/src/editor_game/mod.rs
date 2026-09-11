@@ -173,23 +173,6 @@ impl<G: Game> EditorGame<G> {
         0.0
     }
 
-    /// While Playing WITH camera-follow armed, mirror the game's main-camera
-    /// entity — position AND zoom — onto the editor viewport so
-    /// the rendered view (derived from the viewport in `render`) follows the
-    /// game camera. Free camera (follow broken by a manual pan/zoom) and
-    /// Paused keep the user's view — picking stays truthful either way,
-    /// because render always derives from the same viewport.
-    pub(super) fn sync_viewport_from_main_camera(&mut self, world: &ecs::World) {
-        if !self.editor.is_playing() || !self.editor.is_camera_following() {
-            return;
-        }
-        if let Some((pos, zoom)) = engine_core::main_camera_pose(world) {
-            self.editor.viewport.set_camera_position(pos);
-            // adopt_ skips the interactive zoom clamp: parity with the
-            // shipped game even at extreme authored zooms.
-            self.editor.viewport.adopt_camera_zoom(zoom);
-        }
-    }
 
     /// Render the scene view's toolbar strip: the tools and the play
     /// controls, laid out by the strip and drawn on its band.
@@ -207,22 +190,53 @@ impl<G: Game> EditorGame<G> {
         );
         self.editor.play_controls.position = strip_layout.play_controls_origin;
 
+        // The overflow menu goes first: a blocking rect is consulted at each
+        // widget's own interact call, and in a window too short to hang the
+        // menu below the strip it shifts up over the strip's buttons, which
+        // must find its rect already there. Overlay scopes cannot nest, so
+        // the menu's scope closes before the strip's opens.
+        let overflow_pick = editor::overflow_menu::render_overflow_menu(
+            &mut self.editor.toolbar,
+            ctx.ui,
+            &self.editor.theme,
+            &strip_layout,
+            &self.editor.view,
+        );
+
         editor::toolbar_strip::begin(ctx.ui, strip, &self.editor.theme);
         let picked_tool = self.editor.toolbar.render(ctx.ui, &self.editor.theme, &strip_layout);
         let camera_follow = self.editor.is_camera_following();
         let theme = &self.editor.theme;
         let play_action =
             self.editor.play_controls.render(ctx.ui, play_state, camera_follow, theme);
+        let view_action = strip_layout.view_group.and_then(|origin| {
+            editor::view_toggles::render_group(ctx.ui, theme, origin, &self.editor.view)
+        });
         editor::toolbar_strip::end(ctx.ui);
 
-        // The shed tools' menu hangs below the strip on the floating band, so
-        // it is drawn after the strip's scope has closed.
-        let picked_from_menu =
-            self.editor.toolbar.render_overflow_menu(ctx.ui, &self.editor.theme, &strip_layout);
-
-        if let Some(tool) = picked_tool.or(picked_from_menu) {
-            // set_tool keeps the gizmo mode in sync with the clicked tool.
+        if let Some(tool) = picked_tool {
             self.editor.set_tool(tool);
+        }
+        if let Some(action) = view_action {
+            match action {
+                editor::ViewGroupAction::Toggle(toggle) => {
+                    self.dispatch_editor_action(toggle.action(), false, ctx);
+                }
+                editor::ViewGroupAction::ResetLayout => {
+                    self.dispatch_editor_action(editor::EditorAction::ResetLayout, false, ctx);
+                }
+            }
+        }
+        if let Some(pick) = overflow_pick {
+            match pick {
+                editor::OverflowPick::Tool(tool) => self.editor.set_tool(tool),
+                editor::OverflowPick::Toggle(toggle) => {
+                    self.dispatch_editor_action(toggle.action(), false, ctx);
+                }
+                editor::OverflowPick::ResetLayout => {
+                    self.dispatch_editor_action(editor::EditorAction::ResetLayout, false, ctx);
+                }
+            }
         }
         if let Some(action) = play_action {
             if self.handle_play_action(action, ctx.world) {

@@ -24,12 +24,12 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 
 ## File Map
 ### State + chrome
-- `context/` — EditorContext struct (selection, tools, state, theme, fonts, inspector_scroll).
-- `theme/` — EditorTheme: WCAG surface ladder `surface_0..surface_4` with luminance guard tests (≥1.35:1 adjacent / ≥3:1 border), style converters, and `ui_theme()`.
+- `context/` — EditorContext struct (selection, tools, state, view toggles, game frame dimensions, theme, fonts, inspector_scroll).
+- `theme/` — EditorTheme: WCAG surface ladder `surface_0..surface_4` with luminance guard tests (≥1.35:1 adjacent / ≥3:1 border, overlay tones subdued against selection accent, game frame distinctness, grid axis hierarchy), muted overlay tokens (`game_frame`, subdued grid and colliders), style converters, and `ui_theme()`.
 - `command_api/` — CLI/API dispatch (query list/describe/selection/scene/commands and write set/add/remove/rename/delete/select/undo/redo/batch) through CommandHistory; `docs/EDITOR_COMMAND_API.md`.
 - `drag_drop.rs` — `DragDropState`/`DragPayload` (`Texture`, `Script`) cross-panel drag state machine (Idle→Armed→Dragging→Dropped-1-frame).
 - `dock/` — multi-panel docking: state, layout, collapse/visibility toggles, chevrons, and clamped resize grabbers. Below `MIN_CENTER_WIDTH` of centre it enters **narrow mode**: the side panels leave the edge allocation and one at a time shows as an overlay over the viewport on the floating band, opened from its header tab at the edge and closed from its own chevron (`narrow_overlay`, `open_narrow_overlay`, `close_narrow_overlay`); a collapsed panel opens as a full overlay (`expanded_content_bounds`) without touching its persisted collapse flag; the overlay runs to the dock's bottom, over a bottom panel.
-- `toolbar_strip.rs` — the scene view's toolbar strip: `split` (panel content → strip + viewport), the `begin`/`end` chrome scope on `UiLayer::PanelChrome`, and `layout` placing the tools left and the play controls at the centre (from the right edge, and shedding tools into an overflow menu, below `TOOLBAR_STRIP_MIN_WIDTH`).
+- `toolbar_strip.rs` — the scene view's toolbar strip: `split` (panel content → strip + viewport), the `begin`/`end` chrome scope on `UiLayer::PanelChrome`, and `layout` placing the tools left, the play controls at the centre where it leaves them whole, and the view group (`VIEW_GROUP_WIDTH`, 140 px) at the right edge; below `TOOLBAR_STRIP_MIN_WIDTH` (391 px) the view group sheds whole and the tools shed one by one into the overflow menu (`overflow_menu.rs`).
 - `menu/` — top menu bar; action items carry checked flag and map labels to `EditorAction`.
 - `editor_input.rs` — shortcut chord model (exact chord beats any-mods) and `allowed_while_playing()` action deny list.
 - `archetype.rs` — `Archetype`: the nine entity factories shared by the Entity menu and command API `create`.
@@ -54,14 +54,14 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 - `viewport/` — scene viewport with camera pan/zoom; `to_window_render_camera`/`world_to_screen` equivalence locked by overlay tests.
 - `picking/` — `EntityPicker` and `PickableEntity` (AABB from absolute size, flip scales stay clickable).
 - `gizmo/` — transform gizmos (annulus rotate ring with dead-center fallthrough, cumulative delta, ratio-based scale, and cancel latch).
-- `grid.rs` — authoring grid segments and viewport clipped overlay lines.
+- `grid.rs` — authoring grid segments and viewport clipped overlay lines (no internal visibility flag; caller gates rendering via `ViewToggles`).
 - `clipboard.rs` — `ClipboardEntity`, `capture_entity_tree`/`spawn_entity_tree`, and `SpawnTreeCommand`.
 - `collider_overlay.rs` — collider outline overlay mirroring rapier placement (offset is body-local, Transform2D.scale ignored).
 
 ### Persistence + commands
 - `commands/` — `EditorCommand` trait, `CommandHistory` dirty tracking watermark, `SetComponentCommand` merge-by-hint, `break_merge()` gesture boundary, and the play-session floor (`begin_session`/`drop_session_entries`/`rebase_session_entries`) with the leaf-level rebase in `rebase.rs`.
 - `entity_names.rs` — `entity_display_name`: the one name the hierarchy row, the inspector heading and the command API's `display` field all read.
-- `editor_preferences.rs` — `EditorPreferences` JSON serialization (`from_json`/`to_json`), panel layout capture/apply, camera/grid state, `collapsed_components` (the inspector's collapsed sections), `ide_command` (IO handled by integration layer via save_store).
+- `editor_preferences.rs` — `EditorPreferences` JSON serialization (`from_json`/`to_json`), panel layout capture/apply, camera state, flattened `view: ViewToggles` (carrying `grid_visible`, `snap_to_grid`, `colliders_visible`, `game_frame_visible`), `collapsed_components` (the inspector's collapsed sections), `ide_command` (IO handled by integration layer via save_store).
 - `asset_browser.rs` — `AssetEntry`, `AssetKind` (`Image`, `Scene`, `Script`), `scan_assets` walking `common::vfs::list_files` for images, scenes, and scripts (`.rhai`, `.rs`), and `AssetBrowserState.selected` — the clicked tile, carried across a rescan by relative path and dropped when its file is gone.
 - `stored_component/` — typed registry overlay (`editor_component_registry!`), `category.rs`, and `dynamic.rs` falling through to ECS dynamic registry.
 - `world_snapshot.rs` — `WorldSnapshot` save/restore with uncaptured component type detection and drop reporting.
@@ -91,7 +91,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 - Selection: `editor.selection.primary()` returns the main selected EntityId
 - Gizmo drag tracking: editor_integration's `GizmoDragState` captures start transform+collider for every selection root; frames apply `start + cumulative delta` (idempotent — what makes snapping residual-proof), ONE Macro/TransformGizmo command on release, Escape restores starts and pushes nothing
 - The toolbar and the play controls are NOT floating chrome: they render inside the strip's scope, positioned by `toolbar_strip::layout`. `scene_view_bounds()` is the viewport BELOW the strip — every overlay, the GPU scissor and every pick map through it, so none of them reach into the band; `toolbar_strip_bounds()` is the band itself.
-- Theme is on `EditorContext.theme` (public field); call `theme.gizmo_palette()`, `inspector_style()`, `editable_field_style()`, `grid_colors()`, `collider_overlay_colors()` instead of hardcoding colors. Menu/Toolbar/Hierarchy `render()` take `&EditorTheme`
+- Theme is on `EditorContext.theme` (public field); call `theme.gizmo_palette()`, `inspector_style()`, `editable_field_style()`, `grid_colors()`, `collider_overlay_colors()`, `game_frame` instead of hardcoding colors. Menu/Toolbar/Hierarchy `render()` take `&EditorTheme`
 
 ## Testing
 - `cargo test -p editor` — 0 failed, 0 ignored

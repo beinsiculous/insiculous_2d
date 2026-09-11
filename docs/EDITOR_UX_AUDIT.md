@@ -320,7 +320,7 @@ The upside — `to_window_render_camera` guarantees overlay and GPU agree, locke
 
 ### 4.4 No selection affordance in the viewport
 
-**Status (2026-09-10):** shipped — #19 (2494784) — selection and hover outlines for every sprite; reserving accent strength for selection is #132 in this sprint
+**Status (2026-09-10):** shipped — #19 (2494784) — selection and hover outlines for every sprite; reserving accent strength for selection shipped in #132
 
 No outline, no bounds box, no tint, no handles. `theme.selection_fill` is used only for hierarchy row backgrounds. The only viewport feedback is indirect:
 
@@ -457,7 +457,7 @@ Backgrounds authored as `#1e1e1e` (30) measure **91** in the screenshots; `bg_he
 
 ### 5.2 No elevation model
 
-**Status (2026-09-10):** shipped — #26 (9a3a24f) — the `surface_0`–`surface_4` ladder with its guard test; reserving the accents for selection is #132 in this sprint
+**Status (2026-09-10):** shipped — #26 (9a3a24f) — the `surface_0`–`surface_4` ladder with its guard test; reserving the accents for selection shipped in #132
 
 ```rust
 // theme.rs:185-188

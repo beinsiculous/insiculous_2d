@@ -145,7 +145,7 @@ impl Toolbar {
     ///
     /// Call inside the strip's scope ([`crate::toolbar_strip::begin`]) so the
     /// buttons land on the strip's band. The shed tools' menu is a separate
-    /// call — [`render_overflow_menu`](Self::render_overflow_menu) — because
+    /// call — [`crate::overflow_menu::render_overflow_menu`] — because
     /// it belongs on the floating band, and overlay scopes cannot nest.
     ///
     /// Returns the newly selected tool if changed.
@@ -241,93 +241,7 @@ impl Toolbar {
         }
         clicked
     }
-
-    /// Render the open overflow menu: the shed tools with their shortcuts,
-    /// on the floating band above the strip. A click on an entry selects
-    /// that tool and closes the menu; a press anywhere outside closes it.
-    ///
-    /// Call AFTER the strip's scope has ended.
-    pub fn render_overflow_menu(
-        &mut self,
-        ui: &mut UIContext,
-        theme: &crate::EditorTheme,
-        layout: &crate::toolbar_strip::StripLayout,
-    ) -> Option<EditorTool> {
-        if !self.overflow_open {
-            return None;
-        }
-        let Some(button) = layout.overflow_button else {
-            self.overflow_open = false;
-            return None;
-        };
-        let shed: Vec<EditorTool> =
-            EditorTool::all().iter().skip(layout.visible_tools).copied().collect();
-        if shed.is_empty() {
-            self.overflow_open = false;
-            return None;
-        }
-
-        let menu = Self::overflow_menu_bounds(button, shed.len());
-        // A press outside both the menu and the button that opened it
-        // closes the menu; a press on the button itself is left alone, or
-        // its release would re-open what this press just closed.
-        if ui.mouse_just_pressed()
-            && !menu.contains(ui.mouse_pos())
-            && !button.contains(ui.mouse_pos())
-        {
-            self.overflow_open = false;
-            return None;
-        }
-
-        ui.begin_overlay_in(ui::UiLayer::Floating, menu);
-        ui.panel_styled(menu, theme.surface_4, theme.popup_border, 1.0);
-        let mut picked = None;
-        for (index, &tool) in shed.iter().enumerate() {
-            let row = Rect::new(
-                menu.x + 4.0,
-                menu.y + 4.0 + index as f32 * OVERFLOW_ROW_HEIGHT,
-                menu.width - 8.0,
-                OVERFLOW_ROW_HEIGHT,
-            );
-            let id = format!("toolbar_overflow_{}", tool.name());
-            if ui.button(id.as_str(), tool.name(), row) {
-                picked = Some(tool);
-            }
-            ui.label_in_bounds_styled(
-                tool.shortcut(),
-                row,
-                ui::TextAlign::Right,
-                theme.shortcut_hint,
-                theme.fonts.small,
-                8.0,
-            );
-        }
-        ui.end_overlay();
-
-        if let Some(tool) = picked {
-            self.current_tool = tool;
-            self.overflow_open = false;
-        }
-        picked
-    }
-
-    /// Where the overflow menu hangs: under its button, wide enough for a
-    /// tool name and its shortcut.
-    fn overflow_menu_bounds(button: Rect, rows: usize) -> Rect {
-        Rect::new(
-            button.x,
-            button.bottom() + 2.0,
-            OVERFLOW_MENU_WIDTH,
-            rows as f32 * OVERFLOW_ROW_HEIGHT + 8.0,
-        )
-    }
 }
-
-/// Height of one row in the overflow menu.
-const OVERFLOW_ROW_HEIGHT: f32 = 24.0;
-
-/// Width of the overflow menu: a tool name and its shortcut, side by side.
-const OVERFLOW_MENU_WIDTH: f32 = 120.0;
 
 #[cfg(test)]
 mod tests {

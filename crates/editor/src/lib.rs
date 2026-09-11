@@ -80,7 +80,10 @@ mod toolbar;
 mod viewport;
 mod viewport_input;
 pub mod editor_preferences;
+pub mod game_frame_overlay;
 pub mod layout;
+pub mod overflow_menu;
+pub mod view_toggles;
 pub mod world_lines;
 pub mod world_snapshot;
 
@@ -155,4 +158,7 @@ pub use theme::EditorTheme;
 pub use toolbar::{EditorTool, Toolbar};
 pub use viewport::SceneViewport;
 pub use viewport_input::{ViewportInputConfig, ViewportInputHandler, ViewportInputResult};
+pub use view_toggles::{render_group, ViewGroupAction, ViewToggle, ViewToggles, VIEW_GROUP_WIDTH};
+pub use game_frame_overlay::{game_frame_rect, render_game_frame_overlay};
+pub use overflow_menu::{render_overflow_menu, OverflowPick};
 pub use world_lines::{draw_world_line, draw_world_segments};

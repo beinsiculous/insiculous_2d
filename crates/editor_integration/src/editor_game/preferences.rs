@@ -27,9 +27,8 @@ impl<G: Game> super::EditorGame<G> {
         };
         self.editor.set_camera_offset(Vec2::new(prefs.camera_position.0, prefs.camera_position.1));
         self.editor.set_camera_zoom(prefs.camera_zoom);
-        self.editor.set_snap_to_grid(prefs.snap_to_grid);
+        self.editor.view = prefs.view;
         self.editor.set_grid_size(prefs.grid_size);
-        self.editor.set_grid_visible(prefs.grid_visible);
         self.editor
             .inspector_state
             .set_collapsed_names(prefs.collapsed_components.clone());
@@ -49,9 +48,8 @@ impl<G: Game> super::EditorGame<G> {
                 .scene_path()
                 .and_then(|path| path.to_str())
                 .map(|string| string.to_string()),
-            snap_to_grid: self.editor.is_snap_to_grid(),
+            view: self.editor.view,
             grid_size: self.editor.grid_size(),
-            grid_visible: self.editor.is_grid_visible(),
             panels: Vec::new(),
             collapsed_components: self.editor.inspector_state.collapsed_names(),
             ide_command: self

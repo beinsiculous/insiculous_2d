@@ -38,7 +38,7 @@ fn test_snapping_rounds_to_the_nearest_grid_cell_only_while_enabled() {
 
     assert_eq!(ctx.snap_position(pos), pos, "snap off: positions pass through");
 
-    ctx.set_snap_to_grid(true);
+    ctx.view.snap = true;
     // 45/32 = 1.4 rounds to 1 → 32; 78/32 = 2.4 rounds to 2 → 64.
     assert_eq!(ctx.snap_position(pos), Vec2::new(32.0, 64.0));
 }

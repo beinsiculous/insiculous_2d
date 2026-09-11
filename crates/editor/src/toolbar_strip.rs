@@ -25,15 +25,13 @@ const GROUP_GAP: f32 = 8.0;
 /// button height, plus room for the chevron beside the glyph.
 const OVERFLOW_BUTTON_WIDTH: f32 = 34.0;
 
-/// Width held clear at the strip's right edge for the View and Reset Layout
-/// controls that join the strip later. Counted in the minimum width only —
-/// nothing draws there yet — so the strip does not have to re-learn its
-/// minimum when they arrive.
-const RIGHT_GROUP_RESERVE: f32 = 72.0;
+/// Total width of the strip's right view-controls group:
+/// 4 toggles (24px) at 4px gaps, an 8px gap, and Reset Layout (24px).
+pub const VIEW_GROUP_WIDTH: f32 = crate::view_toggles::VIEW_GROUP_WIDTH;
 
 /// The width below which the strip can no longer hold its groups side by
 /// side at their natural positions: the padding, the overflow button, the
-/// play controls in their widest state, and the reserve above.
+/// play controls in their widest state, and the view group.
 ///
 /// Also the dock's minimum centre width — below it the side panels stop
 /// taking an edge allocation (see [`crate::dock`]), because a centre
@@ -44,7 +42,7 @@ pub const TOOLBAR_STRIP_MIN_WIDTH: f32 = PADDING * 2.0
     + PlayControls::LEAD_WIDTH
     + PlayControls::WIDEST_CONTENT_WIDTH
     + GROUP_GAP
-    + RIGHT_GROUP_RESERVE;
+    + VIEW_GROUP_WIDTH;
 
 /// Split a scene panel's content area into the toolbar strip (top) and the
 /// viewport (below it).
@@ -87,29 +85,34 @@ pub fn end(ui: &mut UIContext) {
     ui.end_overlay();
 }
 
-/// Where the strip's two groups sit, and how much of the tool group fits.
+/// Where the strip's groups sit, and how much of the tool and view groups fit.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StripLayout {
+    /// The strip this layout was made for — the chrome floor a popup hung
+    /// from the strip may shift up to, and no further.
+    pub strip: Rect,
     /// Top-left corner of the first tool button.
     pub tools_origin: Vec2,
     /// How many tools are shown as buttons, in tool order. The rest are
     /// reachable through [`overflow_button`](Self::overflow_button).
     pub visible_tools: usize,
-    /// The button that opens the shed tools' menu, when any tool was shed.
+    /// The button that opens the shed tools/views menu, when any tool or view group was shed.
     pub overflow_button: Option<Rect>,
     /// Top-left corner of the play controls' first button.
     pub play_controls_origin: Vec2,
+    /// Top-left corner of the right view-toggles group, or `None` if shed into overflow.
+    pub view_group: Option<Vec2>,
 }
 
-/// Lay the tool group and the play controls out inside `strip`.
+/// Lay the tool group, play controls, and view toggles group out inside `strip`.
 ///
 /// The play controls are the sprint's primary control, so they are placed
 /// first and never clip: at or above [`TOOLBAR_STRIP_MIN_WIDTH`] they sit at
 /// the strip's centre so they stay put as the play state and the tool set
 /// change — as long as the centre leaves them whole; where it would not, and
-/// below the minimum, they are laid out from the strip's right edge. The tool
-/// group takes what is left, shedding the tools that no longer fit into the
-/// overflow menu.
+/// below the minimum, they are laid out from the strip's right edge.
+/// The right view group sits at the right edge when at or above the minimum,
+/// or sheds as a unit into the overflow menu when below it.
 pub fn layout(
     strip: Rect,
     toolbar: &Toolbar,
@@ -120,9 +123,15 @@ pub fn layout(
     let left = strip.x + PADDING;
     let right = strip.right() - PADDING;
 
-    // The centre is a preference, the right edge the guarantee: a strip
-    // just over the minimum centres the group past its own edge.
-    let from_right = right - play_controls.content_width(play_state);
+    let (view_group, from_right) = if strip.width >= TOOLBAR_STRIP_MIN_WIDTH {
+        let origin = Vec2::new(right - VIEW_GROUP_WIDTH, button_top);
+        let from_right = right - VIEW_GROUP_WIDTH - GROUP_GAP - play_controls.content_width(play_state);
+        (Some(origin), from_right)
+    } else {
+        let from_right = right - play_controls.content_width(play_state);
+        (None, from_right)
+    };
+
     let play_x = if strip.width >= TOOLBAR_STRIP_MIN_WIDTH {
         strip.center().x.min(from_right)
     } else {
@@ -133,35 +142,48 @@ pub fn layout(
     // The separator the play controls draw to their left belongs to them.
     let tools_limit = play_x - PlayControls::LEAD_WIDTH - GROUP_GAP;
     let (visible_tools, overflow_button) =
-        fit_tools(toolbar, left, tools_limit, button_top);
+        fit_tools(toolbar, left, tools_limit, button_top, view_group.is_none());
 
     StripLayout {
+        strip,
         tools_origin: Vec2::new(left, button_top),
         visible_tools,
         overflow_button,
         play_controls_origin: Vec2::new(play_x, button_top),
+        view_group,
     }
 }
 
 /// How many tool buttons fit between `left` and `limit`, and where the
-/// overflow button goes when some do not. Shedding takes from the end of
-/// the tool order, so the tools keep their positions as the strip narrows.
-fn fit_tools(toolbar: &Toolbar, left: f32, limit: f32, top: f32) -> (usize, Option<Rect>) {
+/// overflow button goes when some do not or when the view group has shed.
+/// Shedding takes from the end of the tool order, so the tools keep their
+/// positions as the strip narrows.
+fn fit_tools(
+    toolbar: &Toolbar,
+    left: f32,
+    limit: f32,
+    top: f32,
+    view_group_shed: bool,
+) -> (usize, Option<Rect>) {
     let total = crate::toolbar::EditorTool::all().len();
     let stride = toolbar.button_stride();
     let available = limit - left;
-    if fitting_count(available, stride, toolbar.spacing()) >= total {
+
+    if !view_group_shed && fitting_count(available, stride, toolbar.spacing()) >= total {
         return (total, None);
     }
 
     // One tool in the menu is worth no less than one on the strip, so the
     // overflow button's own width comes out of the tool group's budget.
+    // If all tools fit but the view group has shed, the overflow button is placed
+    // after the last tool.
+    let max_tools = if view_group_shed { total } else { total.saturating_sub(1) };
     let visible = fitting_count(
         available - OVERFLOW_BUTTON_WIDTH - toolbar.spacing(),
         stride,
         toolbar.spacing(),
     )
-    .min(total.saturating_sub(1));
+    .min(max_tools);
     let overflow = Rect::new(
         left + visible as f32 * stride,
         top,
@@ -189,10 +211,8 @@ mod tests {
     /// A comfortable scene panel and the one a 390px page produces once the
     /// dock has gone narrow (the centre takes the whole width).
     const COMFORTABLE: Rect = Rect { x: 200.0, y: 48.0, width: 800.0, height: 600.0 };
+    /// Narrow widths below the 391px minimum width (where the view group sheds).
     const NARROW: Rect = Rect { x: 0.0, y: 48.0, width: 390.0, height: 560.0 };
-    /// The common Android width, and a strip just over its minimum — both
-    /// wide enough to prefer the centre, neither wide enough to centre the
-    /// Paused group whole.
     const ANDROID: Rect = Rect { x: 0.0, y: 48.0, width: 360.0, height: 560.0 };
     const JUST_OVER_THE_MINIMUM: Rect =
         Rect { x: 0.0, y: 48.0, width: TOOLBAR_STRIP_MIN_WIDTH + 7.0, height: 560.0 };
@@ -243,6 +263,7 @@ mod tests {
         let editing = layout(strip, &toolbar, &controls, EditorPlayState::Editing);
         assert_eq!(editing.visible_tools, EditorTool::all().len());
         assert_eq!(editing.overflow_button, None);
+        assert!(editing.view_group.is_some());
         assert_eq!(editing.play_controls_origin.x, strip.center().x);
 
         for state in [EditorPlayState::Playing, EditorPlayState::Paused] {
@@ -254,10 +275,10 @@ mod tests {
         }
     }
 
-    /// The two groups laid out in one strip never overlap, and every
-    /// button stays inside the strip — at a comfortable width, at the width
-    /// a 390px page produces, and in the band just over the minimum where
-    /// the centre is preferred but cannot hold the Paused group whole.
+    /// The groups laid out in one strip never overlap, and every
+    /// button stays inside the strip — at a comfortable width, at the widths
+    /// 390px and 360px produce (below the 391px min where view group sheds),
+    /// and in the band just over the minimum where the centre is preferred.
     /// Reachability, not merely non-overlap: every tool is a button or an
     /// entry in the overflow menu.
     #[test]
@@ -289,14 +310,44 @@ mod tests {
                         content.width
                     );
                 }
+                if let Some(view_origin) = laid_out.view_group {
+                    let view_rect = Rect::new(view_origin.x, view_origin.y, VIEW_GROUP_WIDTH, toolbar.button_height());
+                    assert!(
+                        contains_rect(strip, view_rect),
+                        "{state:?} at {}px: view group clips",
+                        content.width
+                    );
+                    assert!(
+                        play.right() <= view_rect.x,
+                        "{state:?} at {}px: play controls overlap view group",
+                        content.width
+                    );
+                }
                 assert_eq!(
-                    laid_out.visible_tools < EditorTool::all().len(),
+                    laid_out.visible_tools < EditorTool::all().len() || laid_out.view_group.is_none(),
                     laid_out.overflow_button.is_some(),
-                    "{state:?} at {}px: a shed tool must have a menu to live in",
+                    "{state:?} at {}px: a shed tool or view group must have a menu to live in",
                     content.width
                 );
             }
         }
+    }
+
+    /// At the exact minimum width (391px) the view group shows whole; one pixel under (390px),
+    /// the view group sheds and the overflow button exists even if all tools fit.
+    #[test]
+    fn test_view_group_shows_whole_at_minimum_and_sheds_one_pixel_under() {
+        let toolbar = Toolbar::new();
+        let controls = PlayControls::new();
+
+        let at_min = strip_of(Rect::new(0.0, 0.0, TOOLBAR_STRIP_MIN_WIDTH, 560.0));
+        let layout_at_min = layout(at_min, &toolbar, &controls, EditorPlayState::Editing);
+        assert!(layout_at_min.view_group.is_some(), "view group shows whole at minimum width");
+
+        let under_min = strip_of(Rect::new(0.0, 0.0, TOOLBAR_STRIP_MIN_WIDTH - 1.0, 560.0));
+        let layout_under = layout(under_min, &toolbar, &controls, EditorPlayState::Editing);
+        assert_eq!(layout_under.view_group, None, "view group sheds one pixel under minimum");
+        assert!(layout_under.overflow_button.is_some(), "overflow button present when view group sheds");
     }
 
     /// Below the minimum width the play controls are laid out from the
@@ -313,6 +364,7 @@ mod tests {
 
         assert!(laid_out.visible_tools < EditorTool::all().len(), "tools shed first");
         assert!(laid_out.overflow_button.is_some(), "the shed tools get a menu");
+        assert_eq!(laid_out.view_group, None, "view group sheds");
         assert!(contains_rect(strip, play), "the play controls still fit whole");
         assert!(
             play.right() <= strip.right() && play.right() > strip.center().x,

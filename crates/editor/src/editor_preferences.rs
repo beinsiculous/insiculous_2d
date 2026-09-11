@@ -29,14 +29,11 @@ pub struct EditorPreferences {
     pub camera_zoom: f32,
     /// Path to the last opened scene file
     pub last_scene_path: Option<String>,
-    /// Whether snap-to-grid was enabled
-    pub snap_to_grid: bool,
     /// Grid cell size
     pub grid_size: f32,
-    /// Whether the authoring grid overlay was visible (absent in prefs
-    /// files from older versions, which predate the drawn grid)
-    #[serde(default = "default_grid_visible")]
-    pub grid_visible: bool,
+    /// View toggles (grid, colliders, game frame, snap) flattened into top-level keys
+    #[serde(flatten)]
+    pub view: crate::view_toggles::ViewToggles,
     /// Per-panel layout state (absent in prefs files from older versions)
     #[serde(default)]
     pub panels: Vec<PanelPrefs>,
@@ -49,19 +46,14 @@ pub struct EditorPreferences {
     pub collapsed_components: Vec<String>,
 }
 
-fn default_grid_visible() -> bool {
-    true
-}
-
 impl Default for EditorPreferences {
     fn default() -> Self {
         Self {
             camera_position: (0.0, 0.0),
             camera_zoom: 1.0,
             last_scene_path: None,
-            snap_to_grid: false,
             grid_size: 32.0,
-            grid_visible: true,
+            view: crate::view_toggles::ViewToggles::default(),
             panels: Vec::new(),
             ide_command: None,
             collapsed_components: Vec::new(),
@@ -153,9 +145,13 @@ mod tests {
             camera_position: (100.0, 200.0),
             camera_zoom: 2.5,
             last_scene_path: Some("scenes/test.ron".to_string()),
-            snap_to_grid: true,
             grid_size: 64.0,
-            grid_visible: false,
+            view: crate::view_toggles::ViewToggles {
+                grid: false,
+                colliders: true,
+                game_frame: false,
+                snap: true,
+            },
             panels: Vec::new(),
             ide_command: None,
             collapsed_components: vec!["Sprite".to_string()],
@@ -170,9 +166,11 @@ mod tests {
         assert_eq!(loaded.camera_position, (100.0, 200.0));
         assert_eq!(loaded.camera_zoom, 2.5);
         assert_eq!(loaded.last_scene_path.as_deref(), Some("scenes/test.ron"));
-        assert!(loaded.snap_to_grid);
         assert_eq!(loaded.grid_size, 64.0);
-        assert!(!loaded.grid_visible);
+        assert!(!loaded.view.grid);
+        assert!(loaded.view.colliders);
+        assert!(!loaded.view.game_frame);
+        assert!(loaded.view.snap);
         assert_eq!(loaded.collapsed_components, vec!["Sprite".to_string()], "a collapsed section survives a restart");
         // The Center panel is layout-derived and never persisted.
         assert_eq!(loaded.panels.len(), 2);
@@ -219,9 +217,28 @@ mod tests {
 
         assert_eq!(prefs.camera_position, (10.0, 20.0));
         assert!(prefs.panels.is_empty());
-        assert!(prefs.grid_visible, "prefs files predating the drawn grid default to visible");
+        assert!(!prefs.view.snap, "legacy snap_to_grid false lands in view.snap");
+        assert!(prefs.view.grid, "prefs files predating the drawn grid default to visible");
+        assert!(prefs.view.colliders, "colliders default to visible");
+        assert!(prefs.view.game_frame, "game frame defaults to visible");
         assert_eq!(prefs.ide_command, None);
         assert!(prefs.collapsed_components.is_empty(), "prefs files predating collapsible sections open every section");
+    }
+
+    #[test]
+    fn test_prefs_without_any_view_toggles_loads_defaults() {
+        let no_toggles = r#"{
+            "camera_position": [0.0, 0.0],
+            "camera_zoom": 1.0,
+            "last_scene_path": null,
+            "grid_size": 32.0,
+            "panels": []
+        }"#;
+
+        let prefs: EditorPreferences =
+            EditorPreferences::from_json(no_toggles).expect("valid JSON without view toggles parses");
+
+        assert_eq!(prefs.view, crate::view_toggles::ViewToggles::default());
     }
 
     #[test]

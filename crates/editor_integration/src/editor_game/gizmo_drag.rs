@@ -132,7 +132,7 @@ impl<G: Game> EditorGame<G> {
         let world_delta = self.editor.gizmo_delta_to_world(interaction.translation);
         // Snap the PRIMARY's anchor and share the delta so relative
         // offsets in a multi-selection survive a snapped drag.
-        let snap_active = self.editor.is_snap_to_grid() || ctrl_held;
+        let snap_active = self.editor.view.snap || ctrl_held;
         let effective_delta = if snap_active {
             let anchor = drag.entities[0].start.position;
             self.editor.snap_to_grid_position(anchor + world_delta) - anchor

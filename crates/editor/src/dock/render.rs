@@ -225,7 +225,7 @@ impl DockArea {
 /// Render a collapsed panel as a slim strip (header chrome only, no content).
 /// Returns true if the expand chevron was clicked.
 fn render_collapsed_strip(ui: &mut UIContext, panel: &DockPanel, theme: &EditorTheme) -> bool {
-    ui.panel_styled(panel.bounds, theme.surface_2, theme.border_panel, 1.0);
+    ui.panel_styled(panel.bounds, theme.surface_2, theme.border_subtle, 1.0);
     draw_panel_chrome(ui, &panel.bounds, theme);
 
     // Horizontal strips (Top/Bottom) keep their title; vertical strips are
@@ -300,33 +300,17 @@ fn draw_resize_grabber(ui: &mut UIContext, panel: &DockPanel, theme: &EditorThem
     }
 }
 
-/// Panel-header flair: a thin accent separator along the header's bottom
-/// edge plus small corner ticks in the top corners (technique borrowed from
-/// the in-game MenuPanel chrome, rebuilt here from ui primitives so the
-/// editor keeps its no-engine_core dependency rule).
+/// Panel-header separator: a thin subtle separator along the header's bottom edge.
 fn draw_panel_chrome(ui: &mut UIContext, header_bounds: &Rect, theme: &EditorTheme) {
-    // Accent separator under the header
     ui.rect(
         Rect::new(
             header_bounds.x,
-            header_bounds.y + header_bounds.height - 2.0,
+            header_bounds.y + header_bounds.height - 1.0,
             header_bounds.width,
-            2.0,
+            1.0,
         ),
-        theme.accent_cyan.with_alpha(0.6),
+        theme.border_subtle,
     );
-
-    // Corner ticks (two small accent dashes per top corner)
-    let tick_len = 10.0;
-    let tick_w = 2.0;
-    let accent = theme.accent_cyan;
-    // Top-left: horizontal + vertical tick
-    ui.rect(Rect::new(header_bounds.x, header_bounds.y, tick_len, tick_w), accent);
-    ui.rect(Rect::new(header_bounds.x, header_bounds.y, tick_w, tick_len), accent);
-    // Top-right
-    let right = header_bounds.x + header_bounds.width;
-    ui.rect(Rect::new(right - tick_len, header_bounds.y, tick_len, tick_w), accent);
-    ui.rect(Rect::new(right - tick_w, header_bounds.y, tick_w, tick_len), accent);
 }
 
 /// Draw a panel's frame: background, header, title and header flair. Shared
@@ -336,7 +320,7 @@ fn render_panel_frame(ui: &mut UIContext, panel: &DockPanel, theme: &EditorTheme
     // The scene view shows game content directly; every other panel gets the
     // opaque background so game sprites never bleed through.
     if panel.id != PanelId::SCENE_VIEW {
-        ui.panel_styled(panel.bounds, theme.surface_1, theme.border_panel, 1.0);
+        ui.panel_styled(panel.bounds, theme.surface_1, theme.border_subtle, 1.0);
     }
 
     let header_bounds = Rect::new(
@@ -350,7 +334,7 @@ fn render_panel_frame(ui: &mut UIContext, panel: &DockPanel, theme: &EditorTheme
         &panel.title,
         header_bounds,
         ui::TextAlign::Left,
-        theme.accent_cyan,
+        theme.text_primary,
         theme.fonts.body,
         8.0,
     );
@@ -363,7 +347,7 @@ fn render_panel_frame(ui: &mut UIContext, panel: &DockPanel, theme: &EditorTheme
 fn render_narrow_tab(ui: &mut UIContext, panel: &DockPanel, theme: &EditorTheme) -> bool {
     let bounds = panel.bounds;
     ui.begin_overlay_in(ui::UiLayer::PanelChrome, bounds);
-    ui.panel_styled(bounds, theme.surface_2, theme.border_panel, 1.0);
+    ui.panel_styled(bounds, theme.surface_2, theme.border_subtle, 1.0);
 
     let id = format!("panel_narrow_tab_{}", panel.id.0);
     let result = ui.interact(id.as_str(), bounds, true);
@@ -377,7 +361,7 @@ fn render_narrow_tab(ui: &mut UIContext, panel: &DockPanel, theme: &EditorTheme)
         ui.label_centered_styled(
             &initial.to_string(),
             Vec2::new(bounds.center().x, bounds.y + HEADER_HEIGHT),
-            theme.accent_cyan,
+            theme.text_secondary,
             theme.fonts.body,
         );
     }
@@ -391,7 +375,7 @@ fn render_narrow_tab(ui: &mut UIContext, panel: &DockPanel, theme: &EditorTheme)
 fn draw_tab_chevron(ui: &mut UIContext, bounds: Rect, position: DockPosition, theme: &EditorTheme) {
     let center = Vec2::new(bounds.center().x, bounds.bottom() - 12.0);
     let direction = if matches!(position, DockPosition::Right) { -1.0 } else { 1.0 };
-    let color = theme.accent_cyan;
+    let color = theme.text_secondary;
     ui.line(
         Vec2::new(center.x - 2.0 * direction, center.y - 4.0),
         Vec2::new(center.x + 2.0 * direction, center.y),
