@@ -2007,6 +2007,22 @@ batch is **two handoffs**: **10a** is the #132 half (corrections 2–8), **10b**
     and it stays, leave and it goes; open the Stop dialog and rest on a strip button beneath
     it — nothing; hover a panel edge and see the resize cursor.
 
+**Re-verified after 10a, 2026-09-11** (`insiculous_2d` at `fae70e3`), for 10b:
+`editor_game/mod.rs` is at **597** — nothing lands there (the strip's tooltips go in
+`toolbar.rs` 362, `play_controls.rs` 295 and `view_toggles.rs` 264, the dock's in
+`dock/render.rs` 391); `asset_browser.rs` 580 shrinks; `ui/context/mod.rs` 341 takes the
+tooltip in a sibling `context/tooltip.rs`; `window_manager.rs` 276 and `frame_tail.rs` 83
+take the cursor. `is_blocked_for_scope` (`interaction/mod.rs:273`) is private — `pub(crate)`
+for the tooltip's eligibility test. No game constructs a `ui::Theme` literal (grep), but the
+games gate still runs. The overflow menu's rows carry their labels and need no tooltip; the
+overflow button's is "More". `render_group` does not receive the frame, so the game-frame
+toggle's tooltip says "the game's configured size" without numbers; the guide carries the
+caveat. For correction 12, `OVERFLOW_ROW_HEIGHT` (24) and `OVERFLOW_MENU_WIDTH` now live at
+`overflow_menu.rs:12-15` and the row height is a `ROW_HEIGHT` candidate; the five
+`row_height − 4` sites are untouched by 10a, and `EditableFieldStyle.row_height` is at
+`field_style.rs:80` with its default at `:150`. The doc lines correction 13 names kept their
+numbers through 10a's edits.
+
 ## Batch 11 — engine + site: save state (2d#125, web#60)
 
 - Engine: `playground_save_state() -> String` (JSON `{ "state": "unsaved" | "saving" |
