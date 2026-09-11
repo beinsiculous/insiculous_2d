@@ -2025,6 +2025,36 @@ numbers through 10a's edits.
 
 ## Batch 11 — engine + site: save state (2d#125, web#60)
 
+**Re-verified against the tree 2026-09-11 before the handoff** (after batch 10b, 10fc473):
+the combined dirty signal this batch must match is `sync_dirty_mirror`
+(`crates/editor_integration/src/editor_game/mod.rs:409-416`, not the stale `mod.rs:369-374`
+— that reference predates the strip and the tooltip batches; the file is 597 lines now, and
+the playground crate has no top-level `mod.rs` at all), which ORs `command_history.is_dirty()`
+with the `persist_pending` atomic. `bridge.rs`'s own `playground_is_dirty()` (`:138-144`)
+already computes that same OR from `crate::persist::is_pending()` and
+`crate::web_entry::dirty_flag()` — `playground_save_state()` follows that wiring exactly:
+target-agnostic logic in `persist/mod.rs` (which already carries the free-function-over-
+`with_active_chains` pattern at `:397-411`, the model for this one) called from a new wasm
+export in `bridge.rs` beside `playground_conflicted_paths` (`:439-451`). `PathState`
+(`persist/mod.rs:17-27`) has five variants — Idle, InFlight, Queued, Stranded, Conflicted —
+and `conflicted_paths()` (`:297`, sorted) is the only existing path-listing accessor; there is
+no `stranded_paths()` yet, so this batch adds one beside it, sorted the same way, rather than
+reaching into `Chains`'s private `chains` field from outside its `impl`. **When a conflicted
+and a stranded path both exist, the reason names the conflicted one** — Conflicted is
+terminal (never retried) while Stranded still retries on `visibilitychange`, so it is the
+more actionable failure to surface. `#save-status` is already placed, by batch 5
+(`insiculous_web/src/components/PlaygroundToolbar.astro:51`), and `playground-embed.ts`'s
+100 ms `pollResponses` (defined `:182`, installed `:286`) already polls
+`playground_conflicted_paths()` every tick — `createSaveStatus` taps that same loop, not a
+new interval. The `bridge` parameter name matches the crate's own convention:
+`createScriptsPanel(bridge: ScriptsBridge)` (`playground-scripts-panel.ts:13`) is handed the
+`wasm` module directly (`playground-embed.ts:131`); `SaveStatusBridge` is one more narrow
+interface over the same object. **The version stays `v2`**: `main` and `dev` are still five
+commits behind `jesse` in `insiculous_web` (batch 6 has never deployed), so this batch
+rebuilds `v2` in place, not `v3` — `PlaygroundEmbed.astro:26`, `pages/playground/preview.astro:31`
+and `postbuild-check.mjs:41` all still read `v2` today, and the six `editor:` bundle paths are
+`src/content/games/{asteroids,snake,breakout,pong,invaders,frogger}.md:6`.
+
 - Engine: `playground_save_state() -> String` (JSON `{ "state": "unsaved" | "saving" |
   "saved" | "failed", "reason": "stranded: <path>" | "conflicted: <path>" | "" }`) derived
   in `persist` from the chains and **the same combined signal the window title uses**
