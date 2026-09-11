@@ -763,3 +763,33 @@ Layout on the strip, the group shed into the ⋯ menu at a narrow width with its
 the toggle states kept across a restart. Closes #132 when `jesse` merges into `main`.
 Batch 10b (tooltips, the resize cursor, the layout tokens) is next.
 
+## 2026-09-11 — Playground UX batch 10b: tooltips, the resize cursor, the layout tokens (10fc473)
+
+The ui crate gains a hover tooltip — a widget's owner offers its rect and one sentence each
+frame; the context settles the frame's anchor at `end_frame` against the complete blocking
+regions (the smallest live anchor under the pointer: a chevron over its header band, an
+overlay's widget over the one it covers), shows the panel after half a second's rest, keeps
+it while the pointer stays inside, and drops it the frame the pointer leaves, nothing names
+it, or a button goes down and for as long as it is held. Placed on the tools, the play
+controls, the overflow button, the view toggles, Reset Layout, the panel headers and chevrons,
+the narrow-mode tab and the asset tiles, whose hover no longer writes the status bar. The
+`CursorIcon` request rides the ui crate to `WindowManager::set_cursor` from the frame tail,
+one round-trip per change; the dock's resize handles ask for it. `layout.rs` gains
+`ROW_HEIGHT`, `FIELD_HEIGHT`, `BUTTON_HEIGHT` and `GAP`; eleven consts take a token, ten
+keep their reason, and `EditableFieldStyle::field_height()` derives from the style's row
+height. One hunk outside the section, kept: the float scrub tests the blocking regions on
+its arming press (the token change moved the colour popup onto a scrubbable row and a
+batch-9 invariant test went red) — and only on the press, since the first fix cut a live
+inspector drag short at the strip's edge. Executor: a Claude Code session from
+handoff-10b.md; reviews 29–31: kimi 3+2+2, codex 3+2+0, planner 2 — seven accepted, one
+rebutted as false (kimi's stale scrub: unseen widget state is pruned at `end_frame`; a test
+written to the scenario passed on the reviewed code), two rebutted on scope or policy, one
+accepted as the documented rule (an armed gesture survives a modal opened mid-drag). Three
+contract tests fail on the reviewed code and pass on the fix. Gates green at every round.
+Filed: #142 (a tooltip wider than the window; the panel outliving a pointer that left the
+window). Owed: Jesse's headed check — rest on a tool, a play control, a panel header, a
+chevron and an asset tile and see the tooltip after half a second and none while the pointer
+moves; keep the pointer inside a button and it stays, leave and it goes; press and it goes;
+open the Stop dialog and rest on a strip button beneath it — nothing; hover a panel edge and
+see the resize cursor, in the native editor and in the playground's browser canvas (kimi's
+note: winit's web cursor is proven to compile, not to show).

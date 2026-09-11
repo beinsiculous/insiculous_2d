@@ -1718,7 +1718,7 @@ where a bullet and a correction disagree, the correction wins:
     reports its `git diff --cached --stat` tail at that point and stops there, marking the
     report INCOMPLETE with the #133 half untouched, only if the diff has passed 3000 lines.
 
-## Batch 10 — engine: quieter overlays, View toggles, tooltips, resizing, Reset Layout (2d#132, 2d#124) — 10a DONE 2026-09-11 (fae70e3); 10b open
+## Batch 10 — engine: quieter overlays, View toggles, tooltips, resizing, Reset Layout (2d#132, 2d#124) — 10a DONE 2026-09-11 (fae70e3), 10b DONE 2026-09-11 (10fc473)
 
 - **2d#132.** Theme tokens: `grid_primary`/`grid_secondary` and the axes dimmed,
   `collider_outline` toned down, accents (`accent_blue`, `selection_outline`, the play
