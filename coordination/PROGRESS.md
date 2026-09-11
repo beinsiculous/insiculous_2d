@@ -740,3 +740,26 @@ checked in a headed run. The one question it raised — whether a channel takes 
 was user error; two tests pin click-to-type while Editing and while Paused, and the colour
 editor's tests moved to `color_editor_tests.rs` to keep the inspector's test file under the
 ceiling. Nothing is owed on batch 9.
+
+## 2026-09-11 — Playground UX batch 10a: quieter overlays, one ViewToggles, the game frame, the strip's right group (fae70e3)
+
+The grid, the axes and the collider outlines drop below half alpha, every panel frame and the
+status bar use the subtle border, the header's cyan separator and corner ticks go, and the
+Editing border is the quiet edge — accents are reserved for selection, focus and runtime
+state, with three guard tests holding the ordering. The four view flags gather into one
+`ViewToggles` module, synced to the View menu and flattened into the preferences under the
+legacy keys; the grid renderer no longer keeps its own flag. A game-frame overlay outlines what
+the game shows at its configured size around the main camera — the honest definition, since
+the render viewport follows the window and the preview its canvas box (recorded on #132). The
+strip's right edge carries four 24 px toggles and Reset Layout; the minimum width grows to 391
+px, below which the group sheds whole into the overflow menu, now its own module returning an
+`OverflowPick`, drawn before the strip so its blocking rect reaches the buttons it can cover in
+a short window, floored at the strip's top. Executor: Gemini from handoff-10a.md; reviews
+26–28: kimi 4+1+3, codex 1+1+1, planner 5 — eight accepted, the rest rebutted (the menu's
+padding is already blocked; the short-canvas trade both reviewers raised from opposite sides
+is recorded and kept). Gates green at every round; 902 `#[test]`s. Owed: Jesse's headed check
+— the quieter grid and colliders, the muted frame at 1280×800, the four toggles and Reset
+Layout on the strip, the group shed into the ⋯ menu at a narrow width with its check marks,
+the toggle states kept across a restart. Closes #132 when `jesse` merges into `main`.
+Batch 10b (tooltips, the resize cursor, the layout tokens) is next.
+
