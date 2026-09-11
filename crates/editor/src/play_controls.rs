@@ -153,18 +153,21 @@ impl PlayControls {
                 if ui.button("play_ctrl_play", "Play", button) {
                     action = Some(PlayControlAction::Play);
                 }
+                ui.tooltip(button, "Run the game (F5)");
             }
             EditorPlayState::Playing => {
                 let pause_btn = Rect::new(x, y, self.first_button_width(state), self.height);
                 if ui.button("play_ctrl_pause", "Pause", pause_btn) {
                     action = Some(PlayControlAction::Pause);
                 }
+                ui.tooltip(pause_btn, "Freeze the running game where it is (Ctrl+P)");
 
                 let stop_btn = Rect::new(self.stop_x(state), y, self.button_size, self.height);
                 ui.rect_rounded(stop_btn, theme.stop_button_bg, 4.0);
                 if ui.button("play_ctrl_stop", "Stop", stop_btn) {
                     action = Some(PlayControlAction::Stop);
                 }
+                ui.tooltip(stop_btn, "End the session and put the scene back (Ctrl+Shift+P)");
             }
             EditorPlayState::Paused => {
                 let resume_btn = Rect::new(x, y, self.first_button_width(state), self.height);
@@ -172,12 +175,14 @@ impl PlayControls {
                 if ui.button("play_ctrl_resume", "Resume", resume_btn) {
                     action = Some(PlayControlAction::Play);
                 }
+                ui.tooltip(resume_btn, "Carry on from where the game paused (F5)");
 
                 let stop_btn = Rect::new(self.stop_x(state), y, self.button_size, self.height);
                 ui.rect_rounded(stop_btn, theme.stop_button_bg, 4.0);
                 if ui.button("play_ctrl_stop2", "Stop", stop_btn) {
                     action = Some(PlayControlAction::Stop);
                 }
+                ui.tooltip(stop_btn, "End the session and put the scene back (Ctrl+Shift+P)");
             }
         }
 
@@ -192,6 +197,7 @@ impl PlayControls {
             if ui.button("play_ctrl_follow", "Follow", follow_btn) {
                 action = Some(PlayControlAction::ToggleCameraFollow);
             }
+            ui.tooltip(follow_btn, "Keep the viewport on the game camera (Ctrl+Shift+F)");
         }
 
         // Consume-only: presses on the separator/gaps between buttons claim

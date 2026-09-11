@@ -9,6 +9,7 @@ use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use ui::{Color, Rect, UIContext, WidgetState};
 
+use crate::layout::GAP;
 use crate::menu::MenuBar;
 use crate::theme::EditorTheme;
 
@@ -67,6 +68,23 @@ impl ViewToggle {
             Self::Colliders => Some("C"),
             Self::GameFrame => None,
             Self::Snap => Some("S"),
+        }
+    }
+
+    /// The one line this toggle's button explains itself with on hover: what
+    /// the overlay is, and the key that flips it where one is bound.
+    ///
+    /// The game frame's names no size. The rect is the world the game shows
+    /// at the size its config declares, so a resized window or a preview
+    /// box of another size shows more or less of the world than it does.
+    pub fn hint(self) -> &'static str {
+        match self {
+            Self::Grid => "Grid (G)",
+            Self::Colliders => "Collider outlines (C)",
+            Self::GameFrame => {
+                "Game frame: the game's configured size; a resized window shows more or less"
+            }
+            Self::Snap => "Snap to the grid (S)",
         }
     }
 
@@ -158,17 +176,17 @@ pub enum ViewGroupAction {
     ResetLayout,
 }
 
-/// Width of each toggle button in the group.
+/// Side of a view toggle button: the 24 px minimum target WCAG 2.5.8 asks
+/// for, so it is not tied to a row token that may drift below it.
 const TOGGLE_BUTTON_SIZE: f32 = 24.0;
-/// Gap between items in the group.
-const ITEM_GAP: f32 = 4.0;
-/// Extra gap before the Reset Layout button.
+/// Extra gap before the Reset Layout button — wider than [`GAP`] so Reset
+/// Layout reads as an action beside the toggles rather than one of them.
 const RESET_GAP: f32 = 8.0;
 
 /// Total width of the strip's right view-controls group:
 /// 4 toggles (24px) at 4px gaps (3 * 4 = 12px), an 8px gap, and Reset Layout (24px).
 /// 4 * 24 + 12 + 8 + 24 = 140px.
-pub const VIEW_GROUP_WIDTH: f32 = 4.0 * TOGGLE_BUTTON_SIZE + 3.0 * ITEM_GAP + RESET_GAP + TOGGLE_BUTTON_SIZE;
+pub const VIEW_GROUP_WIDTH: f32 = 4.0 * TOGGLE_BUTTON_SIZE + 3.0 * GAP + RESET_GAP + TOGGLE_BUTTON_SIZE;
 
 /// Render the view toggles group (the 4 toggles + Reset Layout button) at `origin`.
 ///
@@ -209,11 +227,12 @@ pub fn render_group(
         if result.clicked {
             picked = Some(ViewGroupAction::Toggle(toggle));
         }
+        ui.tooltip(bounds, toggle.hint());
 
-        current_x += TOGGLE_BUTTON_SIZE + ITEM_GAP;
+        current_x += TOGGLE_BUTTON_SIZE + GAP;
     }
 
-    current_x += RESET_GAP - ITEM_GAP;
+    current_x += RESET_GAP - GAP;
 
     // Reset Layout button
     let reset_bounds = Rect::new(current_x, origin.y, TOGGLE_BUTTON_SIZE, TOGGLE_BUTTON_SIZE);
@@ -232,6 +251,7 @@ pub fn render_group(
     if reset_result.clicked {
         picked = Some(ViewGroupAction::ResetLayout);
     }
+    ui.tooltip(reset_bounds, "Reset Layout: put every panel back where it started");
 
     picked
 }
@@ -247,6 +267,25 @@ mod tests {
         assert!(toggles.colliders);
         assert!(toggles.game_frame);
         assert!(!toggles.snap);
+    }
+
+    /// A button's tooltip is read where the button's own caption is one
+    /// character, so the key it advertises is the whole of the instruction.
+    /// Held to `shortcut()` — the table the hint used to be a copy of.
+    #[test]
+    fn test_a_toggles_hint_advertises_the_key_that_flips_it() {
+        for toggle in ViewToggle::ALL {
+            match toggle.shortcut() {
+                Some(key) => assert!(
+                    toggle.hint().contains(&format!("({key})")),
+                    "{toggle:?}'s hint does not name {key}"
+                ),
+                None => assert!(
+                    !toggle.hint().contains('('),
+                    "{toggle:?} has no bound key but its hint advertises one"
+                ),
+            }
+        }
     }
 
     #[test]

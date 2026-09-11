@@ -171,6 +171,32 @@ impl Default for TextInputStyle {
     }
 }
 
+/// Style configuration for hover tooltips.
+#[derive(Debug, Clone, Copy)]
+pub struct TooltipStyle {
+    /// Background color of the tooltip panel
+    pub background: Color,
+    /// Border color of the tooltip panel
+    pub border: Color,
+    /// Text color
+    pub text_color: Color,
+    /// Font size in pixels
+    pub font_size: f32,
+}
+
+impl Default for TooltipStyle {
+    fn default() -> Self {
+        use palette::dark;
+        Self {
+            // Opaque: a tooltip is read over whatever happens to be beneath it.
+            background: Color::from_hex(dark::SURFACE_PRESSED),
+            border: Color::from_hex(dark::BORDER),
+            text_color: Color::WHITE,
+            font_size: 13.0,
+        }
+    }
+}
+
 /// Style configuration for text labels.
 #[derive(Debug, Clone)]
 pub struct TextStyle {
@@ -206,6 +232,8 @@ pub struct Theme {
     pub text: TextStyle,
     /// Text input style
     pub text_input: TextInputStyle,
+    /// Hover tooltip style
+    pub tooltip: TooltipStyle,
 }
 
 

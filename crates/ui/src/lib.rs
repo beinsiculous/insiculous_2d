@@ -32,7 +32,7 @@ mod test_support;
 mod text_edit;
 
 // Re-export main types
-pub use context::{FloatFieldOpts, FloatInputResult, TextAlign, UIContext};
+pub use context::{CursorIcon, FloatFieldOpts, FloatInputResult, TextAlign, UIContext};
 pub use draw::{DrawCommand, DrawList, GlyphDrawData, SliderVisual, TextDrawData, UiLayer};
 pub use font::{FontError, FontHandle, FontManager, FontMetrics, GlyphInfo, LayoutGlyph, RasterizedGlyph, TextLayout};
 pub use input_state::{InputState, KeyRepeat, REPEAT_DELAY, REPEAT_INTERVAL};
@@ -42,7 +42,9 @@ pub use interaction::{
 };
 pub use text_edit::TextEditState;
 pub use common::Rect;
-pub use style::{ButtonStyle, Color, PanelStyle, SliderStyle, TextInputStyle, TextStyle, Theme};
+pub use style::{
+    ButtonStyle, Color, PanelStyle, SliderStyle, TextInputStyle, TextStyle, Theme, TooltipStyle,
+};
 
 /// Prelude module for convenient imports.
 pub mod prelude {

@@ -353,6 +353,14 @@ impl EditorTheme {
         theme.text_input.selection_color = self.accent_blue.with_alpha(0.35);
         theme.text_input.cursor_color = self.text_primary;
 
+        // The top of the surface ladder: a tooltip floats above every panel,
+        // and its border is the loud one popups use, because the panel has to
+        // read as a separate object over whatever it covers.
+        theme.tooltip.background = self.surface_4;
+        theme.tooltip.border = self.popup_border;
+        theme.tooltip.text_color = self.text_primary;
+        theme.tooltip.font_size = self.fonts.small;
+
         theme
     }
 

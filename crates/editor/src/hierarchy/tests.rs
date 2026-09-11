@@ -310,9 +310,9 @@ fn test_entity_with_scripts_renders_pseudo_rows_and_click_reports_script() {
     );
     assert!(response.clicked.is_empty());
 
-    // Entity row: y = 0.0 + BASE_PADDING(6.0) = 6.0 .. 26.0
-    // Script 0 (paddle): y = 26.0 .. 46.0
-    // Script 1 (scoring): y = 46.0 .. 66.0
+    // Entity row: y = 0.0 + PADDING(8.0) = 8.0 .. 28.0
+    // Script 0 (paddle): y = 28.0 .. 48.0
+    // Script 1 (scoring): y = 48.0 .. 68.0
     // Click inside the second script pseudo-row at (50.0, 50.0)
     let click_pos = glam::Vec2::new(50.0, 50.0);
     input.queue_event(input::InputEvent::MouseMoved(click_pos.x, click_pos.y));

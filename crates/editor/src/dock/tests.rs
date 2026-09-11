@@ -352,6 +352,51 @@ fn test_the_narrow_overlay_runs_to_the_docks_bottom_over_a_bottom_panel() {
     assert!(content.height >= 150.0, "room to edit a field in, got {}", content.height);
 }
 
+/// The resize edge is invisible until the pointer finds it, so the cursor
+/// is what says a drag there goes sideways rather than up and down — and it
+/// is dropped again the frame the pointer leaves.
+#[test]
+fn test_a_panels_resize_handle_asks_for_the_cursor_that_matches_its_edge() {
+    let mut area = three_panel_dock();
+    let theme = EditorTheme::default();
+    let mut ui = UIContext::new();
+    let mut input = input::InputHandler::new();
+
+    let handle = handle_center(&area, PanelId::HIERARCHY);
+    let cursor = move_to(&mut ui, &mut input, handle, |ui| {
+        area.handle_resize(ui, &theme);
+        ui.requested_cursor()
+    });
+    assert_eq!(cursor, ui::CursorIcon::ColResize, "a Left panel's edge drags sideways");
+
+    let away = Vec2::new(handle.x + 200.0, handle.y);
+    let cursor = move_to(&mut ui, &mut input, away, |ui| {
+        area.handle_resize(ui, &theme);
+        ui.requested_cursor()
+    });
+    assert_eq!(cursor, ui::CursorIcon::Default, "the pointer left the edge");
+
+    // A top panel's edge drags up and down instead.
+    let mut top_dock = DockArea::new();
+    top_dock.set_bounds(DOCK);
+    top_dock.add_panel(
+        DockPanel::new(PanelId::CONSOLE, "Console", DockPosition::Top).with_size(150.0),
+    );
+    top_dock.add_panel(DockPanel::new(PanelId::SCENE_VIEW, "Scene", DockPosition::Center));
+    top_dock.layout();
+    let cursor = move_to(&mut ui, &mut input, handle_center(&top_dock, PanelId::CONSOLE), |ui| {
+        top_dock.handle_resize(ui, &theme);
+        ui.requested_cursor()
+    });
+    assert_eq!(cursor, ui::CursorIcon::RowResize, "a Top panel's edge drags up and down");
+}
+
+/// Center of a panel's resize handle.
+fn handle_center(area: &DockArea, id: PanelId) -> Vec2 {
+    let panel = area.get_panel(id).expect("panel in the fixture");
+    area.resize_handle_bounds(panel).center()
+}
+
 /// The open overlay's chevron closes it. Its tab is gone while it is open,
 /// so without the chevron the only way back to a bare viewport was to open
 /// the other panel.

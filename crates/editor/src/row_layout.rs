@@ -10,9 +10,8 @@
 use glam::Vec2;
 
 use crate::field_style::EditableFieldStyle;
+use crate::layout::GAP;
 
-/// Horizontal gap between an axis/channel badge and its input box.
-const BADGE_GAP: f32 = 4.0;
 
 /// Minimum width an input box may shrink to on a narrow panel. Below this
 /// an input is unusable, so degenerate panel widths accept a bounded
@@ -73,24 +72,24 @@ pub struct PairSlot {
 }
 
 /// Split a row's control span into two badge+input slots. `badge_widths` are
-/// the measured badge label widths, `gap` separates the two slots, and the
-/// input width fills the remaining space up to `max_w`, shrinking to fit the
-/// panel down to the usability floor. Badges can never overlap their inputs
-/// because the input starts a fixed [`BADGE_GAP`] after the measured badge
+/// the measured badge label widths, `slot_gap` separates the two slots, and
+/// the input width fills the remaining space up to `max_w`, shrinking to fit
+/// the panel down to the usability floor. Badges can never overlap their
+/// inputs because the input starts a fixed [`GAP`] after the measured badge
 /// width.
 pub fn pair_slots(
     layout: &RowLayout,
     badge_widths: [f32; 2],
-    gap: f32,
+    slot_gap: f32,
     max_w: f32,
 ) -> [PairSlot; 2] {
-    let fixed = badge_widths[0] + badge_widths[1] + 2.0 * BADGE_GAP + gap;
+    let fixed = badge_widths[0] + badge_widths[1] + 2.0 * GAP + slot_gap;
     let input_width = ((layout.available() - fixed) / 2.0).clamp(MIN_INPUT_WIDTH, max_w.max(MIN_INPUT_WIDTH));
 
     let first_badge_x = layout.control_x;
-    let first_input_x = first_badge_x + badge_widths[0] + BADGE_GAP;
-    let second_badge_x = first_input_x + input_width + gap;
-    let second_input_x = second_badge_x + badge_widths[1] + BADGE_GAP;
+    let first_input_x = first_badge_x + badge_widths[0] + GAP;
+    let second_badge_x = first_input_x + input_width + slot_gap;
+    let second_input_x = second_badge_x + badge_widths[1] + GAP;
 
     [
         PairSlot { badge_x: first_badge_x, input_x: first_input_x, input_width },

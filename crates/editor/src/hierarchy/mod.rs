@@ -16,11 +16,10 @@ use crate::theme::EditorTheme;
 use crate::Selection;
 use ui::Color;
 
-/// Row height for each entity in the hierarchy (matches LINE_HEIGHT).
+/// Row height for each entity: a tree packs more rows into the same panel
+/// than a form does, so a row is a line rather than a
+/// [`crate::layout::ROW_HEIGHT`] field row.
 const ROW_HEIGHT: f32 = LINE_HEIGHT;
-
-/// Base left padding (matches standard PADDING).
-const BASE_PADDING: f32 = PADDING;
 
 /// Indentation per depth level.
 const INDENT_PER_DEPTH: f32 = 16.0;
@@ -274,12 +273,12 @@ impl HierarchyPanel {
             ctx.ui.scroll_delta(),
             bounds.height,
         );
-        let top = bounds.y + BASE_PADDING - offset;
+        let top = bounds.y + PADDING - offset;
         let mut y = top;
         for root in roots {
             y = self.render_node(&mut ctx, root, 0, y);
         }
-        self.scroll.end_frame(y - top + BASE_PADDING, bounds.height);
+        self.scroll.end_frame(y - top + PADDING, bounds.height);
 
         HierarchyResponse {
             clicked,
@@ -341,7 +340,7 @@ impl HierarchyPanel {
         y: f32,
     ) {
         let bounds = ctx.bounds;
-        let x = bounds.x + BASE_PADDING + (depth as f32 * INDENT_PER_DEPTH);
+        let x = bounds.x + PADDING + (depth as f32 * INDENT_PER_DEPTH);
         let row_rect = common::Rect::new(bounds.x, y, bounds.width, ROW_HEIGHT);
 
         let row_id = format!("hierarchy_script_{}_{}", entity.value(), index);
@@ -368,7 +367,7 @@ impl HierarchyPanel {
         is_expanded: bool,
     ) {
         let bounds = ctx.bounds;
-        let x = bounds.x + BASE_PADDING + (depth as f32 * INDENT_PER_DEPTH);
+        let x = bounds.x + PADDING + (depth as f32 * INDENT_PER_DEPTH);
         let has_children = ctx.world.get_children(entity).is_some_and(|children| !children.is_empty());
         let is_selected = ctx.selection.contains(entity);
         let is_primary = ctx.selection.primary() == Some(entity);
@@ -451,7 +450,7 @@ impl HierarchyPanel {
         let field_rect = ui::Rect::new(
             name_x,
             y + 1.0,
-            (bounds.x + bounds.width - name_x - BASE_PADDING).max(60.0),
+            (bounds.x + bounds.width - name_x - PADDING).max(60.0),
             ROW_HEIGHT - 2.0,
         );
         let current = ctx

@@ -26,7 +26,7 @@ fn item_center(bar: &MenuBar, index: usize) -> Vec2 {
     let dropdown = MenuBar::dropdown_bounds(menu, menu.bounds);
     Vec2::new(
         dropdown.x + dropdown.width / 2.0,
-        dropdown.y + 4.0 + DROPDOWN_ITEM_HEIGHT * (index as f32 + 0.5),
+        dropdown.y + 4.0 + crate::layout::ROW_HEIGHT * (index as f32 + 0.5),
     )
 }
 

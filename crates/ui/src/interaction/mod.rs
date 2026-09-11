@@ -144,6 +144,10 @@ pub struct InteractionManager {
     overlay_scope: Option<UiLayer>,
     /// Hold timers for key repeat (arrows, Backspace, Delete)
     key_repeat: KeyRepeat,
+    /// Frame delta of the current frame (seconds). Kept so anything
+    /// pacing off wall-clock time — key repeat today, the tooltip's
+    /// rest-to-show delay — reads one number.
+    frame_dt: f32,
 }
 
 impl Default for InteractionManager {
@@ -163,6 +167,7 @@ impl InteractionManager {
             blocking_regions: Vec::new(),
             overlay_scope: None,
             key_repeat: KeyRepeat::default(),
+            frame_dt: DEFAULT_FRAME_DT,
         }
     }
 
@@ -176,6 +181,7 @@ impl InteractionManager {
     /// frame) paces held-key repeat for text inputs.
     pub fn begin_frame_dt(&mut self, input: &InputHandler, dt: f32) {
         self.input = InputState::from_input_handler_with_repeat(input, &mut self.key_repeat, dt);
+        self.frame_dt = dt;
 
         // Blocking regions are re-registered each frame by whatever overlay is open
         self.blocking_regions.clear();
@@ -221,6 +227,17 @@ impl InteractionManager {
     /// Get the current mouse position.
     pub fn mouse_pos(&self) -> Vec2 {
         self.input.mouse_pos
+    }
+
+    /// Seconds since the previous frame, as passed to [`Self::begin_frame_dt`].
+    pub(crate) fn frame_dt(&self) -> f32 {
+        self.frame_dt
+    }
+
+    /// The layer of the overlay scope `interact()` calls currently belong
+    /// to, `None` outside any overlay.
+    pub(crate) fn overlay_scope(&self) -> Option<UiLayer> {
+        self.overlay_scope
     }
 
     /// Check if a widget has keyboard focus.
@@ -270,7 +287,10 @@ impl InteractionManager {
     /// exempt — a dropdown hanging over the toolbar strip stays live — but
     /// a modal's scrim reaches every scope below it, or a Play button drawn
     /// after the dialog would change the session while the dialog still asks.
-    fn is_blocked_for_scope(&self, scope: Option<UiLayer>, pos: Vec2) -> bool {
+    ///
+    /// The tooltip asks this too, with [`Self::overlay_scope`]: an
+    /// affordance that is inert must not raise one.
+    pub(crate) fn is_blocked_for_scope(&self, scope: Option<UiLayer>, pos: Vec2) -> bool {
         self.blocking_regions.iter().any(|region| {
             region.rect.contains(pos)
                 && match scope {

@@ -42,6 +42,18 @@ impl EditorTool {
         }
     }
 
+    /// One sentence on what the tool does, for its button's tooltip. The
+    /// button already carries the name and the shortcut, so this says what
+    /// picking it lets you do.
+    pub fn hint(&self) -> &'static str {
+        match self {
+            EditorTool::Select => "Click an entity to select it, or drag a box across several.",
+            EditorTool::Move => "Drag the gizmo's arrows to slide the selection along an axis.",
+            EditorTool::Rotate => "Drag the ring around the selection to turn it.",
+            EditorTool::Scale => "Drag the gizmo's handles to resize the selection.",
+        }
+    }
+
     /// Get all available tools.
     pub fn all() -> &'static [EditorTool] {
         &[
@@ -217,6 +229,7 @@ impl Toolbar {
 
         let hint_pos = Vec2::new(bounds.right() - 7.0, bounds.y + theme.fonts.small);
         ui.label_centered_styled(tool.shortcut(), hint_pos, theme.shortcut_hint, theme.fonts.small);
+        ui.tooltip(bounds, tool.hint());
 
         clicked
     }
@@ -239,6 +252,7 @@ impl Toolbar {
         for offset in [-6.0, 0.0, 6.0] {
             ui.circle(Vec2::new(center.x + offset, center.y), 1.5, theme.accent_cyan);
         }
+        ui.tooltip(bounds, "More");
         clicked
     }
 }

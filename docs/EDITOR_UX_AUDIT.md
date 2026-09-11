@@ -521,7 +521,7 @@ The editor's chrome font search starts in the game's asset directory. Pong ships
 
 ### 5.7 Magic-number spacing
 
-**Status (2026-09-10):** open — #124 (this sprint) — the six dead constants are gone and `layout.rs` is seven live ones, but the spacing, field-height, heading and button tokens #124 asks for do not exist yet
+**Status (2026-09-11):** shipped — #124 — `layout.rs` gains `ROW_HEIGHT`, `FIELD_HEIGHT`, `BUTTON_HEIGHT` and `GAP`; every const naming a row, field, button height, padding or gap in `crates/editor/src` and `crates/editor_integration/src` either takes a token or says in its own words why it differs. Closes when `jesse` merges into `main`
 
 `layout.rs` defines 12 constants; **six are entirely dead** (`PADDING_SMALL`, `SPACING`, `MENU_BAR_HEIGHT`, `MENU_ITEM_HEIGHT`, `TOOLBAR_HEIGHT`, `TOOLBAR_BUTTON_SIZE`). Two files import the module. Everything else re-invents the values, often differently: `MenuBar::height()` hardcodes `24.0`; `asset_browser.rs:27` redeclares `HEADER_HEIGHT = 26.0`, conflicting with the dock's 24 so the asset panel's header doesn't line up with any other; `panel_renderer/inspector.rs` declares `line_height = 20.0` **three times**, shadowing `InspectorStyle.line_height` which disagrees with `EditableFieldStyle.row_height` (24.0) — so read-only rows are 20px and editable rows are 24px in the same panel.
 
@@ -529,16 +529,16 @@ Across 12 chrome files: **28 distinct pixel literals in 198 occurrences**, inclu
 
 ### 5.8 Smaller, all real
 
-**Status (2026-09-10):** open — #124 (this sprint) — the sixteen bullets are marked individually below; #124 and #126 carry most of what is left
+**Status (2026-09-11):** partly shipped — #124's two bullets below (the resize cursor and tooltips) are done; #126 and #99 carry what is left, and the sixteen bullets are marked individually below
 
 - **Disabled == pressed.** `background_disabled` and `background_pressed` are the same value (`theme.rs:336-342`). Disabled text is 4.49:1, failing AA. `View ▸ Scene View` and `View ▸ Console` are both permanently disabled and look held down.
   - **Status (2026-09-10):** open — #126 (this sprint) — the two tokens diverged in 9a3a24f under a guard test; the disabled-text contrast is what remains
 - **No focus ring token** anywhere; no keyboard traversal to need one.
   - **Status (2026-09-10):** open — #126 (this sprint) — still no token and still no keyboard traversal
 - **Zero `set_cursor` calls in the entire editor.** Splitters (an 8px hit strip) don't show a resize cursor — you can't tell panels are resizable. No I-beam, no grab cursor, no directional gizmo cursors.
-  - **Status (2026-09-10):** open — #124 (this sprint) — still zero across the editor
+  - **Status (2026-09-11):** shipped — #124 — `ui::CursorIcon` with `UIContext::request_cursor`/`requested_cursor`, asked for by the dock's resize handles and applied by `WindowManager::set_cursor` in the frame tail, one round-trip per change. Closes when `jesse` merges into `main`
 - **No tooltips anywhere.** Which is why the toolbar uses text labels and had to widen to 56px; the fix is tooltips, not longer buttons.
-  - **Status (2026-09-10):** open — #124 (this sprint) — `UiLayer::Tooltip` is a band with nothing drawing into it
+  - **Status (2026-09-11):** shipped — #124 — `UIContext::tooltip(anchor, text)` on a rest-to-show timer, drawn on `UiLayer::Tooltip`; placed on the tools, the play controls, the overflow button, the view toggles, Reset Layout, the panel headers and chevrons, the narrow-mode tab and the asset tiles. Closes when `jesse` merges into `main`
 - **The active tool's label doesn't render.** In every screenshot, Select is an empty box with a cyan ring while Move/Rotate/Scale show labels. `toolbar.rs:147-159` draws a halo `rect_rounded` before `ui.button` and a `rect_border` after — reproduce and diagnose; the `rect_border(bounds, color, 1.0, 4.0)` argument order is worth checking against the `ui` crate signature.
   - **Status (2026-09-10):** open — #99 (the editor backlog) — undecided: the halo draws outside the button and the button paints its own label, so the 2026-08-27 symptom cannot be confirmed from the tree; it needs a screenshot of the strip #131 built
 - **Asset filenames overlap into an unreadable smear** in the Editor Demo (six tiles, labels not truncated to tile width). Non-image assets (`.ron`) render as empty cyan rectangles with no glyph.

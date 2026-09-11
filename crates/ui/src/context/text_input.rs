@@ -212,6 +212,21 @@ impl UIContext {
     ) -> Option<FloatInputResult> {
         let font = self.resolve_font(opts.font);
         if input.mouse_just_pressed && mouse_in_bounds {
+            // The scrub reads raw mouse state rather than the interaction
+            // result, so the press runs the blocking test `interact` runs
+            // itself: without it a row under a modal popup arms when the
+            // popup's own field is pressed. Only the press is tested — an
+            // armed gesture goes on until release or Escape whatever the
+            // pointer crosses on the way, chrome or a modal opened from the
+            // keyboard mid-drag alike, as a drag outside the field always
+            // has; cutting it short is what a drag into the toolbar strip
+            // used to do.
+            if self
+                .interaction
+                .is_blocked_for_scope(self.interaction.overlay_scope(), input.mouse_pos)
+            {
+                return None;
+            }
             // Arm (re-seeding wipes any stale state from a prior gesture).
             self.interaction.get_state(id).scrub =
                 Some(ScrubState { press_x: input.mouse_pos.x, start_value: value, active: false });

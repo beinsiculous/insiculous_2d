@@ -468,7 +468,7 @@ impl<'a> EditableInspector<'a> {
             return false;
         }
         let (id, layout) = self.next_field();
-        let height = self.style.row_height - 4.0;
+        let height = self.style.field_height();
         let rect = Rect::new(
             layout.control_x,
             layout.pos.y + 2.0,

@@ -58,7 +58,7 @@ pub fn edit_texture_field(
         layout.control_x,
         layout.pos.y + 2.0,
         layout.clamp_width(style.input_width + 40.0),
-        style.row_height - 4.0,
+        style.field_height(),
     );
 
     // Slot box; highlight while a texture drag hovers it

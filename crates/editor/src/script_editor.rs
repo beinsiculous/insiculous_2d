@@ -297,7 +297,7 @@ mod tests {
         let right = ORIGIN.x + WIDTH;
         Vec2::new(
             control_x + (right - control_x).max(60.0) / 2.0,
-            row_y + 2.0 + (style.row_height - 4.0) / 2.0,
+            row_y + 2.0 + style.field_height() / 2.0,
         )
     }
 

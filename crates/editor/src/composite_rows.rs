@@ -37,7 +37,7 @@ pub fn edit_vec2(
     ];
     let slots = pair_slots(&layout, badge_w, style.input_gap, style.vec2_input_width);
 
-    let input_height = style.row_height - 4.0;
+    let input_height = style.field_height();
     let input_y = pos.y + (style.row_height - input_height) / 2.0;
     let opts = ui::FloatFieldOpts::range(min, max)
         .with_step(crate::row_layout::scrub_step(&(min..=max)))

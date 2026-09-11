@@ -170,6 +170,17 @@ impl DockArea {
 
             if result.state == WidgetState::Hovered || result.dragging {
                 draw_resize_grabber(ui, &self.panels[i], theme);
+                // The edge was invisible until the pointer found it; the
+                // cursor says which way the drag will go.
+                match panel.position {
+                    DockPosition::Left | DockPosition::Right => {
+                        ui.request_cursor(ui::CursorIcon::ColResize);
+                    }
+                    DockPosition::Top | DockPosition::Bottom => {
+                        ui.request_cursor(ui::CursorIcon::RowResize);
+                    }
+                    DockPosition::Center | DockPosition::Floating => {}
+                }
             }
 
             if result.dragging {
@@ -191,7 +202,7 @@ impl DockArea {
     }
 
     /// Get the resize handle bounds for a panel.
-    fn resize_handle_bounds(&self, panel: &DockPanel) -> Rect {
+    pub(super) fn resize_handle_bounds(&self, panel: &DockPanel) -> Rect {
         match panel.position {
             DockPosition::Left => Rect::new(
                 panel.bounds.x + panel.bounds.width - self.resize_handle_size,
@@ -253,6 +264,7 @@ fn render_chevron_button(ui: &mut UIContext, panel: &DockPanel, theme: &EditorTh
         ui.rect_rounded(bounds, theme.menu_open_highlight, 3.0);
     }
     draw_chevron(ui, bounds, panel.collapsed, theme);
+    ui.tooltip(bounds, if panel.collapsed { "Expand" } else { "Collapse" });
     result.clicked
 }
 
@@ -338,6 +350,11 @@ fn render_panel_frame(ui: &mut UIContext, panel: &DockPanel, theme: &EditorTheme
         theme.fonts.body,
         8.0,
     );
+    // The header is the whole band; the chevron inside it offers its own
+    // tooltip too, and of the two the smaller is the one the pointer is on.
+    if !panel.hint.is_empty() {
+        ui.tooltip(header_bounds, panel.hint);
+    }
     draw_panel_chrome(ui, &header_bounds, theme);
 }
 
@@ -366,6 +383,9 @@ fn render_narrow_tab(ui: &mut UIContext, panel: &DockPanel, theme: &EditorTheme)
         );
     }
     draw_tab_chevron(ui, bounds, panel.position, theme);
+    // The tab is too narrow for the title, so the tooltip is where its name
+    // is readable at all.
+    ui.tooltip(bounds, &panel.title);
     ui.end_overlay();
 
     result.clicked

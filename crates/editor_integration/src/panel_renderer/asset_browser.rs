@@ -10,6 +10,7 @@ use std::path::Path;
 
 use glam::Vec2;
 
+use editor::layout::PADDING;
 use editor::{
     fit_rect, scan_assets, AssetKind, CommandHistory, DragDropState, DragPayload, EditorContext,
     EditorTheme,
@@ -24,15 +25,18 @@ use crate::entity_ops;
 const TILE_SIZE: f32 = 72.0;
 /// Vertical space under each tile for the filename label.
 const TILE_LABEL_HEIGHT: f32 = 16.0;
-/// Gap between tiles.
+/// Gap between tiles: wider than [`editor::layout::GAP`], because pictures
+/// need air around them to read as separate tiles rather than one sheet.
 const TILE_GAP: f32 = 10.0;
-/// Panel content padding.
-const PADDING: f32 = editor::layout::PADDING;
-/// Header row height (Rescan and Assign buttons + counts).
+/// Height of the panel's own header row: not the dock's
+/// [`editor::layout::HEADER_HEIGHT`], because this row holds buttons and
+/// counts rather than a title.
 const HEADER_HEIGHT: f32 = 26.0;
 /// Header button size, shared by Rescan and Assign.
 const HEADER_BUTTON_SIZE: Vec2 = Vec2::new(70.0, 20.0);
-/// Gap between the header's button and the label beside it.
+/// Gap between the header's button and the label beside it: wider than the
+/// shared [`editor::layout::GAP`] so a count reads as a caption, not as part
+/// of the button.
 const HEADER_GAP: f32 = 10.0;
 /// Cap on texture loads per frame so a big folder doesn't hitch one frame.
 const MAX_THUMBNAIL_LOADS_PER_FRAME: usize = 4;
@@ -111,7 +115,6 @@ pub(super) fn render_asset_browser(
     let is_playing = editor.is_playing();
     let mouse_pos = ctx.ui.mouse_pos();
     let mut clicked_tile: Option<usize> = None;
-    let mut hovered_tile: Option<usize> = None;
 
     for index in 0..editor.asset_browser.entries.len() {
         let slot = tile_rect(index, columns, grid_origin, scroll);
@@ -128,9 +131,6 @@ pub(super) fn render_asset_browser(
             let tile = tile_interaction(
                 ctx.ui, &mut editor.drag_drop, &editor.theme, entry, index, slot, mouse_pos,
             );
-            if tile.hovered {
-                hovered_tile = Some(index);
-            }
             if tile.clicked {
                 clicked_tile = Some(index);
             }
@@ -139,8 +139,6 @@ pub(super) fn render_asset_browser(
 
     if let Some(index) = clicked_tile {
         select_tile(editor, index);
-    } else if let Some(index) = hovered_tile {
-        show_full_name(editor, index);
     }
 
     if assign_clicked {
@@ -149,8 +147,9 @@ pub(super) fn render_asset_browser(
 }
 
 /// Select a tile and put its full relative path on the status bar — the
-/// label under the tile is ellipsized, so the path is only readable here.
-/// An error on the bar stays: selecting a tile is not clearing a failed save.
+/// label under the tile is ellipsized, so the path is only readable in full
+/// on the click that selects it and on the tile's tooltip. An error on the
+/// bar stays: selecting a tile is not clearing a failed save.
 fn select_tile(editor: &mut EditorContext, index: usize) {
     editor.asset_browser.selected = Some(index);
     if editor.status_bar.is_showing_error() {
@@ -160,24 +159,6 @@ fn select_tile(editor: &mut EditorContext, index: usize) {
         let path = entry.relative_path.clone();
         editor.status_bar.show_message(path);
     }
-}
-
-/// Show a hovered tile's full relative path — the same text a click puts
-/// there, so the pointer resting on the tile it just clicked changes nothing.
-/// A persistent error keeps the bar: a hover must not erase a failed save.
-/// Re-showing the same text every frame would restart its timer and
-/// re-allocate the string.
-fn show_full_name(editor: &mut EditorContext, index: usize) {
-    let Some(entry) = editor.asset_browser.entries.get(index) else {
-        return;
-    };
-    if editor.status_bar.is_showing_error()
-        || editor.status_bar.message() == Some(entry.relative_path.as_str())
-    {
-        return;
-    }
-    let path = entry.relative_path.clone();
-    editor.status_bar.show_message(path);
 }
 
 /// Draw the header row and report whether Assign was clicked this frame.
@@ -326,7 +307,8 @@ fn render_tile(
     }
 
     // A name wider than the tile would bleed into its neighbours, so it is
-    // truncated here; the status bar carries the full path while hovered.
+    // truncated here; the tile's tooltip and the status bar carry the full
+    // path.
     let label = tile_label(&entry.name, |text| {
         ui.measure_text_styled(text, theme.fonts.small).x
     });
@@ -348,7 +330,6 @@ fn tile_label(name: &str, measure: impl Fn(&str) -> f32) -> String {
 
 /// What one tile did this frame.
 struct TileInteraction {
-    hovered: bool,
     /// A press-and-release that did not turn into a drag.
     clicked: bool,
 }
@@ -369,6 +350,9 @@ fn tile_interaction(
     if hovered {
         ui.rect_border(slot_ui, theme.hover_fill, 1.5, 4.0);
     }
+    // The label under the tile is ellipsized to the tile's width, so resting
+    // on it is how the full relative path is read.
+    ui.tooltip(slot_ui, &entry.relative_path);
 
     if let (AssetKind::Image, Some(handle)) = (entry.kind, entry.texture_handle) {
         if result.state == ui::WidgetState::Active && ui.mouse_just_pressed() {
@@ -392,7 +376,6 @@ fn tile_interaction(
     }
 
     TileInteraction {
-        hovered,
         clicked: result.clicked && !drag_drop.suppresses_click(),
     }
 }
@@ -476,27 +459,62 @@ mod tests {
         );
     }
 
-    /// The hover hint is the same full path a click shows, so it survives the
-    /// pointer resting on the clicked tile, and neither the hover nor the click
-    /// writes over a persistent error — a failed save must stay readable.
+    /// A click puts the full relative path on the status bar and never
+    /// writes over a persistent error — a failed save must stay readable,
+    /// and the selection is not a way to clear it.
     #[test]
-    fn test_hover_shows_the_path_the_click_showed_and_leaves_an_error_alone() {
+    fn test_a_click_puts_the_path_on_the_bar_and_leaves_an_error_alone() {
         let (mut editor, _, _) = editor_with_sprite_and_asset();
 
         select_tile(&mut editor, 0);
-        show_full_name(&mut editor, 0);
         assert_eq!(
             editor.status_bar.message(),
             Some("sprites/hero.png"),
-            "hovering the clicked tile keeps its full path on the bar"
+            "the click is what writes the full relative path the tile label cannot show"
         );
 
         editor.status_bar.show_error("Failed to save");
-        show_full_name(&mut editor, 0);
-        assert_eq!(editor.status_bar.message(), Some("Failed to save"), "a hover never erases an error");
         select_tile(&mut editor, 0);
-        assert_eq!(editor.status_bar.message(), Some("Failed to save"), "nor does a click");
+        assert_eq!(editor.status_bar.message(), Some("Failed to save"), "a click never erases an error");
         assert!(editor.status_bar.is_showing_error());
+    }
+
+    /// The label under a tile is ellipsized to the tile's width, so resting
+    /// on the tile is how its full relative path is read: that is the
+    /// tooltip's text, and the status bar stops carrying it on hover.
+    #[test]
+    fn test_resting_on_a_tile_offers_its_full_path_as_the_tooltips_text() {
+        let theme = EditorTheme::default();
+        let entry = image_entry("hero.png", 7);
+        let slot = common::Rect::new(40.0, 40.0, TILE_SIZE, TILE_SIZE + TILE_LABEL_HEIGHT);
+        let pointer = Vec2::new(slot.x + TILE_SIZE * 0.5, slot.y + TILE_SIZE * 0.5);
+
+        let mut ui = ui::UIContext::new();
+        let mut input = input::InputHandler::new();
+        let mut drag_drop = DragDropState::new();
+        input.mouse_mut().update_position(pointer.x, pointer.y);
+
+        // Three frames of half a second: the first takes the anchor up, the
+        // rest is past the tooltip's rest-to-show delay.
+        for _ in 0..3 {
+            ui.begin_frame_dt(&input, Vec2::new(800.0, 600.0), 0.5);
+            tile_interaction(&mut ui, &mut drag_drop, &theme, &entry, 0, slot, pointer);
+            ui.end_frame();
+        }
+
+        let band = ui::UiLayer::Tooltip.depth_base()..ui::UiLayer::DragGhost.depth_base();
+        let words: Vec<String> = ui
+            .draw_list()
+            .commands()
+            .iter()
+            .filter(|command| band.contains(&command.depth()))
+            .filter_map(|command| match command {
+                ui::DrawCommand::Text { data, .. } => Some(data.text.clone()),
+                ui::DrawCommand::TextPlaceholder { text, .. } => Some(text.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(words, vec!["sprites/hero.png".to_string()]);
     }
 
     #[test]

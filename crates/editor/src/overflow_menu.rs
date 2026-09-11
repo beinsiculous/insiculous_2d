@@ -4,12 +4,10 @@
 use ui::{Rect, UIContext};
 
 use crate::toolbar::{EditorTool, Toolbar};
+use crate::layout::ROW_HEIGHT;
 use crate::toolbar_strip::StripLayout;
 use crate::view_toggles::{ViewToggle, ViewToggles};
 use crate::EditorTheme;
-
-/// Height of one row in the overflow menu.
-pub const OVERFLOW_ROW_HEIGHT: f32 = 24.0;
 
 /// Width of the overflow menu: wide enough for labels, shortcuts and checkmarks.
 pub const OVERFLOW_MENU_WIDTH: f32 = 140.0;
@@ -112,7 +110,7 @@ pub fn render_overflow_menu(
     }
 
     let separator_height = if has_separator { 6.0 } else { 0.0 };
-    let total_height = rows.len() as f32 * OVERFLOW_ROW_HEIGHT + separator_height + 8.0;
+    let total_height = rows.len() as f32 * ROW_HEIGHT + separator_height + 8.0;
     let menu = overflow_menu_bounds(button, total_height, ui.window_size(), layout.strip.y);
 
     // A press outside both the menu and the button that opened it closes the menu.
@@ -151,7 +149,7 @@ pub fn render_overflow_menu(
             menu.x + 4.0,
             current_y,
             menu.width - 8.0,
-            OVERFLOW_ROW_HEIGHT,
+            ROW_HEIGHT,
         );
         let id = format!("toolbar_overflow_{}", item.label);
         if ui.button(id.as_str(), item.label, row) {
@@ -182,7 +180,7 @@ pub fn render_overflow_menu(
             );
         }
 
-        current_y += OVERFLOW_ROW_HEIGHT;
+        current_y += ROW_HEIGHT;
     }
 
     ui.end_overlay();
@@ -213,7 +211,7 @@ mod tests {
     #[test]
     fn test_the_menu_shifts_up_to_stay_inside_a_short_window() {
         let button = Rect::new(8.0, 48.0, 34.0, 30.0);
-        let seven_rows = 7.0 * OVERFLOW_ROW_HEIGHT + 6.0 + 8.0;
+        let seven_rows = 7.0 * ROW_HEIGHT + 6.0 + 8.0;
 
         let strip_top = 43.0;
 
@@ -250,7 +248,7 @@ mod tests {
         let row_of = |index: usize| {
             Vec2::new(
                 button.x + OVERFLOW_MENU_WIDTH / 2.0,
-                button.bottom() + 2.0 + 4.0 + separator + (index as f32 + 0.5) * OVERFLOW_ROW_HEIGHT,
+                button.bottom() + 2.0 + 4.0 + separator + (index as f32 + 0.5) * ROW_HEIGHT,
             )
         };
         let mut ui = UIContext::new();
@@ -295,12 +293,12 @@ mod tests {
 
         let shed_tools = EditorTool::all().len() - layout.visible_tools;
         let separator = if shed_tools > 0 { 6.0 } else { 0.0 };
-        let height = (shed_tools + 5) as f32 * OVERFLOW_ROW_HEIGHT + separator + 8.0;
+        let height = (shed_tools + 5) as f32 * ROW_HEIGHT + separator + 8.0;
         // A window exactly short enough to put the menu's top at the button's top.
         let window = Vec2::new(content.width, button.y + height);
         let menu = overflow_menu_bounds(button, height, window, strip.y);
         assert_eq!(menu.y, button.y, "the short window shifts the menu over the strip");
-        let first_row = Vec2::new(button.x + 8.0, menu.y + 4.0 + OVERFLOW_ROW_HEIGHT / 2.0);
+        let first_row = Vec2::new(button.x + 8.0, menu.y + 4.0 + ROW_HEIGHT / 2.0);
         assert!(button.contains(first_row), "the first row covers the overflow button");
         let first_item = if shed_tools > 0 {
             OverflowPick::Tool(EditorTool::all()[layout.visible_tools])

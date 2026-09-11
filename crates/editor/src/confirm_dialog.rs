@@ -6,6 +6,7 @@
 use glam::Vec2;
 use ui::{Rect, UIContext, UiLayer};
 
+use crate::layout::BUTTON_HEIGHT;
 use crate::theme::EditorTheme;
 
 /// What the user chose this frame, if anything.
@@ -33,7 +34,8 @@ pub struct ConfirmDialog {
 
 const DIALOG_WIDTH: f32 = 420.0;
 const DIALOG_HEIGHT: f32 = 132.0;
-const BUTTON_HEIGHT: f32 = 26.0;
+/// A modal has to read as a separate object over the whole window, so its
+/// inner margin is wider than the [`crate::layout::PADDING`] panels use.
 const PADDING: f32 = 14.0;
 
 impl ConfirmDialog {

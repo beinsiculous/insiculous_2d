@@ -18,23 +18,23 @@ use glam::{Vec2, Vec4};
 use ui::{Color, Rect, UIContext};
 
 use crate::field_style::{EditResult, EditableFieldStyle, FieldId};
+use crate::layout::{FIELD_HEIGHT, ROW_HEIGHT};
 
 /// Widget-id space the popup owns. It is a singleton — one colour editor is
 /// open at a time — so its ids sit past every component block's rather than
 /// riding in the row's, whose index the pass no longer knows.
 const POPUP_COMPONENT_SLOT: usize = 900;
 
-/// Height of one popup row (a channel field, the hex field).
-const ROW_HEIGHT: f32 = 22.0;
-
 /// Size of the popup's preview swatch.
 const PREVIEW_SIZE: f32 = 32.0;
 
 /// Popup width, and the inner padding around its content.
 const WIDTH: f32 = 200.0;
-const PADDING: f32 = 8.0;
+const PADDING: f32 = crate::layout::PADDING;
 
-/// Gap between the popup and the swatch it hangs off.
+/// Gap between the popup and the swatch it hangs off: tighter than the
+/// shared [`GAP`], because the popup is meant to read as part of the swatch
+/// it belongs to rather than as a separate control beside it.
 const ANCHOR_GAP: f32 = 2.0;
 
 /// What one frame of the popup did.
@@ -93,7 +93,7 @@ pub fn color_editor_bounds(anchor: Rect, window_size: Vec2) -> Rect {
 pub fn color_editor_channel_bounds(popup: Rect, channel: usize) -> Rect {
     let x = popup.x + PADDING + PREVIEW_SIZE + PADDING;
     let y = popup.y + PADDING + PREVIEW_SIZE + ANCHOR_GAP + channel as f32 * ROW_HEIGHT;
-    Rect::new(x, y, popup.x + WIDTH - PADDING - x, ROW_HEIGHT - 4.0)
+    Rect::new(x, y, popup.x + WIDTH - PADDING - x, FIELD_HEIGHT)
 }
 
 /// Whether two rects share any area.
@@ -165,7 +165,7 @@ pub fn render_color_editor(
         bounds.x + PADDING,
         last_channel.y + ROW_HEIGHT,
         WIDTH - 2.0 * PADDING,
-        ROW_HEIGHT - 4.0,
+        FIELD_HEIGHT,
     );
     let shown_hex = crate::color_hex::to_hex(value);
     let mut invalid_hex = None;

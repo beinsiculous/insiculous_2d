@@ -15,6 +15,8 @@ use crate::field_style::{EditResult, EditableFieldStyle, FieldEdit, FieldId};
 use crate::row_layout::{scrub_step, RowLayout};
 
 /// Gap kept between the end of a label and its control column.
+/// A label sits tighter to the field it names than two controls sit to
+/// each other, so this is not the shared [`crate::layout::GAP`].
 const LABEL_GAP: f32 = 6.0;
 
 /// Draw a field label at the row position, ellipsized so it can never run
@@ -71,7 +73,7 @@ pub fn edit_f32_opts(
     draw_field_label(ui, label, &layout, style);
     let opts = opts.with_font(opts.font.or(style.numeric_font));
 
-    let input_height = style.row_height - 4.0;
+    let input_height = style.field_height();
     let input_bounds = Rect::new(
         layout.control_x,
         layout.pos.y + (style.row_height - input_height) / 2.0,

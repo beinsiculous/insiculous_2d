@@ -108,22 +108,24 @@ fn default_dock_area() -> DockArea {
     dock_area.add_panel(
         DockPanel::new(PanelId::HIERARCHY, "Hierarchy", DockPosition::Left)
             .with_size(200.0)
-            .with_min_size(150.0),
+            .with_min_size(150.0)
+            .with_hint("The scene's entities; click one to select it."),
     );
     dock_area.add_panel(
         DockPanel::new(PanelId::INSPECTOR, "Inspector", DockPosition::Right)
             .with_size(280.0)
-            .with_min_size(200.0),
+            .with_min_size(200.0)
+            .with_hint("The fields of the selected entity; every edit is undoable."),
     );
-    dock_area.add_panel(DockPanel::new(
-        PanelId::SCENE_VIEW,
-        "Scene",
-        DockPosition::Center,
-    ));
+    dock_area.add_panel(
+        DockPanel::new(PanelId::SCENE_VIEW, "Scene", DockPosition::Center)
+            .with_hint("The world you are building; pick and drag its entities here."),
+    );
     dock_area.add_panel(
         DockPanel::new(PanelId::ASSET_BROWSER, "Assets", DockPosition::Bottom)
             .with_size(180.0)
-            .with_min_size(100.0),
+            .with_min_size(100.0)
+            .with_hint("This project's files; drag one into the scene to use it."),
     );
     dock_area
 }

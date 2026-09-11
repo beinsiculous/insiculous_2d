@@ -142,12 +142,20 @@ impl EditableFieldStyle {
         self.numeric_font = font;
         self
     }
+
+    /// Height of a control drawn inside a row: the row less the margin that
+    /// keeps two stacked rows' controls from touching. Derived from
+    /// [`row_height`](Self::row_height) rather than a constant, so a second
+    /// style with taller rows gets taller inputs.
+    pub fn field_height(&self) -> f32 {
+        self.row_height - 4.0
+    }
 }
 
 impl Default for EditableFieldStyle {
     fn default() -> Self {
         Self {
-            row_height: 24.0,
+            row_height: crate::layout::ROW_HEIGHT,
             label_width: 120.0,
             padding: crate::layout::PADDING,
             checkbox_size: 16.0,

@@ -1,16 +1,21 @@
 //! Immediate-mode UI context managing frame lifecycle, layout, and widget interactions.
 
+mod cursor;
 mod edit_field;
 mod text;
 mod text_input;
+mod tooltip;
 mod widgets;
 
+pub use cursor::CursorIcon;
 pub use text_input::{FloatFieldOpts, FloatInputResult};
 
 #[cfg(test)]
 mod scrub_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tooltip_tests;
 
 use glam::Vec2;
 use input::InputHandler;
@@ -31,6 +36,8 @@ use crate::{
     Color, DrawList, FontError, FontHandle, FontManager, InteractionManager, InteractionResult,
     Rect, Theme, UiLayer, WidgetId,
 };
+
+use tooltip::TooltipState;
 
 /// The main UI context for immediate-mode UI rendering.
 ///
@@ -70,6 +77,10 @@ pub struct UIContext {
     /// (typed commit or scrub release) — hosts read it via
     /// [`Self::take_edit_commit`] to place undo-merge boundaries.
     edit_committed: bool,
+    /// The one hover tooltip this frame may raise
+    tooltip_state: TooltipState,
+    /// The pointer shape this frame's widgets asked for
+    requested_cursor: CursorIcon,
 }
 
 impl Default for UIContext {
@@ -85,6 +96,8 @@ impl UIContext {
             interaction: InteractionManager::new(),
             draw_list: DrawList::new(),
             edit_committed: false,
+            tooltip_state: TooltipState::default(),
+            requested_cursor: CursorIcon::Default,
             theme: Theme::default(),
             window_size: Vec2::new(800.0, 600.0),
             font_manager: FontManager::new(),
@@ -123,6 +136,9 @@ impl UIContext {
         self.interaction.begin_frame(input);
         self.draw_list.clear();
         self.window_size = window_size;
+        // A pointer shape is what this frame's widgets see under the pointer,
+        // so it is re-asked every frame rather than sticky.
+        self.requested_cursor = CursorIcon::Default;
     }
 
     /// Begin a new frame with an explicit frame delta (seconds). The delta
@@ -131,10 +147,15 @@ impl UIContext {
         self.interaction.begin_frame_dt(input, dt);
         self.draw_list.clear();
         self.window_size = window_size;
+        self.requested_cursor = CursorIcon::Default;
     }
 
     /// End the frame. Call this after all UI elements have been created.
     pub fn end_frame(&mut self) {
+        // Before the flush: the tooltip is raised by the widgets drawn this
+        // frame, not at the call, so it lands on its own layer whatever the
+        // ordering of the frame's begin/end overlay scopes was.
+        self.end_frame_tooltip();
         // Elevated layers (popups, modals, drag ghosts) flush after the
         // content stream so they physically escape any panel clip pairs.
         self.draw_list.flush_layers();

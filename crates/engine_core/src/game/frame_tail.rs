@@ -73,6 +73,12 @@ impl<G: Game> GameRunner<G> {
             self.window_manager.set_title(&title);
         }
 
+        // The pointer shape is the UI's ask rather than the game's, so it
+        // comes straight off the context instead of `FrameRequests`. The
+        // manager drops a repeat, which is what keeps an editor whose
+        // pointer never moves off a button from asking every frame.
+        self.window_manager.set_cursor(self.ui.requested_cursor());
+
         // The font the game set up in init() is the one locale switches
         // restore to — capture it once, before any locale font applies.
         if first_frame {

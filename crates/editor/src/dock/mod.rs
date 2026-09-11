@@ -84,6 +84,9 @@ pub struct DockPanel {
     pub id: PanelId,
     /// Panel title displayed in the header
     pub title: String,
+    /// One sentence on what the panel is for, shown as its header's tooltip.
+    /// Empty means the header raises none.
+    pub hint: &'static str,
     /// Where the panel is docked
     pub position: DockPosition,
     /// Panel bounds (updated during layout)
@@ -107,6 +110,7 @@ impl DockPanel {
         Self {
             id,
             title: title.into(),
+            hint: "",
             position,
             bounds: Rect::default(),
             size: DEFAULT_PANEL_WIDTH,
@@ -120,6 +124,12 @@ impl DockPanel {
     /// Set the panel size.
     pub fn with_size(mut self, size: f32) -> Self {
         self.size = size;
+        self
+    }
+
+    /// Set the sentence the panel's header explains itself with on hover.
+    pub fn with_hint(mut self, hint: &'static str) -> Self {
+        self.hint = hint;
         self
     }
 

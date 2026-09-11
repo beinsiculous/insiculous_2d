@@ -19,6 +19,8 @@ use crate::toolbar::Toolbar;
 
 /// Gap between the tool group and the play controls, and between the play
 /// controls and the group that joins them at the right.
+/// The play controls are a group of their own among the tools, so they
+/// stand off further than the shared [`crate::layout::GAP`].
 const GROUP_GAP: f32 = 8.0;
 
 /// Width of the button that opens the shed tools' menu. Square at the
