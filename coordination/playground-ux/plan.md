@@ -2079,6 +2079,192 @@ and `postbuild-check.mjs:41` all still read `v2` today, and the six `editor:` bu
 
 ## Batch 12 — engine + docs: browser usability and the performance budget (2d#126, 2d#127)
 
+**Re-verified against the tree, 2026-09-12.** Nothing below cites a stale path — this batch
+is new ground, not a correction of drift — but the two bullets describe outcomes, not
+mechanisms, and neither `focus_ring` nor an idle-input pump exists to extend
+(`grep -rn "focus_ring" crates` and `grep -n "Acceptance\|Budget" docs/WEB_PLAYGROUND.md` are
+both empty). This paragraph settles the target shapes a handoff needs; where it and a bullet
+disagree, this paragraph wins.
+
+1. **The focus ring.** Today a focused text field already gets a color change — `border ==
+   style.border_focused` in `crates/ui/src/context/edit_field.rs`'s
+   `draw_text_input_editing_invalid` (`:181-`) and `draw_text_input_box` (`:229-`), the color
+   itself at `crates/ui/src/style.rs:134`. That is a subtle cue for someone already typing;
+   `focus_ring` is the loud, contrast-checked outline this batch's own Tab traversal makes
+   load-bearing, because Tab is about to become the only way a keyboard user reaches a field
+   without clicking it. Add `focus_ring: Color` to `EditorTheme`
+   (`crates/editor/src/theme/mod.rs`), beside `popup_border` (`:28`), with the same kind of
+   luminance guard test the surface ladder already carries (`theme/mod.rs` tests). **Bridge it
+   through `ui::style::TextInputStyle`, not `EditableFieldStyle`** — `EditableFieldStyle`
+   is an editor-crate type (`crates/editor/src/field_style.rs`) that `draw_text_input_editing_invalid`,
+   in the ui crate, cannot see (review-34/review-34-codex F2: `editor` depends on `ui`, never the
+   reverse, and every input-box color today actually reaches the widget through
+   `EditorTheme::ui_theme()` writing into ui's own `TextInputStyle` — `border_focused` at
+   `theme/mod.rs:346-354` is the model to copy). Add `focus_ring: Color` (and a width constant,
+   if the outline needs one distinct from the border's) to `TextInputStyle`
+   (`crates/ui/src/style.rs`, beside `border_focused` at `:134`), set it from
+   `self.focus_ring` inside `ui_theme()`, and draw the outset outline in
+   `draw_text_input_editing_invalid` reading `self.theme.text_input.focus_ring` — in addition
+   to, not instead of, the existing border-color swap. `EditableFieldStyle` is not touched by
+   this item.
+
+2. **Tab / Shift-Tab traversal between fields already reachable by a click** — entirely inside
+   `crates/ui`; the inspector calls the same entry points it already does, in the same draw
+   order, and gets traversal for free; no `editor`/`editor_integration` change. Today
+   `input.tab_pressed` (`edit_field.rs:137`, `text_input.rs:168`) only commits the focused field
+   and clears focus; nothing refocuses anything next.
+   - `InteractionManager` gains `previous_frame_order: Vec<WidgetId>` (every editable-field
+     entry point pushes its own id into a `current_frame_order: Vec<WidgetId>`, cleared each
+     `begin_frame_dt`; `previous_frame_order` is what the prior frame collected, swapped in at
+     the top of `begin_frame_dt`) and `pending_focus_target: Option<WidgetId>`.
+   - On a Tab or Shift-Tab commit (the existing `tab_pressed` branch, now also reading
+     `input.shift_down` — already read elsewhere, `text_input.rs:172`), look up the
+     committing id's position in `previous_frame_order`. The target is `position + 1` (Tab) or
+     `position - 1` (Shift-Tab), wrapping at either end (`None` if the id isn't found there —
+     first frame ever, or the field set changed since last frame — in which case Tab just
+     commits as it does today). Set `pending_focus_target` to that id.
+   - **The match lives inside `edit_field_click`** (`edit_field.rs:91-`, which every field type
+     — plain text and numeric — already routes through before `edit_field_edit_and_draw`), not
+     in a separate registration hook: at its top, treat `Some(id) == pending_focus_target &&
+     !self.interaction.input().tab_pressed` as an additional way to enter edit mode alongside
+     `params.result.clicked`, and on a match take the existing `!params.was_focused` branch
+     verbatim — `set_focus(id)` and `get_state(id).edit.set_text_select_all(&seed_on_focus())`,
+     clearing `pending_focus_target`.
+   - **The `!tab_pressed` guard is load-bearing, not optional, and it is what makes this
+     structurally safe rather than merely argued to be** (review-35 F1, review-35-codex F1: two
+     independent second-round findings against the version of this paragraph that reasoned
+     "the target came from last frame's list, so it can't match this frame" — that reasoning is
+     false whenever the target draws *after* the committing field in the same frame's draw
+     order, which is the ordinary forward case in a top-to-bottom inspector: B, drawing later in
+     the very frame A commits on, matched `pending_focus_target` there and then, entered edit
+     mode, and its own `edit_field_edit_and_draw` call in that same frame still saw
+     `input.tab_pressed == true` and re-committed immediately, cascading through every
+     later-drawn field on one physical key press — text fields committing their seeded value as
+     a real, undo-recorded edit each time). Gating the match on `!tab_pressed` closes this
+     directly and structurally: the committing frame's own `input` snapshot has `tab_pressed ==
+     true` for its entire duration (`InputState` is cloned once per frame in
+     `begin_frame_dt`), so **no** registration on the committing frame can ever satisfy the
+     match, regardless of whether the target is forward, backward, or a wraparound onto an
+     already-drawn field — the match can only succeed on a frame where `tab_pressed` is false,
+     which is necessarily a later one, since it is `is_key_just_pressed` (an edge, not a held
+     state). This one guard covers every direction and every wrap case uniformly — no per-case
+     reasoning needed, which is exactly what the previous version of this paragraph was missing.
+   - **Seed from `seed_on_focus()`, never `params.display_text`** (review-34-codex F3):
+     `float_input` already calls `seed_on_focus` with the bare parseable value
+     (`format!("{:.2}", value)`, no unit suffix) while `display_text` carries the decorated
+     `"{:.2}{}"` with `opts.suffix` — seeding a numeric field's buffer from the decorated text
+     would hand it something its own `parse::<f32>()` immediately rejects. Since
+     `edit_field_click` already receives `seed_on_focus` for exactly this reason, reusing the
+     same call fixes it for free.
+   - **A click wins over a pending traversal** (review-34 F5): `begin_frame_dt` clears
+     `pending_focus_target` whenever `input.mouse_just_pressed` is true, before any widget's
+     registration runs this frame — a fresh click always discards a still-unresolved Tab,
+     regardless of where either lands.
+   - **A blocked widget never honors a pending match** (review-35 F4): the check at the top of
+     `edit_field_click` also requires `!self.is_blocked_for_scope(self.overlay_scope,
+     bounds.contains-style check)` — the same test `float_scrub`'s arming press already runs —
+     so a target that ends up behind a modal or dropdown opened between the commit frame and the
+     match frame is left pending (cleared by the next click, per the rule above) rather than
+     focused invisibly underneath it.
+   - If the target id never registers again at all (the field left the inspector for good —
+     the component was removed, or a different entity got selected), the pending target simply
+     sits until a click clears it or the process of elimination above overwrites it with the
+     next Tab's own target; nothing polls for staleness, and nothing needs to.
+   - **Out of scope for this batch, filed as a follow-up** (review-35-codex F2, F3): Tab does
+     nothing when no field is focused yet (no keyboard-only path *into* the inspector — a user
+     must click a field once before traversal has anything to move between), and traversal never
+     scrolls an off-panel target into view for an entity with enough components to overflow the
+     panel, so Tab past the last *visible* field can focus something the user cannot see. Both
+     are real gaps in full keyboard-only inspector use, and both require `editor_integration`
+     changes this batch's "entirely inside `crates/ui`" framing deliberately avoids (the second
+     needs the inspector's own row layout, which only `panel_renderer/inspector.rs` has, to
+     answer "is this widget's row currently visible" and drive `inspector_scroll`). Filed rather
+     than folded in here because: today, Tab does nothing at all between fields, and this batch
+     is a strict improvement for the already-common case of clicking into a field and continuing
+     by keyboard, without making the not-yet-clicked-in case any worse than it already is. The
+     follow-up (2d#144) names both gaps together, since the second is difficult to reason about
+     usefully without the first.
+
+3. **The idle throttle.** `install_hidden_frame_pump` (`crates/engine_core/src/web/mod.rs:113-166`)
+   is a self-contained chain keyed on `document.visibility_state()`; `GameRunner::drive_frame`
+   (`crates/engine_core/src/game/app_handler.rs:22-52`) unconditionally re-arms
+   `requestAnimationFrame` at its tail regardless of input or state. `engine_core` has no
+   notion of `EditorPlayState` (it lives in `crates/editor`, which `engine_core` does not
+   depend on), so the idle condition must reach `GameRunner` the same way `ctx.request_exit()`
+   already reaches it — as a per-frame field on `FrameRequests` (`contexts.rs`).
+   - **`engine_core`**: `FrameRequests` gains `idle_throttle_ok: bool`. Unlike `exit`, which
+     `FrameRequests::absorb` OR-latches forever true, this field must **replace** each frame
+     like `engine_ui_clip` does — a latch would throttle forever after the first idle moment
+     and never recover. `GameContext` gains a setter next to `clip_engine_ui` (`contexts.rs:186`),
+     e.g. `set_idle_throttle_ok(&mut self, ok: bool)`. `GameRunner` tracks `idle_seconds: f32`
+     (incremented by `delta_time` each frame, reset to `0.0` in `window_event` whenever a real
+     input event arrives — the same `WindowEvent` variants `input::InputHandler::handle_window_event`
+     already treats as activity in `crates/input/src/input_handler.rs`; `Resized`/
+     `ScaleFactorChanged`/`RedrawRequested` are not input and must not reset it). **Also reset
+     it every frame a mouse button is held down, not only on the press/release edge event**
+     (review-34 F3): a held drag-scrub or dock-resize grabber with the pointer paused for over
+     500 ms produces no new `CursorMoved`/`MouseInput` event, so without this the throttle would
+     engage mid-gesture and delay its press/release edges by up to 100 ms; `GameRunner` already
+     owns `self.input: InputHandler` and can read whatever it exposes for "some mouse button is
+     currently down" directly in its own per-frame tick, no `ui`-crate dependency needed.
+     `drive_frame`'s tail: if `idle_throttle_ok && idle_seconds >= 0.5`, call
+     `crate::web::note_idle(true)` and skip `request_redraw()`; otherwise
+     `crate::web::note_idle(false)` and `request_redraw()` as today. Natively this is a no-op —
+     `request_redraw()` unconditionally, unchanged — the plan's own wording ("instead of
+     `requestAnimationFrame`") is a wasm-only concept and this feature is `cfg(target_arch =
+     "wasm32")`-gated the same way the hidden pump already is.
+   - **`engine_core::web`**: generalize the pump's stop condition from "visible" alone to
+     "visible AND not idle" — a new `static IDLE_ACTIVE: AtomicBool` beside `PAGE_EXITED`
+     (`:27`), written by `note_idle()`, read by the pump's per-tick check alongside
+     `document.visibility_state()`. One chain, one `PUMP_ARMED` guard, armed by either trigger
+     (a visibility change, or `note_idle(true)`) — never two chains driving double frames,
+     the invariant the doc comment above the pump already states for the hidden case alone.
+   - **Wake immediately on the first input after idling, don't wait for the next pump tick**
+     (review-35 F2): without this, the moment the user moves the mouse or presses a key after
+     the 500 ms idle window has engaged the throttle, `idle_seconds` resets in `window_event`
+     but nothing drives a frame until the pump's own next ~100 ms tick — every hover highlight,
+     cursor-shape change and the next click's press processing lands up to 100 ms late, turning
+     every post-idle interaction into a visibly laggy one; the hidden-tab pump's 100 ms was
+     acceptable because a hidden tab has no user watching, which is specifically not true here.
+     Fix: the same `window_event` branch that resets `idle_seconds` on real input, when
+     `IDLE_ACTIVE` was true going in, also calls `note_idle(false)` and
+     `self.window_manager.request_redraw()` immediately, the same pair `drive_frame`'s tail
+     already does for the non-idle case — so input resumes full frame rate on the very frame
+     it arrives, not on the next pump tick.
+   - **`editor_integration`**: `EditorGame::update` calls `ctx.set_idle_throttle_ok(matches!(
+     self.play_state, EditorPlayState::Editing | EditorPlayState::Paused))`. Nothing about "a
+     running animation" needs its own detection: the engine-time freeze this crate's own
+     `CLAUDE.md` already documents (`ctx.time_scale = 0.0` outside Playing) means no particle
+     or sprite animation is live in Editing or Paused today, so the plan's exception already
+     holds from the state check alone. A future feature that animates something outside
+     Playing is responsible for clearing the flag itself — not this batch's problem.
+
+4. **The bundle's hard size budget.** `scripts/build_wasm.sh`'s existing gate (`:395-400`)
+   only warns, at 20 MiB, for every `--kind`. Add a second check right after it, for `--kind
+   playground` only: a named constant near the top of the script
+   (`PLAYGROUND_SIZE_BUDGET_MIB`, default `12`, a comment naming Jesse as the one who tunes it
+   after measuring — not a new CLI flag; it is a one-time tuning value edited in the file, not
+   something a caller varies per invocation) that `exit 1`s with a clear message when
+   `BUILD_KIND == playground` and `SIZE_BYTES` exceeds it. `--kind games`/`--kind editor`
+   builds are unaffected. **The default is a placeholder, not a measurement** (review-34 F4):
+   the only recorded playground size is 10.2 MiB at v1 (`plan.md:1207`), from before this
+   batch's own additions to `ui`/`editor`/`engine_core`, so 12 MiB may already be tight against
+   this batch's own final seven-bundle rebuild (gated by item 5 of the Verification section
+   below). If that rebuild's own measured size is at or past the constant, that is a signal to
+   raise it — per the bullet's own "Jesse sets it after measuring" — not a defect to route
+   around quietly: the executor reports the exact measured number in the batch report
+   regardless of whether the gate passed, so Jesse can decide, and a hard failure on this
+   batch's own final rebuild is diagnosed against that number before anyone assumes a
+   regression. **The gate sits before `--sync`** (review-35 F3, verified against the tree —
+   `build_wasm.sh:393-409`), so a tripped gate stages nothing; recovery is simply "read the
+   `wasm size:` line the script already echoes before the `exit 1` (`:396-397`), raise
+   `PLAYGROUND_SIZE_BUDGET_MIB`, rebuild" — not a code change, and not a sign anything but the
+   constant needs adjusting.
+
+5. **The doc.** `docs/WEB_PLAYGROUND.md` has neither an "Acceptance" nor a "Budget" section
+   today. Both are new; place them after "The bundle contract" (`:53-`) or wherever the
+   existing section order reads best — the executor's call, not the plan's.
+
 - **2d#126.** `docs/WEB_PLAYGROUND.md` § Acceptance: the written list (browser shortcuts,
   focus into and out of the canvas, audio activation, resize, zoom, and "typing in Scripts
   or an inspector field never reaches the game or the editor's shortcuts"), run before each
