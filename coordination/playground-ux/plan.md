@@ -2079,11 +2079,11 @@ and `postbuild-check.mjs:41` all still read `v2` today, and the six `editor:` bu
 
 ## Batch 12 — engine + docs: browser usability and the performance budget (2d#126, 2d#127) — DONE 2026-09-12 (insiculous_2d b486af1, insiculous_web f88ecd4)
 
-**Owed: Jesse's headed check** — every item here needs a real keyboard and browser: the
-`docs/WEB_PLAYGROUND.md` § Acceptance checklist end to end (this batch's own new focus ring
-and Tab traversal rows included), and the three § Budget numbers no headless run can
-produce (time to an editable scene, idle CPU once the throttle engages, memory with a
-preview open).
+**Jesse's headed check passed, 2026-09-12** — the `docs/WEB_PLAYGROUND.md` § Acceptance
+checklist end to end, this batch's own focus ring and Tab traversal rows included, working
+as intended. The three § Budget numbers no headless run can produce (time to an editable
+scene, idle CPU once the throttle engages, memory with a preview open) stay as recorded
+placeholders — not blocking, Jesse's to fill in whenever he measures them.
 
 **Re-verified against the tree, 2026-09-12.** Nothing below cites a stale path — this batch
 is new ground, not a correction of drift — but the two bullets describe outcomes, not

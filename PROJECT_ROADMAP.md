@@ -82,8 +82,8 @@ Engine status, test counts, and per-system capability detail live in
 | K | Conductor — shared MIDI parts, custom instruments and in-editor composition | On board (K1 spike gates all) | [Conductor milestone](https://github.com/beinsiculous/insiculous_2d/milestone/2): #60–#65, #140 (sample instruments), #141 (composer); the tickets carry the settled design and dependency order |
 | C/D | Games 7–20 | PAUSED until Phase G done (below) | This file § Paused phases |
 
-**Editor** work follows the Playground UX sprint (its own section below);
-**Web Playground** shipped Sep 2026; `docs/WEB_PLAYGROUND.md`.
+**Editor**: the Playground UX sprint shipped Sep 12 2026 (its own section below); no
+editor sprint is queued next. **Web Playground** shipped Sep 2026; `docs/WEB_PLAYGROUND.md`.
 
 ## Phase J — Insiculous Arcade (marketplace compilation) — OUTLINE ONLY
 
@@ -146,12 +146,12 @@ design (the board carries actionable work); this table is the resumption point.
 The full file:line-anchored audit is `docs/EDITOR_UX_AUDIT.md` (2026-08-27), and
 it is **history**: reconciled 2026-09-10, with every item carrying a status line in
 the file itself. Its §7 work order ran as sprints 1–5 (Aug 27–28 2026) and sprint 6
-(Sep 1 2026). The **Playground UX** sprint on the Studio Board is the editor's work
-order now (`gh issue list -R beinsiculous/insiculous_2d`, the Playground UX
-milestone). The old "Phase 2 (Ideal Editor UI)" lettering is retired
-(history in `log_archive.md`).
+(Sep 1 2026), superseded by the **Playground UX** sprint below (SHIPPED Sep 12 2026).
+The old "Phase 2 (Ideal Editor UI)" lettering is retired (history in `log_archive.md`).
+No editor sprint is queued on the Studio Board as of this writing
+(`gh issue list -R beinsiculous/insiculous_2d`).
 
-**Editor colors**: SSOT is `crates/editor/src/theme.rs` (`EditorTheme` tokens,
+**Editor colors**: SSOT is `crates/editor/src/theme/mod.rs` (`EditorTheme` tokens,
 WCAG guard tests). The old mockup-derived palette table was dropped from this
 file — it was **pending the audit §5.1 gamma verification** (screen colors
 measured ~2× brighter than declared tokens); do not derive or re-pick colors
@@ -168,19 +168,26 @@ batches, Sep 4–6 2026; `docs/WEB_PLAYGROUND.md`, follow-ups on the board.
 GitHub-App/OAuth publish-to-own-repo stays undesigned until the playground proves
 engagement.
 
-**Playground UX (Sep 8 2026).** Astra — the roster's artist and UI expert (the
-working set's `roles` skill) — reviewed the live page and the editor in two
-batches the week it shipped, and the gaps became the **Playground UX** sprint
-(milestone here and in `insiculous_web`; one order in its description): the
-editor gets the window and an edit-to-preview loop into a separate game-only
-window first, then the first-run path, the visual hierarchy (reconciling
-`docs/EDITOR_UX_AUDIT.md` before it becomes a task list again — done
-2026-09-10), the loading/saving/failure states, and browser usability plus a
-performance budget as acceptance criteria. The acceptance test: on an ordinary
-laptop, a new visitor changes a sample, plays that exact change in another
-window, returns safely, and exports their work without reading the docs. The
-sprint's plan is written as a handoff loop when it starts; Astra reviews it
-alongside kimi.
+**Playground UX (Sep 8 2026 → SHIPPED Sep 12 2026).** Astra — the roster's artist and UI
+expert (the working set's `roles` skill) — reviewed the live page and the editor in two
+batches the week it shipped, and the gaps became the **Playground UX** sprint (milestone
+here and in `insiculous_web`; one order in its description): the editor got the window and
+an edit-to-preview loop into a separate game-only window first, then the first-run path, the
+visual hierarchy (reconciling `docs/EDITOR_UX_AUDIT.md` before it becomes a task list again —
+done 2026-09-10), the loading/saving/failure states, and browser usability plus a performance
+budget as acceptance criteria. Thirteen batches, Sep 8–12 2026, run as a handoff loop
+(`coordination/playground-ux/plan.md`, reviewed throughout by kimi and codex,
+`reviewer-comparison.md` beside it): Stop keeps/discards paused edits, the toolbar strip, the
+asset browser, the game-only preview, the site's application shell, `Play ↗` and the preview
+window, the first run, the inspector during Play (collapsible sections, the colour editor),
+quieter overlays / View toggles / tooltips / resizing, save state, and — last — a `focus_ring`
+theme token, Tab/Shift-Tab traversal between inspector fields, an idle throttle, and a hard
+bundle-size gate (`docs/WEB_PLAYGROUND.md` § Acceptance and § Budget). Jesse's headed
+acceptance check passed (2026-09-12): on an ordinary laptop, a new visitor changes a sample,
+plays that exact change in another window, returns safely, and exports their work without
+reading the docs; the staging acceptance run happens with the deploy. Follow-up:
+insiculous_2d#144 (keyboard-only entry into the inspector, scroll-into-view for an off-panel
+traversal target).
 
 ## Scripting — the ScriptRef seam
 
