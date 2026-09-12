@@ -24,6 +24,9 @@ pub struct EditorRunOptions {
     pub prefs_slot: Option<PathBuf>,
     /// Dirty flag written by `sync_dirty_mirror`.
     pub dirty_flag: Option<Arc<AtomicBool>>,
+    /// History-only dirty flag, written by `sync_dirty_mirror` alongside the
+    /// combined one — the persist layer's own fresh state answers the rest.
+    pub history_dirty_flag: Option<Arc<AtomicBool>>,
     /// Persistence-pending flag read by `sync_dirty_mirror`.
     pub persist_pending: Option<Arc<AtomicBool>>,
     /// Web error mirror for script errors.
@@ -67,6 +70,7 @@ pub fn run_game_with_editor_opts<G: Game>(
         editor_game.prefs_slot = slot;
     }
     editor_game.dirty_flag = options.dirty_flag;
+    editor_game.history_dirty_flag = options.history_dirty_flag;
     editor_game.persist_pending = options.persist_pending;
     editor_game.script_errors = options.script_errors;
     editor_game.scene_snapshot = options.scene_snapshot;

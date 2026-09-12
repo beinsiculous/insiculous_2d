@@ -35,6 +35,9 @@ crates into the wasm gate.
 | Pitfall | Guard Test |
 |---|---|
 | A put issued while one is in flight for the same path must chain behind it with `base + 1`, never race it into a `StaleRevision` | `persist/tests/chains.rs test_two_puts_chain_with_gated_store` |
+| The save indicator reads two signals: chain state alone calls a dirty history "Saved", the history flag alone calls a pending put "Saved" | `persist/tests/chains.rs test_save_status_walks_the_four_states_and_the_dirty_flag` |
+| The history half of that signal must be the history-only flag, not the combined one the window title renders: the combined flag lags a put that completes between frames, and a poll landing in that window reports unsaved edits over a fully saved scene | `editor_integration/src/editor_game/history_dirty_tests.rs test_history_dirty_flag_tracks_command_history_alone_not_the_combined_signal` |
+| A conflicted path is named ahead of a stranded one in the failure reason — a conflict is terminal, a stranded path still retries | `persist/tests/chains.rs test_save_status_names_a_conflicted_path_ahead_of_a_stranded_one` |
 | A conflicted path is terminal: no re-issue, no new put on a later write | `persist/tests/chains.rs test_conflicted_path_never_reissued` |
 | A file loaded at revision N saves as N + 1 with no conflict (seed records the base) | `persist/tests/chains.rs test_seed_then_save_advances_revision_without_conflict` |
 | Two writers from the same base: exactly one wins | `persist/tests/stores.rs test_two_writers_racing_from_same_base_exactly_one_wins` |

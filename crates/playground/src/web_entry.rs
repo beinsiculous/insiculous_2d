@@ -36,6 +36,7 @@ thread_local! {
     static BUNDLED_MANIFESTS: RefCell<Vec<ProjectManifest>> = const { RefCell::new(Vec::new()) };
     static STORED_MANIFESTS: RefCell<Vec<ProjectManifest>> = const { RefCell::new(Vec::new()) };
     static DIRTY_FLAG: RefCell<Option<Arc<AtomicBool>>> = const { RefCell::new(None) };
+    static HISTORY_DIRTY_FLAG: RefCell<Option<Arc<AtomicBool>>> = const { RefCell::new(None) };
     static ACTIVE_MANIFEST: RefCell<Option<ProjectManifest>> = const { RefCell::new(None) };
 }
 
@@ -57,6 +58,13 @@ pub fn stored_manifests() -> Vec<ProjectManifest> {
 
 pub fn dirty_flag() -> Option<Arc<AtomicBool>> {
     DIRTY_FLAG.with(|flag_cell| flag_cell.borrow().clone())
+}
+
+/// The editor's command history alone, without the persist layer's pending
+/// puts: a put that a reader catches between completing and the next frame's
+/// mirror would otherwise read as unsaved edits.
+pub fn history_dirty_flag() -> Option<Arc<AtomicBool>> {
+    HISTORY_DIRTY_FLAG.with(|flag_cell| flag_cell.borrow().clone())
 }
 
 #[wasm_bindgen(start)]
@@ -199,8 +207,11 @@ async fn run_playground() -> Result<(), String> {
 
     // 7. Chains and persistence listeners
     let dirty_atomic = Arc::new(AtomicBool::new(false));
+    let history_dirty_atomic = Arc::new(AtomicBool::new(false));
     let pending_atomic = Arc::new(AtomicBool::new(false));
     DIRTY_FLAG.with(|flag_cell| *flag_cell.borrow_mut() = Some(dirty_atomic.clone()));
+    HISTORY_DIRTY_FLAG
+        .with(|flag_cell| *flag_cell.borrow_mut() = Some(history_dirty_atomic.clone()));
 
     let mut chains = Chains::new(
         project_slug.clone(),
@@ -270,6 +281,7 @@ async fn run_playground() -> Result<(), String> {
         api_responses: Some(response_sender),
         prefs_slot: Some(PathBuf::from("beinsiculous.playground.editor_prefs")),
         dirty_flag: Some(dirty_atomic),
+        history_dirty_flag: Some(history_dirty_atomic),
         persist_pending: Some(pending_atomic),
         script_errors: Some(script_errors_mirror),
         scene_snapshot: Some(scene_snapshot),

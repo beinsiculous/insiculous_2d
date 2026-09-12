@@ -137,7 +137,7 @@ pub fn playground_poll_responses() -> Vec<JsValue> {
 #[wasm_bindgen]
 pub fn playground_is_dirty() -> bool {
     let pending = crate::persist::is_pending();
-    crate::web_entry::dirty_flag()
+    crate::web_entry::history_dirty_flag()
         .map(|flag_cell| flag_cell.load(Ordering::Relaxed))
         .unwrap_or(false)
         || pending
@@ -446,6 +446,21 @@ pub fn playground_conflicted_paths() -> Vec<JsValue> {
             .collect()
     })
     .unwrap_or_default()
+}
+
+/// The page's save indicator as one JSON object, `{ "state": …, "reason": … }`.
+///
+/// Reads the history-only flag: the combined one the window title renders
+/// also carries the persist layer's pending puts, and a put that completes
+/// between frames leaves it stale for a frame — long enough for this poll to
+/// report unsaved edits over a scene that is fully saved.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn playground_save_state() -> String {
+    let history_dirty = crate::web_entry::history_dirty_flag()
+        .map(|flag_cell| flag_cell.load(Ordering::Relaxed))
+        .unwrap_or(false);
+    serde_json::to_string(&crate::persist::save_status(history_dirty)).unwrap_or_default()
 }
 
 #[cfg(target_arch = "wasm32")]

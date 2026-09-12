@@ -27,6 +27,38 @@ pub enum PathState {
     Conflicted,
 }
 
+/// The save indicator's state, as the page names it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SaveState {
+    /// The editor history holds commands no put has carried yet.
+    Unsaved,
+    /// A put is running, or queued behind one.
+    Saving,
+    /// Stored bytes match local edits.
+    Saved,
+    /// A path is Conflicted or Stranded; the reason names which and where.
+    Failed,
+}
+
+/// A save indicator reading: the state, plus the failure reason it carries.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct SaveStatus {
+    pub state: SaveState,
+    /// Empty but for a failure, where it names the state and the path.
+    pub reason: String,
+}
+
+impl SaveStatus {
+    /// The reading with no chains to consult: only the editor's own flag is left.
+    fn from_history(history_dirty: bool) -> Self {
+        Self {
+            state: if history_dirty { SaveState::Unsaved } else { SaveState::Saved },
+            reason: String::new(),
+        }
+    }
+}
+
 /// State tracking for a single project-relative file path.
 pub struct PathChain {
     pub path: String,
@@ -117,6 +149,32 @@ impl Chains {
         self.chains.values().any(|chain| {
             chain.state == PathState::InFlight || chain.state == PathState::Queued
         })
+    }
+
+    /// The page's save indicator over the chains, combined with the editor's own
+    /// dirty flag — which persist does not own, because edits reach persist only once
+    /// a write is issued, and the page must not call those edits saved in between.
+    ///
+    /// A conflicted path outranks a stranded one: a conflict is terminal, while a
+    /// stranded path is retried on `visibilitychange`, so the reason names the more
+    /// actionable failure when both exist.
+    pub fn save_status(&self, history_dirty: bool) -> SaveStatus {
+        if let Some(path) = self.conflicted_paths().first() {
+            return SaveStatus {
+                state: SaveState::Failed,
+                reason: format!("conflicted: {path}"),
+            };
+        }
+        if let Some(path) = self.stranded_paths().first() {
+            return SaveStatus {
+                state: SaveState::Failed,
+                reason: format!("stranded: {path}"),
+            };
+        }
+        if self.has_active() {
+            return SaveStatus { state: SaveState::Saving, reason: String::new() };
+        }
+        SaveStatus::from_history(history_dirty)
     }
 
     /// Get current state of a relative path.
@@ -305,6 +363,18 @@ impl Chains {
         paths
     }
 
+    /// Return all paths currently in Stranded state, sorted.
+    pub fn stranded_paths(&self) -> Vec<String> {
+        let mut paths: Vec<String> = self
+            .chains
+            .iter()
+            .filter(|(_, chain)| chain.state == PathState::Stranded)
+            .map(|(path, _)| path.clone())
+            .collect();
+        paths.sort();
+        paths
+    }
+
     /// Re-issue put for stranded paths (triggered on `visibilitychange` -> hidden).
     pub fn reissue_stranded(&mut self) {
         if self.draining {
@@ -407,6 +477,22 @@ pub fn is_pending() -> bool {
     #[cfg(not(target_arch = "wasm32"))]
     {
         false
+    }
+}
+
+/// The save indicator across the global active chains on wasm.
+///
+/// With no chains installed — natively, and on wasm before the store opens — there is
+/// no chain state to read, so the editor's own flag is the whole answer.
+pub fn save_status(history_dirty: bool) -> SaveStatus {
+    #[cfg(target_arch = "wasm32")]
+    {
+        with_active_chains(|chains| chains.save_status(history_dirty))
+            .unwrap_or_else(|| SaveStatus::from_history(history_dirty))
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        SaveStatus::from_history(history_dirty)
     }
 }
 

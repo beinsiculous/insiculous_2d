@@ -194,6 +194,7 @@ The command channel is a 1024-line FIFO; responses come back in order.
 | `playground_read_file_bytes(path)` | `→ Result<Uint8Array>` | project-relative binary read through `vfs::read` |
 | `playground_conflicted_paths()` | `→ string[]` | sorted project-relative paths currently in conflicted state |
 | `playground_script_errors()` | `→ string[]` | runtime errors recorded by `ScriptRunner` during the current Play session |
+| `playground_save_state()` | `→ string` | `{"state": "unsaved" \| "saving" \| "saved" \| "failed", "reason": ""}`: a conflicted or stranded path is `failed` with `reason` naming the first such path in sorted order — **conflicted outranks stranded**, a conflict being terminal while a stranded path retries on `visibilitychange` — an in-flight or queued put is `saving`, a dirty command history is `unsaved`, and neither is `saved` |
 
 The engine cannot swap a running project; every switch is a page reload with the query
 string naming the slug. An unknown `?project=` redirects to the first bundled project.
