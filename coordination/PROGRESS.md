@@ -793,3 +793,29 @@ moves; keep the pointer inside a button and it stays, leave and it goes; press a
 open the Stop dialog and rest on a strip button beneath it — nothing; hover a panel edge and
 see the resize cursor, in the native editor and in the playground's browser canvas (kimi's
 note: winit's web cursor is proven to compile, not to show).
+
+## 2026-09-12 — Playground UX batch 11: the save indicator, a history-only dirty flag (c67c01e; site c96e52a + 1bd9b08)
+
+`playground_save_state() -> String` ships the toolbar's Unsaved/Saving/Saved/Save failed
+badge, derived in `persist::save_status` from `Chains`' own state plus a history-dirty input.
+The first round read the same combined signal the window title uses (history OR a persist
+put in flight); kimi, codex and gemini independently traced the same defect — a put
+completing on its own future between frames leaves that combined flag stale for up to a
+frame, so a poll lands mid-gap and calls a fully saved scene unsaved. Sent to a fixes round
+rather than patched in place (a new atomic, four files): `history_dirty_flag`, threaded
+through `EditorRunOptions` → `sync_dirty_mirror`'s write → `web_entry.rs` → `bridge.rs`,
+carrying only `command_history.is_dirty()`; a headless test drives the exact race. The new
+field pushed `editor_game/mod.rs` from 597 to 604 lines — over the 600 gate — so its `Game`
+impl (149 lines, unaltered) moved to a new `game_impl.rs` (mod.rs 597 → 459, game_impl.rs
+163). Reviewing the fix, kimi and gemini independently found the same staleness one level
+over: `playground_is_dirty()` (the switch/reset/import confirmation) read the same stale
+combined flag. The two disagreed on severity (kimi Minor, gemini Major/blocking); asked
+Jesse directly, who ruled extend now — `playground_is_dirty()` moved to `history_dirty_flag()`
+too, in this same pass. Three small doc corrections followed: `editor_integration/CLAUDE.md`'s
+`EditorRunOptions` field inventory (seven → eight), its "Dirty state" bullet (which had
+conflated the unread combined atomic with the title bar's real source, `EditorContext.is_dirty`,
+and after the extension was simply wrong about what the confirmations read), and its File
+Map (no entry existed for the new `game_impl.rs`). Gates green at every round: 973 tests,
+both clippy invocations, `check_wasm.sh`, all re-run by the planner independently of every
+report. Filed: nothing new — one out-of-scope defect the first round surfaced (an
+out-of-project-root save misreporting "saved") was already filed as #143. Closes #125.

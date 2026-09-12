@@ -2023,7 +2023,7 @@ caveat. For correction 12, `OVERFLOW_ROW_HEIGHT` (24) and `OVERFLOW_MENU_WIDTH` 
 `field_style.rs:80` with its default at `:150`. The doc lines correction 13 names kept their
 numbers through 10a's edits.
 
-## Batch 11 — engine + site: save state (2d#125, web#60)
+## Batch 11 — engine + site: save state (2d#125, web#60) — DONE 2026-09-12 (insiculous_2d c67c01e, insiculous_web c96e52a + 1bd9b08)
 
 **Re-verified against the tree 2026-09-11 before the handoff** (after batch 10b, 10fc473):
 the combined dirty signal this batch must match is `sync_dirty_mirror`
