@@ -8,6 +8,11 @@ use crate::{FontHandle, Rect, WidgetId, WidgetState};
 
 const CARET_WIDTH: f32 = 1.0;
 
+/// How far the focus ring's rect sits outside the field's own bounds. The
+/// ring is outset so it reads as a ring AROUND the field rather than a
+/// second, thicker border.
+const FOCUS_RING_OFFSET_PX: f32 = 2.0;
+
 /// Event emitted by the shared `edit_field` shell.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum EditFieldEvent {
@@ -76,6 +81,7 @@ impl UIContext {
         seed_on_focus: impl FnOnce() -> String,
         is_valid: impl Fn(&str) -> bool,
     ) -> EditFieldEvent {
+        self.interaction.register_editable_field(id);
         let result = self.interaction.interact(id, bounds, true);
         let was_focused = self.interaction.is_focused(id);
         let params = EditFieldParams { bounds, font, display_text, result, was_focused };
@@ -85,6 +91,8 @@ impl UIContext {
 
     /// The click half of the shell: a click on an unfocused field focuses it
     /// with the seeded text selected; a click while editing places the caret.
+    /// A field a Tab or Shift-Tab commit handed focus to enters edit mode the
+    /// same way, on the frame it claims the pending target.
     /// Runs before any key handling so a widget with its own key semantics
     /// (the float field's Up/Down nudge) sees the field's focus as of THIS
     /// frame's click.
@@ -94,14 +102,41 @@ impl UIContext {
         params: &EditFieldParams<'_>,
         seed_on_focus: impl FnOnce() -> String,
     ) {
-        if !params.result.clicked {
-            return;
+        // A pending traversal is claimed here and only on a frame that is not
+        // the committing one: the committing frame's input snapshot holds
+        // `tab_pressed` true for its whole duration, so no field that frame
+        // draws — before the committing field or after it, forward target or
+        // wrap-around — can match. Without that guard the target entered edit
+        // mode in the same frame and its own commit branch, which also reads
+        // `tab_pressed`, fired on the very key press that scheduled it, so one
+        // physical press cascaded through every field drawn after the first.
+        // A target hidden behind an overlay opened since the commit stays
+        // pending instead of being focused invisibly underneath it.
+        let tab_pressed = self.interaction.input().tab_pressed;
+        let is_pending_target = self.interaction.pending_focus_target() == Some(id);
+        let blocked = self
+            .interaction
+            .is_blocked_for_scope(self.interaction.overlay_scope(), params.bounds.center());
+        if is_pending_target && blocked {
+            // Still the scheduled target, but an overlay covers it: leave it
+            // pending (the aging logic already tolerates this indefinitely),
+            // and say so — a target only shields the keyboard while it is
+            // reachable soon, or an open popup would deafen every editor
+            // shortcut, play controls included, for as long as it stays open.
+            self.interaction.note_pending_target_blocked();
         }
-        if !params.was_focused {
+        let traversal = is_pending_target && !tab_pressed && !blocked;
+        if traversal || (params.result.clicked && !params.was_focused) {
+            if traversal {
+                self.interaction.set_pending_focus_target(None);
+            }
             // Enter edit mode with the whole value selected — typing replaces it
             self.interaction.set_focus(id);
             let text = seed_on_focus();
             self.interaction.get_state(id).edit.set_text_select_all(&text);
+            return;
+        }
+        if !params.result.clicked {
             return;
         }
         // Click inside while editing: place the cursor at the click
@@ -140,6 +175,13 @@ impl UIContext {
             {
                 let text = self.interaction.get_state(id).edit.text.clone();
                 self.interaction.clear_focus();
+                // Tab keeps going: name the neighbouring field, which a later
+                // frame claims (never this one — see `edit_field_click`).
+                if input.tab_pressed {
+                    let neighbour =
+                        self.interaction.traversal_neighbour(id, input.shift_down);
+                    self.interaction.set_pending_focus_target(neighbour);
+                }
                 return EditFieldEvent::Committed(text);
             }
 
@@ -187,6 +229,17 @@ impl UIContext {
     ) {
         let style = self.theme.text_input;
         let border = if invalid { style.border_invalid } else { style.border_focused };
+
+        // The focus ring, drawn under the box so the field's own edge stays
+        // crisp. It stays up for an invalid buffer too: it says where the
+        // keystrokes go, which is exactly when the red border needs it.
+        let ring = bounds.expand(FOCUS_RING_OFFSET_PX);
+        self.draw_list.rect_border_rounded(
+            ring,
+            style.focus_ring,
+            style.focus_ring_width,
+            style.corner_radius + FOCUS_RING_OFFSET_PX,
+        );
 
         self.draw_list.rect_rounded(bounds, style.background_focused, style.corner_radius);
         self.draw_list

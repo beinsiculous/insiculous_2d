@@ -148,7 +148,53 @@ pub struct InteractionManager {
     /// pacing off wall-clock time — key repeat today, the tooltip's
     /// rest-to-show delay — reads one number.
     frame_dt: f32,
+    /// The editable fields drawn so far this frame, in draw order. Tab and
+    /// Shift-Tab walk this list.
+    current_frame_order: Vec<WidgetId>,
+    /// The previous frame's registration order. A Tab commit looks its
+    /// neighbour up here rather than in `current_frame_order`, which at
+    /// that moment is missing every field drawn after the committing one.
+    previous_frame_order: Vec<WidgetId>,
+    /// The field a Tab or Shift-Tab commit handed focus to, waiting for a
+    /// later frame to claim it (see `UIContext::edit_field_click`, which
+    /// also says why the committing frame can never claim it), paired with
+    /// how many consecutive frames it has gone without drawing at all. A
+    /// mouse press discards it immediately. A target still drawing every
+    /// frame — even one it cannot claim because an overlay blocks it, its
+    /// one deliberately indefinite wait — keeps its clock at zero; only a
+    /// target that stops drawing entirely (scrolled off, its panel closed,
+    /// the selection changed) ages, and is forgotten past one grace frame.
+    /// `WidgetId` is a bare string hash with no notion of "this entity" — a
+    /// different entity's field can hash to the very same id — so a target
+    /// that goes quiet must not sit armed indefinitely, or it can steal
+    /// focus from an unrelated field that later reuses its id.
+    pending_focus_target: Option<(WidgetId, u8)>,
+    /// Whether the pending target's own registration found it blocked by an
+    /// overlay THIS frame. Reset to `false` at the top of every frame, so it
+    /// answers "as of the last time anyone checked" — which is every frame
+    /// the target draws, blocked or not, and stays at its reset value on a
+    /// frame the target does not draw at all. Read by `wants_keyboard()`: a
+    /// target only shields the keyboard while it is actually reachable soon,
+    /// never for as long as some overlay happens to sit over it (see that
+    /// method for why an unconditional "pending = keyboard owned" is wrong).
+    pending_target_blocked: bool,
 }
+
+/// How many consecutive frames a pending traversal target may go without
+/// drawing at all before it is forgotten. A frame where it draws but cannot
+/// be claimed (an overlay blocks it) resets this to zero rather than
+/// counting against it — only genuinely going quiet risks a stale match.
+/// Kept at exactly 1 (the ordinary one-frame resolution) deliberately: a
+/// wider window was tried and reverted (review-38 F1/F2) — inspector field
+/// ids are pure layout indices with no entity component
+/// (`crates/editor/src/field_style.rs`), so the same id names, say,
+/// position.x for every entity, and a selection change with no mouse press
+/// (Ctrl+A, hierarchy keyboard navigation, undo/redo restoring a prior
+/// selection) can swap in a same-shaped different entity within a few
+/// frames — a wider grace widens exactly the window this age exists to
+/// close, for a speculative benefit (an unconfirmed zero-field inspector
+/// pass) that was never worth that trade.
+const PENDING_FOCUS_MAX_AGE: u8 = 1;
 
 impl Default for InteractionManager {
     fn default() -> Self {
@@ -168,6 +214,10 @@ impl InteractionManager {
             overlay_scope: None,
             key_repeat: KeyRepeat::default(),
             frame_dt: DEFAULT_FRAME_DT,
+            current_frame_order: Vec::new(),
+            previous_frame_order: Vec::new(),
+            pending_focus_target: None,
+            pending_target_blocked: false,
         }
     }
 
@@ -182,6 +232,41 @@ impl InteractionManager {
     pub fn begin_frame_dt(&mut self, input: &InputHandler, dt: f32) {
         self.input = InputState::from_input_handler_with_repeat(input, &mut self.key_repeat, dt);
         self.frame_dt = dt;
+
+        // The frame that just ended becomes the order a Tab commit looks its
+        // neighbour up in; this frame starts collecting its own. Two buffers
+        // swapped rather than two rebuilt — this runs on every frame.
+        self.previous_frame_order.clear();
+        std::mem::swap(&mut self.previous_frame_order, &mut self.current_frame_order);
+
+        // A click always wins over a traversal still waiting to resolve: a
+        // fresh press is newer intent than the Tab that scheduled it, and
+        // leaving it standing would focus a field the user just clicked away
+        // from on a later frame.
+        if self.input.mouse_just_pressed {
+            self.pending_focus_target = None;
+        }
+        // Reset for this frame; the target's own registration (if it draws)
+        // sets it back to `true` when it finds itself blocked.
+        self.pending_target_blocked = false;
+        // A target still drawing every frame (even blocked by an overlay, its
+        // one deliberately indefinite wait) resets its grace clock — it is
+        // still legitimately the same target. Only a target that has
+        // stopped drawing at all — scrolled off, its panel closed, the
+        // selection changed to a different entity whose fields can hash to
+        // the very same ids — ages, and is forgotten past one grace frame
+        // rather than left armed to match whatever unrelated field draws
+        // with that id next.
+        if let Some((id, age)) = &mut self.pending_focus_target {
+            if self.previous_frame_order.contains(id) {
+                *age = 0;
+            } else {
+                *age += 1;
+                if *age > PENDING_FOCUS_MAX_AGE {
+                    self.pending_focus_target = None;
+                }
+            }
+        }
 
         // Blocking regions are re-registered each frame by whatever overlay is open
         self.blocking_regions.clear();
@@ -250,6 +335,18 @@ impl InteractionManager {
         self.focus_widget.is_some()
     }
 
+    /// Whether a host should suppress its own keyboard shortcuts: a widget
+    /// has focus, OR a Tab/Shift-Tab commit is mid-traversal to one and it is
+    /// currently reachable (not sitting behind an overlay). A target an
+    /// overlay blocks is deliberately excluded — it can wait indefinitely
+    /// for that overlay to close, and treating "waiting, possibly forever"
+    /// the same as "about to land next frame" would swallow every editor
+    /// shortcut, play controls included, for as long as the overlay stays
+    /// open.
+    pub(crate) fn wants_keyboard(&self) -> bool {
+        self.has_focus() || (self.pending_focus_target.is_some() && !self.pending_target_blocked)
+    }
+
     /// Whether a widget owns the current mouse gesture: true from the press
     /// that landed on a widget through the release frame (`active_widget` is
     /// cleared in [`Self::end_frame`], after click detection). Raw-input
@@ -315,6 +412,44 @@ impl InteractionManager {
         let state = self.persistent_state.entry(id).or_default();
         state.seen_this_frame = true;
         state
+    }
+
+    /// Record an editable field drawn this frame. Call it once per field per
+    /// frame, in draw order — that order is the one Tab and Shift-Tab walk.
+    pub(crate) fn register_editable_field(&mut self, id: WidgetId) {
+        self.current_frame_order.push(id);
+    }
+
+    /// The field a Tab (`backward == false`) or Shift-Tab commit from `id`
+    /// hands focus to: its neighbour in the previous frame's order, wrapping
+    /// at either end. `None` when `id` is not in that order — the first
+    /// frame ever, or a field set that changed since — or when it is the
+    /// only field there is.
+    pub(crate) fn traversal_neighbour(&self, id: WidgetId, backward: bool) -> Option<WidgetId> {
+        let order = &self.previous_frame_order;
+        if order.len() < 2 {
+            return None;
+        }
+        let position = order.iter().position(|candidate| *candidate == id)?;
+        let offset = if backward { order.len() - 1 } else { 1 };
+        Some(order[(position + offset) % order.len()])
+    }
+
+    /// The field a pending traversal is waiting for.
+    pub(crate) fn pending_focus_target(&self) -> Option<WidgetId> {
+        self.pending_focus_target.map(|(id, _)| id)
+    }
+
+    /// Schedule `id` as the field a later frame focuses (starting its grace
+    /// period over), or forget the pending one with `None`.
+    pub(crate) fn set_pending_focus_target(&mut self, target: Option<WidgetId>) {
+        self.pending_focus_target = target.map(|id| (id, 0));
+    }
+
+    /// Record that the pending target's own registration found it blocked
+    /// by an overlay this frame — so `wants_keyboard()` stops shielding it.
+    pub(crate) fn note_pending_target_blocked(&mut self) {
+        self.pending_target_blocked = true;
     }
 
     /// Get persistent state for a widget if it exists.

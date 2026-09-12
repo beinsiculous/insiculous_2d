@@ -223,6 +223,16 @@ opening the preview window hides the editor's tab before the frame that answers 
 snapshot — and on a page that is already hidden the pump starts as soon as there is a loop to
 wake.
 
+The same timer drives an **idle** editor. Once half a second passes with no input event
+and no mouse button held, an editor in Editing or Paused stops re-arming animation frames
+and the pump takes over at its 100 ms cadence; the countdown is cleared by any input, and
+the first input after idling wakes the ordinary loop on that frame rather than at the
+pump's next tick. Only an editor host asks for this (`GameContext::set_idle_throttle_ok`),
+and only while no simulation is running — the engine's own time freeze outside Playing
+already means nothing is animating — so a game window and a play session keep their full
+frame rate. A `resize` or a `RedrawRequested` is window management, not input, and never
+wakes it. The numbers it moves are in § Budget.
+
 ## Preferences
 
 Editor preferences (camera, grid, panel layout) persist through `save_store` under the
@@ -274,3 +284,44 @@ On import, the archive is validated in order before touching any persistence sto
 ### Failure contract
 
 A refused archive touches nothing; a failed `replace_project` restores the epoch and the current project keeps saving — a save attempted during its drain window was refused, as on switch and reset, and is re-issued by saving again.
+
+## Acceptance
+
+Run these by hand in a real browser against a staged deploy before each playground
+release, and record the result in the pull request. None of them is covered by an
+automated run: each needs a real keyboard, pointer and audio device, and the editor
+inside a page is where the engine's input path can break in ways no headless test sees.
+`/playground/` is also the only surface the engine shares with a page that has its own
+shortcuts, its own scroll and its own zoom.
+
+| check | what to do, and what passing looks like |
+|---|---|
+| Browser shortcuts | With the canvas focused, press Ctrl/Cmd+S, Ctrl/Cmd+O, F5 and Ctrl/Cmd+W; then repeat with the focus on the page instead. Record which ones the page swallows — winit suppresses the browser's own default for the keys the canvas handles, and the tab-closing ones cannot be suppressed at all. Either way no work is lost: a reload or a close with anything pending asks first ("Changes you made may not be saved") |
+| Focus into the canvas | Click the canvas. The editor's shortcuts work, and typed characters reach the focused field, drawn with the focus ring around it |
+| Focus out of the canvas | Click the command input, the project switcher, or any chrome outside the canvas, then press the editor's shortcuts. The keystrokes go to that element and nothing reaches the game or the scene |
+| Tab traversal | Click one inspector text field, then Tab and Shift-Tab. Focus moves exactly one field per press, wraps at the last field to the first (and the reverse for Shift-Tab), and the focus ring follows it |
+| Audio activation | Load a project with sound and wait: the page starts silent. The first click or key press enables audio, and a preview window's sounds play from then on |
+| Resize | Drag the browser window and open and close a panel. The canvas re-lays out, and the pointer still maps to the same world point — click a sprite where it is drawn, not where it was |
+| Zoom | Browser page zoom (Ctrl/Cmd with `+`/`-`, and Ctrl/Cmd with the wheel), then the editor's own wheel zoom over the viewport. The canvas stays aligned under the pointer, and a gentle trackpad scroll does not compound into a hard zoom |
+| Typing stays in its field | With a script open in Scripts, and with an inspector text field focused, type Delete, Ctrl/Cmd+Z, letters and spaces. The scene does not change: no entity is deleted, no tool shortcut fires, no undo runs |
+
+## Budget
+
+Four numbers decide whether "lightweight" means anything, all measured on an ordinary
+laptop with a cold cache. Only the first is a build artifact and can be read off a
+rebuild; the rest need Jesse's browser, and the rows say so until he has run them.
+Each is recorded with the measurement it came from so a later regression is visible
+rather than felt.
+
+| number | what it covers | recorded |
+|---|---|---|
+| download size | `game_bg.wasm` of the playground bundle — the `wasm size:` line `scripts/build_wasm.sh` echoes. The only one of the four with a hard gate: `--kind playground` exits non-zero past `PLAYGROUND_SIZE_BUDGET_MIB` at the top of that script | 10.61 MiB (v2, 2026-09-12) |
+| time to an editable scene | navigation to the first keystroke an inspector field accepts | pending Jesse's measurement |
+| idle CPU | an editor tab left alone in Editing, after the idle throttle has engaged — the number the throttle exists to move | pending Jesse's measurement |
+| memory with a preview open | the editor tab plus a `?mode=preview` window on the same project, as one browser-task-manager reading | pending Jesse's measurement |
+
+The idle-CPU number is the one to read twice. An editor with nothing happening stops
+asking for animation frames once half a second passes without input, and wakes on the
+frame the next input arrives; a reading taken during a drag, a resize or a play session
+is a different number from one taken on a still window, and only the still one is the
+measurement this row is for.

@@ -33,6 +33,35 @@ fn test_popup_reads_against_panel() {
     assert!(border >= 3.0, "popup border vs popup surface: {border:.3}");
 }
 
+/// The focus ring is the loud affordance a field has to carry on its own:
+/// it reads at ≥3:1 over every surface it can be drawn above, it is not
+/// any of the borders the focused field already swaps between, and the
+/// token is what reaches the widget (`ui_theme` is the only path editor
+/// colors take into the ui crate).
+#[test]
+fn test_focus_ring_reads_over_every_surface_and_reaches_the_widget() {
+    let theme = EditorTheme::default();
+    let surfaces = [
+        ("surface_0", theme.surface_0),
+        ("surface_1", theme.surface_1),
+        ("surface_2", theme.surface_2),
+        ("surface_3", theme.surface_3),
+        ("surface_4", theme.surface_4),
+    ];
+    for (name, surface) in surfaces {
+        let ratio = theme.focus_ring.contrast_ratio(surface);
+        assert!(ratio >= 3.0, "focus ring vs {name}: {ratio:.2} < 3.0");
+    }
+    assert_ne!(theme.focus_ring, theme.accent_blue, "the ring is not the focused border it surrounds");
+    assert_ne!(theme.focus_ring, theme.border_subtle, "the ring is not the resting border");
+    assert_ne!(theme.focus_ring, theme.error_red, "the ring is not the invalid border");
+    assert_eq!(
+        theme.ui_theme().text_input.focus_ring,
+        theme.focus_ring,
+        "the widget draws the ring the theme names"
+    );
+}
+
 /// Viewport selection outlines are DERIVED from theme tokens, not
 /// hardcoded by the panel: secondary dims the primary but keeps its alpha,
 /// hovered multiplies the primary's alpha, and none of them collides with

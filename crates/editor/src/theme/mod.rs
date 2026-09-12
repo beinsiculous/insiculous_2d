@@ -26,6 +26,10 @@ pub struct EditorTheme {
     /// Border for floating surfaces — ≥3:1 against surface_4 so popups
     /// read as bounded objects.
     pub popup_border: Color,
+    /// Outset ring around the focused text field — ≥3:1 against every
+    /// surface on the ladder, so a field reached by Tab is unmistakable.
+    /// The border-color swap alone is a cue for someone already typing.
+    pub focus_ring: Color,
 
     // ── Accents ─────────────────────────────────────────────────
     /// Selection highlights, active buttons, "+ Add Component" (`#0078d4`)
@@ -170,6 +174,10 @@ impl Default for EditorTheme {
         let surface_2 = Color::from_hex(0x404040);
         let surface_3 = Color::from_hex(0x545454);
         let surface_4 = Color::from_hex(0x686868);
+        // One value for the interactive highlight: the focused field's ring
+        // and the panel headings are the same "this is live" signal, so the
+        // two tokens are defined once and cannot drift apart.
+        let accent_cyan = Color::from_hex(0x00d9ff);
 
         Self {
             // Typography
@@ -182,10 +190,11 @@ impl Default for EditorTheme {
             surface_3,
             surface_4,
             popup_border: Color::from_hex(0xc6c6c6),
+            focus_ring: accent_cyan,
 
             // Accents
             accent_blue: Color::from_hex(0x0078d4),
-            accent_cyan: Color::from_hex(0x00d9ff),
+            accent_cyan,
 
             // Borders
             border_subtle: Color::from_hex(0x333333),
@@ -347,6 +356,7 @@ impl EditorTheme {
         theme.text_input.background_focused = self.surface_3.lighten(0.08);
         theme.text_input.border = self.border_subtle;
         theme.text_input.border_focused = self.accent_blue;
+        theme.text_input.focus_ring = self.focus_ring;
         theme.text_input.border_invalid = self.error_red;
         theme.text_input.text_color = self.text_primary;
         theme.text_input.font_size = self.fonts.body;

@@ -15,7 +15,7 @@
 use glam::Vec2;
 
 use ecs::System;
-use editor::EditorContext;
+use editor::{EditorContext, EditorPlayState};
 use editor::world_snapshot::WorldSnapshot;
 use engine_core::contexts::GameContext;
 use engine_core::scene_data::PhysicsSettings;
@@ -377,6 +377,16 @@ impl<G: Game> EditorGame<G> {
     /// Complete the frame: sync dirty mirror, render status bar, publish
     /// window title on change, and clip engine UI to the scene viewport.
     fn finish_frame(&mut self, ctx: &mut GameContext) {
+        // Nothing on screen moves outside a play session: `prepare_frame`
+        // already froze engine time, so no particle or sprite animation is
+        // live in Editing or Paused and a still window can stop asking for
+        // frames. A future feature that animates something outside Playing
+        // has to clear this itself.
+        ctx.set_idle_throttle_ok(matches!(
+            self.editor.play_state(),
+            EditorPlayState::Editing | EditorPlayState::Paused
+        ));
+
         self.sync_dirty_mirror();
         self.save_preferences_if_changed(ctx.delta_time);
         self.open_pending_source();

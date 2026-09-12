@@ -35,6 +35,48 @@ pub fn page_exited() -> bool {
     PAGE_EXITED.load(Ordering::Relaxed)
 }
 
+/// Set while the loop has throttled itself to the pump's timer because
+/// nothing on screen is moving. Read by the pump alongside the visibility
+/// check: a visible-but-idle page still needs its frames driven, and the
+/// first input after idling clears this so the ordinary animation-frame loop
+/// takes over again.
+static IDLE_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// Whether the idle throttle is currently in force.
+pub fn idle_active() -> bool {
+    IDLE_ACTIVE.load(Ordering::Relaxed)
+}
+
+/// Tell the pump whether the loop has throttled itself to an idle cadence.
+/// Entering idle starts the pump chain (the page is visible, so nothing else
+/// would); leaving it lets the chain end.
+pub fn note_idle(idle: bool) {
+    IDLE_ACTIVE.store(idle, Ordering::Relaxed);
+    if idle {
+        start_pump_if_hidden();
+    }
+}
+
+/// One-way latch: the render path is fatally broken (device lost) and the
+/// loop no longer drives frames. Distinct from `PAGE_EXITED` — the page has
+/// not necessarily been left, so `pagehide`/`pageshow` never fire — and
+/// checked by the pump on its own: without it, a page that loses its device
+/// while hidden (visibility alone already keeps the pump's other reason to
+/// run true) or while idle-active would otherwise pump a `WakeUp` forever,
+/// each tick re-entering the dead `drive_frame` path and re-arming before
+/// anyone downstream gets a chance to say the loop is over.
+static RENDER_FATAL: AtomicBool = AtomicBool::new(false);
+
+/// Tell the pump the render path is fatally broken and must never be driven
+/// again, however it got there. One-way for the lifetime of this wasm
+/// instance — every current caller's recovery is "reload the page," which
+/// gets a fresh instance and a fresh `false`. A host that ever resumes
+/// driving frames after fatal without reloading (a hot-restart path this
+/// crate does not have today) would need to clear it itself first.
+pub fn note_render_fatal() {
+    RENDER_FATAL.store(true, Ordering::Relaxed);
+}
+
 /// Install `pagehide`/`pageshow` listeners that stop the frame loop for
 /// good once the page is left. Called by `run_game`'s web path before the
 /// event loop is handed to the browser; idempotent enough (duplicate
@@ -100,16 +142,17 @@ fn send_wake_up() -> bool {
     })
 }
 
-/// Keep frames coming while the document is hidden.
+/// Keep frames coming while the page needs them driven by hand.
 ///
-/// `request_redraw` is an animation frame under winit's web backend and a
-/// hidden tab gets none, so a game whose page is backgrounded would freeze
-/// mid-answer. The timer starts on the transition to hidden — a frame that
-/// rAF had already scheduled and will never deliver does not matter — and
-/// stops as soon as the document is visible again, leaving the ordinary
-/// browser-paced loop in charge. A page that is already hidden when this
-/// installs had its transition before anyone listened, so the pump also
-/// starts right here in that case.
+/// `request_redraw` is an animation frame under winit's web backend, and
+/// there are two states where none arrives: a hidden tab gets none at all,
+/// and an idle one has deliberately stopped asking for them. The timer starts
+/// on the transition to hidden — a frame that rAF had already scheduled and
+/// will never deliver does not matter — and on entering the idle throttle
+/// (`note_idle`), and stops as soon as the document is visible again AND
+/// nothing is throttling, leaving the ordinary browser-paced loop in charge.
+/// A page that is already hidden when this installs had its transition before
+/// anyone listened, so the pump also starts right here in that case.
 pub fn install_hidden_frame_pump() {
     use wasm_bindgen::closure::Closure;
     let Some(window) = web_sys::window() else { return };
@@ -139,15 +182,21 @@ fn start_pump_if_hidden() {
     pump_while_hidden();
 }
 
-/// One tick of the hidden-document pump: drive a frame, then re-arm in
-/// 100 ms while the document is still hidden and the loop still lives. With
-/// no proxy yet the chain simply ends; `set_wake_proxy` restarts it.
+/// Whether the pump's own reason to run still holds: the document is hidden,
+/// or the loop has throttled itself to an idle cadence.
+fn pump_still_wanted(document: &web_sys::Document) -> bool {
+    document.visibility_state() == web_sys::VisibilityState::Hidden || idle_active()
+}
+
+/// One tick of the pump: drive a frame, then re-arm in 100 ms while the page
+/// still needs driving and the loop still lives. With no proxy yet the chain
+/// simply ends; `set_wake_proxy` restarts it.
 fn pump_while_hidden() {
     use wasm_bindgen::closure::Closure;
     PUMP_ARMED.with(|armed| armed.set(false));
     let Some(window) = web_sys::window() else { return };
     let Some(document) = window.document() else { return };
-    if document.visibility_state() != web_sys::VisibilityState::Hidden || page_exited() {
+    if !pump_still_wanted(&document) || page_exited() || RENDER_FATAL.load(Ordering::Relaxed) {
         return;
     }
     if !send_wake_up() {
@@ -157,7 +206,7 @@ fn pump_while_hidden() {
     if window
         .set_timeout_with_callback_and_timeout_and_arguments_0(
             on_timeout.as_ref().unchecked_ref(),
-            HIDDEN_FRAME_INTERVAL_MILLISECONDS,
+            PUMP_FRAME_INTERVAL_MILLISECONDS,
         )
         .is_ok()
     {
@@ -165,9 +214,11 @@ fn pump_while_hidden() {
     }
 }
 
-/// How often a hidden document is driven. Browsers clamp background timers,
-/// so a shorter interval buys nothing.
-const HIDDEN_FRAME_INTERVAL_MILLISECONDS: i32 = 100;
+/// How often the pump drives a frame. Browsers clamp background timers, so a
+/// shorter interval buys nothing for a hidden tab — and an idle visible one
+/// wants exactly this: the frame rate a still screen needs, not the rate a
+/// moving one does.
+const PUMP_FRAME_INTERVAL_MILLISECONDS: i32 = 100;
 
 /// A failure during the web boot phase (fetch, HTTP, or manifest parse).
 #[derive(Debug, thiserror::Error)]

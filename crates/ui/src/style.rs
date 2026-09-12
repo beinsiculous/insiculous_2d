@@ -13,6 +13,7 @@ mod palette {
         pub const BORDER: u32 = 0x5A5A5A;
         pub const BORDER_SUBTLE: u32 = 0x4A4A4A;
         pub const ACCENT: u32 = 0x4A90D9;
+        pub const FOCUS_RING: u32 = 0x00D9FF;
     }
 }
 
@@ -135,6 +136,11 @@ pub struct TextInputStyle {
     /// Border color while the focused edit buffer fails to parse (numeric
     /// inputs) — the "this text is not a number" affordance
     pub border_invalid: Color,
+    /// Outset ring drawn around a focused field. The border swap alone does
+    /// not tell a user arriving by Tab which field they landed on.
+    pub focus_ring: Color,
+    /// Stroke width of the focus ring, in pixels
+    pub focus_ring_width: f32,
     /// Border width in pixels
     pub border_width: f32,
     /// Corner radius in pixels
@@ -160,6 +166,8 @@ impl Default for TextInputStyle {
             border: Color::new(0.3, 0.3, 0.35, 1.0),
             border_focused: Color::new(0.4, 0.6, 1.0, 1.0),
             border_invalid: Color::new(1.0, 0.27, 0.27, 1.0),
+            focus_ring: Color::from_hex(dark::FOCUS_RING),
+            focus_ring_width: 2.0,
             border_width: 1.0,
             corner_radius: 2.0,
             text_color: Color::WHITE,

@@ -16,6 +16,8 @@ mod scrub_tests;
 mod tests;
 #[cfg(test)]
 mod tooltip_tests;
+#[cfg(test)]
+mod traversal_tests;
 
 use glam::Vec2;
 use input::InputHandler;
@@ -208,10 +210,17 @@ impl UIContext {
     }
 
     /// Whether a widget (e.g. a text input being edited) currently has
-    /// keyboard focus. Hosts should suppress their own keyboard shortcuts
-    /// while this returns `true`.
+    /// keyboard focus, OR a Tab/Shift-Tab commit has handed focus onward to
+    /// a field that is still reachable soon (not sitting behind an overlay,
+    /// which can hold it pending indefinitely — see
+    /// `InteractionManager::wants_keyboard` for why that case is excluded).
+    /// Hosts should suppress their own keyboard shortcuts while this returns
+    /// `true` — a commit clears the committing field's focus before the
+    /// destination claims its own, and a host that only checked live focus
+    /// would have a one-frame gap where Delete or Ctrl+Z reaches the scene
+    /// instead of the field mid-traversal.
     pub fn wants_keyboard(&self) -> bool {
-        self.interaction.has_focus()
+        self.interaction.wants_keyboard()
     }
 
     /// Whether a widget owns the current mouse gesture — true from the press
@@ -247,15 +256,20 @@ impl UIContext {
     /// underneath it.
     pub fn clear_text_focus(&mut self) {
         self.interaction.clear_focus();
+        self.interaction.set_pending_focus_target(None);
     }
 
     /// Programmatically focus a text input before it is next rendered,
     /// seeding its edit buffer with `initial` fully selected — typing
     /// replaces it, exactly as if the user had clicked the field. Lets hosts
     /// open an inline edit from a shortcut (e.g. F2 rename) instead of
-    /// requiring a click.
+    /// requiring a click. Also cancels a pending Tab/Shift-Tab traversal: a
+    /// host that assigns focus explicitly is asserting where the keyboard
+    /// goes, and a traversal that resolves later — once whatever is blocking
+    /// it closes — must not then steal focus back from this field.
     pub fn focus_text_input(&mut self, id: impl Into<WidgetId>, initial: &str) {
         let id = id.into();
+        self.interaction.set_pending_focus_target(None);
         self.interaction.set_focus(id);
         self.interaction.get_state(id).edit.set_text_select_all(initial);
     }

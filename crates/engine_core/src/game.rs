@@ -281,6 +281,11 @@ struct GameRunner<G: Game> {
     /// retrying at the cap in `game/web.rs`; never counts successes.
     #[cfg(target_arch = "wasm32")]
     audio_gesture_attempts: u8,
+    /// Seconds since the last real input event — the idle throttle's clock.
+    /// Restarted by any input the window reports and by a held mouse button,
+    /// and read only on the web, where the frame rate is the browser's.
+    #[cfg(target_arch = "wasm32")]
+    idle_seconds: f32,
     /// Engine time multiplier mirrored onto `GameContext.time_scale`
     /// (read-write, persisted like chaos_mode). Scales particle stepping.
     time_scale: f32,
@@ -408,6 +413,8 @@ impl<G: Game> GameRunner<G> {
             pending_renderer: web::PendingRenderer::default(),
             #[cfg(target_arch = "wasm32")]
             audio_gesture_attempts: 0,
+            #[cfg(target_arch = "wasm32")]
+            idle_seconds: 0.0,
             time_scale: 1.0,
             requests: crate::contexts::FrameRequests::default(),
             render_fatal: false,

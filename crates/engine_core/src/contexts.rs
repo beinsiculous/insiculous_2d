@@ -141,18 +141,22 @@ pub struct FrameRequests {
     pub(crate) exit: bool,
     pub(crate) window_title: Option<String>,
     pub(crate) engine_ui_clip: Option<common::Rect>,
+    pub(crate) idle_throttle_ok: bool,
 }
 
 impl FrameRequests {
     /// Fold one frame's requests into the engine's pending set. Exit latches
-    /// (a request is never un-requested); the latest title wins; the clip is
-    /// per frame and replaces the previous one.
+    /// (a request is never un-requested); the latest title wins; the clip and
+    /// the idle-throttle permission are per frame and replace the previous
+    /// ones — a latched throttle would never recover, and a latched *release*
+    /// would never throttle.
     pub(crate) fn absorb(&mut self, incoming: FrameRequests) {
         self.exit |= incoming.exit;
         if let Some(title) = incoming.window_title {
             self.window_title = Some(title);
         }
         self.engine_ui_clip = incoming.engine_ui_clip;
+        self.idle_throttle_ok = incoming.idle_throttle_ok;
     }
 }
 
@@ -184,6 +188,15 @@ impl GameContext<'_> {
     /// Editor hosts only; plain games never call it.
     pub fn clip_engine_ui(&mut self, bounds: common::Rect) {
         self.requests.engine_ui_clip = Some(bounds);
+    }
+
+    /// Permit the engine to skip its animation frames while the window sits
+    /// idle — nothing on screen is animating, so a still picture costs no
+    /// frames. The engine throttles only after a stretch of no input, and any
+    /// input wakes it on the frame it arrives; a game with anything moving
+    /// (a running simulation, a live animation) simply never asks.
+    pub fn set_idle_throttle_ok(&mut self, ok: bool) {
+        self.requests.idle_throttle_ok = ok;
     }
 
     /// Consume the context and hand back what the engine must absorb. Ends every borrow.
@@ -221,5 +234,26 @@ mod tests {
             ..FrameRequests::default()
         });
         assert_eq!(pending.window_title.as_deref(), Some("second"));
+    }
+
+    #[test]
+    fn idle_throttle_permission_replaces_each_frame_instead_of_latching() {
+        let mut pending = FrameRequests::default();
+        pending.absorb(FrameRequests {
+            idle_throttle_ok: true,
+            ..FrameRequests::default()
+        });
+        assert!(pending.idle_throttle_ok);
+
+        // A frame that asks for nothing clears it: latched, one idle moment
+        // would starve every later frame regardless of what the game wanted.
+        pending.absorb(FrameRequests::default());
+        assert!(!pending.idle_throttle_ok, "the permission is per frame, never latched");
+
+        pending.absorb(FrameRequests {
+            idle_throttle_ok: true,
+            ..FrameRequests::default()
+        });
+        assert!(pending.idle_throttle_ok, "and it can be granted again");
     }
 }

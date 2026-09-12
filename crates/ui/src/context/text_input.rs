@@ -124,6 +124,7 @@ impl UIContext {
         bounds: Rect,
     ) -> FloatInputResult {
         let id = id.into();
+        self.interaction.register_editable_field(id);
         let result = self.interaction.interact(id, bounds, true);
         let was_focused = self.interaction.is_focused(id);
 
