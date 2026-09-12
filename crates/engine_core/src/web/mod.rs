@@ -35,6 +35,48 @@ pub fn page_exited() -> bool {
     PAGE_EXITED.load(Ordering::Relaxed)
 }
 
+/// Set while the loop has throttled itself to the pump's timer because
+/// nothing on screen is moving. Read by the pump alongside the visibility
+/// check: a visible-but-idle page still needs its frames driven, and the
+/// first input after idling clears this so the ordinary animation-frame loop
+/// takes over again.
+static IDLE_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// Whether the idle throttle is currently in force.
+pub fn idle_active() -> bool {
+    IDLE_ACTIVE.load(Ordering::Relaxed)
+}
+
+/// Tell the pump whether the loop has throttled itself to an idle cadence.
+/// Entering idle starts the pump chain (the page is visible, so nothing else
+/// would); leaving it lets the chain end.
+pub fn note_idle(idle: bool) {
+    IDLE_ACTIVE.store(idle, Ordering::Relaxed);
+    if idle {
+        start_pump_if_hidden();
+    }
+}
+
+/// One-way latch: the render path is fatally broken (device lost) and the
+/// loop no longer drives frames. Distinct from `PAGE_EXITED` — the page has
+/// not necessarily been left, so `pagehide`/`pageshow` never fire — and
+/// checked by the pump on its own: without it, a page that loses its device
+/// while hidden (visibility alone already keeps the pump's other reason to
+/// run true) or while idle-active would otherwise pump a `WakeUp` forever,
+/// each tick re-entering the dead `drive_frame` path and re-arming before
+/// anyone downstream gets a chance to say the loop is over.
+static RENDER_FATAL: AtomicBool = AtomicBool::new(false);
+
+/// Tell the pump the render path is fatally broken and must never be driven
+/// again, however it got there. One-way for the lifetime of this wasm
+/// instance — every current caller's recovery is "reload the page," which
+/// gets a fresh instance and a fresh `false`. A host that ever resumes
+/// driving frames after fatal without reloading (a hot-restart path this
+/// crate does not have today) would need to clear it itself first.
+pub fn note_render_fatal() {
+    RENDER_FATAL.store(true, Ordering::Relaxed);
+}
+
 /// Install `pagehide`/`pageshow` listeners that stop the frame loop for
 /// good once the page is left. Called by `run_game`'s web path before the
 /// event loop is handed to the browser; idempotent enough (duplicate
@@ -70,6 +112,114 @@ pub fn install_page_exit_guard() {
     on_pageshow.forget();
 }
 
+thread_local! {
+    /// The running loop's proxy, published by `run_game` before the browser
+    /// takes the loop over. `None` until then, and on a page that never ran
+    /// a game.
+    static WAKE_PROXY: std::cell::RefCell<Option<winit::event_loop::EventLoopProxy<crate::game::WakeUp>>> =
+        const { std::cell::RefCell::new(None) };
+    /// Whether a pump timer is scheduled, so however many callers ask —
+    /// the installer, a visibility change, the proxy's arrival — one chain
+    /// runs, never two driving double frames.
+    static PUMP_ARMED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Publish the loop's proxy so the hidden-document timer can drive frames.
+/// The pump is installed before the loop exists, so a page hidden all
+/// through its boot is started from here, once there is a loop to wake.
+pub fn set_wake_proxy(proxy: winit::event_loop::EventLoopProxy<crate::game::WakeUp>) {
+    WAKE_PROXY.with(|slot| *slot.borrow_mut() = Some(proxy));
+    start_pump_if_hidden();
+}
+
+/// Ask the loop for one frame. `false` once the loop is gone.
+fn send_wake_up() -> bool {
+    WAKE_PROXY.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .map(|proxy| proxy.send_event(crate::game::WakeUp).is_ok())
+            .unwrap_or(false)
+    })
+}
+
+/// Keep frames coming while the page needs them driven by hand.
+///
+/// `request_redraw` is an animation frame under winit's web backend, and
+/// there are two states where none arrives: a hidden tab gets none at all,
+/// and an idle one has deliberately stopped asking for them. The timer starts
+/// on the transition to hidden — a frame that rAF had already scheduled and
+/// will never deliver does not matter — and on entering the idle throttle
+/// (`note_idle`), and stops as soon as the document is visible again AND
+/// nothing is throttling, leaving the ordinary browser-paced loop in charge.
+/// A page that is already hidden when this installs had its transition before
+/// anyone listened, so the pump also starts right here in that case.
+pub fn install_hidden_frame_pump() {
+    use wasm_bindgen::closure::Closure;
+    let Some(window) = web_sys::window() else { return };
+    let Some(document) = window.document() else { return };
+
+    let on_visibility_change = Closure::<dyn FnMut(web_sys::Event)>::new(move |_event| {
+        let Some(window) = web_sys::window() else { return };
+        let Some(document) = window.document() else { return };
+        if document.visibility_state() != web_sys::VisibilityState::Hidden {
+            return;
+        }
+        start_pump_if_hidden();
+    });
+    let _ = document.add_event_listener_with_callback(
+        "visibilitychange",
+        on_visibility_change.as_ref().unchecked_ref(),
+    );
+    on_visibility_change.forget();
+    start_pump_if_hidden();
+}
+
+/// Start a pump chain unless one is already scheduled.
+fn start_pump_if_hidden() {
+    if PUMP_ARMED.with(|armed| armed.get()) {
+        return;
+    }
+    pump_while_hidden();
+}
+
+/// Whether the pump's own reason to run still holds: the document is hidden,
+/// or the loop has throttled itself to an idle cadence.
+fn pump_still_wanted(document: &web_sys::Document) -> bool {
+    document.visibility_state() == web_sys::VisibilityState::Hidden || idle_active()
+}
+
+/// One tick of the pump: drive a frame, then re-arm in 100 ms while the page
+/// still needs driving and the loop still lives. With no proxy yet the chain
+/// simply ends; `set_wake_proxy` restarts it.
+fn pump_while_hidden() {
+    use wasm_bindgen::closure::Closure;
+    PUMP_ARMED.with(|armed| armed.set(false));
+    let Some(window) = web_sys::window() else { return };
+    let Some(document) = window.document() else { return };
+    if !pump_still_wanted(&document) || page_exited() || RENDER_FATAL.load(Ordering::Relaxed) {
+        return;
+    }
+    if !send_wake_up() {
+        return;
+    }
+    let on_timeout = Closure::once_into_js(pump_while_hidden);
+    if window
+        .set_timeout_with_callback_and_timeout_and_arguments_0(
+            on_timeout.as_ref().unchecked_ref(),
+            PUMP_FRAME_INTERVAL_MILLISECONDS,
+        )
+        .is_ok()
+    {
+        PUMP_ARMED.with(|armed| armed.set(true));
+    }
+}
+
+/// How often the pump drives a frame. Browsers clamp background timers, so a
+/// shorter interval buys nothing for a hidden tab — and an idle visible one
+/// wants exactly this: the frame rate a still screen needs, not the rate a
+/// moving one does.
+const PUMP_FRAME_INTERVAL_MILLISECONDS: i32 = 100;
+
 /// A failure during the web boot phase (fetch, HTTP, or manifest parse).
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
@@ -92,6 +242,16 @@ pub fn set_boot_status(text: &str) {
     {
         el.set_text_content(Some(text));
     }
+}
+
+/// Read the page's `#game-loading` status text, if the element is there.
+/// The boot status is where the renderer writes its own failure, so it is
+/// also where a page reads whether the runtime came up.
+pub fn boot_status() -> Option<String> {
+    web_sys::window()
+        .and_then(|window| window.document())
+        .and_then(|document| document.get_element_by_id("game-loading"))
+        .and_then(|element| element.text_content())
 }
 
 /// Read a URL search query parameter value by key.

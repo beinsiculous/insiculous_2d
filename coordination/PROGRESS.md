@@ -597,3 +597,225 @@ beinsiculous.com**, probed the same way. Follow-ups: insiculous_2d#118 (the game
 bundles need a v3 to carry the fix), #119 (a browser wheel notch is about a hundred pixels),
 #120 (a drag from outside the canvas). Still not reported by a person: the save-and-reload,
 the export, and the native drop-in; the production check covers load, run and select.
+
+## 2026-09-09 — Playground UX batch 1: Stop keeps or discards paused edits; the inspector heading
+
+The first batch of the Playground UX sprint (`coordination/playground-ux/plan.md`, settled
+after five plan-review rounds — kimi three, codex five, 63 findings all accepted). Landed as
+f268bf4 on `jesse`, closing #103 and #128: the history marks the Play boundary as a stack
+position and an id floor, undo and redo stop at it and seal merging, eviction is suspended
+for the session, and Stop with paused edits asks Keep / Discard / Cancel on the Modal layer;
+Keep rebases each entry onto the restored world through the history's own undo-then-redo
+path — changed leaves over authored values, a nudge as a delta, a creation at its
+creation-time components, a macro child by child, and a command whose precondition fails is
+dropped and counted. API writes are refused under either dialog. The inspector heading is the
+entity's display name over its id, drawn in a rect of its own line height in the bold face,
+and the display-name rule lives in one function the hierarchy, the inspector and the command
+API share. Executor: Jesse's Claude Opus session from a handoff; reviews: kimi 4 (3 accepted,
+1 policy rebut) and codex 5 (all accepted) on the diff, then kimi 4 and codex 3 on the
+planner's fix delta, all accepted. Gates green; the six games pass `check_games.sh`. Owed:
+Jesse's browser check of the heading and the dialog on the next playground bundle.
+
+## 2026-09-09 — Playground UX batch 2: the toolbar strip, and the dock's narrow mode
+
+Landed as 0e7c6bd on `jesse`, closing #131. The tools and the play controls moved from the
+scene's corner into an opaque strip on the PanelChrome band — compact buttons, tools left,
+Play/Pause/Stop at the centre while there is room and from the right edge where there is not,
+shed tools in an overflow menu that Escape closes in every play state; `toolbar_strip::split`
+is the one place the strip is cut from the viewport, and `scene_view_bounds()` is the viewport
+below it, so no overlay, pick or scissor reaches the band. Below the strip's minimum width the
+dock goes narrow: side panels become edge tabs, one opens at a time as an overlay from the
+strip's bottom to the dock's, closed from its chevron, its collapse flag untouched. The review
+forced layer-aware blocking in `ui`: a region carries its `UiLayer`, and a scoped widget is
+inert under a higher layer's region, so the Stop dialog's scrim reaches the strip. Executor:
+Jesse's Claude Code session from a handoff; reviews: kimi 4 and codex 5 on the diff (all
+accepted), then kimi 2 and codex 2 on the planner's fix delta (all accepted). Gates green; the
+seven games pass `check_games.sh`. Filed #134 (float scrub through overlays). Owed: Jesse's
+browser check of the strip, the overflow menu, the narrow overlay and Play behind the dialog.
+
+## 2026-09-09 — Playground UX batch 3: the asset browser selects, a notch is a notch, a drag focuses the canvas
+
+Landed as e5ad961 on `jesse`, closing #130, #119 and #120. A click in the asset browser selects
+the tile (highlight, full path on the status bar, carried by path across a rescan) and never
+assigns; the header's Assign button, enabled only for a loaded image over a Sprite entity, assigns
+as one undo entry; labels are ellipsized to the tile and neither hover nor click writes over a
+persistent error. Pixel scroll deltas normalize to a hundred-pixel notch, the panels' step is
+re-tuned and the accessors name the unit. On the web a held pointer crossing into the canvas
+focuses it with preventScroll before winit can scroll it, unless a text control holds focus or the
+page has a live text selection. The drag ghost renderer is its own module. Executor: Jesse's Claude
+Code session from a handoff; reviews: kimi 3 (2 accepted, 1 rebutted in part) and codex 2 on the
+diff, then kimi 2 minor and codex none on the planner's fix delta. Gates green; the seven games
+pass `check_games.sh`. Owed: Jesse's trackpad and drag-focus browser checks.
+
+## 2026-09-09 — Playground UX batch 4: the game-only preview
+
+Landed as e542875 on `jesse`, closing #121. The editor hands its live scene, unsaved edits
+included, to a preview window through a one-generation mailbox answered on the next frame from a
+named scratch world; the file, history, dirty mark and scene path never move. The answer is the
+project archive with only the active scene replaced, and Export is that same live-scene archive
+(a Promise now, refused during Play or Pause). The preview page boots on `?mode=preview` with none
+of the editor's machinery, loads the scene it is named, pauses, restarts from the top, and reports
+booting/running/failed by phase. Play in the editor is refused while a preview holds the scene.
+The engine gains a `WakeUp` user event and a hidden-frame pump on both pages, so a backgrounded
+tab keeps answering. Executor: Jesse's Claude Code session from a handoff; reviews: kimi 6 (4
+accepted, 2 rebutted), codex 3 and the planner 5 on the diff, then kimi 2 and codex 1 on the
+planner's fix delta (the pump ran before the loop published its proxy — corrected). Gates green;
+the seven games pass `check_games.sh`. Owed: Jesse's browser checks on the hidden-tab paths.
+
+### 2026-09-10 — Playground UX batch 5: the site's application shell (web#57, web#52, web#59)
+
+Landed as insiculous_web 570eaab on `jesse`, closing web#57, web#52 and web#59. `/playground/`
+and `/playground/<slug>/` render on `AppLayout` — a three-row body grid whose middle row is the
+workspace — with an app bar (wordmark, Aa, the visible h1, the toolbar), a native Help dialog
+holding the page's prose and the shortcuts, the canvas filling a stage cell under the one
+`!important` rule that beats winit's inline size, and Scripts and Command in a details dock. A
+browser that fails the shared WebGPU probe gets a compatibility panel in the canvas's place with
+Try again while no event loop has started. Fullscreen takes the document with `aria-pressed`, and
+Save is the hosted save verb whose refusal reaches the banner through a sink queue. Executor:
+Jesse's Claude Code session from a handoff; reviews: kimi 6 (3 accepted, 1 false, 2 policy),
+codex 1 and the planner 5 on the diff, then kimi 2 and codex 1 on the planner's fix delta. Gates
+green (verify, axe 81 pages and scenarios, announce 59). Filed: web#61. Owed: Jesse's browser
+checks on the bar, Help, fullscreen, the stage at 390 and 320, the dock and 200% text.
+
+## 2026-09-10 — Playground UX batch 7: the first run (18c0970; site 4863dcd)
+
+The behavior demo names its four walls and centre obstacle and carries a static main camera at
+the origin, placed after the player so the hierarchy's first row is the entity a newcomer is told
+to pick; the parse test walks the scenes directory, sorted, scene files only, pins every entity
+named (children included), the boot scene and both demos' cameras. The site gains the first-run
+hint above the stage (static, hidden before first paint once dismissed, hidden on the WebGPU
+failure path and restored on a successful retry) and the game page's dim underlined link to its
+editor page; the examples project re-synced at v2. Executor: Jesse's Claude Code session from
+handoff-7.md; reviews: engine kimi 2, codex 0, planner 1; site kimi 2, codex 0, planner 2; the
+site fix delta kimi 2, codex 1 — every finding accepted, the planner's re-verification of the
+section itself refuted once by kimi (review-14: the player tags itself every frame). Gates green
+at every round. Owed: Jesse's browser checks — the hint and its Dismiss across a reload, the
+hierarchy's names, Play framing the arena, the preview centring it, the game page's line.
+
+## 2026-09-10 — Playground UX batch 8: the editor UX audit reconciled (c9cc265)
+
+`docs/EDITOR_UX_AUDIT.md` is history: a status banner, a status line under each of its 35 items,
+each of §5.8's sixteen bullets and each of §7's 28 work-order lines, one line under §6, §8 and
+§9 pointing at the roadmap sections their designs became. 61 marks shipped, 18 open with an
+issue (seven in this sprint; #136 picking, #137 hierarchy, #138 conveniences and #139 panel
+headers filed by the reconciliation; seven small §5.8 remainders as a checklist in the editor
+backlog #99), 3 retired. The archive carries the entry; the roadmap, README, CLAUDE.md and the
+editor_integration guide name the Playground UX sprint as the work order. Docs only, no cargo
+gate; the gates were the three mark counts, the pointer grep and the `.rs` tag grep. Executor:
+Jesse's Claude Code session from handoff-8.md; reviews: kimi 2 (one accepted, one policy
+rebut), codex 3 (all accepted), planner 4 (all accepted) — §3.6 and §1.2 had over-claimed, the
+archive entry had a byline the record does not support, and the eleven "no issue" marks gained
+their numbers once the issues existed. Closes #123 when `jesse` merges into `main`.
+
+## 2026-09-10 — Playground UX batches 5–7: Jesse's browser checks passed
+
+The checks the batch 5, 6 and 7 entries above list as owed — the application shell, fullscreen
+and the compatibility panel; Play ↗ opening the preview window and returning safely; the
+first-run hint and its Dismiss across a reload, the hierarchy's names, Play framing the arena,
+the preview centring it, the game page's line — were done by Jesse in a headed WebGPU browser on
+2026-09-10 and passed. Nothing is owed on those three batches now except the push.
+
+## 2026-09-10 — Playground UX batch 9: the inspector during Play, sections, the colour editor (cc9b5da)
+
+One inspector renderer: while a play session runs the same rows draw with their controls
+replaced by the values they hold, at the same heights, so nothing typed reaches the live world
+and the scroll offset survives; the read-only serde path is deleted. The add-component button
+stays, disabled, while Playing; every path into Playing closes the popups, the script picker and
+an open rename; a rename field that is not drawn — cancelled, scrolled off, in a panel the dock
+does not render — ends within half a second and releases the keyboard. Sections collapse from
+their header and the set persists; rarely used fields sit behind Advanced; the colour swatch
+opens a popup drawn first in the frame on the Modal band, keyed by component name, clamped to
+the window, writing through the row's own result. Executor: Jesse's Claude Code session from
+handoff-9.md, then 9-fixes-for-executor.md; reviews: six rounds (18–23), kimi 4+4+5+3+2+2,
+codex 3+2+2+1+1+0, planner 4+1 — every finding accepted, two scoped to existing or backlog
+issues (2d#134 scrub-through, four lines in 2d#99). Gates green at every round; 934 tests.
+Owed: Jesse's headed check — Play with an entity selected shows the same rows greyed with
+" · live"; collapse a section and reopen the editor; scrub a colour slider and undo once.
+Closes #129 and #133 when `jesse` merges into `main`.
+
+## 2026-09-10 — Playground UX batch 9: Jesse's headed check passed
+
+The colour slider and its undo, and the inspector greyed during Play and editable when Paused,
+checked in a headed run. The one question it raised — whether a channel takes a typed value —
+was user error; two tests pin click-to-type while Editing and while Paused, and the colour
+editor's tests moved to `color_editor_tests.rs` to keep the inspector's test file under the
+ceiling. Nothing is owed on batch 9.
+
+## 2026-09-11 — Playground UX batch 10a: quieter overlays, one ViewToggles, the game frame, the strip's right group (fae70e3)
+
+The grid, the axes and the collider outlines drop below half alpha, every panel frame and the
+status bar use the subtle border, the header's cyan separator and corner ticks go, and the
+Editing border is the quiet edge — accents are reserved for selection, focus and runtime
+state, with three guard tests holding the ordering. The four view flags gather into one
+`ViewToggles` module, synced to the View menu and flattened into the preferences under the
+legacy keys; the grid renderer no longer keeps its own flag. A game-frame overlay outlines what
+the game shows at its configured size around the main camera — the honest definition, since
+the render viewport follows the window and the preview its canvas box (recorded on #132). The
+strip's right edge carries four 24 px toggles and Reset Layout; the minimum width grows to 391
+px, below which the group sheds whole into the overflow menu, now its own module returning an
+`OverflowPick`, drawn before the strip so its blocking rect reaches the buttons it can cover in
+a short window, floored at the strip's top. Executor: Gemini from handoff-10a.md; reviews
+26–28: kimi 4+1+3, codex 1+1+1, planner 5 — eight accepted, the rest rebutted (the menu's
+padding is already blocked; the short-canvas trade both reviewers raised from opposite sides
+is recorded and kept). Gates green at every round; 902 `#[test]`s. Owed: Jesse's headed check
+— the quieter grid and colliders, the muted frame at 1280×800, the four toggles and Reset
+Layout on the strip, the group shed into the ⋯ menu at a narrow width with its check marks,
+the toggle states kept across a restart. Closes #132 when `jesse` merges into `main`.
+Batch 10b (tooltips, the resize cursor, the layout tokens) is next.
+
+## 2026-09-11 — Playground UX batch 10b: tooltips, the resize cursor, the layout tokens (10fc473)
+
+The ui crate gains a hover tooltip — a widget's owner offers its rect and one sentence each
+frame; the context settles the frame's anchor at `end_frame` against the complete blocking
+regions (the smallest live anchor under the pointer: a chevron over its header band, an
+overlay's widget over the one it covers), shows the panel after half a second's rest, keeps
+it while the pointer stays inside, and drops it the frame the pointer leaves, nothing names
+it, or a button goes down and for as long as it is held. Placed on the tools, the play
+controls, the overflow button, the view toggles, Reset Layout, the panel headers and chevrons,
+the narrow-mode tab and the asset tiles, whose hover no longer writes the status bar. The
+`CursorIcon` request rides the ui crate to `WindowManager::set_cursor` from the frame tail,
+one round-trip per change; the dock's resize handles ask for it. `layout.rs` gains
+`ROW_HEIGHT`, `FIELD_HEIGHT`, `BUTTON_HEIGHT` and `GAP`; eleven consts take a token, ten
+keep their reason, and `EditableFieldStyle::field_height()` derives from the style's row
+height. One hunk outside the section, kept: the float scrub tests the blocking regions on
+its arming press (the token change moved the colour popup onto a scrubbable row and a
+batch-9 invariant test went red) — and only on the press, since the first fix cut a live
+inspector drag short at the strip's edge. Executor: a Claude Code session from
+handoff-10b.md; reviews 29–31: kimi 3+2+2, codex 3+2+0, planner 2 — seven accepted, one
+rebutted as false (kimi's stale scrub: unseen widget state is pruned at `end_frame`; a test
+written to the scenario passed on the reviewed code), two rebutted on scope or policy, one
+accepted as the documented rule (an armed gesture survives a modal opened mid-drag). Three
+contract tests fail on the reviewed code and pass on the fix. Gates green at every round.
+Filed: #142 (a tooltip wider than the window; the panel outliving a pointer that left the
+window). Owed: Jesse's headed check — rest on a tool, a play control, a panel header, a
+chevron and an asset tile and see the tooltip after half a second and none while the pointer
+moves; keep the pointer inside a button and it stays, leave and it goes; press and it goes;
+open the Stop dialog and rest on a strip button beneath it — nothing; hover a panel edge and
+see the resize cursor, in the native editor and in the playground's browser canvas (kimi's
+note: winit's web cursor is proven to compile, not to show).
+
+## 2026-09-12 — Playground UX batch 11: the save indicator, a history-only dirty flag (c67c01e; site c96e52a + 1bd9b08)
+
+`playground_save_state() -> String` ships the toolbar's Unsaved/Saving/Saved/Save failed
+badge, derived in `persist::save_status` from `Chains`' own state plus a history-dirty input.
+The first round read the same combined signal the window title uses (history OR a persist
+put in flight); kimi, codex and gemini independently traced the same defect — a put
+completing on its own future between frames leaves that combined flag stale for up to a
+frame, so a poll lands mid-gap and calls a fully saved scene unsaved. Sent to a fixes round
+rather than patched in place (a new atomic, four files): `history_dirty_flag`, threaded
+through `EditorRunOptions` → `sync_dirty_mirror`'s write → `web_entry.rs` → `bridge.rs`,
+carrying only `command_history.is_dirty()`; a headless test drives the exact race. The new
+field pushed `editor_game/mod.rs` from 597 to 604 lines — over the 600 gate — so its `Game`
+impl (149 lines, unaltered) moved to a new `game_impl.rs` (mod.rs 597 → 459, game_impl.rs
+163). Reviewing the fix, kimi and gemini independently found the same staleness one level
+over: `playground_is_dirty()` (the switch/reset/import confirmation) read the same stale
+combined flag. The two disagreed on severity (kimi Minor, gemini Major/blocking); asked
+Jesse directly, who ruled extend now — `playground_is_dirty()` moved to `history_dirty_flag()`
+too, in this same pass. Three small doc corrections followed: `editor_integration/CLAUDE.md`'s
+`EditorRunOptions` field inventory (seven → eight), its "Dirty state" bullet (which had
+conflated the unread combined atomic with the title bar's real source, `EditorContext.is_dirty`,
+and after the extension was simply wrong about what the confirmations read), and its File
+Map (no entry existed for the new `game_impl.rs`). Gates green at every round: 973 tests,
+both clippy invocations, `check_wasm.sh`, all re-run by the planner independently of every
+report. Filed: nothing new — one out-of-scope defect the first round surfaced (an
+out-of-project-root save misreporting "saved") was already filed as #143. Closes #125.

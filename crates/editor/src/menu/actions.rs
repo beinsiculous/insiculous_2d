@@ -27,6 +27,7 @@ pub fn action_for_menu_label(label: &str) -> Option<EditorAction> {
         "Duplicate" => EditorAction::Duplicate,
         "Toggle Grid" => EditorAction::ToggleGrid,
         "Toggle Colliders" => EditorAction::ToggleColliders,
+        "Toggle Game Frame" => EditorAction::ToggleGameFrame,
         "Snap to Grid" => EditorAction::ToggleSnap,
         "Cycle Game Locale" => EditorAction::CycleGameLocale,
         "Reset Layout" => EditorAction::ResetLayout,

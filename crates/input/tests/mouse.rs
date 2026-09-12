@@ -41,10 +41,10 @@ fn wheel_event(delta: MouseScrollDelta) -> WindowEvent {
 }
 
 /// The winit boundary for scrolling: window events queue until the frame
-/// processes them, wheel lines accumulate, trackpad pixels normalize to lines
-/// at 16 px per line, and the frame end clears the delta.
+/// processes them, wheel notches accumulate, trackpad pixels normalize to
+/// notches at 100 px per notch, and the frame end clears the delta.
 #[test]
-fn test_wheel_lines_and_trackpad_pixels_accumulate_as_lines_and_clear_each_frame() {
+fn test_wheel_notches_and_trackpad_pixels_accumulate_as_notches_and_clear_each_frame() {
     let mut input = InputHandler::new();
 
     input.handle_window_event(&wheel_event(MouseScrollDelta::LineDelta(0.0, 1.0)));
@@ -55,10 +55,16 @@ fn test_wheel_lines_and_trackpad_pixels_accumulate_as_lines_and_clear_each_frame
     input.end_frame();
     assert_eq!(input.mouse_wheel_delta(), 0.0);
 
-    let thirty_two_pixels = MouseScrollDelta::PixelDelta(PhysicalPosition::new(0.0, 32.0));
-    input.handle_window_event(&wheel_event(thirty_two_pixels));
+    let one_notch_of_pixels = MouseScrollDelta::PixelDelta(PhysicalPosition::new(0.0, 100.0));
+    input.handle_window_event(&wheel_event(one_notch_of_pixels));
     input.process_queued_events();
-    assert_eq!(input.mouse_wheel_delta(), 2.0, "32 px is two lines");
+    assert_eq!(input.mouse_wheel_delta(), 1.0, "100 px is one notch");
+    input.end_frame();
+
+    let half_a_notch = MouseScrollDelta::PixelDelta(PhysicalPosition::new(0.0, 50.0));
+    input.handle_window_event(&wheel_event(half_a_notch));
+    input.process_queued_events();
+    assert_eq!(input.mouse_wheel_delta(), 0.5, "a trackpad streams fractions of a notch");
     input.end_frame();
 
     input.handle_window_event(&wheel_event(MouseScrollDelta::LineDelta(0.0, -2.0)));

@@ -17,12 +17,15 @@ pub type SourceCheckFn = fn(&str) -> Result<(), String>;
 /// Callback to query current script runtime error messages.
 pub type ScriptErrorsFn = Rc<dyn Fn() -> Vec<String>>;
 
-/// The scripting hooks the web entry installs: the syntax check a `.rhai` write runs, and
-/// the reader of the runner's error list. Both are `None` until `set_hooks` runs.
+/// The hooks the web entry installs: the syntax check a `.rhai` write runs, the reader of
+/// the runner's error list, the editor's snapshot mailbox, and the flag that reserves the
+/// simulation for a preview window. All `None` until `set_hooks` runs.
 #[derive(Default)]
 pub struct Hooks {
     pub source_check: Option<SourceCheckFn>,
     pub script_errors: Option<ScriptErrorsFn>,
+    pub scene_snapshot: Option<std::sync::Arc<editor_integration::SceneSnapshotRequest>>,
+    pub preview_open: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
 thread_local! {
@@ -134,7 +137,7 @@ pub fn playground_poll_responses() -> Vec<JsValue> {
 #[wasm_bindgen]
 pub fn playground_is_dirty() -> bool {
     let pending = crate::persist::is_pending();
-    crate::web_entry::dirty_flag()
+    crate::web_entry::history_dirty_flag()
         .map(|flag_cell| flag_cell.load(Ordering::Relaxed))
         .unwrap_or(false)
         || pending
@@ -239,16 +242,159 @@ pub fn playground_reset_project(slug: String) -> js_sys::Promise {
     })
 }
 
+
+/// How long a caller waits for the editor's next frame before giving up.
+#[cfg(target_arch = "wasm32")]
+const SNAPSHOT_TIMEOUT_SECONDS: u64 = 5;
+
+/// How often a waiting caller checks the mailbox.
+#[cfg(target_arch = "wasm32")]
+const SNAPSHOT_POLL_MILLISECONDS: i32 = 50;
+
+#[cfg(target_arch = "wasm32")]
+thread_local! {
+    /// Generations the bridge files for itself, when an Export has to ask for
+    /// a snapshot nobody else asked for. Only one request is ever in flight,
+    /// so an id is only required to be unique among the live ones.
+    static BRIDGE_GENERATION: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// Set the preview reservation. While it is raised the editor refuses Play,
+/// so only the page may lower it — on `preview-failed`, `preview-closed`, or
+/// a window it finds closed. Never on silence.
+#[cfg(target_arch = "wasm32")]
+fn set_preview_reservation(open: bool) {
+    HOOKS.with(|hooks_cell| {
+        if let Some(flag) = &hooks_cell.borrow().preview_open {
+            flag.store(open, Ordering::Relaxed);
+        }
+    });
+}
+
+/// The live scene as an archive: file a snapshot request, wait for the
+/// editor's next frame, then rebuild the project zip with the live bytes in
+/// place of the saved scene.
+#[cfg(target_arch = "wasm32")]
+async fn live_scene(generation: u64) -> Result<(String, Vec<u8>), String> {
+    let request = HOOKS
+        .with(|hooks_cell| hooks_cell.borrow().scene_snapshot.clone())
+        .ok_or_else(|| "no editor is running on this page".to_string())?;
+
+    let completion = match request.subscribe(generation) {
+        // Someone already filed this generation; join their wait.
+        Some(shared) if request.pending_generation() == Some(generation) => shared,
+        _ => {
+            if !request.file(generation) {
+                return Err("a snapshot is already in flight".to_string());
+            }
+            request
+                .subscribe(generation)
+                .ok_or_else(|| "the snapshot request was replaced".to_string())?
+        }
+    };
+
+    let started_at = common::clock::Instant::now();
+    let outcome = loop {
+        if let Some(outcome) = completion.outcome() {
+            break outcome;
+        }
+        if started_at.elapsed() > std::time::Duration::from_secs(SNAPSHOT_TIMEOUT_SECONDS) {
+            request.cancel(generation);
+            return Err("the editor did not answer — is its tab visible?".to_string());
+        }
+        let promise = js_sys::Promise::new(&mut |resolve, _reject| {
+            if let Some(window) = web_sys::window() {
+                let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(
+                    &resolve,
+                    SNAPSHOT_POLL_MILLISECONDS,
+                );
+            }
+        });
+        let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
+    };
+
+    let snapshot = outcome?;
+    let project_root = CURRENT_PROJECT_ROOT
+        .with(|root_cell| root_cell.borrow().clone())
+        .ok_or_else(|| "no active project root".to_string())?;
+    let manifest = crate::web_entry::active_manifest()
+        .ok_or_else(|| "no active project manifest".to_string())?;
+    let bytes = crate::archive::export_snapshot(
+        &project_root,
+        &manifest,
+        &snapshot.scene_entry,
+        &snapshot.ron,
+    )
+    .map_err(|error| error.to_string())?;
+
+    Ok((snapshot.scene_entry, bytes))
+}
+
+/// The archive the preview window is to load, as `{ sceneEntry, bytes }`.
+///
+/// The reservation is taken here, at the click, rather than when the window
+/// hands back a handshake: the editor's own Play must already be refused
+/// while the preview is still booting.
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
-pub fn playground_export_zip() -> Result<Vec<u8>, JsValue> {
-    let project_root = CURRENT_PROJECT_ROOT.with(|root_cell| {
-        root_cell.borrow().clone().ok_or_else(|| JsValue::from_str("no active project root"))
-    })?;
-    let manifest = crate::web_entry::active_manifest()
-        .ok_or_else(|| JsValue::from_str("no active project manifest"))?;
-    crate::archive::export_project(&project_root, &manifest)
-        .map_err(|error| JsValue::from_str(&error.to_string()))
+pub fn playground_snapshot(generation: u64) -> js_sys::Promise {
+    wasm_bindgen_futures::future_to_promise(async move {
+        set_preview_reservation(true);
+        match live_scene(generation).await {
+            Ok((scene_entry, bytes)) => {
+                let envelope = js_sys::Object::new();
+                let _ = js_sys::Reflect::set(
+                    &envelope,
+                    &JsValue::from_str("sceneEntry"),
+                    &JsValue::from_str(&scene_entry),
+                );
+                let _ = js_sys::Reflect::set(
+                    &envelope,
+                    &JsValue::from_str("bytes"),
+                    &js_sys::Uint8Array::from(bytes.as_slice()).into(),
+                );
+                Ok(envelope.into())
+            }
+            Err(error) => {
+                set_preview_reservation(false);
+                Err(JsValue::from_str(&error))
+            }
+        }
+    })
+}
+
+/// Raise or lower the preview reservation from the page.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn playground_set_preview_open(open: bool) {
+    set_preview_reservation(open);
+}
+
+/// Export the project with the scene as the visitor left it, unsaved edits
+/// included — the saved scene would drop the very edit they just previewed.
+///
+/// A snapshot already in flight is joined rather than refused: Export a
+/// moment after Play ↗ is an ordinary two-click sequence.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn playground_export_zip() -> js_sys::Promise {
+    wasm_bindgen_futures::future_to_promise(async move {
+        let generation = match HOOKS
+            .with(|hooks_cell| hooks_cell.borrow().scene_snapshot.clone())
+            .and_then(|request| request.pending_generation())
+        {
+            Some(pending) => pending,
+            None => BRIDGE_GENERATION.with(|counter| {
+                let next = counter.get().wrapping_add(1);
+                counter.set(next);
+                next
+            }),
+        };
+        match live_scene(generation).await {
+            Ok((_, bytes)) => Ok(js_sys::Uint8Array::from(bytes.as_slice()).into()),
+            Err(error) => Err(JsValue::from_str(&error)),
+        }
+    })
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -300,6 +446,21 @@ pub fn playground_conflicted_paths() -> Vec<JsValue> {
             .collect()
     })
     .unwrap_or_default()
+}
+
+/// The page's save indicator as one JSON object, `{ "state": …, "reason": … }`.
+///
+/// Reads the history-only flag: the combined one the window title renders
+/// also carries the persist layer's pending puts, and a put that completes
+/// between frames leaves it stale for a frame — long enough for this poll to
+/// report unsaved edits over a scene that is fully saved.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn playground_save_state() -> String {
+    let history_dirty = crate::web_entry::history_dirty_flag()
+        .map(|flag_cell| flag_cell.load(Ordering::Relaxed))
+        .unwrap_or(false);
+    serde_json::to_string(&crate::persist::save_status(history_dirty)).unwrap_or_default()
 }
 
 #[cfg(target_arch = "wasm32")]

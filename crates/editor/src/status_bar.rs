@@ -82,6 +82,13 @@ impl StatusBar {
         self.message.as_deref()
     }
 
+    /// Whether the bar is showing an error, which stays until cleared. A
+    /// hover hint must not write over it: `show_message` would clear the
+    /// persistence along with the text.
+    pub fn is_showing_error(&self) -> bool {
+        self.message_persistent && self.message.is_some()
+    }
+
     /// Update runtime stats.
     pub fn update_stats(&mut self, entity_count: usize, fps: f32) {
         self.stats.entity_count = entity_count;
@@ -113,11 +120,11 @@ impl StatusBar {
         // Background
         ui.rect(bar, theme.status_bar_bg);
 
-        // Top separator in the panel-border blue so the bar reads as chrome
+        // Top separator so the bar reads as chrome
         ui.line(
             Vec2::new(bar.x, bar.y),
             Vec2::new(bar.x + bar.width, bar.y),
-            theme.border_panel,
+            theme.border_subtle,
             1.0,
         );
 

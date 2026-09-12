@@ -35,10 +35,13 @@ Engine status, test counts, and per-system capability detail live in
 
 ## Settled Decisions (decisions of record — don't re-litigate)
 
-- **Art source: mix** (Jul 28 2026) — Jesse hand-draws hero assets (Aseprite →
-  PNG); simple tiles/props are code-generated **offline into PNGs** (never
-  runtime rgba). All 6 games get full Deion-world theming; ChaosTheme neon is
-  the FX/accent layer.
+- **Art source: Astra in Aseprite** (Sep 8 2026, superseding the Jul 28 "mix"):
+  Astra — the roster's lead artist, Codex on `gpt-6-astra` — draws every sheet,
+  tile and prop draft in Aseprite as a quarantined `ai_` study; Jesse draws the
+  concept files, rules on palette and castings, and does the per-frame cleanup
+  pass that carries a sheet across the paid line. Tiles/props stay **offline
+  PNGs** (never runtime rgba). All 6 games get full Deion-world theming;
+  ChaosTheme neon is the FX/accent layer.
 - **Web-first in the CURRENT look** (Jesse, Aug 19 2026): the six games shipped
   to the website as they were (neon look, AI stand-ins); Deion re-skins roll
   out to the site as updates. Free itch.io follows the site; Steam/iOS/Android
@@ -49,17 +52,18 @@ Engine status, test counts, and per-system capability detail live in
   (studio website, free itch.io) as part of the AI-workflow showcase; they
   **never ship in paid/marketplace releases**. Quarantine mechanics: `ai/` dir
   + `ai_` prefix + `check_no_ai_assets.sh` on paid publish paths. SSOT:
-  `../games/deion_assets/DEION_STYLE.md` §6.
+  `../deion_assets/DEION_STYLE.md` §6.
 - **Web assets fetch-by-default**; **WebGPU-only at launch** (WebGL2 fallback
   revisited at the post-launch review, issue #13); **games stay standalone**.
 - **Audio backend: rodio, FINAL** (H1 spike + Jesse's listen test, Jul 30
   2026 — `coordination/H1_SPIKE.md`).
 - **Asset metrics**: 16px base cell, nearest filter, 5× integer scale to
   `RENDER_UNIT = 80` — one art cell = one world unit = one collider unit.
-  Split: Jesse draws hero sheets, key characters, palette sign-off; agents do
-  everything else. Pixellab tooling lessons (validated workflows + the
-  create_character skeleton trap) are archived in `log_archive.md` § "Roadmap
-  slimmed" and DEION_STYLE.md.
+  Split: Jesse draws the concept files and signs off palette and castings,
+  Astra draws the sheets, agents do the sidecars and tooling
+  (`../deion_assets/DEION_STYLE.md` §7). Pixellab, Veo and ComfyUI were
+  retired Sep 8 2026; the pixellab lessons stay archived in `log_archive.md`
+  § "Roadmap slimmed".
 - **Perspective cameras permanently rejected**; isometric works via the
   project-and-y-sort pattern (see memory/log archive).
 
@@ -71,15 +75,15 @@ Engine status, test counts, and per-system capability detail live in
 | B | Engine gaps (CameraFollow, Lifetime, Tilemap) + game 6 Frogger | ☑ Jul 2026 | `log_archive.md` |
 | E | Asset pipeline (filter knob, SheetGrid, named clips, `.sheet.ron` — schema freeze Jul 30 2026) | ☑ core; remainders on board | #10 (E7 alpha-cutoff), #11 (E5 `#rgba` error, gated on #69), #67 (E8 inspector wiring) |
 | F | Deion style guide + asset production (parallel art track) | F1 ☑ (DEION_STYLE.md); rest on board | #68–#71 (sync `--check`, gen_tiles, placeholder sheets, first animated Deion) |
-| G | Re-skin games 1–6 (Tong, Chicken Coop, Food Pyramid, Hot Dog!, Burger Invaders, Meatieroids — identities settled Aug 9 2026) | On board | #72–#79; castings SSOT DEION_STYLE.md §5; per-game README "Deion Pivot" sections |
+| G | Re-skin games 1–6 (Tong, Chicken Coop, Food Pyramid, Bratdog, Burger Invaders, Meatieroids — identities settled Aug 9 2026) | On board | #72–#79; castings SSOT DEION_STYLE.md §5; per-game README "Deion Pivot" sections |
 | H | WASM port (engine + all 6 games on wasm32/WebGPU) | ☑ COMPLETE Aug 27 2026 | Port recipe + web footguns: `log_archive.md`, crate CLAUDE.mds (renderer/engine_core), memory |
 | I | Deployment (site live at beinsiculous.com, all 6 games playable) | I1/I2 ☑ Aug 19 2026; rest on board | #15 (itch.io), #16 (Steam checklist), #80 (paid-path purge gate), #13 (WebGL2 review). Site: `../insiculous_web/` (Mily's repo `milyramic`, Astro 5 on Cloudflare Workers; drop-in convention `public/games/<slug>/v1/`) |
 | J | Insiculous Arcade — marketplace compilation | OUTLINE ONLY (below) | This file § Phase J |
-| K | Conductor — adaptive MIDI music | On board (K1 spike gates all) | #60–#65; architecture: `review/plan-conductor.md`, memory |
+| K | Conductor — shared MIDI parts, custom instruments and in-editor composition | On board (K1 spike gates all) | [Conductor milestone](https://github.com/beinsiculous/insiculous_2d/milestone/2): #60–#65, #140 (sample instruments), #141 (composer); the tickets carry the settled design and dependency order |
 | C/D | Games 7–20 | PAUSED until Phase G done (below) | This file § Paused phases |
 
-**Editor** work follows the UX-audit sprint order (its own section below);
-**Web Playground** shipped Sep 2026; `docs/WEB_PLAYGROUND.md`.
+**Editor**: the Playground UX sprint shipped Sep 12 2026 (its own section below); no
+editor sprint is queued next. **Web Playground** shipped Sep 2026; `docs/WEB_PLAYGROUND.md`.
 
 ## Phase J — Insiculous Arcade (marketplace compilation) — OUTLINE ONLY
 
@@ -139,14 +143,15 @@ design (the board carries actionable work); this table is the resumption point.
    builds, "Open in IDE") are fine as cfg-gated native features with the web
    replacement named up front (OPFS / VFS fetch / deferred remote build).
 
-The full file:line-anchored audit: `docs/EDITOR_UX_AUDIT.md` (2026-08-27). Its
-§7 work order is adopted as five sprints; **live items are Studio Board issues
-(Phase = Editor)**. Sprints 1–4 complete Aug 27–28 2026; Sprint 5
-("architecture": §4.2, §4.3, §6.7, §6.5 Stage 1, §9 Stage C) landed Aug 28 2026
-pending close-out. The old "Phase 2 (Ideal Editor UI)" lettering is retired
-(history in `log_archive.md`).
+The full file:line-anchored audit is `docs/EDITOR_UX_AUDIT.md` (2026-08-27), and
+it is **history**: reconciled 2026-09-10, with every item carrying a status line in
+the file itself. Its §7 work order ran as sprints 1–5 (Aug 27–28 2026) and sprint 6
+(Sep 1 2026), superseded by the **Playground UX** sprint below (SHIPPED Sep 12 2026).
+The old "Phase 2 (Ideal Editor UI)" lettering is retired (history in `log_archive.md`).
+No editor sprint is queued on the Studio Board as of this writing
+(`gh issue list -R beinsiculous/insiculous_2d`).
 
-**Editor colors**: SSOT is `crates/editor/src/theme.rs` (`EditorTheme` tokens,
+**Editor colors**: SSOT is `crates/editor/src/theme/mod.rs` (`EditorTheme` tokens,
 WCAG guard tests). The old mockup-derived palette table was dropped from this
 file — it was **pending the audit §5.1 gamma verification** (screen colors
 measured ~2× brighter than declared tokens); do not derive or re-pick colors
@@ -162,6 +167,27 @@ an editor page per game at `/playground/<slug>/`. **#48** and **#49**, ten
 batches, Sep 4–6 2026; `docs/WEB_PLAYGROUND.md`, follow-ups on the board.
 GitHub-App/OAuth publish-to-own-repo stays undesigned until the playground proves
 engagement.
+
+**Playground UX (Sep 8 2026 → SHIPPED Sep 12 2026).** Astra — the roster's artist and UI
+expert (the working set's `roles` skill) — reviewed the live page and the editor in two
+batches the week it shipped, and the gaps became the **Playground UX** sprint (milestone
+here and in `insiculous_web`; one order in its description): the editor got the window and
+an edit-to-preview loop into a separate game-only window first, then the first-run path, the
+visual hierarchy (reconciling `docs/EDITOR_UX_AUDIT.md` before it becomes a task list again —
+done 2026-09-10), the loading/saving/failure states, and browser usability plus a performance
+budget as acceptance criteria. Thirteen batches, Sep 8–12 2026, run as a handoff loop
+(`coordination/playground-ux/plan.md`, reviewed throughout by kimi and codex,
+`reviewer-comparison.md` beside it): Stop keeps/discards paused edits, the toolbar strip, the
+asset browser, the game-only preview, the site's application shell, `Play ↗` and the preview
+window, the first run, the inspector during Play (collapsible sections, the colour editor),
+quieter overlays / View toggles / tooltips / resizing, save state, and — last — a `focus_ring`
+theme token, Tab/Shift-Tab traversal between inspector fields, an idle throttle, and a hard
+bundle-size gate (`docs/WEB_PLAYGROUND.md` § Acceptance and § Budget). Jesse's headed
+acceptance check passed (2026-09-12): on an ordinary laptop, a new visitor changes a sample,
+plays that exact change in another window, returns safely, and exports their work without
+reading the docs; the staging acceptance run happens with the deploy. Follow-up:
+insiculous_2d#144 (keyboard-only entry into the inspector, scroll-into-view for an off-panel
+traversal target).
 
 ## Scripting — the ScriptRef seam
 
@@ -230,5 +256,5 @@ gh issue list -R beinsiculous/insiculous_2d              # the open work
 symlinks to it) · `training.md` (API patterns) · `log_archive.md` (completed
 history) · `docs/EDITOR_UX_AUDIT.md` · `docs/EDITOR_COMMAND_API.md` ·
 `docs/WEB_SAVES.md` · `coordination/H1_SPIKE.md` ·
-`../games/deion_assets/DEION_STYLE.md` (style + castings + tiered AI rule) ·
+`../deion_assets/DEION_STYLE.md` (style + castings + tiered AI rule) ·
 `../games/` (game projects) · `../insiculous_web/` (the site, Mily's repo).

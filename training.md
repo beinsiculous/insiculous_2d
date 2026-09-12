@@ -129,14 +129,14 @@ A comment earns its line by saying something the code cannot.
   `Box<dyn Component>` downcast trap, the RwLock re-entrancy guard, the tie
   rule in `scores.rs`). Narration that restates the next line is deleted;
   numbered section headers (`// 3. Menu bar`) become function names.
-- **Keep the reason, drop the tag.** Issue numbers, reviewer tags (`kimi F3`),
+- **Keep the reason, drop the tag.** Issue numbers, reviewer tags (`kimi F3`, `codex F1`),
   audit sections, sprint names and pattern codes (`GPP-15`) never appear in
   source; the sentence that explains the decision does. A comment that is
   only a tag is deleted. The gate (bare `#42` counts; six-digit hex is
   spared by the pattern — a match inside a string or a code span, like the
   command API's `#<id>` examples, is inspected by hand, not excluded):
   ```sh
-  grep -riEn "kimi|issue #[0-9]+|GPP-[0-9]+|audit §|\(#[0-9]+\)|#[0-9]{1,4}\b|Sprint [0-9]" crates src examples --include=*.rs
+  grep -riEn "kimi|codex|astra|gemini|issue #[0-9]+|GPP-[0-9]+|audit §|\(#[0-9]+\)|#[0-9]{1,4}\b|Sprint [0-9]" crates src examples --include=*.rs
   ```
   prints nothing. Nothing runs it at commit time: it is `/finish-task` Gate 3
   and part of every batch gate, run by hand.

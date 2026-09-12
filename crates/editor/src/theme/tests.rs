@@ -33,6 +33,35 @@ fn test_popup_reads_against_panel() {
     assert!(border >= 3.0, "popup border vs popup surface: {border:.3}");
 }
 
+/// The focus ring is the loud affordance a field has to carry on its own:
+/// it reads at ≥3:1 over every surface it can be drawn above, it is not
+/// any of the borders the focused field already swaps between, and the
+/// token is what reaches the widget (`ui_theme` is the only path editor
+/// colors take into the ui crate).
+#[test]
+fn test_focus_ring_reads_over_every_surface_and_reaches_the_widget() {
+    let theme = EditorTheme::default();
+    let surfaces = [
+        ("surface_0", theme.surface_0),
+        ("surface_1", theme.surface_1),
+        ("surface_2", theme.surface_2),
+        ("surface_3", theme.surface_3),
+        ("surface_4", theme.surface_4),
+    ];
+    for (name, surface) in surfaces {
+        let ratio = theme.focus_ring.contrast_ratio(surface);
+        assert!(ratio >= 3.0, "focus ring vs {name}: {ratio:.2} < 3.0");
+    }
+    assert_ne!(theme.focus_ring, theme.accent_blue, "the ring is not the focused border it surrounds");
+    assert_ne!(theme.focus_ring, theme.border_subtle, "the ring is not the resting border");
+    assert_ne!(theme.focus_ring, theme.error_red, "the ring is not the invalid border");
+    assert_eq!(
+        theme.ui_theme().text_input.focus_ring,
+        theme.focus_ring,
+        "the widget draws the ring the theme names"
+    );
+}
+
 /// Viewport selection outlines are DERIVED from theme tokens, not
 /// hardcoded by the panel: secondary dims the primary but keeps its alpha,
 /// hovered multiplies the primary's alpha, and none of them collides with
@@ -91,4 +120,63 @@ fn test_roles_that_must_read_apart_do() {
     for (name, a, b) in pairs {
         assert_ne!(a, b, "{name} must be visually distinct");
     }
+}
+
+/// Helper to composite color `c` over `base` with `base + (c - base) * c.a`.
+fn composite_over(c: Color, base: Color) -> Color {
+    Color::new(
+        base.r + (c.r - base.r) * c.a,
+        base.g + (c.g - base.g) * c.a,
+        base.b + (c.b - base.b) * c.a,
+        1.0,
+    )
+}
+
+/// (a) The grid's primary line and the collider outline, each composited over surface_0,
+/// contrast less against surface_0 than selection_outline does — the accent wins.
+#[test]
+fn test_grid_and_collider_lines_contrast_less_than_selection_outline() {
+    let theme = EditorTheme::default();
+    let base = theme.surface_0;
+
+    let grid_comp = composite_over(theme.grid_primary, base);
+    let collider_comp = composite_over(theme.collider_outline, base);
+    let selection_comp = composite_over(theme.selection_outline, base);
+
+    let grid_contrast = grid_comp.contrast_ratio(base);
+    let collider_contrast = collider_comp.contrast_ratio(base);
+    let selection_contrast = selection_comp.contrast_ratio(base);
+
+    assert!(
+        grid_contrast < selection_contrast,
+        "grid primary contrast {grid_contrast:.2} must be less than selection {selection_contrast:.2}"
+    );
+    assert!(
+        collider_contrast < selection_contrast,
+        "collider contrast {collider_contrast:.2} must be less than selection {selection_contrast:.2}"
+    );
+}
+
+/// (b) game_frame reads apart from collider_outline, collider_selected and selection_outline.
+#[test]
+fn test_game_frame_reads_apart_from_colliders_and_selection() {
+    let theme = EditorTheme::default();
+    assert_ne!(theme.game_frame, theme.collider_outline);
+    assert_ne!(theme.game_frame, theme.collider_selected);
+    assert_ne!(theme.game_frame, theme.selection_outline);
+}
+
+/// (c) grid_primary and grid_secondary differ and each axis is brighter than the primary line.
+#[test]
+fn test_grid_primary_and_secondary_differ_and_axes_are_brighter() {
+    let theme = EditorTheme::default();
+    assert_ne!(theme.grid_primary, theme.grid_secondary);
+    assert!(
+        theme.grid_axis_x.luminance() > theme.grid_primary.luminance(),
+        "X axis luminance must exceed grid primary"
+    );
+    assert!(
+        theme.grid_axis_y.luminance() > theme.grid_primary.luminance(),
+        "Y axis luminance must exceed grid primary"
+    );
 }

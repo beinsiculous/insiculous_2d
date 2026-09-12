@@ -124,6 +124,41 @@ fn test_escape_cancels_one_live_thing_per_press() {
     assert!(game.editor.selection.is_empty());
 }
 
+/// An open overflow menu is the most specific live thing: Escape closes it
+/// and goes no further, while Editing and while Playing — the Playing route
+/// forwards raw keys to the game before the cascade, so the close has to
+/// sit in the router.
+#[test]
+fn test_escape_closes_the_overflow_menu_before_anything_else_in_any_play_state() {
+    use super::shortcuts::KeyRoute;
+    use editor::Modifiers;
+    use winit::keyboard::KeyCode;
+
+    let mut game = editor_game();
+    let mut world = World::new();
+    let a = spawn_at(&mut world, Vec2::ZERO);
+    game.editor.selection.select(a);
+    let plain = Modifiers { ctrl: false, shift: false };
+
+    for state in [editor::EditorPlayState::Editing, editor::EditorPlayState::Playing] {
+        game.editor.set_play_state(state);
+        game.editor.toolbar.toggle_overflow();
+        assert_eq!(
+            game.route_editor_key(KeyCode::Escape, false, plain),
+            KeyRoute::Consumed,
+            "{state:?}: Escape closes the menu and goes no further"
+        );
+        assert!(!game.editor.toolbar.is_overflow_open(), "{state:?}: the menu is closed");
+        assert!(!game.editor.selection.is_empty(), "{state:?}: the selection survives");
+    }
+
+    assert_eq!(
+        game.route_editor_key(KeyCode::Escape, false, plain),
+        KeyRoute::ForwardToGame,
+        "with the menu closed, Escape while Playing is the game's"
+    );
+}
+
 #[test]
 fn test_deleting_one_entity_hands_its_children_to_the_grandparent_or_roots_them() {
     // The single-selection branch of the Delete shortcut and menu item:

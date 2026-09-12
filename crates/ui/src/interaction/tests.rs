@@ -113,32 +113,32 @@ fn test_blocking_rect_makes_widgets_under_it_inert_except_in_overlay_scope() {
     let dropdown = Rect::new(0.0, 0.0, 100.0, 100.0);
     let input = input_with_mouse(OVER_BUTTON, true);
     manager.begin_frame(&input);
-    manager.push_blocking_rect(dropdown);
+    manager.push_blocking_rect(dropdown, UiLayer::Floating);
 
     let under = manager.interact(WidgetId::hashed("widget_under_dropdown"), BUTTON, true);
     assert_eq!(under.state, WidgetState::Normal, "no hover under a blocking rect");
     assert!(!under.clicked && !under.dragging);
     assert!(manager.active_widget.is_none(), "the press must not activate a blocked widget");
 
-    manager.set_overlay_scope(true);
+    manager.set_overlay_scope(Some(UiLayer::Floating));
     let item = manager.interact(WidgetId::hashed("dropdown_item"), BUTTON, true);
     assert_eq!(item.state, WidgetState::Active, "an overlay widget receives the press");
     assert!(item.dragging);
-    manager.set_overlay_scope(false);
+    manager.set_overlay_scope(None);
 
     // Blocking only applies under the rect...
     let mut manager = InteractionManager::new();
     manager.begin_frame(&input_with_mouse(FAR_AWAY, false));
-    manager.push_blocking_rect(dropdown);
+    manager.push_blocking_rect(dropdown, UiLayer::Floating);
     let far = manager.interact(WidgetId::hashed("far_widget"), Rect::new(280.0, 280.0, 50.0, 50.0), true);
     assert_eq!(far.state, WidgetState::Hovered);
 
     // ...and only for the frame that registered it.
-    manager.set_overlay_scope(true);
+    manager.set_overlay_scope(Some(UiLayer::Floating));
     assert!(manager.is_blocked_at(OVER_BUTTON));
     manager.begin_frame(&InputHandler::new());
     assert!(!manager.is_blocked_at(OVER_BUTTON), "begin_frame clears blocking rects");
-    assert!(!manager.overlay_scope, "begin_frame clears the overlay scope");
+    assert!(manager.overlay_scope.is_none(), "begin_frame clears the overlay scope");
 }
 
 #[test]
@@ -158,7 +158,7 @@ fn test_unseen_widget_state_is_collected_unless_focused_or_blocked() {
     // A blocked widget is inert, but submitting it still counts as seen.
     manager.get_state(blocked).edit.text = "edit buffer".to_string();
     manager.begin_frame(&input_with_mouse(OVER_BUTTON, false));
-    manager.push_blocking_rect(Rect::new(0.0, 0.0, 100.0, 100.0));
+    manager.push_blocking_rect(Rect::new(0.0, 0.0, 100.0, 100.0), UiLayer::Floating);
     manager.interact(blocked, Rect::new(40.0, 40.0, 20.0, 20.0), true);
     manager.end_frame();
 
@@ -176,4 +176,34 @@ fn test_unseen_widget_state_is_collected_unless_focused_or_blocked() {
     manager.begin_frame(&InputHandler::new());
     manager.end_frame();
     assert!(manager.get_state_if_exists(editing).is_none(), "unfocused and unseen: collected");
+}
+
+/// A modal's scrim must hold against widgets drawn in a LATER overlay scope
+/// on a lower band — the toolbar strip on PanelChrome, a dropdown on
+/// Floating — or a Play click behind the dialog changes the session while
+/// the dialog still asks. A scope is exempt only from regions on its own
+/// band or below: its own rect, or a strip it hangs over.
+#[test]
+fn test_a_higher_layers_blocking_region_reaches_into_a_lower_overlay_scope() {
+    let scrim = Rect::new(0.0, 0.0, 400.0, 400.0);
+    let mut manager = InteractionManager::new();
+    manager.begin_frame(&input_with_mouse(OVER_BUTTON, true));
+    manager.push_blocking_rect(scrim, UiLayer::Modal);
+
+    manager.set_overlay_scope(Some(UiLayer::PanelChrome));
+    let strip_button = manager.interact(WidgetId::hashed("play"), BUTTON, true);
+    assert_eq!(strip_button.state, WidgetState::Normal, "the scrim reaches a lower scope");
+    assert!(manager.active_widget.is_none(), "the press must not activate a widget under the scrim");
+
+    manager.set_overlay_scope(Some(UiLayer::Modal));
+    let dialog_button = manager.interact(WidgetId::hashed("keep"), BUTTON, true);
+    assert_eq!(dialog_button.state, WidgetState::Active, "the dialog's own widgets stay live");
+
+    let mut manager = InteractionManager::new();
+    manager.begin_frame(&input_with_mouse(OVER_BUTTON, true));
+    manager.push_blocking_rect(scrim, UiLayer::PanelChrome);
+    manager.set_overlay_scope(Some(UiLayer::Floating));
+    let item = manager.interact(WidgetId::hashed("dropdown_item"), BUTTON, true);
+    assert_eq!(item.state, WidgetState::Active, "a lower band's region does not reach a higher scope");
+    assert!(manager.is_blocked_at(OVER_BUTTON), "raw consumers outside every scope still see the region");
 }

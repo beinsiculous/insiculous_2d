@@ -6,7 +6,7 @@ use ecs::{EntityId, World};
 
 use crate::stored_component::{ComponentKind, ComponentRef, StoredComponent};
 
-use super::EditorCommand;
+use super::{entity_is_alive, patch_changed_leaves, script_references_resolve, EditorCommand, Rebase};
 
 // ---------------------------------------------------------------------------
 // AddComponentCommand
@@ -56,6 +56,21 @@ impl EditorCommand for AddComponentCommand {
         // Capture the component before removing it.
         self.captured = self.target.capture(world, self.entity);
         self.target.remove(world, self.entity);
+    }
+
+    fn rebase_onto(&mut self, world: &mut World) -> Rebase {
+        if !entity_is_alive(world, self.entity) {
+            return Rebase::DROP;
+        }
+        // Adding over a component the authored entity already has would
+        // overwrite it with no before-image, and the undo would then strip
+        // an authored component the user never removed.
+        if self.target.is_present_on(world, self.entity) {
+            return Rebase::DROP;
+        }
+        // The capture is the simulated value; redo re-adds the default.
+        self.captured = None;
+        Rebase::Apply
     }
 
     fn display_name(&self) -> &str {
@@ -126,6 +141,13 @@ impl EditorCommand for RemoveComponentCommand {
         }
     }
 
+    fn rebase_onto(&mut self, world: &mut World) -> Rebase {
+        if !entity_is_alive(world, self.entity) || !self.target.is_present_on(world, self.entity) {
+            return Rebase::DROP;
+        }
+        Rebase::Apply
+    }
+
     fn display_name(&self) -> &str {
         &self.display
     }
@@ -169,6 +191,30 @@ impl EditorCommand for SetComponentValueCommand {
         self.old.apply_to(world, self.entity);
     }
 
+    fn rebase_onto(&mut self, world: &mut World) -> Rebase {
+        let name = self.new.type_name().to_string();
+        let Ok(Some(authored)) =
+            crate::stored_component::capture_component_by_name(world, self.entity, &name)
+        else {
+            return Rebase::DROP;
+        };
+        let (Some(authored_value), Some(before), Some(after)) =
+            (authored.value(), self.old.value(), self.new.value())
+        else {
+            return Rebase::DROP;
+        };
+        let patched = patch_changed_leaves(&authored_value, &before, &after);
+        let Ok(rebased) = crate::stored_component::stored_component_from_json(&name, patched) else {
+            return Rebase::DROP;
+        };
+        if !stored_script_references_resolve(&rebased, world) {
+            return Rebase::DROP;
+        }
+        self.old = authored;
+        self.new = rebased;
+        Rebase::Apply
+    }
+
     fn display_name(&self) -> &str {
         &self.name
     }
@@ -179,5 +225,14 @@ impl EditorCommand for SetComponentValueCommand {
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+}
+
+
+/// [`script_references_resolve`] for a stored (type-erased) component.
+fn stored_script_references_resolve(stored: &StoredComponent, world: &World) -> bool {
+    match stored {
+        StoredComponent::Scripts(scripts) => script_references_resolve(scripts, world),
+        _ => true,
     }
 }

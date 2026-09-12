@@ -1,16 +1,23 @@
 //! Immediate-mode UI context managing frame lifecycle, layout, and widget interactions.
 
+mod cursor;
 mod edit_field;
 mod text;
 mod text_input;
+mod tooltip;
 mod widgets;
 
+pub use cursor::CursorIcon;
 pub use text_input::{FloatFieldOpts, FloatInputResult};
 
 #[cfg(test)]
 mod scrub_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tooltip_tests;
+#[cfg(test)]
+mod traversal_tests;
 
 use glam::Vec2;
 use input::InputHandler;
@@ -31,6 +38,8 @@ use crate::{
     Color, DrawList, FontError, FontHandle, FontManager, InteractionManager, InteractionResult,
     Rect, Theme, UiLayer, WidgetId,
 };
+
+use tooltip::TooltipState;
 
 /// The main UI context for immediate-mode UI rendering.
 ///
@@ -70,6 +79,10 @@ pub struct UIContext {
     /// (typed commit or scrub release) — hosts read it via
     /// [`Self::take_edit_commit`] to place undo-merge boundaries.
     edit_committed: bool,
+    /// The one hover tooltip this frame may raise
+    tooltip_state: TooltipState,
+    /// The pointer shape this frame's widgets asked for
+    requested_cursor: CursorIcon,
 }
 
 impl Default for UIContext {
@@ -85,6 +98,8 @@ impl UIContext {
             interaction: InteractionManager::new(),
             draw_list: DrawList::new(),
             edit_committed: false,
+            tooltip_state: TooltipState::default(),
+            requested_cursor: CursorIcon::Default,
             theme: Theme::default(),
             window_size: Vec2::new(800.0, 600.0),
             font_manager: FontManager::new(),
@@ -123,6 +138,9 @@ impl UIContext {
         self.interaction.begin_frame(input);
         self.draw_list.clear();
         self.window_size = window_size;
+        // A pointer shape is what this frame's widgets see under the pointer,
+        // so it is re-asked every frame rather than sticky.
+        self.requested_cursor = CursorIcon::Default;
     }
 
     /// Begin a new frame with an explicit frame delta (seconds). The delta
@@ -131,10 +149,15 @@ impl UIContext {
         self.interaction.begin_frame_dt(input, dt);
         self.draw_list.clear();
         self.window_size = window_size;
+        self.requested_cursor = CursorIcon::Default;
     }
 
     /// End the frame. Call this after all UI elements have been created.
     pub fn end_frame(&mut self) {
+        // Before the flush: the tooltip is raised by the widgets drawn this
+        // frame, not at the call, so it lands on its own layer whatever the
+        // ordering of the frame's begin/end overlay scopes was.
+        self.end_frame_tooltip();
         // Elevated layers (popups, modals, drag ghosts) flush after the
         // content stream so they physically escape any panel clip pairs.
         self.draw_list.flush_layers();
@@ -187,10 +210,17 @@ impl UIContext {
     }
 
     /// Whether a widget (e.g. a text input being edited) currently has
-    /// keyboard focus. Hosts should suppress their own keyboard shortcuts
-    /// while this returns `true`.
+    /// keyboard focus, OR a Tab/Shift-Tab commit has handed focus onward to
+    /// a field that is still reachable soon (not sitting behind an overlay,
+    /// which can hold it pending indefinitely — see
+    /// `InteractionManager::wants_keyboard` for why that case is excluded).
+    /// Hosts should suppress their own keyboard shortcuts while this returns
+    /// `true` — a commit clears the committing field's focus before the
+    /// destination claims its own, and a host that only checked live focus
+    /// would have a one-frame gap where Delete or Ctrl+Z reaches the scene
+    /// instead of the field mid-traversal.
     pub fn wants_keyboard(&self) -> bool {
-        self.interaction.has_focus()
+        self.interaction.wants_keyboard()
     }
 
     /// Whether a widget owns the current mouse gesture — true from the press
@@ -226,15 +256,20 @@ impl UIContext {
     /// underneath it.
     pub fn clear_text_focus(&mut self) {
         self.interaction.clear_focus();
+        self.interaction.set_pending_focus_target(None);
     }
 
     /// Programmatically focus a text input before it is next rendered,
     /// seeding its edit buffer with `initial` fully selected — typing
     /// replaces it, exactly as if the user had clicked the field. Lets hosts
     /// open an inline edit from a shortcut (e.g. F2 rename) instead of
-    /// requiring a click.
+    /// requiring a click. Also cancels a pending Tab/Shift-Tab traversal: a
+    /// host that assigns focus explicitly is asserting where the keyboard
+    /// goes, and a traversal that resolves later — once whatever is blocking
+    /// it closes — must not then steal focus back from this field.
     pub fn focus_text_input(&mut self, id: impl Into<WidgetId>, initial: &str) {
         let id = id.into();
+        self.interaction.set_pending_focus_target(None);
         self.interaction.set_focus(id);
         self.interaction.get_state(id).edit.set_text_select_all(initial);
     }
@@ -248,7 +283,10 @@ impl UIContext {
     ///   all base UI regardless of submission order, and
     /// - `interact()` calls stay live while widgets *outside* the overlay
     ///   become inert whenever the mouse is inside `blocking_rect` (for the
-    ///   rest of the frame), so clicks don't pass through the overlay.
+    ///   rest of the frame), so clicks don't pass through the overlay. A
+    ///   later overlay on a LOWER layer is not exempt: a modal's scrim
+    ///   reaches into a Floating dropdown or a PanelChrome strip opened
+    ///   after it, while a scope on the same layer or above stays live.
     pub fn begin_overlay(&mut self, blocking_rect: Rect) {
         self.begin_overlay_in(UiLayer::Floating, blocking_rect);
     }
@@ -264,15 +302,15 @@ impl UIContext {
     /// overlays back-to-back instead.
     pub fn begin_overlay_in(&mut self, layer: UiLayer, blocking_rect: Rect) {
         self.draw_list.push_layer(layer);
-        self.interaction.push_blocking_rect(blocking_rect);
-        self.interaction.set_overlay_scope(true);
+        self.interaction.push_blocking_rect(blocking_rect, layer);
+        self.interaction.set_overlay_scope(Some(layer));
     }
 
     /// End the current overlay, returning to the base depth band and
     /// re-enabling input blocking for subsequent widgets.
     pub fn end_overlay(&mut self) {
         self.draw_list.pop_layer();
-        self.interaction.set_overlay_scope(false);
+        self.interaction.set_overlay_scope(None);
     }
 
     /// Whether mouse input at `pos` is swallowed by an open overlay

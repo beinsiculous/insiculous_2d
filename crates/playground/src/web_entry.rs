@@ -2,11 +2,11 @@
 //!
 //! # Version contract
 //! `ASSET_BASE` and `BUNDLE_VERSION` are tied to deployment routes:
-//! 1. `ASSET_BASE` = `"/playground/v1/assets"`
-//! 2. `BUNDLE_VERSION` = `"v1"`
-//! 3. Deployed assets live at `insiculous_web/public/playground/v1/assets/`
-//! 4. Projects metadata served from `/playground/v1/assets/projects.json`
-//! 5. `scripts/build_wasm.sh` produces `playground/v1/`
+//! 1. `ASSET_BASE` = `"/playground/v2/assets"`
+//! 2. `BUNDLE_VERSION` = `"v2"`
+//! 3. Deployed assets live at `insiculous_web/public/playground/v2/assets/`
+//! 4. Projects metadata served from `/playground/v2/assets/projects.json`
+//! 5. `scripts/build_wasm.sh` produces `playground/v2/`
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -27,15 +27,16 @@ use crate::store::memory::MemoryStore;
 use crate::store::ProjectStore;
 
 /// Canonical asset base path for the deployed playground.
-pub const ASSET_BASE: &str = "/playground/v1/assets";
+pub const ASSET_BASE: &str = "/playground/v2/assets";
 /// Bundle version contract string.
-pub const BUNDLE_VERSION: &str = "v1";
+pub const BUNDLE_VERSION: &str = "v2";
 
 thread_local! {
     static ACTIVE_STORE: RefCell<Option<Arc<dyn ProjectStore>>> = const { RefCell::new(None) };
     static BUNDLED_MANIFESTS: RefCell<Vec<ProjectManifest>> = const { RefCell::new(Vec::new()) };
     static STORED_MANIFESTS: RefCell<Vec<ProjectManifest>> = const { RefCell::new(Vec::new()) };
     static DIRTY_FLAG: RefCell<Option<Arc<AtomicBool>>> = const { RefCell::new(None) };
+    static HISTORY_DIRTY_FLAG: RefCell<Option<Arc<AtomicBool>>> = const { RefCell::new(None) };
     static ACTIVE_MANIFEST: RefCell<Option<ProjectManifest>> = const { RefCell::new(None) };
 }
 
@@ -59,9 +60,23 @@ pub fn dirty_flag() -> Option<Arc<AtomicBool>> {
     DIRTY_FLAG.with(|flag_cell| flag_cell.borrow().clone())
 }
 
+/// The editor's command history alone, without the persist layer's pending
+/// puts: a put that a reader catches between completing and the next frame's
+/// mirror would otherwise read as unsaved edits.
+pub fn history_dirty_flag() -> Option<Arc<AtomicBool>> {
+    HISTORY_DIRTY_FLAG.with(|flag_cell| flag_cell.borrow().clone())
+}
+
 #[wasm_bindgen(start)]
 pub fn start() {
     init_web_logging();
+    // The preview is a second runtime on the same bundle, not a second
+    // entry point: winit allows one event loop per page, so this branch
+    // returns before anything the editor owns is built.
+    if query_param("mode").as_deref() == Some("preview") {
+        crate::preview_entry::announce_preview_mode();
+        return;
+    }
     wasm_bindgen_futures::spawn_local(async {
         if let Err(error) = run_playground().await {
             log::error!("playground startup failed: {error}");
@@ -192,8 +207,11 @@ async fn run_playground() -> Result<(), String> {
 
     // 7. Chains and persistence listeners
     let dirty_atomic = Arc::new(AtomicBool::new(false));
+    let history_dirty_atomic = Arc::new(AtomicBool::new(false));
     let pending_atomic = Arc::new(AtomicBool::new(false));
     DIRTY_FLAG.with(|flag_cell| *flag_cell.borrow_mut() = Some(dirty_atomic.clone()));
+    HISTORY_DIRTY_FLAG
+        .with(|flag_cell| *flag_cell.borrow_mut() = Some(history_dirty_atomic.clone()));
 
     let mut chains = Chains::new(
         project_slug.clone(),
@@ -228,6 +246,8 @@ async fn run_playground() -> Result<(), String> {
 
     let script_errors_mirror = Arc::new(Mutex::new(Vec::<String>::new()));
     let errors_for_hooks = Arc::clone(&script_errors_mirror);
+    let scene_snapshot = Arc::new(editor_integration::SceneSnapshotRequest::default());
+    let preview_open = Arc::new(AtomicBool::new(false));
     let hooks = crate::bridge::Hooks {
         source_check: Some(|source: &str| {
             engine_core::scripting::check_source(source).map_err(|e| e.to_string())
@@ -238,6 +258,8 @@ async fn run_playground() -> Result<(), String> {
                 .map(|guard| guard.clone())
                 .unwrap_or_default()
         })),
+        scene_snapshot: Some(Arc::clone(&scene_snapshot)),
+        preview_open: Some(Arc::clone(&preview_open)),
     };
     crate::bridge::set_hooks(hooks);
 
@@ -259,13 +281,20 @@ async fn run_playground() -> Result<(), String> {
         api_responses: Some(response_sender),
         prefs_slot: Some(PathBuf::from("beinsiculous.playground.editor_prefs")),
         dirty_flag: Some(dirty_atomic),
+        history_dirty_flag: Some(history_dirty_atomic),
         persist_pending: Some(pending_atomic),
         script_errors: Some(script_errors_mirror),
+        scene_snapshot: Some(scene_snapshot),
+        preview_open: Some(preview_open),
     };
 
     let config = GameConfig::new("Insiculous Playground")
         .with_size(1280, 800)
         .with_asset_base_path(&asset_base_string);
+
+    // Opening the preview window hides this tab, and a hidden tab gets no
+    // animation frames: the frame that answers the snapshot must still come.
+    engine_core::web::install_hidden_frame_pump();
 
     let host = ProjectHost::new(root_path);
     run_game_with_editor_opts(host, config, editor_options).map_err(|error| format!("{error}"))

@@ -37,6 +37,8 @@ mod behavior_editor;
 mod confirm_dialog;
 mod script_editor;
 mod collider_overlay;
+pub mod color_editor_popup;
+pub mod color_hex;
 mod drag_drop;
 pub mod commands;
 mod component_editors;
@@ -45,15 +47,19 @@ mod context;
 mod dock;
 mod editable_inspector;
 mod field_style;
+mod field_widgets;
 mod row_layout;
+mod read_only_rows;
 pub mod fonts;
 mod editor_input;
 mod gizmo;
 mod gizmo_math;
 mod clipboard;
 mod grid;
+mod entity_names;
 mod hierarchy;
 mod inspector;
+mod inspector_state;
 mod menu;
 pub mod physical_floors;
 mod picking;
@@ -66,6 +72,7 @@ pub mod status_bar;
 pub mod stored_component;
 mod text_field;
 mod texture_field;
+pub mod toolbar_strip;
 mod ui_component_editors;
 pub mod theme;
 pub mod typography;
@@ -73,7 +80,10 @@ mod toolbar;
 mod viewport;
 mod viewport_input;
 pub mod editor_preferences;
+pub mod game_frame_overlay;
 pub mod layout;
+pub mod overflow_menu;
+pub mod view_toggles;
 pub mod world_lines;
 pub mod world_snapshot;
 
@@ -100,8 +110,13 @@ pub use dock::{panel_id_for_menu_label, DockArea, DockPanel, DockPosition, Panel
 pub use editable_inspector::{
     component_header, cycle_step, edit_bool, edit_color, edit_f32, edit_f32_opts, edit_vec2,
     wrap_degrees, EditableFieldStyle, EditableInspector, EditResult, FieldEdit, FieldId,
-    InspectorFrame, WidgetSlot,
+    ColorRowFrame, InspectorFrame, InspectorToggles, WidgetSlot,
 };
+pub use color_editor_popup::{
+    color_editor_bounds, color_editor_channel_bounds, color_editor_channel_id, render_color_editor,
+};
+pub use field_widgets::CycleRow;
+pub use inspector_state::{ColorEditorTarget, InspectorState};
 pub use row_layout::{
     color_block_height, ellipsize, field_row, pair_slots, remove_button_x, scrub_step, PairSlot,
     RowLayout,
@@ -111,6 +126,7 @@ pub use ui_component_editors::{edit_ui_button, edit_ui_label, edit_ui_panel};
 pub use editor_input::{
     EditorAction, EditorBinding, EditorInputMapping, EditorInputState, Modifiers,
 };
+pub use entity_names::entity_display_name;
 pub use gizmo::{Corner, Gizmo, GizmoHandle, GizmoInteraction, GizmoMode, GizmoPalette};
 pub use hierarchy::{
     normalized_rename, HierarchyClick, HierarchyPanel, HierarchyResponse, NameResolution,
@@ -134,12 +150,15 @@ pub use selection_outline::{
 pub use status_bar::{StatusBar, StatusBarStats, STATUS_BAR_HEIGHT};
 pub use stored_component::{
     available_components, capture_all_components, categorized_components,
-    edit_all_components, inspect_all_components, registered_component_type_ids,
+    edit_all_components, registered_component_type_ids,
     restore_components, ComponentCategory, ComponentKind, ComponentRef, StoredComponent,
 };
 pub use script_editor::ScriptCatalogEntry;
 pub use theme::EditorTheme;
-pub use toolbar::{toolbar_position_for, EditorTool, Toolbar};
+pub use toolbar::{EditorTool, Toolbar};
 pub use viewport::SceneViewport;
 pub use viewport_input::{ViewportInputConfig, ViewportInputHandler, ViewportInputResult};
+pub use view_toggles::{render_group, ViewGroupAction, ViewToggle, ViewToggles, VIEW_GROUP_WIDTH};
+pub use game_frame_overlay::{game_frame_rect, render_game_frame_overlay};
+pub use overflow_menu::{render_overflow_menu, OverflowPick};
 pub use world_lines::{draw_world_line, draw_world_segments};

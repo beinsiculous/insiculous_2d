@@ -13,6 +13,7 @@ mod palette {
         pub const BORDER: u32 = 0x5A5A5A;
         pub const BORDER_SUBTLE: u32 = 0x4A4A4A;
         pub const ACCENT: u32 = 0x4A90D9;
+        pub const FOCUS_RING: u32 = 0x00D9FF;
     }
 }
 
@@ -135,6 +136,11 @@ pub struct TextInputStyle {
     /// Border color while the focused edit buffer fails to parse (numeric
     /// inputs) — the "this text is not a number" affordance
     pub border_invalid: Color,
+    /// Outset ring drawn around a focused field. The border swap alone does
+    /// not tell a user arriving by Tab which field they landed on.
+    pub focus_ring: Color,
+    /// Stroke width of the focus ring, in pixels
+    pub focus_ring_width: f32,
     /// Border width in pixels
     pub border_width: f32,
     /// Corner radius in pixels
@@ -160,6 +166,8 @@ impl Default for TextInputStyle {
             border: Color::new(0.3, 0.3, 0.35, 1.0),
             border_focused: Color::new(0.4, 0.6, 1.0, 1.0),
             border_invalid: Color::new(1.0, 0.27, 0.27, 1.0),
+            focus_ring: Color::from_hex(dark::FOCUS_RING),
+            focus_ring_width: 2.0,
             border_width: 1.0,
             corner_radius: 2.0,
             text_color: Color::WHITE,
@@ -167,6 +175,32 @@ impl Default for TextInputStyle {
             padding: 4.0,
             selection_color: Color::from_hex(dark::ACCENT).with_alpha(0.35),
             cursor_color: Color::WHITE,
+        }
+    }
+}
+
+/// Style configuration for hover tooltips.
+#[derive(Debug, Clone, Copy)]
+pub struct TooltipStyle {
+    /// Background color of the tooltip panel
+    pub background: Color,
+    /// Border color of the tooltip panel
+    pub border: Color,
+    /// Text color
+    pub text_color: Color,
+    /// Font size in pixels
+    pub font_size: f32,
+}
+
+impl Default for TooltipStyle {
+    fn default() -> Self {
+        use palette::dark;
+        Self {
+            // Opaque: a tooltip is read over whatever happens to be beneath it.
+            background: Color::from_hex(dark::SURFACE_PRESSED),
+            border: Color::from_hex(dark::BORDER),
+            text_color: Color::WHITE,
+            font_size: 13.0,
         }
     }
 }
@@ -206,6 +240,8 @@ pub struct Theme {
     pub text: TextStyle,
     /// Text input style
     pub text_input: TextInputStyle,
+    /// Hover tooltip style
+    pub tooltip: TooltipStyle,
 }
 
 

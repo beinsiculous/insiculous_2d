@@ -149,9 +149,16 @@ fn test_render_derives_the_gpu_camera_and_scissor_from_the_dock() {
     assert_eq!(camera, expected);
     assert_eq!(camera.zoom, 2.0);
     assert_eq!(camera.viewport_size, window_size);
-    let scene_panel = editor_game.editor.scene_view_bounds().expect("scene view visible by default");
-    assert!(scene_panel.width > 0.0 && scene_panel.height > 0.0);
-    assert_eq!(scissor, Some(scene_panel), "the scissor is the DOCK's scene-view bounds");
+    let viewport = editor_game.editor.scene_view_bounds().expect("scene view visible by default");
+    assert!(viewport.width > 0.0 && viewport.height > 0.0);
+    assert_eq!(scissor, Some(viewport), "the scissor is the DOCK's viewport");
+
+    // The game world stops at the toolbar strip: the scissor starts where the
+    // strip ends, or sprites would paint over the play controls.
+    let strip = editor_game.editor.toolbar_strip_bounds().expect("the strip exists with the panel");
+    assert_eq!(viewport.y, strip.bottom());
+    assert_eq!(strip.height, editor::layout::TOOLBAR_STRIP_HEIGHT);
+    assert!(!viewport.contains(strip.center()), "the scissor must not reach into the strip");
 }
 
 #[test]

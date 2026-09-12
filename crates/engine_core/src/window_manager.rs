@@ -70,6 +70,22 @@ impl From<&crate::game_config::GameConfig> for WindowConfig {
     }
 }
 
+/// Map the UI's pointer shapes onto winit's. The UI crate carries its own
+/// enum so it stays free of a windowing dependency; this is the one place
+/// the two vocabularies meet.
+fn cursor_icon(cursor: ui::CursorIcon) -> winit::window::CursorIcon {
+    use winit::window::CursorIcon as WinitCursor;
+    match cursor {
+        ui::CursorIcon::Default => WinitCursor::Default,
+        ui::CursorIcon::ColResize => WinitCursor::ColResize,
+        ui::CursorIcon::RowResize => WinitCursor::RowResize,
+        ui::CursorIcon::Pointer => WinitCursor::Pointer,
+        ui::CursorIcon::Text => WinitCursor::Text,
+        ui::CursorIcon::Grab => WinitCursor::Grab,
+        ui::CursorIcon::Grabbing => WinitCursor::Grabbing,
+    }
+}
+
 /// Manages window creation and lifecycle.
 ///
 /// This struct encapsulates all window-related responsibilities:
@@ -84,6 +100,9 @@ pub struct WindowManager {
     config: WindowConfig,
     /// DPI scale factor (1.0 = standard, 2.0 = HiDPI/Retina)
     scale_factor: f64,
+    /// The pointer shape last handed to the platform, so a shape that is
+    /// asked for again every frame costs one call, not one a frame.
+    current_cursor: ui::CursorIcon,
 }
 
 impl Default for WindowManager {
@@ -99,6 +118,7 @@ impl WindowManager {
             window: None,
             config,
             scale_factor: 1.0,
+            current_cursor: ui::CursorIcon::Default,
         }
     }
 
@@ -224,6 +244,24 @@ impl WindowManager {
         self.config.title = title.to_string();
         if let Some(window) = &self.window {
             window.set_title(title);
+        }
+    }
+
+    /// Set the pointer shape, mapping the UI's own vocabulary onto winit's.
+    ///
+    /// Called once a frame with whatever the UI asked for; the shape is
+    /// handed to the platform only when it differs from the last one, the
+    /// same one-round-trip rule [`Self::set_title`] follows — a shape asked
+    /// for again every frame is the common case, not the exception. Before
+    /// the window exists the shape is still recorded, so a host that reads
+    /// it back sees the truth; headless (no window ever) this never panics.
+    pub fn set_cursor(&mut self, cursor: ui::CursorIcon) {
+        if cursor == self.current_cursor {
+            return;
+        }
+        self.current_cursor = cursor;
+        if let Some(window) = &self.window {
+            window.set_cursor(cursor_icon(cursor));
         }
     }
 

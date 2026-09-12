@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::task::{Context, Waker};
 
 use super::{test_manifest, GatedStore};
-use crate::persist::{Chains, PathState};
+use crate::persist::{Chains, PathState, SaveState, SaveStatus};
 use crate::store::memory::MemoryStore;
 use crate::store::{ProjectStore, StoredFile, StoreError};
 
@@ -466,5 +466,119 @@ fn test_conflicted_paths_returns_sorted_conflicted_paths() {
     assert_eq!(
         chains.conflicted_paths(),
         vec!["scenes/a.scene.ron".to_string(), "scenes/b.scene.ron".to_string()]
+    );
+}
+
+#[test]
+fn test_save_status_walks_the_four_states_and_the_dirty_flag() {
+    let memory = MemoryStore::new();
+    let gated = GatedStore::new(memory);
+    let mut chains = Chains::new(
+        "pong".to_string(),
+        "/projects/pong".to_string(),
+        "v1".to_string(),
+        test_manifest("pong"),
+        Arc::new(gated.clone()),
+        None,
+    );
+    let waker = Waker::noop();
+    let mut context = Context::from_waker(waker);
+    let path = std::path::Path::new("/projects/pong/scenes/main.ron");
+
+    // Nothing written, nothing pending: the editor's flag decides on its own.
+    assert_eq!(
+        chains.save_status(false),
+        SaveStatus { state: SaveState::Saved, reason: String::new() }
+    );
+    assert_eq!(
+        chains.save_status(true),
+        SaveStatus { state: SaveState::Unsaved, reason: String::new() }
+    );
+
+    // In flight, and then queued behind it: saving either way, flag or no flag.
+    gated.pause();
+    chains.on_vfs_write(path, b"edit 1").unwrap();
+    assert_eq!(chains.save_status(false).state, SaveState::Saving);
+    assert_eq!(chains.save_status(true).state, SaveState::Saving);
+
+    chains.on_vfs_write(path, b"edit 2").unwrap();
+    assert_eq!(chains.path_state("scenes/main.ron"), PathState::Queued);
+    assert_eq!(chains.save_status(false).state, SaveState::Saving);
+    assert_eq!(chains.save_status(true).state, SaveState::Saving);
+
+    // Both puts land: the flag is alone again.
+    gated.release();
+    while chains.has_active() {
+        chains.poll_all(&mut context);
+    }
+    assert_eq!(chains.save_status(false).state, SaveState::Saved);
+    assert_eq!(chains.save_status(true).state, SaveState::Unsaved);
+
+    // A backend failure strands the newest bytes: failed, naming that path.
+    gated.pause();
+    gated.set_fail_next_put(true);
+    chains.on_vfs_write(path, b"edit 3").unwrap();
+    gated.release();
+    chains.poll_all(&mut context);
+    assert_eq!(chains.path_state("scenes/main.ron"), PathState::Stranded);
+    assert_eq!(
+        chains.save_status(false),
+        SaveStatus { state: SaveState::Failed, reason: "stranded: scenes/main.ron".to_string() }
+    );
+    assert_eq!(chains.save_status(true).state, SaveState::Failed);
+}
+
+#[test]
+fn test_save_status_names_a_conflicted_path_ahead_of_a_stranded_one() {
+    let memory = MemoryStore::new();
+    let gated = GatedStore::new(memory.clone());
+    let mut chains = Chains::new(
+        "pong".to_string(),
+        "/projects/pong".to_string(),
+        "v1".to_string(),
+        test_manifest("pong"),
+        Arc::new(gated.clone()),
+        None,
+    );
+    let waker = Waker::noop();
+    let mut context = Context::from_waker(waker);
+
+    // Two stranded paths, written out of order so the accessor has to sort them.
+    for name in ["b.txt", "a.txt"] {
+        gated.pause();
+        gated.set_fail_next_put(true);
+        let path = std::path::Path::new("/projects/pong").join(name);
+        chains.on_vfs_write(&path, b"stranded").unwrap();
+        gated.release();
+        chains.poll_all(&mut context);
+    }
+    assert_eq!(chains.stranded_paths(), vec!["a.txt".to_string(), "b.txt".to_string()]);
+
+    // z.ron conflicts: another tab saved it, so the store is at revision 1 while this
+    // tab's chain still believes 0.
+    pollster::block_on(async {
+        memory
+            .replace_project(
+                "pong",
+                vec![StoredFile {
+                    project: "pong".to_string(),
+                    path: "z.ron".to_string(),
+                    bytes: b"other tab".to_vec(),
+                    revision: 1,
+                    bundle_version: "v1".to_string(),
+                }],
+                test_manifest("pong"),
+            )
+            .await
+            .unwrap();
+    });
+    chains.on_vfs_write(std::path::Path::new("/projects/pong/z.ron"), b"mine").unwrap();
+    chains.poll_all(&mut context);
+    assert_eq!(chains.path_state("z.ron"), PathState::Conflicted);
+
+    // "a.txt" sorts first, and the reason names the conflict anyway.
+    assert_eq!(
+        chains.save_status(false),
+        SaveStatus { state: SaveState::Failed, reason: "conflicted: z.ron".to_string() }
     );
 }

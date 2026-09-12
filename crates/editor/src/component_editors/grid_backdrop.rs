@@ -93,6 +93,7 @@ mod tests {
         // what the engine builds: a typed 45 commits as 46.
         let mut ui = ui::UIContext::new();
         let mut drag_drop = DragDropState::new();
+        let mut inspector_state = crate::InspectorState::default();
         let mut input = input::InputHandler::new();
         let field: ui::WidgetId = FieldId::new(0, 1, 0).into();
         ui.focus_text_input(field, "45");
@@ -101,7 +102,7 @@ mod tests {
         let style = EditableFieldStyle::default();
         let edit = frame(&mut ui, &input, |ui| {
             let mut inspector = EditableInspector::new(ui, &style, 10.0, 10.0);
-            edit_grid_backdrop(&mut inspector, &GridBackdrop::default(), &mut extras(&mut drag_drop))
+            edit_grid_backdrop(&mut inspector, &GridBackdrop::default(), &mut extras(&mut drag_drop, &mut inspector_state))
         })
         .expect("Enter commits");
 

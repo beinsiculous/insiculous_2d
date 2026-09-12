@@ -8,6 +8,7 @@
 // - Patrol: Guard that walks back and forth
 // - FollowEntity: Companion that follows the player
 // - Collectible: Items to pick up (visual only - no score system yet)
+// - Camera2D: A static main camera at the origin framing the whole arena
 //
 SceneData(
     name: "Behavior Demo",
@@ -107,6 +108,18 @@ SceneData(
             overrides: [Transform2D(position: (0.0, 0.0))],
         ),
 
+        // === CAMERA ===
+        // After the player so the hierarchy's first row is the entity the
+        // site's hint points at. Static at the origin: the arena is 800x600 around the player's
+        // start, so the whole of it fits without following anything.
+        EntityData(
+            name: Some("camera"),
+            components: [
+                Transform2D(position: (0.0, 0.0)),
+                Camera2D(is_main_camera: true),
+            ],
+        ),
+
         // === COMPANION (follows player) ===
         EntityData(
             name: Some("companion"),
@@ -164,24 +177,28 @@ SceneData(
         // === WALLS (arena boundary) ===
         // Top wall (800x24 pixels)
         EntityData(
+            name: Some("wall_top"),
             prefab: Some("Wall"),
             overrides: [Transform2D(position: (0.0, 280.0), scale: (10.0, 0.3))],
             components: [Collider(shape: Box(half_extents: (400.0, 12.0)))],
         ),
         // Bottom wall
         EntityData(
+            name: Some("wall_bottom"),
             prefab: Some("Wall"),
             overrides: [Transform2D(position: (0.0, -280.0), scale: (10.0, 0.3))],
             components: [Collider(shape: Box(half_extents: (400.0, 12.0)))],
         ),
         // Left wall
         EntityData(
+            name: Some("wall_left"),
             prefab: Some("Wall"),
             overrides: [Transform2D(position: (-380.0, 0.0), scale: (0.3, 7.0))],
             components: [Collider(shape: Box(half_extents: (12.0, 280.0)))],
         ),
         // Right wall
         EntityData(
+            name: Some("wall_right"),
             prefab: Some("Wall"),
             overrides: [Transform2D(position: (380.0, 0.0), scale: (0.3, 7.0))],
             components: [Collider(shape: Box(half_extents: (12.0, 280.0)))],
@@ -189,6 +206,7 @@ SceneData(
 
         // Center obstacle (120x120 pixels)
         EntityData(
+            name: Some("obstacle"),
             prefab: Some("Wall"),
             overrides: [Transform2D(position: (-100.0, -50.0), scale: (1.5, 1.5))],
             components: [Collider(shape: Box(half_extents: (60.0, 60.0)))],

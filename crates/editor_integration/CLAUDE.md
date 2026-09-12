@@ -12,7 +12,7 @@ EditorGame<G: Game>  — transparent wrapper implementing Game trait
 └── Intercepts: init(), update(), on_key_pressed()
 
 run_game_with_editor(game, config) → wraps game in EditorGame, calls run_game()
-run_game_with_editor_opts(game, config, EditorRunOptions { api_rx, initial_scene, api_responses, prefs_slot, dirty_flag, persist_pending }) → full option set. The standalone binary hands its project's first scene here (`SceneLoader::first_scene_in` in engine_core, sorted — a game with no named scene loads the same way) and EditorGame opens it through the REAL load path after init, so scene_path/physics/dirty are recorded; ProjectHost never loads scenes itself, and load_scene publishes PhysicsSettings as a world resource for the host's lazy physics and behavior preview. The playground supplies the other four: a response channel for the bridge, a localStorage prefs slot, the dirty flag the editor WRITES from sync_dirty_mirror, and the persist-pending flag it READS there (ORed into the title's dirty mark). asset_base is not an option: EditorGame captures ctx.assets.base_path() after the inner game's init, and every bare relative scene path joins it.
+run_game_with_editor_opts(game, config, EditorRunOptions { api_rx, initial_scene, api_responses, prefs_slot, dirty_flag, history_dirty_flag, persist_pending, script_errors, scene_snapshot, preview_open }) → full option set. The standalone binary hands its project's first scene here (`SceneLoader::first_scene_in` in engine_core, sorted — a game with no named scene loads the same way) and EditorGame opens it through the REAL load path after init, so scene_path/physics/dirty are recorded; ProjectHost never loads scenes itself, and load_scene publishes PhysicsSettings as a world resource for the host's lazy physics and behavior preview. The playground supplies the other eight: a response channel for the bridge, a localStorage prefs slot, the dirty flag the editor WRITES from sync_dirty_mirror, a history-only dirty flag written by that same pass and read by the save indicator and the switch/reset/import confirmations, the persist-pending flag it READS there (ORed into the title's dirty mark), the script-error mirror the bridge reads, the snapshot mailbox the preview's launch and Export file into, and the preview reservation that refuses in-editor Play while a preview window holds the scene. asset_base is not an option: EditorGame captures ctx.assets.base_path() after the inner game's init, and every bare relative scene path joins it.
 ```
 
 ## Dependency Graph
@@ -24,44 +24,49 @@ editor_integration ──→ editor, engine_core, ecs, ui, input, renderer, comm
 
 ## File Map
 - `project_host.rs` — data-only game host for the standalone editor (physics preview, behavior runner, transform hierarchy).
-- `editor_game/mod.rs` — struct and Game impl (`update()` = named phases `prepare_frame`/`render_early_overlays`/`finish_frame`) + `run_game_with_editor`.
-- `editor_game/preferences.rs` — preferences load/save and debounced settle persistence (0.5s stability window).
+- `editor_game/mod.rs` — struct definition, field mirrors, and the non-trait inherent methods (incl. `sync_dirty_mirror`); `run_game_with_editor` and `run_game_with_editor_opts` live in `run_options.rs` (below).
+- `editor_game/game_impl.rs` — the `Game for EditorGame<G>` impl (`update()` = named phases `prepare_frame`/`render_early_overlays`/`finish_frame`).
+- `editor_game/preferences.rs` — preferences load/save (camera, view toggles, collapsed inspector sections) and debounced settle persistence (0.5s stability window).
 - `editor_game/open_source.rs` — script source file opening in external IDE / editor (`open_pending_source`, `ide_command`). `ide_command` is split on whitespace — no quoting, so a program path containing spaces cannot be used — and is read from the prefs file only at load: edit `editor_prefs.json` with the editor closed, or the next autosave rewrites the file without the edit.
 - `editor_game/scene_io.rs` — save/load/new scene (load dry-runs into a scratch World before touching the live one).
+- `editor_game/snapshot.rs` — the live scene as RON for the preview window (`SceneSnapshot`, the `SceneSnapshotRequest` mailbox with one generation in flight and a shared completion per generation, `scene_snapshot` over a named scratch world, `answer_scene_snapshot` each frame).
+- `project_host/preview.rs` — the game-only runtime behind the preview window (`PreviewControls`, `PreviewHost`); a child module because it drives the host's `pub(crate)` frame step and play-state reset directly.
 - `editor_game/api.rs` — command-API frame hook (`answer_api_lines`, `drain_api_requests` with ≤256 lines/frame cap, skipped during gizmo drags).
 - `editor_game/shortcuts.rs` — key dispatch: `route_editor_key` + four category dispatchers; Escape cancel cascade, arrow nudge merge/seal.
-- `editor_game/play_session.rs` — play transitions (`start_play_session`, `pause`, `resume_from_pause`, `stop_play_session`, camera follow).
+- `editor_game/play_session.rs` — play transitions (`start_play_session`, `pause`, `resume_from_pause`, `stop_with_paused_edits`, camera follow). Both entries into Playing share `enter_playing`, which closes everything that must not survive the boundary: the add-component popup, the script picker, the colour editor and an open hierarchy rename.
+- `editor_game/stop_confirm.rs` — the Keep / Discard / Cancel flow at Stop (`request_stop`, the Modal-layer dialog, and the key policy shared with the scene dialog).
 - `editor_game/script_status.rs` — track script errors during Play sessions, status bar notifications, mirror sync, and frame 60 lie detector.
 - `editor_game/run_options.rs` — `EditorRunOptions` configuration, `run_game_with_editor`, and `run_game_with_editor_opts`.
 - `editor_game/gizmo_drag.rs` — drag-start capture, `handle_gizmo`, `scale_collider`.
 - `editor_game/viewport_interaction.rs` — picking, marquee, framing, once-per-frame pickables.
 - `editor_game/test_support.rs` — fixture module: `DummyGame`, `editor_game()`, interaction builders.
 - `entity_ops.rs` — pure entity CRUD; UI entities get Name only (anchor+offset placement model, no Transform2D).
-- `panel_renderer/` — panel contents: scene view, hierarchy, inspector, add_component_popup.
+- `panel_renderer/` — panel contents: scene view, hierarchy, inspector, add_component_popup, asset_browser, `color_editor.rs` (the colour editor's pass, run by `render_panels` BEFORE any panel so its Modal rect covers the rows it hangs over, narrow mode included) and `drag_ghost.rs` (the cursor-following ghost on the DragGhost band).
 
 ## Key Patterns
 - **Engine-time freeze (Jul 2026)**: `EditorGame::update` sets `ctx.time_scale = 0.0` whenever not Playing (`editor_time_scale()`, headless-testable), holding the game's own value in `frozen_time_scale` and handing it back on Play/Resume — particles AND sprite animations hold still while Editing/Paused, and a game that paused itself stays paused across an editor Pause.
+- **The toolbar strip**: `render_toolbar_and_play_controls` lays out the tools, the play controls and the view group with `editor::toolbar_strip::layout`, draws the overflow menu (shed tools, shed view toggles, Reset Layout) **first** — a short window shifts it up over the strip's buttons, and a blocking rect only reaches widgets whose interact call comes after it — then renders the strip's widgets inside its scope (overlay scopes cannot nest, so the menu's scope closes before the strip's opens). A panel shown as the dock's narrow-mode overlay has its content rendered inside a floating-band scope in `panel_renderer::render_panel_content`, or the overlay's own blocking rect would make the field it exists to expose inert.
 - **Camera sync (Jul 2026, split #42 Aug 2026)**: the editor viewport is the single source of truth for the view. `EditorGame::render` overrides `ctx.camera` with `viewport.to_window_render_camera(window_size)` every frame; while Playing AND `is_camera_following()`, `sync_viewport_from_main_camera` mirrors the game's main-camera entity — position AND zoom — onto the viewport (editing pan/zoom saved on Play, restored on Stop; no main camera = zoom 1.0 parity). Manual pan/zoom during a play session breaks the follow (`break_camera_follow`, status-bar notice); the Follow toolbar button / Ctrl+Shift+F re-arms it; follow re-arms at session START and Stop only — pause→resume preserves the user's choice. While Playing, `handle_play_mode_camera` runs pan/zoom ONLY (the early return before picking/marquee/drops is load-bearing). Rotation is deliberately not synced (viewport math has no rotation term). Never sync the other direction.
 - **Scale tool scales colliders**: physics ignores Transform2D.scale, so the gizmo scale branch also calls `scale_collider` and records one `MacroCommand` (transform+collider) per drag.
-- **Asset browser** (`panel_renderer/asset_browser.rs`): scan-on-open + Rescan, lazy thumbnails (≤4 loads/frame), click-to-assign, drag-drop (ghost via ui overlay; texture drops onto viewport sprite hit / empty space, script drops onto hierarchy entity row — both undoable).
+- **Asset browser** (`panel_renderer/asset_browser.rs`): scan-on-open + Rescan, lazy thumbnails (≤4 loads/frame), click-to-select (the tile highlights and its full path goes to the status bar, never over a persistent error; resting on the tile offers the same path as its tooltip, the label under it being ellipsized; the selection travels by path across a rescan), the header's **Assign** button (enabled only when a loaded image tile is selected and the primary selection has a `Sprite`), drag-drop (ghost via ui overlay; texture drops onto viewport sprite hit / empty space, script drops onto hierarchy entity row — both undoable).
 - `EditorGame::update()` — main orchestration. Editor input → conditional game update (only if Playing) → render panels
 - Input routing: Editing/Paused → editor gets input. Playing → game gets input, editor hotkeys still work.
-- Dirty state: `CommandHistory::is_dirty()` is the source of truth; `EditorContext.is_dirty` is a per-frame mirror (synced once by `sync_dirty_mirror` before the status bar; `scene_io` reads the history); the OS window title renders `title_bar_text()` change-gated via `ctx.set_window_title` (game owns the title while Playing)
-- Inspector writeback: generated per-component by `editor_component_registry!` (editor crate) — `edit_*()` returns `Option<ComponentEdit<T>>` → `editor::apply_component_edit()` writes to world and records undo via `try_merge_or_push` (continuous edits merge by `field_hint`)
-- Play/Stop: snapshot world on Play (typed clone via `WorldSnapshot`), restore on Stop
+- Dirty state: `CommandHistory::is_dirty()` is the source of truth; `EditorContext.is_dirty` is a per-frame mirror (synced once by `sync_dirty_mirror` before the status bar; `scene_io` reads the history); the OS window title renders `title_bar_text()` change-gated via `ctx.set_window_title` (game owns the title while Playing). `sync_dirty_mirror` also writes two atomics for a wasm host that can't touch `EditorContext` directly: the combined `dirty_flag` (history OR persist-pending, the same value `EditorContext.is_dirty` gets — no in-tree reader today, a generic hook for a host that wants it) and the **history-only** `history_dirty_flag`, which the playground's save indicator and its switch/reset/import confirmations both read — the combined value lags a put that completes between frames, so a poll landing in that window would call a fully saved scene unsaved.
+- Inspector writeback: generated per-component by `editor_component_registry!` (editor crate) — `edit_*()` returns `Option<ComponentEdit<T>>` → `editor::apply_component_edit()` writes to world and records undo via `try_merge_or_push` (continuous edits merge by `field_hint`). One renderer serves both play states: while Playing the panel passes `read_only`, every row draws its value instead of its control, the add-component button draws disabled, and the heading's detail line gains " · live"
+- Play/Stop: snapshot world on Play (typed clone via `WorldSnapshot`), restore on Stop. Stop with edits recorded since Play (only possible while Paused) asks Keep / Discard / Cancel on the Modal layer — Keep rebases them onto the restored world, Discard truncates to the Play boundary, Cancel stays Paused; undo and redo inside a session stop at that boundary; edits to entities that existed only during Play do not survive Keep
 - Save/Load: Ctrl+S / Ctrl+Shift+S / Ctrl+O / Ctrl+N — `save_scene_with` (scene_io.rs) is the MANDATORY save choke point; save AND new/open are refused with a status-bar error during a play session (Playing or Paused — the world is mid-simulation). `SceneLoader` for load. Hardcoded paths (no file picker yet)
 - Status messages: `editor.status_bar.show_message("Saved")` after successful operations
 - Minimum window size: 1024x720 enforced for editor usability
-- **Editor prefs**: camera/grid/panel layout loaded in `init`, saved in `on_exit` (`editor_prefs.json`); menu Exit calls `ctx.request_exit()` (clean shutdown), never `process::exit`
+- **Editor prefs**: camera/view toggles/panel layout and the inspector's collapsed sections loaded in `init`, saved in `on_exit` (`editor_prefs.json`); menu Exit calls `ctx.request_exit()` (clean shutdown), never `process::exit`
 - **Font scoping**: editor font pinned at init and re-asserted every frame; `update_inner_game` swaps to `strings.active_font().or(game_base_font)` around `inner.update` so the game view localizes while chrome doesn't. View → "Cycle Game Locale" cycles `ctx.strings`
 - **Scene-authored UI**: `UiElementsHidden` inserted on init and Stop (after snapshot restore), removed on Play — UiLabel/UiPanel/UiButton only draw while the game runs
 
 ## Phase 1 Status
 Phase 1A–1H **complete**: entity CRUD, component add/remove, undo/redo, play/pause/stop, scene save/load, theme, status bar.
-Current editor work follows the UX-audit sprint order (Aug 27 2026): see
-`PROJECT_ROADMAP.md` § "Editor — UX Audit & Work Order" and
-`docs/EDITOR_UX_AUDIT.md` (§7 = the 5-sprint work order; live items are Studio
-Board issues, Phase = Editor). The old "Phase 2 (Ideal Editor UI)" lettering is
+Current editor work follows the **Playground UX** sprint on the Studio Board
+(`gh issue list -R beinsiculous/insiculous_2d`); `docs/EDITOR_UX_AUDIT.md` is
+history, reconciled 2026-09-10 with every item marked in the file, and its §7 ran
+as sprints 1–5 and sprint 6. The old "Phase 2 (Ideal Editor UI)" lettering is
 retired.
 
 ## Known Tech Debt
@@ -83,6 +88,11 @@ Tracked on the Studio Board: issue #90 (all files < 600 lines since June 2026; r
 | Scene saves must reach `common::vfs` (via `scene_serializer`) so parent creation and wasm storage are handled uniformly | `src/editor_game/scene_io_tests.rs test_save_scene_with_creates_parent_directories_and_writes_valid_scene` |
 | The host never invents physics: a scene with no `physics:` block runs Play with no `PhysicsSystem` and behaviors move transforms directly (with physics present, a body-less entity's velocity goes to a rapier body that does not exist) | `src/project_host.rs test_physics_builds_only_when_the_scene_declares_physics_settings`, `test_patrol_entity_advances_over_playing_frames_without_physics` |
 | Editor shortcuts must respect text focus so typing in an inspector field does not trigger global shortcuts | `src/editor_game/shortcuts_tests.rs test_key_routing_respects_text_focus_play_state_and_the_dialog` |
+| Edits made while Paused must never be silently erased by Stop | `src/editor_game/stop_confirm_tests.rs test_keep_applies_the_paused_edit_to_the_restored_world_and_undo_returns_to_the_authored_value` |
+| Undo inside a play session must not cross the Play boundary | `src/editor_game/stop_confirm_tests.rs test_undo_while_paused_stops_at_the_play_boundary` |
+| A scene snapshot must serialize the live world without touching the file, the saved mark or the history | `src/editor_game/snapshot_tests.rs test_scene_snapshot_serializes_the_live_world_with_unsaved_edits_and_leaves_file_history_and_path_alone` |
+| Preview Restart must reload the scene AND reset the host's play state or physics keeps the previous run's bodies | `src/project_host/preview.rs test_restart_returns_the_world_to_the_loaded_scene_and_clears_the_pause` |
+| A click in the asset browser selects and must never assign: a misclick used to overwrite the selected entity's texture | `src/panel_renderer/asset_browser.rs test_a_click_selects_the_tile_without_touching_the_entity`, `test_assign_sets_the_texture_and_undo_puts_the_old_one_back` |
 
 
 ## Godot Oracle — When Stuck

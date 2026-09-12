@@ -6,25 +6,26 @@
 //! and delegating to the inner game.
 //!
 //! The wrapper is split by feature:
+//! - [`game_impl`] — the `Game` trait impl: delegation and the frame's phases
 //! - [`menu_actions`] — menu bar rendering and action dispatch
 //! - [`scene_io`] — scene save/load/new
 //! - [`shortcuts`] — keyboard shortcuts and play state transitions
 //! - [`viewport_interaction`] — viewport picking and gizmo dragging
 
 use glam::Vec2;
-use winit::keyboard::KeyCode;
 
 use ecs::System;
-use editor::EditorContext;
+use editor::{EditorContext, EditorPlayState};
 use editor::world_snapshot::WorldSnapshot;
-use engine_core::contexts::{GameContext, RenderContext};
+use engine_core::contexts::GameContext;
 use engine_core::scene_data::PhysicsSettings;
-use engine_core::{AchievementManager, Game, Strings};
+use engine_core::Game;
 
 use crate::constants::EDITOR_PREFS_PATH;
 use crate::panel_renderer;
 
 mod api;
+mod game_impl;
 mod gizmo_drag;
 pub mod headless;
 mod menu_actions;
@@ -34,12 +35,17 @@ mod preferences;
 mod run_options;
 mod scene_confirm;
 mod scene_io;
+mod snapshot;
+mod stop_confirm;
+#[cfg(test)]
+mod stop_confirm_tests;
 mod script_status;
 mod shortcuts;
 mod viewport_interaction;
 
 pub(crate) use viewport_interaction::{build_pickable_entities, chrome_owns_mouse};
 pub use run_options::{run_game_with_editor, run_game_with_editor_opts, EditorRunOptions};
+pub use snapshot::{Completion, SceneSnapshot, SceneSnapshotRequest};
 
 /// Wraps a user's `Game` with the full editor UI overlay.
 struct EditorGame<G: Game> {
@@ -78,6 +84,7 @@ struct EditorGame<G: Game> {
     last_window_title: Option<String>,
     pub(super) api: api::ApiSession,
     pub(super) scene_confirm: scene_confirm::SceneConfirm,
+    pub(super) stop_confirm: stop_confirm::StopConfirm,
     /// Scene to open through the editor load path right after `init`
     /// (the standalone binary passes it via `EditorRunOptions` so
     /// scene_path/physics/dirty-state are recorded like any other load).
@@ -88,10 +95,20 @@ struct EditorGame<G: Game> {
     pub(super) pending_prefs: Option<editor::EditorPreferences>,
     pub(super) prefs_stable_time: f32,
     pub(super) dirty_flag: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    /// History-only mirror of `dirty_flag`, written by the same
+    /// [`Self::sync_dirty_mirror`] pass. The combined flag lags a
+    /// completed put by up to a frame, so a reader asking "are there
+    /// unsaved edits?" must consult this one instead.
+    pub(super) history_dirty_flag: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     pub(super) persist_pending: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     pub(super) script_errors: Option<std::sync::Arc<std::sync::Mutex<Vec<String>>>>,
     pub(super) play_frames: u32,
     pub(super) script_error_watermark: usize,
+    /// The preview's snapshot mailbox, when the web bridge installed one.
+    pub(super) scene_snapshot: Option<std::sync::Arc<snapshot::SceneSnapshotRequest>>,
+    /// Set while a preview window holds the simulation. Play here is refused
+    /// so two simulations of one scene never run at once.
+    pub(super) preview_open: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl<G: Game> EditorGame<G> {
@@ -114,6 +131,7 @@ impl<G: Game> EditorGame<G> {
             last_window_title: None,
             api: api::ApiSession::default(),
             scene_confirm: scene_confirm::SceneConfirm::default(),
+            stop_confirm: stop_confirm::StopConfirm::default(),
             initial_scene: None,
             asset_base: std::path::PathBuf::new(),
             prefs_slot: std::path::PathBuf::from(EDITOR_PREFS_PATH),
@@ -121,10 +139,13 @@ impl<G: Game> EditorGame<G> {
             pending_prefs: None,
             prefs_stable_time: 0.0,
             dirty_flag: None,
+            history_dirty_flag: None,
             persist_pending: None,
             script_errors: None,
             play_frames: 0,
             script_error_watermark: 0,
+            scene_snapshot: None,
+            preview_open: None,
         }
     }
 
@@ -159,65 +180,92 @@ impl<G: Game> EditorGame<G> {
         0.0
     }
 
-    /// While Playing WITH camera-follow armed, mirror the game's main-camera
-    /// entity — position AND zoom — onto the editor viewport so
-    /// the rendered view (derived from the viewport in `render`) follows the
-    /// game camera. Free camera (follow broken by a manual pan/zoom) and
-    /// Paused keep the user's view — picking stays truthful either way,
-    /// because render always derives from the same viewport.
-    pub(super) fn sync_viewport_from_main_camera(&mut self, world: &ecs::World) {
-        if !self.editor.is_playing() || !self.editor.is_camera_following() {
-            return;
-        }
-        if let Some((pos, zoom)) = engine_core::main_camera_pose(world) {
-            self.editor.viewport.set_camera_position(pos);
-            // adopt_ skips the interactive zoom clamp: parity with the
-            // shipped game even at extreme authored zooms.
-            self.editor.viewport.adopt_camera_zoom(zoom);
-        }
-    }
 
-    /// Render the toolbar and the play controls next to it.
+    /// Render the scene view's toolbar strip: the tools and the play
+    /// controls, laid out by the strip and drawn on its band.
     fn render_toolbar_and_play_controls(&mut self, ctx: &mut GameContext) {
-        // The toolbar floats inside the scene view — follow it as panels
-        // hide/collapse/resize.
-        if let Some(scene_bounds) = self.editor.scene_view_bounds() {
-            self.editor.toolbar.set_position(editor::toolbar_position_for(scene_bounds));
-        }
-
-        if let Some(tool) = self.editor.toolbar.render(ctx.ui, &self.editor.theme) {
-            // set_tool keeps the gizmo mode in sync with the clicked tool.
-            self.editor.set_tool(tool);
-        }
-
-        let toolbar_bounds = self.editor.toolbar.bounds();
-        self.editor.play_controls.position = Vec2::new(
-            toolbar_bounds.x + toolbar_bounds.width + self.editor.play_controls.spacing * 4.0,
-            toolbar_bounds.y,
-        );
+        // The strip belongs to the scene panel — no panel, no strip.
+        let Some(strip) = self.editor.toolbar_strip_bounds() else {
+            return;
+        };
         let play_state = self.editor.play_state();
+        let strip_layout = editor::toolbar_strip::layout(
+            strip,
+            &self.editor.toolbar,
+            &self.editor.play_controls,
+            play_state,
+        );
+        self.editor.play_controls.position = strip_layout.play_controls_origin;
+
+        // The overflow menu goes first: a blocking rect is consulted at each
+        // widget's own interact call, and in a window too short to hang the
+        // menu below the strip it shifts up over the strip's buttons, which
+        // must find its rect already there. Overlay scopes cannot nest, so
+        // the menu's scope closes before the strip's opens.
+        let overflow_pick = editor::overflow_menu::render_overflow_menu(
+            &mut self.editor.toolbar,
+            ctx.ui,
+            &self.editor.theme,
+            &strip_layout,
+            &self.editor.view,
+        );
+
+        editor::toolbar_strip::begin(ctx.ui, strip, &self.editor.theme);
+        let picked_tool = self.editor.toolbar.render(ctx.ui, &self.editor.theme, &strip_layout);
         let camera_follow = self.editor.is_camera_following();
         let theme = &self.editor.theme;
-        if let Some(action) =
-            self.editor.play_controls.render(ctx.ui, play_state, camera_follow, theme)
-        {
+        let play_action =
+            self.editor.play_controls.render(ctx.ui, play_state, camera_follow, theme);
+        let view_action = strip_layout.view_group.and_then(|origin| {
+            editor::view_toggles::render_group(ctx.ui, theme, origin, &self.editor.view)
+        });
+        editor::toolbar_strip::end(ctx.ui);
+
+        if let Some(tool) = picked_tool {
+            self.editor.set_tool(tool);
+        }
+        if let Some(action) = view_action {
+            match action {
+                editor::ViewGroupAction::Toggle(toggle) => {
+                    self.dispatch_editor_action(toggle.action(), false, ctx);
+                }
+                editor::ViewGroupAction::ResetLayout => {
+                    self.dispatch_editor_action(editor::EditorAction::ResetLayout, false, ctx);
+                }
+            }
+        }
+        if let Some(pick) = overflow_pick {
+            match pick {
+                editor::OverflowPick::Tool(tool) => self.editor.set_tool(tool),
+                editor::OverflowPick::Toggle(toggle) => {
+                    self.dispatch_editor_action(toggle.action(), false, ctx);
+                }
+                editor::OverflowPick::ResetLayout => {
+                    self.dispatch_editor_action(editor::EditorAction::ResetLayout, false, ctx);
+                }
+            }
+        }
+        if let Some(action) = play_action {
             if self.handle_play_action(action, ctx.world) {
                 self.inner.on_play_stopped(ctx);
             }
         }
     }
 
-    /// Render the dock panel frames and their content. Returns the panel
-    /// content areas for later viewport/gizmo hit testing.
-    fn render_panels(
-        &mut self,
-        ctx: &mut GameContext,
-        pickables: &[editor::PickableEntity],
-    ) -> Vec<(editor::PanelId, common::Rect)> {
+    /// Render the dock panel frames and their content. Picking and the gizmo
+    /// take their rect from `scene_view_bounds()`, not from here: the panel's
+    /// content area includes the toolbar strip, the viewport does not.
+    fn render_panels(&mut self, ctx: &mut GameContext, pickables: &[editor::PickableEntity]) {
         let theme = &self.editor.theme;
         let content_areas = self.editor.dock_area.render(ctx.ui, theme);
+        // A panel the dock leaves out — a narrow-mode tab, a hidden panel —
+        // never renders, so its rename bookkeeping runs from here instead;
+        // an undrawn rename field would otherwise keep the keyboard.
+        if !content_areas.iter().any(|(panel_id, _)| *panel_id == editor::PanelId::HIERARCHY) {
+            self.editor.hierarchy.settle_rename_focus(ctx.ui);
+        }
 
-        for (panel_id, bounds) in content_areas.clone() {
+        for (panel_id, bounds) in content_areas {
             ctx.ui.push_clip_rect(ui::Rect::new(bounds.x, bounds.y, bounds.width, bounds.height));
             panel_renderer::render_panel_content(
                 &mut self.editor,
@@ -232,8 +280,6 @@ impl<G: Game> EditorGame<G> {
 
         // After the content loop so the hover/drag grabber draws on top.
         self.editor.dock_area.handle_resize(ctx.ui, &self.editor.theme);
-
-        content_areas
     }
 
     /// Delegate the frame to the inner game — only while Playing, clipped to
@@ -316,6 +362,9 @@ impl<G: Game> EditorGame<G> {
     /// can arm a gesture, so no widget arms under a modal.
     fn render_early_overlays(&mut self, ctx: &mut GameContext) {
         self.render_scene_confirm_dialog(ctx);
+        if self.render_stop_confirm_dialog(ctx) {
+            self.inner.on_play_stopped(ctx);
+        }
 
         self.editor.drag_drop.begin_frame(
             ctx.ui.mouse_pos(),
@@ -328,6 +377,16 @@ impl<G: Game> EditorGame<G> {
     /// Complete the frame: sync dirty mirror, render status bar, publish
     /// window title on change, and clip engine UI to the scene viewport.
     fn finish_frame(&mut self, ctx: &mut GameContext) {
+        // Nothing on screen moves outside a play session: `prepare_frame`
+        // already froze engine time, so no particle or sprite animation is
+        // live in Editing or Paused and a still window can stop asking for
+        // frames. A future feature that animates something outside Playing
+        // has to clear this itself.
+        ctx.set_idle_throttle_ok(matches!(
+            self.editor.play_state(),
+            EditorPlayState::Editing | EditorPlayState::Paused
+        ));
+
         self.sync_dirty_mirror();
         self.save_preferences_if_changed(ctx.delta_time);
         self.open_pending_source();
@@ -376,147 +435,9 @@ impl<G: Game> EditorGame<G> {
         if let Some(flag) = &self.dirty_flag {
             flag.store(dirty, std::sync::atomic::Ordering::Relaxed);
         }
-    }
-}
-
-impl<G: Game> Game for EditorGame<G> {
-    fn register_achievements(&self, achievements: &mut AchievementManager, strings: &Strings) {
-        self.inner.register_achievements(achievements, strings);
-    }
-
-    fn init(&mut self, ctx: &mut GameContext) {
-        // Editor look for generic ui widgets (buttons, sliders, inputs):
-        // derive the ui theme from the editor palette once at startup.
-        ctx.ui.set_theme(self.editor.theme.ui_theme());
-
-        // Restore camera/grid/panel layout from the previous session
-        self.load_preferences();
-
-        // Scene-authored UI elements stay hidden while Editing/Paused —
-        // removed on Play, re-inserted on Stop. Standalone games never
-        // insert this, so their UI always draws.
-        ctx.world.insert_resource(engine_core::UiElementsHidden);
-
-        // Delegate to inner game
-        self.inner.init(ctx);
-        self.asset_base = std::path::PathBuf::from(ctx.assets.base_path());
-
-        // Whatever font the game set up is the game view's baseline; locale
-        // fonts layer on top of it during play (see update_inner_game).
-        // Captured BEFORE the editor faces load: the game's font is the
-        // first loaded and therefore the auto-claimed default — loading
-        // DejaVu first would poison this capture and reskin the game view.
-        self.game_base_font = ctx.ui.default_font();
-
-        // The editor's chrome faces ship with the editor crate
-        // — the old search started at the GAME's assets/fonts/font.ttf, so
-        // an opened project's serif skinned the whole editor.
-        let load = |ui: &mut ui::UIContext, name: &str, bytes: &[u8]| match ui.load_font(bytes) {
-            Ok(handle) => Some(handle),
-            Err(e) => {
-                log::error!("editor {name} font failed to load: {e}");
-                None
-            }
-        };
-        self.editor.fonts = editor::fonts::EditorFonts {
-            regular: load(ctx.ui, "regular", editor::fonts::EDITOR_FONT_REGULAR),
-            bold: load(ctx.ui, "bold", editor::fonts::EDITOR_FONT_BOLD),
-            mono: load(ctx.ui, "mono", editor::fonts::EDITOR_FONT_MONO),
-        };
-        self.editor_font = self.editor.fonts.regular;
-        self.font_loaded = self.editor_font.is_some();
-        if let Some(regular) = self.editor_font {
-            // Explicit claim: load_font only auto-claims the FIRST font
-            // ever loaded, which is the game's when it loaded one.
-            ctx.ui.set_default_font(regular);
-        } else {
-            log::warn!("No editor font loaded. Text will render as placeholders.");
+        if let Some(flag) = &self.history_dirty_flag {
+            flag.store(is_command_dirty, std::sync::atomic::Ordering::Relaxed);
         }
-
-        // Open the initial scene through the REAL editor load path:
-        // dry-run guard, scene_path, physics settings + resource, history
-        // reset — an old bypass load recorded none of those, so
-        // the title stayed "Untitled" and a save silently dropped physics.
-        if let Some(path) = self.initial_scene.take() {
-            self.load_scene_with_feedback(ctx.world, ctx.assets, &path);
-        }
-    }
-
-    fn update(&mut self, ctx: &mut GameContext) {
-        let window_size = ctx.window_size;
-        self.prepare_frame(ctx);
-        self.render_early_overlays(ctx);
-        self.handle_menu_bar(ctx, window_size);
-        self.render_toolbar_and_play_controls(ctx);
-        self.drain_api_requests(ctx);
-        // Built once per frame: after the last handler that can delete an
-        // entity (menu bar, command API) and before the first consumer
-        // (panels, picking). A click must not receive a deleted entity, so
-        // panel rendering must never delete one. Moves are harmless: a
-        // pickable's position is its GlobalTransform2D, which only the
-        // transform system writes, in prepare_frame.
-        let pickables = if self.editor.is_playing() {
-            Vec::new()
-        } else {
-            build_pickable_entities(ctx.world)
-        };
-        let content_areas = self.render_panels(ctx, &pickables);
-        self.handle_viewport_picking(ctx.ui, ctx.input, ctx.world, &pickables);
-        self.handle_gizmo(ctx, &content_areas);
-        self.update_inner_game(ctx);
-        self.finish_frame(ctx);
-    }
-
-    fn render(&mut self, ctx: &mut RenderContext) {
-        self.inner.render(ctx);
-        // The editor viewport is the single source of truth for the view:
-        // derive the GPU camera from it so sprites land inside the scene
-        // panel exactly where the overlay (gizmo, picking, grid) expects
-        // them. Games that hand-write `ctx.camera` in a custom `render()`
-        // are overridden here — the supported path inside the editor is a
-        // main-camera entity (mirrored onto the viewport while Playing).
-        *ctx.camera = self.editor.viewport.to_window_render_camera(ctx.window_size);
-        // Bound the game-world passes to the scene panel: the
-        // game stops painting over editor chrome and the GPU stops shading
-        // the whole window. A hidden/collapsed panel yields a zero-size
-        // rect — no game world at all — never None (full window).
-        *ctx.viewport_scissor = Some(
-            self.editor
-                .scene_view_bounds()
-                .unwrap_or(common::Rect::new(0.0, 0.0, 0.0, 0.0)),
-        );
-    }
-
-    fn on_key_pressed(&mut self, key: KeyCode, ctx: &mut GameContext) {
-        self.handle_editor_key(key, ctx);
-    }
-
-    fn on_key_released(&mut self, key: KeyCode, ctx: &mut GameContext) {
-        // Seal the arrow-nudge merge window: consecutive repeats of a held
-        // arrow merged into one NudgeCommand; releasing the key closes that
-        // entry so the next hold starts a fresh undo step.
-        if !self.editor.is_playing()
-            && matches!(
-                key,
-                KeyCode::ArrowLeft | KeyCode::ArrowRight | KeyCode::ArrowUp | KeyCode::ArrowDown
-            )
-        {
-            self.command_history.break_merge();
-        }
-        self.inner.on_key_released(key, ctx);
-    }
-
-    fn on_resize(&mut self, width: u32, height: u32) {
-        self.inner.on_resize(width, height);
-    }
-
-    fn on_exit(&mut self) {
-        self.save_preferences_now();
-        self.inner.on_exit();
-    }
-
-    fn register_scripts(&mut self, registry: &mut engine_core::scripting::ScriptRegistry) {
-        self.inner.register_scripts(registry);
     }
 }
 
@@ -531,6 +452,8 @@ mod camera_follow_tests;
 #[cfg(test)]
 mod gizmo_drag_tests;
 #[cfg(test)]
+mod history_dirty_tests;
+#[cfg(test)]
 mod play_session_tests;
 #[cfg(test)]
 mod preferences_tests;
@@ -538,6 +461,8 @@ mod preferences_tests;
 mod scene_confirm_tests;
 #[cfg(test)]
 mod scene_io_tests;
+#[cfg(test)]
+mod snapshot_tests;
 #[cfg(test)]
 mod shortcuts_tests;
 #[cfg(test)]

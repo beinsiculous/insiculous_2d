@@ -20,6 +20,8 @@ pub enum WidgetSlot {
     Field(usize),
     /// The remove [X] button for the component.
     Remove,
+    /// The component's header row, which is its collapse toggle.
+    Header,
     /// The "+ Add Component" button below the component list.
     AddButton,
     /// A row in the Add Component popup with row index `n`.
@@ -49,6 +51,7 @@ impl FieldId {
         match slot {
             WidgetSlot::Field(field_index) => Self::new(component_index, field_index, 0),
             WidgetSlot::Remove => Self::new(component_index, 97, 0),
+            WidgetSlot::Header => Self::new(component_index, 96, 0),
             WidgetSlot::AddButton => Self::new(component_index, 98, 0),
             WidgetSlot::PopupRow(row_index) => {
                 // The row rides in the subfield slot; past the stride it would
@@ -102,6 +105,9 @@ pub struct EditableFieldStyle {
     pub label_color: Color,
     /// Value color
     pub value_color: Color,
+    /// Label and value colour of a row drawn in its read-only form (the
+    /// whole inspector while a play session runs)
+    pub muted_color: Color,
     /// Header color for component names
     pub header_color: Color,
     /// "X" axis label color in Vec2 fields
@@ -136,12 +142,20 @@ impl EditableFieldStyle {
         self.numeric_font = font;
         self
     }
+
+    /// Height of a control drawn inside a row: the row less the margin that
+    /// keeps two stacked rows' controls from touching. Derived from
+    /// [`row_height`](Self::row_height) rather than a constant, so a second
+    /// style with taller rows gets taller inputs.
+    pub fn field_height(&self) -> f32 {
+        self.row_height - 4.0
+    }
 }
 
 impl Default for EditableFieldStyle {
     fn default() -> Self {
         Self {
-            row_height: 24.0,
+            row_height: crate::layout::ROW_HEIGHT,
             label_width: 120.0,
             padding: crate::layout::PADDING,
             checkbox_size: 16.0,
@@ -155,6 +169,7 @@ impl Default for EditableFieldStyle {
             color_input_gap: 4.0,
             label_color: Color::new(0.7, 0.7, 0.7, 1.0),
             value_color: Color::new(1.0, 1.0, 1.0, 1.0),
+            muted_color: Color::new(0.53, 0.53, 0.53, 1.0),
             header_color: Color::new(0.9, 0.9, 0.5, 1.0),
             axis_x_label: Color::new(0.8, 0.4, 0.4, 1.0),
             axis_y_label: Color::new(0.4, 0.8, 0.4, 1.0),
@@ -242,6 +257,9 @@ mod tests {
 
         let remove_id = ui::WidgetId::from(FieldId::slot(component, WidgetSlot::Remove));
         assert!(ids.insert(remove_id), "Remove must be unique");
+
+        let header_id = ui::WidgetId::from(FieldId::slot(component, WidgetSlot::Header));
+        assert!(ids.insert(header_id), "Header must be unique");
 
         let add_id = ui::WidgetId::from(FieldId::slot(component, WidgetSlot::AddButton));
         assert!(ids.insert(add_id), "AddButton must be unique");

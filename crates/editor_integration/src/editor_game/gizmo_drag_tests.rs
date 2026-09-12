@@ -91,7 +91,7 @@ fn test_collider_scaling_keeps_circles_round_and_capsules_axis_aligned() {
 #[test]
 fn test_slow_snapped_drag_steps_grid_cells_instead_of_freezing() {
     let mut game = editor_game();
-    game.editor.set_snap_to_grid(true);
+    game.editor.view.snap = true;
     game.editor.set_grid_size(32.0);
     let mut world = World::new();
     let a = spawn_at(&mut world, Vec2::new(5.0, 0.0));
@@ -118,7 +118,7 @@ fn test_snapped_multi_drag_keeps_formation_offsets_with_the_pref_or_ctrl() {
 
     for (label, pref, ctrl_held) in [("snap pref", true, false), ("Ctrl held", false, true)] {
         let mut game = editor_game();
-        game.editor.set_snap_to_grid(pref);
+        game.editor.view.snap = pref;
         game.editor.set_grid_size(32.0);
         game.gizmo_drag = Some(drag_state_for(&world, &[primary, other]));
 

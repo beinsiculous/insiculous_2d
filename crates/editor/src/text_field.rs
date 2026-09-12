@@ -25,7 +25,7 @@ pub fn edit_string(
     draw_field_label(ui, label, &layout, style);
 
     // Text input bounds — wider than numeric inputs; strings are longer.
-    let input_height = style.row_height - 4.0;
+    let input_height = style.field_height();
     let input_bounds = Rect::new(
         layout.control_x,
         layout.pos.y + (style.row_height - input_height) / 2.0,

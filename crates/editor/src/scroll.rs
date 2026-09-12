@@ -25,8 +25,11 @@ use glam::Vec2;
 
 use common::Rect;
 
-/// Pixels scrolled per wheel notch (matches the asset browser's feel).
-const WHEEL_STEP: f32 = 30.0;
+/// Pixels a panel scrolls per wheel notch. One mouse notch should move a
+/// readable amount of a list without losing the reader's place; a trackpad
+/// arrives as fractions of a notch, and at 100 px to the notch this keeps
+/// the content moving about as far as the finger did.
+const WHEEL_STEP: f32 = 80.0;
 
 /// Vertical scroll offset for one panel.
 #[derive(Debug, Clone, Default)]
@@ -107,7 +110,7 @@ mod tests {
         assert_eq!(scroll.begin_frame(bounds(), INSIDE, -3.0, 100.0), 0.0);
 
         // 150px of content in a 100px viewport allows 50; ten notches down
-        // would be 300.
+        // would be far past it.
         scroll.end_frame(150.0, 100.0);
         for _ in 0..10 {
             scroll.begin_frame(bounds(), INSIDE, -1.0, 100.0);
@@ -123,10 +126,10 @@ mod tests {
     fn test_shrinking_content_reclamps_the_offset() {
         let mut scroll = ScrollState::default();
         scroll.end_frame(500.0, 100.0);
-        for _ in 0..5 {
+        for _ in 0..3 {
             scroll.begin_frame(bounds(), INSIDE, -1.0, 100.0);
         }
-        assert_eq!(scroll.offset(), 150.0);
+        assert_eq!(scroll.offset(), WHEEL_STEP * 3.0);
 
         // A collapse shrinks the content below the current offset: the
         // end-of-frame measurement snaps the offset back into range, so the

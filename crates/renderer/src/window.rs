@@ -161,6 +161,13 @@ fn focus_without_scroll() -> web_sys::FocusOptions {
 /// `preventScroll`, winit's `focus()` finds it focused and moves nothing. One listener per
 /// page, installed by the first canvas and focusing whichever canvas was pressed, so a
 /// page that creates a window more than once accumulates nothing.
+///
+/// A press is not the only way a gesture reaches the canvas: a drag that started on the
+/// page and crosses into it never fires `pointerdown` there, so the canvas stays unfocused
+/// and winit's own `focus()` fires on some later press, scrolling mid-gesture. The
+/// `pointermove` half claims focus the moment a held pointer moves over the canvas, and
+/// bails while a text control holds focus or the page has a live text selection, so
+/// drag-selecting in the console keeps both the selection and the caret.
 #[cfg(target_arch = "wasm32")]
 fn focus_before_winit_does(document: &web_sys::Document) {
     use std::cell::Cell;
@@ -182,6 +189,39 @@ fn focus_before_winit_does(document: &web_sys::Document) {
             let _ = canvas.focus_with_options(&focus_without_scroll());
         }
     });
+    let on_pointer_move =
+        Closure::<dyn FnMut(web_sys::MouseEvent)>::new(|event: web_sys::MouseEvent| {
+            if event.buttons() == 0 {
+                return;
+            }
+            let Some(moved_over) = event.target() else {
+                return;
+            };
+            let Ok(canvas) = moved_over.dyn_into::<web_sys::HtmlCanvasElement>() else {
+                return;
+            };
+            let Some(document) = canvas.owner_document() else {
+                return;
+            };
+            if let Some(focused) = document.active_element() {
+                if focused.is_same_node(Some(canvas.as_ref())) {
+                    return;
+                }
+                if focused.closest(FOCUS_HOLDING_SELECTOR).ok().flatten().is_some() {
+                    return;
+                }
+            }
+            // Plain page text being drag-selected (the console's output is an
+            // <output>, never the active element) shows only as a live
+            // selection; claiming focus mid-sweep would collapse it.
+            if let Some(selection) = document.get_selection().ok().flatten() {
+                if !selection.is_collapsed() {
+                    return;
+                }
+            }
+            let _ = canvas.focus_with_options(&focus_without_scroll());
+        });
+
     let options = web_sys::AddEventListenerOptions::new();
     options.set_capture(true);
     let _ = document.add_event_listener_with_callback_and_add_event_listener_options(
@@ -189,6 +229,20 @@ fn focus_before_winit_does(document: &web_sys::Document) {
         on_pointer_down.as_ref().unchecked_ref(),
         &options,
     );
-    // The one listener lives as long as the page.
+    let _ = document.add_event_listener_with_callback_and_add_event_listener_options(
+        "pointermove",
+        on_pointer_move.as_ref().unchecked_ref(),
+        &options,
+    );
+    // The two listeners live as long as the page.
     on_pointer_down.forget();
+    on_pointer_move.forget();
 }
+
+/// Elements whose focus a mid-drag canvas must not steal: taking it would drop a
+/// half-typed value's caret or collapse a text selection the drag is making.
+#[cfg(target_arch = "wasm32")]
+const FOCUS_HOLDING_SELECTOR: &str = concat!(
+    "input, textarea, select, button, summary, dialog, ",
+    "[contenteditable]:not([contenteditable=\"false\"])"
+);

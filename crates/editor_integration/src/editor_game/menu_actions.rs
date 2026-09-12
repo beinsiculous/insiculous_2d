@@ -23,12 +23,7 @@ impl<G: Game> EditorGame<G> {
                 self.editor.menu_bar.set_checked("View", label, visible);
             }
         }
-        let grid = self.editor.is_grid_visible();
-        self.editor.menu_bar.set_checked("View", "Toggle Grid", grid);
-        let colliders = self.editor.is_colliders_visible();
-        self.editor.menu_bar.set_checked("View", "Toggle Colliders", colliders);
-        let snap = self.editor.is_snap_to_grid();
-        self.editor.menu_bar.set_checked("View", "Snap to Grid", snap);
+        self.editor.view.sync_menu(&mut self.editor.menu_bar);
     }
 
     /// Render the menu bar and dispatch the chosen label as an editor
@@ -53,8 +48,8 @@ impl<G: Game> EditorGame<G> {
     /// Toggle snap-to-grid and report the new state on the status bar
     /// (shared by the View-menu item and the bare `S` shortcut).
     pub(super) fn toggle_snap_with_feedback(&mut self) {
-        self.editor.toggle_snap_to_grid();
-        let message = if self.editor.is_snap_to_grid() {
+        let is_snap = self.editor.view.toggle(editor::ViewToggle::Snap);
+        let message = if is_snap {
             format!("Snap to grid: on ({}px)", self.editor.grid_size())
         } else {
             "Snap to grid: off".to_string()

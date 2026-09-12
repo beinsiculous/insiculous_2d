@@ -17,12 +17,34 @@ pub fn render_panel_content(
     command_history: &mut CommandHistory,
     pickables: &[editor::PickableEntity],
 ) {
+    // A panel shown as the dock's narrow-mode overlay covers the viewport:
+    // its widgets have to live on the floating band, or the overlay's own
+    // blocking rect would make the field the visitor came to edit inert.
+    let narrow_overlay = editor.dock_area.narrow_overlay() == Some(panel_id);
+    if narrow_overlay {
+        ctx.ui.begin_overlay_in(ui::UiLayer::Floating, bounds);
+    }
+    render_panel_body(editor, ctx, panel_id, bounds, command_history, pickables);
+    if narrow_overlay {
+        ctx.ui.end_overlay();
+    }
+}
+
+/// The content itself, once the band it belongs on has been entered.
+fn render_panel_body(
+    editor: &mut EditorContext,
+    ctx: &mut GameContext,
+    panel_id: PanelId,
+    bounds: common::Rect,
+    command_history: &mut CommandHistory,
+    pickables: &[editor::PickableEntity],
+) {
     let padding = layout::PADDING;
     let content_x = bounds.x + padding;
     let y = bounds.y + padding;
 
     match panel_id {
-        PanelId::SCENE_VIEW => render_scene_view(editor, ctx, bounds, pickables),
+        PanelId::SCENE_VIEW => render_scene_view(editor, ctx.ui, ctx.world, pickables),
         PanelId::HIERARCHY => render_hierarchy(editor, ctx, bounds, command_history),
         PanelId::INSPECTOR => {
             if !editor.asset_browser.scanned {
@@ -45,15 +67,23 @@ pub fn render_panel_content(
     }
 }
 
-pub(crate) use asset_browser::render_drag_ghost;
+pub(crate) use drag_ghost::render_drag_ghost;
 
 /// Scene view — grid info, viewport origin crosshair, and play-state border.
-fn render_scene_view(
+///
+/// Every overlay here maps through the VIEWPORT (the content area below the
+/// toolbar strip), never the panel's whole content rect, so the grid, the
+/// axes, the colliders and the outlines cannot draw into the strip. A panel
+/// too short to hold a viewport under its strip draws nothing here.
+pub(super) fn render_scene_view(
     editor: &EditorContext,
-    ctx: &mut GameContext,
-    bounds: common::Rect,
+    ui: &mut ui::UIContext,
+    world: &ecs::World,
     pickables: &[editor::PickableEntity],
 ) {
+    let Some(bounds) = editor.scene_view_bounds() else {
+        return;
+    };
     let theme = &editor.theme;
     let padding = layout::PADDING;
     let content_x = bounds.x + padding;
@@ -62,15 +92,15 @@ fn render_scene_view(
     // Authoring grid — a square, zoom-adaptive ruler drawn under everything
     // else in the panel. The size label comes after so lines never strike
     // through the text.
-    if editor.is_grid_visible() {
+    if editor.view.grid {
         editor::render_grid_overlay(
-            ctx.ui,
+            ui,
             &editor.grid,
             &editor.viewport,
             &editor.theme.grid_colors(),
             ui::Rect::new(bounds.x, bounds.y, bounds.width, bounds.height),
         );
-        ctx.ui.label_styled(
+        ui.label_styled(
             &format!("Grid: {}px", editor.grid_size()),
             Vec2::new(content_x, y),
             theme.text_muted,
@@ -81,14 +111,14 @@ fn render_scene_view(
     // Draw the world-origin crosshair where (0,0) actually is under the
     // current pan/zoom (the panel clip rect trims any overshoot).
     let center = editor.world_to_screen(Vec2::ZERO);
-    ctx.ui.circle(center, 5.0, theme.border_subtle);
-    ctx.ui.line(
+    ui.circle(center, 5.0, theme.border_subtle);
+    ui.line(
         Vec2::new(center.x - 20.0, center.y),
         Vec2::new(center.x + 20.0, center.y),
         theme.separator,
         1.0,
     );
-    ctx.ui.line(
+    ui.line(
         Vec2::new(center.x, center.y - 20.0),
         Vec2::new(center.x, center.y + 20.0),
         theme.separator,
@@ -97,15 +127,31 @@ fn render_scene_view(
 
     // Collider outlines — drawn over the rendered sprites so physics shapes
     // can be compared against the visuals and tuned until they line up.
-    if editor.is_colliders_visible() {
+    if editor.view.colliders {
         editor::render_collider_overlay(
-            ctx.ui,
-            ctx.world,
+            ui,
+            world,
             &editor.viewport,
             &editor.selection,
             &editor.theme.collider_overlay_colors(),
             bounds,
         );
+    }
+
+    // Game frame overlay — drawn in a muted token outlining the world rect
+    // shown by the game when run at its configured resolution, centered on the
+    // scene's main camera.
+    if editor.view.game_frame {
+        if let Some((pos, zoom)) = engine_core::main_camera_pose(world) {
+            let rect = editor::game_frame_rect(pos, zoom, editor.game_frame);
+            editor::render_game_frame_overlay(
+                ui,
+                &editor.viewport,
+                rect,
+                editor.theme.game_frame,
+                bounds,
+            );
+        }
     }
 
     // Selection + hover outlines — an editing affordance, so hidden while
@@ -114,9 +160,9 @@ fn render_scene_view(
     // click selects; hover reads the same input-frame mouse state picking
     // will read one step later, so hint and click agree.
     if !editor.is_playing() {
-        let mouse = ctx.ui.mouse_pos();
+        let mouse = ui.mouse_pos();
         let hover_allowed = editor.viewport.contains_screen_point(mouse)
-            && !crate::editor_game::chrome_owns_mouse(ctx.ui)
+            && !crate::editor_game::chrome_owns_mouse(ui)
             && !editor.drag_drop.suppresses_click()
             && !editor.gizmo_has_priority();
         let hovered = if hover_allowed {
@@ -125,7 +171,7 @@ fn render_scene_view(
             None
         };
         editor::render_selection_outline(
-            ctx.ui,
+            ui,
             &editor.viewport,
             &editor.selection,
             hovered,
@@ -139,7 +185,7 @@ fn render_scene_view(
     let border_color = theme.play_state_border(editor.play_state());
     let outline_width = if editor.in_play_session() { 3.0 } else { 1.0 };
 
-    ctx.ui.rect_border(bounds, border_color, outline_width, 0.0);
+    ui.rect_border(bounds, border_color, outline_width, 0.0);
 }
 
 /// Hierarchy — tree view with click-to-select, Ctrl toggle, Shift range
@@ -194,7 +240,7 @@ fn render_hierarchy(
                 }
                 log::info!(
                     "Selected entity: {} ({})",
-                    HierarchyPanel::entity_display_name(ctx.world, entity_id),
+                    editor::entity_display_name(ctx.world, entity_id),
                     entity_id.value()
                 );
             }
@@ -313,7 +359,7 @@ pub(super) fn apply_script_drop(
         params,
     };
 
-    let display_name = HierarchyPanel::entity_display_name(world, entity);
+    let display_name = editor::entity_display_name(world, entity);
 
     // Attaching is idempotent, like assigning a texture: the same file
     // dropped twice does not bind the script twice.
@@ -361,7 +407,15 @@ fn render_default(ctx: &mut GameContext, content_x: f32, y: f32) {
 
 mod add_component_popup;
 mod asset_browser;
+pub(crate) mod color_editor;
+mod drag_ghost;
 mod inspector;
+#[cfg(test)]
+mod scene_view_tests;
+#[cfg(test)]
+mod inspector_tests;
+#[cfg(test)]
+mod color_editor_tests;
 pub mod script_catalog;
 use inspector::render_inspector;
 pub use script_catalog::build_script_catalog;

@@ -31,152 +31,32 @@ pub struct InspectorFrame<'a> {
     pub width: f32,
     /// Vertical gap before each component block.
     pub section_gap: f32,
+    /// Draw every row in its read-only form: a play session is running and
+    /// an edit made now would mutate the live world outside the history.
+    pub read_only: bool,
 }
+
+/// The disclosure markers a header and an Advanced row carry: a section
+/// that is open points down, a collapsed one points at its own name.
+const OPEN_MARKER: &str = "\u{25be}";
+const CLOSED_MARKER: &str = "\u{25b8}";
+
+/// Horizontal space at a header's right edge left to the remove [X], so a
+/// click meant for it never lands on the collapse toggle instead.
+const HEADER_REMOVE_ZONE: f32 = 24.0;
 
 /// Fallback content width for inspectors constructed without an explicit
 /// panel width (tests, standalone widget demos).
 const DEFAULT_INSPECTOR_WIDTH: f32 = 300.0;
 
-/// Gap kept between the end of a label and its control column.
-const LABEL_GAP: f32 = 6.0;
-
-/// Draw a field label at the row position, ellipsized so it can never run
-/// under the control that starts at `control_x`.
-pub(crate) fn draw_field_label(
-    ui: &mut UIContext,
-    label: &str,
-    layout: &RowLayout,
-    style: &EditableFieldStyle,
-) {
-    let pos = layout.pos;
-    let budget = (layout.control_x - pos.x - LABEL_GAP).max(0.0);
-    let shown =
-        crate::row_layout::ellipsize(label, budget, |s| ui.measure_text_styled(s, style.label_font).x);
-    ui.label_styled(&shown, Vec2::new(pos.x, pos.y + 4.0), style.label_color, style.label_font);
-}
-
-/// Render an editable f32 value with a text input box (drag-scrub,
-/// Up/Down nudge, soft-range semantics — see [`ui::FloatFieldOpts`]).
-pub fn edit_f32(
-    ui: &mut UIContext,
-    id: FieldId,
-    label: &str,
-    value: f32,
-    range: RangeInclusive<f32>,
-    layout: RowLayout,
-    style: &EditableFieldStyle,
-) -> FieldEdit<f32> {
-    let opts = ui::FloatFieldOpts::range(*range.start(), *range.end())
-        .with_step(scrub_step(&range));
-    edit_f32_opts(ui, id, label, value, opts, layout, style)
-}
-
-/// The status-bar line for a typed value outside its soft range.
-pub(crate) fn out_of_range_warning(label: &str, value: f32, opts: &ui::FloatFieldOpts) -> String {
-    format!(
-        "{label} = {value:.2}{} is outside the usual {}..{}",
-        opts.suffix, opts.min, opts.max
-    )
-}
-
-/// [`edit_f32`] with explicit float-field options (hard clamp, suffix).
-/// A typed commit outside a SOFT range is accepted; the returned
-/// [`FieldEdit`] carries the warning for the host to surface.
-pub fn edit_f32_opts(
-    ui: &mut UIContext,
-    id: FieldId,
-    label: &str,
-    value: f32,
-    opts: ui::FloatFieldOpts,
-    layout: RowLayout,
-    style: &EditableFieldStyle,
-) -> FieldEdit<f32> {
-    draw_field_label(ui, label, &layout, style);
-    let opts = opts.with_font(opts.font.or(style.numeric_font));
-
-    let input_height = style.row_height - 4.0;
-    let input_bounds = Rect::new(
-        layout.control_x,
-        layout.pos.y + (style.row_height - input_height) / 2.0,
-        layout.clamp_width(style.input_width),
-        input_height,
-    );
-
-    let result = ui.float_input(id, value, opts, input_bounds);
-    let warnings = if result.out_of_range {
-        vec![out_of_range_warning(label, result.value, &opts)]
-    } else {
-        Vec::new()
-    };
-    let result = if result.changed {
-        EditResult::Changed(result.value)
-    } else {
-        EditResult::Unchanged
-    };
-    FieldEdit { result, warnings }
-}
-
-/// Wrap a degree value into `-180.0..180.0` (720° → 0°, 190° → −170°).
-pub fn wrap_degrees(deg: f32) -> f32 {
-    (deg + 180.0).rem_euclid(360.0) - 180.0
-}
-
-/// Render an editable boolean value with a checkbox.
-pub fn edit_bool(
-    ui: &mut UIContext,
-    id: FieldId,
-    label: &str,
-    value: bool,
-    layout: RowLayout,
-    style: &EditableFieldStyle,
-) -> EditResult<bool> {
-    draw_field_label(ui, label, &layout, style);
-
-    let checkbox_bounds = Rect::new(
-        layout.control_x,
-        layout.pos.y + (style.row_height - style.checkbox_size) / 2.0,
-        style.checkbox_size,
-        style.checkbox_size,
-    );
-
-    // Render checkbox and check if toggled
-    let toggled = ui.checkbox(id, value, checkbox_bounds);
-
-    if toggled {
-        EditResult::Changed(!value)
-    } else {
-        EditResult::Unchanged
-    }
-}
+pub use crate::field_widgets::{
+    component_header, cycle_step, edit_bool, edit_cycle, edit_f32, edit_f32_opts, wrap_degrees,
+};
+pub(crate) use crate::field_widgets::{draw_field_label, out_of_range_warning};
 
 // Read-only string/u32 displays live in `text_field.rs` (moved for file
 // size), re-exported from the crate root as before.
 use crate::text_field::{display_string, display_u32};
-
-/// Step an index forward or backward through `count` values, wrapping at
-/// the ends. Pure helper behind [`EditableInspector::cycle`].
-pub fn cycle_step(index: usize, count: usize, forward: bool) -> usize {
-    if count == 0 {
-        return 0;
-    }
-    if forward {
-        (index + 1) % count
-    } else {
-        (index + count - 1) % count
-    }
-}
-
-/// Calculate the Y position after rendering a component section header.
-pub fn component_header(
-    ui: &mut UIContext,
-    type_name: &str,
-    x: f32,
-    y: f32,
-    style: &EditableFieldStyle,
-) -> f32 {
-    ui.label_styled(type_name, glam::Vec2::new(x, y), style.header_color, style.header_font);
-    y + style.row_height + 4.0
-}
 
 /// A builder for constructing editable component inspectors.
 ///
@@ -194,6 +74,41 @@ pub struct EditableInspector<'a> {
     warnings: Vec<String>,
     scroll_target: Option<&'static str>,
     scroll_target_y: Option<f32>,
+    read_only: bool,
+    collapsed: bool,
+    advanced_open: bool,
+    /// The field index this component's colour editor is open on.
+    color_editor_field: Option<usize>,
+    /// The colour the popup edited to, for that row to write out.
+    color_editor_pending: Option<Vec4>,
+    toggles: InspectorToggles,
+}
+
+/// One colour row as it drew this frame: which field of its component it
+/// is, where its swatch landed, and the colour it showed. The colour editor
+/// is drawn by a pass of its own, before the panels, so this is how it
+/// learns where to hang and what to show.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ColorRowFrame {
+    pub field_index: usize,
+    pub anchor: Rect,
+    pub value: Vec4,
+}
+
+/// What this component's header, disclosure and swatch asked for this
+/// frame. The registry block drains it into the inspector's view state,
+/// which the editor functions themselves know nothing about.
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct InspectorToggles {
+    /// The header row was clicked: collapse an open section, open a
+    /// collapsed one.
+    pub header: bool,
+    /// The Advanced disclosure row was clicked.
+    pub advanced: bool,
+    /// A colour row's swatch was clicked: open the editor on it.
+    pub open_color_editor: Option<ColorRowFrame>,
+    /// The colour row the editor is already open on drew this frame.
+    pub color_row_seen: Option<ColorRowFrame>,
 }
 
 impl<'a> EditableInspector<'a> {
@@ -210,6 +125,12 @@ impl<'a> EditableInspector<'a> {
             warnings: Vec::new(),
             scroll_target: None,
             scroll_target_y: None,
+            read_only: false,
+            collapsed: false,
+            advanced_open: false,
+            color_editor_field: None,
+            color_editor_pending: None,
+            toggles: InspectorToggles::default(),
         }
     }
 
@@ -231,6 +152,77 @@ impl<'a> EditableInspector<'a> {
         self
     }
 
+    /// Draw every row in its read-only form (no widget ids, muted colours,
+    /// unchanged row heights) — the whole inspector while a play session
+    /// runs.
+    pub fn with_read_only(mut self, read_only: bool) -> Self {
+        self.read_only = read_only;
+        self
+    }
+
+    /// Draw this component's fields collapsed to its header row.
+    pub fn with_collapsed(mut self, collapsed: bool) -> Self {
+        self.collapsed = collapsed;
+        self
+    }
+
+    /// Draw this component's Advanced disclosure open.
+    pub fn with_advanced_open(mut self, open: bool) -> Self {
+        self.advanced_open = open;
+        self
+    }
+
+    /// Name the colour row the colour editor is open on, and hand it the
+    /// edit the popup made before this frame for it to write out.
+    pub fn with_color_editor(mut self, field_index: Option<usize>, pending: Option<Vec4>) -> Self {
+        self.color_editor_field = field_index;
+        self.color_editor_pending = pending;
+        self
+    }
+
+    /// Take what this component's header, disclosure and swatch asked for.
+    pub fn take_toggles(&mut self) -> InspectorToggles {
+        std::mem::take(&mut self.toggles)
+    }
+
+    /// Whether a row draws nothing of its own: a collapsed section skips
+    /// its fields entirely, and a read-only pass replaces each control with
+    /// the value it holds.
+    fn is_quiet(&self) -> bool {
+        self.collapsed || self.read_only
+    }
+
+    /// Draw a row's quiet form: nothing at all while collapsed, otherwise
+    /// the label and its value, advancing by the height the editable form
+    /// would have taken so the panel measures the same either way.
+    fn quiet_row(&mut self, label: &str, value: &str, height: f32) {
+        if self.collapsed {
+            return;
+        }
+        let layout = self.row();
+        crate::read_only_rows::value_row(self.ui, label, value, layout, self.style);
+        self.advance(height);
+    }
+
+    /// A disclosure for the fields most entities never touch. The row
+    /// itself always draws; the closure runs only while it is open.
+    pub fn advanced(&mut self, fields: impl FnOnce(&mut Self)) {
+        if self.collapsed {
+            return;
+        }
+        let (id, layout) = self.next_field();
+        let marker = if self.advanced_open { OPEN_MARKER } else { CLOSED_MARKER };
+        crate::read_only_rows::value_row(self.ui, &format!("{marker} Advanced"), "", layout, self.style);
+        let row = Rect::new(layout.pos.x, layout.pos.y, self.width, self.style.row_height);
+        if self.ui.interact(id, row, true).clicked {
+            self.toggles.advanced = true;
+        }
+        self.advance(self.style.row_height);
+        if self.advanced_open {
+            fields(self);
+        }
+    }
+
     /// Set the target component header to look for during rendering.
     pub fn with_scroll_target(mut self, target: Option<&'static str>) -> Self {
         self.scroll_target = target;
@@ -247,12 +239,31 @@ impl<'a> EditableInspector<'a> {
         self.current_y
     }
 
-    /// Add a component header.
+    /// Add a component header. The header row is the section's collapse
+    /// toggle, in both states — collapsing is a view choice, not an edit.
     pub fn header(&mut self, type_name: &str) {
         if self.scroll_target == Some(type_name) && self.scroll_target_y.is_none() {
             self.scroll_target_y = Some(self.current_y);
         }
-        self.current_y = component_header(self.ui, type_name, self.x, self.current_y, self.style);
+        let marker = if self.collapsed { CLOSED_MARKER } else { OPEN_MARKER };
+        let header_y = self.current_y;
+        self.current_y = component_header(
+            self.ui,
+            &format!("{marker} {type_name}"),
+            self.x,
+            header_y,
+            self.style,
+        );
+        let toggle = Rect::new(
+            self.x,
+            header_y,
+            (self.width - HEADER_REMOVE_ZONE).max(0.0),
+            self.style.row_height,
+        );
+        let toggle_id = FieldId::slot(self.component_index, WidgetSlot::Header);
+        if self.ui.interact(toggle_id, toggle, true).clicked {
+            self.toggles.header = true;
+        }
         self.field_index = 0;
     }
 
@@ -262,6 +273,9 @@ impl<'a> EditableInspector<'a> {
     pub fn header_with_remove(&mut self, type_name: &str) -> bool {
         let header_y = self.current_y;
         self.header(type_name);
+        if self.read_only {
+            return false;
+        }
         crate::component_editors::remove_button(
             self.ui,
             self.component_index,
@@ -303,6 +317,14 @@ impl<'a> EditableInspector<'a> {
         handle: u32,
         extras: &mut crate::InspectorExtras<'_>,
     ) -> EditResult<u32> {
+        if self.is_quiet() {
+            let shown = extras
+                .texture_display
+                .clone()
+                .unwrap_or_else(|| format!("#{handle}"));
+            self.quiet_row(label, &shown, self.style.row_height);
+            return EditResult::Unchanged;
+        }
         let (_, layout) = self.next_field();
         let display = extras.texture_display.clone();
         let result = crate::edit_texture_field(
@@ -321,6 +343,10 @@ impl<'a> EditableInspector<'a> {
     /// Add an editable f32 field (soft range: scrub/arrows clamp, typing
     /// may exceed).
     pub fn f32(&mut self, label: &str, value: f32, range: RangeInclusive<f32>) -> EditResult<f32> {
+        if self.is_quiet() {
+            self.quiet_row(label, &crate::read_only_rows::float_text(value, ""), self.style.row_height);
+            return EditResult::Unchanged;
+        }
         let (id, layout) = self.next_field();
         let edit = edit_f32(self.ui, id, label, value, range, layout, self.style);
         self.advance(self.style.row_height);
@@ -338,6 +364,10 @@ impl<'a> EditableInspector<'a> {
     /// too. For values where the range is a runtime contract (audio volume
     /// 0..=1, pitch floor), not a convenience.
     pub fn f32_hard(&mut self, label: &str, value: f32, range: RangeInclusive<f32>) -> EditResult<f32> {
+        if self.is_quiet() {
+            self.quiet_row(label, &crate::read_only_rows::float_text(value, ""), self.style.row_height);
+            return EditResult::Unchanged;
+        }
         let (id, layout) = self.next_field();
         let opts = ui::FloatFieldOpts::hard(*range.start(), *range.end())
             .with_step(scrub_step(&range));
@@ -350,6 +380,11 @@ impl<'a> EditableInspector<'a> {
     /// in degrees with a `°` suffix, wrapped to ±180° on commit — the field
     /// can express any rotation (the old ±π hard clamp is gone).
     pub fn angle(&mut self, label: &str, radians: f32) -> EditResult<f32> {
+        if self.is_quiet() {
+            let degrees = wrap_degrees(radians.to_degrees());
+            self.quiet_row(label, &crate::read_only_rows::float_text(degrees, "\u{b0}"), self.style.row_height);
+            return EditResult::Unchanged;
+        }
         let (id, layout) = self.next_field();
         let opts = ui::FloatFieldOpts::range(-180.0, 180.0)
             .with_step(scrub_step(&(-180.0..=180.0)))
@@ -377,6 +412,10 @@ impl<'a> EditableInspector<'a> {
 
     /// Add an editable boolean field.
     pub fn bool(&mut self, label: &str, value: bool) -> EditResult<bool> {
+        if self.is_quiet() {
+            self.quiet_row(label, crate::read_only_rows::bool_text(value), self.style.row_height);
+            return EditResult::Unchanged;
+        }
         let (id, layout) = self.next_field();
         let result = edit_bool(self.ui, id, label, value, layout, self.style);
         self.advance(self.style.row_height);
@@ -385,6 +424,10 @@ impl<'a> EditableInspector<'a> {
 
     /// Add an editable Vec2 field.
     pub fn vec2(&mut self, label: &str, value: Vec2, range: RangeInclusive<f32>) -> EditResult<Vec2> {
+        if self.is_quiet() {
+            self.quiet_row(label, &crate::read_only_rows::vec2_text(value), self.style.row_height);
+            return EditResult::Unchanged;
+        }
         let (id, layout) = self.next_field();
         let edit = edit_vec2(self.ui, id, label, value, range, layout, self.style);
         self.advance(self.style.row_height);
@@ -393,6 +436,10 @@ impl<'a> EditableInspector<'a> {
 
     /// Add a read-only u32 display.
     pub fn u32(&mut self, label: &str, value: u32) {
+        if self.is_quiet() {
+            self.quiet_row(label, &value.to_string(), self.style.row_height);
+            return;
+        }
         let layout = self.row();
         display_u32(self.ui, label, value, layout, self.style);
         self.advance(self.style.row_height);
@@ -400,6 +447,10 @@ impl<'a> EditableInspector<'a> {
 
     /// Add a read-only string display.
     pub fn string(&mut self, label: &str, value: &str) {
+        if self.is_quiet() {
+            self.quiet_row(label, value, self.style.row_height);
+            return;
+        }
         let layout = self.row();
         display_string(self.ui, label, value, layout, self.style);
         self.advance(self.style.row_height);
@@ -409,8 +460,15 @@ impl<'a> EditableInspector<'a> {
     /// "− Remove param" in the scripts editor). Returns whether it was
     /// clicked this frame.
     pub fn action_button(&mut self, label: &str) -> bool {
+        // The row keeps its height so the panel measures the same, but the
+        // button is gone: `edit_scripts` is built on this, and a live one
+        // would be a mutation path into a running world.
+        if self.is_quiet() {
+            self.quiet_row(label, "", self.style.row_height);
+            return false;
+        }
         let (id, layout) = self.next_field();
-        let height = self.style.row_height - 4.0;
+        let height = self.style.field_height();
         let rect = Rect::new(
             layout.control_x,
             layout.pos.y + 2.0,
@@ -420,6 +478,11 @@ impl<'a> EditableInspector<'a> {
         let clicked = self.ui.button(id, label, rect);
         self.advance(self.style.row_height);
         clicked
+    }
+
+    /// Whether this inspector draws read-only rows (a play session runs).
+    pub fn is_read_only(&self) -> bool {
+        self.read_only
     }
 
     /// The field style this inspector draws with (the theme-derived colours).
@@ -440,6 +503,10 @@ impl<'a> EditableInspector<'a> {
         value: &str,
         color: Option<ui::Color>,
     ) -> EditResult<String> {
+        if self.is_quiet() {
+            self.quiet_row(label, value, self.style.row_height);
+            return EditResult::Unchanged;
+        }
         let (id, layout) = self.next_field();
         let result = if let Some(c) = color {
             let mut custom_style = self.style.clone();
@@ -466,87 +533,42 @@ impl<'a> EditableInspector<'a> {
         index: usize,
         count: usize,
     ) -> EditResult<usize> {
-        let (prev_id, layout) = self.next_field();
-        let pos = layout.pos;
-        let value_color = self.style.value_color;
-        let row_height = self.style.row_height;
-        let label_font = self.style.label_font;
-        draw_field_label(self.ui, label, &layout, self.style);
-
-        let button_size = row_height - 6.0;
-        let button_y = pos.y + (row_height - button_size) / 2.0;
-        let prev_x = layout.control_x;
-        // Value span between the arrows, bounded by the panel's right edge.
-        let value_width =
-            (layout.right - prev_x - 2.0 * button_size - LABEL_GAP).clamp(60.0, 120.0);
-
-        let prev_bounds = Rect::new(prev_x, button_y, button_size, button_size);
-        let prev_clicked = self.ui.button(prev_id, "<", prev_bounds);
-
-        let shown_value = crate::row_layout::ellipsize(value_name, value_width, |s| {
-            self.ui.measure_text_styled(s, label_font).x
-        });
-        self.ui.label_styled(
-            &shown_value,
-            glam::Vec2::new(prev_x + button_size + LABEL_GAP, pos.y + 4.0),
-            value_color,
-            label_font,
-        );
-
-        let next_x = (prev_x + button_size + value_width).min(layout.right - button_size);
-        let next_bounds = Rect::new(next_x, button_y, button_size, button_size);
-        let next_clicked = self.ui.button(
-            FieldId::new(self.component_index, self.field_index, 1),
-            ">",
-            next_bounds,
-        );
-
-        self.advance(self.style.row_height);
-
-        if prev_clicked || next_clicked {
-            EditResult::Changed(cycle_step(index, count, next_clicked))
-        } else {
-            EditResult::Unchanged
+        if self.is_quiet() {
+            self.quiet_row(label, value_name, self.style.row_height);
+            return EditResult::Unchanged;
         }
+        let (id, layout) = self.next_field();
+        let row = crate::field_widgets::CycleRow { label, value_name, index, count };
+        let result = edit_cycle(self.ui, id, row, layout, self.style);
+        self.advance(self.style.row_height);
+        result
     }
+
 
     /// Add an editable color (Vec4) field.
     pub fn color(&mut self, label: &str, value: Vec4) -> EditResult<Vec4> {
+        if self.is_quiet() {
+            self.quiet_row(label, &crate::read_only_rows::color_text(value), color_block_height(self.style));
+            return EditResult::Unchanged;
+        }
         let (id, layout) = self.next_field();
-        let result = edit_color(self.ui, id, label, value, layout, self.style);
+        let row = edit_color(self.ui, id, label, value, layout, self.style);
+        let frame = ColorRowFrame { field_index: self.field_index, anchor: row.swatch, value };
+        if row.swatch_clicked {
+            self.toggles.open_color_editor = Some(frame);
+        }
+        // The popup is drawn by a pass of its own, before any panel: it
+        // reports where the row is and takes the edit back through it, so
+        // the write is this row's and lands in one undo entry per gesture.
+        let is_target = self.color_editor_field == Some(self.field_index);
+        if is_target {
+            self.toggles.color_row_seen = Some(frame);
+        }
         self.advance(color_block_height(self.style));
-        result
+        match self.color_editor_pending.filter(|_| is_target) {
+            Some(edited) => EditResult::Changed(edited),
+            None => row.result,
+        }
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_angle_field_wraps_degrees_to_a_half_turn_and_round_trips_radians() {
-        // The rotation field shows degrees in (-180, 180]: a typed 270 reads
-        // back as -90, and a stored rotation survives display → edit →
-        // commit within float precision.
-        let wraps = [(0.0, 0.0), (190.0, -170.0), (-190.0, 170.0), (720.0, 0.0), (270.0, -90.0)];
-        for (typed, shown) in wraps {
-            assert_eq!(wrap_degrees(typed), shown, "{typed}° must show as {shown}°");
-        }
-        for degrees in [-179.0_f32, -90.0, 0.0, 45.0, 179.0] {
-            let radians = degrees.to_radians();
-            let round_tripped = wrap_degrees(radians.to_degrees()).to_radians();
-            assert!((round_tripped - radians).abs() < 1e-5, "{degrees}° drifted to {round_tripped} rad");
-        }
-    }
-
-    #[test]
-    fn test_cycle_step_wraps_both_directions_and_survives_zero_variants() {
-        assert_eq!(cycle_step(0, 7, true), 1);
-        assert_eq!(cycle_step(6, 7, true), 0, "forward wraps to the first variant");
-        assert_eq!(cycle_step(0, 7, false), 6, "backward wraps to the last variant");
-        assert_eq!(cycle_step(3, 7, false), 2);
-        // An empty variant list must not underflow `count - 1`.
-        assert_eq!(cycle_step(5, 0, true), 0);
-        assert_eq!(cycle_step(5, 0, false), 0);
-    }
-}

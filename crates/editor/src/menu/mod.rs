@@ -7,13 +7,13 @@ use glam::Vec2;
 use ui::{Rect, UIContext};
 
 use crate::theme::EditorTheme;
+use crate::layout::{PADDING, ROW_HEIGHT};
 
 mod actions;
 pub use actions::action_for_menu_label;
 
-/// Menu dropdown layout constants
-const DROPDOWN_ITEM_HEIGHT: f32 = 24.0;
-const DROPDOWN_ITEM_PADDING: f32 = 8.0;
+/// Menu dropdown layout constants. The row height and the item padding are
+/// the shared layout tokens; only the width is the menu's own.
 const DROPDOWN_WIDTH: f32 = 200.0;
 
 /// A single menu item (can be an action or separator).
@@ -215,6 +215,7 @@ impl MenuBar {
                 MenuItem::separator(),
                 MenuItem::action_with_shortcut("Toggle Grid", "G"),
                 MenuItem::action_with_shortcut("Toggle Colliders", "C"),
+                MenuItem::action("Toggle Game Frame"),
                 MenuItem::action_with_shortcut("Snap to Grid", "S"),
                 MenuItem::separator(),
                 MenuItem::action("Cycle Game Locale"),
@@ -372,7 +373,7 @@ impl MenuBar {
 
     /// Compute the dropdown bounds for a menu anchored below its title.
     fn dropdown_bounds(menu: &Menu, anchor: Rect) -> Rect {
-        let dropdown_height = menu.items.len() as f32 * DROPDOWN_ITEM_HEIGHT + 8.0;
+        let dropdown_height = menu.items.len() as f32 * ROW_HEIGHT + 8.0;
         Rect::new(
             anchor.x,
             anchor.y + anchor.height,
@@ -407,7 +408,7 @@ impl MenuBar {
                         dropdown_bounds.x + 4.0,
                         y,
                         dropdown_bounds.width - 8.0,
-                        DROPDOWN_ITEM_HEIGHT,
+                        ROW_HEIGHT,
                     );
 
                     let id = format!("menu_item_{}_{}", menu.title, i);
@@ -422,7 +423,7 @@ impl MenuBar {
                         let check_size = 6.0;
                         ui.rect(
                             Rect::new(
-                                item_bounds.x + DROPDOWN_ITEM_PADDING / 2.0,
+                                item_bounds.x + PADDING / 2.0,
                                 item_bounds.center().y - check_size / 2.0,
                                 check_size,
                                 check_size,
@@ -434,23 +435,23 @@ impl MenuBar {
                     // Draw shortcut if present
                     if let Some(shortcut) = shortcut {
                         let shortcut_pos = Vec2::new(
-                            item_bounds.x + item_bounds.width - DROPDOWN_ITEM_PADDING - shortcut.len() as f32 * 6.0,
+                            item_bounds.x + item_bounds.width - PADDING - shortcut.len() as f32 * 6.0,
                             item_bounds.center().y,
                         );
                         ui.label_styled(shortcut, shortcut_pos, theme.shortcut_hint, theme.fonts.small);
                     }
 
-                    y += DROPDOWN_ITEM_HEIGHT;
+                    y += ROW_HEIGHT;
                 }
                 MenuItem::Separator => {
-                    let sep_y = y + DROPDOWN_ITEM_HEIGHT / 2.0;
+                    let sep_y = y + ROW_HEIGHT / 2.0;
                     ui.line(
                         Vec2::new(dropdown_bounds.x + 8.0, sep_y),
                         Vec2::new(dropdown_bounds.x + dropdown_bounds.width - 8.0, sep_y),
                         theme.menu_separator,
                         1.0,
                     );
-                    y += DROPDOWN_ITEM_HEIGHT;
+                    y += ROW_HEIGHT;
                 }
                 MenuItem::Submenu { label, .. } => {
                     // For now, just render the label with an arrow indicator
@@ -458,12 +459,12 @@ impl MenuBar {
                         dropdown_bounds.x + 4.0,
                         y,
                         dropdown_bounds.width - 8.0,
-                        DROPDOWN_ITEM_HEIGHT,
+                        ROW_HEIGHT,
                     );
 
                     let id = format!("menu_submenu_{}_{}", menu.title, i);
                     ui.button(id.as_str(), &format!("{} >", label), item_bounds);
-                    y += DROPDOWN_ITEM_HEIGHT;
+                    y += ROW_HEIGHT;
                 }
             }
         }

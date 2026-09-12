@@ -9,6 +9,15 @@ use editor::{
 };
 use ui::UIContext;
 
+/// Where the add-component section draws and whether its button is live:
+/// the origin below the last component block, the widget-id space the
+/// blocks left free, and the play state's verdict on adding anything.
+pub(super) struct AddComponentSection {
+    pub origin: Vec2,
+    pub component_index: usize,
+    pub enabled: bool,
+}
+
 /// One row of the popup, in draw order.
 #[derive(Debug, PartialEq, Eq)]
 enum PopupRow {
@@ -75,22 +84,26 @@ fn popup_anchor_y(below_y: f32, button_height: f32, popup_height: f32, window_bo
 /// Draw the [+ Add Component] button below the component blocks and, while
 /// the popup is open, the popup itself on the Floating layer. Returns the
 /// next y for the inspector's scroll measurement.
+///
+/// `section.enabled` is false while a play session runs: the button still
+/// draws, so the section keeps its height in both states, but it is dead
+/// and opens nothing.
 pub(super) fn render_add_component_section(
     editor: &mut EditorContext,
     ui: &mut UIContext,
     world: &mut World,
     command_history: &mut CommandHistory,
     entity_id: EntityId,
-    origin: Vec2,
-    component_index: usize,
+    section: AddComponentSection,
 ) -> f32 {
+    let AddComponentSection { origin, component_index, enabled } = section;
     let content_x = origin.x;
     let mut y = origin.y;
     // --- [+ Add Component] button ---
     y += layout::LINE_HEIGHT;
     let button_bounds = ui::Rect::new(content_x, y, 160.0, 24.0);
     let add_button_id = FieldId::slot(component_index, editor::WidgetSlot::AddButton);
-    if ui.button(add_button_id, "+ Add Component", button_bounds) {
+    if ui.button_styled(add_button_id, "+ Add Component", button_bounds, enabled) {
         editor.toggle_add_component_popup();
     }
     y += 28.0;

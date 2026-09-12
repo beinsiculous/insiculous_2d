@@ -14,6 +14,9 @@ pub enum SceneIoError {
     MidSimulation,
     Write(String),
     Load(SceneLoadError),
+    /// The scene sits outside the project's asset base, so it has no archive
+    /// entry to name.
+    OutsideProject(PathBuf),
 }
 
 impl std::fmt::Display for SceneIoError {
@@ -22,6 +25,9 @@ impl std::fmt::Display for SceneIoError {
             SceneIoError::MidSimulation => write!(f, "scene is mid-simulation — stop Play first"),
             SceneIoError::Write(err) => write!(f, "{err}"),
             SceneIoError::Load(err) => write!(f, "Failed to load scene: {err}"),
+            SceneIoError::OutsideProject(path) => {
+                write!(f, "scene {} is outside the project", path.display())
+            }
         }
     }
 }
@@ -39,7 +45,7 @@ impl std::error::Error for SceneIoError {
 /// recorded string, `#white` for the built-in handle 0, else a `#texture_N`
 /// placeholder that fails loud on the next load. Shared by the GUI save and
 /// the API's hosted save — one rule, one place.
-pub(super) fn texture_ref_for_save(handle: u32, recorded: Option<impl Into<String>>) -> String {
+pub(crate) fn texture_ref_for_save(handle: u32, recorded: Option<impl Into<String>>) -> String {
     match recorded {
         Some(reference) => reference.into(),
         None if handle == 0 => "#white".to_string(),

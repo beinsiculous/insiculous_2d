@@ -35,6 +35,9 @@ pub struct InspectorExtras<'a> {
     pub script_catalog: &'a [crate::script_editor::ScriptCatalogEntry],
     /// Whether the script picker popup is currently open.
     pub script_picker_open: bool,
+    /// The inspector's own view state: which sections are collapsed, which
+    /// Advanced disclosures are open, and where the colour editor is.
+    pub inspector_state: &'a mut crate::InspectorState,
 }
 
 /// Render a texture slot: label + a boxed value showing the texture's path
@@ -55,7 +58,7 @@ pub fn edit_texture_field(
         layout.control_x,
         layout.pos.y + 2.0,
         layout.clamp_width(style.input_width + 40.0),
-        style.row_height - 4.0,
+        style.field_height(),
     );
 
     // Slot box; highlight while a texture drag hovers it

@@ -124,6 +124,9 @@ impl<G: Game> EditorGame<G> {
     /// is deliberately out of scope for now (mouse-first).
     /// Returns whether the key was consumed.
     pub(super) fn confirm_dialog_consumes_key(&mut self, key: winit::keyboard::KeyCode) -> bool {
+        if self.stop_dialog_consumes_key(key) {
+            return true;
+        }
         if self.scene_confirm.pending_action.is_none() {
             return false;
         }

@@ -53,6 +53,13 @@
 #               <crate_dir>/dist/playground/index.html     (local test page — NOT deployed)
 set -euo pipefail
 
+# Hard ceiling, in MiB, for the PLAYGROUND bundle's wasm (the 20 MiB warning
+# below applies to every kind and only warns). This is the size budget the
+# playground's documented performance numbers are held to; Jesse sets the
+# number after measuring on an ordinary laptop, and it is a one-time value
+# edited here rather than a flag a caller varies per invocation.
+PLAYGROUND_SIZE_BUDGET_MIB=12
+
 if [[ $# -lt 2 ]]; then
     echo "usage: $0 <crate_dir> <slug> [--kind games|playground|editor] [--project <slug>=<title>=<dir>]... [--version vN] [--serve] [--sync <site_public_dir>]" >&2
     exit 2
@@ -398,6 +405,13 @@ echo "wasm size: ${SIZE_MIB} MiB ($WASM_OUT)"
 if (( SIZE_BYTES > 20 * 1048576 )); then
     echo "WARNING: over the 20 MiB gate (Cloudflare hard limit 25 MiB)." >&2
     echo "Levers: trim symphonia codecs, wasm-opt -Oz, brotli at the edge." >&2
+fi
+# Before --sync, deliberately: a bundle over budget stages nothing, so the
+# remedy is to read the size line above, decide the number, and rebuild.
+if [[ "$BUILD_KIND" == "playground" ]] && (( SIZE_BYTES > PLAYGROUND_SIZE_BUDGET_MIB * 1048576 )); then
+    echo "FAIL: the playground bundle is over its ${PLAYGROUND_SIZE_BUDGET_MIB} MiB budget." >&2
+    echo "Raise PLAYGROUND_SIZE_BUDGET_MIB at the top of this script once the new number is decided." >&2
+    exit 1
 fi
 
 if [[ -n "$SYNC_DIR" ]]; then

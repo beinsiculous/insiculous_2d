@@ -191,13 +191,13 @@ impl ViewportInputHandler {
             self.state.panning = false;
         }
 
-        // Zoom by the wheel delta in notches: a mouse notch is one line and zooms by the
-        // factor; a trackpad streams fractions of a line every frame and zooms by the same
-        // fraction of it. One frame zooms at most one notch, because a browser coalesces a
-        // fast flick into a single large delta. The fixed per-frame factor this replaced
-        // zoomed a full notch on any delta at all, so a gentle two-finger scroll compounded
-        // like sixty notches a second; a hard flick that delivers a line or more every
-        // frame still zooms a notch a frame, which is the mouse wheel's own ceiling.
+        // Zoom by the wheel delta in notches: a mouse notch arrives as 1.0 and zooms by
+        // the factor; a trackpad streams fractions of a notch every frame and zooms by
+        // the same fraction of it. One frame zooms at most one notch, because a browser
+        // coalesces a fast flick into a single large delta. The fixed per-frame factor this
+        // replaced zoomed a full notch on any delta at all, so a gentle two-finger scroll
+        // compounded like sixty notches a second; a hard flick that delivers a notch or more
+        // every frame still zooms a notch a frame, which is the mouse wheel's own ceiling.
         if input_state.scroll_delta.abs() > 0.001 {
             let notches = input_state.scroll_delta.clamp(-1.0, 1.0);
             let signed_notches = if self.config.invert_zoom { -notches } else { notches };
@@ -354,7 +354,7 @@ mod tests {
     }
 
     #[test]
-    fn test_a_fraction_of_a_wheel_line_zooms_by_the_same_fraction_of_the_factor() {
+    fn test_a_fraction_of_a_wheel_notch_zooms_by_the_same_fraction_of_the_factor() {
         // A trackpad delivers quarter-lines every frame; sixty of them must not compound
         // like sixty notches.
         let (mut viewport, mapping, mut input, mut handler) = rig();

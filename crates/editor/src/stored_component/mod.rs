@@ -2,7 +2,7 @@
 //! component type the editor can capture, restore, add, remove, and inspect.
 //!
 //! All per-component dispatch (undo/redo capture, add-component popup,
-//! read-only inspection) is generated from ONE `editor_component_registry!`
+//! inspector blocks) is generated from ONE `editor_component_registry!`
 //! invocation below. **To make a new component editor-visible, add one line
 //! to that invocation** — no match statements elsewhere need to change.
 
@@ -15,7 +15,6 @@ use ecs::tilemap::Tilemap;
 use ecs::ui_components::{UiButton, UiLabel, UiPanel};
 use ecs::{EntityId, World};
 use physics::components::{Collider, RigidBody};
-use ui::UIContext;
 
 pub mod component_ref;
 pub use component_ref::ComponentRef;
@@ -28,7 +27,7 @@ use crate::component_editors::{
 };
 use crate::script_editor::edit_scripts;
 use crate::ui_component_editors::{edit_ui_button, edit_ui_label, edit_ui_panel};
-use crate::inspector::{inspect_component, InspectorStyle};
+use crate::inspector::inspect_component;
 use crate::{EditableInspector, InspectorFrame};
 
 /// Expands one component's editable-inspector block for
@@ -46,12 +45,20 @@ macro_rules! registry_edit_block {
             let mut inspector = EditableInspector::new($frame.ui, $frame.field_style, $frame.x, $y)
                 .with_component_index($idx)
                 .with_width($frame.width)
+                .with_read_only($frame.read_only)
+                .with_collapsed($extras.inspector_state.is_collapsed(stringify!($name)))
+                .with_advanced_open($extras.inspector_state.is_advanced_open(stringify!($name)))
+                .with_color_editor(
+                    $extras.inspector_state.color_editor_field($entity, stringify!($name)),
+                    $extras.inspector_state.take_color_edit_for($entity, stringify!($name)),
+                )
                 .with_scroll_target($extras.scroll_target);
             let edit = $edit_fn(&mut inspector, &value, &mut *$extras);
             $extras.warnings.append(&mut inspector.take_warnings());
             if $extras.scroll_target_y.is_none() {
                 $extras.scroll_target_y = inspector.scroll_target_y();
             }
+            settle_inspector_toggles(&mut inspector, stringify!($name), $entity, $extras.inspector_state);
             $y = inspector.y();
             crate::component_editors::apply_component_edit($world, $entity, &value, edit, $history, |e, old, new, hint| {
                 Box::new(crate::commands::SetComponentCommand::<$ty>::new(e, old, new, hint))
@@ -69,14 +76,24 @@ macro_rules! registry_edit_block {
             let mut inspector = EditableInspector::new($frame.ui, $frame.field_style, $frame.x, $y)
                 .with_component_index($idx)
                 .with_width($frame.width)
+                .with_read_only($frame.read_only)
+                .with_collapsed($extras.inspector_state.is_collapsed(stringify!($name)))
+                .with_advanced_open($extras.inspector_state.is_advanced_open(stringify!($name)))
+                .with_color_editor(
+                    $extras.inspector_state.color_editor_field($entity, stringify!($name)),
+                    $extras.inspector_state.take_color_edit_for($entity, stringify!($name)),
+                )
                 .with_scroll_target($extras.scroll_target);
             let edit = $edit_fn(&mut inspector, &value, &mut *$extras);
             $extras.warnings.append(&mut inspector.take_warnings());
             if $extras.scroll_target_y.is_none() {
                 $extras.scroll_target_y = inspector.scroll_target_y();
             }
+            settle_inspector_toggles(&mut inspector, stringify!($name), $entity, $extras.inspector_state);
             $y = inspector.y();
-            if crate::component_editors::remove_button($frame.ui, $idx, $frame.x, header_y, $frame.width) {
+            if !$frame.read_only
+                && crate::component_editors::remove_button($frame.ui, $idx, $frame.x, header_y, $frame.width)
+            {
                 $removals.push(ComponentKind::$name);
             }
             crate::component_editors::apply_component_edit($world, $entity, &value, edit, $history, |e, old, new, hint| {
@@ -95,6 +112,13 @@ macro_rules! registry_edit_block {
             let mut inspector = EditableInspector::new($frame.ui, $frame.field_style, $frame.x, $y)
                 .with_component_index($idx)
                 .with_width($frame.width)
+                .with_read_only($frame.read_only)
+                .with_collapsed($extras.inspector_state.is_collapsed(stringify!($name)))
+                .with_advanced_open($extras.inspector_state.is_advanced_open(stringify!($name)))
+                .with_color_editor(
+                    $extras.inspector_state.color_editor_field($entity, stringify!($name)),
+                    $extras.inspector_state.take_color_edit_for($entity, stringify!($name)),
+                )
                 .with_scroll_target($extras.scroll_target);
             if inspector.header_with_remove(stringify!($name)) {
                 $removals.push(ComponentKind::$name);
@@ -102,13 +126,48 @@ macro_rules! registry_edit_block {
             if $extras.scroll_target_y.is_none() {
                 $extras.scroll_target_y = inspector.scroll_target_y();
             }
+            settle_inspector_toggles(&mut inspector, stringify!($name), $entity, $extras.inspector_state);
             $y = inspector.y();
-            if let Some(value) = $world.get::<$ty>($entity) {
-                $y = inspect_component($frame.ui, "", value, $frame.x + 16.0, $y, $frame.inspect_style);
+            if !$extras.inspector_state.is_collapsed(stringify!($name)) {
+                if let Some(value) = $world.get::<$ty>($entity) {
+                    $y = inspect_component($frame.ui, "", value, $frame.x + 16.0, $y, $frame.inspect_style);
+                }
             }
             $idx += 1;
         }
     };
+}
+
+/// Drain one component block's header, disclosure and swatch clicks into
+/// the inspector's view state. The editor functions know nothing about it;
+/// only the registry block knows which component's rows it just drew.
+fn settle_inspector_toggles(
+    inspector: &mut EditableInspector<'_>,
+    type_name: &str,
+    entity: EntityId,
+    state: &mut crate::InspectorState,
+) {
+    let toggles = inspector.take_toggles();
+    if toggles.header {
+        state.toggle_collapsed(type_name);
+    }
+    if toggles.advanced {
+        state.toggle_advanced(type_name);
+    }
+    if let Some(row) = toggles.color_row_seen {
+        state.note_color_row(row.anchor, row.value);
+    }
+    if let Some(row) = toggles.open_color_editor {
+        state.open_color_editor(
+            crate::ColorEditorTarget {
+                entity,
+                component: type_name.to_string(),
+                field_index: row.field_index,
+            },
+            row.anchor,
+            row.value,
+        );
+    }
 }
 
 mod category;
@@ -290,6 +349,7 @@ macro_rules! editor_component_registry {
             y = dynamic::render_dynamic_edit_blocks(
                 frame, world, entity, y,
                 &mut component_index, &mut dynamic_removals,
+                extras.inspector_state,
             );
 
             for kind in &removals {
@@ -304,34 +364,6 @@ macro_rules! editor_component_registry {
             }
 
             (y, component_index)
-        }
-
-        /// Render a read-only inspection of every present inspectable component
-        /// (builtin + removable), in registry order. Returns the next Y position.
-        pub fn inspect_all_components(
-            ui: &mut UIContext,
-            world: &World,
-            entity: EntityId,
-            x: f32,
-            mut y: f32,
-            style: &InspectorStyle,
-            section_gap: f32,
-        ) -> f32 {
-            $( if let Some(c) = world.get::<$b_ty>(entity) {
-                y += section_gap;
-                y = inspect_component(ui, stringify!($b), c, x, y, style);
-            } )+
-            $( if let Some(c) = world.get::<$r_ty>(entity) {
-                y += section_gap;
-                y = inspect_component(ui, stringify!($r), c, x, y, style);
-            } )+
-            for name in dynamic::dynamic_components_on(world, entity) {
-                if let Some(value) = dynamic::dynamic_value(world, entity, &name) {
-                    y += section_gap;
-                    y = inspect_component(ui, &name, &value, x, y, style);
-                }
-            }
-            y
         }
 
         /// Names of every component the command API may `set` (builtin +
@@ -388,6 +420,20 @@ macro_rules! editor_component_registry {
         }
 
         impl StoredComponent {
+            /// This stored value as serde JSON — the read half of the
+            /// paused-edit rebase, paired with [`stored_component_from_json`].
+            /// `None` when the component fails to serialize.
+            pub fn value(&self) -> Option<serde_json::Value> {
+                match self {
+                    // Hidden entries are internal bookkeeping, not editable
+                    // values — nothing rebases them.
+                    $( Self::$h(_) => None, )+
+                    $( Self::$b(c) => crate::inspector::component_value(c).ok(), )+
+                    $( Self::$r(c) => crate::inspector::component_value(c).ok(), )+
+                    Self::Dynamic { value, .. } => Some(value.clone()),
+                }
+            }
+
             /// The registry type name of this stored value (`&str`, not
             /// `&'static str` — dynamic names are owned).
             pub fn type_name(&self) -> &str {
@@ -402,9 +448,8 @@ macro_rules! editor_component_registry {
 
         /// Capture every present inspectable component (builtin + removable
         /// in registry order, then dynamic-tier components sorted by name)
-        /// as `(type_name, serde value)` pairs — the data half of
-        /// `inspect_all_components`, consumed by the command API's
-        /// `describe` query. A component that fails to serialize contributes
+        /// as `(type_name, serde value)` pairs, consumed by the command
+        /// API's `describe` query. A component that fails to serialize contributes
         /// an error string so the result stays total. Hidden registry
         /// entries (GlobalTransform2D, BehaviorState) are internal and not
         /// emitted. `Name` IS a registry component (editable) and

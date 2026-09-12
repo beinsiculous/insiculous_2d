@@ -24,10 +24,17 @@ pub struct EditorRunOptions {
     pub prefs_slot: Option<PathBuf>,
     /// Dirty flag written by `sync_dirty_mirror`.
     pub dirty_flag: Option<Arc<AtomicBool>>,
+    /// History-only dirty flag, written by `sync_dirty_mirror` alongside the
+    /// combined one — the persist layer's own fresh state answers the rest.
+    pub history_dirty_flag: Option<Arc<AtomicBool>>,
     /// Persistence-pending flag read by `sync_dirty_mirror`.
     pub persist_pending: Option<Arc<AtomicBool>>,
     /// Web error mirror for script errors.
     pub script_errors: Option<Arc<Mutex<Vec<String>>>>,
+    /// Mailbox the web bridge files preview snapshot requests in.
+    pub scene_snapshot: Option<Arc<super::SceneSnapshotRequest>>,
+    /// Raised while a preview window owns the simulation.
+    pub preview_open: Option<Arc<AtomicBool>>,
 }
 
 /// Run a game with the full editor UI overlay.
@@ -52,8 +59,10 @@ pub fn run_game_with_editor_opts<G: Game>(
     config: GameConfig,
     options: EditorRunOptions,
 ) -> Result<(), engine_core::EngineError> {
+    let raw_frame = glam::Vec2::new(config.width as f32, config.height as f32);
     let config = clamp_editor_window_size(config);
     let mut editor_game = EditorGame::new(game);
+    editor_game.editor.game_frame = raw_frame;
     editor_game.api.receiver = options.api_rx;
     editor_game.api.responses = options.api_responses;
     editor_game.initial_scene = options.initial_scene;
@@ -61,7 +70,10 @@ pub fn run_game_with_editor_opts<G: Game>(
         editor_game.prefs_slot = slot;
     }
     editor_game.dirty_flag = options.dirty_flag;
+    editor_game.history_dirty_flag = options.history_dirty_flag;
     editor_game.persist_pending = options.persist_pending;
     editor_game.script_errors = options.script_errors;
+    editor_game.scene_snapshot = options.scene_snapshot;
+    editor_game.preview_open = options.preview_open;
     engine_core::run_game(editor_game, config)
 }

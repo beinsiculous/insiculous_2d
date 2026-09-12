@@ -6,6 +6,24 @@ use engine_core::Game;
 
 use super::EditorGame;
 
+/// What Stop did with the edits recorded since the Play boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(super) struct StopOutcome {
+    /// Entries still in the history after the stop.
+    pub kept: usize,
+    /// Edits that could not be applied (a macro counts each lost child).
+    pub dropped: usize,
+}
+
+/// What Stop does with the edits recorded since the Play boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PausedEdits {
+    /// Rebase them onto the restored world.
+    Keep,
+    /// Truncate the history to the Play boundary and let the restore stand.
+    Discard,
+}
+
 impl<G: Game> EditorGame<G> {
     /// Start a new play session: capture world snapshot, save editing camera,
     /// switch to Playing state.
@@ -23,6 +41,10 @@ impl<G: Game> EditorGame<G> {
         // Defensive: entering Play drops a pending confirm —
         // unreachable through the blocked UI, cheap insurance.
         self.scene_confirm.pending_action = None;
+        // A queued Keep would otherwise restore a session the user has
+        // just resumed.
+        self.stop_confirm.pending = false;
+        self.stop_confirm.pending_choice = None;
         // Dropping a live drag is a gesture boundary too:
         // pre-Play and post-Stop nudges must not merge
         // into one undo entry across the discarded drag.
@@ -31,7 +53,10 @@ impl<G: Game> EditorGame<G> {
         // are already applied to the world the snapshot is
         // about to capture, and a macro pushed after Stop's
         // restore would undo against the wrong world.
-        self.commit_open_api_batch();
+        self.commit_open_api_batch("Play");
+        // The Play boundary is taken AFTER the batch commit: the batch's
+        // macro belongs to the authored history, not to the session.
+        self.command_history.begin_session();
         // Starting a new play session — capture snapshot.
         // (Resume-from-pause takes the branch below and must
         // never re-capture: the paused world is mid-simulation.)
@@ -41,8 +66,7 @@ impl<G: Game> EditorGame<G> {
         }
         self.world_snapshot = Some(snapshot);
         self.adopt_game_camera(world);
-        self.editor.set_play_state(EditorPlayState::Playing);
-        self.editor.close_add_component_popup();
+        self.enter_playing();
         self.play_frames = 0;
         self.script_error_watermark = 0;
         // Scene-authored UI (UiLabel/UiPanel/UiButton) draws only
@@ -51,7 +75,7 @@ impl<G: Game> EditorGame<G> {
         log::info!("Play: snapshot captured, entering play mode");
     }
 
-    fn commit_open_api_batch(&mut self) {
+    pub(super) fn commit_open_api_batch(&mut self, by: &str) {
         if let Some(batch) = self.api.batch.take() {
             if !batch.commands.is_empty() {
                 // The macro carries the batch's own pre-batch
@@ -64,7 +88,7 @@ impl<G: Game> EditorGame<G> {
                     batch.selection_before,
                 );
             }
-            self.editor.status_bar.show_message("API batch committed by Play");
+            self.editor.status_bar.show_message(format!("API batch committed by {by}"));
         }
     }
 
@@ -90,9 +114,24 @@ impl<G: Game> EditorGame<G> {
     }
 
     fn resume_from_pause(&mut self) {
+        // Resuming under a live modal would run the simulation the dialog
+        // is asking about, and a queued Keep would then restore it.
+        self.stop_confirm.pending = false;
+        self.stop_confirm.pending_choice = None;
+        self.enter_playing();
+        log::info!("Play: resumed from pause");
+    }
+
+    /// The step both entries into Playing share. Every editing affordance
+    /// that could still reach the world once the simulation runs closes
+    /// here: a popup's sliders would write into the live world, and a
+    /// rename field keeps focus and eats the game's keys.
+    fn enter_playing(&mut self) {
         self.editor.set_play_state(EditorPlayState::Playing);
         self.editor.close_add_component_popup();
-        log::info!("Play: resumed from pause");
+        self.editor.script_picker_open = false;
+        self.editor.inspector_state.close_color_editor();
+        self.editor.hierarchy.cancel_rename();
     }
 
     fn pause(&mut self) {
@@ -102,23 +141,29 @@ impl<G: Game> EditorGame<G> {
         }
     }
 
-    fn discard_open_api_batch(&mut self) {
-        if let Some(batch) = self.api.batch.take() {
-            if !batch.commands.is_empty() {
-                self.editor
-                    .status_bar
-                    .show_message("Open API batch discarded by Stop");
-            }
-        }
+    /// Park the session Paused so the stop dialog is never a modal over a
+    /// running simulation.
+    pub(super) fn pause_for_dialog(&mut self) {
+        self.pause();
     }
 
-    fn restore_snapshot(&mut self, world: &mut ecs::World) {
+    /// Restore the world the snapshot holds, replaying or dropping the
+    /// paused edits. Returns how many could not be applied.
+    fn restore_snapshot(&mut self, world: &mut ecs::World, paused_edits: PausedEdits) -> usize {
+        let mut unapplied = 0;
         if let Some(snapshot) = self.world_snapshot.take() {
             // The loss happens HERE, so report it here too — the
             // Play-time warning is easy to miss.
             let drop_report = snapshot.drop_report();
             let dropped_full_paths = snapshot.uncaptured_types().join(", ");
-            snapshot.restore(world);
+            match paused_edits {
+                PausedEdits::Discard => snapshot.restore(world),
+                PausedEdits::Keep => {
+                    unapplied = self
+                        .command_history
+                        .rebase_session_entries(world, |restored| snapshot.restore(restored));
+                }
+            }
             // The world was wholesale-replaced: drop the transform
             // system's propagation baselines so no stale cache
             // entry survives the restore.
@@ -131,6 +176,7 @@ impl<G: Game> EditorGame<G> {
                 self.editor.status_bar.show_message(report);
             }
         }
+        unapplied
     }
 
     fn restore_editing_camera(&mut self) {
@@ -141,17 +187,23 @@ impl<G: Game> EditorGame<G> {
         self.editor.set_camera_follow(true);
     }
 
-    fn stop_play_session(&mut self, world: &mut ecs::World) -> bool {
+    /// Stop and report what became of the paused edits.
+    /// Only the confirm flow calls this — every other Stop path goes
+    /// through `request_stop`, which is what raises the dialog.
+    pub(super) fn stop_with_paused_edits(
+        &mut self,
+        world: &mut ecs::World,
+        paused_edits: PausedEdits,
+    ) -> StopOutcome {
         if !self.editor.in_play_session() {
-            return false;
+            return StopOutcome::default();
         }
-        // An API batch opened while Paused holds commands
-        // referencing the mid-simulation world the restore below
-        // discards — a later `batch end` would push a macro that
-        // undoes against the wrong world. Drop it with the
-        // runtime state.
-        self.discard_open_api_batch();
-        self.restore_snapshot(world);
+        if paused_edits == PausedEdits::Discard {
+            self.command_history.drop_session_entries();
+        }
+        let dropped = self.restore_snapshot(world, paused_edits);
+        let kept = self.command_history.session_entry_count();
+        self.command_history.end_session();
         self.restore_editing_camera();
         // Re-hide scene-authored UI (the marker was removed when
         // Play started; resources survive the snapshot restore).
@@ -166,6 +218,15 @@ impl<G: Game> EditorGame<G> {
             }
         }
         self.editor.set_play_state(EditorPlayState::Editing);
+        StopOutcome { kept, dropped }
+    }
+
+    /// The no-paused-edits Stop: restore and report that it happened.
+    pub(super) fn stop_play_session(&mut self, world: &mut ecs::World, paused_edits: PausedEdits) -> bool {
+        if !self.editor.in_play_session() {
+            return false;
+        }
+        self.stop_with_paused_edits(world, paused_edits);
         true
     }
 
@@ -179,6 +240,14 @@ impl<G: Game> EditorGame<G> {
             };
             self.editor.status_bar.show_message(message);
         }
+    }
+
+    /// Whether a preview window currently owns the simulation.
+    fn preview_is_open(&self) -> bool {
+        self.preview_open
+            .as_ref()
+            .map(|flag| flag.load(std::sync::atomic::Ordering::Relaxed))
+            .unwrap_or(false)
     }
 
     /// Handle a play control action (Play, Pause, Stop, ToggleCameraFollow).
@@ -196,6 +265,12 @@ impl<G: Game> EditorGame<G> {
         match action {
             PlayControlAction::Play => {
                 if self.editor.is_editing() {
+                    if self.preview_is_open() {
+                        self.editor
+                            .status_bar
+                            .show_error("A preview window is open — close it to Play here");
+                        return false;
+                    }
                     self.save_preferences_now();
                     self.start_play_session(world);
                 } else if self.editor.is_paused() {
@@ -208,7 +283,7 @@ impl<G: Game> EditorGame<G> {
                 false
             }
             PlayControlAction::Stop => {
-                let stopped = self.stop_play_session(world);
+                let stopped = self.request_stop(world);
                 self.save_preferences_now();
                 stopped
             }
@@ -216,6 +291,24 @@ impl<G: Game> EditorGame<G> {
                 self.toggle_camera_follow_with_feedback();
                 false
             }
+        }
+    }
+
+    /// While Playing WITH camera-follow armed, mirror the game's main-camera
+    /// entity — position AND zoom — onto the editor viewport so
+    /// the rendered view (derived from the viewport in `render`) follows the
+    /// game camera. Free camera (follow broken by a manual pan/zoom) and
+    /// Paused keep the user's view — picking stays truthful either way,
+    /// because render always derives from the same viewport.
+    pub(super) fn sync_viewport_from_main_camera(&mut self, world: &ecs::World) {
+        if !self.editor.is_playing() || !self.editor.is_camera_following() {
+            return;
+        }
+        if let Some((pos, zoom)) = engine_core::main_camera_pose(world) {
+            self.editor.viewport.set_camera_position(pos);
+            // adopt_ skips the interactive zoom clamp: parity with the
+            // shipped game even at extreme authored zooms.
+            self.editor.viewport.adopt_camera_zoom(zoom);
         }
     }
 }

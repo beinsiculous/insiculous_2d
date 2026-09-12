@@ -25,7 +25,8 @@ pub struct MouseState {
     frame_delta: (f32, f32),
     /// Button press state
     buttons: ButtonTracker<MouseButton>,
-    /// Mouse wheel delta accumulated over the current frame
+    /// Mouse wheel delta accumulated over the current frame, in notches: a
+    /// mouse notch is 1.0, a trackpad streams fractions of one.
     wheel_delta: f32,
 }
 
@@ -61,7 +62,7 @@ impl MouseState {
         self.buttons.release(button);
     }
 
-    /// Accumulate a mouse wheel scroll delta for this frame
+    /// Accumulate a mouse wheel scroll delta for this frame, in notches.
     pub fn update_wheel_delta(&mut self, delta: f32) {
         self.wheel_delta += delta;
     }
@@ -78,7 +79,7 @@ impl MouseState {
         self.frame_delta
     }
 
-    /// Get the mouse wheel delta accumulated this frame
+    /// Get the mouse wheel delta accumulated this frame, in notches.
     pub fn wheel_delta(&self) -> f32 {
         self.wheel_delta
     }

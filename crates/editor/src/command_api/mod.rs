@@ -215,7 +215,7 @@ pub fn entity_record(world: &World, entity: EntityId) -> serde_json::Value {
         "id": entity.value(),
         "generation": entity.generation(),
         "name": name,
-        "display": crate::hierarchy::HierarchyPanel::entity_display_name(world, entity),
+        "display": crate::entity_names::entity_display_name(world, entity),
     })
 }
 

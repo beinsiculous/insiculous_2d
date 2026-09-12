@@ -45,10 +45,10 @@ pub struct EditorContext {
     pub input_mapping: EditorInputMapping,
     /// Hierarchy panel for entity tree view
     pub hierarchy: HierarchyPanel,
-    /// Snap to grid enabled
-    snap_to_grid: bool,
-    /// Whether collider outlines are drawn in the scene view
-    show_colliders: bool,
+    /// View toggles (grid, colliders, game frame, snap)
+    pub view: crate::view_toggles::ViewToggles,
+    /// Configured game frame resolution (GameConfig width × height).
+    pub game_frame: glam::Vec2,
     /// Current play state (Editing / Playing / Paused)
     play_state: EditorPlayState,
     /// Whether the viewport follows the game's main camera during a play
@@ -90,6 +90,9 @@ pub struct EditorContext {
     pub script_catalog: Vec<crate::script_editor::ScriptCatalogEntry>,
     /// Whether the script picker popup is currently open.
     pub script_picker_open: bool,
+    /// Inspector view state: collapsed sections, open Advanced
+    /// disclosures, and the colour editor's target.
+    pub inspector_state: crate::InspectorState,
 }
 
 impl Default for EditorContext {
@@ -105,22 +108,24 @@ fn default_dock_area() -> DockArea {
     dock_area.add_panel(
         DockPanel::new(PanelId::HIERARCHY, "Hierarchy", DockPosition::Left)
             .with_size(200.0)
-            .with_min_size(150.0),
+            .with_min_size(150.0)
+            .with_hint("The scene's entities; click one to select it."),
     );
     dock_area.add_panel(
         DockPanel::new(PanelId::INSPECTOR, "Inspector", DockPosition::Right)
             .with_size(280.0)
-            .with_min_size(200.0),
+            .with_min_size(200.0)
+            .with_hint("The fields of the selected entity; every edit is undoable."),
     );
-    dock_area.add_panel(DockPanel::new(
-        PanelId::SCENE_VIEW,
-        "Scene",
-        DockPosition::Center,
-    ));
+    dock_area.add_panel(
+        DockPanel::new(PanelId::SCENE_VIEW, "Scene", DockPosition::Center)
+            .with_hint("The world you are building; pick and drag its entities here."),
+    );
     dock_area.add_panel(
         DockPanel::new(PanelId::ASSET_BROWSER, "Assets", DockPosition::Bottom)
             .with_size(180.0)
-            .with_min_size(100.0),
+            .with_min_size(100.0)
+            .with_hint("This project's files; drag one into the scene to use it."),
     );
     dock_area
 }
@@ -135,9 +140,7 @@ impl EditorContext {
         let mut editor = Self {
             selection: Selection::new(),
             gizmo,
-            // Position is set every frame from the scene view bounds
-            // (toolbar_position_for) — the default only covers frame 0.
-            toolbar: Toolbar::new().with_position(Vec2::new(220.0, 54.0)),
+            toolbar: Toolbar::new(),
             menu_bar: MenuBar::editor_default(),
             dock_area: default_dock_area(),
             viewport: SceneViewport::new(),
@@ -146,8 +149,8 @@ impl EditorContext {
             viewport_input: ViewportInputHandler::new(),
             input_mapping: EditorInputMapping::new(),
             hierarchy: HierarchyPanel::new(),
-            snap_to_grid: false,
-            show_colliders: true,
+            view: crate::view_toggles::ViewToggles::default(),
+            game_frame: glam::Vec2::new(800.0, 600.0),
             play_state: EditorPlayState::default(),
             camera_follow: true,
             play_controls: PlayControls::new(),
@@ -165,6 +168,7 @@ impl EditorContext {
             asset_browser: crate::AssetBrowserState::default(),
             script_catalog: Vec::new(),
             script_picker_open: false,
+            inspector_state: crate::InspectorState::default(),
         };
         // Run the tool→gizmo mapping once so startup state is consistent
         // whatever the defaults are (today both are Move/Translate).
@@ -240,21 +244,6 @@ impl EditorContext {
     // ================== Grid Methods ==================
     // These delegate to the GridRenderer
 
-    /// Check if the grid is visible.
-    pub fn is_grid_visible(&self) -> bool {
-        self.grid.is_visible()
-    }
-
-    /// Set grid visibility.
-    pub fn set_grid_visible(&mut self, visible: bool) {
-        self.grid.set_visible(visible);
-    }
-
-    /// Toggle grid visibility.
-    pub fn toggle_grid(&mut self) {
-        self.grid.toggle_visible();
-    }
-
     /// Get the grid size.
     pub fn grid_size(&self) -> f32 {
         self.grid.grid_size()
@@ -265,41 +254,9 @@ impl EditorContext {
         self.grid.set_grid_size(size);
     }
 
-    // ================== Collider Overlay Methods ==================
-
-    /// Check if collider outlines are visible in the scene view.
-    pub fn is_colliders_visible(&self) -> bool {
-        self.show_colliders
-    }
-
-    /// Set collider outline visibility.
-    pub fn set_colliders_visible(&mut self, visible: bool) {
-        self.show_colliders = visible;
-    }
-
-    /// Toggle collider outline visibility.
-    pub fn toggle_colliders(&mut self) {
-        self.show_colliders = !self.show_colliders;
-    }
-
-    /// Check if snap to grid is enabled.
-    pub fn is_snap_to_grid(&self) -> bool {
-        self.snap_to_grid
-    }
-
-    /// Set snap to grid.
-    pub fn set_snap_to_grid(&mut self, snap: bool) {
-        self.snap_to_grid = snap;
-    }
-
-    /// Toggle snap to grid.
-    pub fn toggle_snap_to_grid(&mut self) {
-        self.snap_to_grid = !self.snap_to_grid;
-    }
-
     /// Snap a position to the grid when the snap flag is enabled.
     pub fn snap_position(&self, pos: Vec2) -> Vec2 {
-        if self.snap_to_grid {
+        if self.view.snap {
             self.snap_to_grid_position(pos)
         } else {
             pos
@@ -467,11 +424,26 @@ impl EditorContext {
         self.dock_area = default_dock_area();
     }
 
-    /// Get the scene view content bounds (where the game world is rendered).
+    /// The viewport: where the game world is rendered, the scene panel's
+    /// content area **below the toolbar strip**. Every overlay, the GPU
+    /// scissor and every pick map through this rect, so none of them can
+    /// reach into the strip.
     ///
-    /// Returns `None` when the panel is hidden or collapsed (no content area).
+    /// Returns `None` when the panel is hidden or collapsed, and when the
+    /// strip consumes the whole content area — a zero-height rect would
+    /// leave every consumer silently dead instead of on its `None` path.
     pub fn scene_view_bounds(&self) -> Option<common::Rect> {
         self.panel_content_bounds(PanelId::SCENE_VIEW)
+            .map(|content| crate::toolbar_strip::split(content).1)
+            .filter(|viewport| viewport.height > 0.0)
+    }
+
+    /// The toolbar strip: the band across the top of the scene panel holding
+    /// the tools and the play controls. `None` when the panel is hidden or
+    /// collapsed; present even when the strip leaves the viewport no height.
+    pub fn toolbar_strip_bounds(&self) -> Option<common::Rect> {
+        self.panel_content_bounds(PanelId::SCENE_VIEW)
+            .map(|content| crate::toolbar_strip::split(content).0)
     }
 
     /// Content bounds of a panel, or `None` when it is hidden or collapsed.

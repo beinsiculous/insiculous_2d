@@ -68,7 +68,7 @@ player-aware settings layer (the universal mapping games consume).
 | Calling `end_frame()` before querying action activation clears one-shot flags and breaks edge detection | `tests/input_handler_integration.rs test_action_edges_fire_once_per_press_and_release_across_frames` |
 | Gamepad disconnect drops state so sources read released without firing a `just_released` edge | `tests/input_handler_integration.rs test_pads_register_on_first_event_or_connect_and_disconnect_drops_state_without_an_edge` |
 | `InputMapping::new()` is empty with no implicit bindings, requiring explicit binding configuration | `tests/input_mapping.rs test_new_mapping_binds_nothing_implicitly` |
-| Scroll pixel deltas must be normalized to lines (`PixelDelta` ÷ 16) | `tests/mouse.rs test_wheel_lines_and_trackpad_pixels_accumulate_as_lines_and_clear_each_frame` |
+| Scroll pixel deltas must be normalized to notches (`PixelDelta` ÷ 100) | `tests/mouse.rs test_wheel_notches_and_trackpad_pixels_accumulate_as_notches_and_clear_each_frame` |
 
 ## Testing
 - `cargo test -p input` — 0 failed, 0 ignored

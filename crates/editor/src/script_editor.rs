@@ -53,7 +53,9 @@ pub fn edit_scripts(
         extras.script_picker_open = !extras.script_picker_open;
     }
 
-    if extras.script_picker_open && edit.is_none() {
+    // The picker is a mutation path of its own: it stays shut while the
+    // inspector is read-only, whatever the host last left it at.
+    if extras.script_picker_open && !inspector.is_read_only() && edit.is_none() {
         let mut categories: BTreeMap<&str, Vec<&ScriptCatalogEntry>> = BTreeMap::new();
         for entry in extras.script_catalog {
             categories.entry(&entry.category).or_default().push(entry);
@@ -295,7 +297,7 @@ mod tests {
         let right = ORIGIN.x + WIDTH;
         Vec2::new(
             control_x + (right - control_x).max(60.0) / 2.0,
-            row_y + 2.0 + (style.row_height - 4.0) / 2.0,
+            row_y + 2.0 + style.field_height() / 2.0,
         )
     }
 
@@ -305,10 +307,11 @@ mod tests {
         let mut ui = ui::UIContext::new();
         let mut input = input::InputHandler::new();
         let mut drag_drop = crate::DragDropState::new();
+        let mut inspector_state = crate::InspectorState::default();
         let style = EditableFieldStyle::default();
         let (_, release) = click_through(&mut ui, &mut input, point, |ui| {
             let mut inspector = EditableInspector::new(ui, &style, ORIGIN.x, ORIGIN.y);
-            edit_scripts(&mut inspector, scripts, &mut extras(&mut drag_drop))
+            edit_scripts(&mut inspector, scripts, &mut extras(&mut drag_drop, &mut inspector_state))
         });
         release
     }
@@ -318,7 +321,8 @@ mod tests {
         let mut ui = ui::UIContext::new();
         let mut input = input::InputHandler::new();
         let mut drag_drop = crate::DragDropState::new();
-        let mut inspector_extras = extras(&mut drag_drop);
+        let mut inspector_state = crate::InspectorState::default();
+        let mut inspector_extras = extras(&mut drag_drop, &mut inspector_state);
         let style = EditableFieldStyle::default();
 
         // Empty component: "+ Add Script" is row 0. Clicking it toggles picker open.
@@ -360,7 +364,8 @@ mod tests {
         let mut ui = ui::UIContext::new();
         let mut input = input::InputHandler::new();
         let mut drag_drop = crate::DragDropState::new();
-        let mut inspector_extras = extras(&mut drag_drop);
+        let mut inspector_state = crate::InspectorState::default();
+        let mut inspector_extras = extras(&mut drag_drop, &mut inspector_state);
         let style = EditableFieldStyle::default();
 
         let mut catalog_params = BTreeMap::new();
@@ -414,7 +419,8 @@ mod tests {
         let mut ui = ui::UIContext::new();
         let mut input = input::InputHandler::new();
         let mut drag_drop = crate::DragDropState::new();
-        let mut inspector_extras = extras(&mut drag_drop);
+        let mut inspector_state = crate::InspectorState::default();
+        let mut inspector_extras = extras(&mut drag_drop, &mut inspector_state);
         inspector_extras.can_open_source = true;
 
         let style = EditableFieldStyle::default();

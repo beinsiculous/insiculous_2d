@@ -42,6 +42,18 @@ impl EditorTool {
         }
     }
 
+    /// One sentence on what the tool does, for its button's tooltip. The
+    /// button already carries the name and the shortcut, so this says what
+    /// picking it lets you do.
+    pub fn hint(&self) -> &'static str {
+        match self {
+            EditorTool::Select => "Click an entity to select it, or drag a box across several.",
+            EditorTool::Move => "Drag the gizmo's arrows to slide the selection along an axis.",
+            EditorTool::Rotate => "Drag the ring around the selection to turn it.",
+            EditorTool::Scale => "Drag the gizmo's handles to resize the selection.",
+        }
+    }
+
     /// Get all available tools.
     pub fn all() -> &'static [EditorTool] {
         &[
@@ -55,17 +67,24 @@ impl EditorTool {
 
 /// Editor toolbar widget.
 ///
-/// Renders a horizontal bar with tool selection buttons.
+/// Renders the tool buttons of the scene view's toolbar strip: the tools
+/// that fit, and an overflow button opening a menu of the ones that did
+/// not. [`crate::toolbar_strip`] decides how many fit; the toolbar draws
+/// them and reports what was clicked.
 #[derive(Debug, Clone)]
 pub struct Toolbar {
     /// Current selected tool
     current_tool: EditorTool,
-    /// Position of the toolbar
-    position: Vec2,
-    /// Button size
-    button_size: f32,
+    /// Button width: one size for every tool, wide enough for the longest
+    /// tool name at the body font size, so the tools keep their positions
+    /// as the selection changes.
+    button_width: f32,
+    /// Button height — the compact strip button, not a square.
+    button_height: f32,
     /// Spacing between buttons
     spacing: f32,
+    /// Whether the overflow menu of shed tools is open.
+    overflow_open: bool,
 }
 
 impl Default for Toolbar {
@@ -79,23 +98,11 @@ impl Toolbar {
     pub fn new() -> Self {
         Self {
             current_tool: EditorTool::default(),
-            position: Vec2::new(10.0, 10.0),
-            // Wide enough for the longest label ("Rotate"/"Select") at the
-            // body font size — 40px caused the labels to overflow each other
-            button_size: 56.0,
+            button_width: 64.0,
+            button_height: 30.0,
             spacing: 6.0,
+            overflow_open: false,
         }
-    }
-
-    /// Set the toolbar position.
-    pub fn with_position(mut self, position: Vec2) -> Self {
-        self.position = position;
-        self
-    }
-
-    /// Set the toolbar position in place (used to follow the scene view).
-    pub fn set_position(&mut self, position: Vec2) {
-        self.position = position;
     }
 
     /// Get the currently selected tool.
@@ -108,102 +115,171 @@ impl Toolbar {
         self.current_tool = tool;
     }
 
-    /// Get the toolbar bounds (for layout purposes).
-    pub fn bounds(&self) -> Rect {
-        let tools = EditorTool::all();
-        let width = tools.len() as f32 * (self.button_size + self.spacing) - self.spacing;
-        Rect::new(self.position.x, self.position.y, width, self.button_size)
+    /// Width of one tool button.
+    pub fn button_width(&self) -> f32 {
+        self.button_width
     }
 
-    /// Full chrome footprint: the background panel plus the shortcut-hint row
-    /// below the buttons. Everything inside consumes mouse gestures so clicks
-    /// on toolbar chrome never fall through to viewport picking.
-    pub fn chrome_bounds(&self) -> Rect {
-        let bg = self.bounds().expand(4.0);
-        // Hint baselines sit 12px below the buttons; 16px covers descenders.
-        Rect::new(bg.x, bg.y, bg.width, bg.height + 16.0)
+    /// Height of one tool button — the strip sizes its band around it.
+    pub fn button_height(&self) -> f32 {
+        self.button_height
     }
 
-    /// Render the toolbar and handle tool selection.
+    /// Gap between two tool buttons.
+    pub fn spacing(&self) -> f32 {
+        self.spacing
+    }
+
+    /// Distance from one button's left edge to the next one's.
+    pub fn button_stride(&self) -> f32 {
+        self.button_width + self.spacing
+    }
+
+    /// Whether the overflow menu of shed tools is open.
+    pub fn is_overflow_open(&self) -> bool {
+        self.overflow_open
+    }
+
+    /// Open the overflow menu if it is closed, close it if it is open — what
+    /// a click on its button does.
+    pub fn toggle_overflow(&mut self) {
+        self.overflow_open = !self.overflow_open;
+    }
+
+    /// Close the overflow menu. The Escape cascade's first step: an open
+    /// menu is the most specific live thing on screen.
+    pub fn close_overflow(&mut self) {
+        self.overflow_open = false;
+    }
+
+    /// Render the tool buttons the strip has room for, plus the overflow
+    /// button when some tools were shed, and handle tool selection.
+    ///
+    /// Call inside the strip's scope ([`crate::toolbar_strip::begin`]) so the
+    /// buttons land on the strip's band. The shed tools' menu is a separate
+    /// call — [`crate::overflow_menu::render_overflow_menu`] — because
+    /// it belongs on the floating band, and overlay scopes cannot nest.
     ///
     /// Returns the newly selected tool if changed.
-    pub fn render(&mut self, ui: &mut UIContext, theme: &crate::EditorTheme) -> Option<EditorTool> {
-        let tools = EditorTool::all();
+    pub fn render(
+        &mut self,
+        ui: &mut UIContext,
+        theme: &crate::EditorTheme,
+        layout: &crate::toolbar_strip::StripLayout,
+    ) -> Option<EditorTool> {
         let mut new_tool = None;
 
-        // Draw toolbar background
-        let bounds = self.bounds();
-        let bg_bounds = bounds.expand(4.0);
-        ui.panel(bg_bounds);
-
-        // Draw tool buttons
-        for (i, &tool) in tools.iter().enumerate() {
-            let x = self.position.x + i as f32 * (self.button_size + self.spacing);
-            let button_bounds = Rect::new(x, self.position.y, self.button_size, self.button_size);
-
-            let is_selected = tool == self.current_tool;
-
-            // Selection ring: an accent halo slightly larger than the button
-            // (the button's own background is opaque, so anything drawn
-            // directly underneath it would be invisible)
-            if is_selected {
-                ui.rect_rounded(button_bounds.expand(2.0), theme.toolbar_active, 5.0);
-            }
-
-            // Draw button (will use default styling with hover effect)
-            let id = format!("toolbar_{}", tool.name());
-            if ui.button(id.as_str(), tool.name(), button_bounds) {
-                self.current_tool = tool;
+        for (index, &tool) in EditorTool::all().iter().take(layout.visible_tools).enumerate() {
+            let button_bounds = self.button_bounds_at(layout.tools_origin, index);
+            if self.render_tool_button(ui, theme, tool, button_bounds) {
                 new_tool = Some(tool);
             }
-
-            // Accent border on the active tool, over the button chrome
-            if is_selected {
-                ui.rect_border(button_bounds, theme.accent_cyan, 1.0, 4.0);
-            }
-
-            // Draw shortcut hint below button (baseline sits a line below the
-            // button's bottom edge so the glyphs don't rise into the button)
-            let hint_pos = Vec2::new(
-                button_bounds.center().x,
-                button_bounds.y + button_bounds.height + 12.0,
-            );
-            ui.label_centered_styled(tool.shortcut(), hint_pos, theme.shortcut_hint, theme.fonts.small);
         }
 
-        // Consume-only: a press on the background/border/hint chrome (not on
-        // a button) must still claim the mouse gesture, or viewport picking
-        // underneath treats the click as its own. Registered AFTER the
-        // buttons so they win the active-widget slot.
-        ui.interact("toolbar_chrome", self.chrome_bounds(), true);
+        if let Some(overflow) = layout.overflow_button {
+            if self.render_overflow_button(ui, theme, overflow) {
+                self.toggle_overflow();
+            }
+        } else {
+            self.overflow_open = false;
+        }
 
         new_tool
     }
-}
 
-/// Where the toolbar should sit for a given scene-view content area:
-/// tucked into the top-left corner, below the panel header.
-pub fn toolbar_position_for(scene_content: Rect) -> Vec2 {
-    Vec2::new(scene_content.x + 16.0, scene_content.y + 8.0)
+    /// Bounds of the `index`th visible tool button, from the row's origin.
+    pub fn button_bounds_at(&self, origin: Vec2, index: usize) -> Rect {
+        Rect::new(
+            origin.x + index as f32 * self.button_stride(),
+            origin.y,
+            self.button_width,
+            self.button_height,
+        )
+    }
+
+    /// One tool button: its name, its shortcut as a small caption in the
+    /// top-right corner (the compact strip has no room for the hint row the
+    /// floating toolbar had), and the active state when it is the live tool.
+    /// Returns true when clicked.
+    fn render_tool_button(
+        &mut self,
+        ui: &mut UIContext,
+        theme: &crate::EditorTheme,
+        tool: EditorTool,
+        bounds: Rect,
+    ) -> bool {
+        let is_selected = tool == self.current_tool;
+
+        // Selection ring: an accent halo slightly larger than the button
+        // (the button's own background is opaque, so anything drawn
+        // directly underneath it would be invisible)
+        if is_selected {
+            ui.rect_rounded(bounds.expand(2.0), theme.toolbar_active, 5.0);
+        }
+
+        let id = format!("toolbar_{}", tool.name());
+        let clicked = ui.button(id.as_str(), tool.name(), bounds);
+        if clicked {
+            self.current_tool = tool;
+        }
+
+        if is_selected {
+            ui.rect_border(bounds, theme.accent_blue, 1.0, 4.0);
+        }
+
+        let hint_pos = Vec2::new(bounds.right() - 7.0, bounds.y + theme.fonts.small);
+        ui.label_centered_styled(tool.shortcut(), hint_pos, theme.shortcut_hint, theme.fonts.small);
+        ui.tooltip(bounds, tool.hint());
+
+        clicked
+    }
+
+    /// The button that opens the shed tools' menu: a chevron, and the active
+    /// state while the menu is open. Returns true when clicked.
+    fn render_overflow_button(
+        &self,
+        ui: &mut UIContext,
+        theme: &crate::EditorTheme,
+        bounds: Rect,
+    ) -> bool {
+        if self.overflow_open {
+            ui.rect_rounded(bounds.expand(2.0), theme.toolbar_active, 5.0);
+        }
+        let clicked = ui.button("toolbar_overflow", "", bounds);
+        // Three dots rather than a glyph: the strip must read the same in
+        // every font the editor can be running.
+        let center = bounds.center();
+        for offset in [-6.0, 0.0, 6.0] {
+            ui.circle(Vec2::new(center.x + offset, center.y), 1.5, theme.accent_cyan);
+        }
+        ui.tooltip(bounds, "More");
+        clicked
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::play_controls::PlayControls;
+    use crate::play_state::EditorPlayState;
     use crate::test_support::{frame, press_at, release};
+    use crate::toolbar_strip::{self, StripLayout};
     use crate::{EditorAction, EditorBinding, EditorInputMapping, EditorTheme};
 
-    /// The toolbar tucks into the scene view's top-left corner and follows
-    /// it when the left panel is hidden.
-    #[test]
-    fn test_toolbar_position_follows_scene_content() {
-        let docked = toolbar_position_for(Rect::new(200.0, 48.0, 550.0, 600.0));
-        let left_hidden = toolbar_position_for(Rect::new(0.0, 48.0, 750.0, 600.0));
-        assert_eq!(docked, Vec2::new(216.0, 56.0));
-        assert_eq!(left_hidden, Vec2::new(16.0, 56.0));
+    /// A strip across a comfortable scene panel, where every tool shows.
+    fn wide_strip(toolbar: &Toolbar) -> (Rect, StripLayout) {
+        let strip = toolbar_strip::split(Rect::new(0.0, 0.0, 1200.0, 600.0)).0;
+        let laid_out = toolbar_strip::layout(
+            strip,
+            toolbar,
+            &PlayControls::new(),
+            EditorPlayState::Editing,
+        );
+        assert_eq!(laid_out.visible_tools, EditorTool::all().len(), "fixture: every tool shows");
+        (strip, laid_out)
     }
 
-    /// The shortcut hint painted under each tool button and the binding
+    /// The shortcut hint painted on each tool button and the binding
     /// table that actually switches tools are two tables; this holds them
     /// together so a rebind cannot leave a stale hint on screen.
     #[test]
@@ -227,30 +303,44 @@ mod tests {
         }
     }
 
-    /// Press on toolbar chrome (the gap between buttons): the toolbar claims
-    /// the gesture so viewport picking underneath never sees the click.
-    /// Press on a button: the click fires on the RELEASE frame and must win
-    /// over the consume-only chrome rect registered after it — the
-    /// `WidgetState::Active` footgun, where the release frame is Hovered.
+    /// Press in the gap between two tool buttons: the strip's band claims
+    /// the gesture, so viewport picking underneath never sees the click.
+    /// Press on a button: the click fires on the RELEASE frame, and the
+    /// release frame stays widget-owned — the `WidgetState::Active` footgun,
+    /// where the release frame is Hovered.
     #[test]
-    fn test_toolbar_button_click_survives_chrome_interact() {
+    fn test_a_gap_press_is_claimed_by_the_strip_and_a_button_click_fires_on_release() {
         let mut toolbar = Toolbar::new();
         let theme = EditorTheme::default();
+        let (strip, laid_out) = wide_strip(&toolbar);
         let mut ui = UIContext::new();
         let mut input = input::InputHandler::new();
 
-        // Chrome press in the 6px gap between the first two buttons.
-        let picked = press_at(&mut ui, &mut input, Vec2::new(68.0, 30.0), |ui| toolbar.render(ui, &theme));
-        assert_eq!(picked, None, "a gap press selects no tool");
-        assert!(ui.wants_mouse(), "a press on toolbar chrome must not fall through to picking");
-        release(&mut ui, &mut input, |ui| toolbar.render(ui, &theme));
+        let first = toolbar.button_bounds_at(laid_out.tools_origin, 0);
+        let gap = Vec2::new(first.right() + toolbar.spacing() * 0.5, first.center().y);
+        let move_center = toolbar.button_bounds_at(laid_out.tools_origin, 1).center();
 
-        // Button press on Move (second button, center x = 72 + 28).
-        let picked = press_at(&mut ui, &mut input, Vec2::new(100.0, 38.0), |ui| toolbar.render(ui, &theme));
+        let render = |ui: &mut UIContext, toolbar: &mut Toolbar| {
+            toolbar_strip::begin(ui, strip, &theme);
+            let picked = toolbar.render(ui, &theme, &laid_out);
+            toolbar_strip::end(ui);
+            picked
+        };
+
+        let picked = press_at(&mut ui, &mut input, gap, |ui| render(ui, &mut toolbar));
+        assert_eq!(picked, None, "a gap press selects no tool");
+        assert!(
+            ui.is_input_blocked_at(gap),
+            "a press on the strip must not fall through to viewport picking"
+        );
+        release(&mut ui, &mut input, |ui| render(ui, &mut toolbar));
+
+        let picked = press_at(&mut ui, &mut input, move_center, |ui| render(ui, &mut toolbar));
         assert_eq!(picked, None, "clicks fire on release, not on press");
         assert!(ui.wants_mouse());
-        let (picked, widget_owned) = release(&mut ui, &mut input, |ui| (toolbar.render(ui, &theme), ui.wants_mouse()));
-        assert_eq!(picked, Some(EditorTool::Move), "the button wins the click over the chrome rect");
+        let (picked, widget_owned) =
+            release(&mut ui, &mut input, |ui| (render(ui, &mut toolbar), ui.wants_mouse()));
+        assert_eq!(picked, Some(EditorTool::Move), "the second button is Move");
         assert!(widget_owned, "the release frame stays widget-owned");
     }
 
@@ -265,13 +355,20 @@ mod tests {
         let theme = EditorTheme::default();
         let mut ui = UIContext::new();
         let mut input = input::InputHandler::new();
-        let rotate_center = Vec2::new(10.0 + 2.0 * 62.0 + 28.0, 38.0);
+        let (strip, laid_out) = wide_strip(&toolbar);
+        let rotate_center = toolbar.button_bounds_at(laid_out.tools_origin, 2).center();
+        let render = |ui: &mut UIContext, toolbar: &mut Toolbar| {
+            toolbar_strip::begin(ui, strip, &theme);
+            let picked = toolbar.render(ui, &theme, &laid_out);
+            toolbar_strip::end(ui);
+            picked
+        };
 
         input.mouse_mut().update_position(rotate_center.x, rotate_center.y);
         input.mouse_mut().handle_button_press(MouseButton::Left);
-        let pressed = frame(&mut ui, &input, |ui| toolbar.render(ui, &theme));
+        let pressed = frame(&mut ui, &input, |ui| render(ui, &mut toolbar));
         input.mouse_mut().handle_button_release(MouseButton::Left);
-        let released = frame(&mut ui, &input, |ui| toolbar.render(ui, &theme));
+        let released = frame(&mut ui, &input, |ui| render(ui, &mut toolbar));
 
         assert_eq!(pressed, None, "the press frame selects nothing");
         assert_eq!(released, Some(EditorTool::Rotate), "the release frame fires the click");

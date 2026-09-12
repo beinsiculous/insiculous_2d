@@ -235,6 +235,11 @@ pub(super) fn undo(ctx: &mut WriteCtx<'_>) -> Result<Value, ApiError> {
                 .to_string(),
         ));
     }
+    if ctx.history.in_session() && !ctx.history.can_undo() {
+        return Err(ApiError::Refused(
+            "Undo stops at the Play boundary — Stop first".to_string(),
+        ));
+    }
     let name = ctx.history.undo_name().map(str::to_string);
     let undid = ctx.history.undo(ctx.world);
     restore_selection(ctx);
@@ -246,6 +251,11 @@ pub(super) fn redo(ctx: &mut WriteCtx<'_>) -> Result<Value, ApiError> {
         return Err(ApiError::Refused(
             "redo inside an open batch would desync it — `batch end` or `batch abort` first"
                 .to_string(),
+        ));
+    }
+    if ctx.history.in_session() && !ctx.history.can_redo() {
+        return Err(ApiError::Refused(
+            "Redo stops at the Play boundary — Stop first".to_string(),
         ));
     }
     let name = ctx.history.redo_name().map(str::to_string);

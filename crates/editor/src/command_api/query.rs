@@ -52,7 +52,7 @@ fn list_entities(world: &World, filter: Option<&str>) -> Value {
     let records: Vec<Value> = entities
         .into_iter()
         .filter(|e| match &filter_lower {
-            Some(f) => HierarchyPanel::entity_display_name(world, *e)
+            Some(f) => crate::entity_names::entity_display_name(world, *e)
                 .to_lowercase()
                 .contains(f),
             None => true,

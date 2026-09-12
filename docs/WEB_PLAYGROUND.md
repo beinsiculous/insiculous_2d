@@ -26,7 +26,7 @@ playground/<version>/
 
 Invocation of record, run from the engine root:
 ```sh
-scripts/build_wasm.sh crates/playground playground --kind playground --version v1 \
+scripts/build_wasm.sh crates/playground playground --kind playground --version v2 \
     --project examples=Examples=examples \
     --project pong=Pong=crates/playground/assets/projects/pong \
     --project game-template="Game Template"=../games/game-template \
@@ -42,7 +42,7 @@ Each entry carries:
 {
   "slug": "examples",
   "title": "Examples",
-  "bundle_version": "v1",
+  "bundle_version": "v2",
   "content_hash": "<sha256-hex>",
   "origin": "bundled"
 }
@@ -52,22 +52,23 @@ the project's `<dir>/assets`.
 
 ## The bundle contract
 
-`ASSET_BASE = "/playground/v1/assets"` and `BUNDLE_VERSION = "v1"` (`web_entry.rs`). The
+`ASSET_BASE = "/playground/v2/assets"` and `BUNDLE_VERSION = "v2"` (`web_entry.rs`). The
 version token appears in five places, listed in that file's header: the deployed directory
-`public/playground/v1/`, the asset URLs the engine fetches, `projects.json`'s
+`public/playground/v2/`, the asset URLs the engine fetches, `projects.json`'s
 `bundle_version`, the build script's output directory, and every `StoredFile`'s
 `bundle_version`. Bumping it is a coordinated change across all five.
 
 A project's root is computed, never stored: `{ASSET_BASE}/projects/<slug>` on the web,
 `<dir>/projects/<slug>` natively; its asset base is `{root}/assets`. Every file the engine
 reads or writes is keyed by that base-joined string (`common::vfs`'s canonical key), e.g.
-`/playground/v1/assets/projects/examples/assets/scenes/behavior_demo.scene.ron`. A relative
+`/playground/v2/assets/projects/examples/assets/scenes/behavior_demo.scene.ron`. A relative
 key never resolves; relative paths given to the editor or the API are joined to the open
 project's asset base first.
 
-**One embed per page.** The VFS, the store, the bridge channels and the persistence chains
-are module-level singletons; a second `playground_*` module on the same page would share
-them. The page provides two elements by id: `game-loading` (boot status text, from
+**One embed per page, and one runtime: a page is the editor or, with `?mode=preview`, the
+preview.** The VFS, the store, the bridge channels and the persistence chains are
+module-level singletons; a second `playground_*` module on the same page would share
+them. winit allows one event loop per page, which is the other half of the same rule. The page provides two elements by id: `game-loading` (boot status text, from
 `engine_core::web::set_boot_status`) and `playground-banner` (persistence warnings, written
 by `persist::set_dom_banner`; an absent element is a silent no-op). The entry dispatches the
 `playground-ready` event on `window` immediately after the bridge is set up, signaling that
@@ -95,12 +96,12 @@ deploy separately.
 The invocations of record, from the engine root:
 
 ```sh
-scripts/build_wasm.sh ../games/pong pong --kind editor --version v1 --sync ../insiculous_web/public
-scripts/build_wasm.sh ../games/snake snake --kind editor --version v1 --sync ../insiculous_web/public
-scripts/build_wasm.sh ../games/breakout breakout --kind editor --version v1 --sync ../insiculous_web/public
-scripts/build_wasm.sh ../games/frogger frogger --kind editor --version v1 --sync ../insiculous_web/public
-scripts/build_wasm.sh ../games/asteroids asteroids --kind editor --version v1 --sync ../insiculous_web/public
-scripts/build_wasm.sh ../games/space_invaders invaders --kind editor --version v1 --sync ../insiculous_web/public
+scripts/build_wasm.sh ../games/pong pong --kind editor --version v2 --sync ../insiculous_web/public
+scripts/build_wasm.sh ../games/snake snake --kind editor --version v2 --sync ../insiculous_web/public
+scripts/build_wasm.sh ../games/breakout breakout --kind editor --version v2 --sync ../insiculous_web/public
+scripts/build_wasm.sh ../games/frogger frogger --kind editor --version v2 --sync ../insiculous_web/public
+scripts/build_wasm.sh ../games/asteroids asteroids --kind editor --version v2 --sync ../insiculous_web/public
+scripts/build_wasm.sh ../games/space_invaders invaders --kind editor --version v2 --sync ../insiculous_web/public
 ```
 
 (The site slug for `space_invaders` is `invaders`, as it is for its game bundle.)
@@ -186,14 +187,51 @@ The command channel is a 1024-line FIFO; responses come back in order.
 | `playground_list_projects()` | `→ ProjectEntry[]` | bundled merged with stored; stored wins on a slug clash; `has_stored_files` gates Reset. The stored list is a boot snapshot: an edit's first put upserts a manifest the list shows after the next reload |
 | `playground_open_project(slug)` | `→ Promise` | drains, then resolves; the PAGE sets `?project=<slug>` and reloads |
 | `playground_reset_project(slug)` | `→ Promise` | drains, `remove_project`, resolves; the page reloads and the bundled files come back |
-| `playground_export_zip()` | `→ Result<Uint8Array>` | the open project's `assets/**` plus `project.ron` and a README as zip bytes; refuses an archive over 64 MiB (the importer's archive cap; its decompressed-bytes cap is not mirrored, so a highly compressible project over 64 MiB unpacked exports but does not re-import) |
+| `playground_export_zip()` | `→ Promise<Uint8Array>` | the open project's `assets/**` plus `project.ron` and a README as zip bytes, with the **live** scene in place of the saved one — the visitor exports the work they are looking at. A snapshot already in flight is joined, not refused, so Export a moment after Play ↗ works. Refused during Play or Pause, like `playground_snapshot`: the live world is the simulation then, and the saved scene would drop the unsaved edits made before Play — stop first. Refuses an archive over 64 MiB (the importer's archive cap; its decompressed-bytes cap is not mirrored, so a highly compressible project over 64 MiB unpacked exports but does not re-import) |
+| `playground_snapshot(generation)` | `→ Promise<{ sceneEntry, bytes }>` | the project archive with the active scene's entry replaced by the live world as RON, every other file kept. Answered on the editor's next frame, 5 s cap, then rejected with "the editor did not answer — is its tab visible?". Refused during Play or Pause, and while another generation is pending. **Reserves the preview as it files**, and clears the reservation if it rejects |
+| `playground_set_preview_open(open)` | `→ void` | while true, in-editor Play is refused with "A preview window is open — close it to Play here". The page clears it on `preview-failed`, `preview-closed`, or a window it finds closed — never on silence |
 | `playground_import_zip(bytes)` | `→ Promise<string>` | validates, drains, replaces the project in the store, resolves with the slug; the PAGE then sets `?project=<slug>` and reloads — REQUIRED, same slug or not, as for switch and reset: the drain leaves writes refused until the reload |
 | `playground_read_file_bytes(path)` | `→ Result<Uint8Array>` | project-relative binary read through `vfs::read` |
 | `playground_conflicted_paths()` | `→ string[]` | sorted project-relative paths currently in conflicted state |
 | `playground_script_errors()` | `→ string[]` | runtime errors recorded by `ScriptRunner` during the current Play session |
+| `playground_save_state()` | `→ string` | `{"state": "unsaved" \| "saving" \| "saved" \| "failed", "reason": ""}`: a conflicted or stranded path is `failed` with `reason` naming the first such path in sorted order — **conflicted outranks stranded**, a conflict being terminal while a stranded path retries on `visibilitychange` — an in-flight or queued put is `saving`, a dirty command history is `unsaved`, and neither is `saved` |
 
 The engine cannot swap a running project; every switch is a page reload with the query
 string naming the slug. An unknown `?project=` redirects to the first bundled project.
+
+## The preview window
+
+`?mode=preview` on the page URL boots the game-only runtime instead of the editor: no
+store, no persistence chains, no write observer, no bridge, no asset preload, and every
+save path of its `GameConfig` left `None`, so the preview writes no storage key. It boots
+to "Waiting for the editor's snapshot…" and does nothing until the editor's page hands it
+an archive.
+
+| export | shape | notes |
+|---|---|---|
+| `playground_load_preview(bytes, sceneEntry)` | `→ Result` | unpacks the archive through the importer's full validation, keys every file under the project root, and starts the game on `sceneEntry`. Refused when one is already loaded — one runtime per page. `Ok` means **scheduled**, not running |
+| `playground_preview_state()` | `→ string` | `"booting"` until the first frame has actually stepped, then `"running"`; `"failed: <text>"` from a scene that would not load or the renderer's boot-status failure |
+| `playground_preview_pause()` | `→ bool` | toggles; returns the new paused state |
+| `playground_preview_restart()` | `→ Result` | reloads the scene from the top and clears the pause; `Err` when nothing is loaded |
+
+The preview loads the scene entry it is handed and never infers one from the archive.
+Stop is the page closing the window; the `pagehide` guard already latches the loop for
+good. A hidden document gets no animation frames, so both pages install
+`engine_core::web::install_hidden_frame_pump`: while a tab is in the background a 100 ms
+timer drives its frames through a user event instead. The editor's page needs it most —
+opening the preview window hides the editor's tab before the frame that answers the
+snapshot — and on a page that is already hidden the pump starts as soon as there is a loop to
+wake.
+
+The same timer drives an **idle** editor. Once half a second passes with no input event
+and no mouse button held, an editor in Editing or Paused stops re-arming animation frames
+and the pump takes over at its 100 ms cadence; the countdown is cleared by any input, and
+the first input after idling wakes the ordinary loop on that frame rather than at the
+pump's next tick. Only an editor host asks for this (`GameContext::set_idle_throttle_ok`),
+and only while no simulation is running — the engine's own time freeze outside Playing
+already means nothing is animating — so a game window and a play session keep their full
+frame rate. A `resize` or a `RedrawRequested` is window management, not input, and never
+wakes it. The numbers it moves are in § Budget.
 
 ## Preferences
 
@@ -206,7 +244,11 @@ takes the viewport), after Stop, and on exit. Nothing is written during Play or 
 
 ## Export and import
 
-Projects export and import as standard zip archives (`<slug>.zip`). This is the layout
+`playground_export_zip()` is a Promise, and the scene it carries is the live world, not
+the file on disk: the acceptance test is "exports their work", and the saved scene would
+drop the very edit the visitor previewed. For the same reason it is refused during Play or
+Pause — stop first. Projects export and import as standard zip
+archives (`<slug>.zip`). This is the layout
 [the template repo](https://github.com/beinsiculous/game-template) conforms to, and it goes
 both ways: an export drops on a clone of the template with
 `rm -rf assets/scenes assets/scripts && unzip -o <slug>.zip -x README.md -d .`
@@ -242,3 +284,44 @@ On import, the archive is validated in order before touching any persistence sto
 ### Failure contract
 
 A refused archive touches nothing; a failed `replace_project` restores the epoch and the current project keeps saving — a save attempted during its drain window was refused, as on switch and reset, and is re-issued by saving again.
+
+## Acceptance
+
+Run these by hand in a real browser against a staged deploy before each playground
+release, and record the result in the pull request. None of them is covered by an
+automated run: each needs a real keyboard, pointer and audio device, and the editor
+inside a page is where the engine's input path can break in ways no headless test sees.
+`/playground/` is also the only surface the engine shares with a page that has its own
+shortcuts, its own scroll and its own zoom.
+
+| check | what to do, and what passing looks like |
+|---|---|
+| Browser shortcuts | With the canvas focused, press Ctrl/Cmd+S, Ctrl/Cmd+O, F5 and Ctrl/Cmd+W; then repeat with the focus on the page instead. Record which ones the page swallows — winit suppresses the browser's own default for the keys the canvas handles, and the tab-closing ones cannot be suppressed at all. Either way no work is lost: a reload or a close with anything pending asks first ("Changes you made may not be saved") |
+| Focus into the canvas | Click the canvas. The editor's shortcuts work, and typed characters reach the focused field, drawn with the focus ring around it |
+| Focus out of the canvas | Click the command input, the project switcher, or any chrome outside the canvas, then press the editor's shortcuts. The keystrokes go to that element and nothing reaches the game or the scene |
+| Tab traversal | Click one inspector text field, then Tab and Shift-Tab. Focus moves exactly one field per press, wraps at the last field to the first (and the reverse for Shift-Tab), and the focus ring follows it |
+| Audio activation | Load a project with sound and wait: the page starts silent. The first click or key press enables audio, and a preview window's sounds play from then on |
+| Resize | Drag the browser window and open and close a panel. The canvas re-lays out, and the pointer still maps to the same world point — click a sprite where it is drawn, not where it was |
+| Zoom | Browser page zoom (Ctrl/Cmd with `+`/`-`, and Ctrl/Cmd with the wheel), then the editor's own wheel zoom over the viewport. The canvas stays aligned under the pointer, and a gentle trackpad scroll does not compound into a hard zoom |
+| Typing stays in its field | With a script open in Scripts, and with an inspector text field focused, type Delete, Ctrl/Cmd+Z, letters and spaces. The scene does not change: no entity is deleted, no tool shortcut fires, no undo runs |
+
+## Budget
+
+Four numbers decide whether "lightweight" means anything, all measured on an ordinary
+laptop with a cold cache. Only the first is a build artifact and can be read off a
+rebuild; the rest need Jesse's browser, and the rows say so until he has run them.
+Each is recorded with the measurement it came from so a later regression is visible
+rather than felt.
+
+| number | what it covers | recorded |
+|---|---|---|
+| download size | `game_bg.wasm` of the playground bundle — the `wasm size:` line `scripts/build_wasm.sh` echoes. The only one of the four with a hard gate: `--kind playground` exits non-zero past `PLAYGROUND_SIZE_BUDGET_MIB` at the top of that script | 10.61 MiB (v2, 2026-09-12) |
+| time to an editable scene | navigation to the first keystroke an inspector field accepts | pending Jesse's measurement |
+| idle CPU | an editor tab left alone in Editing, after the idle throttle has engaged — the number the throttle exists to move | pending Jesse's measurement |
+| memory with a preview open | the editor tab plus a `?mode=preview` window on the same project, as one browser-task-manager reading | pending Jesse's measurement |
+
+The idle-CPU number is the one to read twice. An editor with nothing happening stops
+asking for animation frames once half a second passes without input, and wakes on the
+frame the next input arrives; a reading taken during a drag, a resize or a play session
+is a different number from one taken on a still window, and only the still one is the
+measurement this row is for.

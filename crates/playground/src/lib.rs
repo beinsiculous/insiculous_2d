@@ -3,8 +3,11 @@
 pub mod archive;
 pub mod bridge;
 pub mod persist;
+pub mod preview;
 pub mod projects;
 pub mod store;
 
+#[cfg(target_arch = "wasm32")]
+pub mod preview_entry;
 #[cfg(target_arch = "wasm32")]
 pub mod web_entry;

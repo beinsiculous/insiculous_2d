@@ -13,7 +13,46 @@ use winit::{
     window::WindowId,
 };
 
-use super::{Game, GameRunner};
+use super::{Game, GameRunner, WakeUp};
+
+/// How long the window must go without input before the web loop throttles
+/// itself. Long enough that reading one field before typing into the next
+/// never trips it, short enough that a window left alone stops costing
+/// frames while the user is away.
+#[cfg(target_arch = "wasm32")]
+const IDLE_THROTTLE_SECONDS: f32 = 0.5;
+
+/// Whether a window event is the user doing something. These are exactly the
+/// variants `InputHandler::handle_window_event` queues an input event for;
+/// `Resized`, `ScaleFactorChanged` and `RedrawRequested` are window
+/// management and must not hold the idle throttle off forever.
+#[cfg(target_arch = "wasm32")]
+fn is_input_event(event: &WindowEvent) -> bool {
+    matches!(
+        event,
+        WindowEvent::KeyboardInput { .. }
+            | WindowEvent::MouseInput { .. }
+            | WindowEvent::CursorMoved { .. }
+            | WindowEvent::MouseWheel { .. }
+    )
+}
+
+/// Whether a mouse button is held right now. Read from the device state
+/// rather than from events, because a held button whose pointer is parked —
+/// a drag-scrub, a dock-resize grabber — emits nothing at all.
+#[cfg(target_arch = "wasm32")]
+fn mouse_button_held(input: &input::InputHandler) -> bool {
+    use winit::event::MouseButton;
+    [
+        MouseButton::Left,
+        MouseButton::Right,
+        MouseButton::Middle,
+        MouseButton::Back,
+        MouseButton::Forward,
+    ]
+    .into_iter()
+    .any(|button| input.mouse().is_button_pressed(button))
+}
 
 impl<G: Game> GameRunner<G> {
     /// One frame: update + render, honor exit requests, pace (native only),
@@ -48,7 +87,46 @@ impl<G: Game> GameRunner<G> {
         // Enforce GameConfig::target_fps by sleeping out the frame budget
         // (no-op on wasm — requestAnimationFrame paces the loop).
         self.game_loop_manager.throttle();
+        self.arm_next_frame();
+    }
+
+    /// Ask for the next frame. Natively that is unconditional — the platform
+    /// drives the loop. On the web the loop re-arms itself, so a window that
+    /// has gone quiet asks through the hidden-document pump's 100 ms timer
+    /// instead and stops costing animation frames: the host permits that with
+    /// `GameContext::set_idle_throttle_ok` (the editor permits it only while
+    /// no simulation is running), and the elapsed-idle test keeps it from
+    /// engaging between keystrokes in a burst.
+    fn arm_next_frame(&mut self) {
+        #[cfg(not(target_arch = "wasm32"))]
         self.window_manager.request_redraw();
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.idle_seconds += self.game_loop_manager.delta_time();
+            if mouse_button_held(&self.input) {
+                self.idle_seconds = 0.0;
+            }
+            if self.requests.idle_throttle_ok && self.idle_seconds >= IDLE_THROTTLE_SECONDS {
+                crate::web::note_idle(true);
+                return;
+            }
+            crate::web::note_idle(false);
+            self.window_manager.request_redraw();
+        }
+    }
+
+    /// Record real user input: the idle clock restarts, and if the throttle
+    /// had engaged, wake the loop now rather than at the pump's next tick —
+    /// a hover highlight or a click that lands 100 ms late reads as a window
+    /// that is laggy exactly when it is being used.
+    #[cfg(target_arch = "wasm32")]
+    fn note_input_activity(&mut self) {
+        self.idle_seconds = 0.0;
+        if crate::web::idle_active() {
+            crate::web::note_idle(false);
+            self.window_manager.request_redraw();
+        }
     }
 
     /// The render path reported the GPU device lost. On the web, NOT
@@ -59,6 +137,14 @@ impl<G: Game> GameRunner<G> {
         #[cfg(target_arch = "wasm32")]
         {
             let _ = event_loop;
+            // A page that lost its device while idle-active or hidden would
+            // otherwise pump a `WakeUp` every 100 ms forever: each one
+            // re-enters here and returns before `arm_next_frame` ever runs, so
+            // nothing else would clear the flags that keep the pump re-arming.
+            // `note_render_fatal` covers the hidden case, which visibility
+            // alone would otherwise keep alive even after `note_idle(false)`.
+            crate::web::note_idle(false);
+            crate::web::note_render_fatal();
             crate::web::set_boot_status(if crate::web::page_exited() {
                 crate::web::PAGE_EXIT_STATUS
             } else {
@@ -140,7 +226,7 @@ impl<G: Game> GameRunner<G> {
     }
 }
 
-impl<G: Game> ApplicationHandler<()> for GameRunner<G> {
+impl<G: Game> ApplicationHandler<WakeUp> for GameRunner<G> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         // Only create window once
         if self.window_manager.is_created() {
@@ -194,6 +280,12 @@ impl<G: Game> ApplicationHandler<()> for GameRunner<G> {
 
         // Forward to input handler
         self.input.handle_window_event(&event);
+
+        // Input is what the idle throttle is idle *of*.
+        #[cfg(target_arch = "wasm32")]
+        if is_input_event(&event) {
+            self.note_input_activity();
+        }
 
         // H7: the first activation gesture upgrades web audio. Must run
         // inside this synchronous DOM dispatch — and before on_key_pressed,
@@ -253,6 +345,15 @@ impl<G: Game> ApplicationHandler<()> for GameRunner<G> {
             }
             _ => {}
         }
+    }
+
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, _event: WakeUp) {
+        // The one frame driver a hidden document still has: `request_redraw`
+        // is an animation frame there and never fires.
+        #[cfg(target_arch = "wasm32")]
+        self.drive_frame(event_loop);
+        #[cfg(not(target_arch = "wasm32"))]
+        let _ = event_loop;
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {

@@ -78,6 +78,14 @@ impl<G: Game> EditorGame<G> {
             _ => {}
         }
 
+        // The toolbar's open overflow menu is the strip's own in every play
+        // state: Escape closes it and goes no further, or a game bound to
+        // Escape would pause under a menu that stays open.
+        if action == Some(EditorAction::Cancel) && self.editor.toolbar.is_overflow_open() {
+            self.editor.toolbar.close_overflow();
+            return KeyRoute::Consumed;
+        }
+
         // While Playing the raw key belongs to the game — editor actions
         // are deliberately NOT dispatched here.
         if self.editor.is_playing() {
@@ -285,8 +293,15 @@ impl<G: Game> EditorGame<G> {
             A::ZoomIn => self.editor.zoom_camera(1.1),
             A::ZoomOut => self.editor.zoom_camera(0.9),
             A::ResetZoom => self.editor.reset_camera(),
-            A::ToggleGrid => self.editor.toggle_grid(),
-            A::ToggleColliders => self.editor.toggle_colliders(),
+            A::ToggleGrid => {
+                self.editor.view.toggle(editor::ViewToggle::Grid);
+            }
+            A::ToggleColliders => {
+                self.editor.view.toggle(editor::ViewToggle::Colliders);
+            }
+            A::ToggleGameFrame => {
+                self.editor.view.toggle(editor::ViewToggle::GameFrame);
+            }
             A::ToggleSnap => self.toggle_snap_with_feedback(),
             A::TogglePanel(id) => self.editor.dock_area.toggle_panel_visible(id),
             A::ResetLayout => self.reset_layout_with_feedback(),
@@ -342,6 +357,7 @@ impl<G: Game> EditorGame<G> {
             | A::ResetZoom
             | A::ToggleGrid
             | A::ToggleColliders
+            | A::ToggleGameFrame
             | A::ToggleSnap
             | A::TogglePanel(_)
             | A::ResetLayout
@@ -373,6 +389,10 @@ impl<G: Game> EditorGame<G> {
     /// Undo the top entry and name it on the status bar ("Undo: Delete
     /// Entity") — Edit → Undo and Ctrl+Z share this, so both report it.
     pub(super) fn undo_with_feedback(&mut self, world: &mut ecs::World) {
+        if let Some(message) = self.play_boundary_refusal("Undo") {
+            self.editor.status_bar.show_message(message);
+            return;
+        }
         if let Some(name) = self.command_history.undo_name() {
             self.editor.status_bar.show_message(format!("Undo: {name}"));
         }
@@ -381,8 +401,24 @@ impl<G: Game> EditorGame<G> {
         }
     }
 
+    /// The line to show when `verb` is blocked by the Play boundary rather
+    /// than by an empty stack — undoing past it would rewrite the authored
+    /// scene while a simulation still holds the world.
+    fn play_boundary_refusal(&self, verb: &str) -> Option<String> {
+        let blocked = match verb {
+            "Undo" => !self.command_history.can_undo(),
+            _ => !self.command_history.can_redo(),
+        };
+        (self.command_history.in_session() && blocked)
+            .then(|| format!("{verb} stops at the Play boundary — Stop first"))
+    }
+
     /// Redo counterpart of [`Self::undo_with_feedback`].
     pub(super) fn redo_with_feedback(&mut self, world: &mut ecs::World) {
+        if let Some(message) = self.play_boundary_refusal("Redo") {
+            self.editor.status_bar.show_message(message);
+            return;
+        }
         if let Some(name) = self.command_history.redo_name() {
             self.editor.status_bar.show_message(format!("Redo: {name}"));
         }
@@ -392,8 +428,13 @@ impl<G: Game> EditorGame<G> {
     }
 
     /// Escape: cancel the most specific live thing, exactly one per press —
-    /// a gizmo drag, else a marquee, else the selection.
+    /// a gizmo drag, else a marquee, else the selection. The toolbar's open
+    /// overflow menu is closed before this, in [`Self::route_editor_key`],
+    /// because it must close while Playing too and Playing never reaches here.
     pub(super) fn cancel_cascade(&mut self, world: &mut ecs::World) {
+        if self.editor.inspector_state.close_color_editor() {
+            return;
+        }
         if self.cancel_gizmo_drag(world) {
             return;
         }

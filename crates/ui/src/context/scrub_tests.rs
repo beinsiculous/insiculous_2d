@@ -237,3 +237,70 @@ fn test_float_suffix_renders_but_never_enters_the_buffer() {
     assert!(r.committed && !r.changed && !r.invalid);
     assert_eq!(r.value, 90.0);
 }
+
+// ================== Blocking ==================
+
+/// A press on a field under a modal popup is not a press on that field. The
+/// scrub reads raw mouse state rather than the interaction result, so it
+/// runs the blocking test itself: without that, dragging a popup's own
+/// channel scrubbed whichever numeric row of the panel lay underneath it —
+/// the one gesture the popup's blocking rect did not reach.
+#[test]
+fn test_a_float_field_under_a_modal_popup_neither_arms_nor_scrubs() {
+    let mut ui = UIContext::new();
+    let mut input = input::InputHandler::new();
+
+    // A modal popup over the field's whole area, drawn before it — the
+    // order the colour editor's pass runs in.
+    let scrim = Rect::new(0.0, 0.0, 400.0, 300.0);
+    let blocked_field = |ui: &mut UIContext| {
+        ui.begin_overlay_in(crate::UiLayer::Modal, scrim);
+        ui.end_overlay();
+        ui.float_input("scrub_field", 5.0, opts(), BOUNDS)
+    };
+
+    let armed = press_at(&mut ui, &mut input, BOUNDS.center(), blocked_field);
+    assert!(!armed.scrubbing && !armed.changed, "a popup's press is not the field's");
+
+    let dragged = move_to(
+        &mut ui,
+        &mut input,
+        BOUNDS.center() + Vec2::new(30.0, 0.0),
+        blocked_field,
+    );
+    assert!(!dragged.scrubbing && !dragged.changed, "and its drag is not the field's either");
+    assert_eq!(dragged.value, 5.0, "the field kept its value");
+
+    let released = release(&mut ui, &mut input, blocked_field);
+    assert!(!released.committed, "no gesture was ever open to seal");
+}
+
+/// Only the press is tested against the blocking regions. A scrub armed in
+/// the open keeps going while the pointer crosses chrome drawn before the
+/// field — the toolbar strip is such a scope, and it sits right where a
+/// drag out of the inspector goes — so the gesture is neither cut short
+/// nor committed behind the user's back, and Escape can still restore it.
+#[test]
+fn test_an_armed_scrub_survives_the_pointer_crossing_a_chrome_scope() {
+    let mut ui = UIContext::new();
+    let mut input = input::InputHandler::new();
+
+    let armed = press(&mut ui, &mut input, 5.0);
+    assert!(!armed.scrubbing, "the press frame only arms");
+
+    // A chrome scope over where the pointer is heading, drawn before the
+    // field as the strip is.
+    let crossed = BOUNDS.center() + Vec2::new(30.0, 0.0);
+    let strip = Rect::new(crossed.x - 10.0, crossed.y - 10.0, 200.0, 40.0);
+    let field_behind_chrome = |ui: &mut UIContext| {
+        ui.begin_overlay_in(crate::UiLayer::PanelChrome, strip);
+        ui.end_overlay();
+        ui.float_input("scrub_field", 5.0, opts(), BOUNDS)
+    };
+    let dragged = move_to(&mut ui, &mut input, crossed, field_behind_chrome);
+    assert!(dragged.scrubbing && dragged.changed, "the gesture is still the field's");
+    assert_eq!(dragged.value, 35.0, "and it scrubs from the press value");
+
+    let released = release(&mut ui, &mut input, field_behind_chrome);
+    assert!(released.committed, "release seals it, as it always did");
+}

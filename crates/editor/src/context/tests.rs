@@ -38,7 +38,7 @@ fn test_snapping_rounds_to_the_nearest_grid_cell_only_while_enabled() {
 
     assert_eq!(ctx.snap_position(pos), pos, "snap off: positions pass through");
 
-    ctx.set_snap_to_grid(true);
+    ctx.view.snap = true;
     // 45/32 = 1.4 rounds to 1 → 32; 78/32 = 2.4 rounds to 2 → 64.
     assert_eq!(ctx.snap_position(pos), Vec2::new(32.0, 64.0));
 }
@@ -140,4 +140,24 @@ fn test_framing_zooms_to_fit_the_entity_extents_and_an_empty_scene_leaves_the_ca
     assert!(!ctx.frame_all(&[]));
     assert_eq!(ctx.viewport.target_camera_position(), Vec2::new(5.0, 6.0));
     assert_eq!(ctx.viewport.target_camera_zoom(), 1.0);
+}
+
+/// A scene panel too short to hold a viewport under its strip reports no
+/// viewport at all — every consumer takes its `None` path — rather than a
+/// zero-height rect that leaves picking and the gizmo silently dead. The
+/// strip itself is still there.
+#[test]
+fn test_a_scene_panel_shorter_than_its_strip_has_a_strip_and_no_viewport() {
+    let mut ctx = EditorContext::new();
+    ctx.dock_area.set_bounds(common::Rect::new(0.0, 0.0, 800.0, 230.0));
+    ctx.dock_area.layout();
+    let scene = ctx.dock_area.get_panel(PanelId::SCENE_VIEW).expect("scene panel").content_bounds();
+    assert!(scene.height < crate::layout::TOOLBAR_STRIP_HEIGHT, "fixture: content shorter than the strip");
+
+    assert_eq!(ctx.scene_view_bounds(), None, "no viewport to map through");
+    assert!(ctx.toolbar_strip_bounds().is_some(), "the strip still exists");
+
+    ctx.dock_area.set_bounds(common::Rect::new(0.0, 0.0, 800.0, 600.0));
+    ctx.dock_area.layout();
+    assert!(ctx.scene_view_bounds().is_some_and(|viewport| viewport.height > 0.0));
 }

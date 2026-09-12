@@ -118,8 +118,6 @@ pub struct GridRenderer {
     config: GridConfig,
     /// Grid colors
     pub colors: GridColors,
-    /// Whether the grid is visible
-    visible: bool,
     /// Whether axes are visible
     axes_visible: bool,
 }
@@ -136,24 +134,8 @@ impl GridRenderer {
         Self {
             config: GridConfig::default(),
             colors: GridColors::default(),
-            visible: true,
             axes_visible: true,
         }
-    }
-
-    /// Set grid visibility.
-    pub fn set_visible(&mut self, visible: bool) {
-        self.visible = visible;
-    }
-
-    /// Check if the grid is visible.
-    pub fn is_visible(&self) -> bool {
-        self.visible
-    }
-
-    /// Toggle grid visibility.
-    pub fn toggle_visible(&mut self) {
-        self.visible = !self.visible;
     }
 
     /// Set primary grid size.
@@ -177,10 +159,6 @@ impl GridRenderer {
         visible_bounds: (f32, f32, f32, f32),
         camera_zoom: f32,
     ) -> Vec<GridSegment> {
-        if !self.visible {
-            return Vec::new();
-        }
-
         let mut segments = Vec::new();
         let (min_x, min_y, max_x, max_y) = visible_bounds;
 
@@ -323,9 +301,6 @@ pub fn render_grid_overlay(
     colors: &GridColors,
     bounds: Rect,
 ) {
-    if !grid.is_visible() {
-        return;
-    }
     ui.push_clip_rect(bounds);
     let visible_bounds = viewport.visible_world_bounds();
     for segment in grid.grid_segments(visible_bounds, viewport.camera_zoom()) {
@@ -423,7 +398,7 @@ mod tests {
 
     #[test]
     fn test_overlay_draws_axes_and_cells_through_the_viewport_mapping_inside_a_clip() {
-        let mut grid = GridRenderer::new();
+        let grid = GridRenderer::new();
         let viewport = test_viewport();
         let colors = GridColors::default();
         let bounds = Rect::new(0.0, 0.0, 800.0, 600.0);
@@ -449,11 +424,6 @@ mod tests {
             lines.contains(&(Vec2::new(0.0, 268.0), Vec2::new(800.0, 268.0), colors.primary)),
             "the primary line one cell above the X axis sits 32px up on screen"
         );
-
-        grid.set_visible(false);
-        let mut hidden = UIContext::new();
-        render_grid_overlay(&mut hidden, &grid, &viewport, &colors, bounds);
-        assert!(hidden.draw_list().commands().is_empty(), "a hidden grid draws nothing, not even its clip");
     }
 
     #[test]

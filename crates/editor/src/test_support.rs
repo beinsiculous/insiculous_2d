@@ -57,11 +57,15 @@ pub(crate) fn test_viewport() -> SceneViewport {
     viewport
 }
 
-/// The extras an inspector editor needs when no texture is displayed and
-/// nothing is being dragged.
-pub(crate) fn extras(drag_drop: &mut DragDropState) -> InspectorExtras<'_> {
+/// The extras an inspector editor needs when no texture is displayed,
+/// nothing is being dragged and no section is collapsed.
+pub(crate) fn extras<'a>(
+    drag_drop: &'a mut DragDropState,
+    inspector_state: &'a mut crate::InspectorState,
+) -> InspectorExtras<'a> {
     InspectorExtras {
         drag_drop,
+        inspector_state,
         texture_display: None,
         warnings: Vec::new(),
         scroll_target: None,

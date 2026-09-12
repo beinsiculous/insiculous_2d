@@ -64,26 +64,63 @@ fn tilemap_parses_and_instantiates_with_a_resolved_tileset() {
     assert_eq!(tilemap.sprite_instances().count(), 3, "empty tiles draw nothing");
 }
 
+/// A nameless entity reaches the editor's hierarchy as "Sprite (Entity N)",
+/// which tells a first-time visitor nothing; children are where one slips in.
+fn assert_every_entity_named(scene_file: &str, entities: &[engine_core::scene_data::EntityData]) {
+    for (index, entity) in entities.iter().enumerate() {
+        let entity_name = entity.name.as_deref().unwrap_or_default();
+        assert!(!entity_name.is_empty(), "{scene_file} entity {index} has a name");
+        assert_every_entity_named(scene_file, &entity.children);
+    }
+}
+
 #[test]
-fn bundled_example_scenes_parse_and_hello_world_follows_its_player() {
+fn every_bundled_example_scene_names_its_entities_and_the_demos_carry_their_cameras() {
     let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/assets/scenes/");
+    // `read_dir` yields the filesystem's order, so sort by file name before
+    // anything keys off a position or a neighbour.
+    let mut file_names: Vec<String> = std::fs::read_dir(dir)
+        .unwrap_or_else(|e| panic!("read {dir}: {e}"))
+        .map(|entry| entry.expect("directory entry").file_name().to_string_lossy().into_owned())
+        .filter(|name| name.ends_with(".scene.ron"))
+        .collect();
+    file_names.sort();
+    assert!(!file_names.is_empty(), "the examples project bundles scenes");
+    // The web playground boots the sorted-first scene of the examples project,
+    // and the hint on that page describes this one.
+    let boot_scene = SceneLoader::first_scene_in(std::path::Path::new(dir)).expect("a boot scene");
+    assert_eq!(boot_scene.file_name().and_then(|n| n.to_str()), Some("behavior_demo.scene.ron"));
+
     let mut scenes = Vec::new();
-    for name in ["hello_world.scene.ron", "behavior_demo.scene.ron"] {
+    for name in &file_names {
         let text = std::fs::read_to_string(format!("{dir}{name}")).unwrap_or_else(|e| panic!("read {name}: {e}"));
         let scene = SceneLoader::parse(&text).unwrap_or_else(|e| panic!("parse {name}: {e}"));
         assert!(!scene.entities.is_empty(), "{name} has entities");
-        scenes.push(scene);
+        assert_every_entity_named(name, &scene.entities);
+        scenes.push((name.clone(), scene));
     }
+
+    let find_scene = |file_name: &str| {
+        &scenes
+            .iter()
+            .find(|(name, _)| name == file_name)
+            .unwrap_or_else(|| panic!("{file_name} is bundled"))
+            .1
+    };
+    let main_camera = |scene: &engine_core::scene_data::SceneData| {
+        let camera = scene
+            .entities
+            .iter()
+            .find(|e| e.name.as_deref() == Some("camera"))
+            .expect("camera entity present");
+        assert!(camera.components.iter().any(|c| matches!(c, ComponentData::Camera2D { is_main_camera: true, .. })));
+        camera.clone()
+    };
 
     // hello_world doubles as the editor demo's level: its main camera follows
     // the "player" tag the Player prefab carries.
-    let hello_world = &scenes[0];
-    let camera = hello_world
-        .entities
-        .iter()
-        .find(|e| e.name.as_deref() == Some("camera"))
-        .expect("camera entity present");
-    assert!(camera.components.iter().any(|c| matches!(c, ComponentData::Camera2D { is_main_camera: true, .. })));
+    let hello_world = find_scene("hello_world.scene.ron");
+    let camera = main_camera(hello_world);
     assert!(camera.components.iter().any(|c| matches!(
         c,
         ComponentData::Behavior(BehaviorData::CameraFollow { target_tag, .. }) if target_tag == "player"
@@ -92,6 +129,10 @@ fn bundled_example_scenes_parse_and_hello_world_follows_its_player() {
         .components
         .iter()
         .any(|c| matches!(c, ComponentData::EntityTag { tag } if tag == "player")));
+
+    // behavior_demo is the web playground's first scene: its static main
+    // camera is what frames the arena on Play.
+    main_camera(find_scene("behavior_demo.scene.ron"));
 }
 
 #[test]

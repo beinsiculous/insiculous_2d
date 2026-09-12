@@ -163,7 +163,9 @@ pub fn edit_sprite(
         hint = Some("scale");
     }
     inspector.color("Color", sprite.color).assign(&mut new.color, &mut hint, "color");
-    inspector.f32("Depth", sprite.depth, ranges::DEPTH).assign(&mut new.depth, &mut hint, "depth");
+    inspector.advanced(|inspector| {
+        inspector.f32("Depth", sprite.depth, ranges::DEPTH).assign(&mut new.depth, &mut hint, "depth");
+    });
 
     // Texture slot: shows the resolved path, accepts asset-browser drops
     inspector.texture("Texture", sprite.texture_handle, extras).assign(&mut new.texture_handle, &mut hint, "texture_handle");
@@ -197,17 +199,19 @@ pub fn edit_rigid_body(
 
     inspector.vec2("Velocity", body.velocity, ranges::VELOCITY).assign(&mut new.velocity, &mut hint, "velocity");
     inspector.f32("Ang. Velocity", body.angular_velocity, ranges::ANGULAR_VELOCITY).assign(&mut new.angular_velocity, &mut hint, "angular_velocity");
-    inspector.f32("Gravity Scale", body.gravity_scale, ranges::GRAVITY_SCALE).assign(&mut new.gravity_scale, &mut hint, "gravity_scale");
-    if let EditResult::Changed(v) = inspector.f32("Linear Damping", body.linear_damping, ranges::DAMPING) {
-        new.linear_damping = v.max(0.0);
-        hint = Some("linear_damping");
-    }
-    if let EditResult::Changed(v) = inspector.f32("Angular Damping", body.angular_damping, ranges::DAMPING) {
-        new.angular_damping = v.max(0.0);
-        hint = Some("angular_damping");
-    }
     inspector.bool("Can Rotate", body.can_rotate).assign(&mut new.can_rotate, &mut hint, "can_rotate");
-    inspector.bool("CCD Enabled", body.ccd_enabled).assign(&mut new.ccd_enabled, &mut hint, "ccd_enabled");
+    inspector.advanced(|inspector| {
+        inspector.f32("Gravity Scale", body.gravity_scale, ranges::GRAVITY_SCALE).assign(&mut new.gravity_scale, &mut hint, "gravity_scale");
+        if let EditResult::Changed(v) = inspector.f32("Linear Damping", body.linear_damping, ranges::DAMPING) {
+            new.linear_damping = v.max(0.0);
+            hint = Some("linear_damping");
+        }
+        if let EditResult::Changed(v) = inspector.f32("Angular Damping", body.angular_damping, ranges::DAMPING) {
+            new.angular_damping = v.max(0.0);
+            hint = Some("angular_damping");
+        }
+        inspector.bool("CCD Enabled", body.ccd_enabled).assign(&mut new.ccd_enabled, &mut hint, "ccd_enabled");
+    });
 
     hint.map(|field_hint| ComponentEdit { new_value: new, field_hint })
 }
@@ -289,18 +293,20 @@ pub fn edit_collider(
 
     inspector.vec2("Offset", collider.offset, ranges::OFFSET).assign(&mut new.offset, &mut hint, "offset");
     inspector.bool("Is Sensor", collider.is_sensor).assign(&mut new.is_sensor, &mut hint, "is_sensor");
-    if let EditResult::Changed(v) = inspector.f32("Friction", collider.friction, ranges::FRICTION) {
-        new.friction = v.max(0.0);
-        hint = Some("friction");
-    }
-    if let EditResult::Changed(v) = inspector.f32("Restitution", collider.restitution, ranges::RESTITUTION) {
-        new.restitution = v.max(0.0);
-        hint = Some("restitution");
-    }
+    inspector.advanced(|inspector| {
+        if let EditResult::Changed(v) = inspector.f32("Friction", collider.friction, ranges::FRICTION) {
+            new.friction = v.max(0.0);
+            hint = Some("friction");
+        }
+        if let EditResult::Changed(v) = inspector.f32("Restitution", collider.restitution, ranges::RESTITUTION) {
+            new.restitution = v.max(0.0);
+            hint = Some("restitution");
+        }
 
-    // Collision groups/filter (read-only)
-    inspector.u32("Groups", collider.collision_groups);
-    inspector.u32("Filter", collider.collision_filter);
+        // Collision groups/filter (read-only)
+        inspector.u32("Groups", collider.collision_groups);
+        inspector.u32("Filter", collider.collision_filter);
+    });
 
     hint.map(|field_hint| ComponentEdit { new_value: new, field_hint })
 }
@@ -330,9 +336,11 @@ pub fn edit_audio_source(
 
     // Spatial audio parameters (only relevant if spatial is true)
     if source.spatial {
-        inspector.f32("Max Distance", source.max_distance, ranges::MAX_DISTANCE).assign(&mut new.max_distance, &mut hint, "max_distance");
-        inspector.f32("Ref Distance", source.reference_distance, ranges::REFERENCE_DISTANCE).assign(&mut new.reference_distance, &mut hint, "reference_distance");
-        inspector.f32("Rolloff", source.rolloff_factor, ranges::ROLLOFF).assign(&mut new.rolloff_factor, &mut hint, "rolloff_factor");
+        inspector.advanced(|inspector| {
+            inspector.f32("Max Distance", source.max_distance, ranges::MAX_DISTANCE).assign(&mut new.max_distance, &mut hint, "max_distance");
+            inspector.f32("Ref Distance", source.reference_distance, ranges::REFERENCE_DISTANCE).assign(&mut new.reference_distance, &mut hint, "reference_distance");
+            inspector.f32("Rolloff", source.rolloff_factor, ranges::ROLLOFF).assign(&mut new.rolloff_factor, &mut hint, "rolloff_factor");
+        });
     }
 
     hint.map(|field_hint| ComponentEdit { new_value: new, field_hint })

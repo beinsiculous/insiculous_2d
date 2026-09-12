@@ -26,6 +26,10 @@ pub struct EditorTheme {
     /// Border for floating surfaces — ≥3:1 against surface_4 so popups
     /// read as bounded objects.
     pub popup_border: Color,
+    /// Outset ring around the focused text field — ≥3:1 against every
+    /// surface on the ladder, so a field reached by Tab is unmistakable.
+    /// The border-color swap alone is a cue for someone already typing.
+    pub focus_ring: Color,
 
     // ── Accents ─────────────────────────────────────────────────
     /// Selection highlights, active buttons, "+ Add Component" (`#0078d4`)
@@ -34,8 +38,6 @@ pub struct EditorTheme {
     pub accent_cyan: Color,
 
     // ── Borders ─────────────────────────────────────────────────
-    /// Panel borders — bright blue (`#007acc`)
-    pub border_panel: Color,
     /// Grid lines, separators (`#333333`)
     pub border_subtle: Color,
 
@@ -147,6 +149,10 @@ pub struct EditorTheme {
     /// Collider outline on selected entities
     pub collider_selected: Color,
 
+    // ── Game-frame overlay ──────────────────────────────────────
+    /// Configured camera bounds overlay rect in the scene view
+    pub game_frame: Color,
+
     // ── Selection outline ───────────────────────────────────────
     /// Viewport outline of selected entities (primary; secondary and hover
     /// derive from it in `selection_outline_colors()`)
@@ -168,6 +174,10 @@ impl Default for EditorTheme {
         let surface_2 = Color::from_hex(0x404040);
         let surface_3 = Color::from_hex(0x545454);
         let surface_4 = Color::from_hex(0x686868);
+        // One value for the interactive highlight: the focused field's ring
+        // and the panel headings are the same "this is live" signal, so the
+        // two tokens are defined once and cannot drift apart.
+        let accent_cyan = Color::from_hex(0x00d9ff);
 
         Self {
             // Typography
@@ -180,13 +190,13 @@ impl Default for EditorTheme {
             surface_3,
             surface_4,
             popup_border: Color::from_hex(0xc6c6c6),
+            focus_ring: accent_cyan,
 
             // Accents
             accent_blue: Color::from_hex(0x0078d4),
-            accent_cyan: Color::from_hex(0x00d9ff),
+            accent_cyan,
 
             // Borders
-            border_panel: Color::from_hex(0x007acc),
             border_subtle: Color::from_hex(0x333333),
 
             // Text
@@ -245,23 +255,26 @@ impl Default for EditorTheme {
             separator: Color::new(0.4, 0.4, 0.4, 0.6),
 
             // Grid
-            grid_primary: Color::new(0.3, 0.3, 0.3, 0.5),
-            grid_secondary: Color::new(0.25, 0.25, 0.25, 0.3),
-            grid_axis_x: Color::new(0.8, 0.2, 0.2, 0.8),
-            grid_axis_y: Color::new(0.2, 0.8, 0.2, 0.8),
+            grid_primary: Color::new(0.3, 0.3, 0.3, 0.3),
+            grid_secondary: Color::new(0.25, 0.25, 0.25, 0.15),
+            grid_axis_x: Color::new(0.8, 0.2, 0.2, 0.45),
+            grid_axis_y: Color::new(0.2, 0.8, 0.2, 0.45),
 
             // Status bar
             status_bar_bg: surface_2,
 
             // Play-state viewport borders
-            border_editing: Color::new(0.0, 0.48, 0.83, 0.5),
+            border_editing: Color::from_hex(0x333333),
             border_playing: Color::new(0.0, 0.8, 0.27, 0.8),
             border_paused: Color::new(1.0, 0.8, 0.0, 0.8),
 
             // Collider overlay
-            collider_outline: Color::new(0.2, 1.0, 0.4, 0.9),
-            collider_sensor: Color::new(0.2, 0.85, 1.0, 0.9),
+            collider_outline: Color::new(0.2, 1.0, 0.4, 0.45),
+            collider_sensor: Color::new(0.2, 0.85, 1.0, 0.45),
             collider_selected: Color::new(1.0, 0.85, 0.2, 1.0),
+
+            // Game-frame overlay
+            game_frame: Color::new(0.8, 0.8, 0.8, 0.5),
 
             // Selection outline — orange: distinct from the collider overlay's
             // yellow/green and the grid's cyan
@@ -296,6 +309,7 @@ impl EditorTheme {
         crate::EditableFieldStyle {
             label_color: self.text_secondary,
             value_color: self.text_primary,
+            muted_color: self.text_muted,
             header_color: self.accent_cyan,
             axis_x_label: self.axis_x_label,
             axis_y_label: self.axis_y_label,
@@ -342,11 +356,20 @@ impl EditorTheme {
         theme.text_input.background_focused = self.surface_3.lighten(0.08);
         theme.text_input.border = self.border_subtle;
         theme.text_input.border_focused = self.accent_blue;
+        theme.text_input.focus_ring = self.focus_ring;
         theme.text_input.border_invalid = self.error_red;
         theme.text_input.text_color = self.text_primary;
         theme.text_input.font_size = self.fonts.body;
         theme.text_input.selection_color = self.accent_blue.with_alpha(0.35);
         theme.text_input.cursor_color = self.text_primary;
+
+        // The top of the surface ladder: a tooltip floats above every panel,
+        // and its border is the loud one popups use, because the panel has to
+        // read as a separate object over whatever it covers.
+        theme.tooltip.background = self.surface_4;
+        theme.tooltip.border = self.popup_border;
+        theme.tooltip.text_color = self.text_primary;
+        theme.tooltip.font_size = self.fonts.small;
 
         theme
     }
