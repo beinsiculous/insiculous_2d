@@ -20,6 +20,13 @@ struct PixelSnap {
     /// not a point.
     world_from_clip: Mat4,
     viewport: Vec2,
+    /// The camera's own sub-pixel offset, snapped once and shared by every sprite: the
+    /// device position of the world origin, moved to the nearest whole pixel. An odd
+    /// viewport (a window the desktop resized to 599 tall) or a fractional camera puts
+    /// every whole-pixel sprite exactly half a pixel off, and rounding each one on
+    /// that knife-edge sends neighbours different ways as float error tips them — a
+    /// seam across a tilemap. Sharing the camera's correction moves them all together.
+    camera_correction: Vec2,
 }
 
 impl PixelSnap {
@@ -36,11 +43,21 @@ impl PixelSnap {
         if !clip_from_world.is_finite() || !world_from_clip.is_finite() {
             return None;
         }
-        Some(Self {
+        let mut snap = Self {
             clip_from_world,
             world_from_clip,
             viewport,
-        })
+            camera_correction: Vec2::ZERO,
+        };
+        let origin_device = snap.device_of(Vec2::ZERO);
+        snap.camera_correction = origin_device.round() - origin_device;
+        Some(snap)
+    }
+
+    /// Where a world position lands in device pixels, y up, before any snapping.
+    fn device_of(&self, world: Vec2) -> Vec2 {
+        let clip = self.clip_from_world * Vec4::new(world.x, world.y, 0.0, 1.0);
+        (Vec2::new(clip.x, clip.y) * 0.5 + Vec2::splat(0.5)) * self.viewport
     }
 
     /// The world position `origin` is drawn at, moved to the whole device
@@ -51,9 +68,11 @@ impl PixelSnap {
     /// either way, and the correction has to be measured in the same space it
     /// is applied in.
     fn snap(&self, origin: Vec2) -> Vec2 {
-        let clip = self.clip_from_world * Vec4::new(origin.x, origin.y, 0.0, 1.0);
-        let device = (Vec2::new(clip.x, clip.y) * 0.5 + Vec2::splat(0.5)) * self.viewport;
-        let correction_clip = (device.round() - device) * 2.0 / self.viewport;
+        let device = self.device_of(origin);
+        // The camera's correction first, so a sprite on a whole world pixel is a whole
+        // device pixel plus float noise — never a half, where rounding is arbitrary.
+        let shifted = device + self.camera_correction;
+        let correction_clip = (shifted.round() - device) * 2.0 / self.viewport;
         let correction_world =
             self.world_from_clip
                 .transform_vector3(Vec3::new(correction_clip.x, correction_clip.y, 0.0));
@@ -338,7 +357,8 @@ mod tests {
             (device.x - device.x.round()).abs() < 1e-2 && (device.y - device.y.round()).abs() < 1e-2,
             "expected whole device pixels, got {device:?}"
         );
-        assert!((device - camera.world_to_screen(origin)).length() < 1.0, "a snap moves under a pixel");
+        // Up to half a pixel for the camera's own fraction and half for the sprite's.
+        assert!((device - camera.world_to_screen(origin)).length() < 1.5, "a snap moves by under a pixel per axis");
 
         // A camera that cannot be inverted leaves the origin where it is.
         let mut degenerate = camera.clone();
@@ -347,6 +367,26 @@ mod tests {
         degenerate.viewport_size = Vec2::new(800.0, 600.0);
         degenerate.zoom = f32::NAN;
         assert!(PixelSnap::new(&degenerate).is_none());
+    }
+
+    /// A window the desktop resized to an odd height puts every whole-pixel sprite
+    /// exactly half a device pixel off. A column of abutting 64 px tiles must still
+    /// abut after the snap — rounding each tile on its own knife-edge tore one seam
+    /// across the court (Tong and frogger, 2026-09-15).
+    #[test]
+    fn test_a_column_of_tiles_stays_seamless_when_the_viewport_is_odd() {
+        let camera = Camera::new(Vec2::ZERO, Vec2::new(800.0, 599.0));
+        let snap = PixelSnap::new(&camera).expect("a finite camera snaps");
+        let rows: Vec<f32> = (-4..=4).map(|k| 32.0 + 64.0 * k as f32).collect();
+        let snapped: Vec<Vec2> = rows.iter().map(|&y| snap.snap(Vec2::new(0.0, y))).collect();
+        for pair in snapped.windows(2) {
+            let pitch = pair[1].y - pair[0].y;
+            assert!((pitch - 64.0).abs() < 1e-3, "the tile pitch survives the snap: {pitch}");
+        }
+        for (row, point) in rows.iter().zip(&snapped) {
+            let device = camera.world_to_screen(*point);
+            assert!((device.y - device.y.round()).abs() < 1e-2, "row {row} lands on a whole pixel: {device:?}");
+        }
     }
 
     /// Two sprites that abut exactly at an integer world→device factor stay
