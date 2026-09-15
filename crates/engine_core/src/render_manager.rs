@@ -384,11 +384,14 @@ impl RenderManager {
         self.renderer.as_mut().map(|r| r.bloom_config_mut())
     }
 
-    /// Upload line vertices for the next frame. Pairs of vertices form line
-    /// segments. Empty slice (or no call) draws no lines this frame.
-    pub fn set_lines(&mut self, vertices: &[LineVertex]) {
+    /// Upload line vertices for the next frame, in two layers: `over` draws
+    /// after the sprites (the game's own lines, the collider overlay) and
+    /// `behind` before them (a grid under opaque art). Pairs of vertices form
+    /// line segments; an empty slice (or no call) draws no lines in that
+    /// layer this frame.
+    pub fn set_lines(&mut self, over: &[LineVertex], behind: &[LineVertex]) {
         if let Some(renderer) = &mut self.renderer {
-            renderer.set_lines(vertices);
+            renderer.set_lines(over, behind);
         }
     }
 

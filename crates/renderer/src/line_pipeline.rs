@@ -45,12 +45,29 @@ impl LineVertex {
     }
 }
 
+/// What a line pass does with the HDR target it draws into.
+#[derive(Debug, Clone, Copy)]
+pub enum LinePassLoad {
+    /// Clear the target and its depth first. The behind-sprites pass owns
+    /// this, and runs even with nothing to draw — it is the frame's one
+    /// clear, and skipping it would leave the previous frame's pixels.
+    Clear(wgpu::Color),
+    /// Composite over what is already there.
+    Preserve,
+}
+
 /// Render pipeline + buffers for drawing dynamic line geometry.
 pub struct LinePipeline {
     pipeline: RenderPipeline,
+    /// Vertices of the over-sprites pass: the game's own lines and the
+    /// collider overlay.
     vertex_buffer: DynamicBuffer<LineVertex>,
+    /// Vertices of the behind-sprites pass. A buffer of its own, not an
+    /// offset into the first: `queue.write_buffer` lands at submit, so two
+    /// passes sharing one buffer both read the last upload.
+    behind_vertex_buffer: DynamicBuffer<LineVertex>,
     camera: CameraBinding,
-    /// Used to grow the vertex buffer when an upload exceeds its capacity.
+    /// Used to grow the vertex buffers when an upload exceeds their capacity.
     /// A plain clone — wgpu's `Device` is internally reference-counted, so
     /// wrapping it in an `Arc` was a redundant refcount (and `Arc<Device>`
     /// trips clippy's `arc_with_non_send_sync` on wasm, where `Device` is
@@ -79,6 +96,7 @@ impl LinePipeline {
         });
 
         let vertex_buffer = DynamicBuffer::new(device, capacity, wgpu::BufferUsages::VERTEX);
+        let behind_vertex_buffer = DynamicBuffer::new(device, capacity, wgpu::BufferUsages::VERTEX);
 
         let pipeline = crate::pipeline_builder::build_render_pipeline(
             device,
@@ -102,6 +120,7 @@ impl LinePipeline {
         Self {
             pipeline,
             vertex_buffer,
+            behind_vertex_buffer,
             camera,
             device: device.clone(),
         }
@@ -112,8 +131,9 @@ impl LinePipeline {
         self.camera.update(queue, camera);
     }
 
-    /// Upload a fresh vertex set. Pairs of vertices form line segments.
-    /// The vertex buffer grows automatically if the set exceeds its capacity.
+    /// Upload a fresh vertex set for the over-sprites pass. Pairs of
+    /// vertices form line segments. The buffer grows automatically if the
+    /// set exceeds its capacity.
     pub fn upload_vertices(&mut self, queue: &Queue, vertices: &[LineVertex]) {
         if vertices.is_empty() {
             return;
@@ -121,17 +141,20 @@ impl LinePipeline {
         self.vertex_buffer.update(&self.device, queue, vertices);
     }
 
-    /// Draw the uploaded vertices into the HDR target, with depth-test
-    /// against the existing depth buffer.
-    ///
-    /// `load_color = false` clears the HDR color before drawing; `true`
-    /// preserves whatever the sprite pipeline drew (typical case — lines
-    /// composite on top of the sprite frame).
+    /// Upload a fresh vertex set for the behind-sprites pass.
+    pub fn upload_behind_vertices(&mut self, queue: &Queue, vertices: &[LineVertex]) {
+        if vertices.is_empty() {
+            return;
+        }
+        self.behind_vertex_buffer.update(&self.device, queue, vertices);
+    }
+
+    /// Draw the over-sprites vertices into the HDR target, over whatever the
+    /// earlier passes drew, with depth-test against the depth buffer.
     ///
     /// `viewport_scissor` bounds the pass (lines are game geometry — the
-    /// editor clips them to the scene panel); an empty effective
-    /// scissor skips the pass entirely (both attachments are `Load`, so
-    /// skipping changes nothing).
+    /// editor clips them to the scene panel); an empty effective scissor or
+    /// an empty buffer skips the pass entirely.
     pub fn draw(
         &self,
         encoder: &mut CommandEncoder,
@@ -142,12 +165,70 @@ impl LinePipeline {
         if vertex_count == 0 {
             return;
         }
+        self.record_pass(
+            encoder,
+            targets,
+            &self.vertex_buffer,
+            vertex_count,
+            viewport_scissor,
+            LinePassLoad::Preserve,
+        );
+    }
+
+    /// Draw the behind-sprites vertices, owning the frame's clear: the pass
+    /// is encoded even with nothing to draw, because it is what clears the
+    /// HDR color and depth for everything after it.
+    pub fn draw_behind(
+        &self,
+        encoder: &mut CommandEncoder,
+        targets: &RenderTargets,
+        vertex_count: u32,
+        viewport_scissor: Option<[u32; 4]>,
+        clear_color: wgpu::Color,
+    ) {
+        self.record_pass(
+            encoder,
+            targets,
+            &self.behind_vertex_buffer,
+            vertex_count,
+            viewport_scissor,
+            LinePassLoad::Clear(clear_color),
+        );
+    }
+
+    /// Encode one line pass: begin, bind, draw `vertex_count` vertices out of
+    /// `vertex_buffer`. A clear pass ignores the scissor when clearing (the
+    /// whole target clears — stale pixels outside the viewport would
+    /// otherwise survive), and skips only the draw when the scissor is empty.
+    fn record_pass(
+        &self,
+        encoder: &mut CommandEncoder,
+        targets: &RenderTargets,
+        vertex_buffer: &DynamicBuffer<LineVertex>,
+        vertex_count: u32,
+        viewport_scissor: Option<[u32; 4]>,
+        load: LinePassLoad,
+    ) {
         let scissor = PassScissor::resolve(viewport_scissor, (targets.width(), targets.height()));
         let scissor_rect = match scissor {
-            PassScissor::Empty => return,
+            PassScissor::Empty => None,
             PassScissor::Fullscreen => None,
             PassScissor::Rect(rect) => Some(rect),
         };
+        let draws = vertex_count > 0 && !matches!(scissor, PassScissor::Empty);
+        if !draws && matches!(load, LinePassLoad::Preserve) {
+            return;
+        }
+
+        let color_load = match load {
+            LinePassLoad::Clear(color) => wgpu::LoadOp::Clear(color),
+            LinePassLoad::Preserve => wgpu::LoadOp::Load,
+        };
+        let depth_load = match load {
+            LinePassLoad::Clear(_) => wgpu::LoadOp::Clear(1.0),
+            LinePassLoad::Preserve => wgpu::LoadOp::Load,
+        };
+
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Line Render Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -155,15 +236,14 @@ impl LinePipeline {
                 resolve_target: None,
                 depth_slice: None,
                 ops: wgpu::Operations {
-                    // Lines are drawn after sprites and must NOT clear.
-                    load: wgpu::LoadOp::Load,
+                    load: color_load,
                     store: wgpu::StoreOp::Store,
                 },
             })],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                 view: &targets.depth_view,
                 depth_ops: Some(wgpu::Operations {
-                    load: wgpu::LoadOp::Load,
+                    load: depth_load,
                     store: wgpu::StoreOp::Store,
                 }),
                 stencil_ops: None,
@@ -173,12 +253,15 @@ impl LinePipeline {
             multiview_mask: None,
         });
 
+        if !draws {
+            return;
+        }
         if let Some(rect) = scissor_rect {
             pass.set_scissor_rect(rect[0], rect[1], rect[2], rect[3]);
         }
         pass.set_pipeline(&self.pipeline);
         self.camera.bind(&mut pass, 0);
-        pass.set_vertex_buffer(0, self.vertex_buffer.slice());
+        pass.set_vertex_buffer(0, vertex_buffer.slice());
         pass.draw(0..vertex_count, 0..1);
     }
 }

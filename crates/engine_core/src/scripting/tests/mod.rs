@@ -1,5 +1,6 @@
 //! Headless contract verification tests for the scripting subsystem.
 
+mod clips;
 mod contracts;
 mod lifecycle;
 mod rhai;

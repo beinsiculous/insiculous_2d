@@ -222,6 +222,12 @@ pub struct SpriteAnimation {
     pub current_frame: usize,
     /// Time carried over toward the next frame.
     pub time_accumulator: f32,
+    /// Set by [`update`](Self::update) when a play-once clip runs past its
+    /// last frame; cleared by [`play`](Self::play) and [`stop`](Self::stop).
+    /// Kept apart from `playing` so a clip [`pause`](Self::pause)d on its last
+    /// frame does not read as complete.
+    #[serde(default)]
+    pub finished: bool,
 }
 
 impl Default for SpriteAnimation {
@@ -234,6 +240,7 @@ impl Default for SpriteAnimation {
             playing: false,
             current_frame: 0,
             time_accumulator: 0.0,
+            finished: false,
         }
     }
 }
@@ -294,6 +301,7 @@ impl SpriteAnimation {
         self.current_frame = 0;
         self.time_accumulator = 0.0;
         self.playing = true;
+        self.finished = false;
         true
     }
 
@@ -319,6 +327,7 @@ impl SpriteAnimation {
         self.current_clip = None;
         self.current_frame = 0;
         self.time_accumulator = 0.0;
+        self.finished = false;
     }
 
     /// Freeze on the current frame, keeping the clip and position.
@@ -375,7 +384,24 @@ impl SpriteAnimation {
             self.current_frame = frame_count - 1;
             self.time_accumulator = 0.0;
             self.playing = false;
+            self.finished = true;
         }
+    }
+
+    /// Whether a non-looping clip has run past its last frame and stopped.
+    ///
+    /// The update that lands on the last frame leaves the clip playing — that
+    /// frame is shown for its own duration — and the update after it is the
+    /// one that stops the clip and makes this true. False for a looping clip
+    /// (it never ends), for a clip [`pause`](Self::pause)d anywhere, its last
+    /// frame included, and when no clip is selected.
+    ///
+    /// [`play`](Self::play) and [`ensure_playing`](Self::ensure_playing)
+    /// **restart** a finished clip of the same name, so code that re-asserts
+    /// its clip every frame checks this first.
+    #[must_use]
+    pub fn is_finished(&self) -> bool {
+        self.finished
     }
 
     /// The texture region of the current frame, or `None` when nothing
@@ -430,6 +456,90 @@ pub fn set_sprites_visible(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A three-cell sheet with a one-shot and a looping clip.
+    fn animation() -> SpriteAnimation {
+        SpriteAnimation::new(SheetGrid::new(3, 1))
+            .with_clip("hurt", AnimationClip::new(vec![0, 1, 2], 10.0).with_looping(false))
+            .with_clip("walk", AnimationClip::new(vec![0, 1, 2], 10.0))
+    }
+
+    #[test]
+    fn test_is_finished_is_true_only_for_a_one_shot_clip_that_reached_its_last_frame() {
+        let mut animation = animation();
+        assert!(!animation.is_finished(), "no clip selected is never finished");
+
+        assert!(animation.play("hurt"));
+        assert!(!animation.is_finished(), "a clip that just started has not ended");
+        animation.update(0.1);
+        assert_eq!(animation.current_frame, 1, "one of three frames in");
+        assert!(!animation.is_finished(), "mid-clip is not finished");
+        assert!(animation.playing);
+
+        // Showing the last frame is not the end of the clip: the update that
+        // would advance past it is the one that stops it.
+        animation.update(0.1);
+        assert_eq!(animation.current_frame, 2, "the last frame is showing");
+        assert!(animation.playing);
+        assert!(!animation.is_finished());
+
+        animation.update(0.1);
+        assert_eq!(animation.current_frame, 2, "held on the last frame");
+        assert!(!animation.playing);
+        assert!(animation.is_finished());
+        animation.update(1.0);
+        assert!(animation.is_finished(), "a finished clip stays finished");
+
+        // A looping clip runs on the same frames and never finishes.
+        assert!(animation.play("walk"));
+        for _ in 0..40 {
+            animation.update(0.1);
+        }
+        assert!(animation.playing);
+        assert!(!animation.is_finished());
+
+        // A paused clip is not finished, and neither is one with no clip.
+        animation.pause();
+        assert!(!animation.is_finished());
+        animation.stop();
+        assert!(!animation.is_finished());
+    }
+
+    #[test]
+    fn test_a_one_shot_paused_on_its_last_frame_is_not_finished() {
+        // A freeze-frame on the last frame is a pause, not the clip's end: the
+        // clip machine must not act on it. Resuming lets the end arrive.
+        let mut animation = animation();
+        assert!(animation.play("hurt"));
+        animation.update(0.1);
+        animation.update(0.1);
+        assert_eq!(animation.current_frame, 2, "the last frame is showing");
+        animation.pause();
+        assert!(!animation.playing);
+        assert!(!animation.is_finished(), "paused on the last frame is not finished");
+
+        animation.resume();
+        animation.update(0.1);
+        assert!(animation.is_finished(), "the end arrives once playback resumes");
+    }
+
+    #[test]
+    fn test_re_asserting_a_finished_clip_restarts_it_so_is_finished_comes_first() {
+        // The ordering trap a state machine has to respect: `ensure_playing`
+        // of the finished clip's own name starts it over, so the completion is
+        // only observable if it is read before the clip is re-asserted.
+        let mut animation = animation();
+        assert!(animation.play("hurt"));
+        for _ in 0..4 {
+            animation.update(0.1);
+        }
+        assert!(animation.is_finished());
+
+        let restarted = animation.ensure_playing("hurt");
+        assert!(restarted);
+        assert_eq!(animation.current_frame, 0, "the same name restarts from the top");
+        assert!(!animation.is_finished());
+    }
 
     #[test]
     fn test_set_sprites_visible_toggles_only_entities_that_carry_a_sprite() -> Result<(), crate::EcsError> {

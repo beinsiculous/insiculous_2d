@@ -72,6 +72,12 @@ Read-only query methods across world state, input, and collisions:
   - `view.transform(name)`: `Transform2D` of named entity
   - `view.position(name)`: `Vec2` position of named entity
   - `view.velocity(name)`: `Vec2` velocity of named entity
+- **Animation** (a name, or `me` for the entity the script is on; the view is
+  a snapshot taken when the phase starts, so a completion is visible on the
+  frame after it happens):
+  - `view.current_clip(name)`: Name of the clip the entity is showing, `""` if it has none
+  - `view.clip_finished(name)`: `true` once a non-looping clip has ended and stopped
+  - `view.clip_state(name)`: The entity's `ClipStateMachine` state, `""` if it has none
 - **Shared State (Blackboard)**:
   - `view.blackboard_bool(key, default)`: Read boolean key
   - `view.blackboard_int(key, default)`: Read integer key
@@ -110,6 +116,18 @@ Commands queue deferred actions executed cleanly at the end of the phase:
   - `cmd.set_sprite_color(target, [r, g, b, a])`: four numbers, 0.0 to 1.0
   - `cmd.set_sprite_visible(target, bool)`
   - `cmd.set_label_text(target, text)`
+- **Animation**:
+  - `cmd.play_clip(target, clip_name)`: Start a clip from its first frame — a transition call, so calling it every frame holds the clip at its start
+  - `cmd.ensure_clip(target, clip_name)`: Play the clip unless it is already the one playing, so re-asserting it every frame lets a clip run on
+  - `cmd.set_clip_state(target, state)`: Move an entity's `ClipStateMachine` to another state, which plays that state's clip
+
+  On an entity carrying a `ClipStateMachine`, `play_clip` and `ensure_clip` are
+  **refused with a warning**: the machine owns that entity's clip and would
+  re-assert its own state's clip on the next frame anyway, so
+  `set_clip_state` is the way to change what plays. A clip name that does not
+  exist is warned and ignored, and a command whose target no longer exists is
+  dropped — silently for an entity id, and reported as a missing target for a
+  name (see **Order** below).
 - **Blackboard Writes**:
   - `cmd.set_blackboard_bool(key, bool)`
   - `cmd.set_blackboard_int(key, int)`: the value must fit an `i32`; a larger one is a runtime error
@@ -122,6 +140,19 @@ Commands queue deferred actions executed cleanly at the end of the phase:
 
 ### 5. `dt` — Delta Time
 Float delta time in seconds, equal to `view.delta_time`.
+
+### Order — when your commands and the engine's animation meet
+One frame runs: the game's `update` (which steps the script hooks), the
+commands those hooks queued applying at the end of each phase, then the
+engine's frame tail — `SpriteAnimationSystem`, the lifetime pass, and
+`ClipStateMachineSystem`. Two consequences worth knowing:
+
+- A **transition** you make (`cmd.set_clip_state`) is in effect before the
+  clip machine checks that frame, and the clip the new state names starts on
+  that same frame.
+- A **completion** or an auto-transition is what the *next* frame's view
+  reports: `view.clip_finished` and `view.clip_state` are snapshots taken
+  before your commands apply.
 
 ---
 

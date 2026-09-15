@@ -433,12 +433,66 @@ fn every_root_entity_is_saved_in_a_stable_order() {
 }
 
 #[test]
+fn clip_state_machine_round_trips_the_table_and_re_enters_its_initial_state() {
+    let mut world = World::new();
+    let entity = world.create_entity();
+    let authored = ecs::ClipStateMachine::new(
+        "closing",
+        vec![
+            (
+                "closing".to_string(),
+                ecs::ClipState::new("close", ecs::OnFinished::Next("open".to_string())),
+            ),
+            ("open".to_string(), ecs::ClipState::staying("hum")),
+            (
+                "gone".to_string(),
+                ecs::ClipState::new("close", ecs::OnFinished::Despawn),
+            ),
+        ],
+    );
+    let authored_states = authored.states().to_vec();
+    world.add_component(&entity, authored).ok();
+    // A machine that has moved on: the wire form records the table, not where
+    // playback got to.
+    let _ = world
+        .get_mut::<ecs::ClipStateMachine>(entity)
+        .expect("machine")
+        .transition_to("open");
+
+    let (loaded, instance) = roundtrip(&world);
+    let machine = loaded
+        .get::<ecs::ClipStateMachine>(instance.entities[0])
+        .expect("ClipStateMachine survived the round trip");
+
+    assert_eq!(machine.initial(), "closing");
+    assert_eq!(machine.state(), "closing", "loading re-enters the initial state");
+    assert_eq!(as_json(&machine.states()), as_json(&authored_states));
+    assert_eq!(machine.clip_for_state("closing"), Some("close"));
+    assert_eq!(
+        machine.on_finished_for_state("closing"),
+        Some(&ecs::OnFinished::Next("open".to_string()))
+    );
+    assert_eq!(machine.on_finished_for_state("gone"), Some(&ecs::OnFinished::Despawn));
+
+    // The bare form is the empty machine: a table with nothing in it.
+    let (bare_world, bare) = load_ron(
+        r#"SceneData(name: "m", entities: [EntityData(name: Some("lamp"), components: [ClipStateMachine()])])"#,
+    );
+    let bare_machine = bare_world
+        .get::<ecs::ClipStateMachine>(bare.entities[0])
+        .expect("the bare form loads");
+    assert!(bare_machine.initial().is_empty());
+    assert!(bare_machine.states().is_empty());
+}
+
+#[test]
 fn grid_backdrop_round_trips_every_field_and_parses_bare() {
     let mut world = World::new();
     let entity = world.create_entity();
     world.add_component(&entity, Transform2D::new(Vec2::new(10.0, 20.0))).ok();
     let authored = ecs::GridBackdrop {
         topology: ecs::GridTopology::Square,
+        draw_order: ecs::GridDrawOrder::BehindSprites,
         cols: 7,
         rows: 5,
         spacing: 12.5,

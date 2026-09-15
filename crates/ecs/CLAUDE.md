@@ -38,7 +38,9 @@ components like any other type, but the physics crate owns their definitions.
 - `hierarchy_system.rs` — dirty-flagged transform propagation (value-compare cache; call `reset()` after wholesale world replacement).
 - `tilemap.rs` — row-major tile grid from tileset (top-left-tile anchor, tile 0 = empty, default depth -1.0).
 - `component_registry/` — dynamic component tier: name-keyed `register::<T>()` fn-pointer table; `register_transient` for editable-never-persisted components.
-- `sprite_system.rs` — `SpriteAnimationSystem`: advances clips and writes UV into `Sprite.tex_region`, scheduled with time-scaled delta so pausing freezes animation.
+- `sprite_system.rs` — `SpriteAnimationSystem`: advances clips and writes UV into `Sprite.tex_region` (`sync_sprite_region`, which the clip machine also calls on selection), scheduled with time-scaled delta so pausing freezes animation.
+- `clip_state_machine.rs` — `ClipStateMachine` + `ClipStateMachineSystem`: a state names the clip it plays and what finishing it does (`Stay`/`Next`/`Despawn`); a scene component, string-keyed, run by engine_core's frame tail after the animation and lifetime passes.
+- `lifetime.rs` — `Lifetime` + `LifetimeSystem`: seconds-to-live and the pass that despawns at zero; engine_core's frame tail runs it for every game.
 
 ## Critical Patterns
 - **Adding components**: `world.add_component(&entity, Transform2D::new(pos)).ok()`

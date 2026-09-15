@@ -102,6 +102,16 @@ impl<G: Game> GameRunner<G> {
     }
 
     fn submit_frame(&mut self) {
+        // Pixel snapping runs here, on the way out: the camera is final only
+        // after `Game::render` — the editor overrides `ctx.camera` with its
+        // viewport and a game may move it — and every game sprite (entities,
+        // tilemaps, particles) is already in the batcher by now. The UI
+        // batcher is deliberately left alone: its geometry is authored in
+        // screen space, where a half-pixel shift would move every SDF edge.
+        if self.config.pixel_snap {
+            self.game_batcher.snap_origins(self.render_manager.camera());
+        }
+
         // Sort within each batch, then order the batch refs (game first, then
         // UI on top; by min depth then texture handle for determinism). Refs
         // only — batches are never cloned. A persistent batcher can hold

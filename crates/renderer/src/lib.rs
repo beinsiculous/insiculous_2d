@@ -20,6 +20,7 @@ pub mod texture;
 pub mod texture_filter;
 mod white_texture;
 mod window;
+pub mod world_passes;
 
 #[cfg(test)]
 mod test_support;

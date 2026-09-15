@@ -21,6 +21,7 @@
                 ),
                 GridBackdrop(
                     topology: Hex,
+                    draw_order: BehindSprites,
                     cols: 44,
                     rows: 19,
                     spacing: 30.0,

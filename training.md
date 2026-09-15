@@ -358,10 +358,47 @@ Playback rules worth knowing:
   `Sprite.tex_region` — `SpriteAnimationSystem` overwrites it every frame from
   `frame_tail.rs`, using the same time-scaled delta as particles, so a paused
   game (`ctx.time_scale = 0.0`) freezes animations for free.
+- `is_finished()` is true once a **non-looping** clip has run past its last
+  frame and stopped — false for a looping clip, a paused one (its last frame
+  included), and no clip. The update that lands on the last frame leaves it
+  playing for that frame's duration; the update after it is the one that
+  stops the clip, so a three-frame clip at 10 fps stepped by 0.1 s is finished
+  on the third update, not the second. `play` and `ensure_playing` **restart** a finished clip, so check
+  `is_finished()` before re-asserting the clip you are waiting on.
 - Authored sidecars fail loud at load: unknown version, zero cell size, empty
   `frames`, a non-finite/non-positive `fps`, or a frame index past the last
   cell is an error naming the file and the clip. `load_sprite_sheet` validates
   **before** loading the texture, so a bad sheet leaves no handle behind.
+
+**State machines and lifetimes.** A game (or a scene, or a script) declares
+`ClipStateMachine` instead of polling clips by hand: a table of
+`state → (clip, OnFinished)`, where finishing that clip `Stay`s,
+`Next(another state)`s, or `Despawn`s the entity. `ClipStateMachineSystem`
+runs in the frame tail right after `SpriteAnimationSystem`, applies the
+finished clip, and keeps the current state's clip selected — a machine that
+has moved on plays the new state's clip in the same frame. `transition_to` a
+state the machine is already in is a no-op, so a per-frame re-assert never
+restarts a clip. Guard movement with `ctx.scripts`/scripts or with the
+machine's `machine().elapsed()`; the machine itself has no guard vocabulary.
+
+`LifetimeSystem` runs in the same tail on the same time-scaled delta, so an
+entity carrying `Lifetime` expires whether or not the game owns a system —
+a game that owns its own `LifetimeSystem` would step it twice and halve every
+lifetime, so it must not.
+
+From Rhai, `view.current_clip(name)`, `view.clip_finished(name)` and
+`view.clip_state(name)` read the same data, and `cmd.play_clip`,
+`cmd.ensure_clip` and `cmd.set_clip_state` drive it — `play_clip`/`ensure_clip`
+are refused on a machine entity, which owns its clip (`docs/SCRIPTING.md` § 4).
+
+**Pixel snapping.** `GameConfig::with_pixel_snap(bool)` is **off** by default;
+on, it moves each game sprite's origin onto a whole device pixel after the
+camera transform, which is what keeps pixel art crisp at an integer
+world→device factor. It is applied to the game's sprite batcher only — UI
+geometry is authored in screen space and is left alone. Turn it on only for a
+game whose factor is whole (the 1× re-skins): at a non-integer factor,
+snapping neighbours independently opens a seam between tiles — frogger's
+board showed one as a black line across the screen (2026-09-15).
 
 In scene RON the component stores its sheet path plus a baked snapshot; the
 sidecar wins on load, so re-cutting a sheet propagates to every scene without

@@ -8,8 +8,9 @@ use glam::{Vec2, Vec4};
 
 use common::Transform2D;
 use ecs::blackboard::Blackboard;
+use ecs::clip_state_machine::ClipStateMachine;
 use ecs::script::ScriptValue;
-use ecs::sprite_components::{Name, Sprite};
+use ecs::sprite_components::{Name, Sprite, SpriteAnimation};
 use ecs::ui_components::UiLabel;
 use ecs::{EntityId, World};
 use physics::{PhysicsSystem, RigidBody, RigidBodyType};
@@ -66,6 +67,12 @@ pub enum ScriptCommand {
     SetSpriteVisible { target: Target, visible: bool },
     SetLabelText { target: Target, text: String },
     SetBlackboard { key: String, value: ScriptValue },
+    /// Start a clip from its first frame.
+    PlayClip { target: Target, name: String },
+    /// Play a clip unless it is already the one playing.
+    EnsureClip { target: Target, name: String },
+    /// Move a `ClipStateMachine` to another state.
+    SetClipState { target: Target, state: String },
     Despawn { target: Target },
 }
 
@@ -185,6 +192,30 @@ impl ScriptCommands {
         self.set_blackboard(key, ScriptValue::Str(value.into()));
     }
 
+    /// Start a clip from its first frame.
+    pub fn play_clip(&mut self, target: impl Into<Target>, name: impl Into<String>) {
+        self.commands.push(ScriptCommand::PlayClip {
+            target: target.into(),
+            name: name.into(),
+        });
+    }
+
+    /// Play a clip unless it is already the one playing.
+    pub fn ensure_clip(&mut self, target: impl Into<Target>, name: impl Into<String>) {
+        self.commands.push(ScriptCommand::EnsureClip {
+            target: target.into(),
+            name: name.into(),
+        });
+    }
+
+    /// Move a `ClipStateMachine` to another state, playing that state's clip.
+    pub fn set_clip_state(&mut self, target: impl Into<Target>, state: impl Into<String>) {
+        self.commands.push(ScriptCommand::SetClipState {
+            target: target.into(),
+            state: state.into(),
+        });
+    }
+
     /// Despawn an entity.
     pub fn despawn(&mut self, target: impl Into<Target>) {
         self.commands.push(ScriptCommand::Despawn {
@@ -256,6 +287,8 @@ impl ScriptCommands {
         let mut sprite_visibilities: Vec<(EntityId, bool)> = Vec::new();
         let mut label_texts: Vec<(EntityId, String)> = Vec::new();
         let mut blackboard_writes: Vec<(String, ScriptValue)> = Vec::new();
+        let mut clip_writes: Vec<(EntityId, String, ClipCommand)> = Vec::new();
+        let mut clip_states: Vec<(EntityId, String)> = Vec::new();
         let mut despawns: Vec<EntityId> = Vec::new();
 
         for cmd in self.commands {
@@ -318,6 +351,21 @@ impl ScriptCommands {
                 }
                 ScriptCommand::SetBlackboard { key, value } => {
                     blackboard_writes.push((key, value));
+                }
+                ScriptCommand::PlayClip { target, name } => {
+                    if let Some(entity) = resolve_target(&target) {
+                        clip_writes.push((entity, name, ClipCommand::Play));
+                    }
+                }
+                ScriptCommand::EnsureClip { target, name } => {
+                    if let Some(entity) = resolve_target(&target) {
+                        clip_writes.push((entity, name, ClipCommand::Ensure));
+                    }
+                }
+                ScriptCommand::SetClipState { target, state } => {
+                    if let Some(entity) = resolve_target(&target) {
+                        clip_states.push((entity, state));
+                    }
                 }
                 ScriptCommand::Despawn { target } => {
                     if let Some(e) = resolve_target(&target) {
@@ -423,11 +471,56 @@ impl ScriptCommands {
             }
         }
 
-        // 5. Despawns last
+        // 5. Animation: clips first, then state moves, then despawns last
+        for (entity, name, command) in clip_writes {
+            set_clip(world, entity, &name, command);
+        }
+        for (entity, state) in clip_states {
+            if let Some(machine) = world.get_mut::<ClipStateMachine>(entity) {
+                // An unknown state is warned inside and leaves the machine
+                // where it is; the clip itself follows in the frame tail.
+                let _ = machine.transition_to(&state);
+            }
+        }
         for entity in despawns {
             let _ = world.remove_entity(&entity);
         }
     }
+}
+
+/// Which clip command a script issued.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ClipCommand {
+    /// Start from the first frame, whatever is playing.
+    Play,
+    /// Start only when the named clip is not already the one playing.
+    Ensure,
+}
+
+/// Apply a script's clip command to one entity.
+///
+/// A `ClipStateMachine` owns its entity's clip: on a machine entity the
+/// command is refused with a warning naming the entity and its state, because
+/// the machine would re-assert its own state's clip on the next frame anyway
+/// and a silent no-op would read as the clip having failed to load.
+fn set_clip(world: &mut World, entity: EntityId, name: &str, command: ClipCommand) {
+    if let Some(machine) = world.get::<ClipStateMachine>(entity) {
+        log::warn!(
+            "script clip command refused on {entity:?}: its ClipStateMachine owns the clip \
+             (state '{}') — use cmd.set_clip_state",
+            machine.state()
+        );
+        return;
+    }
+    let Some(animation) = world.get_mut::<SpriteAnimation>(entity) else {
+        log::warn!("script clip command on {entity:?} ignored: the entity has no SpriteAnimation");
+        return;
+    };
+    // Both paths warn on an unknown clip name and keep the current clip.
+    let _ = match command {
+        ClipCommand::Play => animation.play(name),
+        ClipCommand::Ensure => animation.ensure_playing(name),
+    };
 }
 
 /// An entity's linear velocity as the scripts see it: the live physics body when there is

@@ -215,11 +215,12 @@ impl SpritePipeline {
         log::debug!("Cached bind group for texture {:?}", handle);
     }
 
-    /// Draw sprites into the HDR target.
+    /// Draw sprites into the HDR target, over whatever was already drawn
+    /// there.
     ///
     /// `targets` provides the HDR color view (Rgba16Float) and matching depth
-    /// view. `clear_color` is applied to the HDR target — it's treated as a
-    /// linear RGB color, so values >1.0 are valid and bloom.
+    /// view; both are loaded, not cleared — the renderer's behind-sprites
+    /// pass owns the frame's clear, and this pass reads its result.
     ///
     /// The camera uniform is uploaded separately via
     /// [`update_camera`](Self::update_camera) before this call; the caller is
@@ -234,10 +235,9 @@ impl SpritePipeline {
         texture_resources: &HashMap<TextureHandle, TextureResource>,
         batches: &[&SpriteBatch],
         targets: &RenderTargets,
-        clear_color: wgpu::Color,
         viewport_scissor: Option<[u32; 4]>,
     ) {
-        log::debug!("SPRITE DRAW: batches={}, clear_color={:?}", batches.len(), clear_color);
+        log::debug!("SPRITE DRAW: batches={}", batches.len());
 
         // Ensure all textures have cached bind groups
         self.cache_texture_bind_groups(texture_resources);
@@ -256,7 +256,8 @@ impl SpritePipeline {
             }
         }
 
-        // Begin render pass: clear HDR color + depth, draw sprites with depth-test.
+        // Begin render pass: draw sprites with depth-test over the target the
+        // behind-sprites pass cleared.
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Sprite Render Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -264,14 +265,14 @@ impl SpritePipeline {
                 resolve_target: None,
                 depth_slice: None,
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(clear_color),
+                    load: wgpu::LoadOp::Load,
                     store: wgpu::StoreOp::Store,
                 },
             })],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                 view: &targets.depth_view,
                 depth_ops: Some(wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(1.0),
+                    load: wgpu::LoadOp::Load,
                     store: wgpu::StoreOp::Store,
                 }),
                 stencil_ops: None,
@@ -281,9 +282,6 @@ impl SpritePipeline {
             multiview_mask: None,
         });
 
-        // Note: LoadOp::Clear ignores the scissor — the whole HDR target
-        // still clears, which is exactly what we want (stale pixels outside
-        // the viewport would otherwise survive).
         self.record_batches(
             &mut render_pass,
             batches,

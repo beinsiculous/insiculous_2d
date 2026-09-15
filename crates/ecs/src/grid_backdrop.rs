@@ -49,12 +49,48 @@ impl GridTopology {
     }
 }
 
+/// Which layer a backdrop's lines draw on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum GridDrawOrder {
+    /// Above the game's sprites: the lattice glows over the playfield, and
+    /// the collider overlay stays on top of both.
+    #[default]
+    OverSprites,
+    /// Below the game's sprites, for a game whose art is opaque — the grid
+    /// then reads as the backdrop it is rather than as a veil over the art.
+    BehindSprites,
+}
+
+impl GridDrawOrder {
+    /// Every order, in cycle order (used by editor cycle selectors).
+    pub const ALL: [GridDrawOrder; 2] = [GridDrawOrder::OverSprites, GridDrawOrder::BehindSprites];
+
+    /// Human-readable name for the inspector.
+    pub fn label(self) -> &'static str {
+        match self {
+            GridDrawOrder::OverSprites => "Over Sprites",
+            GridDrawOrder::BehindSprites => "Behind Sprites",
+        }
+    }
+
+    /// Position in [`GridDrawOrder::ALL`].
+    pub fn index(self) -> usize {
+        match self {
+            GridDrawOrder::OverSprites => 0,
+            GridDrawOrder::BehindSprites => 1,
+        }
+    }
+}
+
 /// Configuration of an engine-simulated spring grid drawn beneath the
 /// game's own lines. See the module docs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, DeriveComponentMeta)]
 pub struct GridBackdrop {
     /// Lattice shape.
     pub topology: GridTopology,
+    /// Whether the lattice draws over the game's sprites or behind them.
+    #[serde(default)]
+    pub draw_order: GridDrawOrder,
     /// Node columns (≥ 2; hex grids need an even count).
     pub cols: u32,
     /// Node rows (≥ 2).
@@ -109,6 +145,7 @@ impl GridBackdrop {
         let fraction = |value: f32, fallback: f32| finite_or(value, fallback).clamp(0.0, 1.0);
         GridBackdrop {
             topology: self.topology,
+            draw_order: self.draw_order,
             cols: Self::normalized_cols(self.cols, self.topology),
             rows: self.rows.clamp(2, Self::MAX_DIMENSION),
             spacing: finite_or(self.spacing, preset.spacing).max(Self::MIN_SPACING),
@@ -155,6 +192,7 @@ impl Default for GridBackdrop {
     fn default() -> Self {
         Self {
             topology: GridTopology::Hex,
+            draw_order: GridDrawOrder::OverSprites,
             cols: 44,
             rows: 19,
             spacing: 30.0,
@@ -184,5 +222,16 @@ mod tests {
             assert_eq!(topology.index(), index);
             assert_eq!(GridTopology::ALL[topology.index()], *topology);
         }
+    }
+
+    #[test]
+    fn test_draw_order_cycle_order_round_trips_through_index() {
+        for (index, draw_order) in GridDrawOrder::ALL.iter().enumerate() {
+            assert_eq!(draw_order.index(), index);
+            assert_eq!(GridDrawOrder::ALL[draw_order.index()], *draw_order);
+        }
+        // The default is the order every existing scene drew with.
+        assert_eq!(GridBackdrop::default().draw_order, GridDrawOrder::OverSprites);
+        assert_eq!(GridBackdrop::default().normalized().draw_order, GridDrawOrder::OverSprites);
     }
 }

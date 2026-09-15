@@ -50,6 +50,10 @@ pub(super) fn concrete_components() -> Vec<ConcreteComponent> {
             registry_name: "SpriteAnimation",
             extract: extract_sprite_animation,
         },
+        ConcreteComponent {
+            registry_name: "ClipStateMachine",
+            extract: extract_clip_state_machine,
+        },
     ];
 
     #[cfg(feature = "physics")]
@@ -184,6 +188,7 @@ fn extract_grid_backdrop(
 ) -> Option<ComponentData> {
     world.get::<ecs::GridBackdrop>(entity).map(|grid| ComponentData::GridBackdrop {
         topology: grid.topology,
+        draw_order: grid.draw_order,
         cols: grid.cols,
         rows: grid.rows,
         spacing: grid.spacing,
@@ -221,6 +226,21 @@ fn extract_sprite_animation(
             autoplay: animation.playing.then(|| animation.current_clip.clone()).flatten(),
         }
     })
+}
+
+/// The state table is the whole wire form: which state the machine is in
+/// right now is runtime position, and loading re-enters `initial`.
+fn extract_clip_state_machine(
+    world: &World,
+    entity: EntityId,
+    _texture_path_fn: &dyn Fn(u32) -> String,
+) -> Option<ComponentData> {
+    world
+        .get::<ecs::ClipStateMachine>(entity)
+        .map(|machine| ComponentData::ClipStateMachine {
+            initial: machine.initial().to_string(),
+            states: machine.states().to_vec(),
+        })
 }
 
 #[cfg(feature = "physics")]

@@ -81,8 +81,9 @@ below) — pong and space_invaders use the engine defaults directly.
   consumer (gameplay + `Pickups::collect`). A second take returns empty.
 - Movement: `PhysicsSystem::set_velocity(entity, linear, angular)` for every
   launch/move case — never reach into rapier unless you need mass-aware impulses.
-- Bullets/effects/debris: attach `Lifetime::new(seconds)` and run a
-  `LifetimeSystem` (prelude) — no per-entity timer bookkeeping.
+- Bullets/effects/debris: attach `Lifetime::new(seconds)`; the engine's frame
+  tail runs `LifetimeSystem` for every game — never own one (it would halve
+  every lifetime). No per-entity timer bookkeeping.
 - Pickups/drops: `engine_core::pickups::Pickups<K>` + `EffectTimer`.
 - Menu-state sprite hiding: `set_sprites_visible(ctx.world, entities, visible)`
   (prelude) — you supply the entity list and the state match.

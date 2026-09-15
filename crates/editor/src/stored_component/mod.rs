@@ -8,6 +8,7 @@
 
 use ecs::audio_components::{AudioListener, AudioSource};
 use ecs::behavior::{Behavior, BehaviorState, EntityTag};
+use ecs::clip_state_machine::ClipStateMachine;
 use ecs::grid_backdrop::GridBackdrop;
 use ecs::hierarchy::GlobalTransform2D;
 use ecs::sprite_components::{Name, Sprite, SpriteAnimation};
@@ -496,6 +497,7 @@ editor_component_registry! {
         Camera          => common::Camera : Core { readonly },
         Sprite          => Sprite : Rendering { edit edit_sprite },
         SpriteAnimation => SpriteAnimation : Rendering { readonly },
+        ClipStateMachine => ClipStateMachine : Gameplay { readonly },
         Tilemap         => Tilemap : Rendering { readonly },
         GridBackdrop    => GridBackdrop : Rendering { edit edit_grid_backdrop },
         RigidBody       => RigidBody : Physics { edit edit_rigid_body },

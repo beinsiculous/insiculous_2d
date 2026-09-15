@@ -5,7 +5,7 @@
 
 use std::ops::RangeInclusive;
 
-use ecs::{GridBackdrop, GridTopology};
+use ecs::{GridBackdrop, GridDrawOrder, GridTopology};
 
 use crate::component_editors::ComponentEdit;
 use crate::{EditResult, EditableInspector};
@@ -51,6 +51,15 @@ pub fn edit_grid_backdrop(
         new.cols = GridBackdrop::normalized_cols(new.cols, new.topology);
         hint = Some("topology");
     }
+    if let EditResult::Changed(index) = inspector.cycle(
+        "Draw Order",
+        backdrop.draw_order.label(),
+        backdrop.draw_order.index(),
+        GridDrawOrder::ALL.len(),
+    ) {
+        new.draw_order = GridDrawOrder::ALL[index];
+        hint = Some("draw_order");
+    }
     if let EditResult::Changed(v) = inspector.f32_hard("Columns", backdrop.cols as f32, ranges::DIMENSION) {
         new.cols = GridBackdrop::normalized_cols(v.round() as u32, new.topology);
         hint = Some("cols");
@@ -88,14 +97,14 @@ mod tests {
 
     #[test]
     fn test_typed_odd_hex_column_count_commits_as_the_even_count_that_renders() {
-        // Field 1 = Columns (field 0 is the Topology cycle row). A hex grid
-        // only renders even column counts, so what the inspector stores is
-        // what the engine builds: a typed 45 commits as 46.
+        // Field 2 = Columns (0 is the Topology cycle row, 1 the Draw Order
+        // one). A hex grid only renders even column counts, so what the
+        // inspector stores is what the engine builds: a typed 45 commits as 46.
         let mut ui = ui::UIContext::new();
         let mut drag_drop = DragDropState::new();
         let mut inspector_state = crate::InspectorState::default();
         let mut input = input::InputHandler::new();
-        let field: ui::WidgetId = FieldId::new(0, 1, 0).into();
+        let field: ui::WidgetId = FieldId::new(0, 2, 0).into();
         ui.focus_text_input(field, "45");
         input.keyboard_mut().handle_key_press(KeyCode::Enter);
 

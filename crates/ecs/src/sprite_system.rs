@@ -2,8 +2,26 @@
 
 use crate::{
     sprite_components::{Sprite, SpriteAnimation},
-    System, World,
+    EntityId, System, World,
 };
+
+/// Write the region of `entity`'s current animation frame onto its [`Sprite`],
+/// when it carries both and the frame resolves.
+///
+/// [`SpriteAnimationSystem`] does this after every advance; the clip state
+/// machine does it the moment it selects a clip, so the frame that enters a
+/// state shows the new clip's first frame rather than the previous clip's last.
+pub fn sync_sprite_region(world: &mut World, entity: EntityId) {
+    let Some(region) = world
+        .get::<SpriteAnimation>(entity)
+        .and_then(SpriteAnimation::current_uv)
+    else {
+        return;
+    };
+    if let Some(sprite) = world.get_mut::<Sprite>(entity) {
+        sprite.tex_region = region;
+    }
+}
 
 /// Advances every [`SpriteAnimation`] and writes the resulting cell region
 /// onto the entity's [`Sprite`].
@@ -21,17 +39,11 @@ impl System for SpriteAnimationSystem {
             // Advance first, then hand the resolved region to the sprite in a
             // second lookup — two components on one entity cannot be borrowed
             // mutably at once.
-            let region = match world.get_mut::<SpriteAnimation>(entity_id) {
-                Some(animation) => {
-                    animation.update(delta_time);
-                    animation.current_uv()
-                }
+            match world.get_mut::<SpriteAnimation>(entity_id) {
+                Some(animation) => animation.update(delta_time),
                 None => continue,
-            };
-
-            if let (Some(region), Some(sprite)) = (region, world.get_mut::<Sprite>(entity_id)) {
-                sprite.tex_region = region;
             }
+            sync_sprite_region(world, entity_id);
         }
     }
 

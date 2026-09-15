@@ -16,7 +16,7 @@ use ecs::{EntityId, World};
 use super::commands::{current_velocity, ScriptCommands, ScriptCommandsHandle};
 use super::registry::{ScriptBehavior, ScriptRegistry};
 use super::rhai_backend::RhaiBackend;
-use super::view::{EntityState, ScriptCollision, ScriptView, SelfView};
+use super::view::{clip_snapshot, EntityState, ScriptCollision, ScriptView, SelfView};
 
 /// Classification of script execution and compilation errors.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -303,13 +303,21 @@ impl ScriptRunner {
         let mut entity_ids = world.entities();
         entity_ids.sort();
         let mut entities = BTreeMap::new();
-        for entity in entity_ids {
+        let mut clip_snapshots = BTreeMap::new();
+        for entity in &entity_ids {
+            let entity = *entity;
             if let Some(name) = world.get::<Name>(entity) {
                 let transform = world.get::<Transform2D>(entity).copied().unwrap_or_default();
                 let velocity = current_velocity(world, physics, entity);
                 entities
                     .entry(name.as_str().to_string())
                     .or_insert(EntityState { entity, transform, velocity });
+            }
+            // Read before this phase's commands apply: a script therefore
+            // observes a completion, or the state a completion moved to, on
+            // the frame after it happened — never mid-phase.
+            if let Some(snapshot) = clip_snapshot(world, entity) {
+                clip_snapshots.insert(entity, snapshot);
             }
         }
 
@@ -362,6 +370,7 @@ impl ScriptRunner {
             player_axes,
             player_actions_active,
             player_actions_just_activated,
+            clip_snapshots,
         }
     }
 

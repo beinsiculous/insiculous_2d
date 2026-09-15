@@ -356,6 +356,9 @@ fn global() -> &'static RwLock<ComponentRegistry> {
         // The playfield spring grid as scene data — persisted through
         // its concrete ComponentData::GridBackdrop wire arm.
         registry.register::<crate::grid_backdrop::GridBackdrop>();
+        // Animation state as scene data — persisted through its concrete
+        // ComponentData::ClipStateMachine wire arm.
+        registry.register::<crate::clip_state_machine::ClipStateMachine>();
 
         RwLock::new(registry)
     })

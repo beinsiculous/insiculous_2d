@@ -33,7 +33,9 @@ use input::InputHandler;
 use renderer::{sprite::SpriteBatcher, texture::TextureHandle};
 
 mod app_handler;
-mod frame_tail;
+// `pub(crate)` for `step_world_systems`: the scripting tests drive the tail's
+// system order rather than a copy of it.
+pub(crate) mod frame_tail;
 mod locale_font;
 mod render;
 #[cfg(target_arch = "wasm32")]
@@ -306,8 +308,13 @@ struct GameRunner<G: Game> {
     /// accumulate over time and spawn bursts can persist for their lifetime.
     particles: crate::particles::ParticleManager,
     /// Line vertex buffer that the game fills each frame and the engine
-    /// uploads to the renderer. Cleared before every `update()`.
+    /// uploads to the renderer, drawn after the sprites. Cleared before every
+    /// `update()`.
     lines: Vec<renderer::line_pipeline::LineVertex>,
+    /// Line vertices of the behind-sprites layer: scene grids that asked to
+    /// draw under the art (`ecs::GridDrawOrder::BehindSprites`). Cleared with
+    /// `lines`; games never push here.
+    behind_lines: Vec<renderer::line_pipeline::LineVertex>,
     /// Scene-authored spring grids (`ecs::GridBackdrop`), simulated here and
     /// drawn beneath the game's own lines.
     grid_backdrops: crate::grid::GridBackdropSystem,
@@ -423,6 +430,7 @@ impl<G: Game> GameRunner<G> {
             scores,
             particles: crate::particles::ParticleManager::default(),
             lines: Vec::new(),
+            behind_lines: Vec::new(),
             grid_backdrops: crate::grid::GridBackdropSystem::default(),
             game_batcher: SpriteBatcher::new(),
             ui_batcher: SpriteBatcher::new(),
@@ -545,9 +553,10 @@ impl<G: Game> GameRunner<G> {
             return;
         };
 
-        // Clear the line buffer at the start of the frame so games push fresh
-        // vertices each update (typical case: grid.build_line_vertices()).
+        // Clear the line buffers at the start of the frame so games push
+        // fresh vertices each update (typical case: grid.build_line_vertices()).
         self.lines.clear();
+        self.behind_lines.clear();
 
         let mut ctx = build_context!(self, asset_manager, delta_time, window_size);
 

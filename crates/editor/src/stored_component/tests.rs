@@ -39,6 +39,7 @@ fn entity_with_every_registry_type(world: &mut World) -> EntityId {
     world.add_component(&entity, UiButton::default()).ok();
     world.add_component(&entity, ecs::script::Scripts::default()).ok();
     world.add_component(&entity, ecs::GridBackdrop::default()).ok();
+    world.add_component(&entity, ClipStateMachine::default()).ok();
     entity
 }
 

@@ -28,6 +28,8 @@
 
 use std::fmt::Debug;
 
+use serde::{Deserialize, Serialize};
+
 /// A state machine component that tracks state transitions for an entity.
 ///
 /// `S` is the state type — typically an enum defining all possible states.
@@ -37,7 +39,11 @@ use std::fmt::Debug;
 ///
 /// State machines are pure data — systems read the current state and
 /// decide what to do. No callbacks or closures, keeping things ECS-friendly.
-#[derive(Debug, Clone)]
+///
+/// Serde covers the machine's whole pose, for components that embed one
+/// (an authored scene records the table, not the pose — see
+/// [`ClipStateMachine`](crate::clip_state_machine::ClipStateMachine)).
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StateMachine<S: Clone + PartialEq + Debug + Send + Sync + 'static> {
     current: S,
     previous: Option<S>,

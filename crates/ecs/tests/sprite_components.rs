@@ -2,7 +2,7 @@
 //! components' serde and inspector metadata.
 
 use ecs::sprite_components::*;
-use ecs::{ComponentMeta, GridBackdrop, UiButton, UiLabel, UiPanel};
+use ecs::{ClipStateMachine, ComponentMeta, GridBackdrop, UiButton, UiLabel, UiPanel};
 
 /// A 4x2 sheet carrying a looping 2-frame "walk" and a one-shot 3-frame
 /// "hit" — the two shapes every playback test needs.
@@ -211,7 +211,7 @@ fn test_sprite_deserializes_omitted_region_and_visibility_to_full_and_visible() 
 #[test]
 fn test_component_meta_field_order_matches_the_inspector() {
     // The inspector renders fields in this order, so the order is the contract.
-    let expected: [(&str, &[&str]); 8] = [
+    let expected: [(&str, &[&str]); 9] = [
         (Transform2D::type_name(), &["position", "rotation", "scale"]),
         (
             Sprite::type_name(),
@@ -223,7 +223,7 @@ fn test_component_meta_field_order_matches_the_inspector() {
         ),
         (
             SpriteAnimation::type_name(),
-            &["grid", "clips", "sheet", "current_clip", "playing", "current_frame", "time_accumulator"],
+            &["grid", "clips", "sheet", "current_clip", "playing", "current_frame", "time_accumulator", "finished"],
         ),
         (UiLabel::type_name(), &["text", "anchor", "offset", "font_size", "color", "visible"]),
         (
@@ -234,10 +234,14 @@ fn test_component_meta_field_order_matches_the_inspector() {
         (
             GridBackdrop::type_name(),
             &[
-                "topology", "cols", "rows", "spacing", "color", "emissive", "visible", "stiffness",
+                "topology", "draw_order", "cols", "rows", "spacing", "color", "emissive", "visible", "stiffness",
                 "damping", "rest_pull", "rest_alpha_fraction", "activity_attack", "activity_release",
                 "activity_displacement_ref", "activity_velocity_ref",
             ],
+        ),
+        (
+            ClipStateMachine::type_name(),
+            &["initial", "states", "machine", "applied"],
         ),
     ];
     let actual = [
@@ -249,12 +253,16 @@ fn test_component_meta_field_order_matches_the_inspector() {
         (UiPanel::type_name(), UiPanel::field_names()),
         (UiButton::type_name(), UiButton::field_names()),
         (GridBackdrop::type_name(), GridBackdrop::field_names()),
+        (ClipStateMachine::type_name(), ClipStateMachine::field_names()),
     ];
 
     assert_eq!(actual, expected);
     assert_eq!(
         actual.map(|(name, _)| name),
-        ["Transform2D", "Sprite", "Camera", "SpriteAnimation", "UiLabel", "UiPanel", "UiButton", "GridBackdrop"],
+        [
+            "Transform2D", "Sprite", "Camera", "SpriteAnimation", "UiLabel", "UiPanel", "UiButton",
+            "GridBackdrop", "ClipStateMachine",
+        ],
         "the registry keys on these names"
     );
 }

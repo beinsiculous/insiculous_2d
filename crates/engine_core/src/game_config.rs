@@ -19,6 +19,10 @@ fn default_locales_dir() -> String {
     "locales".to_string()
 }
 
+fn default_pixel_snap() -> bool {
+    false
+}
+
 /// Configuration for the game window and engine.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameConfig {
@@ -77,6 +81,13 @@ pub struct GameConfig {
     /// projects set [`TextureFilter::Nearest`] so texel edges stay hard.
     #[serde(default, with = "crate::texture_filter_serde")]
     pub texture_filter: TextureFilter,
+    /// Move every game sprite's origin onto a whole device pixel after the
+    /// camera transform (default `false`). Snapping is what keeps pixel art
+    /// crisp at an integer world→device factor; at a fractional factor it
+    /// seams a tilemap (frogger, 2026-09-15), so a game turns it on only
+    /// where its factor is whole — the 1× re-skins do.
+    #[serde(default = "default_pixel_snap")]
+    pub pixel_snap: bool,
 }
 
 impl Default for GameConfig {
@@ -97,6 +108,7 @@ impl Default for GameConfig {
             locale: default_locale(),
             locales_dir: default_locales_dir(),
             texture_filter: TextureFilter::Linear,
+            pixel_snap: false,
         }
     }
 }
@@ -195,6 +207,16 @@ impl GameConfig {
     /// Nearest regardless.
     pub fn with_texture_filter(mut self, filter: TextureFilter) -> Self {
         self.texture_filter = filter;
+        self
+    }
+
+    /// Snap every game sprite's origin to a whole device pixel after the
+    /// camera transform (off by default). Turn it on for a game whose
+    /// world→device factor is whole — a 1× re-skin — and leave it off
+    /// otherwise: at a non-integer factor, snapping two neighbours opens a
+    /// seam between tiles.
+    pub fn with_pixel_snap(mut self, pixel_snap: bool) -> Self {
+        self.pixel_snap = pixel_snap;
         self
     }
 }

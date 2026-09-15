@@ -169,6 +169,34 @@ fn register_views(engine: &mut Engine) {
         v.just_activated(player as usize, act.as_str())
     });
 
+    engine.register_fn("current_clip", |v: &mut Rc<ScriptView>, name: &str| {
+        v.current_clip(name)
+    });
+    engine.register_fn("current_clip", |v: &mut Rc<ScriptView>, name: ImmutableString| {
+        v.current_clip(name.as_str())
+    });
+    engine.register_fn("current_clip", |v: &mut Rc<ScriptView>, me: Rc<SelfView>| {
+        v.current_clip_of(&me)
+    });
+    engine.register_fn("clip_finished", |v: &mut Rc<ScriptView>, name: &str| {
+        v.clip_finished(name)
+    });
+    engine.register_fn("clip_finished", |v: &mut Rc<ScriptView>, name: ImmutableString| {
+        v.clip_finished(name.as_str())
+    });
+    engine.register_fn("clip_finished", |v: &mut Rc<ScriptView>, me: Rc<SelfView>| {
+        v.clip_finished_of(&me)
+    });
+    engine.register_fn("clip_state", |v: &mut Rc<ScriptView>, name: &str| {
+        v.clip_state(name)
+    });
+    engine.register_fn("clip_state", |v: &mut Rc<ScriptView>, name: ImmutableString| {
+        v.clip_state(name.as_str())
+    });
+    engine.register_fn("clip_state", |v: &mut Rc<ScriptView>, me: Rc<SelfView>| {
+        v.clip_state_of(&me)
+    });
+
     engine.register_fn("has_collision", |v: &mut Rc<ScriptView>, a: &str, b: &str| {
         v.has_collision(a, b)
     });
@@ -396,6 +424,47 @@ fn register_commands(engine: &mut Engine) {
     });
     engine.register_fn("set_blackboard_str", |out: &mut ScriptCommandsHandle, key: ImmutableString, value: ImmutableString| {
         out.push(ScriptCommand::SetBlackboard { key: key.to_string(), value: ScriptValue::Str(value.to_string()) });
+    });
+
+    // play_clip / ensure_clip: the clip is the machine's to own, so these are
+    // refused on an entity carrying a ClipStateMachine.
+    engine.register_fn("play_clip", |out: &mut ScriptCommandsHandle, me: Rc<SelfView>, name: &str| {
+        out.push(ScriptCommand::PlayClip { target: Target::Entity(me.entity), name: name.to_string() });
+    });
+    engine.register_fn("play_clip", |out: &mut ScriptCommandsHandle, me: Rc<SelfView>, name: ImmutableString| {
+        out.push(ScriptCommand::PlayClip { target: Target::Entity(me.entity), name: name.to_string() });
+    });
+    engine.register_fn("play_clip", |out: &mut ScriptCommandsHandle, name: &str, clip: &str| {
+        out.push(ScriptCommand::PlayClip { target: Target::Named(name.to_string()), name: clip.to_string() });
+    });
+    engine.register_fn("play_clip", |out: &mut ScriptCommandsHandle, name: ImmutableString, clip: ImmutableString| {
+        out.push(ScriptCommand::PlayClip { target: Target::Named(name.to_string()), name: clip.to_string() });
+    });
+    engine.register_fn("ensure_clip", |out: &mut ScriptCommandsHandle, me: Rc<SelfView>, name: &str| {
+        out.push(ScriptCommand::EnsureClip { target: Target::Entity(me.entity), name: name.to_string() });
+    });
+    engine.register_fn("ensure_clip", |out: &mut ScriptCommandsHandle, me: Rc<SelfView>, name: ImmutableString| {
+        out.push(ScriptCommand::EnsureClip { target: Target::Entity(me.entity), name: name.to_string() });
+    });
+    engine.register_fn("ensure_clip", |out: &mut ScriptCommandsHandle, name: &str, clip: &str| {
+        out.push(ScriptCommand::EnsureClip { target: Target::Named(name.to_string()), name: clip.to_string() });
+    });
+    engine.register_fn("ensure_clip", |out: &mut ScriptCommandsHandle, name: ImmutableString, clip: ImmutableString| {
+        out.push(ScriptCommand::EnsureClip { target: Target::Named(name.to_string()), name: clip.to_string() });
+    });
+
+    // set_clip_state: how a script moves a ClipStateMachine.
+    engine.register_fn("set_clip_state", |out: &mut ScriptCommandsHandle, me: Rc<SelfView>, state: &str| {
+        out.push(ScriptCommand::SetClipState { target: Target::Entity(me.entity), state: state.to_string() });
+    });
+    engine.register_fn("set_clip_state", |out: &mut ScriptCommandsHandle, me: Rc<SelfView>, state: ImmutableString| {
+        out.push(ScriptCommand::SetClipState { target: Target::Entity(me.entity), state: state.to_string() });
+    });
+    engine.register_fn("set_clip_state", |out: &mut ScriptCommandsHandle, name: &str, state: &str| {
+        out.push(ScriptCommand::SetClipState { target: Target::Named(name.to_string()), state: state.to_string() });
+    });
+    engine.register_fn("set_clip_state", |out: &mut ScriptCommandsHandle, name: ImmutableString, state: ImmutableString| {
+        out.push(ScriptCommand::SetClipState { target: Target::Named(name.to_string()), state: state.to_string() });
     });
 
     // despawn

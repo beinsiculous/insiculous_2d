@@ -37,6 +37,7 @@ impl SceneLoader {
             ComponentData::Tilemap { .. } => "Tilemap",
             ComponentData::GridBackdrop { .. } => "GridBackdrop",
             ComponentData::SpriteAnimation { .. } => "SpriteAnimation",
+            ComponentData::ClipStateMachine { .. } => "ClipStateMachine",
             ComponentData::RigidBody { .. } => "RigidBody",
             ComponentData::Collider { .. } => "Collider",
             ComponentData::UiLabel { .. } => "UiLabel",
@@ -139,6 +140,7 @@ impl SceneLoader {
 
             ComponentData::GridBackdrop {
                 topology,
+                draw_order,
                 cols,
                 rows,
                 spacing,
@@ -156,6 +158,7 @@ impl SceneLoader {
             } => {
                 let backdrop = ecs::GridBackdrop {
                     topology: *topology,
+                    draw_order: *draw_order,
                     cols: *cols,
                     rows: *rows,
                     spacing: *spacing,
@@ -184,6 +187,12 @@ impl SceneLoader {
                     Self::build_sprite_animation(sheet.as_deref(), *grid, clips, autoplay.as_deref(), assets);
                 warn_if_inert(&animation, entity_id);
                 Self::add_component_logged(world, entity_id, animation);
+            }
+
+            ComponentData::ClipStateMachine { initial, states } => {
+                let machine = ecs::ClipStateMachine::new(initial.clone(), states.clone());
+                warn_if_stateless(&machine, entity_id);
+                Self::add_component_logged(world, entity_id, machine);
             }
 
             #[cfg(feature = "physics")]
@@ -449,6 +458,23 @@ fn insert_dynamic_component(
 
 /// Warn if a loaded [`SpriteAnimation`] has neither a sheet nor clips.
 ///
+/// Warn if a loaded [`ecs::ClipStateMachine`] starts in a state it has no row
+/// for.
+///
+/// Such a machine can never select a clip — the state is the row's key — so
+/// the authored table means nothing and the load says so rather than leaving
+/// a component that silently does nothing.
+fn warn_if_stateless(machine: &ecs::ClipStateMachine, entity_id: EntityId) {
+    if !machine.has_state(machine.initial()) {
+        log::warn!(
+            "Scene load: ClipStateMachine on entity {entity_id:?} starts in '{}', which has no \
+             row ({} row(s) in the table); it will play no clip",
+            machine.initial(),
+            machine.states().len()
+        );
+    }
+}
+
 /// A component with no sheet and no clips can never animate. Old-format scene
 /// data (the pre-named-clip schema) parses successfully into this inert shape
 /// because fields default — warn instead of silently loading a no-op component.

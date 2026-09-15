@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 
-use ecs::{EntityId, GlobalTransform2D, GridBackdrop, Transform2D, World};
+use ecs::{EntityId, GlobalTransform2D, GridBackdrop, GridDrawOrder, Transform2D, World};
 use glam::Vec2;
 use renderer::line_pipeline::LineVertex;
 
@@ -51,16 +51,28 @@ struct Entry {
 #[derive(Default)]
 pub struct GridBackdropSystem {
     entries: HashMap<EntityId, Entry>,
-    /// Every grid's vertices for the frame, in entity-id order, spliced
-    /// into the game's line buffer in one move.
+    /// Over-sprites grids' vertices for the frame, in entity-id order,
+    /// spliced into the game's line buffer in one move.
     scratch: Vec<LineVertex>,
+    /// Behind-sprites grids' vertices for the frame, same order.
+    behind_scratch: Vec<LineVertex>,
 }
 
 impl GridBackdropSystem {
     /// Sync meshes to the world's components, apply queued impulses, step by
     /// `delta_time` (a non-positive delta freezes the simulation but still
-    /// draws), and prepend the vertices to `out` so game lines stay on top.
-    pub fn update(&mut self, world: &mut World, delta_time: f32, out: &mut Vec<LineVertex>) {
+    /// draws), and hand the vertices to the layer each grid asked for:
+    /// `over_lines` gets an over-sprites grid prepended (so the game's own
+    /// lines stay on top of it), `behind_lines` gets a behind-sprites grid
+    /// appended (it draws before the sprites, so there is nothing to
+    /// interleave with).
+    pub fn update(
+        &mut self,
+        world: &mut World,
+        delta_time: f32,
+        over_lines: &mut Vec<LineVertex>,
+        behind_lines: &mut Vec<LineVertex>,
+    ) {
         if world.remove_resource::<GridBackdropReset>().is_some() {
             self.entries.clear();
         }
@@ -80,14 +92,20 @@ impl GridBackdropSystem {
         let mut order: Vec<EntityId> = self.entries.keys().copied().collect();
         order.sort_by_key(|entity| entity.value());
         self.scratch.clear();
+        self.behind_scratch.clear();
         for entity in order {
             let Some(entry) = self.entries.get_mut(&entity) else { continue };
             entry.mesh.step(delta_time);
-            self.scratch.extend_from_slice(entry.mesh.build_line_vertices());
+            let vertices = entry.mesh.build_line_vertices();
+            match entry.config.draw_order {
+                GridDrawOrder::OverSprites => self.scratch.extend_from_slice(vertices),
+                GridDrawOrder::BehindSprites => self.behind_scratch.extend_from_slice(vertices),
+            }
         }
         if !self.scratch.is_empty() {
-            out.splice(0..0, self.scratch.drain(..));
+            over_lines.splice(0..0, self.scratch.drain(..));
         }
+        behind_lines.append(&mut self.behind_scratch);
     }
 
     /// The simulated mesh for `entity`, if it carries a backdrop.
@@ -166,9 +184,10 @@ mod tests {
         let entity = spawn(&mut world, small(), Vec2::ZERO);
         let mut system = GridBackdropSystem::default();
         let mut out = Vec::new();
-        system.update(&mut world, 1.0 / 60.0, &mut out);
+        let mut behind = Vec::new();
+        system.update(&mut world, 1.0 / 60.0, &mut out, &mut behind);
         kick(&mut world);
-        system.update(&mut world, 1.0 / 60.0, &mut out);
+        system.update(&mut world, 1.0 / 60.0, &mut out, &mut behind);
         assert!(system.mesh(entity).unwrap().total_energy() > 0.0, "setup: the grid ripples");
         (world, entity, system, out)
     }
@@ -176,6 +195,7 @@ mod tests {
     #[test]
     fn test_shape_change_rebuilds_but_other_edits_and_a_nan_tunable_leave_the_ripple_alone() {
         let (mut world, entity, mut system, mut out) = rippling();
+        let mut behind = Vec::new();
         let energy = system.mesh(entity).unwrap().total_energy();
         let nodes_before = system.mesh(entity).unwrap().node_count();
 
@@ -187,7 +207,7 @@ mod tests {
             config.stiffness = 90.0;
             config.visible = false;
         }
-        system.update(&mut world, 0.0, &mut out);
+        system.update(&mut world, 0.0, &mut out, &mut behind);
         let mesh = system.mesh(entity).unwrap();
         assert_eq!(mesh.config.color, glam::Vec4::new(1.0, 0.0, 0.0, 1.0));
         assert_eq!(mesh.config.stiffness, 90.0);
@@ -197,31 +217,33 @@ mod tests {
         // A NaN tunable: built once (falls back to the preset), then left
         // alone — the energy survives the next update, proving no rebuild.
         world.get_mut::<GridBackdrop>(entity).unwrap().stiffness = f32::NAN;
-        system.update(&mut world, 1.0 / 60.0, &mut out);
+        system.update(&mut world, 1.0 / 60.0, &mut out, &mut behind);
         assert!(system.mesh(entity).unwrap().total_energy() > 0.0, "still the same simulation");
         assert_eq!(system.mesh(entity).unwrap().config.stiffness, GridBackdrop::default().stiffness);
 
         // A shape change rebuilds: more columns, more nodes, at rest.
         world.get_mut::<GridBackdrop>(entity).unwrap().cols = 10;
-        system.update(&mut world, 0.0, &mut out);
+        system.update(&mut world, 0.0, &mut out, &mut behind);
         assert!(system.mesh(entity).unwrap().node_count() > nodes_before, "more columns, more nodes");
         assert_eq!(system.mesh(entity).unwrap().total_energy(), 0.0);
 
         // The editor's Stop marker rebuilds every grid at rest and is consumed.
         kick(&mut world);
-        system.update(&mut world, 1.0 / 60.0, &mut out);
+        system.update(&mut world, 1.0 / 60.0, &mut out, &mut behind);
         assert!(system.mesh(entity).unwrap().total_energy() > 0.0);
         request_backdrop_reset(&mut world);
-        system.update(&mut world, 0.0, &mut out);
+        system.update(&mut world, 0.0, &mut out, &mut behind);
         assert_eq!(system.mesh(entity).unwrap().total_energy(), 0.0);
         assert!(!world.has_resource::<GridBackdropReset>(), "the marker is consumed");
 
         // Losing the component drops the mesh and its vertices.
         world.remove_component::<GridBackdrop>(&entity).ok();
         out.clear();
-        system.update(&mut world, 1.0 / 60.0, &mut out);
+        behind.clear();
+        system.update(&mut world, 1.0 / 60.0, &mut out, &mut behind);
         assert!(system.mesh(entity).is_none());
         assert!(out.is_empty());
+        assert!(behind.is_empty());
     }
 
     #[test]
@@ -234,7 +256,8 @@ mod tests {
         // draws, the simulation state survives.
         world.get_mut::<Transform2D>(entity).unwrap().position = Vec2::new(100.0, -50.0);
         let mut out = Vec::new();
-        system.update(&mut world, 0.0, &mut out);
+        let mut behind = Vec::new();
+        system.update(&mut world, 0.0, &mut out, &mut behind);
         let moved = system.mesh(entity).unwrap();
         assert_eq!(moved.origin, Vec2::new(100.0, -50.0));
         assert!((moved.total_energy() - energy).abs() < 1e-3, "the simulation state survives the move");
@@ -245,11 +268,11 @@ mod tests {
         // Impulses queued while frozen are drained, not banked: once the
         // ripple has been rebuilt away, a frozen kick adds no energy later.
         request_backdrop_reset(&mut world);
-        system.update(&mut world, 0.0, &mut out);
+        system.update(&mut world, 0.0, &mut out, &mut behind);
         kick(&mut world);
-        system.update(&mut world, 0.0, &mut out);
+        system.update(&mut world, 0.0, &mut out, &mut behind);
         assert!(!world.has_resource::<GridImpulses>(), "the queue is drained even when frozen");
-        system.update(&mut world, 1.0 / 60.0, &mut out);
+        system.update(&mut world, 1.0 / 60.0, &mut out, &mut behind);
         assert!(system.mesh(entity).unwrap().total_energy() < 1e-6, "no energy was banked");
     }
 
@@ -267,27 +290,41 @@ mod tests {
             .ok();
         let mut system = GridBackdropSystem::default();
         let mut out = Vec::new();
-        system.update(&mut world, 0.0, &mut out);
+        let mut behind = Vec::new();
+        system.update(&mut world, 0.0, &mut out, &mut behind);
         assert_eq!(system.mesh(parented).unwrap().origin, Vec2::new(300.0, 40.0));
 
-        // Two grids: the lower entity id first, then the higher, then the
-        // game's own lines last so its wireframes stay on top.
+        // Three grids: two over-order ones in entity order ahead of the
+        // game's own lines, and a behind-order one in the other buffer —
+        // which is what the renderer draws before the sprites.
         let mut world = World::new();
         let square = GridBackdrop { topology: GridTopology::Square, cols: 2, rows: 2, ..small() };
         let hex = GridBackdrop { cols: 2, rows: 2, ..small() };
+        let behind_grid = GridBackdrop {
+            cols: 2,
+            rows: 2,
+            draw_order: GridDrawOrder::BehindSprites,
+            ..small()
+        };
         let later = spawn(&mut world, square.clone(), Vec2::new(1000.0, 0.0));
         let earlier_id = spawn(&mut world, hex.clone(), Vec2::ZERO);
+        spawn(&mut world, behind_grid.clone(), Vec2::new(-1000.0, 0.0));
         assert!(earlier_id.value() > later.value(), "spawned second, sorted second");
         let mut system = GridBackdropSystem::default();
         let game_line = LineVertex { position: [-1.0, -1.0], color: [1.0; 4], emissive: 0.0 };
         let mut out = vec![game_line, game_line];
-        system.update(&mut world, 1.0 / 60.0, &mut out);
+        let mut behind = Vec::new();
+        system.update(&mut world, 1.0 / 60.0, &mut out, &mut behind);
 
         let square_vertices = build_grid_mesh(&square, Vec2::new(1000.0, 0.0)).build_line_vertices().len();
         let hex_vertices = build_grid_mesh(&hex, Vec2::ZERO).build_line_vertices().len();
-        assert_eq!(out.len(), square_vertices + hex_vertices + 2);
+        let behind_vertices =
+            build_grid_mesh(&behind_grid, Vec2::new(-1000.0, 0.0)).build_line_vertices().len();
+        assert_eq!(out.len(), square_vertices + hex_vertices + 2, "two grids, then the game's lines");
         assert!(out[0].position[0] > 900.0, "the lower-id grid comes first");
         assert!(out[square_vertices].position[0] < 100.0, "then the higher-id grid");
         assert_eq!(out[out.len() - 1].position, [-1.0, -1.0], "game lines draw last (on top)");
+        assert_eq!(behind.len(), behind_vertices, "a behind-order grid goes to its own buffer");
+        assert!(behind[0].position[0] < -900.0, "and it is that grid's vertices");
     }
 }

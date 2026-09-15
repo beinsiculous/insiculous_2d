@@ -5,8 +5,10 @@ use std::collections::{BTreeMap, HashSet};
 use glam::Vec2;
 
 use common::Transform2D;
+use ecs::clip_state_machine::ClipStateMachine;
 use ecs::script::ScriptValue;
-use ecs::EntityId;
+use ecs::sprite_components::SpriteAnimation;
+use ecs::{EntityId, World};
 
 /// Per-instance view handed to scripts as `me`.
 #[derive(Debug, Clone)]
@@ -87,6 +89,36 @@ pub struct EntityState {
     pub velocity: Vec2,
 }
 
+/// Clip and animation-state names of one entity, as the phase started.
+#[derive(Debug, Clone, Default)]
+pub struct ClipSnapshot {
+    /// The clip the entity's `SpriteAnimation` is showing, if it has one.
+    pub current_clip: Option<String>,
+    /// Whether a one-shot clip has finished and stopped.
+    pub finished: bool,
+    /// The entity's `ClipStateMachine` state, if it has one.
+    pub state: Option<String>,
+}
+
+/// The clip and animation-state names of `entity`, or `None` when it carries
+/// neither a `SpriteAnimation` nor a `ClipStateMachine`.
+///
+/// Read when a phase's view is built — before that phase's commands apply —
+/// so a script observes a completion, or the state a completion moved to, on
+/// the frame after it happened.
+pub(crate) fn clip_snapshot(world: &World, entity: EntityId) -> Option<ClipSnapshot> {
+    let animation = world.get::<SpriteAnimation>(entity);
+    let machine = world.get::<ClipStateMachine>(entity);
+    if animation.is_none() && machine.is_none() {
+        return None;
+    }
+    Some(ClipSnapshot {
+        current_clip: animation.and_then(|animation| animation.current_clip.clone()),
+        finished: animation.is_some_and(SpriteAnimation::is_finished),
+        state: machine.map(|machine| machine.state().to_string()),
+    })
+}
+
 /// Phase-shared view accessible by every script running in that phase.
 #[derive(Debug, Clone, Default)]
 pub struct ScriptView {
@@ -98,6 +130,8 @@ pub struct ScriptView {
     pub player_axes: Vec<Vec2>,
     pub player_actions_active: Vec<HashSet<String>>,
     pub player_actions_just_activated: Vec<HashSet<String>>,
+    /// Keyed by entity id; a lookup by name goes through `entities`.
+    pub clip_snapshots: BTreeMap<EntityId, ClipSnapshot>,
 }
 
 impl ScriptView {
@@ -222,6 +256,53 @@ impl ScriptView {
                 _ => false,
             }
         })
+    }
+
+    /// Name of the clip a named entity is showing; empty when it has none.
+    pub fn current_clip(&self, name: &str) -> String {
+        self.snapshot_for_name(name)
+            .and_then(|snapshot| snapshot.current_clip.clone())
+            .unwrap_or_default()
+    }
+
+    /// Whether a one-shot clip on a named entity has finished and stopped.
+    pub fn clip_finished(&self, name: &str) -> bool {
+        self.snapshot_for_name(name).is_some_and(|snapshot| snapshot.finished)
+    }
+
+    /// Animation-state name of a named entity; empty when it has none.
+    pub fn clip_state(&self, name: &str) -> String {
+        self.snapshot_for_name(name)
+            .and_then(|snapshot| snapshot.state.clone())
+            .unwrap_or_default()
+    }
+
+    /// [`current_clip`](Self::current_clip) for the entity `me` stands for.
+    pub fn current_clip_of(&self, me: &SelfView) -> String {
+        self.clip_snapshots
+            .get(&me.entity)
+            .and_then(|snapshot| snapshot.current_clip.clone())
+            .unwrap_or_default()
+    }
+
+    /// [`clip_finished`](Self::clip_finished) for the entity `me` stands for.
+    pub fn clip_finished_of(&self, me: &SelfView) -> bool {
+        self.clip_snapshots
+            .get(&me.entity)
+            .is_some_and(|snapshot| snapshot.finished)
+    }
+
+    /// [`clip_state`](Self::clip_state) for the entity `me` stands for.
+    pub fn clip_state_of(&self, me: &SelfView) -> String {
+        self.clip_snapshots
+            .get(&me.entity)
+            .and_then(|snapshot| snapshot.state.clone())
+            .unwrap_or_default()
+    }
+
+    fn snapshot_for_name(&self, name: &str) -> Option<&ClipSnapshot> {
+        let entity = self.entities.get(name)?.entity;
+        self.clip_snapshots.get(&entity)
     }
 
     /// Check if an instance entity collided with a named entity.

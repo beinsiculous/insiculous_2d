@@ -2,9 +2,64 @@
 
 use std::collections::HashMap;
 
+use glam::{Mat4, Vec2, Vec3, Vec4};
+
 use crate::sprite::Sprite;
-use crate::sprite_data::SpriteInstance;
+use crate::sprite_data::{Camera, SpriteInstance};
 use crate::texture::TextureHandle;
+
+/// The world → device-pixel map a frame's sprite origins are snapped through,
+/// built from the camera that frame actually renders with.
+///
+/// Snapping is a *translation* of the sprite's origin, so it happens on the
+/// CPU where the whole camera is available — the vertex shader sees a quad
+/// corner and would have to reconstruct each sprite's origin to do the same.
+struct PixelSnap {
+    clip_from_world: Mat4,
+    /// Only its linear part is used: a device-pixel correction is a direction,
+    /// not a point.
+    world_from_clip: Mat4,
+    viewport: Vec2,
+}
+
+impl PixelSnap {
+    /// `None` when the camera cannot produce a sane map — a zero or
+    /// non-finite viewport, or a projection that does not invert (a NaN in a
+    /// scene-authored zoom). Callers leave origins alone then.
+    fn new(camera: &Camera) -> Option<Self> {
+        let viewport = camera.viewport_size;
+        if !(viewport.x > 0.0 && viewport.y > 0.0) {
+            return None;
+        }
+        let clip_from_world = camera.view_projection_matrix();
+        let world_from_clip = clip_from_world.inverse();
+        if !clip_from_world.is_finite() || !world_from_clip.is_finite() {
+            return None;
+        }
+        Some(Self {
+            clip_from_world,
+            world_from_clip,
+            viewport,
+        })
+    }
+
+    /// The world position `origin` is drawn at, moved to the whole device
+    /// pixel nearest it.
+    ///
+    /// The device space here is y-up (clips mapped linearly), not the y-down
+    /// space `Camera::world_to_screen` reports: the pixel lattice is the same
+    /// either way, and the correction has to be measured in the same space it
+    /// is applied in.
+    fn snap(&self, origin: Vec2) -> Vec2 {
+        let clip = self.clip_from_world * Vec4::new(origin.x, origin.y, 0.0, 1.0);
+        let device = (Vec2::new(clip.x, clip.y) * 0.5 + Vec2::splat(0.5)) * self.viewport;
+        let correction_clip = (device.round() - device) * 2.0 / self.viewport;
+        let correction_world =
+            self.world_from_clip
+                .transform_vector3(Vec3::new(correction_clip.x, correction_clip.y, 0.0));
+        origin + Vec2::new(correction_world.x, correction_world.y)
+    }
+}
 
 /// A batch of sprites using the same texture
 #[derive(Debug, Clone)]
@@ -105,6 +160,26 @@ impl SpriteBatcher {
             });
 
         batch.add_instance(sprite.to_instance());
+    }
+
+    /// Move every sprite's origin onto the whole device pixel nearest it as
+    /// seen through `camera`.
+    ///
+    /// Snapping the origin — not each corner — is what keeps pixel art crisp
+    /// without tearing a row apart: at an integer world→device factor
+    /// neighbouring sprites shift by the same whole number of pixels, so a
+    /// tilemap stays gap-free. It is a no-op on a camera the map cannot be
+    /// built from.
+    pub fn snap_origins(&mut self, camera: &Camera) {
+        let Some(snap) = PixelSnap::new(camera) else {
+            return;
+        };
+        for batch in self.batches.values_mut() {
+            for instance in &mut batch.instances {
+                let snapped = snap.snap(Vec2::from(instance.position));
+                instance.position = [snapped.x, snapped.y];
+            }
+        }
     }
 
     /// Sort all batches by depth
@@ -243,6 +318,60 @@ mod tests {
             assert_eq!(depths(batch), expected, "texture {}", texture.id);
             assert!(batch.sorted);
         }
+    }
+
+    // === SpriteBatcher: pixel snapping ===
+
+    /// A sprite drawn at a fractional world position lands on a whole device
+    /// pixel, and moves by less than one pixel to get there.
+    #[test]
+    fn test_snapped_origin_lands_on_a_whole_device_pixel_under_a_fractional_camera() {
+        // A camera whose own position is fractional: the snap has to correct
+        // for the camera, not just round the world position.
+        let camera = Camera::new(Vec2::new(3.5, -7.25), Vec2::new(800.0, 600.0));
+        let snap = PixelSnap::new(&camera).expect("a finite camera snaps");
+        let origin = Vec2::new(12.34, -5.67);
+
+        let snapped = snap.snap(origin);
+        let device = camera.world_to_screen(snapped);
+        assert!(
+            (device.x - device.x.round()).abs() < 1e-2 && (device.y - device.y.round()).abs() < 1e-2,
+            "expected whole device pixels, got {device:?}"
+        );
+        assert!((device - camera.world_to_screen(origin)).length() < 1.0, "a snap moves under a pixel");
+
+        // A camera that cannot be inverted leaves the origin where it is.
+        let mut degenerate = camera.clone();
+        degenerate.viewport_size = Vec2::new(0.0, 600.0);
+        assert!(PixelSnap::new(&degenerate).is_none());
+        degenerate.viewport_size = Vec2::new(800.0, 600.0);
+        degenerate.zoom = f32::NAN;
+        assert!(PixelSnap::new(&degenerate).is_none());
+    }
+
+    /// Two sprites that abut exactly at an integer world→device factor stay
+    /// gap-free: both origins move by the same whole number of pixels.
+    #[test]
+    fn test_two_abutting_sprites_at_an_integer_world_to_device_factor_stay_gap_free() {
+        let camera = Camera::new(Vec2::ZERO, Vec2::new(800.0, 600.0));
+        let mut batcher = SpriteBatcher::new();
+        let texture = TextureHandle { id: 1 };
+        for x in [0.4, 16.4] {
+            batcher.add_sprite(
+                &Sprite::new(texture)
+                    .with_position(Vec2::new(x, 0.0))
+                    .with_scale(Vec2::splat(16.0)),
+            );
+        }
+
+        batcher.snap_origins(&camera);
+
+        let instances = &batcher.batch_for(texture).expect("one batch").instances;
+        let left = camera.world_to_screen(Vec2::from(instances[0].position));
+        let right = camera.world_to_screen(Vec2::from(instances[1].position));
+        assert!((left.x - left.x.round()).abs() < 1e-2, "the left origin is on a pixel");
+        assert!((right.x - right.x.round()).abs() < 1e-2, "the right origin is on a pixel");
+        assert!((right.x - left.x - 16.0).abs() < 1e-3, "the 16px pitch survives the snap");
     }
 
     /// Clipped UI: the same texture under two clip states is two

@@ -10,6 +10,8 @@ use crate::bloom::{BloomConfig, BloomPipeline};
 use crate::error::RendererError;
 use crate::line_pipeline::{LinePipeline, LineVertex};
 use crate::render_targets::RenderTargets;
+use crate::scissor::PassScissor;
+use crate::world_passes::{plan_world_passes, WorldPass};
 
 /// Configuration for creating a [`Renderer`].
 ///
@@ -51,11 +53,13 @@ pub struct Renderer {
     bloom_pipeline: BloomPipeline,
     /// Runtime-tunable bloom knobs.
     bloom_config: BloomConfig,
-    /// Pipeline + buffer for line-list geometry (e.g. the spring-mass grid).
+    /// Pipeline + buffers for line-list geometry (e.g. the spring-mass grid).
     line_pipeline: LinePipeline,
-    /// Number of line vertices uploaded by the most recent `set_lines` call.
-    /// Reset to 0 when no lines are drawn this frame.
+    /// Number of over-sprites line vertices uploaded by the most recent
+    /// `set_lines` call. Reset to 0 when no lines are drawn this frame.
     line_vertex_count: u32,
+    /// Number of behind-sprites line vertices (a grid drawn under the art).
+    behind_line_vertex_count: u32,
     /// Per-frame scissor bounding the game-world passes (sprites, lines,
     /// bloom composite) in physical surface pixels. `None` = full surface
     /// (the default; shipped games never set it). A zero-size rect draws no
@@ -246,6 +250,7 @@ impl Renderer {
             bloom_config,
             line_pipeline,
             line_vertex_count: 0,
+            behind_line_vertex_count: 0,
             viewport_scissor: None,
             device_lost,
             pending_reconfigure: false,
@@ -262,19 +267,24 @@ impl Renderer {
         &mut self.bloom_config
     }
 
-    /// Upload line vertices for the next render. Pairs of vertices form line
-    /// segments. The line pipeline draws these into the HDR target after
-    /// sprites and before bloom, so emissive lines bloom.
+    /// Upload line vertices for the next render, in two layers. Pairs of
+    /// vertices form line segments. Everything draws into the HDR target
+    /// before bloom, so emissive lines bloom; `over` draws after the sprites
+    /// (the game's own lines and the collider overlay), `behind` before them
+    /// (a grid under opaque art).
     ///
     /// Call every frame — vertices are not retained across frames; an empty
-    /// slice (or no call at all) means no lines render this frame.
-    pub fn set_lines(&mut self, vertices: &[LineVertex]) {
+    /// slice (or no call at all) means that layer renders nothing.
+    pub fn set_lines(&mut self, over: &[LineVertex], behind: &[LineVertex]) {
         if self.device_lost.is_lost() {
             self.line_vertex_count = 0;
+            self.behind_line_vertex_count = 0;
             return;
         }
-        self.line_vertex_count = vertices.len() as u32;
-        self.line_pipeline.upload_vertices(&self.queue, vertices);
+        self.line_vertex_count = over.len() as u32;
+        self.behind_line_vertex_count = behind.len() as u32;
+        self.line_pipeline.upload_vertices(&self.queue, over);
+        self.line_pipeline.upload_behind_vertices(&self.queue, behind);
     }
 
     /// Set the clear color
@@ -373,24 +383,42 @@ impl Renderer {
         // clip rects.
         let viewport_scissor = self.viewport_scissor;
 
-        // Pass 1: sprites -> HDR color (+ depth).
-        sprite_pipeline.draw(
-            &mut encoder,
-            texture_resources,
-            sprite_batches,
-            &self.render_targets,
-            self.clear_color,
-            viewport_scissor,
-        );
+        let scissor = PassScissor::resolve(viewport_scissor, (self.render_targets.width(), self.render_targets.height()));
+        let plan = plan_world_passes(scissor, self.line_vertex_count);
 
-        // Pass 2: lines (e.g. the spring-mass grid) on top of sprites in HDR.
-        // No-op when `set_lines` wasn't called this frame.
-        self.line_pipeline.draw(
-            &mut encoder,
-            &self.render_targets,
-            self.line_vertex_count,
-            viewport_scissor,
-        );
+        // Pass 1: behind-sprites lines, which own this frame's clear of the
+        // HDR color and depth. Encoded even when empty — see the plan.
+        if plan.runs(WorldPass::BehindLines) {
+            self.line_pipeline.draw_behind(
+                &mut encoder,
+                &self.render_targets,
+                self.behind_line_vertex_count,
+                viewport_scissor,
+                self.clear_color,
+            );
+        }
+
+        // Pass 2: sprites -> the cleared HDR color (+ depth).
+        if plan.runs(WorldPass::Sprites) {
+            sprite_pipeline.draw(
+                &mut encoder,
+                texture_resources,
+                sprite_batches,
+                &self.render_targets,
+                viewport_scissor,
+            );
+        }
+
+        // Pass 3: over-sprites lines (the game's own lines, the collider
+        // overlay) on top of the sprites. Skipped with no vertices to draw.
+        if plan.runs(WorldPass::OverLines) {
+            self.line_pipeline.draw(
+                &mut encoder,
+                &self.render_targets,
+                self.line_vertex_count,
+                viewport_scissor,
+            );
+        }
 
         // Pass 3..N: bloom (extract -> blur -> composite to swapchain).
         self.bloom_pipeline.run(

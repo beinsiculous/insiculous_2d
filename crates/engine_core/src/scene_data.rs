@@ -5,12 +5,15 @@
 
 use std::collections::HashMap;
 
-use common::SheetGrid;
-use ecs::sprite_components::AnimationClip;
 use serde::{Deserialize, Serialize};
 
 /// `GridBackdrop` wire defaults, hoisted for file size.
 mod grid_defaults;
+
+/// The row-shaped wire types, hoisted for file size and re-exported below.
+mod wire;
+
+pub use wire::{ClipData, GridData};
 
 /// `ecs::Behavior` IS the wire schema for behaviors: it carries the serde defaults
 /// old scene files rely on. Adding a variant or field there changes scene files.
@@ -266,6 +269,8 @@ pub enum ComponentData {
     GridBackdrop {
         #[serde(default)]
         topology: ecs::GridTopology,
+        #[serde(default)]
+        draw_order: ecs::GridDrawOrder,
         #[serde(default = "grid_defaults::default_grid_cols")]
         cols: u32,
         #[serde(default = "grid_defaults::default_grid_rows")]
@@ -294,6 +299,19 @@ pub enum ComponentData {
         activity_displacement_ref: f32,
         #[serde(default = "grid_defaults::default_grid_activity_velocity_ref")]
         activity_velocity_ref: f32,
+    },
+    /// Named state machine over `SpriteAnimation` clips: each state names the
+    /// clip it plays and what finishing that clip does. `initial` is the
+    /// state the machine starts in — the table is the whole wire form, since
+    /// playback position is runtime state that loading re-enters.
+    ///
+    /// The rows are [`ecs::ClipState`]s: the engine type is the wire form,
+    /// the way `BehaviorData` is `ecs::Behavior`.
+    ClipStateMachine {
+        #[serde(default)]
+        initial: String,
+        #[serde(default)]
+        states: Vec<(String, ecs::ClipState)>,
     },
     /// Screen-space text label (data-driven UI; `@key` text localizes)
     UiLabel {
@@ -373,84 +391,6 @@ pub enum ComponentData {
         /// Component data as JSON
         data: serde_json::Value,
     },
-}
-
-/// Wire form of a [`SheetGrid`](common::SheetGrid) in scene RON: the cell
-/// counts only.
-///
-/// The grid's normalized cell size is derived, never written — scene files
-/// speak in columns and rows, `.sheet.ron` sidecars speak in pixel cell sizes,
-/// and neither spells out UVs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GridData {
-    #[serde(default = "default_grid_axis")]
-    pub cols: u32,
-    #[serde(default = "default_grid_axis")]
-    pub rows: u32,
-}
-
-impl Default for GridData {
-    fn default() -> Self {
-        Self { cols: 1, rows: 1 }
-    }
-}
-
-fn default_grid_axis() -> u32 {
-    1
-}
-
-impl From<GridData> for SheetGrid {
-    fn from(data: GridData) -> Self {
-        SheetGrid::new(data.cols, data.rows)
-    }
-}
-
-impl From<SheetGrid> for GridData {
-    fn from(grid: SheetGrid) -> Self {
-        Self {
-            cols: grid.cols,
-            rows: grid.rows,
-        }
-    }
-}
-
-/// Wire form of an [`AnimationClip`] — one shape shared by scene RON and
-/// `.sheet.ron` sidecars, so a clip reads and writes identically wherever it
-/// appears.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ClipData {
-    /// Sheet cell indices, in playback order.
-    pub frames: Vec<u32>,
-    pub fps: f32,
-    /// Omitted means looping: most clips repeat, and the plain serde default
-    /// for a bool would silently make every clip a one-shot.
-    #[serde(default = "default_looping")]
-    pub looping: bool,
-}
-
-/// Clips loop unless a file says otherwise.
-pub fn default_looping() -> bool {
-    true
-}
-
-impl From<ClipData> for AnimationClip {
-    fn from(data: ClipData) -> Self {
-        Self {
-            frame_indices: data.frames,
-            fps: data.fps,
-            looping: data.looping,
-        }
-    }
-}
-
-impl From<AnimationClip> for ClipData {
-    fn from(clip: AnimationClip) -> Self {
-        Self {
-            frames: clip.frame_indices,
-            fps: clip.fps,
-            looping: clip.looping,
-        }
-    }
 }
 
 // Default value functions

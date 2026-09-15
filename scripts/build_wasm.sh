@@ -38,10 +38,12 @@
 #   --sync     also copy the bundle into <site_public_dir>/games/<slug>/<version>,
 #              <site_public_dir>/playground/<slug>/<version> or
 #              <site_public_dir>/playground/<version> (e.g.
-#              ../insiculous_web/public). Refuses nothing — remember the site
-#              rule: a version dir is immutable once DEPLOYED; only sync over a
-#              version before its first live deploy, bump to the next version
-#              after.
+#              ../insiculous_web/public). A target that already holds files
+#              refuses unless --force is passed — remember the site rule: a
+#              version dir is immutable once DEPLOYED, so overwriting one is
+#              either a pre-deploy re-sync (--force, deliberately) or a
+#              mistake the refusal catches before a live bundle is replaced.
+#   --force    allow --sync to overwrite a non-empty target
 #
 # Output (mirrors production URLs so the hardcoded asset base works both
 # locally and deployed):
@@ -61,7 +63,7 @@ set -euo pipefail
 PLAYGROUND_SIZE_BUDGET_MIB=12
 
 if [[ $# -lt 2 ]]; then
-    echo "usage: $0 <crate_dir> <slug> [--kind games|playground|editor] [--project <slug>=<title>=<dir>]... [--version vN] [--serve] [--sync <site_public_dir>]" >&2
+    echo "usage: $0 <crate_dir> <slug> [--kind games|playground|editor] [--project <slug>=<title>=<dir>]... [--version vN] [--serve] [--sync <site_public_dir>] [--force]" >&2
     exit 2
 fi
 
@@ -72,6 +74,7 @@ shift 2
 BUILD_KIND="games"
 SERVE=""
 SYNC_DIR=""
+SYNC_FORCE=""
 VERSION="v1"
 PROJECT_DEFINITIONS=()
 
@@ -81,10 +84,16 @@ while [[ $# -gt 0 ]]; do
         --project) PROJECT_DEFINITIONS+=("${2:?--project needs <slug>=<title>=<dir>}"); shift 2 ;;
         --serve)   SERVE="--serve"; shift ;;
         --sync)    SYNC_DIR="${2:?--sync needs a site public dir}"; shift 2 ;;
+        --force)   SYNC_FORCE="--force"; shift ;;
         --version) VERSION="${2:?--version needs a version dir like v2}"; shift 2 ;;
         *) echo "unknown arg: $1" >&2; exit 2 ;;
     esac
 done
+
+if [[ -n "$SYNC_FORCE" && -z "$SYNC_DIR" ]]; then
+    echo "ERROR: --force only means something with --sync." >&2
+    exit 2
+fi
 
 if [[ "$BUILD_KIND" != "games" && "$BUILD_KIND" != "playground" && "$BUILD_KIND" != "editor" ]]; then
     echo "ERROR: --kind must be 'games', 'playground' or 'editor'." >&2
@@ -190,6 +199,24 @@ case "$BUILD_KIND" in
         ;;
 esac
 OUT_DIR="$DIST_BASE/$VERSION"
+
+# A version dir is immutable once deployed; a silent overwrite is how a live
+# bundle gets replaced with no record of it. --force is the deliberate escape
+# for a version that has not been deployed yet. Checked twice: here, before
+# the build, so a refused sync costs nothing, and again right before the
+# copy, because a target that was empty when the build started may not be by
+# the time it ends.
+refuse_non_empty_sync_target() {
+    if [[ -d "$SYNC_TARGET" && -n "$(ls -A "$SYNC_TARGET")" && "$SYNC_FORCE" != "--force" ]]; then
+        echo "ERROR: $SYNC_TARGET exists and is not empty." >&2
+        echo "Fix:   pass --force if that version has never been deployed, or bump --version and sync the new one." >&2
+        exit 1
+    fi
+}
+if [[ -n "$SYNC_DIR" ]]; then
+    SYNC_TARGET="$SYNC_DIR/$SYNC_SUBPATH"
+    refuse_non_empty_sync_target
+fi
 
 # The feature goes on only under the editor kind: the playground crate has no
 # such feature, and a plain game bundle must not gain the editor.
@@ -415,7 +442,7 @@ if [[ "$BUILD_KIND" == "playground" ]] && (( SIZE_BYTES > PLAYGROUND_SIZE_BUDGET
 fi
 
 if [[ -n "$SYNC_DIR" ]]; then
-    SYNC_TARGET="$SYNC_DIR/$SYNC_SUBPATH"
+    refuse_non_empty_sync_target
     rm -rf "$SYNC_TARGET"
     mkdir -p "$(dirname "$SYNC_TARGET")"
     cp -r "$OUT_DIR" "$SYNC_TARGET"

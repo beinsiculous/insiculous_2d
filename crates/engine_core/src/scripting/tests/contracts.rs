@@ -107,6 +107,7 @@ fn test_blackboard_read_unset_key_returns_default() {
         player_axes: Vec::new(),
         player_actions_active: Vec::new(),
         player_actions_just_activated: Vec::new(),
+        clip_snapshots: BTreeMap::new(),
     };
 
     assert!(view.blackboard_bool("missing", true));

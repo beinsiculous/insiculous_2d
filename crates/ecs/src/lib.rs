@@ -28,6 +28,7 @@ mod world;
 pub mod audio_components;
 pub mod behavior;
 pub mod blackboard;
+pub mod clip_state_machine;
 pub mod lifetime;
 pub mod component_registry;
 pub mod event;
@@ -63,7 +64,10 @@ pub use ecs_macros::ComponentMeta as DeriveComponentMeta;
 pub use entity::*;
 pub use entity_builder::*;
 pub use event::EventBus;
-pub use grid_backdrop::{GridBackdrop, GridTopology};
+pub use clip_state_machine::{
+    ClipState, ClipStateMachine, ClipStateMachineSystem, OnFinished,
+};
+pub use grid_backdrop::{GridBackdrop, GridDrawOrder, GridTopology};
 pub use hierarchy::*;
 pub use hierarchy_extension::*;
 pub use hierarchy_system::*;

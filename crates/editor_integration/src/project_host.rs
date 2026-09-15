@@ -163,7 +163,8 @@ impl Game for ProjectHost {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ecs::Transform2D;
+    use ecs::sprite_components::{AnimationClip, SpriteAnimation};
+    use ecs::{ClipState, ClipStateMachine, OnFinished, Transform2D};
 
     #[test]
     fn test_patrol_entity_advances_over_playing_frames_without_physics() {
@@ -272,6 +273,104 @@ mod tests {
 
         host.reset_play_state();
         assert!(!host.play_initialized);
+    }
+
+    /// One playing frame as the engine really runs it: the host's update (whose
+    /// script phase applies its commands at its end), then the frame tail's
+    /// systems — `SpriteAnimationSystem`, `LifetimeSystem`, and
+    /// `ClipStateMachineSystem` in that order (`engine_core`'s frame_tail).
+    fn frame(
+        host: &mut ProjectHost,
+        world: &mut World,
+        input: &InputHandler,
+        players: &InputSettings,
+        scripts: &mut ScriptRunner,
+        asset_base: &str,
+        delta_time: f32,
+    ) {
+        host.update_frame(world, input, players, scripts, asset_base, delta_time);
+        ecs::System::update(&mut ecs::SpriteAnimationSystem, world, delta_time);
+        ecs::System::update(&mut ecs::LifetimeSystem, world, delta_time);
+        ecs::System::update(&mut ecs::ClipStateMachineSystem, world, delta_time);
+    }
+
+    #[test]
+    fn test_a_script_drives_a_clip_state_chain_through_the_host_without_restarting_it() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("door.rhai"),
+            r#"fn update(me, view, params, cmd, dt) {
+                   // Re-assert the state the machine is already in: a
+                   // transition to it is a no-op, so the clip must keep
+                   // running and reach its end.
+                   cmd.set_clip_state(me, view.clip_state(me));
+                   cmd.set_velocity(me, vec2(0.0, 0.0));
+               }"#,
+        )
+        .expect("wrote the door script");
+
+        let mut host = ProjectHost::new(PathBuf::from("."));
+        let mut world = World::new();
+        let input = InputHandler::new();
+        let players = InputSettings::default_two_player();
+        let mut scripts = ScriptRunner::new();
+        let delta_time = 0.1;
+
+        let door = world.spawn().id();
+        world
+            .add_component(
+                &door,
+                SpriteAnimation::new(common::SheetGrid::new(4, 1))
+                    .with_clip("close", AnimationClip::new(vec![0, 1, 2], 10.0).with_looping(false))
+                    .with_clip("open", AnimationClip::new(vec![3, 2, 1], 10.0).with_looping(false))
+                    .with_clip("hum", AnimationClip::new(vec![0, 1], 10.0)),
+            )
+            .expect("add SpriteAnimation");
+        world
+            .add_component(
+                &door,
+                ClipStateMachine::new(
+                    "closing",
+                    vec![
+                        ("closing".to_string(), ClipState::new("close", OnFinished::Next("opening".to_string()))),
+                        ("opening".to_string(), ClipState::new("open", OnFinished::Next("wide".to_string()))),
+                        ("wide".to_string(), ClipState::staying("hum")),
+                    ],
+                ),
+            )
+            .expect("add ClipStateMachine");
+        let spawn_position = Vec2::new(12.0, -3.0);
+        world
+            .add_component(&door, Transform2D::new(spawn_position))
+            .expect("add Transform2D");
+        world.add_component(&door, Name::new("door")).expect("add Name");
+        let mut script_ref = ecs::script::ScriptRef::new("door");
+        script_ref.source_path = "door.rhai".to_string();
+        world
+            .add_component(&door, ecs::script::Scripts(vec![script_ref]))
+            .expect("add Scripts");
+
+        // Closing -> opening -> wide needs three one-shot clips to run out
+        // end to end, which only happens if the per-frame `set_clip_state` of
+        // the state it is already in leaves the clip alone.
+        for _ in 0..16 {
+            frame(&mut host, &mut world, &input, &players, &mut scripts, dir.path().to_str().expect("utf-8 path"), delta_time);
+        }
+
+        assert_eq!(
+            world.get::<ClipStateMachine>(door).expect("machine").state(),
+            "wide",
+            "the script's pin never restarted a clip, so each one finished"
+        );
+        let animation = world.get::<SpriteAnimation>(door).expect("animation");
+        assert_eq!(animation.current_clip.as_deref(), Some("hum"));
+        assert!(animation.playing, "the last state's looping clip runs on");
+        assert_eq!(
+            world.get::<Transform2D>(door).expect("transform").position,
+            spawn_position,
+            "the loop is pinned in place: its physics command asks for no motion"
+        );
+        assert!(scripts.errors().is_empty(), "{:?}", scripts.errors());
     }
 
     #[test]
