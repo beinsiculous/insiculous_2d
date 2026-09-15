@@ -42,7 +42,10 @@ impl From<String> for Name {
 /// Sprite component that defines visual appearance
 #[derive(Debug, Clone, Serialize, Deserialize, DeriveComponentMeta)]
 pub struct Sprite {
-    /// Position offset from entity position
+    /// Where the drawn cell's centre sits relative to the entity's position, in world units,
+    /// turned with the entity's rotation. Zero draws the cell on the position; a sheet whose
+    /// subject is not at its cell's centre (flame headroom above a meatball) sets it so the
+    /// collider can stay on the body. Honoured by the engine's default `Game::render`.
     pub offset: Vec2,
     /// Rotation in radians
     pub rotation: f32,

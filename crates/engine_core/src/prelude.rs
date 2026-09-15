@@ -57,6 +57,10 @@ pub use ecs::sprite_components::{
     set_sprites_visible, AnimationClip, Name, SheetGrid, Sprite, SpriteAnimation,
 };
 pub use ecs::Tilemap;
+// Animation state as data and the scene-authored spring grid: a game declares both without
+// depending on `ecs`, the way it does `Lifetime` and `SpriteAnimation`.
+pub use ecs::clip_state_machine::{ClipState, ClipStateMachine, ClipStateMachineSystem, OnFinished};
+pub use ecs::grid_backdrop::{GridBackdrop, GridDrawOrder, GridTopology};
 pub use ecs::audio_components::{AudioSource, AudioListener, PlaySoundEffect};
 pub use ecs::hierarchy_system::TransformHierarchySystem;
 pub use ecs::lifetime::{Lifetime, LifetimeSystem};

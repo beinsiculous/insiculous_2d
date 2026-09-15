@@ -106,7 +106,7 @@ pub trait Game: Sized + 'static {
                 // texture, so unanimated content renders exactly as before.
                 let region = ecs_sprite.tex_region;
                 let renderer_sprite = renderer::Sprite::new(texture)
-                    .with_position(position)
+                    .with_position(render::sprite_draw_position(position, rotation, ecs_sprite.offset))
                     .with_rotation(rotation)
                     .with_scale(scale * ecs_sprite.scale * crate::RENDER_UNIT)
                     .with_tex_region(region[0], region[1], region[2], region[3])

@@ -16,6 +16,16 @@ use crate::ui_integration::render_ui_commands;
 
 use super::{Game, GameRunner};
 
+/// Where an entity's sprite is drawn: its position plus `Sprite.offset`, the offset turned
+/// with the entity so art anchored off the body (a meatball whose flame headroom puts the
+/// cell's centre above the collider) stays attached when the entity rotates.
+pub(crate) fn sprite_draw_position(position: Vec2, rotation: f32, offset: Vec2) -> Vec2 {
+    if offset == Vec2::ZERO {
+        return position;
+    }
+    position + Vec2::from_angle(rotation).rotate(offset)
+}
+
 /// Append the manager's alive particles to a [`SpriteBatcher`].
 ///
 /// Called from the engine after `Game::render` so particles always render,
@@ -172,5 +182,24 @@ impl<G: Game> GameRunner<G> {
         for (slot, (_, batch)) in batches.iter_mut().zip(keyed) {
             *slot = batch;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sprite_draw_position;
+    use glam::Vec2;
+
+    #[test]
+    fn test_sprite_offset_moves_the_drawn_cell_and_turns_with_the_entity() {
+        let body = Vec2::new(100.0, 50.0);
+        assert_eq!(sprite_draw_position(body, 0.0, Vec2::ZERO), body, "no offset: the cell sits on the body");
+        assert_eq!(
+            sprite_draw_position(body, 0.0, Vec2::new(0.0, 10.5)),
+            Vec2::new(100.0, 60.5),
+            "the cell centre is drawn above the body, so the art's body lands on the collider"
+        );
+        let turned = sprite_draw_position(body, std::f32::consts::FRAC_PI_2, Vec2::new(0.0, 10.0));
+        assert!((turned - Vec2::new(90.0, 50.0)).length() < 1e-4, "a quarter turn carries the offset with it: {turned:?}");
     }
 }
