@@ -35,4 +35,10 @@ fn test_tong_left_sheet_file_fixture_contract() {
         clip_names,
         vec!["open", "closing", "closed", "opening", "scored_on"]
     );
+
+    // The transitions and the scored-on twitch play once (`repeat = 1` in the master); the held
+    // states loop. A regenerated sidecar that flips one of these is drift, and nothing else in
+    // this crate would notice.
+    let looping: Vec<bool> = clips.iter().map(|(_, c)| c.looping).collect();
+    assert_eq!(looping, vec![true, false, true, false, false]);
 }
