@@ -191,6 +191,37 @@ impl<G: Game> GameRunner<G> {
         self.game.on_resize(width, height);
     }
 
+    /// Size the surface for the box the page shows the canvas in. A game keeps
+    /// its configured size and the page scales the canvas, so the pointer,
+    /// which the browser reports in the box's pixels, is scaled up to the
+    /// surface's; the editor follows the box. Natively, or before the canvas
+    /// has a box, the event's size is the window and is taken as it comes.
+    /// Every path resizes unconditionally: natively the window manager
+    /// already holds the physical size from creation, so an equality guard
+    /// would skip the first `Resized` and leave the camera at the logical
+    /// size on a HiDPI display. The boot's forcing resize is the one caller
+    /// that must not come here (`renderer::shown_size` says why).
+    pub(super) fn resize_for_shown_box(&mut self, event_width: u32, event_height: u32) {
+        let (width, height) = match self.shown_size() {
+            Some((box_width, box_height)) if self.config.surface_follows_web_box => {
+                self.input.set_pointer_scale(1.0, 1.0);
+                (box_width, box_height)
+            }
+            Some((box_width, box_height)) => {
+                self.input.set_pointer_scale(
+                    self.config.width as f32 / box_width as f32,
+                    self.config.height as f32 / box_height as f32,
+                );
+                (self.config.width, self.config.height)
+            }
+            None => {
+                self.input.set_pointer_scale(1.0, 1.0);
+                (event_width, event_height)
+            }
+        };
+        self.resize_everything(width, height);
+    }
+
     /// The canvas's shown size on the web, `None` natively or before the canvas has a box.
     #[cfg(target_arch = "wasm32")]
     pub(super) fn shown_size(&self) -> Option<(u32, u32)> {
@@ -299,12 +330,9 @@ impl<G: Game> ApplicationHandler<WakeUp> for GameRunner<G> {
             }
             WindowEvent::Resized(size) => {
                 // On the web the event can carry the size the window was asked
-                // for while the page holds the canvas box smaller; the box is
-                // what is drawn, shown and pointed at, so every consumer below
-                // gets it (`renderer::shown_size` says why the boot's forcing
-                // resize is the one exception).
-                let (width, height) = self.shown_size().unwrap_or((size.width, size.height));
-                self.resize_everything(width, height);
+                // for while the page holds the canvas box smaller, so the size
+                // is settled against the box, not taken from the event.
+                self.resize_for_shown_box(size.width, size.height);
             }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 self.window_manager.set_scale_factor(scale_factor);

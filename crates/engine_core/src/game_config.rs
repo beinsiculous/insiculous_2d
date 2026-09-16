@@ -88,6 +88,16 @@ pub struct GameConfig {
     /// where its factor is whole — the 1× re-skins do.
     #[serde(default = "default_pixel_snap")]
     pub pixel_snap: bool,
+    /// On the web, whether the drawn surface follows the canvas's shown CSS
+    /// box (default `false`). A game keeps the surface at the configured
+    /// size and the page scales the canvas, because a fixed 800×600 world
+    /// shown through the 324×243 surface a phone's box gives is a centre
+    /// crop with both paddles outside it; the editor turns this on, since
+    /// its panels lay out in the box and a scaled panel is unreadable.
+    /// Either way the pointer, which the browser reports in the box's
+    /// pixels, reaches the game in the surface's.
+    #[serde(default)]
+    pub surface_follows_web_box: bool,
 }
 
 impl Default for GameConfig {
@@ -109,6 +119,7 @@ impl Default for GameConfig {
             locales_dir: default_locales_dir(),
             texture_filter: TextureFilter::Linear,
             pixel_snap: false,
+            surface_follows_web_box: false,
         }
     }
 }
@@ -219,6 +230,13 @@ impl GameConfig {
         self.pixel_snap = pixel_snap;
         self
     }
+
+    /// Let the web surface follow the canvas's shown box instead of keeping
+    /// the configured size (off by default; see the field).
+    pub fn with_surface_follows_web_box(mut self, follows: bool) -> Self {
+        self.surface_follows_web_box = follows;
+        self
+    }
 }
 
 #[cfg(test)]
@@ -243,6 +261,9 @@ mod tests {
         assert_eq!(config.texture_filter, TextureFilter::Linear);
         // And before the score-save knob existed.
         assert_eq!(config.score_save_path, None);
+        // And before the web surface could follow the canvas box: a game's
+        // surface keeps its configured size.
+        assert!(!config.surface_follows_web_box);
     }
 
     #[test]

@@ -113,14 +113,12 @@ impl<G: Game> GameRunner<G> {
                 self.render_manager.resize(self.config.width, self.config.height);
                 // Now the attributes are sane, the page may still hold the box
                 // smaller than the configured size, and since the box does not
-                // change from here no observer event will say so: read it once
-                // and follow it. In the 1x1 trap the box follows the attributes
-                // just reset, so it reads equal and this does nothing.
-                if let Some((width, height)) = self.shown_size() {
-                    if (width, height) != (self.config.width, self.config.height) {
-                        self.resize_everything(width, height);
-                    }
-                }
+                // change from here no observer event will say so: settle
+                // against it once (the editor follows it, a game scales its
+                // pointer to it). In the 1x1 trap the box follows the
+                // attributes just reset, so this reconfigures at the size
+                // just forced and the attributes stay as they are.
+                self.resize_for_shown_box(self.config.width, self.config.height);
                 // The game draws its own frames from here on.
                 crate::web::set_boot_status("");
             }

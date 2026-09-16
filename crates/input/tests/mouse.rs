@@ -71,3 +71,35 @@ fn test_wheel_notches_and_trackpad_pixels_accumulate_as_notches_and_clear_each_f
     input.process_queued_events();
     assert_eq!(input.mouse_wheel_delta(), -2.0);
 }
+
+/// The winit boundary for a scaled canvas: the browser reports the pointer in
+/// the pixels of the box the page shows the canvas in, and a game whose
+/// surface keeps its configured size while the page scales the canvas reads
+/// the pointer in the surface's pixels only through the scale.
+#[test]
+fn test_pointer_scale_maps_the_shown_box_pixels_onto_the_surface() {
+    let mut input = InputHandler::new();
+    let cursor_at = |x: f64, y: f64| WindowEvent::CursorMoved {
+        device_id: DeviceId::dummy(),
+        position: PhysicalPosition::new(x, y),
+    };
+
+    input.handle_window_event(&cursor_at(162.0, 121.5));
+    input.process_queued_events();
+    assert_eq!(input.mouse_position(), MousePosition { x: 162.0, y: 121.5 }, "1:1 by default");
+
+    // An 800×600 surface shown in a 324×243 box: the box's centre is the surface's centre.
+    input.set_pointer_scale(800.0 / 324.0, 600.0 / 243.0);
+    input.handle_window_event(&cursor_at(162.0, 121.5));
+    input.process_queued_events();
+    let position = input.mouse_position();
+    assert!((position.x - 400.0).abs() < 1e-3 && (position.y - 300.0).abs() < 1e-3, "got {position:?}");
+    // The move after a scale change is measured from nothing: the old position
+    // was in the old scale, and a delta against it would be a spike.
+    assert_eq!(input.mouse_movement_delta(), (0.0, 0.0), "no spike across the scale change");
+    input.end_frame();
+    input.handle_window_event(&cursor_at(163.0, 121.5));
+    input.process_queued_events();
+    let (delta_x, delta_y) = input.mouse_movement_delta();
+    assert!((delta_x - 800.0 / 324.0).abs() < 1e-3 && delta_y.abs() < 1e-3, "got ({delta_x}, {delta_y})");
+}

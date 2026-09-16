@@ -60,7 +60,7 @@ pub fn run_game_with_editor_opts<G: Game>(
     options: EditorRunOptions,
 ) -> Result<(), engine_core::EngineError> {
     let raw_frame = glam::Vec2::new(config.width as f32, config.height as f32);
-    let config = clamp_editor_window_size(config);
+    let config = clamp_editor_window_size(config).with_surface_follows_web_box(true);
     let mut editor_game = EditorGame::new(game);
     editor_game.editor.game_frame = raw_frame;
     editor_game.api.receiver = options.api_rx;

@@ -79,7 +79,7 @@ pub enum InputEvent {
 }
 
 /// A unified handler for all input device state
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct InputHandler {
     /// Keyboard state
     keyboard: KeyboardState,
@@ -89,12 +89,42 @@ pub struct InputHandler {
     gamepads: GamepadManager,
     /// Event queue for buffering input events
     event_queue: VecDeque<InputEvent>,
+    /// The factor from the pixels the window reports the pointer in to the
+    /// pixels the surface is drawn in, per axis. On the web the browser
+    /// reports the pointer in the canvas's shown box, and a game whose
+    /// surface keeps its configured size while the page scales the canvas
+    /// would otherwise read every click short of where it landed.
+    pointer_scale: (f32, f32),
+}
+
+impl Default for InputHandler {
+    fn default() -> Self {
+        Self {
+            keyboard: KeyboardState::default(),
+            mouse: MouseState::default(),
+            gamepads: GamepadManager::default(),
+            event_queue: VecDeque::new(),
+            pointer_scale: (1.0, 1.0),
+        }
+    }
 }
 
 impl InputHandler {
     /// Create a new input handler
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Set the factor from reported pointer pixels to surface pixels, per
+    /// axis; `(1.0, 1.0)` when the surface is the box the pointer is read in.
+    /// A changed factor forgets the last position, because that position is
+    /// in the old scale and the next move's delta against it would be a
+    /// spike of the scale's difference, not a movement.
+    pub fn set_pointer_scale(&mut self, x: f32, y: f32) {
+        if self.pointer_scale != (x, y) {
+            self.mouse.forget_position();
+        }
+        self.pointer_scale = (x, y);
     }
 
     // ================== Input Source Checks ==================
@@ -248,7 +278,11 @@ impl InputHandler {
                 self.queue_event(input_event);
             }
             WindowEvent::CursorMoved { position, .. } => {
-                self.queue_event(InputEvent::MouseMoved(position.x as f32, position.y as f32));
+                let (scale_x, scale_y) = self.pointer_scale;
+                self.queue_event(InputEvent::MouseMoved(
+                    position.x as f32 * scale_x,
+                    position.y as f32 * scale_y,
+                ));
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 // Normalize both variants to notches so scroll speed is

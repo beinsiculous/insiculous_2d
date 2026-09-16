@@ -60,6 +60,7 @@ pub fn playground_load_preview(bytes: Vec<u8>, scene_entry: String) -> Result<()
     let host = PreviewHost::new(root, unpacked.scene, preview_controls);
     let config = GameConfig::new("Preview")
         .with_size(1280, 800)
+        .with_surface_follows_web_box(true)
         .with_asset_base_path(&asset_base);
 
     // The frame driver is an animation frame, which a hidden document never

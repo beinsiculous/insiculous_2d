@@ -52,6 +52,12 @@ impl MouseState {
         self.has_position = true;
     }
 
+    /// Forget the recorded position, so the next update records only, as the
+    /// first one does. For a position whose pixels changed meaning under it.
+    pub fn forget_position(&mut self) {
+        self.has_position = false;
+    }
+
     /// Update the mouse state with a button press event
     pub fn handle_button_press(&mut self, button: MouseButton) {
         self.buttons.press(button);

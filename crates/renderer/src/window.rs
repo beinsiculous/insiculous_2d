@@ -123,9 +123,11 @@ pub fn insert_canvas_into_dom(window: &Window) {
 /// edge, so the embed contract keeps the canvas free of padding and border: with neither,
 /// the three agree exactly. A web `Resized` can carry the size the window
 /// was created or asked for, and when the page's stylesheet holds the box smaller the
-/// observer that would correct it never fires, because the box never changed. The surface,
-/// the camera's viewport and the window's tracked size must all come from this box, or the
-/// engine draws at one size, is shown at another, and reads the pointer in a third.
+/// observer that would correct it never fires, because the box never changed. A surface that
+/// follows the box (the editor's) takes this size for the surface, the camera's viewport and
+/// the window's tracked size alike, or the engine draws at one size, is shown at another, and
+/// reads the pointer in a third; a surface that keeps its configured size (a game's, which the
+/// page scales) uses it to scale the pointer, which the browser reports in the box's pixels.
 ///
 /// This is for the `Resized` event only. The boot's forcing resize must keep trusting the
 /// configured size: before the first layout the box can be 1×1, and configuring the
