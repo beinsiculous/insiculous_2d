@@ -251,9 +251,15 @@ impl<G: Game> EditorGame<G> {
 /// how the editor's scale tool keeps absolute-pixel physics shapes in step
 /// with the sprite. Radii use the dominant axis factor (circles stay circles).
 pub(super) fn scale_collider(collider: &mut physics::components::Collider, factor: Vec2) {
-    use physics::components::ColliderShape;
     collider.offset *= factor;
-    match &mut collider.shape {
+    scale_shape(&mut collider.shape, factor);
+}
+
+/// Scale one shape's dimensions, and a compound's part by part.
+fn scale_shape(shape: &mut physics::components::ColliderShape, factor: Vec2) {
+    use physics::components::ColliderShape;
+
+    match shape {
         ColliderShape::Box { half_extents } => *half_extents *= factor,
         ColliderShape::Circle { radius } => *radius *= factor.x.max(factor.y),
         ColliderShape::CapsuleY { half_height, radius } => {
@@ -263,6 +269,18 @@ pub(super) fn scale_collider(collider: &mut physics::components::Collider, facto
         ColliderShape::CapsuleX { half_height, radius } => {
             *half_height *= factor.x;
             *radius *= factor.y;
+        }
+        // An angled capsule scales as a whole: both endpoints, and a radius
+        // that has no single axis of its own to follow.
+        ColliderShape::Capsule { a, b, radius } => {
+            *a *= factor;
+            *b *= factor;
+            *radius *= factor.x.max(factor.y);
+        }
+        ColliderShape::Compound(parts) => {
+            for part in parts {
+                scale_shape(part, factor);
+            }
         }
     }
 }

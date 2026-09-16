@@ -89,6 +89,37 @@ fn test_collider_scaling_keeps_circles_round_and_capsules_axis_aligned() {
 }
 
 #[test]
+fn test_an_angled_capsule_scales_as_a_whole_and_a_compound_part_by_part() {
+    let mut angled = Collider::default();
+    angled.shape = ColliderShape::capsule(Vec2::new(-10.0, 5.0), Vec2::new(20.0, 25.0), 4.0);
+    scale_collider(&mut angled, Vec2::new(2.0, 3.0));
+    assert_eq!(
+        angled.shape,
+        ColliderShape::Capsule {
+            a: Vec2::new(-20.0, 15.0),
+            b: Vec2::new(40.0, 75.0),
+            radius: 12.0,
+        },
+        "both endpoints take the factor; the radius takes the dominant one, having no axis"
+    );
+
+    let mut jaw = Collider::default();
+    jaw.shape = ColliderShape::compound(vec![
+        ColliderShape::capsule(Vec2::ZERO, Vec2::new(-30.0, 40.0), 6.0),
+        ColliderShape::circle(5.0),
+    ]);
+    scale_collider(&mut jaw, Vec2::new(2.0, 2.0));
+    assert_eq!(
+        jaw.shape,
+        ColliderShape::Compound(vec![
+            ColliderShape::capsule(Vec2::ZERO, Vec2::new(-60.0, 80.0), 12.0),
+            ColliderShape::Circle { radius: 10.0 },
+        ]),
+        "every part of a compound scales, whatever shape it is"
+    );
+}
+
+#[test]
 fn test_slow_snapped_drag_steps_grid_cells_instead_of_freezing() {
     let mut game = editor_game();
     game.editor.view.snap = true;

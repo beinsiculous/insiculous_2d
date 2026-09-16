@@ -105,15 +105,18 @@ fn capsule_segments(center: Vec2, half_height: f32, radius: f32, axis_angle: f32
     segments
 }
 
-/// World-space outline segments for a collider attached to `transform`.
+/// Append the outline of one shape, whose frame sits at `center` rotated by
+/// `rotation`, to `out`.
 ///
-/// Matches the physics simulation exactly: the offset rotates with the body
-/// and `transform.scale` plays no part (rapier colliders are unscaled).
-pub fn collider_outline_segments(transform: &Transform2D, collider: &Collider) -> Vec<(Vec2, Vec2)> {
-    let rotation = transform.rotation;
-    let center = transform.position + rotate_vec(collider.offset, rotation);
-
-    match &collider.shape {
+/// A compound contributes every part on the same frame — its parts are in
+/// the collider's own frame, so they take the collider's placement.
+fn shape_segments(
+    shape: &ColliderShape,
+    center: Vec2,
+    rotation: f32,
+    out: &mut Vec<(Vec2, Vec2)>,
+) {
+    match shape {
         ColliderShape::Box { half_extents } => {
             let corners = [
                 Vec2::new(-half_extents.x, -half_extents.y),
@@ -122,21 +125,56 @@ pub fn collider_outline_segments(transform: &Transform2D, collider: &Collider) -
                 Vec2::new(-half_extents.x, half_extents.y),
             ];
             let world: Vec<Vec2> = corners.iter().map(|c| center + rotate_vec(*c, rotation)).collect();
-            (0..4).map(|i| (world[i], world[(i + 1) % 4])).collect()
+            out.extend((0..4).map(|i| (world[i], world[(i + 1) % 4])));
         }
         ColliderShape::Circle { radius } => {
             let points = arc_points(center, *radius, 0.0, std::f32::consts::TAU, CIRCLE_SEGMENTS);
-            let mut segments = Vec::with_capacity(CIRCLE_SEGMENTS);
-            polyline_segments(&points, &mut segments);
-            segments
+            polyline_segments(&points, out);
         }
         ColliderShape::CapsuleY { half_height, radius } => {
-            capsule_segments(center, *half_height, *radius, rotation + std::f32::consts::FRAC_PI_2)
+            out.extend(capsule_segments(
+                center,
+                *half_height,
+                *radius,
+                rotation + std::f32::consts::FRAC_PI_2,
+            ));
         }
         ColliderShape::CapsuleX { half_height, radius } => {
-            capsule_segments(center, *half_height, *radius, rotation)
+            out.extend(capsule_segments(center, *half_height, *radius, rotation));
+        }
+        // The cap centres are two points of the collider's frame: place each
+        // by the body's own rotation, then the arc-and-sides outline of any
+        // angled capsule is the axis-aligned one with a free angle.
+        ColliderShape::Capsule { a, b, radius } => {
+            let a_world = center + rotate_vec(*a, rotation);
+            let b_world = center + rotate_vec(*b, rotation);
+            let axis = b_world - a_world;
+            out.extend(capsule_segments(
+                (a_world + b_world) * 0.5,
+                axis.length() * 0.5,
+                *radius,
+                axis.y.atan2(axis.x),
+            ));
+        }
+        ColliderShape::Compound(parts) => {
+            for part in parts {
+                shape_segments(part, center, rotation, out);
+            }
         }
     }
+}
+
+/// World-space outline segments for a collider attached to `transform`.
+///
+/// Matches the physics simulation exactly: the offset rotates with the body
+/// and `transform.scale` plays no part (rapier colliders are unscaled).
+pub fn collider_outline_segments(transform: &Transform2D, collider: &Collider) -> Vec<(Vec2, Vec2)> {
+    let rotation = transform.rotation;
+    let center = transform.position + rotate_vec(collider.offset, rotation);
+
+    let mut segments = Vec::new();
+    shape_segments(&collider.shape, center, rotation, &mut segments);
+    segments
 }
 
 /// Draw collider outlines for every entity that has both a `Transform2D`
@@ -240,6 +278,46 @@ mod tests {
         let along_x = Collider::new(ColliderShape::capsule_x(120.0, 10.0));
         let reach = max_reach(&collider_outline_segments(&transform_at(Vec2::ZERO, 0.0), &along_x));
         assert_vec2_near(reach, Vec2::new(60.0, 10.0));
+    }
+
+    #[test]
+    fn test_a_capsule_between_two_points_is_drawn_along_its_own_axis() {
+        // From the origin to a tip 30 left and 40 up, cap radius 5: the
+        // outline is the same two-arcs-two-sides capsule every capsule is,
+        // but reaching the far tip rather than an axis.
+        let capsule = Collider::new(ColliderShape::capsule(Vec2::ZERO, Vec2::new(-30.0, 40.0), 5.0));
+        let segments = collider_outline_segments(&transform_at(Vec2::ZERO, 0.0), &capsule);
+
+        assert_eq!(segments.len(), 2 * CAP_SEGMENTS + 2, "two cap arcs and two sides");
+        // A sampled arc can miss its own apex by a chord's width, so the tip
+        // is reached to within a fraction of a pixel, not exactly.
+        let reach = max_reach(&segments);
+        assert!(
+            (reach - Vec2::new(5.0, 45.0)).length() < 0.1,
+            "the outline reaches the far cap (30 left, 40 up, plus the radius), not an axis: got {reach:?}"
+        );
+    }
+
+    #[test]
+    fn test_a_compound_outline_draws_every_part_on_the_collider_s_frame() {
+        // The open jaw: two arms from a shared hinge, tips 60 apart.
+        let jaw = ColliderShape::compound(vec![
+            ColliderShape::capsule(Vec2::ZERO, Vec2::new(-30.0, 40.0), 6.0),
+            ColliderShape::capsule(Vec2::ZERO, Vec2::new(30.0, 40.0), 6.0),
+        ]);
+        let collider = Collider::new(jaw);
+        // A body rotated 90° CCW lays the arms out to the LEFT of the pivot,
+        // 30 up and 30 down — the parts turn with the collider, not on their
+        // own axes.
+        let transform = transform_at(Vec2::new(10.0, 0.0), FRAC_PI_2);
+        let segments = collider_outline_segments(&transform, &collider);
+
+        assert_eq!(segments.len(), 2 * (2 * CAP_SEGMENTS + 2), "one capsule outline per part");
+        let reach = max_reach(&segments);
+        assert!(
+            (reach - Vec2::new(16.0, 36.0)).length() < 0.1,
+            "the hinge cap reaches 6 right of the pivot and the far tip's cap 36 up: got {reach:?}"
+        );
     }
 
     #[test]

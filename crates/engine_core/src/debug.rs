@@ -144,9 +144,74 @@ pub fn push_capsule_x_outline(
     push_arc(lines, left_cap_center,  radius,  std::f32::consts::FRAC_PI_2, std::f32::consts::PI, color, emissive);
 }
 
+/// Draw a capsule outline whose axis runs from `a` to `b` — both are the
+/// centres of the end caps, so the shape is free to sit at any angle.
+pub fn push_capsule_outline(
+    lines: &mut Vec<LineVertex>,
+    a: Vec2,
+    b: Vec2,
+    radius: f32,
+    color: Vec4,
+    emissive: f32,
+) {
+    use std::f32::consts::FRAC_PI_2;
+
+    let axis_angle = (b - a).y.atan2((b - a).x);
+    let side = Vec2::new(-axis_angle.sin(), axis_angle.cos()) * radius;
+    push_segment(lines, a + side, b + side, color, emissive);
+    push_segment(lines, a - side, b - side, color, emissive);
+    // Each cap is the half of its circle facing away from the far end.
+    push_arc(lines, a, radius, axis_angle + FRAC_PI_2, std::f32::consts::PI, color, emissive);
+    push_arc(lines, b, radius, axis_angle - FRAC_PI_2, std::f32::consts::PI, color, emissive);
+}
+
+/// Outline one shape whose frame sits at `center`, in world space.
+///
+/// A compound draws every part on the same frame; its parts are leaves (the
+/// shape's own builder flattens nesting), so the recursion is bounded by how
+/// the shape was built, not by the drawing.
+#[cfg(feature = "physics")]
+fn push_shape_outline(
+    lines: &mut Vec<LineVertex>,
+    center: Vec2,
+    shape: &ColliderShape,
+    color: Vec4,
+    emissive: f32,
+) {
+    match shape {
+        ColliderShape::Box { half_extents } => {
+            push_box_outline(lines, center, *half_extents, color, emissive);
+        }
+        ColliderShape::Circle { radius } => {
+            push_circle_outline(lines, center, *radius, color, emissive);
+        }
+        ColliderShape::CapsuleY { half_height, radius } => {
+            push_capsule_y_outline(lines, center, *half_height, *radius, color, emissive);
+        }
+        ColliderShape::CapsuleX { half_height, radius } => {
+            // CapsuleX stores half_height for the cylindrical middle, but
+            // that field is named oddly — it's actually the half-WIDTH of
+            // the horizontal capsule. See physics/src/shapes.rs.
+            push_capsule_x_outline(lines, center, *half_height, *radius, color, emissive);
+        }
+        ColliderShape::Capsule { a, b, radius } => {
+            push_capsule_outline(lines, center + *a, center + *b, *radius, color, emissive);
+        }
+        ColliderShape::Compound(parts) => {
+            for part in parts {
+                push_shape_outline(lines, center, part, color, emissive);
+            }
+        }
+    }
+}
+
 /// Walk every entity with a [`Collider`] + `Transform2D` and push its outline
 /// into `lines`. Sensors get the same outline shape — sensor-ness is a
 /// behavior, not a different geometry.
+///
+/// The outline is drawn unrotated: `Transform2D.rotation` plays no part here
+/// (as it never has for the axis-aligned shapes), so a rotated body's outline
+/// reads as its unrotated self.
 ///
 /// `color` and `emissive` apply uniformly. Pick a high emissive value
 /// (e.g. 2.0) if you want the outlines to bloom and read clearly over
@@ -162,23 +227,7 @@ pub fn draw_colliders(
         let Some(transform) = world.get::<Transform2D>(entity) else { continue };
         let Some(collider) = world.get::<Collider>(entity) else { continue };
         let center = transform.position + collider.offset;
-        match collider.shape {
-            ColliderShape::Box { half_extents } => {
-                push_box_outline(lines, center, half_extents, color, emissive);
-            }
-            ColliderShape::Circle { radius } => {
-                push_circle_outline(lines, center, radius, color, emissive);
-            }
-            ColliderShape::CapsuleY { half_height, radius } => {
-                push_capsule_y_outline(lines, center, half_height, radius, color, emissive);
-            }
-            ColliderShape::CapsuleX { half_height, radius } => {
-                // CapsuleX stores half_height for the cylindrical middle, but
-                // that field is named oddly — it's actually the half-WIDTH of
-                // the horizontal capsule. See physics/src/components.rs.
-                push_capsule_x_outline(lines, center, half_height, radius, color, emissive);
-            }
-        }
+        push_shape_outline(lines, center, &collider.shape, color, emissive);
     }
 }
 
@@ -252,5 +301,69 @@ mod tests {
             let cap = if vertex.y >= center.y { top_cap } else { bottom_cap };
             assert!((vertex.distance(cap) - radius).abs() < 0.01, "{vertex:?} off its cap");
         }
+    }
+
+    #[test]
+    fn capsule_outline_runs_from_its_a_cap_to_its_b_cap() {
+        let (a, b, radius) = (Vec2::new(0.0, 0.0), Vec2::new(-30.0, 40.0), 5.0);
+        let mut lines = Vec::new();
+        push_capsule_outline(&mut lines, a, b, radius, Vec4::ONE, 0.0);
+
+        // The same outline every capsule has: two sides and two caps.
+        let expected_segments = 2 + 2 * (CIRCLE_SEGMENTS as usize) / 2;
+        assert_eq!(lines.len(), 2 * expected_segments, "two sides, two half-circle caps");
+        // The straight sides are the axis offset by the radius, on both
+        // sides of it. The axis is rebuilt here through a different route
+        // than the outline's own angle, so the comparison allows for the
+        // last bit of the two floats.
+        let axis = (b - a).normalize();
+        let side = Vec2::new(-axis.y, axis.x) * radius;
+        let near = |actual: Vec2, expected: Vec2| (actual - expected).length() < 1e-5;
+        let vertices = positions(&lines);
+        assert!(near(vertices[0], a + side) && near(vertices[1], b + side), "first side");
+        assert!(near(vertices[2], a - side) && near(vertices[3], b - side), "second side");
+        // Every cap vertex sits on the radius of the cap it belongs to.
+        for vertex in positions(&lines)[4..].iter() {
+            let cap = if vertex.distance(a) < vertex.distance(b) { a } else { b };
+            assert!((vertex.distance(cap) - radius).abs() < 0.01, "{vertex:?} off its cap");
+        }
+    }
+
+    #[test]
+    fn draw_colliders_draws_every_part_of_a_compound_at_the_entity_s_frame() {
+        use ecs::World;
+        use physics::{Collider, ColliderShape};
+
+        let mut world = World::new();
+        let jaw = world.create_entity();
+        world.add_component(&jaw, Transform2D::new(Vec2::new(100.0, 50.0))).ok();
+        world
+            .add_component(
+                &jaw,
+                Collider::new(ColliderShape::compound(vec![
+                    ColliderShape::capsule(Vec2::ZERO, Vec2::new(-30.0, 40.0), 6.0),
+                    ColliderShape::capsule(Vec2::ZERO, Vec2::new(30.0, 40.0), 6.0),
+                ])),
+            )
+            .ok();
+
+        let mut lines = Vec::new();
+        draw_colliders(&world, &mut lines, Vec4::ONE, 0.0);
+
+        for vertex in positions(&lines) {
+            let distance_to_hinge = (vertex - Vec2::new(100.0, 50.0)).length();
+            assert!(
+                distance_to_hinge <= 56.0 + 0.01,
+                "{vertex:?} is outside both arms — the parts are not drawn on the collider's frame"
+            );
+        }
+        // Each part reaches its own tip: 50 up and 36 out from the hinge.
+        let reach = positions(&lines)
+            .into_iter()
+            .fold(Vec2::splat(f32::MIN), |extent, point| extent.max(point));
+        assert!(
+            (reach - Vec2::new(136.0, 96.0)).length() < 0.1,
+            "the right arm's cap reaches up and out from the entity (got {reach:?})"
+        );
     }
 }

@@ -66,24 +66,23 @@ impl PhysicsWorld {
         // Remove existing collider if any
         self.remove_collider(entity);
 
+        // A compound with nothing left after flattening is a defect, and the
+        // only honest answer is to collide with nothing: rapier panics on an
+        // empty compound, and a stand-in box would collide where nothing is
+        // drawn. The refusal is logged once — `PhysicsSystem` records it in
+        // the entity's baseline, so the sync does not retry it every frame.
+        let shape = collider.shape.flattened();
+        if shape.is_empty_compound() {
+            collider.handle = None;
+            log::error!(
+                "Refusing to build a collider for entity {:?}: its compound shape has no parts",
+                entity
+            );
+            return;
+        }
+
         // Create rapier shape (converting from pixels to meters)
-        let shape: SharedShape = match &collider.shape {
-            ColliderShape::Box { half_extents } => {
-                let half_extents_meters = self.pixels_to_meters(*half_extents);
-                SharedShape::cuboid(half_extents_meters.x, half_extents_meters.y)
-            }
-            ColliderShape::Circle { radius } => {
-                SharedShape::ball(self.pixels_to_meters_scalar(*radius))
-            }
-            ColliderShape::CapsuleY { half_height, radius } => SharedShape::capsule_y(
-                self.pixels_to_meters_scalar(*half_height),
-                self.pixels_to_meters_scalar(*radius),
-            ),
-            ColliderShape::CapsuleX { half_height, radius } => SharedShape::capsule_x(
-                self.pixels_to_meters_scalar(*half_height),
-                self.pixels_to_meters_scalar(*radius),
-            ),
-        };
+        let shape: SharedShape = self.shared_shape_for(&shape);
 
         // Build collider
         let offset = self.pixels_to_meters(collider.offset);
@@ -123,6 +122,46 @@ impl PhysicsWorld {
         self.collider_to_entity.insert(handle, entity);
 
         log::trace!("Added collider for entity {:?}", entity);
+    }
+
+    /// The rapier shape for an ECS collider shape, in meters.
+    ///
+    /// A compound becomes one rapier compound whose parts all sit on the
+    /// collider's frame — the parts are flattened leaves, since rapier
+    /// panics on a compound passed as another compound's part.
+    fn shared_shape_for(&self, shape: &ColliderShape) -> SharedShape {
+        match shape {
+            ColliderShape::Box { half_extents } => {
+                let half_extents_meters = self.pixels_to_meters(*half_extents);
+                SharedShape::cuboid(half_extents_meters.x, half_extents_meters.y)
+            }
+            ColliderShape::Circle { radius } => {
+                SharedShape::ball(self.pixels_to_meters_scalar(*radius))
+            }
+            ColliderShape::CapsuleY { half_height, radius } => SharedShape::capsule_y(
+                self.pixels_to_meters_scalar(*half_height),
+                self.pixels_to_meters_scalar(*radius),
+            ),
+            ColliderShape::CapsuleX { half_height, radius } => SharedShape::capsule_x(
+                self.pixels_to_meters_scalar(*half_height),
+                self.pixels_to_meters_scalar(*radius),
+            ),
+            ColliderShape::Capsule { a, b, radius } => {
+                let a_meters = self.pixels_to_meters(*a);
+                let b_meters = self.pixels_to_meters(*b);
+                SharedShape::capsule(
+                    point![a_meters.x, a_meters.y],
+                    point![b_meters.x, b_meters.y],
+                    self.pixels_to_meters_scalar(*radius),
+                )
+            }
+            ColliderShape::Compound(parts) => SharedShape::compound(
+                parts
+                    .iter()
+                    .map(|part| (Isometry::identity(), self.shared_shape_for(part)))
+                    .collect(),
+            ),
+        }
     }
 
     /// Remove a rigid body for an entity

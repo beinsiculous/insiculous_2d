@@ -42,6 +42,7 @@ pub mod presets;
 pub mod register;
 pub mod physics_system;
 pub mod physics_world;
+pub mod shapes;
 
 pub mod prelude;
 

@@ -20,25 +20,39 @@ fn test_tong_left_sheet_file_fixture_contract() {
     assert_eq!(sheet.filter, TextureFilter::Nearest);
 
     let (grid, clips, filter) = sheet
-        .into_parts("ai_tong_left.sheet.ron", 256, 384)
-        .expect("resolve into_parts with 256x384 PNG dimensions");
+        .into_parts("ai_tong_left.sheet.ron", 256, 672)
+        .expect("resolve into_parts with 256x672 PNG dimensions");
 
-    assert_eq!((grid.cols, grid.rows), (4, 4));
-    assert_eq!(grid.cell_count(), 16);
+    assert_eq!((grid.cols, grid.rows), (4, 7));
+    assert_eq!(grid.cell_count(), 28);
     assert_eq!(filter, TextureFilter::Nearest);
 
     let total_frames: usize = clips.iter().map(|(_, c)| c.frame_indices.len()).sum();
-    assert_eq!(total_frames, 14);
+    assert_eq!(total_frames, 28);
 
     let clip_names: Vec<&str> = clips.iter().map(|(n, _)| n.as_str()).collect();
     assert_eq!(
         clip_names,
-        vec!["open", "closing", "closed", "opening", "scored_on"]
+        vec![
+            "open_up",
+            "closing_up",
+            "closed_up",
+            "opening_up",
+            "scored_on_up",
+            "open_down",
+            "closing_down",
+            "closed_down",
+            "opening_down",
+            "scored_on_down",
+        ]
     );
 
     // The transitions and the scored-on twitch play once (`repeat = 1` in the master); the held
     // states loop. A regenerated sidecar that flips one of these is drift, and nothing else in
     // this crate would notice.
     let looping: Vec<bool> = clips.iter().map(|(_, c)| c.looping).collect();
-    assert_eq!(looping, vec![true, false, true, false, false]);
+    assert_eq!(
+        looping,
+        vec![true, false, true, false, false, true, false, true, false, false]
+    );
 }

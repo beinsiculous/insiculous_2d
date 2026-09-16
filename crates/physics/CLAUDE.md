@@ -52,7 +52,8 @@ Pinned by `test_parented_entity_with_rigid_body_is_treated_as_world_space`.
 ## File Map
 - `physics_world/` — Rapier2d wrapper: `PhysicsConfig` (unit conversion, validated scale), bodies, stepping, and collision extraction.
 - `physics_system/` — ECS driver: fixed-timestep sub-stepping, ECS↔rapier sync, external-edit propagation, and deferred op queue.
-- `components.rs` — `RigidBody` and `Collider` components, collision events, and editor variant helpers with carried dimensions.
+- `components.rs` — `RigidBody` and `Collider` components, and collision events.
+- `shapes.rs` — `ColliderShape` (box, circle, the two axis-aligned capsules, a capsule between two points, and a compound of shapes), its constructors, flattening, and the editor's variant cycling with carried dimensions.
 - `presets.rs` — pre-configured physics body and collider archetypes.
 
 ## Pitfalls and their guard tests

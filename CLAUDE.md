@@ -57,7 +57,12 @@ encode lessons already learned here — following them is cheaper than re-learni
 - **Physics ignores `Transform2D.scale`.** Colliders are absolute-pixel sized; sprites
   scaled via `scale` will visually drift from their collider. Games use
   `RENDER_UNIT = 80` (scale × 80 = pixel size). Check the collider overlay (C key in
-  editor) when sprites and physics disagree.
+  editor) when sprites and physics disagree. A collider's shape is one of six —
+  `Box`, `Circle`, `CapsuleY`, `CapsuleX`, `Capsule` (between two points of the
+  collider's frame) or `Compound` (several shapes, flattened to leaves) — and
+  `Collider.offset` moves the whole shape. A compound that is empty after
+  flattening has nothing to collide with: the scene loader refuses it with a dedicated error and
+  the builder attaches no collider rather than a default box.
 - **Live physics edits now apply (GPP-09):** editing `Transform2D` on a live physics
   entity teleports the body (velocity preserved) and editing `Collider` rebuilds its
   rapier collider — detected by value-compare against a last-pushed baseline.

@@ -111,11 +111,11 @@ fn test_cycle_rows_step_the_variant_and_carry_collider_dimensions() {
     let edit = release.expect("release frame cycles the body type");
     assert_eq!((edit.field_hint, edit.new_value.body_type), ("body_type", RigidBodyType::Static));
 
-    // Collider: the "prev" arrow wraps Box (0) → CapsuleX (3) and carries
-    // the box's 20×10 half-extents into the capsule instead of resetting it.
+    // Collider: the "next" arrow steps Box (0) → Circle (1) and carries the
+    // box's 20×10 half-extents into the circle instead of resetting it.
     let collider = Collider::new(ColliderShape::Box { half_extents: Vec2::new(20.0, 10.0) });
     let mut input = input::InputHandler::new();
-    let (_, release) = click_through(&mut ui, &mut input, row.prev_btn_center, |ui| {
+    let (_, release) = click_through(&mut ui, &mut input, row.next_btn_center, |ui| {
         let mut inspector = EditableInspector::new(ui, &style, ORIGIN.x, ORIGIN.y);
         edit_collider(&mut inspector, &collider, &mut extras(&mut drag_drop, &mut inspector_state))
     });
@@ -123,8 +123,47 @@ fn test_cycle_rows_step_the_variant_and_carry_collider_dimensions() {
     assert_eq!(edit.field_hint, "shape");
     assert_eq!(
         edit.new_value.shape,
-        ColliderShape::CapsuleX { half_height: 10.0, radius: 10.0 },
+        ColliderShape::Circle { radius: 20.0 },
         "the new variant keeps the old shape's extent"
+    );
+
+    // The "prev" arrow wraps Box (0) → Compound (5), the last of the six:
+    // a compound starts as the shape being cycled away from, so nothing the
+    // designer tuned is lost by reaching it.
+    let mut input = input::InputHandler::new();
+    let (_, release) = click_through(&mut ui, &mut input, row.prev_btn_center, |ui| {
+        let mut inspector = EditableInspector::new(ui, &style, ORIGIN.x, ORIGIN.y);
+        edit_collider(&mut inspector, &collider, &mut extras(&mut drag_drop, &mut inspector_state))
+    });
+    let edit = release.expect("release frame cycles the shape");
+    assert_eq!(
+        edit.new_value.shape,
+        ColliderShape::compound(vec![collider.shape.clone()]),
+        "the wrapped-to compound holds the shape being left behind"
+    );
+}
+
+#[test]
+fn test_cycling_an_empty_compound_to_a_box_applies_the_extent_floor() {
+    let mut ui = ui::UIContext::new();
+    let mut input = input::InputHandler::new();
+    let mut drag_drop = DragDropState::new();
+    let mut inspector_state = crate::InspectorState::default();
+    let style = EditableFieldStyle::default();
+    let collider = Collider::new(ColliderShape::Compound(vec![]));
+
+    let (_, release) = click_through(&mut ui, &mut input, first_row().next_btn_center, |ui| {
+        let mut inspector = EditableInspector::new(ui, &style, ORIGIN.x, ORIGIN.y);
+        edit_collider(&mut inspector, &collider, &mut extras(&mut drag_drop, &mut inspector_state))
+    });
+    let edit = release.expect("release wraps Compound to Box");
+    assert_eq!(edit.field_hint, "shape");
+    assert_eq!(
+        edit.new_value.shape,
+        ColliderShape::Box {
+            half_extents: Vec2::splat(crate::physical_floors::COLLIDER_EXTENT_FLOOR),
+        },
+        "a collider with no bounds must not turn into a zero-sized box"
     );
 }
 

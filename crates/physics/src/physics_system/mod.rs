@@ -65,7 +65,11 @@ struct PushedState {
     position: Vec2,
     /// Body rotation as last pushed/read back (radians).
     rotation: f32,
-    /// Collider component as last built into rapier (None = no collider).
+    /// Collider component as last dealt with — built into rapier, or refused
+    /// for a shape rapier cannot take (an empty compound). `None` means the
+    /// component value has never been processed, so the collider still has
+    /// to be built. A recorded component has a handle after a successful
+    /// build and no handle after a refusal.
     collider: Option<Collider>,
 }
 

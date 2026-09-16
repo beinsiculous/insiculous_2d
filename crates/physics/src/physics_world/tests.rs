@@ -5,7 +5,7 @@ use glam::Vec2;
 
 use ecs::EntityId;
 
-use crate::components::{Collider, RigidBody};
+use crate::components::{Collider, ColliderShape, RigidBody};
 
 use super::{PhysicsConfig, PhysicsWorld, DEFAULT_PIXELS_PER_METER};
 
@@ -150,4 +150,95 @@ fn test_contact_points_are_in_world_space() {
             contact.point
         );
     }
+}
+
+// === Collider shapes ===
+
+/// The rapier shape the world actually built for `entity`.
+fn built_shape(world: &PhysicsWorld, entity: EntityId) -> &dyn rapier2d::prelude::Shape {
+    let handle = world.entity_to_collider[&entity];
+    world
+        .collider_set
+        .get(handle)
+        .expect("the entity's collider is in the set")
+        .shape()
+}
+
+/// Add a collider with no body, and return its entity.
+fn add_shape(world: &mut PhysicsWorld, shape: ColliderShape) -> EntityId {
+    let entity = EntityId::new();
+    let mut collider = Collider::new(shape);
+    world.add_collider(entity, &mut collider, None);
+    entity
+}
+
+fn compound_part_count(world: &PhysicsWorld, entity: EntityId) -> usize {
+    built_shape(world, entity)
+        .as_compound()
+        .expect("a Compound builds a rapier compound")
+        .shapes()
+        .len()
+}
+
+#[test]
+fn test_capsule_between_two_points_builds_a_rapier_capsule_in_meters() {
+    let mut world = PhysicsWorld::default(); // 100 pixels per meter
+    let entity = add_shape(
+        &mut world,
+        ColliderShape::capsule(Vec2::new(-30.0, 0.0), Vec2::new(10.0, 40.0), 6.0),
+    );
+
+    let shape = built_shape(&world, entity);
+    let capsule = shape.as_capsule().expect("a Capsule builds a rapier capsule");
+    assert_eq!(
+        ((capsule.segment.a.x, capsule.segment.a.y), (capsule.segment.b.x, capsule.segment.b.y)),
+        ((-0.30, 0.0), (0.10, 0.40)),
+        "the segment endpoints are the shape's a and b, converted to meters"
+    );
+    assert_eq!(capsule.radius, 0.06, "the cap radius converts to meters too");
+}
+
+#[test]
+fn test_compound_builds_one_rapier_part_per_leaf_on_the_collider_frame() {
+    let mut world = PhysicsWorld::default();
+    let left = ColliderShape::capsule(Vec2::ZERO, Vec2::new(-30.0, 40.0), 6.0);
+    let right = ColliderShape::capsule(Vec2::ZERO, Vec2::new(30.0, 40.0), 6.0);
+    let entity = add_shape(&mut world, ColliderShape::compound(vec![left, right]));
+
+    let shape = built_shape(&world, entity);
+    let compound = shape.as_compound().expect("a Compound builds a rapier compound");
+    assert_eq!(compound.shapes().len(), 2, "one part per leaf");
+    for (offset, part) in compound.shapes() {
+        assert!(
+            part.as_capsule().is_some(),
+            "a part is the leaf shape itself, not a wrapper"
+        );
+        assert_eq!(
+            (offset.translation.vector.x, offset.translation.vector.y),
+            (0.0, 0.0),
+            "parts sit on the collider's own frame: an identity offset, never re-centred"
+        );
+    }
+}
+
+#[test]
+fn test_a_nested_compound_builds_its_leaves_a_composite_part_would_panic_on() {
+    // The constructor flattens, but the enum's own `Compound(parts)` is
+    // public: a shape built that way still reaches the builder nested, and
+    // rapier panics on a compound passed as another compound's part.
+    let mut world = PhysicsWorld::default();
+    let left = ColliderShape::capsule(Vec2::ZERO, Vec2::new(-30.0, 40.0), 6.0);
+    let right = ColliderShape::capsule(Vec2::ZERO, Vec2::new(30.0, 40.0), 6.0);
+    let nested = ColliderShape::Compound(vec![
+        ColliderShape::Compound(vec![left.clone(), right.clone()]),
+        ColliderShape::Compound(vec![]),
+    ]);
+    let nested_entity = add_shape(&mut world, nested);
+    let flat_entity = add_shape(&mut world, ColliderShape::compound(vec![left, right]));
+
+    assert_eq!(
+        (compound_part_count(&world, nested_entity), compound_part_count(&world, flat_entity)),
+        (2, 2),
+        "a nested compound builds the same two leaves as the flat one"
+    );
 }

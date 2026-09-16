@@ -88,6 +88,8 @@ pub fn save_scene_to_file(scene: &SceneData, path: &Path) -> Result<(), String> 
 }
 
 #[cfg(test)]
+mod collider_tests;
+#[cfg(test)]
 mod dynamic_and_scripts_tests;
 #[cfg(test)]
 mod tests;

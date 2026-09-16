@@ -233,7 +233,7 @@ impl SceneLoader {
             } => {
                 use physics::components::Collider;
 
-                let collider_shape = collider_shape_from_data(shape);
+                let collider_shape = collider_shape_from_data(shape)?;
                 let mut collider = Collider::new(collider_shape);
                 collider.offset = Vec2::new(offset.0, offset.1);
                 collider.is_sensor = *is_sensor;
@@ -367,8 +367,26 @@ impl SceneLoader {
 }
 
 /// Convert scene collider shape data into an engine physics `ColliderShape`.
+///
+/// An empty compound is refused here rather than at build time: a scene
+/// authored with a jaw that has no arms is a defect the file's author can
+/// fix, and a load that names it beats a step that silently collides with
+/// nothing.
 #[cfg(feature = "physics")]
-fn collider_shape_from_data(shape: &ColliderShapeData) -> physics::components::ColliderShape {
+fn collider_shape_from_data(
+    shape: &ColliderShapeData,
+) -> Result<physics::components::ColliderShape, SceneLoadError> {
+    let shape = convert_collider_shape(shape);
+    if shape.is_empty_compound() {
+        return Err(SceneLoadError::EmptyCompoundCollider);
+    }
+    Ok(shape)
+}
+
+/// Convert the entire shape before validating: an empty nested part adds
+/// no leaves, but does not invalidate its nonempty siblings.
+#[cfg(feature = "physics")]
+fn convert_collider_shape(shape: &ColliderShapeData) -> physics::components::ColliderShape {
     use physics::components::ColliderShape;
 
     match shape {
@@ -384,6 +402,14 @@ fn collider_shape_from_data(shape: &ColliderShapeData) -> physics::components::C
             half_height: *half_height,
             radius: *radius,
         },
+        ColliderShapeData::Capsule { a, b, radius } => ColliderShape::Capsule {
+            a: Vec2::new(a.0, a.1),
+            b: Vec2::new(b.0, b.1),
+            radius: *radius,
+        },
+        ColliderShapeData::Compound(parts) => {
+            ColliderShape::compound(parts.iter().map(convert_collider_shape).collect())
+        }
     }
 }
 

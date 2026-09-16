@@ -240,6 +240,7 @@ pub fn edit_collider(
         ColliderShape::VARIANT_NAMES.len(),
     ) {
         new.shape = collider.shape.variant_with_carried_dimensions(i);
+        crate::physical_floors::clamp_collider(&mut new);
         return Some(ComponentEdit { new_value: new, field_hint: "shape" });
     }
 
@@ -288,6 +289,36 @@ pub fn edit_collider(
                 new.shape = ColliderShape::CapsuleX { half_height: *half_height, radius: v.max(crate::physical_floors::COLLIDER_EXTENT_FLOOR) };
                 hint = Some("radius");
             }
+        }
+        ColliderShape::Capsule { a, b, radius } => {
+            // The endpoints are positions in the collider's frame, so they
+            // take the offset's soft range rather than the extent floors: a
+            // zero-length segment is a ball, not a degenerate shape.
+            if let EditResult::Changed(v) = inspector.vec2("A", *a, ranges::OFFSET) {
+                new.shape = ColliderShape::Capsule { a: v, b: *b, radius: *radius };
+                hint = Some("a");
+            }
+            if let EditResult::Changed(v) = inspector.vec2("B", *b, ranges::OFFSET) {
+                new.shape = ColliderShape::Capsule { a: *a, b: v, radius: *radius };
+                hint = Some("b");
+            }
+            if let EditResult::Changed(v) =
+                inspector.f32("Radius", *radius, ranges::COLLIDER_EXTENT)
+            {
+                new.shape = ColliderShape::Capsule {
+                    a: *a,
+                    b: *b,
+                    radius: v.max(crate::physical_floors::COLLIDER_EXTENT_FLOOR),
+                };
+                hint = Some("radius");
+            }
+        }
+        ColliderShape::Compound(parts) => {
+            // The parts are read-only: a row set per part would have to
+            // invent a widget id for a shape the file addresses by position,
+            // so a part is edited in the scene file.
+            inspector.u32("Parts", parts.len() as u32);
+            inspector.string("  edit", "parts are edited in the scene file");
         }
     }
 

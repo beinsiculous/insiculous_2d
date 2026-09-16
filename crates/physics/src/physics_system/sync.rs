@@ -107,13 +107,20 @@ impl PhysicsSystem {
     }
 
     /// Add / rebuild / remove the rapier collider to match the ECS component.
+    ///
+    /// The baseline records the component value rapier was last built from —
+    /// or, for a shape the builder refuses (an empty compound), the value it
+    /// refused. A refusal attaches no collider, so `has_collider` stays
+    /// false; without the recorded refusal the build would be retried, and
+    /// the refusal logged, on every frame the entity lives.
     fn sync_collider(&mut self, world: &mut World, entity: EntityId, attach_to_body: bool) {
         if let Some(mut collider) = world.get::<Collider>(entity).cloned() {
-            let needs_add = !self.physics_world.has_collider(entity);
-            let edited = self
-                .baselines
-                .get(&entity)
-                .is_some_and(|b| b.collider.as_ref() != Some(&collider));
+            let recorded = self.baselines.get(&entity).and_then(|b| b.collider.as_ref());
+            // A processed collider without a handle was refused. A successful
+            // build has a handle even if a low-level caller later removes it.
+            let refused = recorded.is_some_and(|collider| collider.handle.is_none());
+            let needs_add = !self.physics_world.has_collider(entity) && !refused;
+            let edited = recorded != Some(&collider);
             if needs_add || edited {
                 let body_ref = if attach_to_body { world.get::<RigidBody>(entity) } else { None };
                 // add_collider removes any existing collider first (rebuild).

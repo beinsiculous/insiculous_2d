@@ -43,7 +43,7 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 - `color_hex.rs` — `#rrggbb`/`#rrggbbaa` text for a `Vec4`, shared by the hex field and the read-only colour row.
 - `row_layout.rs` — row-layout math (`field_row`, `remove_button_x`, `pair_slots`, `ellipsize`; all horizontal placement goes through here, never hardcode offsets).
 - `field_style.rs` — `FieldId` (widget-ID mapping), `EditableFieldStyle`, and typed `EditResult<T>` returns (keeps the editor crate free of an engine_core dependency); `WidgetSlot` inside component ID stride.
-- `component_editors.rs` — per-component editors returning `Option<ComponentEdit<T>>`; shape cycling carries dimensions with commit-before-cycle ordering.
+- `component_editors.rs` — per-component editors returning `Option<ComponentEdit<T>>`; the collider shape row cycles all six shapes (Box, Circle, CapsuleY, CapsuleX, Capsule between two points, Compound of shapes), carrying the old shape's extent where the mapping exists, and a compound shows its part count read-only — its parts are edited in the scene file. Commit-before-cycle ordering.
 - `physical_floors.rs` — hard floors applied by inspector editors and command API `sanitize` (scale, collider extents, capsule half-height, volume, pitch).
 - `behavior_editor.rs` — `edit_behavior()`: variant cycle selector and per-variant editors; `CameraFollow.dead_zone` stays read-only.
 - `script_editor.rs` — `edit_scripts()`: `Scripts` component inspector editor, script catalog picker, parameter table, and Open Source button.

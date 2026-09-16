@@ -7,7 +7,7 @@ use glam::Vec2;
 use ecs::sprite_components::Transform2D;
 use ecs::{System, World, WorldHierarchyExt};
 
-use crate::components::{Collider, RigidBody};
+use crate::components::{Collider, ColliderShape, RigidBody};
 use crate::test_support::{no_gravity_system, spawn_body};
 
 use super::{DeferredBodyOp, PhysicsSystem, MAX_STEPS_PER_UPDATE};
@@ -373,4 +373,90 @@ fn test_parented_entity_with_rigid_body_is_treated_as_world_space() {
         (local - Vec2::new(0.0, 50.0)).length() < 1.0,
         "the body position is written into the local transform unchanged (got {local:?})"
     );
+}
+
+// === Shapes the builder refuses ===
+
+/// Records the levels the crate logs.
+///
+/// `log` takes one logger per process, so these records belong to the whole
+/// test binary; the only error this crate logs is the empty-compound refusal.
+struct RecordingLogger;
+
+static RECORDED_LEVELS: std::sync::Mutex<Vec<log::Level>> = std::sync::Mutex::new(Vec::new());
+static RECORDING_LOGGER: RecordingLogger = RecordingLogger;
+
+impl log::Log for RecordingLogger {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        metadata.level() <= log::Level::Error
+    }
+
+    fn log(&self, record: &log::Record) {
+        if self.enabled(record.metadata()) {
+            RECORDED_LEVELS
+                .lock()
+                .expect("the recording logger's mutex is not poisoned")
+                .push(record.level());
+        }
+    }
+
+    fn flush(&self) {}
+}
+
+/// How many error messages the crate has logged so far, installing the
+/// recording logger on first use.
+fn recorded_error_count() -> usize {
+    let _ = log::set_logger(&RECORDING_LOGGER);
+    log::set_max_level(log::LevelFilter::Error);
+    RECORDED_LEVELS
+        .lock()
+        .expect("the recording logger's mutex is not poisoned")
+        .iter()
+        .filter(|level| **level == log::Level::Error)
+        .count()
+}
+
+#[test]
+fn test_an_empty_compound_attaches_no_collider_and_is_refused_once() {
+    let mut world = World::new();
+    let mut system = no_gravity_system();
+    // Empty two ways: no parts at all, and parts that flatten away.
+    let bare = spawn_body(
+        &mut world,
+        Vec2::ZERO,
+        floating_body(),
+        Collider::new(ColliderShape::compound(vec![])),
+    );
+    let nested = spawn_body(
+        &mut world,
+        Vec2::new(50.0, 0.0),
+        floating_body(),
+        Collider::new(ColliderShape::Compound(vec![ColliderShape::compound(vec![])])),
+    );
+    let healthy = spawn_body(
+        &mut world,
+        Vec2::new(100.0, 0.0),
+        floating_body(),
+        Collider::box_collider(16.0, 16.0),
+    );
+
+    let before = recorded_error_count();
+    system.update(&mut world, DT);
+
+    assert!(!system.physics_world().has_collider(bare), "an empty compound attaches no collider");
+    assert!(!system.physics_world().has_collider(nested), "and neither does one that flattens empty");
+    assert!(system.physics_world().has_collider(healthy), "sanity: a real shape still builds");
+    assert_eq!(recorded_error_count() - before, 2, "one refusal per empty compound");
+
+    // The refusal is recorded in the entity's baseline, so a collider that
+    // is still missing is not mistaken for one that was never built.
+    system.update(&mut world, DT);
+
+    assert_eq!(
+        system.external_edits_pushed_last_update(),
+        0,
+        "the second update rebuilds nothing"
+    );
+    assert_eq!(recorded_error_count() - before, 2, "and refuses nothing again");
+    assert!(!system.physics_world().has_collider(bare), "still no collider, and none invented");
 }

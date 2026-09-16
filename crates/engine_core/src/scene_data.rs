@@ -478,6 +478,11 @@ pub enum ColliderShapeData {
     Circle { radius: f32 },
     CapsuleY { half_height: f32, radius: f32 },
     CapsuleX { half_height: f32, radius: f32 },
+    /// A capsule between two cap centres, in the collider's own frame.
+    Capsule { a: (f32, f32), b: (f32, f32), radius: f32 },
+    /// Several shapes in the collider's own frame. Saved scenes may retain
+    /// nesting; loading flattens it before validating the complete collider.
+    Compound(Vec<ColliderShapeData>),
 }
 
 impl Default for ColliderShapeData {
@@ -508,4 +513,7 @@ pub enum SceneLoadError {
 
     #[error("Component error: {0}")]
     ComponentError(String),
+
+    #[error("Collider compound shape has no parts: a compound needs at least one shape to collide with")]
+    EmptyCompoundCollider,
 }

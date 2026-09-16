@@ -275,28 +275,7 @@ fn extract_collider(
     _texture_path_fn: &dyn Fn(u32) -> String,
 ) -> Option<ComponentData> {
     world.get::<physics::components::Collider>(entity).map(|collider| {
-        let shape = match &collider.shape {
-            physics::components::ColliderShape::Box { half_extents } => {
-                ColliderShapeData::Box {
-                    half_extents: (half_extents.x, half_extents.y),
-                }
-            }
-            physics::components::ColliderShape::Circle { radius } => {
-                ColliderShapeData::Circle { radius: *radius }
-            }
-            physics::components::ColliderShape::CapsuleY { half_height, radius } => {
-                ColliderShapeData::CapsuleY {
-                    half_height: *half_height,
-                    radius: *radius,
-                }
-            }
-            physics::components::ColliderShape::CapsuleX { half_height, radius } => {
-                ColliderShapeData::CapsuleX {
-                    half_height: *half_height,
-                    radius: *radius,
-                }
-            }
-        };
+        let shape = collider_shape_data(&collider.shape);
         ComponentData::Collider {
             shape,
             offset: (collider.offset.x, collider.offset.y),
@@ -305,6 +284,35 @@ fn extract_collider(
             restitution: collider.restitution,
         }
     })
+}
+
+/// Convert an engine collider shape into its scene representation.
+#[cfg(feature = "physics")]
+fn collider_shape_data(shape: &physics::components::ColliderShape) -> ColliderShapeData {
+    use physics::components::ColliderShape;
+
+    match shape {
+        ColliderShape::Box { half_extents } => ColliderShapeData::Box {
+            half_extents: (half_extents.x, half_extents.y),
+        },
+        ColliderShape::Circle { radius } => ColliderShapeData::Circle { radius: *radius },
+        ColliderShape::CapsuleY { half_height, radius } => ColliderShapeData::CapsuleY {
+            half_height: *half_height,
+            radius: *radius,
+        },
+        ColliderShape::CapsuleX { half_height, radius } => ColliderShapeData::CapsuleX {
+            half_height: *half_height,
+            radius: *radius,
+        },
+        ColliderShape::Capsule { a, b, radius } => ColliderShapeData::Capsule {
+            a: (a.x, a.y),
+            b: (b.x, b.y),
+            radius: *radius,
+        },
+        ColliderShape::Compound(parts) => {
+            ColliderShapeData::Compound(parts.iter().map(collider_shape_data).collect())
+        }
+    }
 }
 
 fn extract_ui_label(

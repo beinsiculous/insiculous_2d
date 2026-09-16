@@ -22,7 +22,16 @@ pub fn clamp_sprite(sprite: &mut ecs::sprite_components::Sprite) {
 
 /// Clamp Collider shape dimensions above physical minimums (zero-extent breaks physics).
 pub fn clamp_collider(collider: &mut Collider) {
-    collider.shape = match collider.shape {
+    collider.shape = clamp_shape(collider.shape.clone());
+}
+
+/// Clamp one shape's dimensions, and a compound's part by part.
+///
+/// A capsule's endpoints are left alone: a zero-length segment is a ball,
+/// which is a capsule rapier builds without complaint, and the endpoints are
+/// positions rather than sizes.
+fn clamp_shape(shape: ColliderShape) -> ColliderShape {
+    match shape {
         ColliderShape::Box { half_extents } => ColliderShape::Box {
             half_extents: half_extents.max(Vec2::splat(COLLIDER_EXTENT_FLOOR)),
         },
@@ -37,7 +46,15 @@ pub fn clamp_collider(collider: &mut Collider) {
             half_height: half_height.max(CAPSULE_HALF_HEIGHT_FLOOR),
             radius: radius.max(COLLIDER_EXTENT_FLOOR),
         },
-    };
+        ColliderShape::Capsule { a, b, radius } => ColliderShape::Capsule {
+            a,
+            b,
+            radius: radius.max(COLLIDER_EXTENT_FLOOR),
+        },
+        ColliderShape::Compound(parts) => {
+            ColliderShape::Compound(parts.into_iter().map(clamp_shape).collect())
+        }
+    }
 }
 
 /// Clamp AudioSource volume to [0, 1] and pitch above the playback floor.
@@ -89,6 +106,43 @@ mod tests {
             half_height: CAPSULE_HALF_HEIGHT_FLOOR,
             radius: COLLIDER_EXTENT_FLOOR,
         });
+    }
+
+    #[test]
+    fn test_clamp_collider_floors_a_capsule_radius_and_leaves_its_endpoints_alone() {
+        // Coincident endpoints are a ball, and rapier builds that capsule
+        // happily — the endpoints are positions, not sizes.
+        let endpoints = (Vec2::new(-40.0, 12.0), Vec2::new(-40.0, 12.0));
+        let mut c = Collider::new(ColliderShape::capsule(endpoints.0, endpoints.1, 0.1));
+        clamp_collider(&mut c);
+        assert_eq!(
+            c.shape,
+            ColliderShape::Capsule {
+                a: endpoints.0,
+                b: endpoints.1,
+                radius: COLLIDER_EXTENT_FLOOR,
+            }
+        );
+    }
+
+    #[test]
+    fn test_clamp_collider_reaches_every_part_of_a_compound() {
+        let mut c = Collider::new(ColliderShape::compound(vec![
+            ColliderShape::circle(0.1),
+            ColliderShape::capsule(Vec2::new(-30.0, 40.0), Vec2::ZERO, -1.0),
+        ]));
+        clamp_collider(&mut c);
+        assert_eq!(
+            c.shape,
+            ColliderShape::Compound(vec![
+                ColliderShape::Circle { radius: COLLIDER_EXTENT_FLOOR },
+                ColliderShape::Capsule {
+                    a: Vec2::new(-30.0, 40.0),
+                    b: Vec2::ZERO,
+                    radius: COLLIDER_EXTENT_FLOOR,
+                },
+            ])
+        );
     }
 
     #[test]

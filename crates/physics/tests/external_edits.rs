@@ -103,3 +103,98 @@ fn test_collider_edit_rebuilds_and_collider_removal_drops_the_rapier_collider() 
     assert_eq!(system.external_edits_pushed_last_update(), 1);
     assert!(system.physics_world().has_rigid_body(a), "the body itself stays");
 }
+
+#[test]
+fn test_missing_valid_colliders_recover_but_refused_shapes_stay_absent() {
+    for with_body in [false, true] {
+        let mut world = World::new();
+        let mut system = no_gravity_system();
+        let entity = world.create_entity();
+        world.add_component(&entity, Transform2D::new(Vec2::ZERO)).expect("transform");
+        if with_body {
+            world.add_component(&entity, RigidBody::new_kinematic()).expect("body");
+        }
+        let valid_shape = ColliderShape::circle(10.0);
+        world.add_component(&entity, Collider::new(valid_shape.clone())).expect("collider");
+        system.update(&mut world, DT);
+        assert!(system.physics_world().has_collider(entity), "initial shape builds");
+
+        system.physics_world_mut().remove_collider(entity);
+        assert!(!system.physics_world().has_collider(entity), "low-level removal took effect");
+        system.update(&mut world, DT);
+        assert!(system.physics_world().has_collider(entity), "unchanged valid shape is restored");
+
+        world.get_mut::<Collider>(entity).expect("collider").shape =
+            ColliderShape::Compound(vec![ColliderShape::Compound(vec![])]);
+        system.update(&mut world, DT);
+        assert!(!system.physics_world().has_collider(entity), "an empty edit removes the old shape");
+        system.update(&mut world, DT);
+        assert!(!system.physics_world().has_collider(entity), "a refused shape stays absent");
+        assert_eq!(system.external_edits_pushed_last_update(), 0, "refusal is not retried");
+
+        world.get_mut::<Collider>(entity).expect("collider").shape = valid_shape;
+        system.update(&mut world, DT);
+        assert!(system.physics_world().has_collider(entity), "a valid edit clears the refusal");
+    }
+}
+
+/// The two-armed jaw: a compound of capsules from a shared hinge to two tips.
+fn v_jaw() -> ColliderShape {
+    ColliderShape::compound(vec![
+        ColliderShape::capsule(Vec2::ZERO, Vec2::new(-30.0, 40.0), 6.0),
+        ColliderShape::capsule(Vec2::ZERO, Vec2::new(30.0, 40.0), 6.0),
+    ])
+}
+
+/// The flat shape a closed tong carries.
+fn flat_jaw() -> ColliderShape {
+    ColliderShape::capsule_y(78.0, 11.0)
+}
+
+fn touching(system: &mut PhysicsSystem, tong: ecs::EntityId, probe: ecs::EntityId) -> bool {
+    system
+        .take_collision_events()
+        .iter()
+        .any(|collision| collision.event.started && collision.event.involves(tong, probe))
+}
+
+#[test]
+fn test_kinematic_shape_swap_between_a_compound_and_a_capsule_rebuilds_each_time() {
+    let mut world = World::new();
+    let mut system = no_gravity_system();
+    // Sensors, so the swap can be observed over several updates without the
+    // jaw pushing the probe out of reach of the next shape.
+    let tong = spawn_body(
+        &mut world,
+        Vec2::ZERO,
+        RigidBody::new_kinematic(),
+        Collider::new(v_jaw()).as_sensor(),
+    );
+    // On the V's left arm, off the flat capsule's axis.
+    let probe_position = Vec2::new(-30.0, 40.0);
+    let probe = spawn_body(
+        &mut world,
+        probe_position,
+        floating_body(),
+        Collider::circle_collider(8.0).as_sensor(),
+    );
+
+    system.update(&mut world, DT);
+    assert_eq!(system.external_edits_pushed_last_update(), 0, "the first update only adds");
+    assert!(touching(&mut system, tong, probe), "sanity: the probe sits on a drawn arm");
+
+    world.get_mut::<Collider>(tong).expect("collider").shape = flat_jaw();
+    system.update(&mut world, DT);
+    assert_eq!(system.external_edits_pushed_last_update(), 1, "the shape swap rebuilds the collider");
+    assert!(!touching(&mut system, tong, probe), "the flat shape does not reach the arm's tip");
+
+    world.get_mut::<Collider>(tong).expect("collider").shape = v_jaw();
+    system.update(&mut world, DT);
+    assert_eq!(system.external_edits_pushed_last_update(), 1, "and the swap back rebuilds it again");
+    assert!(touching(&mut system, tong, probe), "the arms are back where rapier sees them");
+    assert!(
+        (position_of(&world, probe) - probe_position).length() < 0.01,
+        "a sensor never moves the probe, so every check above is about the tong (it sits at {:?})",
+        position_of(&world, probe)
+    );
+}
