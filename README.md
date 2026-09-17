@@ -465,6 +465,8 @@ Run all tests: `cargo test --workspace` — headless, no GPU or window required.
 
 See [PROJECT_ROADMAP.md](PROJECT_ROADMAP.md) for detailed technical debt tracking and priorities.
 
+[Future features](docs/FUTURE_FEATURES.md) records parked concepts outside the current roadmap.
+
 ## Examples
 
 - **hello_world** - Physics platformer with UI, audio, ECS, scene files, and behaviors
