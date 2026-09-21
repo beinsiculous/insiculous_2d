@@ -370,6 +370,25 @@ Playback rules worth knowing:
   cell is an error naming the file and the clip. `load_sprite_sheet` validates
   **before** loading the texture, so a bad sheet leaves no handle behind.
 
+**Measured sheets (`SheetSpec`).** A game that draws pixel art at one art pixel per
+window pixel names each sheet once as a `SheetSpec` constant — the synced path, the
+cell size, and the opaque bounds of its reference frame, all measured from the PNG.
+`spec.scale()` is the `Transform2D.scale` that draws the cell at 1x (`cell /
+RENDER_UNIT`), and `spec.sprite_offset()` is the `Sprite.offset` that lands the
+artwork's opaque centre on the entity, so a collider or a hit extent sized from the
+same bounds always agrees with what is drawn. Never scale a sprite to fake a
+footprint; re-measure the art.
+
+```rust
+const MEATBALL: SheetSpec = SheetSpec {
+    path: "sprites/ai_tong_meatball.png",
+    cell: Vec2::new(48.0, 64.0),
+    bounds: (Vec2::new(9.0, 27.0), Vec2::new(40.0, 58.0)),   // opaque box, art px, Y down
+};
+let sprite = sheet.sprite().with_offset(MEATBALL.sprite_offset());
+let transform = Transform2D::from_parts(position, 0.0, MEATBALL.scale());
+```
+
 **State machines and lifetimes.** A game (or a scene, or a script) declares
 `ClipStateMachine` instead of polling clips by hand: a table of
 `state → (clip, OnFinished)`, where finishing that clip `Stay`s,

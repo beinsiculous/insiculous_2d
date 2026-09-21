@@ -13,6 +13,8 @@ pub use crate::{
     assets::{AssetManager, AssetConfig, AssetError},
     // Sprite sheets (`load_sprite_sheet` + the `.sheet.ron` schema)
     assets::sprite_sheet::SpriteSheet,
+    // A game's measured contract with one sheet: scale and offset derived from the art
+    assets::sheet_spec::SheetSpec,
     sheet_file::SheetFile,
     // Scene serialization
     scene_data::{SceneData, PhysicsSettings, PrefabData, EntityData, ComponentData, BehaviorData, SceneLoadError},

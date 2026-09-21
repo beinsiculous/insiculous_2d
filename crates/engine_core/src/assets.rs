@@ -38,6 +38,7 @@ use crate::game_config::GameConfig;
 // Re-export wgpu types from renderer
 use renderer::wgpu::{Device, Queue};
 
+pub mod sheet_spec;
 pub mod sprite_sheet;
 
 /// Asset loading errors

@@ -86,7 +86,9 @@ pub use scripting::{
 pub use game::{run_game, Game};
 pub use scene::Scene;
 pub use lifecycle::{Lifecycle, LifecycleManager, LifecycleState};
-pub use assets::{sprite_sheet::SpriteSheet, AssetConfig, AssetError, AssetManager};
+pub use assets::{
+    sheet_spec::SheetSpec, sprite_sheet::SpriteSheet, AssetConfig, AssetError, AssetManager,
+};
 pub use sheet_file::{sidecar_path_for, SheetFile, SHEET_FILE_VERSION};
 pub use scene_data::{
     BehaviorData, ColliderShapeData, ComponentData, EditorSettings, EntityData, PhysicsSettings,
