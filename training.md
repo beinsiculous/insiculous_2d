@@ -1017,7 +1017,8 @@ real frame (`GameRunner::step_frame`, the same function the window loop calls),
 with an asset manager that decodes and validates art but uploads nothing, so a
 game's `init` loads its real sheets. `harness.step(delta_time, &events)` runs one
 whole frame — `init` on the first, `update`, the engine's tail — with keyboard
-and mouse events arriving before it, a key also reaching `on_key_pressed` /
+and mouse events (`test_support::InputEvent`, re-exported there because a game
+crate depends on `engine_core` alone) arriving before it, a key also reaching `on_key_pressed` /
 `on_key_released` as the window loop delivers it (gamepad input is not
 drivable: the backend is the disabled one);
 `harness.context(|game, ctx| …)` lends the game and a context for a call into

@@ -16,8 +16,13 @@
 
 use ecs::World;
 use glam::Vec2;
-use input::{InputEvent, InputHandler};
+use input::InputHandler;
 use renderer::TextureHandle;
+
+/// The event type [`GameHarness::step`] and [`frame`] take. Re-exported here
+/// because a game crate depends on `engine_core` alone, and the prelude does
+/// not carry it — a game never sees raw events, only its tests do.
+pub use input::InputEvent;
 
 use crate::achievements::AchievementManager;
 use crate::contexts::GameContext;
