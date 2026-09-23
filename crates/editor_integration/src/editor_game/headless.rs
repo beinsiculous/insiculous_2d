@@ -22,8 +22,10 @@ use renderer::TextureHandle;
 
 use super::EditorGame;
 
-/// The headless stand-in for `AssetManager` (which requires a live wgpu
-/// device): a path-recording [`TextureResolver`].
+/// The editor's headless stand-in for `AssetManager`: a path-recording
+/// [`TextureResolver`] that validates nothing (the engine's own
+/// `AssetManager::headless` decodes and validates; this one must not, so
+/// that authoring never fails on a missing file).
 ///
 /// Every texture reference resolves to a deduped, stable handle and the ref
 /// string is recorded VERBATIM (`#white` = handle 0, like the real asset

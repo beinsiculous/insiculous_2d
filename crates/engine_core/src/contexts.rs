@@ -145,11 +145,25 @@ pub struct FrameRequests {
 }
 
 impl FrameRequests {
+    /// Fold in only what a call outside a frame asserted — an exit, a title —
+    /// and leave the per-frame fields alone: a key handler's context starts
+    /// from defaults, and a default is not a decision. The runner applies it to
+    /// the requests `init` holds for the first `update`; a frame's own rule is
+    /// [`absorb`](Self::absorb), and a new field decides here which of the two
+    /// it follows.
+    pub(crate) fn absorb_asserted(&mut self, incoming: &FrameRequests) {
+        self.exit |= incoming.exit;
+        if let Some(title) = &incoming.window_title {
+            self.window_title = Some(title.clone());
+        }
+    }
+
     /// Fold one frame's requests into the engine's pending set. Exit latches
     /// (a request is never un-requested); the latest title wins; the clip and
     /// the idle-throttle permission are per frame and replace the previous
     /// ones — a latched throttle would never recover, and a latched *release*
-    /// would never throttle.
+    /// would never throttle. A call outside a frame folds through
+    /// [`absorb_asserted`](Self::absorb_asserted) instead.
     pub(crate) fn absorb(&mut self, incoming: FrameRequests) {
         self.exit |= incoming.exit;
         if let Some(title) = incoming.window_title {

@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 use std::path::Path;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use wgpu::{Device, Queue, Sampler, TextureFormat, Extent3d};
 use thiserror::Error;
 use image::GenericImageView;
@@ -109,11 +109,22 @@ impl SamplerConfig {
     }
 }
 
-/// Texture manager for loading and caching textures
-pub struct TextureManager {
+/// The device and queue a texture upload needs. `None` in a headless manager:
+/// handles are issued and validated exactly as on a GPU, and no texture is
+/// created — a test that drives a game's update loop never renders.
+struct GpuUpload {
     device: Arc<Device>,
     queue: Arc<Queue>,
+}
+
+/// Texture manager for loading and caching textures
+pub struct TextureManager {
+    gpu: Option<GpuUpload>,
     textures: HashMap<TextureHandle, TextureResource>,
+    /// Every handle issued and not yet removed. The existence queries read
+    /// this rather than `textures`, so a headless manager — which holds no
+    /// resource — answers `has_texture` and `texture_count` as a device does.
+    live: HashSet<TextureHandle>,
     next_handle: u32,
     max_texture_dimension: u32,
 }
@@ -124,11 +135,32 @@ impl TextureManager {
         let max_texture_dimension = device.limits().max_texture_dimension_2d;
         
         Self {
-            device,
-            queue,
+            gpu: Some(GpuUpload { device, queue }),
             textures: HashMap::new(),
+            live: HashSet::new(),
             next_handle: TextureHandle::WHITE.id + 1, // 0 is reserved for the white texture
             max_texture_dimension,
+        }
+    }
+
+    /// A texture manager with no GPU: every load decodes and validates its
+    /// image and issues a handle, and no texture is created, so
+    /// [`get_texture`](Self::get_texture) is `None` while
+    /// [`has_texture`](Self::has_texture), [`texture_handles`](Self::texture_handles)
+    /// and [`texture_count`](Self::texture_count) answer as on a device.
+    ///
+    /// The size limit is wgpu's default (8192), not an adapter's. A real
+    /// adapter may report less, so an image near that limit can load here
+    /// and fail on a device; accepted while every shipped sheet is a few
+    /// hundred pixels at most.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn headless() -> Self {
+        Self {
+            gpu: None,
+            textures: HashMap::new(),
+            live: HashSet::new(),
+            next_handle: TextureHandle::WHITE.id + 1,
+            max_texture_dimension: wgpu::Limits::default().max_texture_dimension_2d,
         }
     }
 
@@ -214,8 +246,11 @@ impl TextureManager {
         let handle = TextureHandle { id: self.next_handle };
         self.next_handle += 1;
 
-        let texture = self.create_texture_from_rgba(width, height, data, config)?;
-        self.textures.insert(handle, texture);
+        if let Some(gpu) = &self.gpu {
+            let texture = Self::create_texture_from_rgba(gpu, width, height, data, config)?;
+            self.textures.insert(handle, texture);
+        }
+        self.live.insert(handle);
 
         Ok(handle)
     }
@@ -288,23 +323,24 @@ impl TextureManager {
     }
 
     /// Remove a texture
-    pub fn remove_texture(&mut self, handle: TextureHandle) -> Option<TextureResource> {
-        self.textures.remove(&handle)
+    pub fn remove_texture(&mut self, handle: TextureHandle) -> bool {
+        self.textures.remove(&handle);
+        self.live.remove(&handle)
     }
 
     /// Check if a texture exists
     pub fn has_texture(&self, handle: TextureHandle) -> bool {
-        self.textures.contains_key(&handle)
+        self.live.contains(&handle)
     }
 
     /// Get all texture handles
     pub fn texture_handles(&self) -> Vec<TextureHandle> {
-        self.textures.keys().copied().collect()
+        self.live.iter().copied().collect()
     }
 
     /// Get texture count
     pub fn texture_count(&self) -> usize {
-        self.textures.len()
+        self.live.len()
     }
 
     /// Get all textures as a reference to the internal HashMap
@@ -316,7 +352,7 @@ impl TextureManager {
 
     /// Create texture from RGBA data using write_texture directly with simplified layout
     fn create_texture_from_rgba(
-        &self,
+        gpu: &GpuUpload,
         width: u32,
         height: u32,
         data: &[u8],
@@ -324,7 +360,7 @@ impl TextureManager {
     ) -> Result<TextureResource, TextureError> {
         let format = config.format.unwrap_or(TextureFormat::Rgba8UnormSrgb);
         
-        let texture = Arc::new(self.device.create_texture(&wgpu::TextureDescriptor {
+        let texture = Arc::new(gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Dynamic Texture"),
             size: Extent3d {
                 width,
@@ -340,7 +376,7 @@ impl TextureManager {
         }));
 
         // Upload texture data using write_texture directly with simplified layout
-        self.queue.write_texture(
+        gpu.queue.write_texture(
             texture.as_image_copy(),
             data,
             wgpu::TexelCopyBufferLayout {
@@ -355,7 +391,7 @@ impl TextureManager {
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         // Create sampler
-        let sampler = config.sampler_config.create_sampler(&self.device, Some("Texture Sampler"));
+        let sampler = config.sampler_config.create_sampler(&gpu.device, Some("Texture Sampler"));
 
         Ok(TextureResource {
             texture: Arc::clone(&texture),
@@ -373,8 +409,7 @@ mod tests {
 
     /// `Sprite::default()` carries `TextureHandle::default()`; it must be the
     /// built-in white so a flat-colour sprite renders its tint instead of
-    /// sampling nothing. (`TextureManager` allocating from `WHITE.id + 1` is
-    /// device-bound and not provable here.)
+    /// sampling nothing.
     #[test]
     fn test_default_handle_is_the_reserved_white_texture() {
         assert_eq!(TextureHandle::default(), TextureHandle::WHITE);

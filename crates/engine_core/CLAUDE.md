@@ -18,7 +18,9 @@ Core engine: Game trait, run_game(), managers, scene loading/saving, asset manag
 Cross-cutting glue biases toward `engine_core`: `ui` defines `DrawCommand` (renderer-agnostic), `renderer` defines `Sprite` (UI-agnostic), and `engine_core` owns the bridge in `ui_integration`. This keeps `renderer` and `ui` independently testable and prevents either crate from depending on the other transitively through `engine_core`. The dual glyph cache is intentional: `ui` caches rasterized bitmaps (`font/glyph_cache.rs`) to avoid re-rasterization, while `engine_core` caches GPU textures (`glyph_texture_cache.rs`) to avoid re-uploads.
 
 ## File Map
-- `game.rs` — Game trait, `run_game()`, and `GameRunner` orchestration; new render passes go in their own module like `tilemap_render.rs`.
+- `game.rs` — Game trait, `run_game()`, and `GameRunner` orchestration; new render passes go in their own module like `tilemap_render.rs`. `step_frame` is the window-free middle of `update_and_render` (event flush through `input.end_frame()`); the window loop and `GameHarness` both call it, so a frame change lands in both.
+- `game/headless.rs` (test builds only) — the runner's seams for `GameHarness`: `GameRunner::headless` (mirrors what `run_game` and `resumed` do before the first frame, with `AssetManager::headless` in place of the renderer's and the disabled gamepad backend), the input queue, key-handler dispatch, a resize, `with_context`, and read-back accessors (the title reads a pending request first, so a lent context's title is visible before any frame).
+- `test_support.rs` (`cfg(test)` or the `test-support` feature) — scene round-trip fixtures (`StubResolver`, `roundtrip`, `load_ron`), the input `frame` helper, and `GameHarness`, which drives a game's update loop headlessly through the real runner and frame (`training.md` § Writing Tests, "Driving a game's update loop").
 - `game/app_handler.rs` — winit `ApplicationHandler<WakeUp>`: native frame driving uses `about_to_wait` while wasm uses `RedrawRequested`; never unify them (an occluded native window stops receiving redraws). A hidden document gets no animation frames, so on wasm `user_event` drives a frame from the `WakeUp` events `web::install_hidden_frame_pump` sends through the proxy `run_game` publishes.
 - `game/web.rs` (wasm-only) — async renderer bring-up (adopted surface starts 1×1) and gesture-gated audio enable (retries capped at 5 failures, hooked pre-match so audio is live before `on_key_pressed`).
 - `web/mod.rs` (wasm-only) — `preload_assets` fetches manifest and entries into `common::vfs` under `{base}/{entry}` keys before `run_game`; the page-exit latch; `set_boot_status`/`boot_status` over the page's `game-loading` element; the wake proxy and `install_hidden_frame_pump` (a 100 ms timer that drives frames while the document is hidden; one chain at a time, started by the visibility change, or by the proxy's arrival when the page was hidden all through its boot).
@@ -92,6 +94,7 @@ stored pre-creation).
 
 ## Testing
 - `cargo test -p engine_core` — 0 failed, 0 ignored (GPU/window-bound doc examples are compile-only `no_run`)
+- `cargo test -p engine_core --features test-support --test headless_game` — the harness's own contract: `init` once, art loads headlessly, the engine's tail runs, input edges per frame, title and exit read back.
 
 ## Godot Oracle
 - Game loop: `main/main.cpp` — `iteration()` method

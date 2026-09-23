@@ -341,13 +341,18 @@ impl<G: Game> ApplicationHandler<WakeUp> for GameRunner<G> {
             WindowEvent::KeyboardInput { event, .. } => {
                 // After a fatal device loss the game no longer updates or
                 // renders; don't run key handlers either — one could reach
-                // the dead GPU via ctx.assets (review F6).
+                // the dead GPU via ctx.assets.
                 if self.render_fatal {
                     return;
                 }
                 if let PhysicalKey::Code(key) = event.physical_key {
-                    // Create context and call handlers
+                    // A key can land between `resumed` and the first frame; the
+                    // handler must not see a game whose `init` never ran. On the
+                    // web the asset manager arrives asynchronously, and a key
+                    // before it is queued for the frame's input state but never
+                    // reaches the handler — the `if let` below skips it.
                     let window_size = self.window_size();
+                    self.initialize_if_needed(window_size);
                     if let Some(asset_manager) = &mut self.asset_manager {
                         let mut ctx = super::build_context!(self, asset_manager, 0.0, window_size);
                         match event.state {

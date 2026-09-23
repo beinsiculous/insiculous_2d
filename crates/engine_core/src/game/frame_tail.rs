@@ -27,10 +27,10 @@ pub(crate) fn step_world_systems(world: &mut World, delta_time: f32) {
 
 impl<G: Game> GameRunner<G> {
     /// Engine-side work that runs right after `game.update()` each frame.
-    pub(super) fn post_update(&mut self, delta_time: f32, window_size: Vec2, first_frame: bool) {
+    pub(super) fn post_update(&mut self, delta_time: f32, window_size: Vec2) {
         self.step_simulations(delta_time);
         self.draw_scene_ui(window_size, delta_time);
-        self.apply_frame_requests(first_frame);
+        self.apply_frame_requests();
     }
 
     /// Step simulation systems scaled by `time_scale`.
@@ -88,7 +88,7 @@ impl<G: Game> GameRunner<G> {
     }
 
     /// Apply per-frame requests made during init or update.
-    fn apply_frame_requests(&mut self, first_frame: bool) {
+    fn apply_frame_requests(&mut self) {
         // At most one window-system round-trip per frame, only when requested.
         if let Some(title) = self.requests.window_title.take() {
             self.window_manager.set_title(&title);
@@ -100,11 +100,8 @@ impl<G: Game> GameRunner<G> {
         // pointer never moves off a button from asking every frame.
         self.window_manager.set_cursor(self.ui.requested_cursor());
 
-        // The font the game set up in init() is the one locale switches
-        // restore to — capture it once, before any locale font applies.
-        if first_frame {
-            self.localization.base_font = self.ui.default_font();
-        }
+        // The base font a locale switch restores to was captured right after
+        // `init()` (`initialize_if_needed`), before any locale font applied.
         self.apply_locale_font();
     }
 }

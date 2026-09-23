@@ -29,7 +29,7 @@ Renderer (WGPU device, queue, surface, RendererConfig{vsync})
 - `device_status.rs` — `DeviceLossLatch` (one-way fail-stop latch polled before queue/surface work) and pure `resize_action` guard.
 - `sprite/batch.rs` — `SpriteBatch` and `SpriteBatcher`: CPU-side grouping keyed by (texture, clip); `set_clip` cursor drives per-batch GPU scissoring.
 - `sprite_data.rs` — GPU data structures (`SpriteVertex`, `SpriteInstance` with SDF shape parameters, `DynamicBuffer` with power-of-two growth).
-- `texture.rs` — `TextureManager`, `TextureHandle` (with reserved `WHITE`), and `SamplerConfig`.
+- `texture.rs` — `TextureManager`, `TextureHandle` (with reserved `WHITE`), and `SamplerConfig`. The GPU is optional inside the manager: `TextureManager::headless()` (behind the `test-support` feature, which `engine_core/test-support` turns on) decodes, validates and issues handles as on a device but uploads nothing, so `get_texture` is `None` while `has_texture`, `texture_handles`, `texture_count` and `remove_texture` answer from the issued handles exactly as on a device (`remove_texture` returns whether the handle was live; the resource is dropped, never handed back); its size limit is wgpu's default 8192, not an adapter's.
 - `texture_filter.rs` — `TextureFilter`: Linear/Nearest mapping to `SamplerConfig`.
 - `bloom.rs` — Bloom passes; composite encodes gamma via `BloomParams.inv_gamma` on non-sRGB swapchains (WebGPU canvases).
 - `window.rs` — `insert_canvas_into_dom` (wasm): swaps canvas in place of `#game-canvas` or appends to body (winit does not insert canvas into DOM).
@@ -59,6 +59,7 @@ Renderer (WGPU device, queue, surface, RendererConfig{vsync})
 - `DynamicBuffer` grows (next power of two) and never shrinks; pass `&Device` to `update`
 - Float sorts use `total_cmp` — no `partial_cmp().unwrap()`
 - All tests run headless (GPU-dependent doc examples are compile-only `no_run`)
+- The `test-support` feature is for test builds only; a game never enables it. A shipped build carries the `Option` around the GPU and no way to construct the `None`.
 
 ## Known Tech Debt
 Tracked on the Studio Board: cross-batch transparency vs depth writes ARCH-006 — still OPEN, will be

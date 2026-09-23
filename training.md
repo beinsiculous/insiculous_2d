@@ -1010,6 +1010,30 @@ Do **not** add tests that only:
 - Duplicate another crate’s tests of the same type
 - Check `is_nan` / `is_finite` instead of the named behavior
 
+**Driving a game's update loop.** Match flow — start, score, death, round
+change, game over — is tested through `engine_core::test_support::GameHarness`,
+not a hand-built context. Its one rule: it is the real `GameRunner` stepping the
+real frame (`GameRunner::step_frame`, the same function the window loop calls),
+with an asset manager that decodes and validates art but uploads nothing, so a
+game's `init` loads its real sheets. `harness.step(delta_time, &events)` runs one
+whole frame — `init` on the first, `update`, the engine's tail — with keyboard
+and mouse events arriving before it, a key also reaching `on_key_pressed` /
+`on_key_released` as the window loop delivers it (gamepad input is not
+drivable: the backend is the disabled one);
+`harness.context(|game, ctx| …)` lends the game and a context for a call into
+the game's own entry points and runs no frame around it. A game crate reaches
+it through a dev-dependency on the same path, which the template already
+carries:
+
+```toml
+[dev-dependencies]
+engine_core = { path = "../../insiculous_2d/crates/engine_core", features = ["test-support"] }
+```
+
+Cargo turns the feature on for the test build only; `cargo build`, the wasm
+build and `--features editor` never see it. The model is
+`crates/engine_core/tests/headless_game.rs`.
+
 ### Implementing a New Feature
 
 ```

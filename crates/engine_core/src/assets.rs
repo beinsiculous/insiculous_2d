@@ -58,8 +58,8 @@ pub enum AssetError {
 }
 
 /// Validate raw RGBA dimensions/length before any GPU work.
-/// Kept as a free function so the error path is headless-testable
-/// (constructing an `AssetManager` requires a live wgpu device).
+/// Kept as a free function so the error path is testable without
+/// constructing an `AssetManager`.
 fn validate_rgba(width: u32, height: u32, len: usize) -> Result<(), AssetError> {
     if width == 0 || height == 0 {
         return Err(AssetError::InvalidData(format!(
@@ -134,25 +134,28 @@ pub struct AssetManager {
 impl AssetManager {
     /// Create a new asset manager with the given WGPU device and queue
     pub fn new(device: Arc<Device>, queue: Arc<Queue>) -> Self {
-        let mut handle_to_path = HashMap::new();
-        // Handle 0 is always the white texture
-        handle_to_path.insert(0, "#white".to_string());
-        Self {
-            texture_manager: TextureManager::new(device, queue),
-            config: AssetConfig::default(),
-            handle_to_path,
-            loaded_by_path: HashMap::new(),
-            sidecar_cache: sprite_sheet::SidecarCache::default(),
-        }
+        Self::from_manager(TextureManager::new(device, queue), AssetConfig::default())
     }
 
     /// Create a new asset manager with custom configuration
     pub fn with_config(device: Arc<Device>, queue: Arc<Queue>, config: AssetConfig) -> Self {
+        Self::from_manager(TextureManager::new(device, queue), config)
+    }
+
+    /// An asset manager with no GPU, for a game driven headlessly: files are
+    /// read, decoded and validated and handles issued as on a device, and no
+    /// texture is uploaded (see [`TextureManager::headless`]).
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn headless(config: AssetConfig) -> Self {
+        Self::from_manager(TextureManager::headless(), config)
+    }
+
+    fn from_manager(texture_manager: TextureManager, config: AssetConfig) -> Self {
         let mut handle_to_path = HashMap::new();
         // Handle 0 is always the white texture
         handle_to_path.insert(0, "#white".to_string());
         Self {
-            texture_manager: TextureManager::new(device, queue),
+            texture_manager,
             config,
             handle_to_path,
             loaded_by_path: HashMap::new(),
@@ -371,7 +374,7 @@ impl AssetManager {
     /// Unload a texture, freeing GPU resources
     pub fn unload_texture(&mut self, handle: TextureHandle) -> bool {
         self.loaded_by_path.retain(|_, &mut h| h != handle);
-        self.texture_manager.remove_texture(handle).is_some()
+        self.texture_manager.remove_texture(handle)
     }
 
     /// Get the number of loaded textures

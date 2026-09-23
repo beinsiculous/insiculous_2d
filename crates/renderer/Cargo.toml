@@ -4,6 +4,11 @@ version = "0.1.0"
 edition = "2021"
 description = "WGPU renderer for the insiculous_2d game engine"
 
+[features]
+# Exposes `TextureManager::headless` (a texture manager with no GPU) to
+# engine_core's test-support. Never enabled by a game.
+test-support = []
+
 [dependencies]
 common = { workspace = true }
 log = { workspace = true }

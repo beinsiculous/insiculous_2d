@@ -36,6 +36,8 @@ mod app_handler;
 // `pub(crate)` for `step_world_systems`: the scripting tests drive the tail's
 // system order rather than a copy of it.
 pub(crate) mod frame_tail;
+#[cfg(any(test, feature = "test-support"))]
+mod headless;
 mod locale_font;
 mod render;
 #[cfg(target_arch = "wasm32")]
@@ -68,8 +70,13 @@ pub trait Game: Sized + 'static {
     /// its own code on a locale switch, as before.
     fn register_achievements(&self, _achievements: &mut AchievementManager, _strings: &Strings) {}
 
-    /// Called once when the game starts, after the window and renderer are ready.
-    /// Use this to set up your initial game state, create entities, load assets, etc.
+    /// Called once when the game starts, after the window and renderer are ready
+    /// and before the first `update` or a key handler reaches the game (a resize
+    /// may arrive earlier: `on_resize` must not assume `init` has run). Use this
+    /// to set up your initial game state, create entities, load assets, etc. Set
+    /// the default font here: the font in place when `init` returns is the one a
+    /// locale switch restores to. `ctx.delta_time` is always zero here — no frame
+    /// has elapsed.
     fn init(&mut self, _ctx: &mut GameContext) {}
 
     /// Called every frame. Update your game logic here.
@@ -245,7 +252,7 @@ pub struct WakeUp;
 /// - `AssetManager`: Texture and asset loading
 /// - `AudioManager`: Sound playback
 /// - `GameLoopManager`: Frame timing and delta calculation
-struct GameRunner<G: Game> {
+pub(crate) struct GameRunner<G: Game> {
     /// The user's game implementation
     game: G,
     /// Game configuration (title, size, etc.)
@@ -331,6 +338,9 @@ struct GameRunner<G: Game> {
     pending_ui_events: Vec<crate::ui_element_system::UiButtonPressed>,
     /// Whether the game's init() has been called
     initialized: bool,
+    /// What `init` requested, held until the first `update` — which sees it
+    /// as it did when the two shared one context, whichever path ran `init`.
+    init_requests: Option<crate::contexts::FrameRequests>,
     #[cfg(feature = "physics")]
     scripts: crate::scripting::ScriptRunner,
 }
@@ -437,6 +447,7 @@ impl<G: Game> GameRunner<G> {
             localization,
             pending_ui_events: Vec::new(),
             initialized: false,
+            init_requests: None,
             #[cfg(feature = "physics")]
             scripts,
         }
@@ -500,6 +511,19 @@ impl<G: Game> GameRunner<G> {
             return;
         }
 
+        let ui_commands = self.step_frame(delta_time, window_size);
+
+        // Render frame if ready
+        if self.render_manager.is_initialized() {
+            self.render_frame(window_size, &ui_commands);
+        }
+    }
+
+    /// The frame between the window's timing and its render: everything
+    /// `update_and_render` does that needs no window and no GPU. The headless
+    /// harness calls it as its whole frame. The UI draw commands are returned,
+    /// not stored: a runner field would borrow against `render_frame`.
+    pub(crate) fn step_frame(&mut self, delta_time: f32, window_size: Vec2) -> Vec<DrawCommand> {
         // Flush events from previous frame before processing new input
         self.scene.world.flush_events();
 
@@ -515,17 +539,12 @@ impl<G: Game> GameRunner<G> {
         self.gamepad_backend.pump(&mut self.input);
         self.input.process_queued_events();
 
-        // Update all subsystems
         self.update_audio();
         self.update_ui_begin(window_size, delta_time);
         self.initialize_and_update(delta_time, window_size);
         let ui_commands = self.update_ui_end();
         self.update_input_end();
-
-        // Render frame if ready
-        if self.render_manager.is_initialized() {
-            self.render_frame(window_size, &ui_commands);
-        }
+        ui_commands
     }
 
     /// Update audio manager to clean up finished sounds
@@ -543,36 +562,68 @@ impl<G: Game> GameRunner<G> {
     fn absorb(&mut self, outcome: crate::contexts::FrameOutcome) {
         self.config.chaos_mode = outcome.chaos_mode;
         self.time_scale = outcome.time_scale;
+        // While `init`'s requests wait for the first `update`, a key handler
+        // between them folds in what it asserted, so the first `update` never
+        // starts from a title older than the latest ask and keeps the per-frame
+        // permissions `init` set.
+        if let Some(init_requests) = &mut self.init_requests {
+            init_requests.absorb_asserted(&outcome.requests);
+        }
         self.requests.absorb(outcome.requests);
     }
 
     /// Initialize game on first frame, then update game logic.
     fn initialize_and_update(&mut self, delta_time: f32, window_size: Vec2) {
-        let Some(asset_manager) = self.asset_manager.as_mut() else {
+        if self.asset_manager.is_none() {
             log::warn!("initialize_and_update called before asset manager exists; skipping frame");
             return;
-        };
+        }
 
         // Clear the line buffers at the start of the frame so games push
         // fresh vertices each update (typical case: grid.build_line_vertices()).
         self.lines.clear();
         self.behind_lines.clear();
 
+        self.initialize_if_needed(window_size);
+
+        let asset_manager = self.asset_manager.as_mut().expect("checked above");
         let mut ctx = build_context!(self, asset_manager, delta_time, window_size);
-
-        let first_frame = !self.initialized;
-        if first_frame {
-            self.game.init(&mut ctx);
-            self.initialized = true;
+        // The first `update` starts from what `init` requested — a title it
+        // asked for reads back, the per-frame permissions it set are not
+        // replaced by the defaults — whether `init` ran in this frame or on a
+        // key before it (a key handler's own absorb would have replaced them).
+        if let Some(init_requests) = self.init_requests.take() {
+            ctx.requests = init_requests;
         }
-
         self.game.update(&mut ctx);
         let outcome = ctx.into_outcome();
         self.absorb(outcome);
 
         // Engine-side frame tail: particles, lines, scene-defined UI,
         // toasts, locale fonts (game/frame_tail.rs).
-        self.post_update(delta_time, window_size, first_frame);
+        self.post_update(delta_time, window_size);
+    }
+
+    /// The game's `init`, once, before the first `update` or a key handler
+    /// reaches the game, whichever comes first. No frame has elapsed, so its
+    /// `delta_time` is zero on every path. Its requests are absorbed and also
+    /// held for the first `update`; the font it set is captured as the one
+    /// locale switches restore to, before any locale font applies.
+    pub(crate) fn initialize_if_needed(&mut self, window_size: Vec2) {
+        if self.initialized {
+            return;
+        }
+        let Some(asset_manager) = self.asset_manager.as_mut() else {
+            return;
+        };
+        let mut ctx = build_context!(self, asset_manager, 0.0, window_size);
+        self.game.init(&mut ctx);
+        let outcome = ctx.into_outcome();
+        // The stash is `init`'s own asks; `absorb` folds a later handler's in.
+        self.init_requests = Some(outcome.requests.clone());
+        self.absorb(outcome);
+        self.initialized = true;
+        self.localization.base_font = self.ui.default_font();
     }
 
     /// End UI frame and return draw commands
