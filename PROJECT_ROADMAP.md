@@ -26,9 +26,10 @@ lands; it resumes with the new asset style from day one.
 a game dev studio that happens to use AI. AI-assisted development is the primary
 workflow and part of the product story — the studio umbrella also covers Mily's
 ongoing non-game AI work. Consequences: **free web releases showcase the AI
-workflow, AI art included**; **marketplace releases (Steam, iOS, Android —
-anything charging money) ship hand-drawn art only** (tiered AI-asset rule
-below). The first marketplace release target is **Insiculous Arcade** (Phase J).
+workflow, AI art included** — and a free store app is a free release; **paid
+releases (anything charging money, on any storefront) ship hand-drawn art only**
+(tiered AI-asset rule below). The six games go to the stores free first, as
+practice; the first paid release is **Insiculous Arcade** (both Phase J).
 
 Engine status, test counts, and per-system capability detail live in
 `CLAUDE.md` (kept current) — not here.
@@ -44,15 +45,20 @@ Engine status, test counts, and per-system capability detail live in
   ChaosTheme neon is the FX/accent layer.
 - **Web-first in the CURRENT look** (Jesse, Aug 19 2026): the six games shipped
   to the website as they were (neon look, AI stand-ins); Deion re-skins roll
-  out to the site as updates. Free itch.io follows the site; Steam/iOS/Android
-  wait for Phase J.
+  out to the site as updates. Free itch.io follows the site; the app stores
+  and Steam wait for Phase J.
 - **Tiered AI-asset rule** (Jesse, Aug 19 2026 — supersedes "AI art never
   ships"; **music included** Aug 28 2026): the money line is the boundary.
   AI-generated assets (art AND MIDI/SF2/audio) **may ship in free releases**
   (studio website, free itch.io) as part of the AI-workflow showcase; they
-  **never ship in paid/marketplace releases**. Quarantine mechanics: `ai/` dir
+  **never ship in paid releases**. **A free store app is a free release**
+  (Jesse, Sep 25 2026): free means no price, no in-app purchase and no ads.
+  Quarantine mechanics: `ai/` dir
   + `ai_` prefix + `check_no_ai_assets.sh` on paid publish paths. SSOT:
   `../deion_assets/DEION_STYLE.md` §6.
+- **No ads and no in-app purchases, in any application** (Jesse, Sep 25
+  2026). A release is free or it has a price up front; nothing is sold inside
+  it.
 - **Web assets fetch-by-default**; **WebGPU-only at launch** (WebGL2 fallback
   revisited at the post-launch review, issue #13); **games stay standalone**.
 - **Audio backend: rodio, FINAL** (H1 spike + Jesse's listen test, Jul 30
@@ -78,30 +84,54 @@ Engine status, test counts, and per-system capability detail live in
 | G | Re-skin games 1–6 (Tong, Chicken Coop, Food Pyramid, Bratdog, Toast Busters, Meatieroids — identities settled Aug 9 2026) | On board | #72–#79; castings SSOT DEION_STYLE.md §5; per-game README "Deion Pivot" sections |
 | H | WASM port (engine + all 6 games on wasm32/WebGPU) | ☑ COMPLETE Aug 27 2026 | Port recipe + web footguns: `log_archive.md`, crate CLAUDE.mds (renderer/engine_core), memory |
 | I | Deployment (site live at beinsiculous.com, all 6 games playable) | I1/I2 ☑ Aug 19 2026; rest on board | #15 (itch.io), #16 (Steam checklist), #80 (paid-path purge gate), #13 (WebGL2 review). Site: `../insiculous_web/` (Mily's repo `milyramic`, Astro 5 on Cloudflare Workers; drop-in convention `public/games/<slug>/v1/`) |
-| J | Insiculous Arcade — marketplace compilation | OUTLINE ONLY (below) | This file § Phase J |
+| J | Mobile and the stores — mobile web, native builds, the six as free store apps, then the paid Insiculous Arcade | OUTLINE ONLY (below); J1 follows Phase K | This file § Phase J |
 | K | Conductor — shared MIDI parts, custom instruments and in-editor composition | On board (K1 spike gates all) | [Conductor milestone](https://github.com/beinsiculous/insiculous_2d/milestone/2): #60–#65, #140 (sample instruments), #141 (composer); the tickets carry the settled design and dependency order |
-| C/D | Games 7–20 | PAUSED until Phase G done (below) | This file § Paused phases |
+| C/D | Games 7–20 | PAUSED until Phase G and J1 are done (below) | This file § Paused phases |
 
 **Editor**: the Playground UX sprint shipped Sep 12 2026 (its own section below); no
 editor sprint is queued next. **Web Playground** shipped Sep 2026; `docs/WEB_PLAYGROUND.md`.
 
-## Phase J — Insiculous Arcade (marketplace compilation) — OUTLINE ONLY
+## Phase J — Mobile and the stores — OUTLINE ONLY
 
-First marketplace release (Jesse, Aug 19 2026): **all non-original
-20-games-challenge games compiled into one Deion-skinned package** for paid
-storefronts (Steam, iOS, Android). Deliberately unplanned — this section exists
-so the target is named and its gates are on record.
+Rewritten Sep 25 2026 (Jesse). The six games are the **practice releases**:
+they go to the stores free, AI art and music included (a free store app is a
+free release — `../deion_assets/DEION_STYLE.md` §6), so store deployment and
+the update process are learned on games that are allowed to fail, before a
+game Jesse has put far more into is sold. Phase J follows **Phase K**:
+Conductor gives the games their music, and the games' action sounds are voices
+in that music rather than a separate sound-effect layer.
 
-Hard gates (all must hold before any store submission):
+1. **J1 — Mobile web.** Touch input in the engine; touch controls and a
+   centred phone layout for the six games' web builds on beinsiculous.com.
+   No store is involved, and the input and layout work is what the native
+   builds reuse. The HiDPI window gap (#152) lands here. Games 7–20 wait for
+   J1 so they are built with touch input rather than retrofitted.
+2. **J2 — Native builds.** iOS and Android builds of one or two games first
+   (app lifecycle, safe areas, packaging, signing), then the rest. Open the
+   store accounts as soon as one build exists: a new personal Google Play
+   account must run a closed test (12 testers for 14 days, as of 2026 —
+   confirm when opening it) before its first production release, and that is
+   calendar time no amount of work shortens. The accounts and the release
+   process are shared with Fort Knight's parked phone app (Operation Phoney
+   Bologna).
+3. **J3 — Free store releases.** The six games published free and then
+   updated through the stores, to practise the whole loop.
+4. **J4 — Insiculous Arcade**, the first paid release: all non-original
+   20-games-challenge games compiled into one Deion-skinned package for
+   Steam, iOS and Android.
+
+Hard gates before J4 (any paid submission):
 - Phase G complete — every included game fully Deion re-skinned.
 - Hand-drawn art swap complete — no AI stand-ins anywhere in the package;
   `check_no_ai_assets.sh` passes on the shipping asset tree (the #80 gate).
-- Phase H/I stable — the games have shipped and soaked on the free web tier.
+  AI music is held to the same line.
+- The games have shipped and soaked on the free tiers (web, and J3's stores).
 
-Open questions (unanswered until Phase J planning starts): launcher/wrapper
-design (one binary hosting six games vs a hub scene), per-store native
-packaging (Steamworks; iOS/Android toolchains are entirely new scope),
-input/UX for storefront cert requirements, pricing.
+Open questions (answered when each step is planned): six free listings or
+one free arcade app (J3); what the paid Arcade offers over free versions of
+the same games, beyond hand-drawn art (J4); launcher/wrapper design (one
+binary hosting six games vs a hub scene); Steamworks packaging; input/UX for
+storefront certification; the Arcade's up-front price.
 
 Note: "arcade scaffolding" in engine_core docs (`MenuInput`,
 `spawn_background`, …) is unrelated engine vocabulary predating this product
@@ -109,7 +139,7 @@ name — leave it.
 
 ## Paused Phases C/D — Games 7–20
 
-Resume after Phase G, with Deion styling from day one. No board issues by
+Resume after Phase G and J1 (touch input), with Deion styling from day one. No board issues by
 design (the board carries actionable work); this table is the resumption point.
 
 | # | Game | Requires | Deion casting | Key new patterns |
