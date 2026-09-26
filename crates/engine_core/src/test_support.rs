@@ -23,6 +23,9 @@ use renderer::TextureHandle;
 /// because a game crate depends on `engine_core` alone, and the prelude does
 /// not carry it — a game never sees raw events, only its tests do.
 pub use input::InputEvent;
+/// The draw command type [`GameHarness::ui_commands`] returns, re-exported for the
+/// same reason: a game crate does not depend on the `ui` crate.
+pub use ui::DrawCommand;
 
 use crate::achievements::AchievementManager;
 use crate::contexts::GameContext;
