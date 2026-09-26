@@ -29,10 +29,34 @@ struct PixelSnap {
     camera_correction: Vec2,
 }
 
+/// How far a world→device step may sit from whole pixels and still count as whole.
+/// It absorbs float error in the camera's matrices; a real fractional scale inside it
+/// (a trackpad's zoom can settle anywhere) drifts a 64 px tile by under a tenth of a
+/// pixel, which no rounding can turn into a seam.
+const WHOLE_FACTOR_TOLERANCE: f32 = 1e-3;
+
+/// Whether one world unit along an axis moves a whole number of device pixels on each
+/// device axis, and moves at all. An axis-aligned camera at an integer zoom, or one
+/// turned a quarter, qualifies; any other turn does not — its steps are fractions of
+/// a pixel on both device axes, and neighbours would round apart.
+fn is_whole_step(device_step: Vec2) -> bool {
+    let whole = device_step.round();
+    whole != Vec2::ZERO && (device_step - whole).abs().max_element() <= WHOLE_FACTOR_TOLERANCE
+}
+
 impl PixelSnap {
     /// `None` when the camera cannot produce a sane map — a zero or
     /// non-finite viewport, or a projection that does not invert (a NaN in a
-    /// scene-authored zoom). Callers leave origins alone then.
+    /// scene-authored zoom) — and `None` when a world unit along either axis
+    /// does not step a whole number of device pixels. Callers leave origins
+    /// alone then.
+    ///
+    /// Snapping keeps neighbours abutting only when they all move by whole
+    /// pixels together, which needs a whole factor: at a fractional one two
+    /// abutting tiles round their origins apart while their widths stay
+    /// fractional, and a line of clear colour opens between them (the editor's
+    /// zoom, one wheel notch out, seamed The Food Pyramid's counter). Unsnapped,
+    /// abutting quads share their edges exactly and rasterize without a gap.
     fn new(camera: &Camera) -> Option<Self> {
         let viewport = camera.viewport_size;
         if !(viewport.x > 0.0 && viewport.y > 0.0) {
@@ -49,9 +73,23 @@ impl PixelSnap {
             viewport,
             camera_correction: Vec2::ZERO,
         };
+        if !is_whole_step(snap.device_step(Vec2::X)) || !is_whole_step(snap.device_step(Vec2::Y)) {
+            return None;
+        }
         let origin_device = snap.device_of(Vec2::ZERO);
         snap.camera_correction = origin_device.round() - origin_device;
         Some(snap)
+    }
+
+    /// How far one step along `direction` in the world moves in device pixels, y up.
+    ///
+    /// Taken through the matrix's linear part alone: differencing two translated
+    /// positions loses the step to float error once the camera is far from the origin
+    /// (at x 32768.25 a unit measured 1.002 pixels), and snapping would switch off and
+    /// on as a level scrolled.
+    fn device_step(&self, direction: Vec2) -> Vec2 {
+        let clip = self.clip_from_world * Vec4::new(direction.x, direction.y, 0.0, 0.0);
+        Vec2::new(clip.x, clip.y) * 0.5 * self.viewport
     }
 
     /// Where a world position lands in device pixels, y up, before any snapping.
@@ -188,7 +226,8 @@ impl SpriteBatcher {
     /// without tearing a row apart: at an integer world→device factor
     /// neighbouring sprites shift by the same whole number of pixels, so a
     /// tilemap stays gap-free. It is a no-op on a camera the map cannot be
-    /// built from.
+    /// built from, and at a fractional factor, where snapping would seam a
+    /// tilemap — so it is safe to leave on for a game the editor zooms.
     pub fn snap_origins(&mut self, camera: &Camera) {
         let Some(snap) = PixelSnap::new(camera) else {
             return;
@@ -412,6 +451,69 @@ mod tests {
         assert!((left.x - left.x.round()).abs() < 1e-2, "the left origin is on a pixel");
         assert!((right.x - right.x.round()).abs() < 1e-2, "the right origin is on a pixel");
         assert!((right.x - left.x - 16.0).abs() < 1e-3, "the 16px pitch survives the snap");
+    }
+
+    /// Snapping needs a whole world→device factor: at 1 and at 2 the map is
+    /// built, at the editor's one-notch zoom-out it is not, and a batch snapped
+    /// through that camera keeps its origins exactly where they were — the row of
+    /// 64 px tiles abuts as authored instead of seaming where two round apart.
+    #[test]
+    fn test_snapping_is_a_no_op_at_a_fractional_world_to_device_factor() {
+        let mut camera = Camera::new(Vec2::new(3.5, -7.25), Vec2::new(1068.0, 751.0));
+        for whole in [1.0, 2.0] {
+            camera.zoom = whole;
+            assert!(PixelSnap::new(&camera).is_some(), "a factor of {whole} snaps");
+        }
+        camera.zoom = 1.0 / 1.1;
+        assert!(PixelSnap::new(&camera).is_none(), "a factor of 1/1.1 does not");
+        camera.zoom = 0.5;
+        assert!(PixelSnap::new(&camera).is_none(), "nor does a half: two world units share a pixel");
+
+        let mut batcher = SpriteBatcher::new();
+        let texture = TextureHandle { id: 1 };
+        let origins: Vec<Vec2> = (-5..=5).map(|k| Vec2::new(32.0 + 64.0 * k as f32, 0.3)).collect();
+        for origin in &origins {
+            batcher.add_sprite(&Sprite::new(texture).with_position(*origin).with_scale(Vec2::splat(64.0)));
+        }
+        camera.zoom = 1.0 / 1.1;
+        batcher.snap_origins(&camera);
+        let instances = &batcher.batch_for(texture).expect("one batch").instances;
+        for (instance, origin) in instances.iter().zip(&origins) {
+            assert_eq!(Vec2::from(instance.position), *origin, "left where it was authored");
+        }
+    }
+
+    #[test]
+    fn test_a_whole_step_is_whole_on_both_device_axes_within_float_noise() {
+        assert!(is_whole_step(Vec2::new(1.0, 0.0)) && is_whole_step(Vec2::new(0.0, -2.0)));
+        assert!(is_whole_step(Vec2::new(3.0004, 0.0003)));
+        assert!(!is_whole_step(Vec2::new(0.909, 0.0)) && !is_whole_step(Vec2::new(1.5, 0.0)));
+        assert!(!is_whole_step(Vec2::new(0.5, 0.0)), "two world units share a pixel");
+        let eighth_turn = std::f32::consts::FRAC_1_SQRT_2;
+        assert!(!is_whole_step(Vec2::splat(eighth_turn)), "a turn of an eighth steps in fractions");
+        assert!(!is_whole_step(Vec2::new(0.0004, 0.0)), "a step of no pixels is no factor to snap at");
+    }
+
+    /// Far from the origin the factor is still read exactly: a camera parked at
+    /// x 32768.25 at zoom 1 snaps, as it does at the origin, so a scrolling level never
+    /// toggles snapping as it pans.
+    #[test]
+    fn test_a_distant_camera_at_a_whole_zoom_still_snaps() {
+        for x in [32768.25, 32769.0, -50000.75, 1.0e6 + 0.5] {
+            let camera = Camera::new(Vec2::new(x, 1234.5), Vec2::new(800.0, 600.0));
+            assert!(PixelSnap::new(&camera).is_some(), "a camera at x {x}, zoom 1, snaps");
+        }
+    }
+
+    /// A camera turned a quarter still steps whole pixels, so it snaps; one turned an
+    /// eighth steps fractions of a pixel on both axes, so it does not.
+    #[test]
+    fn test_a_turned_camera_snaps_only_at_a_quarter_turn() {
+        let mut camera = Camera::new(Vec2::ZERO, Vec2::new(800.0, 600.0));
+        camera.rotation = std::f32::consts::FRAC_PI_2;
+        assert!(PixelSnap::new(&camera).is_some(), "a quarter turn keeps the lattice");
+        camera.rotation = std::f32::consts::FRAC_PI_4;
+        assert!(PixelSnap::new(&camera).is_none(), "an eighth turn leaves it");
     }
 
     /// Clipped UI: the same texture under two clip states is two

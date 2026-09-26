@@ -414,10 +414,12 @@ are refused on a machine entity, which owns its clip (`docs/SCRIPTING.md` § 4).
 on, it moves each game sprite's origin onto a whole device pixel after the
 camera transform, which is what keeps pixel art crisp at an integer
 world→device factor. It is applied to the game's sprite batcher only — UI
-geometry is authored in screen space and is left alone. Turn it on only for a
-game whose factor is whole (the 1× re-skins): at a non-integer factor,
-snapping neighbours independently opens a seam between tiles — frogger's
-board showed one as a black line across the screen (2026-09-15).
+geometry is authored in screen space and is left alone. It snaps only while
+the factor is whole on both axes: at a non-integer factor, snapping neighbours
+independently opens a seam between tiles — frogger's board showed one as a
+black line across the screen (2026-09-15) — so there it is a no-op and every
+origin stays as authored. That makes it safe to leave on for a game the editor
+zooms; the 1× re-skins turn it on.
 
 In scene RON the component stores its sheet path plus a baked snapshot; the
 sidecar wins on load, so re-cutting a sheet propagates to every scene without

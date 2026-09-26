@@ -83,9 +83,9 @@ pub struct GameConfig {
     pub texture_filter: TextureFilter,
     /// Move every game sprite's origin onto a whole device pixel after the
     /// camera transform (default `false`). Snapping is what keeps pixel art
-    /// crisp at an integer world→device factor; at a fractional factor it
-    /// seams a tilemap (frogger, 2026-09-15), so a game turns it on only
-    /// where its factor is whole — the 1× re-skins do.
+    /// crisp at an integer world→device factor; at a fractional one it would
+    /// seam a tilemap, so there it is a no-op and origins stay as authored.
+    /// The 1× re-skins turn it on.
     #[serde(default = "default_pixel_snap")]
     pub pixel_snap: bool,
     /// On the web, whether the drawn surface follows the canvas's shown CSS
@@ -222,10 +222,10 @@ impl GameConfig {
     }
 
     /// Snap every game sprite's origin to a whole device pixel after the
-    /// camera transform (off by default). Turn it on for a game whose
-    /// world→device factor is whole — a 1× re-skin — and leave it off
-    /// otherwise: at a non-integer factor, snapping two neighbours opens a
-    /// seam between tiles.
+    /// camera transform (off by default). It snaps only while the
+    /// world→device factor is whole — at a non-integer factor snapping two
+    /// neighbours would open a seam between tiles, so there it does
+    /// nothing — which makes it safe on for a game the editor zooms.
     pub fn with_pixel_snap(mut self, pixel_snap: bool) -> Self {
         self.pixel_snap = pixel_snap;
         self
