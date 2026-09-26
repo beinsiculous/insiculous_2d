@@ -114,6 +114,11 @@ impl GamepadState {
         self.buttons.was_pressed(button)
     }
 
+    /// Buttons that went down this frame, in the order they did.
+    pub fn just_pressed_buttons(&self) -> &[GamepadButton] {
+        self.buttons.just_pressed_buttons()
+    }
+
     /// Get the value of an axis
     pub fn axis_value(&self, axis: GamepadAxis) -> f32 {
         *self.axis_values.get(&axis).unwrap_or(&0.0)

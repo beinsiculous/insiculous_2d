@@ -122,6 +122,8 @@ pub struct GameHarness<G: Game> {
     runner: GameRunner<G>,
     window_size: Vec2,
     delta_time: f32,
+    /// The UI draw commands of the last step.
+    ui_commands: Vec<ui::DrawCommand>,
 }
 
 impl<G: Game> GameHarness<G> {
@@ -135,12 +137,24 @@ impl<G: Game> GameHarness<G> {
     /// scores write through on unlock and submit — so a test that reuses a
     /// game's shipped config points them at a temp dir or leaves them unset
     /// (in memory).
-    pub fn new(game: G, config: GameConfig) -> Self {
+    ///
+    /// The config's startup cards are dropped, so a game's shipped config
+    /// boots straight to the game as it always has here;
+    /// [`with_startup_splashes`](Self::with_startup_splashes) keeps them.
+    pub fn new(game: G, mut config: GameConfig) -> Self {
+        config.startup_splashes.clear();
+        Self::with_startup_splashes(game, config)
+    }
+
+    /// [`new`](Self::new), keeping the config's startup cards: the game is held
+    /// until they end, as a player sees it.
+    pub fn with_startup_splashes(game: G, config: GameConfig) -> Self {
         let window_size = Vec2::new(config.width as f32, config.height as f32);
         Self {
             runner: GameRunner::headless(game, config),
             window_size,
             delta_time: 1.0 / 60.0,
+            ui_commands: Vec::new(),
         }
     }
 
@@ -164,7 +178,19 @@ impl<G: Game> GameHarness<G> {
             self.runner.queue_input_event(event.clone());
             self.runner.dispatch_key_event(event, self.window_size);
         }
-        self.runner.step_frame(delta_time, self.window_size);
+        self.ui_commands = self.runner.step_frame(delta_time, self.window_size);
+    }
+
+    /// The UI draw commands the last [`step`](Self::step) produced, in the order
+    /// they were drawn.
+    pub fn ui_commands(&self) -> &[ui::DrawCommand] {
+        &self.ui_commands
+    }
+
+    /// Whether the config's startup cards still hold the game: it has not run
+    /// `init`, and no frame, key or context reaches it.
+    pub fn startup_holds_game(&self) -> bool {
+        self.runner.startup_holds_game()
     }
 
     /// `count` frames of `delta_time` seconds with no input.
@@ -179,7 +205,15 @@ impl<G: Game> GameHarness<G> {
     /// game's own entry points, which a frame would not reach. What the call
     /// requests (exit, title, time scale) lands as it would in a frame, but no
     /// frame runs around it.
+    ///
+    /// # Panics
+    /// While the startup cards hold the game: it has not been initialized, and
+    /// there is no game state to lend.
     pub fn context<R>(&mut self, f: impl FnOnce(&mut G, &mut GameContext) -> R) -> R {
+        assert!(
+            !self.runner.startup_holds_game(),
+            "the game has not been initialized: a startup splash is still running"
+        );
         self.runner.initialize_if_needed(self.window_size);
         self.runner.with_context(self.delta_time, self.window_size, f)
     }

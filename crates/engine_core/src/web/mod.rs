@@ -42,6 +42,15 @@ pub fn page_exited() -> bool {
 /// takes over again.
 static IDLE_ACTIVE: AtomicBool = AtomicBool::new(false);
 
+/// Whether the page is out of sight — a hidden tab. The startup cards' clock
+/// holds while it is, so a page opened in the background shows its first card
+/// when it is first looked at.
+pub fn page_hidden() -> bool {
+    web_sys::window()
+        .and_then(|window| window.document())
+        .is_some_and(|document| document.visibility_state() == web_sys::VisibilityState::Hidden)
+}
+
 /// Whether the idle throttle is currently in force.
 pub fn idle_active() -> bool {
     IDLE_ACTIVE.load(Ordering::Relaxed)

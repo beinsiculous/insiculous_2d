@@ -19,6 +19,9 @@ fn default_locales_dir() -> String {
     "locales".to_string()
 }
 
+/// The directory assets are read from when a config names none.
+pub const DEFAULT_ASSET_BASE: &str = "assets";
+
 fn default_pixel_snap() -> bool {
     false
 }
@@ -98,6 +101,18 @@ pub struct GameConfig {
     /// pixels, reaches the game in the surface's.
     #[serde(default)]
     pub surface_follows_web_box: bool,
+    /// The cards shown before the game starts, in order — asset paths resolved
+    /// against the asset base like any texture (default: none). While one shows
+    /// the game is neither initialized, updated nor drawn; a key, mouse button or
+    /// pad button skips to the next once the card has faded in. The engine
+    /// carries no cards of its own: a game supplies them.
+    #[serde(default)]
+    pub startup_splashes: Vec<String>,
+    /// A PNG for the native window's icon, resolved against the asset base
+    /// (default: none). The web has the page's favicon instead, and macOS and
+    /// Wayland ignore a window icon.
+    #[serde(default)]
+    pub window_icon: Option<String>,
 }
 
 impl Default for GameConfig {
@@ -120,6 +135,8 @@ impl Default for GameConfig {
             texture_filter: TextureFilter::Linear,
             pixel_snap: false,
             surface_follows_web_box: false,
+            startup_splashes: Vec::new(),
+            window_icon: None,
         }
     }
 }
@@ -237,6 +254,39 @@ impl GameConfig {
         self.surface_follows_web_box = follows;
         self
     }
+
+    /// Show these cards, in order, before the game starts (see the field).
+    pub fn with_startup_splashes<I, S>(mut self, paths: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.startup_splashes = paths.into_iter().map(Into::into).collect();
+        self
+    }
+
+    /// Give the native window this PNG as its icon (see the field).
+    pub fn with_window_icon(mut self, path: impl Into<String>) -> Self {
+        self.window_icon = Some(path.into());
+        self
+    }
+
+    /// The directory assets are read from: the configured base, or
+    /// [`DEFAULT_ASSET_BASE`].
+    pub fn asset_base(&self) -> &str {
+        self.asset_base_path.as_deref().unwrap_or(DEFAULT_ASSET_BASE)
+    }
+
+    /// Where a relative asset path is read from: joined to the asset base, as
+    /// `AssetManager` joins it. An absolute path is returned as it is.
+    pub fn resolve_asset_path(&self, path: &str) -> std::path::PathBuf {
+        let path = std::path::Path::new(path);
+        if path.is_relative() {
+            std::path::Path::new(self.asset_base()).join(path)
+        } else {
+            path.to_path_buf()
+        }
+    }
 }
 
 #[cfg(test)]
@@ -264,6 +314,9 @@ mod tests {
         // And before the web surface could follow the canvas box: a game's
         // surface keeps its configured size.
         assert!(!config.surface_follows_web_box);
+        // And before startup cards and window icons: none of either.
+        assert!(config.startup_splashes.is_empty());
+        assert_eq!(config.window_icon, None);
     }
 
     #[test]

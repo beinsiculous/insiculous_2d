@@ -345,6 +345,12 @@ impl<G: Game> ApplicationHandler<WakeUp> for GameRunner<G> {
                 if self.render_fatal {
                     return;
                 }
+                // While the startup cards show, and through the quiet period after
+                // them, a key is the cards' — it reaches neither `init` nor the
+                // game's handlers.
+                if self.startup.holds_keys() {
+                    return;
+                }
                 if let PhysicalKey::Code(key) = event.physical_key {
                     // A key can land between `resumed` and the first frame; the
                     // handler must not see a game whose `init` never ran. On the

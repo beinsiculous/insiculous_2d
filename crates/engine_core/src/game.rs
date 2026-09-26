@@ -40,6 +40,7 @@ pub(crate) mod frame_tail;
 mod headless;
 mod locale_font;
 mod render;
+mod startup_frame;
 #[cfg(target_arch = "wasm32")]
 mod web;
 
@@ -336,6 +337,8 @@ pub(crate) struct GameRunner<G: Game> {
     /// flushes BEFORE `update()`, so presses are held here and emitted onto
     /// the bus right after the next frame's flush (one-frame latency).
     pending_ui_events: Vec<crate::ui_element_system::UiButtonPressed>,
+    /// The cards shown before the game starts, and whether they still hold it.
+    startup: crate::startup_splash::StartupSplash,
     /// Whether the game's init() has been called
     initialized: bool,
     /// What `init` requested, held until the first `update` — which sees it
@@ -375,6 +378,7 @@ impl<G: Game> GameRunner<G> {
     fn new(game: G, config: GameConfig) -> Self {
         // Create window manager from game config
         let window_config = WindowConfig::from(&config);
+        let startup = crate::startup_splash::StartupSplash::new(config.startup_splashes.clone());
 
         // Audio init failure is non-fatal: falls back to a disabled manager
         // whose playback calls are no-ops, so init()/update() always run.
@@ -399,8 +403,7 @@ impl<G: Game> GameRunner<G> {
         };
 
         // Locale tables live under the asset base (default `assets/locales`).
-        let asset_base = config.asset_base_path.clone().unwrap_or_else(|| "assets".to_string());
-        let locales_dir = std::path::Path::new(&asset_base).join(&config.locales_dir);
+        let locales_dir = std::path::Path::new(config.asset_base()).join(&config.locales_dir);
         let mut strings = crate::localization::Strings::load_dir(&locales_dir);
         strings.set_locale(config.locale.clone());
         let localization = locale_font::Localization::new(strings);
@@ -446,6 +449,7 @@ impl<G: Game> GameRunner<G> {
             ui_batcher: SpriteBatcher::new(),
             localization,
             pending_ui_events: Vec::new(),
+            startup,
             initialized: false,
             init_requests: None,
             #[cfg(feature = "physics")]
@@ -540,6 +544,10 @@ impl<G: Game> GameRunner<G> {
         self.input.process_queued_events();
 
         self.update_audio();
+
+        if let Some(ui_commands) = self.step_startup(delta_time, window_size) {
+            return ui_commands;
+        }
         self.update_ui_begin(window_size, delta_time);
         self.initialize_and_update(delta_time, window_size);
         let ui_commands = self.update_ui_end();

@@ -60,7 +60,7 @@ pub fn run_game_with_editor_opts<G: Game>(
     options: EditorRunOptions,
 ) -> Result<(), engine_core::EngineError> {
     let raw_frame = glam::Vec2::new(config.width as f32, config.height as f32);
-    let config = clamp_editor_window_size(config).with_surface_follows_web_box(true);
+    let config = editor_config(config);
     let mut editor_game = EditorGame::new(game);
     editor_game.editor.game_frame = raw_frame;
     editor_game.api.receiver = options.api_rx;
@@ -76,4 +76,32 @@ pub fn run_game_with_editor_opts<G: Game>(
     editor_game.scene_snapshot = options.scene_snapshot;
     editor_game.preview_open = options.preview_open;
     engine_core::run_game(editor_game, config)
+}
+
+/// The config a game runs with inside the editor: the window enlarged to the
+/// editor's usable minimum, the web surface following its box (the panels lay
+/// out in it), and none of the game's own startup identity — no startup cards,
+/// which would hold the editor behind them on every launch, and no window icon,
+/// the game's rather than the editor's.
+fn editor_config(config: GameConfig) -> GameConfig {
+    let mut config = clamp_editor_window_size(config).with_surface_follows_web_box(true);
+    config.startup_splashes.clear();
+    config.window_icon = None;
+    config
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_a_game_in_the_editor_starts_without_its_startup_cards_or_icon() {
+        let game_config = GameConfig::new("Test")
+            .with_startup_splashes(["sprites/studio.png", "sprites/engine.png"])
+            .with_window_icon("sprites/icon.png");
+        let config = editor_config(game_config);
+        assert!(config.startup_splashes.is_empty(), "no card holds the editor");
+        assert_eq!(config.window_icon, None);
+        assert!(config.surface_follows_web_box);
+    }
 }

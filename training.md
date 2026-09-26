@@ -694,6 +694,46 @@ if input.confirm || mouse.clicked.is_some() {
 
 **Files:** `engine_core/menu_panel.rs`, examples in every game's `drawing.rs`/`ui.rs`
 
+### Startup Cards Pattern (the studio and the engine, before the game)
+A game names the cards shown before it starts; the engine runs them. The engine
+carries no card of its own — the art is the game's, synced like any sheet.
+
+```rust
+let config = GameConfig::new("Tong")
+    .with_startup_splashes([
+        "sprites/ai_be_insiculous_320x192.png",             // the studio card first
+        "sprites/ai_insiculous_2d_maxwell_splash_320x192.png", // then the engine's
+    ])
+    .with_window_icon("sprites/ai_insiculous_2d_maxwell_icon_64x64.png");
+```
+
+What the engine guarantees, so a game needs nothing else:
+- **The game is held**: while a card shows, `init`, `update`, the frame tail,
+  `render` and the key handlers never run — the first `update` sees the world
+  it always has. `init` runs on the frame after the cards' black handoff frame.
+- **Timing**: each card fades in 0.25 s, holds 1.5 s, fades out 0.25 s, drawn at
+  the largest whole scale up to 2 that fits (never below 1; a smaller window
+  crops it), centred, over its own top-left pixel's colour. A hidden browser
+  tab holds the clock.
+- **Skipping**: any key, mouse button or pad button skips to the next card once
+  the current one has faded in — a press made to focus the page cannot erase a
+  card unseen. The game's first 0.2 s after the cards swallow new presses
+  (keys, buttons and pad-stick crossings), so a player mashing through the
+  cards does not also press the title's first row.
+- **Where there are none**: the editor and the playground drop a game's cards
+  and icon; `GameHarness::new` drops the cards, so a game's harness tests boot
+  straight to the game; `GameHarness::with_startup_splashes` keeps them, and a
+  `context()` call while a card shows panics. A card that will not load is
+  logged and skipped.
+
+`AssetManager::image_backdrop(path)` is the decode behind the backdrop — a
+file's size and top-left colour, resolved like any texture path — and is how a
+title screen fills the window around its art.
+
+**Files:** `engine_core/startup_splash.rs` (the cards and the lifecycle),
+`engine_core/game/startup_frame.rs` (the runner's startup frame),
+`engine_core/tests/startup_splash.rs` (the contract)
+
 ### Chaos Mode Pattern (Cross-Game Theme)
 Every game built on the engine is expected to support a four-tier intensity
 theme: **Normal / Insane / Ridiculous / Insiculous** (= both insane and

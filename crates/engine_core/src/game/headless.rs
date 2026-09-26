@@ -34,6 +34,11 @@ impl<G: Game> GameRunner<G> {
         runner
     }
 
+    /// Whether the startup cards still hold the game (see `StartupSplash`).
+    pub(crate) fn startup_holds_game(&self) -> bool {
+        self.startup.holds_game()
+    }
+
     /// Queue an input event; the next `step_frame` processes it.
     pub(crate) fn queue_input_event(&mut self, event: InputEvent) {
         self.input.queue_event(event);
@@ -44,6 +49,9 @@ impl<G: Game> GameRunner<G> {
     /// then the handler at once, through a zero-delta context, with what it
     /// wrote absorbed. Other events have no handler and pass through.
     pub(crate) fn dispatch_key_event(&mut self, event: &InputEvent, window_size: Vec2) {
+        if self.startup.holds_keys() {
+            return;
+        }
         if matches!(event, InputEvent::KeyPressed(_) | InputEvent::KeyReleased(_)) {
             self.initialize_if_needed(window_size);
         }

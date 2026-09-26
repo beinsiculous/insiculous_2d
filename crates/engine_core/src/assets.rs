@@ -87,10 +87,18 @@ pub struct AssetConfig {
     pub default_filter: TextureFilter,
 }
 
+/// What [`AssetManager::image_backdrop`] reads from an image: its size in
+/// pixels and its top-left pixel's colour.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ImageBackdrop {
+    pub size: glam::UVec2,
+    pub corner: common::Color,
+}
+
 impl Default for AssetConfig {
     fn default() -> Self {
         Self {
-            base_path: "assets".to_string(),
+            base_path: crate::game_config::DEFAULT_ASSET_BASE.to_string(),
             log_loading: true,
             default_filter: TextureFilter::Linear,
         }
@@ -237,6 +245,44 @@ impl AssetManager {
         self.loaded_by_path.insert(cache_key, handle);
 
         Ok(handle)
+    }
+
+    /// An image's pixel size and its top-left pixel's colour, read from the file
+    /// `path` names — resolved against the asset base like
+    /// [`load_texture`](Self::load_texture). `None`, with the reason logged, when
+    /// the file cannot be read or decoded.
+    ///
+    /// A loaded texture keeps no pixels on the CPU, so this decodes the file
+    /// itself. The corner is how a full-window card is letterboxed in its own
+    /// backdrop colour, and how a title screen is filled around its art.
+    pub fn image_backdrop<P: AsRef<Path>>(&self, path: P) -> Option<ImageBackdrop> {
+        let path = path.as_ref();
+        let full_path = if path.is_relative() {
+            Path::new(&self.config.base_path).join(path)
+        } else {
+            path.to_path_buf()
+        };
+        let decoded = common::vfs::read(&full_path)
+            .map_err(|error| error.to_string())
+            .and_then(|bytes| image::load_from_memory(&bytes).map_err(|error| error.to_string()));
+        match decoded {
+            Ok(image) => {
+                let rgba = image.to_rgba8();
+                let Some(corner) = rgba.get_pixel_checked(0, 0) else {
+                    log::warn!("The image at {full_path:?} decoded to no pixels");
+                    return None;
+                };
+                let [r, g, b, a] = corner.0;
+                Some(ImageBackdrop {
+                    size: glam::UVec2::new(rgba.width(), rgba.height()),
+                    corner: common::Color::from_rgba8(r, g, b, a),
+                })
+            }
+            Err(error) => {
+                log::warn!("Cannot read the image at {full_path:?}: {error}");
+                None
+            }
+        }
     }
 
     /// Load a texture from raw bytes (file contents)

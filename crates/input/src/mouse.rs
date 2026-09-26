@@ -110,6 +110,11 @@ impl MouseState {
         self.buttons.was_pressed(button)
     }
 
+    /// Buttons that went down this frame, in the order they did.
+    pub fn just_pressed_buttons(&self) -> &[MouseButton] {
+        self.buttons.just_pressed_buttons()
+    }
+
     /// Clear per-frame state (just pressed/released, movement and wheel deltas)
     pub fn clear_frame_state(&mut self) {
         self.buttons.clear_frame_state();

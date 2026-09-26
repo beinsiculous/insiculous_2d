@@ -55,3 +55,30 @@ fn test_update_clears_edges_but_keeps_held_inputs() {
     assert!(input.is_key_pressed(KeyCode::KeyA));
     assert!(input.is_mouse_button_pressed(MouseButton::Left));
 }
+
+#[test]
+fn test_any_just_pressed_is_a_press_of_any_key_mouse_button_or_pad_button_and_nothing_else() {
+    let mut input = InputHandler::new();
+    for (press, what) in [
+        (InputEvent::KeyPressed(KeyCode::Space), "a key"),
+        (InputEvent::MouseButtonPressed(MouseButton::Right), "a mouse button"),
+        (InputEvent::GamepadButtonPressed(0, GamepadButton::Start), "a pad button"),
+    ] {
+        frame(&mut input, &[press]);
+        assert!(input.any_just_pressed(), "{what} going down is a press");
+        input.end_frame();
+        frame(&mut input, &[]);
+        assert!(!input.any_just_pressed(), "{what} still held is not a new press");
+        input.end_frame();
+    }
+
+    for motion in [
+        InputEvent::MouseMoved(40.0, 60.0),
+        InputEvent::MouseWheelScrolled(1.0),
+        InputEvent::GamepadAxisUpdated(0, GamepadAxis::LeftStickY, 1.0),
+    ] {
+        frame(&mut input, &[motion]);
+        assert!(!input.any_just_pressed(), "motion is not a press");
+        input.end_frame();
+    }
+}

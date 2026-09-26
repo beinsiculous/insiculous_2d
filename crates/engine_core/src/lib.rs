@@ -52,6 +52,7 @@ pub mod gamepad_backend;
 pub mod input_settings_io;
 pub mod save_store;
 pub mod scores;
+mod startup_splash;
 pub mod contexts;
 pub mod ui_integration;
 pub mod chaos_mode;
@@ -88,6 +89,7 @@ pub use scene::Scene;
 pub use lifecycle::{Lifecycle, LifecycleManager, LifecycleState};
 pub use assets::{
     sheet_spec::SheetSpec, sprite_sheet::SpriteSheet, AssetConfig, AssetError, AssetManager,
+    ImageBackdrop,
 };
 pub use sheet_file::{sidecar_path_for, SheetFile, SHEET_FILE_VERSION};
 pub use scene_data::{

@@ -23,6 +23,9 @@ pub struct WindowConfig {
     pub height: u32,
     /// Whether the window is resizable
     pub resizable: bool,
+    /// A PNG for the window's icon, already resolved against the asset base.
+    /// Ignored on the web.
+    pub icon_path: Option<std::path::PathBuf>,
 }
 
 impl Default for WindowConfig {
@@ -32,6 +35,7 @@ impl Default for WindowConfig {
             width: 800,
             height: 600,
             resizable: true,
+            icon_path: None,
         }
     }
 }
@@ -66,6 +70,28 @@ impl From<&crate::game_config::GameConfig> for WindowConfig {
             width: config.width,
             height: config.height,
             resizable: config.resizable,
+            icon_path: config.window_icon.as_deref().map(|path| config.resolve_asset_path(path)),
+        }
+    }
+}
+
+/// Decode the PNG at `path` into a window icon, or `None` — logged — when it
+/// cannot be read or decoded; a window without its icon still opens.
+#[cfg(not(target_arch = "wasm32"))]
+fn load_window_icon(path: &std::path::Path) -> Option<winit::window::Icon> {
+    let icon = common::vfs::read(path)
+        .map_err(|error| error.to_string())
+        .and_then(|bytes| image::load_from_memory(&bytes).map_err(|error| error.to_string()))
+        .and_then(|image| {
+            let rgba = image.to_rgba8();
+            let (width, height) = rgba.dimensions();
+            winit::window::Icon::from_rgba(rgba.into_raw(), width, height).map_err(|error| error.to_string())
+        });
+    match icon {
+        Ok(icon) => Some(icon),
+        Err(error) => {
+            log::warn!("The window icon at {path:?} was not used: {error}");
+            None
         }
     }
 }
@@ -138,6 +164,9 @@ impl WindowManager {
                 self.config.height,
             ))
             .with_resizable(self.config.resizable);
+        #[cfg(not(target_arch = "wasm32"))]
+        let window_attributes = window_attributes
+            .with_window_icon(self.config.icon_path.as_deref().and_then(load_window_icon));
 
         match event_loop.create_window(window_attributes) {
             Ok(window) => {
@@ -286,6 +315,27 @@ impl WindowManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_the_window_icon_resolves_against_the_asset_base_and_decodes() {
+        let config = crate::GameConfig::new("Test")
+            .with_asset_base_path("/games/tong/assets")
+            .with_window_icon("sprites/icon.png");
+        assert_eq!(
+            WindowConfig::from(&config).icon_path.as_deref(),
+            Some(std::path::Path::new("/games/tong/assets/sprites/icon.png")),
+            "relative to the asset base, wherever the binary runs from"
+        );
+        assert_eq!(WindowConfig::from(&crate::GameConfig::new("Test")).icon_path, None);
+
+        let directory = tempfile::tempdir().expect("a temp directory");
+        let icon_path = directory.path().join("icon.png");
+        image::RgbaImage::from_pixel(64, 64, image::Rgba([74, 68, 88, 255]))
+            .save(&icon_path)
+            .expect("a PNG is written");
+        assert!(load_window_icon(&icon_path).is_some(), "a PNG becomes an icon");
+        assert!(load_window_icon(&directory.path().join("missing.png")).is_none(), "a missing file is skipped");
+    }
 
     #[test]
     fn physical_size_scales_the_tracked_logical_size_by_the_scale_factor() {

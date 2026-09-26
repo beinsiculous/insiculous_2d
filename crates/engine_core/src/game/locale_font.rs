@@ -42,12 +42,7 @@ impl<G: Game> GameRunner<G> {
             Some(rel) => match self.localization.fonts_by_path.get(&rel).copied() {
                 Some(handle) => Some(handle),
                 None => {
-                    let base = self
-                        .config
-                        .asset_base_path
-                        .clone()
-                        .unwrap_or_else(|| "assets".to_string());
-                    let full = std::path::Path::new(&base).join(&rel);
+                    let full = self.config.resolve_asset_path(&rel);
                     let full = full.to_string_lossy();
                     match self.ui.load_font_file(&full) {
                         Ok(handle) => {

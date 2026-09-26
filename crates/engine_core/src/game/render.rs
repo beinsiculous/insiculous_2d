@@ -83,7 +83,11 @@ impl<G: Game> GameRunner<G> {
                 glyph_textures: self.glyph_textures.textures(),
                 viewport_scissor: &mut viewport_scissor,
             };
-            self.game.render(&mut ctx);
+            // A game that has not run `init` has nothing to draw: the startup
+            // cards hold it until the frame after they end.
+            if self.initialized {
+                self.game.render(&mut ctx);
+            }
         }
         // Editor-style hosts bound the game-world passes to a sub-rect of
         // the window; plain games leave it None (full window). Forwarded

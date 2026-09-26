@@ -351,6 +351,15 @@ impl InputHandler {
         self.gamepads.clear_frame_state();
     }
 
+    /// Whether any key, any mouse button or any button on any pad went down this
+    /// frame — "press anything", as a startup card's skip reads it. Axes, mouse
+    /// motion and the wheel are not presses.
+    pub fn any_just_pressed(&self) -> bool {
+        !self.keyboard.just_pressed_keys().is_empty()
+            || !self.mouse.just_pressed_buttons().is_empty()
+            || self.gamepads.iter().any(|(_, pad)| !pad.just_pressed_buttons().is_empty())
+    }
+
     // ================== Device Accessors ==================
 
     /// Get a reference to the keyboard state
