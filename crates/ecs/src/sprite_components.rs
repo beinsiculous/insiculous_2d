@@ -187,6 +187,36 @@ impl AnimationClip {
         self.looping = looping;
         self
     }
+
+    /// The position in `frame_indices` the clip shows `elapsed_seconds` after it
+    /// started: wrapping when the clip loops, holding the last frame when it does
+    /// not, and time zero for negative time. `None` for a clip that cannot play —
+    /// no frames, or an `fps` that is zero, negative or not finite.
+    ///
+    /// This is [`SpriteAnimation::update`]'s rule stated as a function of time, for
+    /// callers that draw a clip without a component to carry its state — a
+    /// `Tilemap` tile, whose frame is recomputed from a clock every frame.
+    pub fn position_at(&self, elapsed_seconds: f32) -> Option<usize> {
+        let frame_count = self.frame_indices.len();
+        if frame_count == 0 || !self.fps.is_finite() || self.fps <= 0.0 {
+            return None;
+        }
+        // NaN and negative time both clamp to zero; the float-to-int cast
+        // saturates, so an absurd clock still yields a frame.
+        let reached = (elapsed_seconds.max(0.0) * self.fps) as usize;
+        Some(if self.looping {
+            reached % frame_count
+        } else {
+            reached.min(frame_count - 1)
+        })
+    }
+
+    /// The sheet cell the clip shows `elapsed_seconds` after it started, by
+    /// [`position_at`](Self::position_at)'s rule.
+    pub fn cell_at(&self, elapsed_seconds: f32) -> Option<u32> {
+        self.position_at(elapsed_seconds)
+            .and_then(|position| self.frame_indices.get(position).copied())
+    }
 }
 
 /// Named-clip sprite animation over a sheet.
@@ -465,6 +495,49 @@ mod tests {
         SpriteAnimation::new(SheetGrid::new(3, 1))
             .with_clip("hurt", AnimationClip::new(vec![0, 1, 2], 10.0).with_looping(false))
             .with_clip("walk", AnimationClip::new(vec![0, 1, 2], 10.0))
+    }
+
+    #[test]
+    fn test_cell_at_wraps_a_looping_clip_and_holds_a_one_shot() {
+        let looping = AnimationClip::new(vec![4, 5, 6], 10.0);
+        let one_shot = AnimationClip::new(vec![4, 5, 6], 10.0).with_looping(false);
+
+        for (elapsed, looped, held) in [(0.0, 4, 4), (0.15, 5, 5), (0.25, 6, 6), (0.35, 4, 6), (9.05, 4, 6)] {
+            assert_eq!(looping.cell_at(elapsed), Some(looped), "looping at {elapsed}s");
+            assert_eq!(one_shot.cell_at(elapsed), Some(held), "one-shot at {elapsed}s");
+        }
+        assert_eq!(looping.position_at(0.35), Some(0));
+        assert_eq!(one_shot.position_at(0.35), Some(2));
+    }
+
+    #[test]
+    fn test_cell_at_treats_negative_and_nan_time_as_zero() {
+        let clip = AnimationClip::new(vec![7, 8], 4.0);
+        assert_eq!(clip.cell_at(-3.0), Some(7));
+        assert_eq!(clip.cell_at(f32::NAN), Some(7));
+        assert_eq!(clip.cell_at(f32::INFINITY), clip.cell_at(f32::MAX), "saturates, never panics");
+    }
+
+    #[test]
+    fn test_cell_at_is_none_for_a_clip_that_cannot_play() {
+        assert_eq!(AnimationClip::new(Vec::<u32>::new(), 10.0).cell_at(1.0), None);
+        for fps in [0.0, -2.0, f32::NAN, f32::INFINITY] {
+            assert_eq!(AnimationClip::new(vec![1, 2], fps).cell_at(1.0), None, "fps {fps}");
+        }
+    }
+
+    #[test]
+    fn test_cell_at_agrees_with_a_component_played_for_the_same_time() {
+        for (clip, name) in [("hurt", "one-shot"), ("walk", "looping")] {
+            for elapsed in [0.05, 0.15, 0.27, 0.43, 1.18] {
+                let mut animation = animation();
+                assert!(animation.play(clip));
+                animation.update(elapsed);
+                let expected = animation.active_clip().unwrap().frame_indices[animation.current_frame];
+                let by_time = animation.active_clip().unwrap().cell_at(elapsed);
+                assert_eq!(by_time, Some(expected), "{name} at {elapsed}s");
+            }
+        }
     }
 
     #[test]
