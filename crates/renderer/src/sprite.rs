@@ -10,12 +10,14 @@ use crate::sprite_data::SpriteInstance;
 use crate::texture::TextureHandle;
 
 mod batch;
+mod ui_runs;
 #[cfg(test)]
 mod fixtures;
 mod instance_cache;
 mod pipeline;
 
 pub use batch::{SpriteBatch, SpriteBatcher};
+pub use ui_runs::UiRunBuilder;
 pub use instance_cache::InstanceCache;
 pub use pipeline::SpritePipeline;
 

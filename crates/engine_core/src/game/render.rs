@@ -126,20 +126,24 @@ impl<G: Game> GameRunner<G> {
             self.game_batcher.snap_origins(self.render_manager.camera());
         }
 
-        // Sort within each batch, then order the batch refs (game first, then
-        // UI on top; by min depth then texture handle for determinism). Refs
-        // only — batches are never cloned. A persistent batcher can hold
-        // now-empty batches for textures with no sprites this frame; skip them.
+        // Sort within each game batch, then order the batch refs by min depth
+        // then texture handle for determinism. Refs only — game batches are
+        // never cloned. A persistent batcher can hold now-empty batches for
+        // textures with no sprites this frame; skip them.
         self.game_batcher.sort_all_batches();
-        self.ui_batcher.sort_all_batches();
         let mut batch_refs: Vec<&SpriteBatch> =
             self.game_batcher.batches().values().filter(|batch| !batch.instances.is_empty()).collect();
         Self::sort_batch_refs(&mut batch_refs);
         // UI batches stay separate: they draw in their own post-tonemap
-        // pass so authored UI colors display exactly.
-        let mut ui_batch_refs: Vec<&SpriteBatch> =
+        // pass so authored UI colors display exactly. The UI draws strictly
+        // back to front: every glyph is its own texture, and one the HUD and a
+        // panel's text share would otherwise draw at the HUD's depth, before
+        // the panel — punching the panel's fill with its transparent texels.
+        // The UI's instances are copied into runs the builder keeps from frame
+        // to frame (`UiRunBuilder`), so a steady frame allocates nothing there.
+        let ui_batches: Vec<&SpriteBatch> =
             self.ui_batcher.batches().values().filter(|batch| !batch.instances.is_empty()).collect();
-        Self::sort_batch_refs(&mut ui_batch_refs);
+        let ui_batch_refs: Vec<&SpriteBatch> = self.ui_runs.build(&ui_batches).iter().collect();
 
         if let Some(asset_manager) = &self.asset_manager {
             let textures = asset_manager.textures();

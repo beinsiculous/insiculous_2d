@@ -331,6 +331,8 @@ pub(crate) struct GameRunner<G: Game> {
     /// separately so UI never shares a batch with (and paints over) sprites.
     game_batcher: SpriteBatcher,
     ui_batcher: SpriteBatcher,
+    /// Orders the UI batches into back-to-front runs each frame.
+    ui_runs: renderer::sprite::UiRunBuilder,
     /// Localization state: strings table, default font, and cached locale fonts.
     localization: locale_font::Localization,
     /// Button presses from this frame's UI-element pass. The event bus
@@ -447,6 +449,7 @@ impl<G: Game> GameRunner<G> {
             grid_backdrops: crate::grid::GridBackdropSystem::default(),
             game_batcher: SpriteBatcher::new(),
             ui_batcher: SpriteBatcher::new(),
+            ui_runs: renderer::sprite::UiRunBuilder::new(),
             localization,
             pending_ui_events: Vec::new(),
             startup,

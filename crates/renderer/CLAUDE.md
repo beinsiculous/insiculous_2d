@@ -28,6 +28,7 @@ Renderer (WGPU device, queue, surface, RendererConfig{vsync})
 - `scissor.rs` — scissor math: `quantize_rect` (outward rounding), `clamp_scissor` (None = empty/skip draw), and `batch_scissor` (clip ∩ pass default).
 - `device_status.rs` — `DeviceLossLatch` (one-way fail-stop latch polled before queue/surface work) and pure `resize_action` guard.
 - `sprite/batch.rs` — `SpriteBatch` and `SpriteBatcher`: CPU-side grouping keyed by (texture, clip); `set_clip` cursor drives per-batch GPU scissoring.
+- `sprite/ui_runs.rs` — `UiRunBuilder`: the UI pass's draw order. Every UI instance back to front by depth, each joining the latest run of its texture and clip unless a run drawn after it overlaps it on screen; persistent buffers, so a steady frame allocates nothing.
 - `sprite_data.rs` — GPU data structures (`SpriteVertex`, `SpriteInstance` with SDF shape parameters, `DynamicBuffer` with power-of-two growth).
 - `texture.rs` — `TextureManager`, `TextureHandle` (with reserved `WHITE`), and `SamplerConfig`. The GPU is optional inside the manager: `TextureManager::headless()` (behind the `test-support` feature, which `engine_core/test-support` turns on) decodes, validates and issues handles as on a device but uploads nothing, so `get_texture` is `None` while `has_texture`, `texture_handles`, `texture_count` and `remove_texture` answer from the issued handles exactly as on a device (`remove_texture` returns whether the handle was live; the resource is dropped, never handed back); its size limit is wgpu's default 8192, not an adapter's.
 - `texture_filter.rs` — `TextureFilter`: Linear/Nearest mapping to `SamplerConfig`.
@@ -38,6 +39,7 @@ Renderer (WGPU device, queue, surface, RendererConfig{vsync})
 | Pitfall | Guard Test |
 |---|---|
 | Float sorts in `SpriteBatch` must use `total_cmp`, never `partial_cmp().unwrap()` | `src/sprite/batch.rs test_sort_by_depth_orders_ascending_with_nan_last` |
+| A texture batch ordered by its lowest depth draws its front instances before another texture's farther ones, and their transparent texels write depth, so the farther quad fails the test inside them — a glyph shared by the HUD and a panel's text punched the panel. The UI pass draws through `UiRunBuilder` for that reason; the game pass still batches by texture (games keep one depth per sheet) | `src/sprite/ui_runs.rs test_ui_runs_draw_a_glyph_over_the_panel_it_sits_on_after_the_panel` |
 | `DeviceLossLatch` is one-way: marking loss is idempotent and never resets | `src/device_status.rs test_device_loss_latch_is_one_way_and_shared_by_clones` |
 | Instance cache invalidation: identical bytes with different batch boundaries must still re-upload | `src/sprite/instance_cache.rs test_same_bytes_with_different_batch_boundaries_still_upload` |
 | Scissor clamping: overhang on resize race trims to live surface to satisfy `scissor ⊆ attachment` | `src/scissor.rs test_clamp_trims_to_the_live_surface_and_empties_to_none` |
@@ -62,8 +64,8 @@ Renderer (WGPU device, queue, surface, RendererConfig{vsync})
 - The `test-support` feature is for test builds only; a game never enables it. A shipped build carries the `Option` around the GPU and no way to construct the `None`.
 
 ## Known Tech Debt
-Tracked on the Studio Board: cross-batch transparency vs depth writes ARCH-006 — still OPEN, will be
-closed by E7 alpha-cutoff #10 once it lands. DRY-006 (shared camera binding) closed via `CameraBinding`.
+Tracked on the Studio Board: cross-batch transparency vs depth writes ARCH-006 — still OPEN for the game
+pass, will be closed by E7 alpha-cutoff #10 once it lands; the UI pass is ordered by `UiRunBuilder` instead. DRY-006 (shared camera binding) closed via `CameraBinding`.
 Deferred **by design** (not debt): no mipmap generation (the old flag
 allocated a mip chain and never filled it — re-add only with real mip
 generation); `RendererConfig` stays vsync-only until a game needs more
