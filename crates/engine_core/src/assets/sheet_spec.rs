@@ -53,6 +53,14 @@ impl SheetSpec {
         let box_centre = (self.bounds.0 + self.bounds.1) * 0.5;
         Vec2::new(self.cell.x * 0.5 - box_centre.x, box_centre.y - self.cell.y * 0.5)
     }
+
+    /// Where the entity must stand for the cell to be centred on `cell_centre` — the
+    /// inverse of [`sprite_offset`](Self::sprite_offset). A game that places a cell
+    /// centre on a whole pixel keeps the art crisp under pixel snapping, while the
+    /// body's centre, and so its collider's, may land on a half pixel.
+    pub fn position_for_cell(&self, cell_centre: Vec2) -> Vec2 {
+        cell_centre - self.sprite_offset()
+    }
 }
 
 #[cfg(test)]
@@ -90,6 +98,17 @@ mod tests {
         assert!(!past_the_cell.is_within_cell());
         let negative = SheetSpec { bounds: (Vec2::new(-1.0, 9.0), Vec2::new(43.0, 87.0)), ..CENTRED };
         assert!(!negative.is_within_cell());
+    }
+
+    #[test]
+    fn test_position_for_cell_puts_the_cell_centre_back_where_it_was_asked_for() {
+        // The low body draws its cell above the entity, so the entity stands below the
+        // cell centre it was placed for; drawing it then lands the cell exactly there.
+        let cell_centre = Vec2::new(100.0, -40.0);
+        let position = LOW_BODY.position_for_cell(cell_centre);
+        assert_eq!(position + LOW_BODY.sprite_offset(), cell_centre);
+        assert_eq!(position, Vec2::new(100.5, -50.5));
+        assert_eq!(CENTRED.position_for_cell(cell_centre), cell_centre, "a centred box stands on its cell");
     }
 
     #[test]

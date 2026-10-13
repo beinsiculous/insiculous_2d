@@ -3,6 +3,17 @@
 use glam::Vec4;
 use serde::{Deserialize, Serialize};
 
+/// An opaque colour from its `0xRRGGBB` hex, as a tint vector — the form a style
+/// guide records a ramp in, so a game's constant reads the same as the guide's row.
+pub const fn rgb(hex: u32) -> Vec4 {
+    Vec4::new(
+        ((hex >> 16) & 0xFF) as f32 / 255.0,
+        ((hex >> 8) & 0xFF) as f32 / 255.0,
+        (hex & 0xFF) as f32 / 255.0,
+        1.0,
+    )
+}
+
 /// RGBA color representation.
 ///
 /// All components are in the range 0.0 to 1.0.
@@ -193,6 +204,13 @@ impl From<[f32; 4]> for Color {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn test_rgb_reads_a_hex_ramp_entry_as_an_opaque_tint() {
+        assert_eq!(rgb(0xFF0000), Vec4::new(1.0, 0.0, 0.0, 1.0));
+        let butter = rgb(0xE8B23C);
+        assert_eq!(Color::from(butter).to_rgba8(), [0xE8, 0xB2, 0x3C, 0xFF]);
+    }
+
     use super::*;
 
     #[test]

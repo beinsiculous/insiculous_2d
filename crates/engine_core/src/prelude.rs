@@ -46,7 +46,7 @@ pub use crate::{
 
 // Re-export common types (Color, Transform2D, Camera2D, Rect)
 pub use common::{Color, Transform2D, Camera, Rect};
-pub use common::{hash_f32, hash_u32};
+pub use common::{hash_f32, hash_u32, rgb};
 
 // Re-export commonly used types from dependencies
 pub use glam::{Vec2, Vec4};
@@ -61,7 +61,9 @@ pub use ecs::sprite_components::{
 pub use ecs::Tilemap;
 // Animation state as data and the scene-authored spring grid: a game declares both without
 // depending on `ecs`, the way it does `Lifetime` and `SpriteAnimation`.
-pub use ecs::clip_state_machine::{ClipState, ClipStateMachine, ClipStateMachineSystem, OnFinished};
+pub use ecs::clip_state_machine::{
+    set_clip_state, ClipState, ClipStateMachine, ClipStateMachineSystem, OnFinished,
+};
 pub use ecs::grid_backdrop::{GridBackdrop, GridDrawOrder, GridTopology};
 pub use ecs::audio_components::{AudioSource, AudioListener, PlaySoundEffect};
 pub use ecs::hierarchy_system::TransformHierarchySystem;
@@ -85,7 +87,7 @@ pub use renderer::line_pipeline::LineVertex;
 pub use audio::{AudioManager, SoundHandle, SoundSettings};
 
 // Re-export UI types (UIRect and UIColor are aliases to common types for backwards compatibility)
-pub use ui::{UIContext, Theme as UITheme, WidgetId};
+pub use ui::{TextAlign, UIContext, Theme as UITheme, WidgetId};
 pub use common::Rect as UIRect;
 pub use common::Color as UIColor;
 

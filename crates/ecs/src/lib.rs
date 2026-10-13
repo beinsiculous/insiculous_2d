@@ -65,7 +65,7 @@ pub use entity::*;
 pub use entity_builder::*;
 pub use event::EventBus;
 pub use clip_state_machine::{
-    ClipState, ClipStateMachine, ClipStateMachineSystem, OnFinished,
+    set_clip_state, ClipState, ClipStateMachine, ClipStateMachineSystem, OnFinished,
 };
 pub use grid_backdrop::{GridBackdrop, GridDrawOrder, GridTopology};
 pub use hierarchy::*;

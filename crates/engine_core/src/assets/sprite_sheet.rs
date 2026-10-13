@@ -45,6 +45,19 @@ pub struct SpriteSheet {
 }
 
 impl SpriteSheet {
+    /// A sheet with no texture, one cell and no clips: what a game holds in a field
+    /// until its `init` loads the real one. Nothing drawn from it can exist before
+    /// then — the engine builds a game with `Default` and runs `init` on the first
+    /// frame.
+    pub fn placeholder() -> Self {
+        Self {
+            texture: TextureHandle { id: 0 },
+            grid: common::SheetGrid::new(1, 1),
+            clips: Vec::new(),
+            path: String::new(),
+        }
+    }
+
     /// A [`SpriteAnimation`] carrying this sheet's grid, clips, and path.
     /// Nothing is playing yet — call `play("walk")` or set `autoplay` in the
     /// scene file.

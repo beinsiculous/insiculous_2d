@@ -389,6 +389,12 @@ let sprite = sheet.sprite().with_offset(MEATBALL.sprite_offset());
 let transform = Transform2D::from_parts(position, 0.0, MEATBALL.scale());
 ```
 
+`spec.position_for_cell(cell_centre)` is the inverse: where the entity stands for its
+cell to be centred on `cell_centre`. A pixel-snapped game lays its cells on whole pixels
+this way and lets the body's centre, and its collider's, land on a half pixel. A game
+holds `SpriteSheet::placeholder()` in a sheet field until its `init` loads the real one,
+and writes a style guide's `0xRRGGBB` ramp entry as a tint with `rgb(hex)`.
+
 **State machines and lifetimes.** A game (or a scene, or a script) declares
 `ClipStateMachine` instead of polling clips by hand: a table of
 `state → (clip, OnFinished)`, where finishing that clip `Stay`s,
@@ -399,6 +405,10 @@ has moved on plays the new state's clip in the same frame. `transition_to` a
 state the machine is already in is a no-op, so a per-frame re-assert never
 restarts a clip. Guard movement with `ctx.scripts`/scripts or with the
 machine's `machine().elapsed()`; the machine itself has no guard vocabulary.
+`ClipStateMachine::single(clip)` is the one-state machine that plays a clip and
+holds it, `ClipStateMachine::one_shot(clip)` the detached effect that plays once
+and despawns, and `set_clip_state(world, entity, state)` is game code's
+transition — a no-op on an entity without a machine.
 
 `LifetimeSystem` runs in the same tail on the same time-scaled delta, so an
 entity carrying `Lifetime` expires whether or not the game owns a system —

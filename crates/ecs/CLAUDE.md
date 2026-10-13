@@ -39,7 +39,7 @@ components like any other type, but the physics crate owns their definitions.
 - `tilemap.rs` — row-major tile grid from tileset (top-left-tile anchor, tile 0 = empty, default depth -1.0).
 - `component_registry/` — dynamic component tier: name-keyed `register::<T>()` fn-pointer table; `register_transient` for editable-never-persisted components.
 - `sprite_system.rs` — `SpriteAnimationSystem`: advances clips and writes UV into `Sprite.tex_region` (`sync_sprite_region`, which the clip machine also calls on selection), scheduled with time-scaled delta so pausing freezes animation.
-- `clip_state_machine.rs` — `ClipStateMachine` + `ClipStateMachineSystem`: a state names the clip it plays and what finishing it does (`Stay`/`Next`/`Despawn`); a scene component, string-keyed, run by engine_core's frame tail after the animation and lifetime passes.
+- `clip_state_machine.rs` — `ClipStateMachine` + `ClipStateMachineSystem`: a state names the clip it plays and what finishing it does (`Stay`/`Next`/`Despawn`); a scene component, string-keyed, run by engine_core's frame tail after the animation and lifetime passes. `single`/`one_shot` build the two common one-state machines and `set_clip_state` is game code's transition; its unit tests live in `clip_state_machine/tests.rs`, the world-driven ones in `tests/clip_state_machine.rs`.
 - `lifetime.rs` — `Lifetime` + `LifetimeSystem`: seconds-to-live and the pass that despawns at zero; engine_core's frame tail runs it for every game.
 
 ## Critical Patterns

@@ -18,7 +18,7 @@ pub mod prelude {
     //!
     //! Import with `use common::prelude::*;`
 
-    pub use crate::color::Color;
+    pub use crate::color::{rgb, Color};
     pub use crate::transform::Transform2D;
     pub use crate::camera::Camera;
     pub use crate::rect::Rect;
@@ -27,7 +27,7 @@ pub mod prelude {
 }
 
 // Re-export at crate root for convenience
-pub use color::Color;
+pub use color::{rgb, Color};
 pub use hash::{hash_f32, hash_u32};
 pub use transform::Transform2D;
 pub use camera::Camera;
