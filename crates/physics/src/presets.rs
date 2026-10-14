@@ -49,10 +49,13 @@ impl PhysicsConfig {
             .with_iterations(8, 4)
     }
 
-    /// Space physics (no gravity, low iterations)
+    /// Space physics (no gravity, low iterations, and nothing ever comes to rest:
+    /// a body drifting slower than the sleep threshold would otherwise stop dead)
     pub fn space() -> Self {
-        Self::new(Vec2::ZERO)
-            .with_iterations(4, 2)
+        Self {
+            allow_sleeping: false,
+            ..Self::new(Vec2::ZERO).with_iterations(4, 2)
+        }
     }
 }
 
@@ -82,6 +85,7 @@ mod tests {
         for (config, gravity, name) in configs {
             assert_eq!(config.gravity, gravity, "{name} gravity");
             assert_eq!(config.pixels_per_meter, 100.0, "{name} keeps the 100 px/m scale");
+            assert_eq!(config.allow_sleeping, name != "space", "{name}: only space keeps every body awake");
         }
     }
 }

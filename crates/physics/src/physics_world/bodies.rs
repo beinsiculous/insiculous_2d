@@ -28,7 +28,8 @@ impl PhysicsWorld {
                     .gravity_scale(body.gravity_scale)
                     .linear_damping(body.linear_damping)
                     .angular_damping(body.angular_damping)
-                    .ccd_enabled(body.ccd_enabled);
+                    .ccd_enabled(body.ccd_enabled)
+                    .can_sleep(self.config.allow_sleeping);
                 if !body.can_rotate {
                     builder = builder.lock_rotations();
                 }

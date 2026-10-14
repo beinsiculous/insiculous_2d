@@ -28,6 +28,29 @@ fn no_gravity_world() -> PhysicsWorld {
     PhysicsWorld::new(PhysicsConfig::new(Vec2::ZERO))
 }
 
+// === Sleeping ===
+
+/// A body drifting at 35 px/s with a gentle spin, under its config, after three seconds.
+fn slow_drifter_velocity(config: PhysicsConfig) -> Vec2 {
+    let mut world = PhysicsWorld::new(config);
+    let drifter = add_body(&mut world, Vec2::ZERO, floating_body(), Collider::circle_collider(30.0));
+    world.set_velocity(drifter, Vec2::new(35.0, 0.0), 0.3);
+    for _ in 0..180 {
+        world.step(DT);
+    }
+    world.get_body_velocity(drifter).expect("the drifter has a body").0
+}
+
+#[test]
+fn test_a_slow_drifter_sleeps_by_default_and_never_in_space() {
+    assert_eq!(
+        slow_drifter_velocity(PhysicsConfig::new(Vec2::ZERO)), Vec2::ZERO,
+        "below the threshold a body falls asleep and stops dead",
+    );
+    let drift = slow_drifter_velocity(PhysicsConfig::space());
+    assert!((drift - Vec2::new(35.0, 0.0)).length() < 0.01, "in space it drifts on, got {drift:?}");
+}
+
 // === Body lifecycle ===
 
 #[test]

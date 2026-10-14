@@ -42,6 +42,17 @@ pub struct PhysicsConfig {
     /// Pixels per meter scale factor (must be finite and > 0; invalid values
     /// fall back to [`DEFAULT_PIXELS_PER_METER`])
     pub pixels_per_meter: f32,
+    /// Whether a dynamic body that slows below rapier's threshold (0.4 m/s, 40 px/s
+    /// at the default scale) may fall asleep. A sleeping body stops dead and keeps
+    /// still until a contact wakes it — right for things that come to rest, wrong
+    /// where nothing should: a slow drifter in zero gravity freezes mid-flight, and
+    /// a sensor passing through it never wakes it.
+    #[serde(default = "sleeping_allowed")]
+    pub allow_sleeping: bool,
+}
+
+fn sleeping_allowed() -> bool {
+    true
 }
 
 impl Default for PhysicsConfig {
@@ -51,6 +62,7 @@ impl Default for PhysicsConfig {
             solver_iterations: 16,   // Increased for better collision resolution
             friction_iterations: 8,  // Increased for better stacking stability
             pixels_per_meter: DEFAULT_PIXELS_PER_METER,
+            allow_sleeping: true,
         }
     }
 }
