@@ -48,6 +48,7 @@ Cross-cutting glue biases toward `engine_core`: `ui` defines `DrawCommand` (rend
 - `scripting/` — game scripting subsystem: `ScriptRegistry`, `ScriptRunner`, Rhai backend, and built-in behaviors.
 - `pause.rs` — shared `PauseMenu`; headless-testable via `&InputSettings + &InputHandler + window_size` (mouse reads live inside paused branch only).
 - `menu_panel.rs` — `MenuPanel` chrome; resting cursor never fights keyboard nav, click selects and confirms.
+- `title_art.rs` — a title screen's art over its menu: `TitleArt::load` measures the art's last content row, `title_layout` places art and panel (or falls back to the centred panel), `draw_title_art` fills and draws; one layout serves drawing and the mouse.
 - `menu_input.rs` — shared menu-screen input handling (keyboard, arrows, and gamepad navigation with wraparound).
 - `spawn_helpers.rs` — shared entity recipes; `RENDER_UNIT = 80.0` pixels per world unit lives at crate root.
 - `pickups.rs` — generic pickup/collectible tracking (started-collision events vs collector set once per pickup).

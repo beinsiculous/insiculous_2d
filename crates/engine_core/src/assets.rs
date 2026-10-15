@@ -88,11 +88,13 @@ pub struct AssetConfig {
 }
 
 /// What [`AssetManager::image_backdrop`] reads from an image: its size in
-/// pixels and its top-left pixel's colour.
+/// pixels, its top-left pixel's colour, and the last row holding a pixel that
+/// differs from that corner — `None` when every pixel matches it.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ImageBackdrop {
     pub size: glam::UVec2,
     pub corner: common::Color,
+    pub content_bottom: Option<u32>,
 }
 
 impl Default for AssetConfig {
@@ -247,8 +249,8 @@ impl AssetManager {
         Ok(handle)
     }
 
-    /// An image's pixel size and its top-left pixel's colour, read from the file
-    /// `path` names — resolved against the asset base like
+    /// An image's pixel size, its top-left pixel's colour and the last row of
+    /// anything but that colour, read from the file `path` names — resolved against the asset base like
     /// [`load_texture`](Self::load_texture). `None`, with the reason logged, when
     /// the file cannot be read or decoded.
     ///
@@ -272,10 +274,15 @@ impl AssetManager {
                     log::warn!("The image at {full_path:?} decoded to no pixels");
                     return None;
                 };
+                let corner = *corner;
+                let content_bottom = (0..rgba.height())
+                    .rev()
+                    .find(|&row| (0..rgba.width()).any(|column| *rgba.get_pixel(column, row) != corner));
                 let [r, g, b, a] = corner.0;
                 Some(ImageBackdrop {
                     size: glam::UVec2::new(rgba.width(), rgba.height()),
                     corner: common::Color::from_rgba8(r, g, b, a),
+                    content_bottom,
                 })
             }
             Err(error) => {

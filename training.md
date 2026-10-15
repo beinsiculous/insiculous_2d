@@ -21,6 +21,7 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
   - `menu_input.rs` - `MenuInput` shared menu navigation (read keys once, wraparound `navigate`; scans every connected gamepad)
   - `pause.rs` - `PauseMenu`/`PauseAction` shared pause mechanism (see Pause Pattern)
   - `menu_panel.rs` - `MenuPanel`/`MenuStyle` shared menu window chrome (see Menu Chrome Pattern)
+  - `title_art.rs` - `TitleArt`/`title_layout`/`draw_title_art`: a title composition above the title menu, one layout for drawing and the mouse
   - `spawn_helpers.rs` - Shared entity recipes (`spawn_background`); crate root exports `RENDER_UNIT = 80.0` (pixels per world unit)
   - `pickups.rs` - Generic pickup tracking (`Pickups<K>`, `EffectTimer`)
   - `achievements/` - Achievement registry, atomic JSON persistence (temp file + rename), toasts, and the site's manifest export
@@ -737,8 +738,15 @@ What the engine guarantees, so a game needs nothing else:
   logged and skipped.
 
 `AssetManager::image_backdrop(path)` is the decode behind the backdrop — a
-file's size and top-left colour, resolved like any texture path — and is how a
-title screen fills the window around its art.
+file's size, its top-left colour and the last row holding anything else,
+resolved like any texture path. A title screen's art goes through
+`TitleArt::load`, which measures where the art's content ends; `title_layout`
+puts the art at the window's top and the menu panel 18 px under that row —
+or the plain centred panel when the window is too small, the art did not load,
+or nothing is drawn on it — and `draw_title_art` fills the window with the
+art's backdrop and draws it, before the panel. The game reads the same layout's
+`panel` for its mouse hit-test, and gives `TitleMenu.rows` from its own title
+list, never a literal.
 
 **Files:** `engine_core/startup_splash.rs` (the cards and the lifecycle),
 `engine_core/game/startup_frame.rs` (the runner's startup frame),

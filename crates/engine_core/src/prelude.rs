@@ -34,6 +34,7 @@ pub use crate::{
     // Shared arcade scaffolding
     menu_input::MenuInput,
     menu_panel::{MenuMouse, MenuPanel, MenuStyle},
+    title_art::{draw_title_art, title_layout, TitleArt, TitleLayout, TitleMenu},
     pause::{PauseAction, PauseMenu, PauseMenuLabels},
     spawn_helpers::spawn_background,
     RENDER_UNIT,

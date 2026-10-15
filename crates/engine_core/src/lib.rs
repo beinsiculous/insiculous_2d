@@ -61,6 +61,7 @@ pub mod localization;
 pub mod ui_element_system;
 pub mod menu_input;
 pub mod menu_panel;
+pub mod title_art;
 pub mod pause;
 pub mod spawn_helpers;
 #[cfg(feature = "physics")]
@@ -118,6 +119,7 @@ pub use game_config::GameConfig;
 pub use localization::{LocaleFile, Strings, FALLBACK_LOCALE};
 pub use ui_element_system::{draw_ui_elements, UiButtonPressed, UiElementsHidden};
 pub use menu_panel::{MenuMouse, MenuPanel, MenuStyle};
+pub use title_art::{draw_title_art, title_layout, TitleArt, TitleLayout, TitleMenu};
 pub use pause::{PauseAction, PauseMenu, PauseMenuLabels};
 pub use input_settings_io::{load_or_create as load_input_settings, save as save_input_settings, InputSettingsError};
 pub use chaos_mode::ChaosMode;
