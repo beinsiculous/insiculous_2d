@@ -26,11 +26,11 @@
 //! ```
 
 use glam::Vec2;
-use winit::{event_loop::EventLoop, keyboard::KeyCode};
+use winit::event_loop::EventLoop;
 
 use audio::AudioManager;
 use input::InputHandler;
-use renderer::{sprite::SpriteBatcher, texture::TextureHandle};
+use renderer::sprite::SpriteBatcher;
 
 mod app_handler;
 // `pub(crate)` for `step_world_systems`: the scripting tests drive the tail's
@@ -38,119 +38,27 @@ mod app_handler;
 pub(crate) mod frame_tail;
 #[cfg(any(test, feature = "test-support"))]
 mod headless;
+mod game_trait;
 mod locale_font;
 mod render;
+mod save_documents;
 mod startup_frame;
 #[cfg(target_arch = "wasm32")]
 mod web;
 
+pub use game_trait::Game;
+
 use crate::GameLoopManager;
 use crate::game_config::GameConfig;
-use crate::ui_integration::render_ui_commands;
 use ui::{DrawCommand, UIContext};
-use crate::contexts::{GameContext, RenderContext};
 use crate::assets::{AssetConfig, AssetManager};
 use crate::achievements::AchievementManager;
-use crate::localization::Strings;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::achievements::manifest_export_path;
 use crate::glyph_texture_cache::GlyphTextureCache;
 use crate::render_manager::RenderManager;
 use crate::window_manager::{WindowConfig, WindowManager};
 use crate::Scene;
-
-use ecs::sprite_components::{Sprite as EcsSprite, Transform2D};
-
-/// The main game trait. Implement this to create your game.
-///
-/// Only `update` is required - all other methods have default implementations.
-pub trait Game: Sized + 'static {
-    /// Register the game's achievements. Called once by `run_game` before the window opens, so the
-    /// registry exists ahead of `init` and can be exported with no GPU (`--achievements-manifest`).
-    /// `strings` carries the configured locale; a game whose names are localized re-registers from
-    /// its own code on a locale switch, as before.
-    fn register_achievements(&self, _achievements: &mut AchievementManager, _strings: &Strings) {}
-
-    /// Called once when the game starts, after the window and renderer are ready
-    /// and before the first `update` or a key handler reaches the game (a resize
-    /// may arrive earlier: `on_resize` must not assume `init` has run). Use this
-    /// to set up your initial game state, create entities, load assets, etc. Set
-    /// the default font here: the font in place when `init` returns is the one a
-    /// locale switch restores to. `ctx.delta_time` is always zero here — no frame
-    /// has elapsed.
-    fn init(&mut self, _ctx: &mut GameContext) {}
-
-    /// Called every frame. Update your game logic here.
-    /// This is the only required method.
-    fn update(&mut self, ctx: &mut GameContext);
-
-    /// Called every frame to render sprites. Add sprites to `ctx.sprites`.
-    /// Default implementation extracts sprites from ECS entities with Transform2D and Sprite components,
-    /// then renders UI draw commands on top.
-    fn render(&mut self, ctx: &mut RenderContext) {
-        // Tilemaps first, so equal-depth entity sprites draw over tiles
-        crate::tilemap_render::append_tilemap_sprites(ctx.world, ctx.sprites);
-
-        // Default: extract sprites from ECS
-        for entity_id in ctx.world.entities() {
-            let sprite = ctx.world.get::<EcsSprite>(entity_id);
-
-            if let Some(ecs_sprite) = sprite {
-                if !ecs_sprite.visible { continue; }
-                // Use GlobalTransform2D if available (for hierarchical entities),
-                // otherwise fall back to local Transform2D
-                let (position, rotation, scale) = if let Some(global) = ctx.world.get::<ecs::hierarchy::GlobalTransform2D>(entity_id) {
-                    (global.position, global.rotation, global.scale)
-                } else if let Some(transform) = ctx.world.get::<Transform2D>(entity_id) {
-                    (transform.position, transform.rotation, transform.scale)
-                } else {
-                    continue; // No transform, skip this entity
-                };
-
-                // Use the texture handle from the ECS sprite component
-                let texture = TextureHandle { id: ecs_sprite.texture_handle };
-                // The region carries sheet-cell UVs for animated and
-                // sub-image sprites; the default [0, 0, 1, 1] is the full
-                // texture, so unanimated content renders exactly as before.
-                let region = ecs_sprite.tex_region;
-                let renderer_sprite = renderer::Sprite::new(texture)
-                    .with_position(render::sprite_draw_position(position, rotation, ecs_sprite.offset))
-                    .with_rotation(rotation)
-                    .with_scale(scale * ecs_sprite.scale * crate::RENDER_UNIT)
-                    .with_tex_region(region[0], region[1], region[2], region[3])
-                    .with_color(ecs_sprite.color)
-                    .with_depth(ecs_sprite.depth)
-                    .with_emissive(ecs_sprite.emissive);
-
-                ctx.sprites.add_sprite(&renderer_sprite);
-            }
-        }
-
-        // Render UI draw commands on top
-        render_ui_commands(ctx.sprites, ctx.ui_commands, &*ctx.camera, ctx.glyph_textures);
-    }
-
-    /// Called by the editor when play mode is stopped and the world has been
-    /// restored to its pre-play state. Override this to reset any non-ECS state
-    /// (e.g., physics world) that was modified during play.
-    fn on_play_stopped(&mut self, _ctx: &mut GameContext) {}
-
-    /// Called when a key is pressed. Override for custom key handling.
-    fn on_key_pressed(&mut self, _key: KeyCode, _ctx: &mut GameContext) {}
-
-    /// Called when a key is released. Override for custom key handling.
-    fn on_key_released(&mut self, _key: KeyCode, _ctx: &mut GameContext) {}
-
-    /// Called when the window is resized.
-    fn on_resize(&mut self, _width: u32, _height: u32) {}
-
-    /// Called when the game is about to exit. Clean up resources here.
-    fn on_exit(&mut self) {}
-
-    /// Register custom script behaviors with the script runner's registry.
-    #[cfg(feature = "physics")]
-    fn register_scripts(&mut self, _registry: &mut crate::scripting::ScriptRegistry) {}
-}
 
 /// Run a game with the given configuration.
 ///
@@ -189,6 +97,9 @@ pub fn run_game<G: Game>(game: G, config: GameConfig) -> Result<(), crate::Engin
             config.achievement_save_path = None;
             config.score_save_path = None;
             config.input_settings_path = None;
+            config.former_achievement_save_path = None;
+            config.former_score_save_path = None;
+            config.former_input_settings_path = None;
             config.locale = crate::localization::FALLBACK_LOCALE.to_string();
         }
         (config, export)
@@ -386,23 +297,11 @@ impl<G: Game> GameRunner<G> {
         // whose playback calls are no-ops, so init()/update() always run.
         let audio_manager = AudioManager::new_or_disabled();
 
-        let achievements = match &config.achievement_save_path {
-            Some(path) => AchievementManager::with_save_path(path),
-            None => AchievementManager::in_memory(),
-        };
-
-        let scores = match &config.score_save_path {
-            Some(path) => crate::scores::Scores::with_save_path(path),
-            None => crate::scores::Scores::in_memory(),
-        };
+        let save_documents::SaveDocuments { achievements, scores, player_input } =
+            save_documents::open_save_documents(&config);
 
         let mut game_loop_manager = GameLoopManager::new();
         game_loop_manager.set_target_fps(config.target_fps);
-
-        let player_input = match &config.input_settings_path {
-            Some(path) => crate::input_settings_io::load_or_create(std::path::Path::new(path)),
-            None => input::InputSettings::default_two_player(),
-        };
 
         // Locale tables live under the asset base (default `assets/locales`).
         let locales_dir = std::path::Path::new(config.asset_base()).join(&config.locales_dir);

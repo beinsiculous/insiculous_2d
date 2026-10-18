@@ -4,7 +4,7 @@
 //! mode string (e.g. `"single"` / `"coop"`), persisted through a
 //! [`crate::save_store::JsonSaveSlot`] as pretty JSON — a file like
 //! `saves/pong_scores.json` natively, a localStorage key like
-//! `beinsiculous.games.pong.scores` on the web (contract: `docs/WEB_SAVES.md`).
+//! `beinsiculous.games.tong.scores` on the web (contract: `docs/WEB_SAVES.md`).
 //! Wired to `GameConfig::with_score_save_path` and exposed to games as
 //! `ctx.scores`.
 //!
@@ -83,9 +83,19 @@ impl Scores {
     /// existing entries. A missing slot is "no scores yet"; a corrupt one
     /// warns and starts fresh (it is replaced on the next qualifying submit).
     pub fn with_save_path(path: impl Into<PathBuf>) -> Self {
-        let mut scores = Self {
-            slot: JsonSaveSlot::with_path(path),
-        };
+        Self::with_slot(JsonSaveSlot::with_path(path))
+    }
+
+    /// Create score lists that persist to `path` and also load the entries a
+    /// renamed game saved at `former_path`, deduplicated, ranked and capped per
+    /// mode like any merge. The former slot is never written
+    /// ([`JsonSaveSlot::with_path_and_former`]).
+    pub fn with_save_path_and_former(path: impl Into<PathBuf>, former_path: impl Into<PathBuf>) -> Self {
+        Self::with_slot(JsonSaveSlot::with_path_and_former(path, former_path))
+    }
+
+    fn with_slot(slot: JsonSaveSlot<ScoresFile>) -> Self {
+        let mut scores = Self { slot };
         for list in scores.slot.data_mut().modes.values_mut() {
             sort_and_truncate(list);
         }
@@ -135,6 +145,8 @@ impl Scores {
     }
 
     /// Wipe all score state (and persist the empty state if a slot is set).
+    /// A renamed game's former slot is not cleared — the engine never writes
+    /// one — so a reload or the next boot folds its records back in.
     pub fn reset(&mut self) {
         self.slot.data_mut().modes.clear();
         if let Err(e) = self.slot.save_without_merge() {

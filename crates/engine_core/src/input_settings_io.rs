@@ -98,20 +98,42 @@ impl From<SettingsFile> for InputSettings {
 /// - File unreadable, corrupt, or wrong version → warn + defaults; the file
 ///   is left untouched.
 pub fn load_or_create(path: &Path) -> InputSettings {
+    load_or_create_from(path, None)
+}
+
+/// [`load_or_create`] for a renamed game, whose players' bindings sit at
+/// `former_path`, the slot it saved to before. The former slot is consulted
+/// only when `path` is missing: its settings, if they parse at the current
+/// version, are written to `path` and returned in place of the defaults, so the
+/// two slots stop being two sources of truth at the first boot. A former slot
+/// that is missing, corrupt, at another version or unreadable gives the
+/// defaults, written to `path` as for a plain missing file — a read fault at
+/// that one boot therefore costs the former bindings, since the primary now
+/// exists and the former is never looked at again; the engine's exit save
+/// would write the same defaults anyway, bindings being last-writer-wins by
+/// design. Every other case is [`load_or_create`]'s, and the former slot is
+/// never written.
+pub fn load_or_create_with_former(path: &Path, former_path: &Path) -> InputSettings {
+    load_or_create_from(path, Some(former_path))
+}
+
+fn load_or_create_from(path: &Path, former_path: Option<&Path>) -> InputSettings {
     // Absence is queried through the save_store seam, not Path::exists() — the
     // latter is always false on wasm, where the slot is a localStorage key.
     let contents = match crate::save_store::read(path) {
         Ok(Some(contents)) => contents,
         Ok(None) => {
-            let defaults = InputSettings::default_two_player();
-            if let Err(e) = save(path, &defaults) {
+            let settings = former_path
+                .and_then(read_former)
+                .unwrap_or_else(InputSettings::default_two_player);
+            if let Err(e) = save(path, &settings) {
                 log::warn!(
-                    "Could not write default input settings to {}: {}",
+                    "Could not write input settings to {}: {}",
                     path.display(),
                     e
                 );
             }
-            return defaults;
+            return settings;
         }
         Err(e) => {
             log::warn!(
@@ -122,9 +144,30 @@ pub fn load_or_create(path: &Path) -> InputSettings {
             return InputSettings::default_two_player();
         }
     };
+    parse(path, &contents).unwrap_or_else(InputSettings::default_two_player)
+}
 
-    match serde_json::from_str::<SettingsFile>(&contents) {
-        Ok(file) if file.version == SETTINGS_VERSION => file.into(),
+/// The settings in a former slot, or `None` — logged — when it is missing,
+/// unreadable, corrupt or at another version.
+fn read_former(former_path: &Path) -> Option<InputSettings> {
+    match crate::save_store::read(former_path) {
+        Ok(Some(contents)) => parse(former_path, &contents),
+        Ok(None) => None,
+        Err(e) => {
+            log::warn!(
+                "Could not read former input settings {}: {} — using defaults",
+                former_path.display(),
+                e
+            );
+            None
+        }
+    }
+}
+
+/// `contents` as settings at the current version, or `None` with a warning.
+fn parse(path: &Path, contents: &str) -> Option<InputSettings> {
+    match serde_json::from_str::<SettingsFile>(contents) {
+        Ok(file) if file.version == SETTINGS_VERSION => Some(file.into()),
         Ok(file) => {
             log::warn!(
                 "Input settings {} has version {} (expected {}) — using defaults",
@@ -132,7 +175,7 @@ pub fn load_or_create(path: &Path) -> InputSettings {
                 file.version,
                 SETTINGS_VERSION
             );
-            InputSettings::default_two_player()
+            None
         }
         Err(e) => {
             log::warn!(
@@ -140,7 +183,7 @@ pub fn load_or_create(path: &Path) -> InputSettings {
                 path.display(),
                 e
             );
-            InputSettings::default_two_player()
+            None
         }
     }
 }
@@ -221,6 +264,96 @@ mod tests {
             assert_eq!(settings.player_count(), 2, "{label}");
             assert_eq!(settings.pad_of(PlayerId::P1), Some(0), "{label}");
         }
+        Ok(())
+    }
+
+    fn settings_with_player_two_on_pad(pad: u32) -> InputSettings {
+        let mut settings = InputSettings::default_two_player();
+        settings.assign_pad(PlayerId::P2, Some(pad));
+        settings
+    }
+
+    #[test]
+    fn a_present_primary_wins_over_the_former() -> Result<(), InputSettingsError> {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("new.json");
+        let former_path = dir.path().join("old.json");
+        save(&path, &settings_with_player_two_on_pad(4))?;
+        save(&former_path, &settings_with_player_two_on_pad(3))?;
+
+        let settings = load_or_create_with_former(&path, &former_path);
+
+        assert_eq!(settings.pad_of(PlayerId::P2), Some(4));
+        Ok(())
+    }
+
+    #[test]
+    fn an_absent_primary_takes_the_former_and_writes_it_to_the_primary() -> Result<(), InputSettingsError> {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("new.json");
+        let former_path = dir.path().join("old.json");
+        save(&former_path, &settings_with_player_two_on_pad(3))?;
+        let former_bytes = std::fs::read(&former_path)?;
+
+        let settings = load_or_create_with_former(&path, &former_path);
+
+        assert_eq!(settings.pad_of(PlayerId::P2), Some(3));
+        assert_eq!(load_or_create(&path).pad_of(PlayerId::P2), Some(3), "the primary now holds the former's bindings");
+        assert_eq!(std::fs::read(&former_path)?, former_bytes, "the former slot is never written");
+        Ok(())
+    }
+
+    #[test]
+    fn an_absent_primary_with_an_absent_or_corrupt_former_writes_the_defaults() -> Result<(), std::io::Error> {
+        for (label, former_contents) in [
+            ("absent", None),
+            ("corrupt", Some("{ not valid json !!!")),
+            ("wrong version", Some(r#"{"version": 99, "players": []}"#)),
+        ] {
+            let dir = tempfile::tempdir()?;
+            let path = dir.path().join("new.json");
+            let former_path = dir.path().join("old.json");
+            if let Some(contents) = former_contents {
+                std::fs::write(&former_path, contents)?;
+            }
+
+            let settings = load_or_create_with_former(&path, &former_path);
+
+            assert_eq!(settings.pad_of(PlayerId::P2), Some(1), "{label}");
+            assert!(path.exists(), "{label}: the defaults are written to the primary");
+            assert_eq!(load_or_create(&path).pad_of(PlayerId::P2), Some(1), "{label}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn an_unreadable_former_gives_the_defaults_and_writes_them_like_a_missing_one() -> Result<(), std::io::Error> {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("new.json");
+        let former_path = dir.path().join("old.json");
+        // A directory reads as an error that is not NotFound — a read fault, not an absent slot.
+        std::fs::create_dir(&former_path)?;
+
+        let settings = load_or_create_with_former(&path, &former_path);
+
+        assert_eq!(settings.pad_of(PlayerId::P2), Some(1));
+        assert_eq!(load_or_create(&path).pad_of(PlayerId::P2), Some(1), "the defaults are written to the primary");
+        Ok(())
+    }
+
+    #[test]
+    fn a_wrong_version_primary_gives_the_defaults_over_a_valid_former_and_writes_nothing() -> Result<(), InputSettingsError> {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("new.json");
+        let former_path = dir.path().join("old.json");
+        let wrong_version = r#"{"version": 99, "players": []}"#;
+        std::fs::write(&path, wrong_version)?;
+        save(&former_path, &settings_with_player_two_on_pad(3))?;
+
+        let settings = load_or_create_with_former(&path, &former_path);
+
+        assert_eq!(settings.pad_of(PlayerId::P2), Some(1), "present-but-invalid is not absent");
+        assert_eq!(std::fs::read_to_string(&path)?, wrong_version);
         Ok(())
     }
 }

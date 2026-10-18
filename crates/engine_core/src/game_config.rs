@@ -71,6 +71,20 @@ pub struct GameConfig {
     /// When `None`, the default two-player bindings are used in memory only.
     #[serde(default)]
     pub input_settings_path: Option<String>,
+    /// Where a renamed game saved its achievements before the rename. Read at
+    /// startup and unioned into `achievement_save_path`'s document so players
+    /// keep their unlocks; never written. Only consulted beside a save path.
+    #[serde(default)]
+    pub former_achievement_save_path: Option<String>,
+    /// Where a renamed game saved its high scores before the rename. Read at
+    /// startup and merged into `score_save_path`'s lists; never written.
+    #[serde(default)]
+    pub former_score_save_path: Option<String>,
+    /// Where a renamed game saved its input bindings before the rename. Read
+    /// only when `input_settings_path` holds nothing yet, and then copied
+    /// there; never written.
+    #[serde(default)]
+    pub former_input_settings_path: Option<String>,
     /// Starting locale id (default `"en"`). Lookup falls back to `"en"`,
     /// then to the key itself, so an unknown id is harmless.
     #[serde(default = "default_locale")]
@@ -130,6 +144,9 @@ impl Default for GameConfig {
             score_save_path: None,
             asset_base_path: None,
             input_settings_path: None,
+            former_achievement_save_path: None,
+            former_score_save_path: None,
+            former_input_settings_path: None,
             locale: default_locale(),
             locales_dir: default_locales_dir(),
             texture_filter: TextureFilter::Linear,
@@ -209,6 +226,28 @@ impl GameConfig {
     /// created on first save.
     pub fn with_input_settings_path(mut self, path: impl Into<String>) -> Self {
         self.input_settings_path = Some(path.into());
+        self
+    }
+
+    /// Also load the achievements a renamed game saved at `path` before the
+    /// rename, unioned with the current ones; the old location is never written.
+    pub fn with_former_achievement_save_path(mut self, path: impl Into<String>) -> Self {
+        self.former_achievement_save_path = Some(path.into());
+        self
+    }
+
+    /// Also load the high scores a renamed game saved at `path` before the
+    /// rename, merged with the current ones; the old location is never written.
+    pub fn with_former_score_save_path(mut self, path: impl Into<String>) -> Self {
+        self.former_score_save_path = Some(path.into());
+        self
+    }
+
+    /// Take the input bindings a renamed game saved at `path` before the
+    /// rename when the current location holds none yet; the old location is
+    /// never written.
+    pub fn with_former_input_settings_path(mut self, path: impl Into<String>) -> Self {
+        self.former_input_settings_path = Some(path.into());
         self
     }
 
@@ -317,6 +356,10 @@ mod tests {
         // And before startup cards and window icons: none of either.
         assert!(config.startup_splashes.is_empty());
         assert_eq!(config.window_icon, None);
+        // And before a renamed game could name its former save locations.
+        assert_eq!(config.former_achievement_save_path, None);
+        assert_eq!(config.former_score_save_path, None);
+        assert_eq!(config.former_input_settings_path, None);
     }
 
     #[test]

@@ -132,10 +132,22 @@ impl AchievementManager {
     /// If the file already exists, previously unlocked achievements are loaded.
     /// Missing file is treated as "nothing unlocked yet" (not an error).
     pub fn with_save_path(path: impl Into<PathBuf>) -> Self {
+        Self::with_slot(JsonSaveSlot::with_path(path))
+    }
+
+    /// Create a manager that persists unlocks to `path` and also loads the
+    /// unlocks a renamed game saved at `former_path`, keeping each id's earliest
+    /// unlock time. The former file is never written
+    /// ([`JsonSaveSlot::with_path_and_former`]).
+    pub fn with_save_path_and_former(path: impl Into<PathBuf>, former_path: impl Into<PathBuf>) -> Self {
+        Self::with_slot(JsonSaveSlot::with_path_and_former(path, former_path))
+    }
+
+    fn with_slot(slot: JsonSaveSlot<SaveFile>) -> Self {
         Self {
             registered: HashMap::new(),
             registration_order: Vec::new(),
-            slot: JsonSaveSlot::with_path(path),
+            slot,
             toasts: ToastQueue::new(),
         }
     }
@@ -223,6 +235,8 @@ impl AchievementManager {
 
     /// Wipe all unlocked state (and persist the empty state if a save path is set).
     /// Typically used for dev/QA or a "reset progress" menu.
+    /// A renamed game's former slot is not cleared — the engine never writes
+    /// one — so a reload or the next boot folds its records back in.
     pub fn reset(&mut self) {
         self.slot.data_mut().unlocks.clear();
         self.toasts.clear();
@@ -250,7 +264,8 @@ impl AchievementManager {
     }
 
     /// Reload unlock state from the configured save path, discarding any
-    /// in-memory unlocks. Errors if no path is set or the slot is absent.
+    /// in-memory unlocks; a renamed game's former slot is folded in, as at
+    /// boot. Errors if no path is set or neither slot holds a document.
     pub fn load(&mut self) -> Result<(), AchievementError> {
         self.slot.reload()
     }

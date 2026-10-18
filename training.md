@@ -5,7 +5,8 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
 
 ## Directory Map
 - **crates/engine_core/** - Core functionality including Game API, lifecycle management, and scene coordination
-  - `game.rs` - **Simple Game API** - `Game` trait, `run_game()`, GameRunner orchestration
+  - `game.rs` - **Simple Game API** - `run_game()`, GameRunner orchestration (re-exports `Game`)
+  - `game/game_trait.rs` - the `Game` trait; `game/save_documents.rs` - the runner's save documents from `GameConfig`, a renamed game's former paths folded in
   - `game_config.rs` - `GameConfig` (window, clear color, target FPS, chaos mode, asset base path, input settings path)
   - `input_settings_io.rs` - JSON load/save for player input bindings (defaults written when missing; never panics on bad files)
   - `game_loop_manager.rs` - Game loop timing and frame delta management (the only frame timer)
@@ -228,7 +229,7 @@ fn main() {
 }
 ```
 
-**Files:** `game.rs`, `game_loop_manager.rs`, `GameContext` struct
+**Files:** `game.rs`, `game/game_trait.rs`, `game_loop_manager.rs`, `GameContext` struct
 
 ### ECS Pattern
 HashMap-based per-type component storage with type-safe queries:

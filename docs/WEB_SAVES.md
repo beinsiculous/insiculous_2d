@@ -12,14 +12,14 @@ beinsiculous/insiculous_2d#17.
 One key per game and per document type. `<slug>` is the site's
 `public/games/<slug>` directory name:
 
-| Game repo | Slug |
-|---|---|
-| pong | `pong` |
-| breakout | `breakout` |
-| space_invaders | `invaders` |
-| snake | `snake` |
-| asteroids | `asteroids` |
-| frogger | `frogger` |
+| Game repo | Slug | Former slug |
+|---|---|---|
+| pong | `tong` | `pong` |
+| breakout | `food-pyramid` | `breakout` |
+| space_invaders | `toast-busters` | `invaders` |
+| snake | `bratdog` | `snake` |
+| asteroids | `meatieroids` | `asteroids` |
+| frogger | `chicken-coop` | `frogger` |
 
 | Key | Contents |
 |---|---|
@@ -30,6 +30,28 @@ One key per game and per document type. `<slug>` is the site's
 Keys are deliberately separate per game and per document type (the site's
 `myfort-store.js` precedent: sharing a key lets one document migrate into
 another when either changes shape).
+
+### Former keys — a renamed game
+
+When a game's slug changes, its players' progress sits under the **former**
+slug's keys. The game names them with `GameConfig`'s former paths
+(`with_former_achievement_save_path`, `with_former_score_save_path`,
+`with_former_input_settings_path`), and the engine reads them at boot:
+
+- **achievements and scores** — the former document is unioned into the new
+  key's with the same merge a save uses (earliest `unlocked_at` per id; scores
+  deduplicated, ranked and kept ten per mode). The first save writes the union
+  to the new key.
+- **input bindings** — read only when the new key is absent, and then written
+  to it at that boot. A present new key wins even when it does not parse or is
+  at another version — it gives the defaults, as it always has.
+
+**The engine never writes a former key**, so a tab still running the old
+bundle keeps working against it, and whatever it saves there is folded in at
+the next boot of the new one. The site reads both keys for display. A renamed
+game's editor bundle keeps its preferences under its former slug
+(`beinsiculous.playground.<former slug>.editor_prefs`) until that bundle is
+next shipped; the key moves with the bundle.
 
 The Web Playground (`/playground/`) stores editor UI preferences under the
 `beinsiculous.playground.editor_prefs` key via the same `SaveStore` contract
@@ -75,7 +97,8 @@ Mode strings are game-defined (lowercase, stable — e.g. `"single"`,
 { "version": 1, "players": [ { "pad": 0, "bindings": [ { "action": "...", "sources": [ ... ] } ] } ] }
 ```
 
-The site does not read this key; it exists so bindings survive a reload.
+The site does not read this key; it exists so bindings survive a reload. A
+renamed game's engine reads its former key when the new one is absent.
 
 ## The save event
 

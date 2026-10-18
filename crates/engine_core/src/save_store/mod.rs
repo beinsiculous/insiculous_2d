@@ -5,7 +5,7 @@
 //! `wasm32-unknown-unknown` — `GameConfig`'s save-path strings flow through
 //! unchanged, so native builds keep their JSON files byte-identical while web
 //! builds persist the same JSON under keys like
-//! `beinsiculous.games.pong.achievements` (see `docs/WEB_SAVES.md` for the
+//! `beinsiculous.games.tong.achievements` (see `docs/WEB_SAVES.md` for the
 //! site contract).
 //!
 //! Semantics shared by both targets:
