@@ -283,14 +283,14 @@ impl BehaviorRunner {
     pub(super) fn find_nearest_tagged_position(world: &World, exclude: EntityId, tag: &str) -> Option<Vec2> {
         let exclude_pos = Self::get_position(world, exclude)?;
 
-        world.entities().into_iter()
-            .filter(|e| *e != exclude)
-            .filter(|e| world.get::<EntityTag>(*e).map(|t| t.matches(tag)).unwrap_or(false))
-            .filter_map(|e| Self::get_position(world, e))
-            .min_by(|a, b| {
-                let dist_a = (*a - exclude_pos).length_squared();
-                let dist_b = (*b - exclude_pos).length_squared();
-                dist_a.partial_cmp(&dist_b).unwrap_or(std::cmp::Ordering::Equal)
+        world.entity_ids()
+            .filter(|candidate| *candidate != exclude)
+            .filter(|candidate| world.get::<EntityTag>(*candidate).is_some_and(|entity_tag| entity_tag.matches(tag)))
+            .filter_map(|candidate| Self::get_position(world, candidate))
+            .min_by(|first, second| {
+                let first_distance_squared = (*first - exclude_pos).length_squared();
+                let second_distance_squared = (*second - exclude_pos).length_squared();
+                first_distance_squared.partial_cmp(&second_distance_squared).unwrap_or(std::cmp::Ordering::Equal)
             })
     }
 
@@ -298,16 +298,16 @@ impl BehaviorRunner {
     pub(super) fn check_tagged_overlap(world: &World, entity: EntityId, tag: &str, radius: f32) -> bool {
         let Some(entity_pos) = Self::get_position(world, entity) else { return false };
 
-        world.entities().into_iter()
-            .filter(|e| *e != entity)
-            .filter(|e| world.get::<EntityTag>(*e).map(|t| t.matches(tag)).unwrap_or(false))
-            .filter_map(|e| Self::get_position(world, e))
-            .any(|pos| (pos - entity_pos).length() < radius)
+        world.entity_ids()
+            .filter(|candidate| *candidate != entity)
+            .filter(|candidate| world.get::<EntityTag>(*candidate).is_some_and(|entity_tag| entity_tag.matches(tag)))
+            .filter_map(|candidate| Self::get_position(world, candidate))
+            .any(|position| (position - entity_pos).length() < radius)
     }
 
     /// Get entity position (common operation)
     pub(super) fn get_position(world: &World, entity: EntityId) -> Option<Vec2> {
-        world.get::<Transform2D>(entity).map(|t| t.position)
+        world.get::<Transform2D>(entity).map(|transform| transform.position)
     }
 
     /// Add or update entity tag

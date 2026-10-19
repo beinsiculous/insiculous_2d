@@ -44,7 +44,10 @@ struct CachedNode {
 ///
 /// # Usage
 ///
-/// Add this system to your world and ensure entities have:
+/// Own one and call its `update` from your frame, after anything that moves
+/// entities and before drawing. The engine's runtime never calls `World::update`,
+/// so a system registered with `add_system` is started but never ticks. Entities
+/// need:
 /// - `Transform2D` - local transform relative to parent (or world if no parent)
 /// - `GlobalTransform2D` - will be computed automatically
 /// - `Parent` (optional) - if present, transform is relative to parent
@@ -52,11 +55,11 @@ struct CachedNode {
 /// # Example
 ///
 /// ```
-/// use ecs::{GlobalTransform2D, Transform2D, TransformHierarchySystem, World, WorldHierarchyExt};
+/// use ecs::{GlobalTransform2D, System, Transform2D, TransformHierarchySystem, World, WorldHierarchyExt};
 /// use glam::Vec2;
 ///
 /// let mut world = World::new();
-/// world.add_system(TransformHierarchySystem::new());
+/// let mut hierarchy = TransformHierarchySystem::new();
 ///
 /// // Create parent
 /// let parent = world.create_entity();
@@ -69,10 +72,7 @@ struct CachedNode {
 /// world.add_component(&child, GlobalTransform2D::default()).ok();
 /// world.set_parent(child, parent).ok();
 ///
-/// // After update, child's GlobalTransform2D.position will be (150.0, 0.0)
-/// # world.initialize().unwrap();
-/// # world.start().unwrap();
-/// world.update(0.016).unwrap();
+/// hierarchy.update(&mut world, 0.016);
 /// let global = world.get::<GlobalTransform2D>(child).unwrap();
 /// assert_eq!(global.position, Vec2::new(150.0, 0.0));
 /// ```

@@ -42,14 +42,14 @@ impl<T: ecs::Component + ComponentMeta + Clone + Send + serde::Serialize + serde
 
 impl<T: ecs::Component + ComponentMeta + Clone + Send + serde::Serialize + serde::de::DeserializeOwned + 'static> EditorCommand for SetComponentCommand<T> {
     fn execute(&mut self, world: &mut World) {
-        if let Some(c) = world.get_mut::<T>(self.entity) {
-            *c = self.new.clone();
+        if let Some(component) = world.get_mut::<T>(self.entity) {
+            *component = self.new.clone();
         }
     }
 
     fn undo(&mut self, world: &mut World) {
-        if let Some(c) = world.get_mut::<T>(self.entity) {
-            *c = self.old.clone();
+        if let Some(component) = world.get_mut::<T>(self.entity) {
+            *component = self.old.clone();
         }
     }
 
@@ -82,8 +82,8 @@ impl<T: ecs::Component + ComponentMeta + Clone + Send + serde::Serialize + serde
 
     fn try_merge(&mut self, other: &dyn EditorCommand) -> bool {
         match other.as_any().downcast_ref::<Self>() {
-            Some(o) if o.entity == self.entity && o.field_hint == self.field_hint => {
-                self.new = o.new.clone();
+            Some(newer) if newer.entity == self.entity && newer.field_hint == self.field_hint => {
+                self.new = newer.new.clone();
                 true
             }
             _ => false,
@@ -204,16 +204,16 @@ impl NudgeCommand {
 impl EditorCommand for NudgeCommand {
     fn execute(&mut self, world: &mut World) {
         for (entity, _, new_pos) in &self.moves {
-            if let Some(t) = world.get_mut::<common::Transform2D>(*entity) {
-                t.position = *new_pos;
+            if let Some(transform) = world.get_mut::<common::Transform2D>(*entity) {
+                transform.position = *new_pos;
             }
         }
     }
 
     fn undo(&mut self, world: &mut World) {
         for (entity, old_pos, _) in &self.moves {
-            if let Some(t) = world.get_mut::<common::Transform2D>(*entity) {
-                t.position = *old_pos;
+            if let Some(transform) = world.get_mut::<common::Transform2D>(*entity) {
+                transform.position = *old_pos;
             }
         }
     }

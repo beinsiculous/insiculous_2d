@@ -43,12 +43,6 @@ impl EntityGeneration {
         self.is_alive = false;
     }
 
-    /// Increment the generation (for entity reuse)
-    pub fn increment(&mut self) {
-        self.generation += 1;
-        self.is_alive = true;
-    }
-
     /// Check if this generation is valid (not stale)
     pub fn is_valid(&self, current_generation: u64) -> bool {
         self.is_alive && self.generation == current_generation

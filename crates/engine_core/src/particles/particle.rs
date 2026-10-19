@@ -32,8 +32,8 @@ pub struct Particle {
 }
 
 impl Particle {
-    /// Interpolation parameter `t` in [0, 1] across the particle's lifetime.
-    pub(crate) fn t(&self) -> f32 {
+    /// How far through its lifetime the particle is, in [0, 1].
+    pub(crate) fn life_fraction(&self) -> f32 {
         if self.lifetime <= 0.0 { 1.0 } else { (self.age / self.lifetime).clamp(0.0, 1.0) }
     }
 }
@@ -162,7 +162,7 @@ mod tests {
         let overdue = Particle { age: 1.5, lifetime: 1.0, ..Particle::default() };
         let instant = Particle { age: 0.0, lifetime: 0.0, ..Particle::default() };
 
-        assert_eq!(overdue.t(), 1.0);
-        assert_eq!(instant.t(), 1.0);
+        assert_eq!(overdue.life_fraction(), 1.0);
+        assert_eq!(instant.life_fraction(), 1.0);
     }
 }

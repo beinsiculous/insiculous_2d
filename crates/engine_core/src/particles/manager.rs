@@ -60,7 +60,7 @@ impl ParticleManager {
 
     /// Number of currently alive particles.
     pub fn alive_count(&self) -> usize {
-        self.pool.iter().filter(|p| p.alive).count()
+        self.pool.iter().filter(|particle| particle.alive).count()
     }
 
     /// Mark every slot dead.
@@ -110,74 +110,74 @@ impl ParticleManager {
         }
     }
 
-    /// Advance every alive particle by `dt` seconds.
-    pub fn step(&mut self, dt: f32) {
-        for p in &mut self.pool {
-            if !p.alive {
+    /// Advance every alive particle by `delta_seconds`.
+    pub fn step(&mut self, delta_seconds: f32) {
+        for particle in &mut self.pool {
+            if !particle.alive {
                 continue;
             }
-            p.age += dt;
-            if p.age >= p.lifetime {
-                p.alive = false;
+            particle.age += delta_seconds;
+            if particle.age >= particle.lifetime {
+                particle.alive = false;
                 continue;
             }
             // Symplectic Euler: integrate velocity then position. Stable
-            // enough for cosmetic particles even at large dt.
-            p.velocity += p.acceleration * dt;
-            if p.drag > 0.0 {
-                // Exponential damping: v *= exp(-drag * dt). Use a cheap
-                // 2-term approximation since dt is small.
-                let decay = (1.0 - p.drag * dt).max(0.0);
-                p.velocity *= decay;
+            // enough for cosmetic particles even at large delta_seconds.
+            particle.velocity += particle.acceleration * delta_seconds;
+            if particle.drag > 0.0 {
+                // Exponential damping: v *= exp(-drag * delta_seconds). Use a cheap
+                // 2-term approximation since delta_seconds is small.
+                let decay = (1.0 - particle.drag * delta_seconds).max(0.0);
+                particle.velocity *= decay;
             }
-            p.position += p.velocity * dt;
-            p.rotation += p.angular_velocity * dt;
+            particle.position += particle.velocity * delta_seconds;
+            particle.rotation += particle.angular_velocity * delta_seconds;
         }
     }
 
     /// Iterate alive particles in pool order.
     pub fn iter_alive(&self) -> impl Iterator<Item = &Particle> {
-        self.pool.iter().filter(|p| p.alive)
+        self.pool.iter().filter(|particle| particle.alive)
     }
 
     /// Interpolated color of an in-flight particle. Snapshot — does not
     /// mutate. Returned color is what the renderer should tint with.
-    pub fn current_color(p: &Particle) -> Vec4 {
-        let t = p.t();
-        p.color_start.lerp(p.color_end, t)
+    pub fn current_color(particle: &Particle) -> Vec4 {
+        let progress = particle.life_fraction();
+        particle.color_start.lerp(particle.color_end, progress)
     }
 
     /// Interpolated scale of an in-flight particle.
-    pub fn current_scale(p: &Particle) -> f32 {
-        let t = p.t();
-        p.scale_start + (p.scale_end - p.scale_start) * t
+    pub fn current_scale(particle: &Particle) -> f32 {
+        let progress = particle.life_fraction();
+        particle.scale_start + (particle.scale_end - particle.scale_start) * progress
     }
 
     /// Walk the pool finding a dead slot. Wraps; if the entire pool is alive
     /// the cursor's slot is reused (overwriting the oldest).
     fn next_slot(&mut self) -> usize {
-        let cap = self.pool.len();
-        for _ in 0..cap {
-            let idx = self.cursor;
-            self.cursor = (self.cursor + 1) % cap;
-            if !self.pool[idx].alive {
-                return idx;
+        let slot_count = self.pool.len();
+        for _ in 0..slot_count {
+            let slot_index = self.cursor;
+            self.cursor = (self.cursor + 1) % slot_count;
+            if !self.pool[slot_index].alive {
+                return slot_index;
             }
         }
         // Pool is fully alive — overwrite at the cursor position.
-        let idx = self.cursor;
-        self.cursor = (self.cursor + 1) % cap;
-        idx
+        let slot_index = self.cursor;
+        self.cursor = (self.cursor + 1) % slot_count;
+        slot_index
     }
 
     /// xorshift64* — fast, deterministic, fine for cosmetic randomness.
     fn next_u64(&mut self) -> u64 {
-        let mut x = self.rng_state;
-        x ^= x >> 12;
-        x ^= x << 25;
-        x ^= x >> 27;
-        self.rng_state = x;
-        x.wrapping_mul(0x2545_F491_4F6C_DD1D)
+        let mut state = self.rng_state;
+        state ^= state >> 12;
+        state ^= state << 25;
+        state ^= state >> 27;
+        self.rng_state = state;
+        state.wrapping_mul(0x2545_F491_4F6C_DD1D)
     }
 
     fn uniform_range(&mut self, min: f32, max: f32) -> f32 {

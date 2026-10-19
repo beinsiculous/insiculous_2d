@@ -1,4 +1,4 @@
-//! Auto-despawn after a duration (PROJECT_ROADMAP Phase B, Gap 2).
+//! Auto-despawn after a duration.
 //!
 //! Attach [`Lifetime`] to bullets, effects, and debris; [`LifetimeSystem`]
 //! counts every instance down and removes the entity the frame its time
@@ -50,9 +50,9 @@ impl System for LifetimeSystem {
         for entity in carriers {
             let expired = world
                 .get_mut::<Lifetime>(entity)
-                .map(|l| {
-                    l.remaining -= delta_time;
-                    l.remaining <= 0.0
+                .map(|lifetime| {
+                    lifetime.remaining -= delta_time;
+                    lifetime.remaining <= 0.0
                 })
                 .unwrap_or(false);
             if expired {
