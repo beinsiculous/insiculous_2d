@@ -209,7 +209,16 @@ lines), `CLAUDE.md` § Quick Reference (two command lines).
 Leaves out: nothing in `crates/`. Both scripts plus the doc lines stay under 100 changed
 lines, so they commit without a code review; if they do not, they get one.
 
-## Batch 1 — ecs + engine_core: delete the scheduler (#170; KISS-002 doc)
+## Batch 1 — ecs + engine_core: delete the scheduler (#170; KISS-002 doc) — DONE 2026-10-19 (6b1ccb7)
+
+Authored by Jesse's Claude Opus session from `review/pattern-audit/handoff-1.md`; reviewed by
+kimi (`review-3.md`, 2 findings: 1 accepted and folded into batch 2 — the `System` trait's
+unused hooks — 1 false: the game template is clean), gemini (`review-3-gemini.md`, 4: 2
+accepted — a stale `LifetimeSystem` doc in a file the batch never touched, and the trait's
+doc — 1 false, 1 policy) and the planner (`review-3-claude.md`, none); adjudicated in
+`rebuttal-3.md`. The planner's two doc-line fixes (`lifetime.rs`, `system.rs`) enumerated
+there, not re-reviewed. Landed as specified; the executor also reworded the trait's hook
+docs and renamed the scene lifecycle test to what it tests. 1105 tests, every gate green.
 
 Files: `crates/ecs/src/system.rs` (235 → ~35), `crates/ecs/src/world.rs` (511, shrinks),
 `crates/ecs/src/lib.rs` and `crates/ecs/src/prelude.rs` (neither re-exports `SystemRegistry`
@@ -270,10 +279,22 @@ the row deletion.
 
 Size: about −470 / +60 lines.
 
-## Batch 2 — engine_core + ecs + editor_integration: the frame tail owns the hierarchy (#168; #153; DRY-003; GPP-L1)
+## Batch 2 — engine_core + ecs + editor_integration + physics: the frame tail owns the hierarchy (#168; #153; the `System` trait trim; DRY-003; GPP-L1)
 
-Files: `crates/ecs/src/hierarchy_system.rs` (346 → ~390), `crates/ecs/src/hierarchy.rs`
-(234, sin/cos), `crates/ecs/src/prelude.rs`, `crates/engine_core/src/prelude.rs` (70 → add the
+**Re-verified against the tree 2026-10-19 after batch 1 (6b1ccb7):** `hierarchy_system.rs` is
+345 lines — `reset` at 123, `impl System` at 154, `update` at 160, `is_dirty` at 285–301,
+`set_global_transform` at 312–318; the loader's two default-global writes are at
+`scene_loader.rs:162` and `:243`; the dirty-flag pitfalls are at `dirty-flag.md:135-139`
+("The hierarchy runs only under the editor") and `:143-145` (the `reset()` bullet); the
+event-queue flush pitfall is at `event-queue.md:137-140`, not 118–122; `on_key_pressed` /
+`on_key_released` are `game_trait.rs:89, 92`; every other line below held.
+
+Files: `crates/ecs/src/hierarchy_system.rs` (345 → ~380), `crates/ecs/src/hierarchy.rs`
+(234, sin/cos), `crates/ecs/src/system.rs` (40: the trait trim), `crates/ecs/src/lifetime.rs:64`,
+`crates/ecs/src/sprite_system.rs:50`, `crates/ecs/src/clip_state_machine.rs:281` (their
+`name()` impls), `crates/physics/src/physics_system/update.rs` (12–15, 76–83: its
+`initialize`, `shutdown`, `name` impls), `crates/engine_core/src/scripting/tests/contracts.rs`
+(290, 383: `physics.initialize(&mut world).unwrap()` lines), `crates/ecs/src/prelude.rs`, `crates/engine_core/src/prelude.rs` (70 → add the
 marker and the request), `crates/engine_core/src/game.rs` (550: one field, one constructor
 line), `crates/engine_core/src/game/frame_tail.rs` (163: one step in `step_simulations`),
 `crates/engine_core/src/game/game_trait.rs` (handler docs, the render loop's iterator),
@@ -374,11 +395,29 @@ and `references/event-queue.md`.
   `editor_integration/CLAUDE.md:26`: `project_host.rs` no longer "transform hierarchy".
   `hierarchy_system.rs:47-49, 58, 62`: the engine steps this system from the frame tail for
   every game; a game owns none; the doc example shows the marker, not a hand-stepped system.
-  `dirty-flag.md` pitfall 136–140 ("The hierarchy runs only under the editor") becomes "the
+  `dirty-flag.md` pitfall 135–139 ("The hierarchy runs only under the editor") becomes "the
   frame tail steps the hierarchy for every game, after the clip machines and before the grid
   backdrop; a wholesale world replacement files `TransformHierarchyReset`, which the next
-  update consumes" — the `reset()` bullet at 144–146 points at the marker.
+  update consumes" — the `reset()` bullet at 143–145 points at the marker.
   `training.md:50` ("transform propagation") stays true.
+
+**Target shape — the `System` trait trim (kimi review-3 F2 / gemini F3; Jesse, 2026-10-19:
+fold into this batch).** `System` keeps `update(&mut self, world: &mut World, delta_time: f32)`
+and nothing else: `initialize`, `start`, `stop`, `shutdown` and `name` go. Verified before the
+handoff: the frame tail calls only `update`; `start` and `stop` have no implementor and no
+caller; `initialize` and `shutdown` are implemented only by `PhysicsSystem` (both log a line,
+`physics_system/update.rs:12-15, 76-79`) and `TransformHierarchySystem` (both log,
+`hierarchy_system.rs:155-158, 183-186`); `name()` is implemented by all five engine systems
+and read by nothing. The three callers of the hooks go with them: `ProjectHost`'s
+`physics.initialize(world)` (`project_host.rs:74`, which only logged — delete the call and
+its error branch) and `transform_hierarchy.initialize` (`:141`, gone with the field), and
+the two `physics.initialize(&mut world).unwrap()` lines in
+`scripting/tests/contracts.rs:290, 383`. `system.rs`'s module doc becomes: the one method
+every engine system implements; stepped by its owner — the frame tail for the engine's,
+`Game::update` for a game's. The guides: `crates/ecs/CLAUDE.md` and `crates/physics/CLAUDE.md`
+lose any line that names a hook (the executor greps `initialize\|shutdown` in both). The
+greps for every deleted method go in the report. Any `#[derive(Default)]` or constructor a
+system only had for the registry stays — this trim is the trait's surface, not the types.
 
 **Target shape — #153 (event-queue).** `game_trait.rs`'s `on_key_pressed` / `on_key_released`
 docs state the contract: the window loop runs a handler between frames, and the next frame's
@@ -386,8 +425,8 @@ first act flushes the event bus, so an event emitted here is gone before `update
 set state in a handler; emit from `update`. A `GameHarness` test in
 `transform_hierarchy_tail.rs`'s sibling `key_handler_events.rs`:
 `a_world_event_emitted_in_a_key_handler_is_flushed_before_the_next_update_reads_it`
-(the harness already mirrors the loop's order on purpose — #153's own note). `event-queue.md`
-pitfall 118–122 gains the handler case. Closes #153.
+(the harness already mirrors the loop's order on purpose — #153's own note). `event-queue.md`'s
+flush pitfall (137–140) gains the handler case. Closes #153.
 
 **Ride-alongs.** DRY-003 (#86): `hierarchy.rs:138-139` and `173-174` each become
 `let (sin_r, cos_r) = self.rotation.sin_cos();`. GPP-L1 (#86): `world.entities()` →
@@ -408,7 +447,7 @@ marker child sits above the player in every state, exactly as before.
 the reset marker makes it moot — the first update after Stop rewrites every global);
 anything in `renderer`.
 
-Size: about +260 / −70 lines.
+Size: about +260 / −110 lines (the trait trim is about forty deleted lines across six files).
 
 ## Batch 3 — ecs + editor + engine_core + examples: retire two advertised, unused APIs (#171, #172; GPP-L8)
 
