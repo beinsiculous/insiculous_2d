@@ -350,6 +350,48 @@ fn test_runaway_loop_reported_once_across_many_frames() {
 }
 
 #[test]
+fn test_a_script_that_grows_a_string_without_bound_errors_instead_of_allocating() {
+    let engine = crate::scripting::rhai_bindings::create_rhai_engine();
+    // Twenty doublings ask for a mebibyte in about sixty operations, far inside
+    // the operation budget; only a size limit stops it.
+    let result = engine.eval::<rhai::INT>(
+        r#"let text = "x"; for doubling in 0..20 { text += text; } text.len()"#,
+    );
+    let error = result.expect_err("a string past the size limit must be refused");
+    assert!(
+        matches!(*error, rhai::EvalAltResult::ErrorDataTooLarge(..)),
+        "expected a data-size error, got {error}"
+    );
+}
+
+#[test]
+fn test_a_script_past_a_size_limit_is_quarantined_and_reported_once() {
+    let mut world = test_world();
+    let (input, players) = test_inputs();
+    let dir = tempdir().expect("tempdir");
+    fs::write(
+        dir.path().join("hoard.rhai"),
+        r#"fn update(me, view, params, cmd, dt) { let text = "x"; for doubling in 0..20 { text += text; } }"#,
+    )
+    .expect("wrote script");
+
+    let mut runner = ScriptRunner::new();
+    runner.reset(&mut world, dir.path().to_str().expect("utf-8 path"));
+    let entity = world.create_entity();
+    let mut script_ref = ScriptRef::new("hoard");
+    script_ref.source_path = "hoard.rhai".to_string();
+    world.add_component(&entity, Scripts(vec![script_ref])).unwrap();
+
+    for _ in 0..5 {
+        runner.update(&mut world, &input, &players, 0.016, &[], None);
+    }
+
+    assert_eq!(runner.errors().len(), 1, "a resource-limit failure is reported once");
+    assert_eq!(runner.errors()[0].kind, ScriptErrorKind::ResourceLimit);
+    assert_eq!(runner.quarantined_count(), 1, "and the instance stops running");
+}
+
+#[test]
 fn test_set_velocity_x_on_a_named_target_keeps_its_vertical_velocity() {
     let mut world = test_world();
     let (input, players) = test_inputs();

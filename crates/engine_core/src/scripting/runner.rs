@@ -28,6 +28,10 @@ pub enum ScriptErrorKind {
     AmbiguousTarget,
     UnresolvedScript,
     RunawayLoop,
+    /// A string, array or map past its size limit, or a call stack past its
+    /// depth limit. Like a runaway loop it would recur every frame, so the
+    /// instance is quarantined for the session.
+    ResourceLimit,
 }
 
 /// One error originating from script compilation or runtime execution.
@@ -164,6 +168,12 @@ impl ScriptRunner {
         self.errors.as_slice()
     }
 
+    /// How many script instances are quarantined for the rest of the session.
+    #[cfg(test)]
+    pub(crate) fn quarantined_count(&self) -> usize {
+        self.quarantined.len()
+    }
+
     /// Number of frames successfully stepped by this runner.
     pub fn frames_run(&self) -> u32 {
         self.frames_run
@@ -295,7 +305,7 @@ impl ScriptRunner {
     ) -> ScriptView {
         let blackboard = world
             .resource::<Blackboard>()
-            .map(|b| b.0.clone())
+            .map(|board| board.0.clone())
             .unwrap_or_default();
 
         // Sorted so a duplicated Name resolves to the same entity every run: the world
@@ -397,15 +407,15 @@ impl ScriptRunner {
         for key in instance_keys {
             let (entity, index) = key;
             let scripts = match world.get::<Scripts>(entity) {
-                Some(s) => s,
+                Some(scripts) => scripts,
                 None => continue,
             };
             let script_ref = match scripts.0.get(index) {
-                Some(r) => r,
+                Some(script_ref) => script_ref,
                 None => continue,
             };
             let instance = match self.instances.get_mut(&key) {
-                Some(i) => i,
+                Some(instance) => instance,
                 None => continue,
             };
 
@@ -414,7 +424,7 @@ impl ScriptRunner {
                 .copied()
                 .unwrap_or_default();
             let velocity = current_velocity(world, physics.as_deref(), entity);
-            let name = world.get::<Name>(entity).map(|n| n.as_str().to_string());
+            let name = world.get::<Name>(entity).map(|name| name.as_str().to_string());
 
             let me = Rc::new(SelfView {
                 entity,
@@ -479,7 +489,7 @@ impl ScriptRunner {
                     match call_result {
                         Ok(()) => phase_commands.commands.extend(handle.drain()),
                         Err(error) => {
-                            if error.kind == ScriptErrorKind::RunawayLoop {
+                            if matches!(error.kind, ScriptErrorKind::RunawayLoop | ScriptErrorKind::ResourceLimit) {
                                 self.quarantined.insert(key);
                             }
                             self.errors.push(error);
@@ -526,13 +536,13 @@ impl ScriptRunner {
     ) {
         let script_collisions: Vec<ScriptCollision> = collisions
             .iter()
-            .map(|c| ScriptCollision {
-                entity_a: c.event.entity_a,
-                entity_b: c.event.entity_b,
-                name_a: world.get::<Name>(c.event.entity_a).map(|n| n.as_str().to_string()),
-                name_b: world.get::<Name>(c.event.entity_b).map(|n| n.as_str().to_string()),
-                started: c.event.started,
-                stopped: c.event.stopped,
+            .map(|collision| ScriptCollision {
+                entity_a: collision.event.entity_a,
+                entity_b: collision.event.entity_b,
+                name_a: world.get::<Name>(collision.event.entity_a).map(|name| name.as_str().to_string()),
+                name_b: world.get::<Name>(collision.event.entity_b).map(|name| name.as_str().to_string()),
+                started: collision.event.started,
+                stopped: collision.event.stopped,
             })
             .collect();
 
@@ -566,7 +576,7 @@ fn insert_rhai_value(
         ScriptValue::Entity(id) => {
             let target_name = world
                 .get::<Name>(*id)
-                .map(|n| n.as_str().to_string())
+                .map(|name| name.as_str().to_string())
                 .unwrap_or_default();
             rhai::Dynamic::from(target_name)
         }

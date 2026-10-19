@@ -195,6 +195,7 @@ Shared match state is coordinated via blackboard keys: `left_score` (`i32`), `ri
 - **Syntax & Header Errors**: Reported on file save (the playground's Save status says "syntax OK — runtime errors show during Play"), and a project import refuses an archive whose `.rhai` fails the check. Rhai is dynamic, so an unknown function or a misspelled getter is a runtime error, not a syntax error.
 - **Runtime Errors**: Surfaced in the editor status bar during Play mode, once per distinct error per Play session, and on the playground page through `playground_script_errors()`. A hook that errors has that call's commands discarded.
 - **Runaway Loops**: Rhai execution is bounded by an operations limit (200,000 ops). Scripts exceeding this quota are automatically quarantined for the rest of the Play session to keep the engine and editor responsive.
+- **Size and Depth Limits**: A string may grow to 64 KiB, an array or object map to 10,000 entries, and the call stack to 64 levels. Past any of these the hook fails with a data-size or stack error instead of exhausting memory, and the script is quarantined the same way, because a limit it hits once it hits every frame.
 - **Hook Failure Isolation**: If a script errors mid-hook, any commands queued by that failing hook are discarded without corrupting the ECS world.
 
 ---

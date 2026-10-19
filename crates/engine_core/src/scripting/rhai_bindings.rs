@@ -504,10 +504,23 @@ fn color_channels(array: rhai::Array) -> Result<[f32; 4], Box<EvalAltResult>> {
     Ok(channels)
 }
 
+/// Largest string a script may build. The operation budget alone doesn't bound
+/// memory: a few dozen operations of string doubling can request more than the
+/// machine has, and the allocation failure aborts the process or the browser tab.
+const MAX_SCRIPT_STRING_BYTES: usize = 64 * 1024;
+/// Largest array or object map a script may build, for the same reason.
+const MAX_SCRIPT_COLLECTION_ENTRIES: usize = 10_000;
+/// Deepest script call stack, so unbounded recursion is an error, not a crash.
+const MAX_SCRIPT_CALL_DEPTH: usize = 64;
+
 /// Create a configured Rhai execution engine.
 pub fn create_rhai_engine() -> Engine {
     let mut engine = Engine::new();
     engine.set_max_operations(200_000);
+    engine.set_max_string_size(MAX_SCRIPT_STRING_BYTES);
+    engine.set_max_array_size(MAX_SCRIPT_COLLECTION_ENTRIES);
+    engine.set_max_map_size(MAX_SCRIPT_COLLECTION_ENTRIES);
+    engine.set_max_call_levels(MAX_SCRIPT_CALL_DEPTH);
     register_math_and_conversions(&mut engine);
     register_views(&mut engine);
     register_commands(&mut engine);

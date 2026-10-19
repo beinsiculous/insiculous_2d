@@ -148,10 +148,7 @@ impl RhaiBackend {
             )
             .map_err(|e| {
                 let line = e.position().line().unwrap_or(0);
-                let kind = match &*e {
-                    rhai::EvalAltResult::ErrorTooManyOperations(_) => ScriptErrorKind::RunawayLoop,
-                    _ => ScriptErrorKind::Runtime,
-                };
+                let kind = classify_runtime_error(&e);
                 ScriptError {
                     file: source_path.to_string(),
                     line,
@@ -188,10 +185,7 @@ impl RhaiBackend {
             )
             .map_err(|e| {
                 let line = e.position().line().unwrap_or(0);
-                let kind = match &*e {
-                    rhai::EvalAltResult::ErrorTooManyOperations(_) => ScriptErrorKind::RunawayLoop,
-                    _ => ScriptErrorKind::Runtime,
-                };
+                let kind = classify_runtime_error(&e);
                 ScriptError {
                     file: source_path.to_string(),
                     line,
@@ -199,5 +193,18 @@ impl RhaiBackend {
                     message: e.to_string(),
                 }
             })
+    }
+}
+
+/// What kind of failure a hook's runtime error is. A blown operation budget and
+/// a blown size or depth limit both recur every frame, so the runner quarantines
+/// them; anything else is reported and the script runs again next frame.
+fn classify_runtime_error(error: &rhai::EvalAltResult) -> ScriptErrorKind {
+    match error {
+        rhai::EvalAltResult::ErrorTooManyOperations(_) => ScriptErrorKind::RunawayLoop,
+        rhai::EvalAltResult::ErrorDataTooLarge(..) | rhai::EvalAltResult::ErrorStackOverflow(_) => {
+            ScriptErrorKind::ResourceLimit
+        }
+        _ => ScriptErrorKind::Runtime,
     }
 }
