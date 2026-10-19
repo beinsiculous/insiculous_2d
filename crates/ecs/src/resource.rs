@@ -1,4 +1,4 @@
-//! Typed global resources for cross-system game state.
+//! Typed World-scoped resources for cross-system game state.
 //!
 //! Resources are singleton values stored in the World, accessed by type.
 //! Use them for game-wide state like score, settings, or repositories

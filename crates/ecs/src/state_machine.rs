@@ -1,7 +1,9 @@
 //! Hierarchical state machine component for entity behaviors.
 //!
-//! Replaces flat enum-matching with per-entity state machines that track
-//! current state, previous state, transition timing, and state history.
+//! Replaces flat enum-matching with per-entity state machines that track the
+//! current state, the one previous state, a just-entered flag and the time spent
+//! in the current state. There is no deeper history; a "return to the state
+//! before last" needs a stack of its own.
 //! Systems read the state and act on it — no callbacks, pure ECS style.
 //!
 //! # Example
@@ -19,10 +21,10 @@
 //! world.add_component(&player, StateMachine::new(PlayerState::Idle)).ok();
 //!
 //! // In a system:
-//! if let Some(sm) = world.get_mut::<StateMachine<PlayerState>>(player) {
-//!     sm.transition_to(PlayerState::Running { speed: 200.0 });
-//!     assert!(sm.just_entered());
-//!     assert_eq!(*sm.previous().unwrap(), PlayerState::Idle);
+//! if let Some(machine) = world.get_mut::<StateMachine<PlayerState>>(player) {
+//!     machine.transition_to(PlayerState::Running { speed: 200.0 });
+//!     assert!(machine.just_entered());
+//!     assert_eq!(*machine.previous().unwrap(), PlayerState::Idle);
 //! }
 //! ```
 

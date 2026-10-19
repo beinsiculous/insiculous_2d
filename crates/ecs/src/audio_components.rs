@@ -186,10 +186,11 @@ impl AudioListener {
     }
 }
 
-/// One-shot sound effect request.
+/// One-shot sound effect request, as scene data.
 ///
-/// This component triggers a sound effect to play once and then the component
-/// is typically removed. Useful for events like explosions, jumps, or pickups.
+/// No engine system consumes it yet: attaching one plays nothing. Play sounds
+/// from game code with `ctx.audio`. It is registered as transient, so it is
+/// editable in the inspector but never written to a scene file.
 #[derive(Debug, Clone, Serialize, Deserialize, DeriveComponentMeta)]
 pub struct PlaySoundEffect {
     /// Sound handle ID to play

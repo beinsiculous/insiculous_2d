@@ -8,9 +8,11 @@ Core engine: Game trait, run_game(), managers, scene loading/saving, asset manag
 - `run_game(game, config)` — entry point, creates window + event loop
 - `GameContext` — passed to Game methods: world, input, **players** (per-player
   `InputSettings`: `ctx.players.is_active(PlayerId::P1, GameAction::Action1, ctx.input)`,
-  `move_x/move_y`), assets, ui, physics, delta_time, **chaos_mode**, **time_scale**
-  (read-write; scales engine-side particle stepping only — set 0.0 while paused),
-  `request_exit()` (clean engine shutdown, same path as window close)
+  `move_x/move_y`), assets, audio, ui, delta_time, **chaos_mode**, **time_scale**
+  (read-write; scales the frame tail — particles, animation, lifetimes, clip
+  machines, grid backdrops — set 0.0 while paused; `delta_time` is never scaled).
+  and `request_exit()` (clean engine shutdown, same path as window close).
+  Physics is not on the context: a game owns and steps its own `PhysicsSystem`.
 - `ChaosMode` — cross-game Normal/Insane/Ridiculous/Insiculous theme (engine carries the selection, games define the meaning)
 - Managers: `GameLoopManager`, `RenderManager`, `WindowManager`
 

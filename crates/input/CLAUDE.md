@@ -55,7 +55,7 @@ player-aware settings layer (the universal mapping games consume).
   hardware-agnostic, and tests drive gamepads via `queue_event()`
 - Winit types (`KeyCode`, `MouseButton`) used directly by design (documented
   on `InputEvent`); serde derives on all binding types (winit `serde` feature)
-- Scroll deltas normalized to lines (`PixelDelta` ÷ 16)
+- Scroll deltas normalized to notches (`PixelDelta` ÷ `SCROLL_PIXELS_PER_NOTCH`, 100)
 - Stick Y follows gilrs convention: **positive = up**
 - `GamepadState::axis_value` returns the raw axis verbatim without a dead zone; `AXIS_ACTIVATION_THRESHOLD` filters digital sources only
 - `update()` shortcut fuses `process_queued_events` and `end_frame`, which can eat `just_*` reads if called before reading one-shot state

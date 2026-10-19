@@ -492,7 +492,8 @@ impl World {
         self.events.read::<E>()
     }
 
-    /// Clear all event queues. Call at the end of each frame.
+    /// Clear all event queues. Call once per frame, at a fixed point; the
+    /// engine's runner calls it first thing in each frame.
     pub fn flush_events(&mut self) {
         self.events.flush();
     }

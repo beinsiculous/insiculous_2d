@@ -12,7 +12,7 @@ Query types: Single<T>, Pair<T, U>, Triple<T, U, V>
 
 ## Key Types
 - `World` — owns entities + ComponentRegistry. All entity/component operations go through here.
-- `EntityId` — newtype around u64
+- `EntityId` — `{ id: u64, generation: u64 }`; ids come from a process-wide counter and are never recycled (undo and Play/Stop restore revive an entity under its original id)
 - `Component` trait — blanket impl over `Any + Send + Sync` (component.rs:22). Any such type is a Component automatically; the trait only adds `type_name()` / `as_any()` / `as_any_mut()` for downcasting. It does NOT require Debug, Serialize, Deserialize, or Clone (those are needed separately for scene serialization, inspector, and snapshots)
 - `ComponentMeta` trait — type_name(), field_names() for inspector/registry
 - `WorldHierarchyExt` — set_parent(), get_children(), get_descendants(), get_root_entities()
@@ -77,7 +77,7 @@ aren't enough.
 | Manual writes to `GlobalTransform2D` are not change-tracked and get overwritten by hierarchy propagation when the entity is dirty | `tests/hierarchy_dirty.rs test_hand_written_global_transform_is_discarded_once_the_entity_goes_dirty` |
 | Circular hierarchy references during reparenting create invalid cyclic trees and are rejected | `tests/world.rs test_set_parent_rejects_cycles_and_names_the_cycle` |
 | `World::update` swaps `systems` out so a system cannot reach or mutate the system list during update | `tests/system_lifecycle.rs test_a_panicking_system_does_not_stop_later_systems_from_updating` |
-| Event bus events stay readable until flushed at the end of the frame; the next frame starts empty | `tests/world.rs test_events_stay_readable_until_flush_then_the_next_frame_starts_empty` |
+| Event bus events stay readable until the next flush; the engine flushes at the start of each frame, so an event emitted after `update` is gone before a game reads it | `tests/world.rs test_events_stay_readable_until_flush_then_the_next_frame_starts_empty` |
 | `Box<dyn Component>` is not clonable: anything that copies components (`WorldSnapshot`, duplication) downcasts to each concrete type and calls its own `Clone` | — none |
 
 

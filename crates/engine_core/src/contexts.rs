@@ -76,9 +76,10 @@ pub struct GameContext<'a> {
     /// current selection on later frames (no stale startup value).
     pub chaos_mode: ChaosMode,
     /// Engine time multiplier, **read-write** like `chaos_mode` (the engine
-    /// persists writes across frames). Currently scales engine-side particle
-    /// stepping only — set it to `0.0` while paused so bursts freeze with the
-    /// game (`PauseMenu::time_scale()` provides the right value each frame).
+    /// persists writes across frames). Scales the engine's frame tail: particles,
+    /// sprite animation, lifetimes, clip state machines and grid backdrops. Set
+    /// it to `0.0` while paused so all of them freeze with the game
+    /// (`PauseMenu::time_scale()` provides the right value each frame).
     /// It does NOT scale `ctx.delta_time`; games gate their own logic.
     pub time_scale: f32,
     /// Requests accumulated during this frame (exit, title, UI clip).

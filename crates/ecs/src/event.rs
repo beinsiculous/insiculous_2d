@@ -1,8 +1,10 @@
 //! Typed event bus for loose-coupled communication between systems.
 //!
-//! Events are emitted during a frame and readable by any system during
-//! the same frame. Call `flush_events()` at the end of each frame to
-//! clear all queues.
+//! Events stay readable from the moment they are emitted until the next
+//! `flush_events()`. Call it once per frame at one fixed point. The engine's
+//! runner flushes first thing in each frame, so an event emitted after the
+//! game's `update` (in the frame tail) is gone before any game reads it, and a
+//! producer there must hold its events for the next frame.
 //!
 //! # Example
 //! ```
@@ -20,7 +22,7 @@
 //! }
 //! # assert_eq!(world.read_events::<CoinCollected>().len(), 2);
 //!
-//! world.flush_events(); // Call at end of frame
+//! world.flush_events(); // once per frame, at a fixed point
 //! # assert!(world.read_events::<CoinCollected>().is_empty());
 //! ```
 
@@ -104,7 +106,7 @@ impl EventBus {
             .unwrap_or(&[])
     }
 
-    /// Clear all event queues. Call this at the end of each frame.
+    /// Clear all event queues. Call once per frame, at a fixed point.
     pub fn flush(&mut self) {
         for queue in self.queues.values_mut() {
             queue.clear();
