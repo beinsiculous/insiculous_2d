@@ -30,8 +30,8 @@ impl Lifetime {
 }
 
 /// System: ticks every [`Lifetime`] down by the frame delta and removes
-/// entities whose time expired. Add it to the world's system registry or
-/// own an instance and call `update` from the game loop.
+/// entities whose time expired. The engine's frame tail steps it for every
+/// game; a game must not own a second one, which would halve every lifetime.
 #[derive(Debug, Default)]
 pub struct LifetimeSystem;
 

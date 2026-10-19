@@ -122,17 +122,12 @@ Per-entity behavior is a `match` over a data enum, and cross-entity effects are 
 
 ## Pitfalls here
 
-- **`World::update` never runs in production.** `World` carries a `SystemRegistry`, and
-  `add_system` will even late-start a system added to a running world, but no runtime code
-  calls `World::update`. Only `Scene::update`/`update_with_schedule` do, and those run in tests
-  alone. A game that calls `ctx.world.add_system(TransformHierarchySystem::new())` in `init`
-  gets a system that never ticks, silently. Call your system's `update` yourself from
-  `Game::update`, the way the editor host does. Whether to delete the scheduler or wire it in is
-  tracked as insiculous_2d#170.
-  - `crates/ecs/src/world.rs` · `World::add_system` — accepted, started, never updated at
-    runtime.
-  - `crates/ecs/src/system.rs` · `SystemRegistry` — the scheduler the runtime doesn't use.
-  - `crates/engine_core/src/scene.rs` · `Scene::update_with_schedule` — tests-only caller.
+- **There is no scheduler.** A system ticks where something calls its `update`, and nowhere
+  else. The engine's own systems run from the frame tail, in order: `SpriteAnimationSystem`,
+  `LifetimeSystem`, `ClipStateMachineSystem`. A game's own systems run from `Game::update`,
+  where the game calls them, the way the editor host steps its `TransformHierarchySystem`.
+  - `crates/engine_core/src/game/frame_tail.rs` · `step_world_systems` — the engine's list,
+    stepped by hand.
 - **Don't run an engine-tail system twice.** A game that owns its own `LifetimeSystem` halves
   every lifetime, because the frame tail already runs one.
 - **One frame of lag across the tail.** Animation advances *after* the game's `update`, so

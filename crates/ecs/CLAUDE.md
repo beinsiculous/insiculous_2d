@@ -76,7 +76,6 @@ aren't enough.
 | When downcasting a `Box<dyn Component>`, calling `.as_any()` directly hits the blanket impl on the Box; call `.as_ref().as_any()` instead | `src/component.rs test_boxed_component_downcasts_only_through_as_ref_as_any` |
 | Manual writes to `GlobalTransform2D` are not change-tracked and get overwritten by hierarchy propagation when the entity is dirty | `tests/hierarchy_dirty.rs test_hand_written_global_transform_is_discarded_once_the_entity_goes_dirty` |
 | Circular hierarchy references during reparenting create invalid cyclic trees and are rejected | `tests/world.rs test_set_parent_rejects_cycles_and_names_the_cycle` |
-| `World::update` swaps `systems` out so a system cannot reach or mutate the system list during update | `tests/system_lifecycle.rs test_a_panicking_system_does_not_stop_later_systems_from_updating` |
 | Event bus events stay readable until the next flush; the engine flushes at the start of each frame, so an event emitted after `update` is gone before a game reads it | `tests/world.rs test_events_stay_readable_until_flush_then_the_next_frame_starts_empty` |
 | `Box<dyn Component>` is not clonable: anything that copies components (`WorldSnapshot`, duplication) downcasts to each concrete type and calls its own `Clone` | — none |
 

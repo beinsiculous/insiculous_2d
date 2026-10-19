@@ -1,23 +1,14 @@
-//! A `Scene` through its public API: its lifecycle gates `update`, drives
-//! its world's lifecycle, and a started scene actually runs its schedule.
+//! A `Scene` through its public API: its lifecycle refuses out-of-order
+//! transitions and drives its world's lifecycle.
 
-use ecs::system::SystemRegistry;
 use engine_core::{LifecycleState, Scene};
-use std::sync::{Arc, Mutex};
 
 #[test]
-fn test_scene_with_schedule() -> Result<(), String> {
+fn test_scene_lifecycle_refuses_out_of_order_transitions_and_drives_its_world() -> Result<(), String> {
     let mut scene = Scene::new("TestScene");
-    let mut schedule = SystemRegistry::new();
-    let update_count = Arc::new(Mutex::new(0));
-    let counter = Arc::clone(&update_count);
-    schedule.add_simple("TestSystem", move |_world, _dt| {
-        *counter.lock().expect("counter lock") += 1;
-    });
 
-    // Not operational yet: updates are refused, and so is starting.
     assert_eq!(scene.lifecycle_state(), LifecycleState::Created);
-    assert!(scene.update(0.016).is_err());
+    assert!(!scene.is_operational());
     assert!(scene.start().is_err(), "start before initialize");
     assert_eq!(scene.lifecycle_state(), LifecycleState::Created, "a refusal changes nothing");
 
@@ -31,24 +22,13 @@ fn test_scene_with_schedule() -> Result<(), String> {
     assert!(scene.world.is_running());
     assert!(scene.start().is_err(), "start twice");
 
-    // Lifecycle hooks need a world to act on.
-    let mut hook_world = ecs::World::new();
-    schedule.initialize(&mut hook_world)?;
-    schedule.start(&mut hook_world)?;
-
-    scene.update_with_schedule(&mut schedule, 0.016)?;
-    scene.update_with_schedule(&mut schedule, 0.016)?;
-
-    assert_eq!(*update_count.lock().expect("counter lock"), 2, "a started scene runs its schedule");
-
-    schedule.stop(&mut hook_world)?;
-    schedule.shutdown(&mut hook_world)?;
     scene.stop()?;
+    assert!(scene.is_operational() && !scene.is_running());
     assert!(!scene.world.is_running());
-    assert!(scene.update(0.016).is_err(), "a stopped scene no longer updates");
     assert!(scene.stop().is_err(), "stop twice");
     scene.shutdown()?;
     assert_eq!(scene.lifecycle_state(), LifecycleState::ShutDown);
+    assert!(!scene.is_operational());
     assert!(!scene.world.is_initialized());
     Ok(())
 }

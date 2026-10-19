@@ -119,30 +119,4 @@ impl Scene {
         );
         Ok(instance)
     }
-
-    /// Update the scene graph (only if running)
-    pub fn update(&mut self, delta_time: f32) -> Result<(), String> {
-        if !self.lifecycle.is_operational() {
-            return Err(format!("Scene '{}' is not operational (current state: {:?})", 
-                             self.name, self.lifecycle.current_state()));
-        }
-
-        // Update the world
-        self.world.update(delta_time).map_err(|e| format!("Failed to update world: {}", e))?;
-        log::trace!("Updating scene '{}', delta: {:.4}s", self.name, delta_time);
-        Ok(())
-    }
-
-    /// Update the scene with a borrowed schedule (only if running)
-    pub fn update_with_schedule(&mut self, schedule: &mut ecs::SystemRegistry, dt: f32) -> Result<(), String> {
-        if !self.lifecycle.is_operational() {
-            return Err(format!("Scene '{}' is not operational (current state: {:?})", 
-                             self.name, self.lifecycle.current_state()));
-        }
-
-        // Execute the schedule on the world
-        schedule.update_all(&mut self.world, dt);
-        log::trace!("Updating scene '{}' with schedule, delta: {:.4}s", self.name, dt);
-        Ok(())
-    }
 }

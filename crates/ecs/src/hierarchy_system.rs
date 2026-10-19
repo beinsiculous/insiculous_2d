@@ -45,9 +45,8 @@ struct CachedNode {
 /// # Usage
 ///
 /// Own one and call its `update` from your frame, after anything that moves
-/// entities and before drawing. The engine's runtime never calls `World::update`,
-/// so a system registered with `add_system` is started but never ticks. Entities
-/// need:
+/// entities and before drawing. Nothing steps a system you do not step
+/// yourself; the engine's own run from the frame tail. Entities need:
 /// - `Transform2D` - local transform relative to parent (or world if no parent)
 /// - `GlobalTransform2D` - will be computed automatically
 /// - `Parent` (optional) - if present, transform is relative to parent

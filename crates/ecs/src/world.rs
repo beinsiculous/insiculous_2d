@@ -8,7 +8,6 @@ use crate::hierarchy::{Children, Parent};
 use crate::event::EventBus;
 use crate::generation::EntityGeneration;
 use crate::resource::ResourceStorage;
-use crate::system::SystemRegistry;
 use crate::query::QueryTypes;
 use crate::EcsError;
 
@@ -38,8 +37,6 @@ pub struct World {
     entity_generations: HashMap<EntityId, EntityGeneration>,
     /// The component registry
     components: ComponentRegistry,
-    /// The system registry
-    systems: SystemRegistry,
     /// Typed singleton resources for cross-system state
     resources: ResourceStorage,
     /// Typed event bus for loose-coupled system communication
@@ -64,7 +61,6 @@ impl World {
             entities: HashMap::with_capacity(config.entity_capacity),
             entity_generations: HashMap::with_capacity(config.entity_capacity),
             components: ComponentRegistry::new(),
-            systems: SystemRegistry::new(),
             resources: ResourceStorage::new(),
             events: EventBus::new(),
             initialized: false,
@@ -73,33 +69,18 @@ impl World {
         }
     }
 
-    /// Run a system-registry operation with `self` handed to the systems.
-    ///
-    /// Temporarily swaps the registry out of `self` so systems can receive
-    /// `&mut World` without a double borrow (same pattern as `update`).
-    fn with_systems<R>(&mut self, f: impl FnOnce(&mut SystemRegistry, &mut World) -> R) -> R {
-        let mut temp_systems = SystemRegistry::new();
-        std::mem::swap(&mut self.systems, &mut temp_systems);
-        let result = f(&mut temp_systems, self);
-        std::mem::swap(&mut self.systems, &mut temp_systems);
-        result
-    }
-
-    /// Initialize the world, invoking every system's `initialize` hook
+    /// Mark the world initialized; refused if it already is
     pub fn initialize(&mut self) -> Result<(), EcsError> {
         if self.initialized {
             return Err(EcsError::AlreadyInitialized);
         }
 
-        self.with_systems(|systems, world| systems.initialize(world))?;
-
         self.initialized = true;
-        log::info!("World initialized with {} entities and {} systems",
-                  self.entities.len(), self.systems.len());
+        log::info!("World initialized with {} entities", self.entities.len());
         Ok(())
     }
 
-    /// Start the world (begin running systems), invoking `start` hooks
+    /// Mark the world running; refused before `initialize` or while already running
     pub fn start(&mut self) -> Result<(), EcsError> {
         if !self.initialized {
             return Err(EcsError::NotInitialized);
@@ -109,34 +90,28 @@ impl World {
         }
 
         self.running = true;
-        self.with_systems(|systems, world| systems.start(world))?;
-        log::info!("World started with {} active systems", self.systems.len());
+        log::info!("World started");
         Ok(())
     }
 
-    /// Stop the world (pause systems), invoking `stop` hooks
+    /// Mark the world no longer running; refused when it is not running
     pub fn stop(&mut self) -> Result<(), EcsError> {
         if !self.running {
             return Err(EcsError::NotRunning);
         }
 
         self.running = false;
-        self.with_systems(|systems, world| systems.stop(world))?;
         log::info!("World stopped");
         Ok(())
     }
 
-    /// Shutdown the world, invoking every system's `shutdown` hook
+    /// Shut the world down, stopping it first if it is running
     pub fn shutdown(&mut self) -> Result<(), EcsError> {
         if self.running {
             self.stop()?;
         }
 
-        if self.initialized {
-            self.with_systems(|systems, world| systems.shutdown(world))?;
-            self.initialized = false;
-        }
-
+        self.initialized = false;
         log::info!("World shut down");
         Ok(())
     }
@@ -317,39 +292,6 @@ impl World {
         self.components.component_types(&entity_id)
     }
 
-    /// Add a system.
-    ///
-    /// Systems added after `initialize()`/`start()` get the missed
-    /// `initialize`/`start` hooks invoked immediately (failures are logged,
-    /// the system is added regardless).
-    pub fn add_system<S: crate::system::System + 'static>(&mut self, mut system: S) {
-        if self.initialized {
-            if let Err(e) = system.initialize(self) {
-                log::error!("System '{}' failed late initialization: {e}", system.name());
-            }
-        }
-        if self.running {
-            if let Err(e) = system.start(self) {
-                log::error!("System '{}' failed late start: {e}", system.name());
-            }
-        }
-        self.systems.add(system);
-    }
-
-    /// Update all systems - safe version with proper error handling
-    pub fn update(&mut self, delta_time: f32) -> Result<(), EcsError> {
-        if !self.initialized {
-            return Err(EcsError::NotInitialized);
-        }
-        if !self.running {
-            return Err(EcsError::NotRunning);
-        }
-
-        self.with_systems(|systems, world| systems.update_all(world, delta_time));
-
-        Ok(())
-    }
-
     /// Get the number of entities
     pub fn entity_count(&self) -> usize {
         self.entities.len()
@@ -366,11 +308,6 @@ impl World {
     /// Get a non-allocating iterator over all entity IDs.
     pub fn entity_ids(&self) -> impl Iterator<Item = EntityId> + '_ {
         self.entities.keys().copied()
-    }
-
-    /// Get the number of systems
-    pub fn system_count(&self) -> usize {
-        self.systems.len()
     }
 
     /// Validate that an entity exists and is alive
@@ -424,7 +361,7 @@ impl World {
     /// Remove all entities and components from the world.
     ///
     /// Clears entities, generations, and component storage. Does not
-    /// affect systems, initialization state, or configuration.
+    /// affect initialization state or configuration.
     pub fn clear(&mut self) {
         self.entities.clear();
         self.entity_generations.clear();

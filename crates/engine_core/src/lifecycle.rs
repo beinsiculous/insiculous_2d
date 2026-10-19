@@ -48,6 +48,8 @@ impl LifecycleState {
     }
 }
 
+/// A clone copies the current state and starts with its own, unlocked guards:
+/// the locks belong to one instance and are never shared between clones.
 impl Clone for LifecycleManager {
     fn clone(&self) -> Self {
         let current_state = self.current_state();
