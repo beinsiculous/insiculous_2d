@@ -961,7 +961,10 @@ Do not trust hardcoded test counts in docs — run `cargo test --workspace` for 
 truth. The invariant that matters: **0 failed, 0 ignored** (GPU/window-bound doc
 examples are `no_run`, never `ignore`).
 
-For more game programming patterns, refer to the [Game Programming Patterns](https://gameprogrammingpatterns.com/) book.
+For game programming patterns, read the `game-programming-patterns` skill
+(`.claude/skills/game-programming-patterns/`): Nystrom's
+[book](https://gameprogrammingpatterns.com/), one file per pattern, with where this engine uses
+each pattern, deliberately avoids it, or is waiting on a ticket.
 
 ## Example Docstrings
 

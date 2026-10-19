@@ -37,7 +37,10 @@ encode lessons already learned here — following them is cheaper than re-learni
    tried. A clear blocker report beats a wrong "fix".
 7. **Use the project skills** for recurring tasks: `/add-component` (wire a new ECS
    component through registry + editor), `/new-game` (20-games-challenge scaffold),
-   `/finish-task` (definition-of-done verification).
+   `/finish-task` (definition-of-done verification), `/game-programming-patterns`
+   (choosing or reviewing an architecture pattern; the engine's decision of record for each
+   of the book's 19 patterns lives in `.claude/skills/game-programming-patterns/`, which any
+   harness or reviewer can read even where it can't load the skill).
 
 ## Single Sources of Truth (edit HERE, nowhere else)
 | Concern | The one place |
