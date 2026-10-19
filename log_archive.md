@@ -12,6 +12,39 @@ TECH_DEBT/ROADMAP docs — is what the sections below refer to.)
 
 ---
 
+## Game Programming Patterns skill + second patterns audit ☑ Oct 19 2026
+The `game-programming-patterns` skill (`.claude/skills/game-programming-patterns/`, `65084dd`)
+distills Nystrom's catalog into one reference file per pattern, each held against this engine's
+code with the decision of record. Writing it re-audited all 19 patterns across the engine and the
+six games, three months after the July audit below. The plan was reviewed by kimi in two rounds,
+and kimi code-reviewed both the fixes and the skill.
+- **Fixed** (`1bdea0c`, `af9c464`, `6f7f846`, `bce5abc`, asteroids `f8cab8e`):
+  - `#solid:` scene colours share one texture per colour (Flyweight).
+  - The Rhai sandbox caps string and collection sizes and call depth, and a breach quarantines
+    the script as `ResourceLimit`, the way a runaway loop already was.
+  - `TransformHierarchySystem`'s doc example calls `update` instead of the never-run
+    `World::update`.
+  - `EntityGeneration::increment` ("for entity reuse") is removed.
+  - The behavior runner's proximity helpers no longer allocate.
+  - Nine doc claims now match the code, among them `time_scale` (which scales the whole frame
+    tail), the event flush (which happens at the *start* of the frame), and `PlaySoundEffect`
+    (which nothing plays).
+- **Filed:** #168 (shipped builds never propagate the transform hierarchy), #169 (field-level
+  prefab overrides), #170 (the dead `World::update` scheduler), #171 (`HierarchicalStateMachine`),
+  #172 (audio components with no consumer). Also closed #151, whose work had landed in `cb7b999`.
+- **Lessons:**
+  - An operation budget doesn't bound memory. A few dozen operations of string doubling can ask
+    for more than the machine has, so a sandbox needs size limits as well as a step limit.
+  - An absence claim ("no caller") has to cover `examples/`. The audit missed the platformer
+    example's use of `HierarchicalStateMachine`, and the skill's review caught it after #171 had
+    been filed.
+  - This archive can be the stale side. The July entry's "physics emits `CollisionData` on the
+    bus" stopped being true when `cc31078` deleted the unread mirror. When a claim here disagrees
+    with the code, the code is right; this file stays as history.
+  - The July verdicts held. Value-compared dirty checks, physics delegated to rapier, no
+    observers under `&mut World`, and the HashMap storage tradeoff all stand, and no revisit
+    trigger has fired.
+
 ## Editor UX audit reconciled ☑ Sep 10 2026
 
 `docs/EDITOR_UX_AUDIT.md` was a file:line-anchored read of the editor on
