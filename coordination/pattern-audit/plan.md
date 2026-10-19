@@ -84,11 +84,15 @@ pools — the book's own advice is to wait for the profiler).
    restore, Open Scene, New Scene, the preview's load — files a World-resource marker,
    exactly like `GridBackdropReset`: `ecs::request_transform_hierarchy_reset(world)` inserts
    `TransformHierarchyReset`, and `TransformHierarchySystem::update` consumes it before
-   propagating. Stop was the only reset today; Open and New never reset the cache, and
-   `World::clear` restarts entity ids, so a re-opened scene whose id, local and parent
-   coincide with the last scene's kept a stale global — batch 2 fixes that. The scene
-   loader stops attaching `GlobalTransform2D::default()` to parented entities: the tail's
-   first propagation adds the real global before that frame's render.
+   propagating. The case that needs it is the snapshot restore: it recreates entities
+   under their old ids with the same locals in the frame of the clear, while the cache is
+   still warm. Open, New and the preview's load file it as a guard only — entity ids come
+   from a process-wide counter and are never recycled (`ecs/src/entity.rs`,
+   `ecs/CLAUDE.md:15`), so a loaded scene's fresh ids are never in the cache. (The plan's
+   v3 wording claimed a live re-open bug here; batch 2's executor showed the premise false,
+   and the record was corrected on 2026-10-19.) The scene loader stops attaching
+   `GlobalTransform2D::default()` to parented entities: the tail's first propagation adds
+   the real global before that frame's render.
 3. **Overrides merge field by field, at the top level only.** `position` as a whole, never
    `position.x`. Presence comes from the source text, not from comparing against defaults:
    an explicit `scale: (1.0, 1.0)` in an override is honoured (the alternative — treating
@@ -279,7 +283,16 @@ the row deletion.
 
 Size: about −470 / +60 lines.
 
-## Batch 2 — engine_core + ecs + editor_integration + physics: the frame tail owns the hierarchy (#168; #153; the `System` trait trim; DRY-003; GPP-L1)
+## Batch 2 — engine_core + ecs + editor_integration + physics: the frame tail owns the hierarchy (#168; #153; the `System` trait trim; DRY-003; GPP-L1) — DONE 2026-10-19 (1809f87)
+
+Authored by Jesse's Claude Opus session from `review/pattern-audit/handoff-2.md`; reviewed by
+kimi (`review-4.md`), gemini (`review-4-gemini.md`) and the planner (`review-4-claude.md`);
+adjudicated in `rebuttal-4.md` — kimi 2 findings, both rebutted with evidence (the games gate had compiled every game; the one-frame window is the accepted ruling); gemini 4, 1 accepted (a doc line the trim had made stale), 3 rebutted (the headless API never had a frame loop; the window; frame-1 globals are an improvement on never); the planner none. The executor found the plan's Open/New
+premise false (ids are never recycled; see decision 2) and kept the marker there as a guard
+under an honest test name; it kept `initialize` on the trait because three example lines
+called it, and the planner completed the trim before dispatch — the trait is `update` alone,
+the examples lose the calls and the platformer its own hierarchy system. 1110 tests, every
+gate green.
 
 **Re-verified against the tree 2026-10-19 after batch 1 (6b1ccb7):** `hierarchy_system.rs` is
 345 lines — `reset` at 123, `impl System` at 154, `update` at 160, `is_dirty` at 285–301,
@@ -338,7 +351,10 @@ and `references/event-queue.md`.
   which restarts entity ids at 0 (`world.rs:428-432`), and `is_dirty` compares only
   `(local, parent)` (`hierarchy_system.rs:295-301`), so a re-opened scene whose entity at
   id *k* shares those with the last scene's id *k* kept its stale global and sat at the
-  origin until nudged — a live editor bug, fixed here rather than filed.
+  origin until nudged. **This premise was false** (batch 2's executor, 2026-10-19): ids are
+  never recycled, so Open and New cannot revive one; the marker there is a guard, and the
+  real case is the snapshot restore. The warm-cache editor test below is therefore named
+  for what it can pin — Open files the marker and every global matches its local.
 - **The loader stops writing identity globals.** `scene_loader.rs:157-164` and `241-244`
   attach `GlobalTransform2D::default()` to every parented entity; both go. The tail's first
   propagation adds the real global (`set_global_transform` adds when missing,
@@ -451,10 +467,22 @@ Size: about +260 / −110 lines (the trait trim is about forty deleted lines acr
 
 ## Batch 3 — ecs + editor + engine_core + examples: retire two advertised, unused APIs (#171, #172; GPP-L8)
 
+**Re-verified against the tree 2026-10-19 after batch 2 (1809f87):** `engine_core/src/prelude.rs`
+re-exports `HierarchicalStateMachine` at line 77 (not 75) and the audio components at 69;
+the platformer attaches the machine at `examples/hello_world/platformer.rs:214`, reads it at
+`:377` and prints the group at `:404` (`PlayerState` 47, `PlayerGroup` 56, `player_group` 61);
+`state.md`'s "Generic machines don't survive Play/Stop" pitfall starts at 164 and the
+`HierarchicalStateMachine` pitfall at 171–176; `event-queue.md`'s audio paragraph is at
+131–133 and its `PlaySoundEffect` pitfall at 147–149; the loader's `create_entity` is
+`scene_loader.rs:260-290` with the `merge_components` call at 280; `ecs/src/lib.rs` declares
+the module at 28 and glob-re-exports it at 53; `set_commands.rs:5`, `component_editors.rs:22`
+and `stored_component/mod.rs:9` carry the editor's imports. Every other line below held.
+
+
 Files, #171: `crates/ecs/src/state_machine.rs` (324 → ~190), `crates/ecs/src/lib.rs:78`,
-`crates/ecs/src/prelude.rs:15`, `crates/engine_core/src/prelude.rs:75`,
+`crates/ecs/src/prelude.rs:15`, `crates/engine_core/src/prelude.rs:77`,
 `crates/editor/src/world_snapshot.rs:11` (doc), `examples/hello_world/platformer.rs`
-(216–223, 385–388, 412–413), `training.md:54`, `docs/EDITOR_UX_AUDIT.md:91`, the skill's
+(211–217, 377, 404), `training.md:54`, `docs/EDITOR_UX_AUDIT.md:91`, the skill's
 `references/state.md` (165–176).
 Files, #172: `crates/ecs/src/audio_components.rs` (deleted), `crates/ecs/src/lib.rs` (mod +
 re-export), `crates/ecs/src/prelude.rs`, `crates/ecs/src/component_registry/mod.rs` (51, 95,
@@ -467,14 +495,14 @@ re-export), `crates/ecs/src/prelude.rs`, `crates/ecs/src/component_registry/mod.
 `crates/engine_core/src/scene_serializer/dynamic_and_scripts_tests.rs` (module doc, 8,
 67–101), `crates/audio/CLAUDE.md:3-6`, `crates/ecs/CLAUDE.md:26`, `training.md:56, 82`,
 `CLAUDE.md` § Core Systems Complete → Audio bullet, the skill's `references/event-queue.md`
-(130–132, 143–145).
+(131–133, 147–149).
 Files, GPP-L8: `crates/ui/src/font/glyph_cache.rs:35-42`.
 
 **Target shape — #171.** `HierarchicalStateMachine` (state_machine.rs:114-226), its test
 (299–323) and the `PlayerGroup`/`player_group` test helpers (240–251) are deleted; the
 module doc's first line stops saying "Hierarchical". The three re-exports go.
-`platformer.rs` attaches `StateMachine::new(PlayerState::Idle)` (216–223), reads
-`get_mut::<StateMachine<PlayerState>>` (385–388), and the panel line (412–413) prints
+`platformer.rs` attaches `StateMachine::new(PlayerState::Idle)` (214), reads
+`get_mut::<StateMachine<PlayerState>>` (377), and the panel line (404) prints
 `player_group(state_machine.current())` — the example's own `player_group` fn (61–66) and
 `PlayerGroup` enum (55–59) stay, because the display still shows the group.
 `world_snapshot.rs:11` names `StateMachine<S>` as its example of a generic the snapshot
@@ -482,7 +510,7 @@ cannot clone. `training.md:54` lists `StateMachine` alone. `EDITOR_UX_AUDIT.md:9
 its stale citation (`editor_demo.rs:194-198` → the platformer file) and notes the drop now
 comes with a warning. `state.md` 171–176 becomes: there is no hierarchical machine; derive a
 group from the state with a function when you need one (the platformer's `player_group`);
-the "Generic machines don't survive Play/Stop" pitfall at 165–169 stays and now carries the
+the "Generic machines don't survive Play/Stop" pitfall at 164–169 stays and now carries the
 example. `cargo check --workspace --all-targets` is the gate that compiles the example.
 
 **Target shape — #172.** `audio_components.rs` is deleted with its tests; the registry
@@ -499,7 +527,7 @@ cases (the module doc at 1–4 stops mentioning audio). No `.scene.ron` under `e
 IndexedDB or an older editor save may — the components were editable in the inspector,
 which is #172's premise. So the loader gains a retired-names list, applied to every layer
 — a prefab's components, an entity's overrides and its inline components — before
-`merge_components` runs in `create_entity` (`scene_loader.rs:274-302`): a `Dynamic` entry
+`merge_components` runs in `create_entity` (`scene_loader.rs:260-290`): a `Dynamic` entry
 whose type is `AudioSource`, `AudioListener` or `PlaySoundEffect` is dropped with a
 `log::warn!` naming the entity and the component, and the scene loads (batch 4's merge then
 never sees a retired name); every other unregistered name stays the hard error it is
@@ -510,8 +538,8 @@ warning tests use).
 **Docs:** `audio/CLAUDE.md:3-6` — no ECS components live anywhere; play from game code
 through `ctx.audio`; scene-authored audio is Conductor's. `ecs/CLAUDE.md:26` row deleted.
 `training.md:56` and `:82` deleted. Root `CLAUDE.md`'s Audio bullet drops "(spatial audio
-components exist in ecs but have no runtime system yet)". `event-queue.md` 130–132 and
-143–145: audio has no scene-data path and no sound queue; play through `ctx.audio`; the
+components exist in ecs but have no runtime system yet)". `event-queue.md` 131–133 and
+147–149: audio has no scene-data path and no sound queue; play through `ctx.audio`; the
 feature is filed under Conductor (the close-out fills in the number). DRY-004 on #86 loses
 its subject (noted at close-out).
 
