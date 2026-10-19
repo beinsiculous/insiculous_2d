@@ -226,6 +226,8 @@ pub(crate) struct GameRunner<G: Game> {
     /// CPU-pooled particle system. Lives across frames so emitters can
     /// accumulate over time and spawn bursts can persist for their lifetime.
     particles: crate::particles::ParticleManager,
+    /// Propagates `GlobalTransform2D` through the hierarchy in the frame tail.
+    transform_hierarchy: ecs::TransformHierarchySystem,
     /// Line vertex buffer that the game fills each frame and the engine
     /// uploads to the renderer, drawn after the sprites. Cleared before every
     /// `update()`.
@@ -343,6 +345,7 @@ impl<G: Game> GameRunner<G> {
             achievements,
             scores,
             particles: crate::particles::ParticleManager::default(),
+            transform_hierarchy: ecs::TransformHierarchySystem::new(),
             lines: Vec::new(),
             behind_lines: Vec::new(),
             grid_backdrops: crate::grid::GridBackdropSystem::default(),

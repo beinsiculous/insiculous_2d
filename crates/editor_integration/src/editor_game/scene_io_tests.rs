@@ -217,6 +217,67 @@ fn test_new_scene_resets_world_and_editor_state() {
     assert_eq!(editor.entity_counter, 0);
     assert!(editor.physics_settings.is_none());
     assert!(!world.has_resource::<PhysicsSettings>(), "no inherited physics settings");
+    assert!(
+        world.has_resource::<ecs::TransformHierarchyReset>(),
+        "a replaced world starts its transform propagation over"
+    );
+}
+
+const NESTED_SCENE: &str = r#"SceneData(
+    name: "Nested",
+    entities: [
+        EntityData(
+            name: Some("parent"),
+            components: [Transform2D(position: (100.0, 0.0))],
+            children: [EntityData(name: Some("child"), components: [Transform2D(position: (5.0, 6.0))])],
+        ),
+    ],
+)"#;
+
+fn named(world: &World, name: &str) -> ecs::EntityId {
+    world
+        .entity_ids()
+        .find(|&entity| world.get::<ecs::Name>(entity).is_some_and(|found| found.0 == name))
+        .unwrap_or_else(|| panic!("the scene names {name}"))
+}
+
+#[test]
+fn test_reopening_a_scene_files_the_reset_and_every_global_matches_its_local() -> std::io::Result<()> {
+    use ecs::System;
+
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("nested.scene.ron");
+    std::fs::write(&path, NESTED_SCENE)?;
+    let mut world = World::new();
+    let mut editor = editor_game();
+    // Stands in for the frame tail's, which every host runs under.
+    let mut tail_hierarchy = ecs::TransformHierarchySystem::new();
+
+    editor.load_scene(&mut world, &mut StubResolver::default(), &path).expect("the scene loads");
+    tail_hierarchy.update(&mut world, 0.016);
+    let parent = named(&world, "parent");
+    if let Some(transform) = world.get_mut::<common::Transform2D>(parent) {
+        transform.position = Vec2::new(-300.0, 40.0);
+    }
+    tail_hierarchy.update(&mut world, 0.016);
+
+    editor.load_scene(&mut world, &mut StubResolver::default(), &path).expect("the scene re-opens");
+    assert!(
+        world.has_resource::<ecs::TransformHierarchyReset>(),
+        "Open replaced the world, so it files the reset"
+    );
+    let child = named(&world, "child");
+    assert!(
+        world.get::<ecs::GlobalTransform2D>(child).is_none(),
+        "the loader writes no global; the tail's first propagation adds the real one"
+    );
+    tail_hierarchy.update(&mut world, 0.016);
+
+    let global = |entity| world.get::<ecs::GlobalTransform2D>(entity).map(|global| global.position);
+    assert_eq!(global(named(&world, "parent")), Some(Vec2::new(100.0, 0.0)));
+    assert_eq!(global(child), Some(Vec2::new(105.0, 6.0)), "the child follows the re-opened parent");
+    assert!(!world.has_resource::<ecs::TransformHierarchyReset>(), "the propagation consumed it");
+    Ok(())
 }
 
 #[test]

@@ -29,7 +29,7 @@ fn position_of(world: &World, entity: ecs::EntityId) -> Vec2 {
 fn test_new_system_runs_at_sixty_hertz_under_earth_gravity_and_knows_no_bodies() {
     let system = PhysicsSystem::new();
     assert_eq!(system.fixed_timestep, 1.0 / 60.0);
-    assert_eq!(system.physics_world().gravity(), Vec2::new(0.0, -980.0));
+    assert_eq!(system.physics_world().config().gravity, Vec2::new(0.0, -980.0));
     assert_eq!(system.get_body_velocity(ecs::EntityId::new()), None, "an unknown entity has no body");
 }
 
@@ -92,7 +92,7 @@ fn test_clear_keeps_the_config_and_resyncs_bodies_from_the_ecs() {
     system.clear();
 
     assert!(!system.physics_world().has_rigid_body(entity), "clear drops every rapier body");
-    assert_eq!(system.physics_world().gravity(), Vec2::new(0.0, -500.0), "clear keeps gravity");
+    assert_eq!(system.physics_world().config().gravity, Vec2::new(0.0, -500.0), "clear keeps gravity");
     assert_eq!(system.physics_world().config().pixels_per_meter, 50.0, "clear keeps the scale");
 
     system.update(&mut world, 0.0); // sync only, no step

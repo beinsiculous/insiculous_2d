@@ -10,6 +10,11 @@
 //! because dirtiness is derived from current values. `GlobalTransform2D` is
 //! system-owned: manual writes to it are NOT change-tracked and will be
 //! overwritten the next time the owning entity is dirty.
+//!
+//! The engine's frame tail steps one of these for every game, editor host
+//! and preview; a game owns none. A wholesale world replacement files
+//! [`TransformHierarchyReset`] through [`request_transform_hierarchy_reset`],
+//! which the next update consumes.
 
 use std::collections::HashMap;
 
@@ -19,6 +24,21 @@ use crate::hierarchy_extension::WorldHierarchyExt;
 use crate::sprite_components::Transform2D;
 use crate::system::System;
 use crate::world::World;
+
+/// World resource marker: forget every propagation baseline on the next
+/// update. Filed after a wholesale world replacement. The case that needs it
+/// is a snapshot restore, which recreates entities under their old ids with
+/// the same local transform and parent, so the value comparison alone would
+/// keep a stale global; opening or creating a scene files it too, as a guard —
+/// fresh ids are never in the cache, since ids are never recycled.
+#[derive(Debug)]
+pub struct TransformHierarchyReset;
+
+/// Ask the engine's hierarchy system to rebuild every global from scratch
+/// on its next update.
+pub fn request_transform_hierarchy_reset(world: &mut World) {
+    world.insert_resource(TransformHierarchyReset);
+}
 
 /// One DFS traversal frame: `(entity, parent (id, global) — None for roots,
 /// ancestor_dirty)`.
@@ -44,36 +64,36 @@ struct CachedNode {
 ///
 /// # Usage
 ///
-/// Own one and call its `update` from your frame, after anything that moves
-/// entities and before drawing. Nothing steps a system you do not step
-/// yourself; the engine's own run from the frame tail. Entities need:
+/// The engine's frame tail steps this system for every game, after the
+/// game's `update` and before drawing, so a game owns none. Entities need:
 /// - `Transform2D` - local transform relative to parent (or world if no parent)
-/// - `GlobalTransform2D` - will be computed automatically
 /// - `Parent` (optional) - if present, transform is relative to parent
 ///
-/// # Example
+/// `GlobalTransform2D` is added on an entity's first propagation. After
+/// replacing the world wholesale, file the reset marker rather than reaching
+/// for a system:
 ///
 /// ```
-/// use ecs::{GlobalTransform2D, System, Transform2D, TransformHierarchySystem, World, WorldHierarchyExt};
+/// use ecs::{request_transform_hierarchy_reset, GlobalTransform2D, System, Transform2D};
+/// use ecs::{TransformHierarchyReset, TransformHierarchySystem, World, WorldHierarchyExt};
 /// use glam::Vec2;
 ///
 /// let mut world = World::new();
-/// let mut hierarchy = TransformHierarchySystem::new();
-///
-/// // Create parent
 /// let parent = world.create_entity();
 /// world.add_component(&parent, Transform2D::new(Vec2::new(100.0, 0.0))).ok();
-/// world.add_component(&parent, GlobalTransform2D::default()).ok();
-///
-/// // Create child
 /// let child = world.create_entity();
 /// world.add_component(&child, Transform2D::new(Vec2::new(50.0, 0.0))).ok();
-/// world.add_component(&child, GlobalTransform2D::default()).ok();
 /// world.set_parent(child, parent).ok();
 ///
+/// // What the frame tail does each frame.
+/// let mut hierarchy = TransformHierarchySystem::new();
 /// hierarchy.update(&mut world, 0.016);
-/// let global = world.get::<GlobalTransform2D>(child).unwrap();
-/// assert_eq!(global.position, Vec2::new(150.0, 0.0));
+/// let global = world.get::<GlobalTransform2D>(child).map(|global| global.position);
+/// assert_eq!(global, Some(Vec2::new(150.0, 0.0)));
+///
+/// request_transform_hierarchy_reset(&mut world);
+/// hierarchy.update(&mut world, 0.016);
+/// assert!(!world.has_resource::<TransformHierarchyReset>(), "the update consumes the marker");
 /// ```
 pub struct TransformHierarchySystem {
     /// Whether the system is enabled
@@ -116,10 +136,11 @@ impl TransformHierarchySystem {
     /// Forget all cached propagation state, forcing a full recompute on the
     /// next update.
     ///
-    /// The analogue of `PhysicsSystem::clear()`: call after wholesale world
-    /// replacement (e.g. the editor restoring a `WorldSnapshot`) so no stale
-    /// baseline survives. Not needed for ordinary edits — those are detected
-    /// by value comparison automatically.
+    /// The analogue of `PhysicsSystem::clear()`. Code that does not own the
+    /// system — anything that replaces the world under the engine's frame
+    /// tail — files [`request_transform_hierarchy_reset`] instead. Not needed
+    /// for ordinary edits — those are detected by value comparison
+    /// automatically.
     pub fn reset(&mut self) {
         self.cache.clear();
         self.stack.clear();
@@ -152,12 +173,10 @@ impl Default for TransformHierarchySystem {
 }
 
 impl System for TransformHierarchySystem {
-    fn initialize(&mut self, _world: &mut World) -> Result<(), String> {
-        log::debug!("TransformHierarchySystem initialized");
-        Ok(())
-    }
-
     fn update(&mut self, world: &mut World, _delta_time: f32) {
+        if world.remove_resource::<TransformHierarchyReset>().is_some() {
+            self.reset();
+        }
         if !self.enabled {
             return;
         }
@@ -178,15 +197,6 @@ impl System for TransformHierarchySystem {
 
         self.recomputed_last_update = recomputed;
         self.visited_last_update = visited;
-    }
-
-    fn shutdown(&mut self, _world: &mut World) -> Result<(), String> {
-        log::debug!("TransformHierarchySystem shut down");
-        Ok(())
-    }
-
-    fn name(&self) -> &str {
-        "TransformHierarchySystem"
     }
 }
 

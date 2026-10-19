@@ -164,10 +164,6 @@ impl<G: Game> EditorGame<G> {
                         .rebase_session_entries(world, |restored| snapshot.restore(restored));
                 }
             }
-            // The world was wholesale-replaced: drop the transform
-            // system's propagation baselines so no stale cache
-            // entry survives the restore.
-            self.transform_system.reset();
             log::info!("Stop: world restored from snapshot");
             if let Some(report) = drop_report {
                 // Status bar gets display names; the log keeps the
@@ -212,6 +208,10 @@ impl<G: Game> EditorGame<G> {
         // the restore, so without this a grid stopped mid-ripple
         // would stay deformed and frozen.
         engine_core::grid::request_backdrop_reset(world);
+        // The world was wholesale-replaced: the frame tail's hierarchy drops
+        // its propagation baselines so no stale cache entry survives the
+        // restore.
+        ecs::request_transform_hierarchy_reset(world);
         if let Some(errors) = &self.script_errors {
             if let Ok(mut lock) = errors.lock() {
                 lock.clear();

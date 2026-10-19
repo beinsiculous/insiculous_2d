@@ -100,7 +100,8 @@ a coarse upload gate.
 ```
 
 - `crates/ecs/src/hierarchy_system.rs` · `TransformHierarchySystem::reset` — drops every
-  baseline. The editor calls it after replacing the world wholesale on Stop.
+  baseline. The system calls it when it finds the `TransformHierarchyReset` marker, which the
+  editor files after replacing the world wholesale (Stop, Open, New, the preview's load).
 - `crates/physics/src/physics_system/mod.rs` · `PushedState` — physics' own baseline. An edited
   `Transform2D` teleports the body, an edited `Collider` rebuilds it, and rapier's own writeback
   refreshes the baseline, so simulated motion is never mistaken for an edit.
@@ -132,17 +133,19 @@ safe:
 
 ## Pitfalls here
 
-- **The hierarchy runs only under the editor.** `TransformHierarchySystem` is owned and stepped
-  by `editor_integration` (`EditorGame`, `ProjectHost`). The plain `run_game` frame tail doesn't
-  step it. A shipped build that parents entities gets no `GlobalTransform2D` propagation, and a
-  parented sprite draws at the origin. Tracked as insiculous_2d#168. Until it lands, a game that
-  parents entities owns a `TransformHierarchySystem` and calls `update` before drawing.
+- **The frame tail steps the hierarchy for every game.** `GameRunner` owns the one
+  `TransformHierarchySystem` and steps it after the clip machines and before the grid backdrop,
+  which reads `GlobalTransform2D`. A game owns none; a second one would only repeat the work. A
+  wholesale world replacement files `TransformHierarchyReset`, which the next update consumes.
+  - `crates/engine_core/src/game/frame_tail.rs` · `step_simulations` — the step and its place.
 - **Don't write `GlobalTransform2D` by hand.** It isn't change-tracked. The next time the entity
   goes dirty, propagation overwrites it. A guard test in `crates/ecs/tests/hierarchy_dirty.rs`
   holds this.
-- **A wholesale world replacement needs `reset()`.** After a snapshot restore, the ids still
-  match, so a surviving baseline could hide a real change. The editor's Stop calls `reset`, and
-  physics has the same contract in `PhysicsSystem::clear`.
+- **A wholesale world replacement needs a reset.** After a snapshot restore, the ids still
+  match, so a surviving baseline could hide a real change. Nothing outside the runner holds the
+  system, so the editor files the marker through `request_transform_hierarchy_reset` rather than
+  calling `reset()`. Physics has the same contract in `PhysicsSystem::clear`. A guard test in
+  `crates/ecs/tests/hierarchy_dirty.rs` holds this.
 - **A refresh of the stamp is not optional.** `is_dirty` refreshes the stamp even for a clean
   entity under a dirty ancestor. Without that, pruning would evict live entries.
 - **`RigidBody` config edits aren't pushed.** Its velocity fields are owned by the writeback, so

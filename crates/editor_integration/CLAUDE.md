@@ -23,7 +23,7 @@ editor_integration ──→ editor, engine_core, ecs, ui, input, renderer, comm
 ```
 
 ## File Map
-- `project_host.rs` — data-only game host for the standalone editor (physics preview, behavior runner, transform hierarchy).
+- `project_host.rs` — data-only game host for the standalone editor (physics preview, behavior runner). Transform propagation is the engine's frame tail's, for every host: the editor owns no hierarchy system, and Stop, Open, New and the preview's load each file `ecs::request_transform_hierarchy_reset`. A pickable's position is its `GlobalTransform2D`, which the tail writes after `update`, so a scene loaded this frame is unpickable until the tail has run once.
 - `editor_game/mod.rs` — struct definition, field mirrors, and the non-trait inherent methods (incl. `sync_dirty_mirror`); `run_game_with_editor` and `run_game_with_editor_opts` live in `run_options.rs` (below).
 - `editor_game/game_impl.rs` — the `Game for EditorGame<G>` impl (`update()` = named phases `prepare_frame`/`render_early_overlays`/`finish_frame`).
 - `editor_game/preferences.rs` — preferences load/save (camera, view toggles, collapsed inspector sections) and debounced settle persistence (0.5s stability window).
@@ -82,7 +82,7 @@ Tracked on the Studio Board: issue #90 (all files < 600 lines since June 2026; r
 | Physics ignores `Transform2D.scale`: scale tool must rebuild the collider and commit it with the transform as one entry | `src/editor_game/gizmo_drag_tests.rs test_scale_drag_rebuilds_the_collider_and_undoes_it_with_the_transform_as_one_entry` |
 | Snapping accumulated position eats sub-cell residuals: drags must apply `start + delta`, never `+=` | `src/editor_game/gizmo_drag_tests.rs test_slow_snapped_drag_steps_grid_cells_instead_of_freezing` |
 | A widget's release frame is not `Active`, but it is the frame picking decides on; `chrome_owns_mouse` must hold through release | `src/editor_game/viewport_interaction_tests.rs test_chrome_owns_mouse_through_the_release_frame_and_under_an_overlay` |
-| World snapshot restore replaces the world wholesale; `Stop` must reset the transform-propagation baseline | `src/editor_game/play_session_tests.rs test_stop_resets_the_transform_propagation_baseline` |
+| Stop's snapshot restore, Open and New replace the world wholesale; each must file the transform-propagation reset | `src/editor_game/play_session_tests.rs test_stop_resets_the_transform_propagation_baseline`, `src/editor_game/scene_io_tests.rs test_reopening_a_scene_files_the_reset_and_every_global_matches_its_local` |
 | A paused world is mid-simulation; save/new/open must be refused while Paused, not just Playing | `src/editor_game/play_session_tests.rs test_save_is_refused_mid_session_and_allowed_after_stop` |
 | `load_scene` must dry-run into a scratch World so a parse or instantiate failure never corrupts the live world | `src/editor_game/scene_io_tests.rs test_failed_parse_or_missing_file_preserves_the_live_world` |
 | Scene saves must reach `common::vfs` (via `scene_serializer`) so parent creation and wasm storage are handled uniformly | `src/editor_game/scene_io_tests.rs test_save_scene_with_creates_parent_directories_and_writes_valid_scene` |

@@ -224,11 +224,6 @@ impl PhysicsWorld {
         &self.config
     }
 
-    /// Get gravity
-    pub(crate) fn gravity(&self) -> Vec2 {
-        self.config.gravity
-    }
-
     /// Convert pixels to meters (vector)
     pub(crate) fn pixels_to_meters(&self, pixels: Vec2) -> Vec2 {
         pixels / self.config.pixels_per_meter

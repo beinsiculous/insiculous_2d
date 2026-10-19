@@ -19,7 +19,7 @@ use renderer::texture::TextureHandle;
 /// game batcher. Called by the default `Game::render` before the entity
 /// sprite loop so equal-depth sprites draw over tiles.
 pub(crate) fn append_tilemap_sprites(world: &World, sprites: &mut SpriteBatcher) {
-    for entity in world.entities() {
+    for entity in world.entity_ids() {
         let Some(tilemap) = world.get::<Tilemap>(entity) else { continue };
         let Some(transform) = world.get::<Transform2D>(entity) else { continue };
 

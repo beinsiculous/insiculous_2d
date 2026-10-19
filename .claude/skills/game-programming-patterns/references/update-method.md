@@ -70,8 +70,8 @@ fn tick_timers(world: &mut World, delta_seconds: f32) {
 
 ## In insiculous_2d
 
-**Verdict: textbook, run as an explicit ordered list. One registry-driven path is dead in
-production** (see Pitfalls).
+**Verdict: textbook, run as an explicit ordered list.** The registry-driven path that once sat
+beside it is deleted (see Pitfalls).
 
 Every system implements one trait, but the runtime calls a fixed list by hand, and the order is
 written down with its reasons:
@@ -84,15 +84,15 @@ pub(crate) fn step_world_systems(world: &mut World, delta_time: f32) {
 }
 ```
 
-- `crates/ecs/src/system.rs` · `System` — `update(&mut self, world, delta_time)` plus optional
-  lifecycle hooks.
+- `crates/ecs/src/system.rs` · `System` — `update(&mut self, world, delta_time)`, the one method;
+  there is no lifecycle hook.
 - `crates/engine_core/src/game/frame_tail.rs` · `step_world_systems` — animation, then lifetimes
   (an expired entity never animates again), then the clip machine. It runs on the time-scaled
   delta, so pause freezes all three.
 - `../games/pong/src/gameplay/mod.rs` · `update_gameplay` — a game steps its own
   `PhysicsSystem` inside `update`, between its input-driven moves and its collision handling.
-- `crates/editor_integration/src/project_host.rs` · `transform_hierarchy` — the editor host
-  owns and calls `TransformHierarchySystem` directly, as the frame tail does.
+- `crates/engine_core/src/game/frame_tail.rs` · `step_simulations` — the runner owns the one
+  `TransformHierarchySystem` and steps it after the world systems, for every game and host.
 
 Systems walk an owned list of ids, so removing an entity mid-walk is safe:
 
@@ -124,8 +124,9 @@ Per-entity behavior is a `match` over a data enum, and cross-entity effects are 
 
 - **There is no scheduler.** A system ticks where something calls its `update`, and nowhere
   else. The engine's own systems run from the frame tail, in order: `SpriteAnimationSystem`,
-  `LifetimeSystem`, `ClipStateMachineSystem`. A game's own systems run from `Game::update`,
-  where the game calls them, the way the editor host steps its `TransformHierarchySystem`.
+  `LifetimeSystem`, `ClipStateMachineSystem`, then the runner's `TransformHierarchySystem`. A
+  game's own systems run from `Game::update`, where the game calls them, the way pong steps its
+  `PhysicsSystem`.
   - `crates/engine_core/src/game/frame_tail.rs` · `step_world_systems` — the engine's list,
     stepped by hand.
 - **Don't run an engine-tail system twice.** A game that owns its own `LifetimeSystem` halves

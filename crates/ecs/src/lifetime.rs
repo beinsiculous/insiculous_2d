@@ -60,10 +60,6 @@ impl System for LifetimeSystem {
             }
         }
     }
-
-    fn name(&self) -> &str {
-        "LifetimeSystem"
-    }
 }
 
 #[cfg(test)]

@@ -10,7 +10,7 @@ pub use crate::{
     event::EventBus,
     hierarchy::{Children, GlobalTransform2D, Parent},
     hierarchy_extension::WorldHierarchyExt,
-    hierarchy_system::TransformHierarchySystem,
+    hierarchy_system::{request_transform_hierarchy_reset, TransformHierarchyReset, TransformHierarchySystem},
     resource::ResourceStorage,
     state_machine::{HierarchicalStateMachine, StateMachine},
     system::System,

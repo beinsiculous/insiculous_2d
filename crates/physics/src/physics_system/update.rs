@@ -9,11 +9,6 @@ use ecs::{EntityId, System, World};
 use super::{DeferredBodyOp, PhysicsSystem, MAX_STEPS_PER_UPDATE};
 
 impl System for PhysicsSystem {
-    fn initialize(&mut self, _world: &mut World) -> Result<(), String> {
-        log::info!("PhysicsSystem initialized with gravity: {:?}", self.physics_world.gravity());
-        Ok(())
-    }
-
     fn update(&mut self, world: &mut World, delta_time: f32) {
         // Clamp delta time to prevent instability
         let clamped_delta_time = delta_time.min(self.max_delta_time);
@@ -71,14 +66,5 @@ impl System for PhysicsSystem {
 
         // Sync physics results back to ECS
         self.sync_physics_to_ecs(world);
-    }
-
-    fn shutdown(&mut self, _world: &mut World) -> Result<(), String> {
-        log::info!("PhysicsSystem shutting down");
-        Ok(())
-    }
-
-    fn name(&self) -> &str {
-        "PhysicsSystem"
     }
 }

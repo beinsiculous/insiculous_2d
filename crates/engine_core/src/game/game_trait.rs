@@ -42,7 +42,7 @@ pub trait Game: Sized + 'static {
         crate::tilemap_render::append_tilemap_sprites(ctx.world, ctx.sprites);
 
         // Default: extract sprites from ECS
-        for entity_id in ctx.world.entities() {
+        for entity_id in ctx.world.entity_ids() {
             let sprite = ctx.world.get::<EcsSprite>(entity_id);
 
             if let Some(ecs_sprite) = sprite {
@@ -85,10 +85,14 @@ pub trait Game: Sized + 'static {
     /// (e.g., physics world) that was modified during play.
     fn on_play_stopped(&mut self, _ctx: &mut GameContext) {}
 
-    /// Called when a key is pressed. Override for custom key handling.
+    /// Called when a key is pressed, between frames: the window loop runs the
+    /// handler as the key arrives, and the next frame's first act flushes the
+    /// world's event bus, so an event emitted here is gone before `update`
+    /// reads it. Set state here; emit from `update`.
     fn on_key_pressed(&mut self, _key: KeyCode, _ctx: &mut GameContext) {}
 
-    /// Called when a key is released. Override for custom key handling.
+    /// Called when a key is released, between frames, under the same contract
+    /// as [`on_key_pressed`](Self::on_key_pressed): set state, never emit.
     fn on_key_released(&mut self, _key: KeyCode, _ctx: &mut GameContext) {}
 
     /// Called when the window is resized.

@@ -197,7 +197,7 @@ impl<G: Game> EditorGame<G> {
         log::info!("Scene loaded from: {:?} ({} entities)", path, scene_instance.entity_count);
 
         self.editor.set_scene_path(Some(path.to_path_buf()));
-        self.reset_session();
+        self.reset_session(world);
         if let Some(first) = scene_instance.load_warnings.first() {
             // Non-fatal load diagnostics reach the user, not just the log.
             self.editor.status_bar.show_error(format!(
@@ -212,7 +212,10 @@ impl<G: Game> EditorGame<G> {
         Ok(())
     }
 
-    fn reset_session(&mut self) {
+    /// Everything a scene replacement starts over, the world's transform
+    /// propagation included.
+    fn reset_session(&mut self, world: &mut World) {
+        ecs::request_transform_hierarchy_reset(world);
         self.command_history = editor::CommandHistory::new();
         self.sync_dirty_mirror();
         // A stale API batch would hold commands referencing the replaced
@@ -286,7 +289,7 @@ impl<G: Game> EditorGame<G> {
         world.clear();
 
         self.editor.set_scene_path(None);
-        self.reset_session();
+        self.reset_session(world);
         self.entity_counter = 0;
         self.physics_settings = None;
         world.remove_resource::<engine_core::scene_data::PhysicsSettings>();

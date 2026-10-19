@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use ecs::sprite_components::{Name, Transform2D};
+use ecs::sprite_components::Name;
 use ecs::{EntityId, World, WorldHierarchyExt};
 
 use crate::texture_ref::TextureResolver;
@@ -153,15 +153,6 @@ impl SceneLoader {
                                 entity_name, parent_name, e
                             );
                         }
-
-                        // Add GlobalTransform2D component if the entity has Transform2D
-                        if world.get::<Transform2D>(entity_id).is_some() {
-                            Self::add_component_logged(
-                                world,
-                                entity_id,
-                                ecs::hierarchy::GlobalTransform2D::default(),
-                            );
-                        }
                     } else {
                         log::warn!(
                             "Scene load: entity '{}' references parent '{}' but one of them was not found by name",
@@ -236,11 +227,6 @@ impl SceneLoader {
                     "Scene load: failed to parent entity {:?} under {:?}: {}",
                     entity_id, parent, e
                 );
-            }
-
-            // Add GlobalTransform2D component for hierarchical entities
-            if world.get::<Transform2D>(entity_id).is_some() {
-                Self::add_component_logged(world, entity_id, ecs::hierarchy::GlobalTransform2D::default());
             }
         }
 

@@ -137,7 +137,11 @@ queue, but no system consumes it yet (see Pitfalls).
 - **The flush is at the start of the frame, not the end.** An event emitted anywhere in the
   frame tail (after `update()`) is flushed before any game reads it. `UiButtonPressed` gets
   around this by holding presses in `pending_ui_events`. Any new engine-side producer that
-  runs after `update()` needs the same treatment, or its events vanish.
+  runs after `update()` needs the same treatment, or its events vanish. A game's key handler is
+  the same case: the window loop runs `on_key_pressed` / `on_key_released` between frames, so an
+  event emitted there is flushed before `update` reads it. A handler sets state; `update` emits.
+  - `crates/engine_core/tests/key_handler_events.rs` ·
+    `a_world_event_emitted_in_a_key_handler_is_flushed_before_the_next_update_reads_it`
 - **Take collisions once.** Two `take_collision_events()` calls in one frame give the second
   caller nothing. Drain into a local and pass `&collisions` around, as every game does.
 - **`PlaySoundEffect` is not a queue yet.** It is a transient, editor-editable component, and

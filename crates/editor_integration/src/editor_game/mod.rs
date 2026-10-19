@@ -14,7 +14,6 @@
 
 use glam::Vec2;
 
-use ecs::System;
 use editor::{EditorContext, EditorPlayState};
 use editor::world_snapshot::WorldSnapshot;
 use engine_core::contexts::GameContext;
@@ -51,7 +50,6 @@ pub use snapshot::{Completion, SceneSnapshot, SceneSnapshotRequest};
 struct EditorGame<G: Game> {
     inner: G,
     editor: EditorContext,
-    transform_system: ecs::TransformHierarchySystem,
     font_loaded: bool,
     /// Snapshot of the world state captured when entering play mode.
     world_snapshot: Option<WorldSnapshot>,
@@ -116,7 +114,6 @@ impl<G: Game> EditorGame<G> {
         Self {
             inner: game,
             editor: EditorContext::new(),
-            transform_system: ecs::TransformHierarchySystem::new(),
             font_loaded: false,
             world_snapshot: None,
             entity_counter: 0,
@@ -350,8 +347,6 @@ impl<G: Game> EditorGame<G> {
         // undo restores. Delete/Cut clear the selection before
         // pushing, which is exactly why the note happens here.
         self.command_history.note_selection(&self.editor.selection);
-
-        self.transform_system.update(ctx.world, ctx.delta_time);
 
         self.sync_viewport_from_main_camera(ctx.world);
 

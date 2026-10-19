@@ -109,6 +109,7 @@ impl PreviewHost {
         // The bodies of the previous run belong to the previous run: without
         // this the rebuilt scene inherits the old rapier world.
         self.host.reset_play_state();
+        ecs::request_transform_hierarchy_reset(world);
         Ok(())
     }
 

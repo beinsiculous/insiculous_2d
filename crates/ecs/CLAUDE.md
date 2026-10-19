@@ -35,7 +35,7 @@ components like any other type, but the physics crate owns their definitions.
 
 ## File Map
 - `blackboard.rs` — string-keyed `Blackboard` resource storing `ScriptValue`s for inter-script coordination.
-- `hierarchy_system.rs` — dirty-flagged transform propagation (value-compare cache; call `reset()` after wholesale world replacement).
+- `hierarchy_system.rs` — dirty-flagged transform propagation (value-compare cache), stepped by engine_core's frame tail for every game; reset through `request_transform_hierarchy_reset` (the `TransformHierarchyReset` marker) after a wholesale world replacement.
 - `tilemap.rs` — row-major tile grid from tileset (top-left-tile anchor, tile 0 = empty, default depth -1.0).
 - `component_registry/` — dynamic component tier: name-keyed `register::<T>()` fn-pointer table; `register_transient` for editable-never-persisted components.
 - `sprite_system.rs` — `SpriteAnimationSystem`: advances clips and writes UV into `Sprite.tex_region` (`sync_sprite_region`, which the clip machine also calls on selection), scheduled with time-scaled delta so pausing freezes animation.
@@ -75,6 +75,7 @@ aren't enough.
 |---|---|
 | When downcasting a `Box<dyn Component>`, calling `.as_any()` directly hits the blanket impl on the Box; call `.as_ref().as_any()` instead | `src/component.rs test_boxed_component_downcasts_only_through_as_ref_as_any` |
 | Manual writes to `GlobalTransform2D` are not change-tracked and get overwritten by hierarchy propagation when the entity is dirty | `tests/hierarchy_dirty.rs test_hand_written_global_transform_is_discarded_once_the_entity_goes_dirty` |
+| A wholesale world replacement (a snapshot restore) can revive the same ids with the same locals and a stale global, which the value-compare cache never sees; file `TransformHierarchyReset`, which the next update consumes | `tests/hierarchy_dirty.rs test_the_reset_marker_is_consumed_and_the_cache_rebuilt_from_scratch` |
 | Circular hierarchy references during reparenting create invalid cyclic trees and are rejected | `tests/world.rs test_set_parent_rejects_cycles_and_names_the_cycle` |
 | Event bus events stay readable until the next flush; the engine flushes at the start of each frame, so an event emitted after `update` is gone before a game reads it | `tests/world.rs test_events_stay_readable_until_flush_then_the_next_frame_starts_empty` |
 | `Box<dyn Component>` is not clonable: anything that copies components (`WorldSnapshot`, duplication) downcasts to each concrete type and calls its own `Clone` | — none |

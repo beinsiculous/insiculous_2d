@@ -71,7 +71,6 @@ pub struct PlatformerGame {
     physics: Option<PhysicsSystem>,
     behaviors: BehaviorRunner,
     scene_instance: Option<SceneInstance>,
-    transform_hierarchy: TransformHierarchySystem,
     actions: InputMapping<DemoAction>,
     jump_sound: Option<SoundHandle>,
     music_playing: bool,
@@ -92,7 +91,6 @@ impl PlatformerGame {
             physics: None,
             behaviors: BehaviorRunner::new(),
             scene_instance: None,
-            transform_hierarchy: TransformHierarchySystem::new(),
             actions: demo_actions(),
             jump_sound: None,
             music_playing: false,
@@ -178,10 +176,6 @@ impl PlatformerGame {
             }
         }
 
-        if let Some(physics) = &mut self.physics {
-            physics.initialize(ctx.world).ok();
-        }
-        self.transform_hierarchy.initialize(ctx.world).ok();
         self.add_editor_names(ctx);
         ctx.world.insert_resource(GameState::default());
     }
@@ -345,8 +339,6 @@ impl PlatformerGame {
         if let Some(physics) = &mut self.physics {
             physics.update(ctx.world, ctx.delta_time);
         }
-
-        self.transform_hierarchy.update(ctx.world, ctx.delta_time);
     }
 
     fn collect_pickups(&mut self, ctx: &mut GameContext) {

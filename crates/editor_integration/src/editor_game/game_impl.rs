@@ -96,7 +96,9 @@ impl<G: Game> Game for EditorGame<G> {
         // (panels, picking). A click must not receive a deleted entity, so
         // panel rendering must never delete one. Moves are harmless: a
         // pickable's position is its GlobalTransform2D, which only the
-        // transform system writes, in prepare_frame.
+        // engine's frame tail writes, after this update returns. A scene
+        // loaded this frame has no globals yet, so its entities are
+        // unpickable until the tail has run once.
         let pickables = if self.editor.is_playing() {
             Vec::new()
         } else {

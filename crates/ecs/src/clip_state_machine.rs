@@ -277,10 +277,6 @@ impl System for ClipStateMachineSystem {
             }
         }
     }
-
-    fn name(&self) -> &str {
-        "ClipStateMachineSystem"
-    }
 }
 
 /// The row of `state`, cloned out of the machine so the component is not

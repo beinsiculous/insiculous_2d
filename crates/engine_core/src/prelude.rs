@@ -67,7 +67,9 @@ pub use ecs::clip_state_machine::{
 };
 pub use ecs::grid_backdrop::{GridBackdrop, GridDrawOrder, GridTopology};
 pub use ecs::audio_components::{AudioSource, AudioListener, PlaySoundEffect};
-pub use ecs::hierarchy_system::TransformHierarchySystem;
+pub use ecs::hierarchy_system::{
+    request_transform_hierarchy_reset, TransformHierarchyReset, TransformHierarchySystem,
+};
 pub use ecs::lifetime::{Lifetime, LifetimeSystem};
 pub use ecs::WorldHierarchyExt;
 pub use ecs::System;

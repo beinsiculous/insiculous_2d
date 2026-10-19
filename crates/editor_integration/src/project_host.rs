@@ -32,7 +32,6 @@ pub struct ProjectHost {
     project_path: PathBuf,
     physics: Option<PhysicsSystem>,
     behaviors: BehaviorRunner,
-    transform_hierarchy: TransformHierarchySystem,
     play_initialized: bool,
 }
 
@@ -43,15 +42,15 @@ impl ProjectHost {
             project_path,
             physics: None,
             behaviors: BehaviorRunner::new(),
-            transform_hierarchy: TransformHierarchySystem::new(),
             play_initialized: false,
         }
     }
 
-    /// Step one playing frame: update behaviors, physics, and transform hierarchy.
+    /// Step one playing frame: update behaviors, scripts and physics.
     ///
     /// Playing frame update order: behaviors -> scripts early_update -> physics step ->
-    /// collision event drain -> scripts update -> transform hierarchy.
+    /// collision event drain -> scripts update. The engine's frame tail propagates the
+    /// transform hierarchy after this returns.
     pub(crate) fn update_frame(
         &mut self,
         world: &mut World,
@@ -70,11 +69,7 @@ impl ProjectHost {
                     settings.gravity.1,
                 ))
                 .with_scale(settings.pixels_per_meter);
-                let mut physics = PhysicsSystem::with_config(config);
-                if let Err(error) = physics.initialize(world) {
-                    log::warn!("physics preview not initialised: {error}");
-                }
-                self.physics = Some(physics);
+                self.physics = Some(PhysicsSystem::with_config(config));
             }
             scripts.reset(world, asset_base);
         }
@@ -83,7 +78,7 @@ impl ProjectHost {
         // create or rename entities mid-Play, and a FollowEntity target that
         // appears then must resolve now, not after the next Stop.
         let mut named_entities = HashMap::new();
-        for entity in world.entities() {
+        for entity in world.entity_ids() {
             if let Some(name) = world.get::<Name>(entity) {
                 named_entities.insert(name.0.clone(), entity);
             }
@@ -120,8 +115,6 @@ impl ProjectHost {
             &collisions,
             self.physics.as_mut(),
         );
-
-        self.transform_hierarchy.update(world, delta_time);
     }
 
     /// Reset play-mode state when simulation stops.
@@ -138,7 +131,6 @@ impl Game for ProjectHost {
         // through its real load path right after this returns.
         let assets_path = self.project_path.join("assets");
         ctx.assets.set_base_path(assets_path.to_string_lossy());
-        self.transform_hierarchy.initialize(ctx.world).ok();
         log::info!("Editor opened project: {}", self.project_path.display());
     }
 

@@ -1,6 +1,7 @@
 //! GameRunner's post-update frame tail: everything the engine does after
-//! the game's `update()` returns — particle stepping, line forwarding,
-//! scene-defined UI elements, achievement toasts, and locale-font capture.
+//! the game's `update()` returns — particle stepping, the world systems,
+//! transform propagation, line forwarding, scene-defined UI elements,
+//! achievement toasts, and locale-font capture.
 //!
 //! Child module of `game` (like `render`) so it can reach the runner's
 //! private fields without widening visibility.
@@ -38,6 +39,11 @@ impl<G: Game> GameRunner<G> {
     /// Emitter accumulators see latest transforms, and pool stepping happens once per frame.
     /// Scaled by `time_scale` so a paused game (time_scale 0.0) freezes its particles,
     /// sprite animations, and spring grids with the rest of the world.
+    ///
+    /// The transform hierarchy runs after the world systems, so a clip machine's despawn is
+    /// already gone, and before the grid backdrops, which read `GlobalTransform2D`. It ignores
+    /// the delta: a paused game and the editor's frozen Editing state still propagate, so a
+    /// parented entity moved by hand follows its parent before the frame draws.
     fn step_simulations(&mut self, delta_time: f32) {
         let scaled_delta = delta_time * self.time_scale;
 
@@ -48,6 +54,7 @@ impl<G: Game> GameRunner<G> {
         );
 
         step_world_systems(&mut self.scene.world, scaled_delta);
+        self.transform_hierarchy.update(&mut self.scene.world, scaled_delta);
 
         // Each grid's vertices go to the layer it asked for: over-sprites
         // grids in front of the game's own lines so its wireframes stay on

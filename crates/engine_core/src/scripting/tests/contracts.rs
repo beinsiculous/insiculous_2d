@@ -287,7 +287,6 @@ fn test_kinematic_target_routes_through_physics_when_present_and_transform_when_
     world
         .add_component(&body_entity, Collider::box_collider(10.0, 10.0))
         .unwrap();
-    physics.initialize(&mut world).unwrap();
     physics.update(&mut world, 1.0 / 60.0);
 
     // Case 2: Physics body absent (pure Transform2D)
@@ -380,7 +379,6 @@ fn test_early_update_kinematic_target_lands_before_step_and_update_sees_collisio
         .add_component(&static_entity, Collider::box_collider(20.0, 20.0))
         .unwrap();
 
-    physics.initialize(&mut world).unwrap();
     physics.update(&mut world, dt);
     let _ = physics.take_collision_events();
 

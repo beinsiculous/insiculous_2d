@@ -46,10 +46,6 @@ impl System for SpriteAnimationSystem {
             sync_sprite_region(world, entity_id);
         }
     }
-
-    fn name(&self) -> &str {
-        "SpriteAnimationSystem"
-    }
 }
 
 #[cfg(test)]

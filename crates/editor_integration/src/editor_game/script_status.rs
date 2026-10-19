@@ -21,7 +21,7 @@ impl<G: Game> EditorGame<G> {
         self.play_frames += 1;
 
         if self.play_frames == 60 {
-            let has_scripts = world.entities().iter().any(|&e| world.get::<Scripts>(e).is_some());
+            let has_scripts = world.entity_ids().any(|entity| world.get::<Scripts>(entity).is_some());
             if has_scripts && scripts.frames_run() == 0 {
                 self.editor
                     .status_bar

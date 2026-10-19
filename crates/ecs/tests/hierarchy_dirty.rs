@@ -4,8 +4,8 @@
 //! consistent through reparenting, deletion, disable/enable, and reset.
 
 use ecs::{
-    EcsError, EntityId, GlobalTransform2D, System, Transform2D, TransformHierarchySystem, World,
-    WorldHierarchyExt,
+    request_transform_hierarchy_reset, EcsError, EntityId, GlobalTransform2D, System, Transform2D,
+    TransformHierarchyReset, TransformHierarchySystem, World, WorldHierarchyExt,
 };
 use glam::Vec2;
 
@@ -194,5 +194,33 @@ fn test_hand_written_global_transform_is_discarded_once_the_entity_goes_dirty() 
     assert_eq!(global.position, Vec2::new(150.0, 0.0), "the local edit wins");
     assert_eq!(global.rotation, 0.0, "the hand-written rotation is gone");
     assert_eq!(global.scale, Vec2::ONE, "the hand-written scale is gone");
+    Ok(())
+}
+
+#[test]
+fn test_the_reset_marker_is_consumed_and_the_cache_rebuilt_from_scratch() -> Result<(), EcsError> {
+    // A snapshot restore revives the same ids with the same locals, carrying
+    // whatever global the snapshot held: through the cache's eyes nothing
+    // moved, so only the marker gets the global recomputed.
+    let mut world = World::new();
+    let entity = spawn(&mut world, Vec2::new(100.0, 0.0))?;
+    let mut system = TransformHierarchySystem::new();
+    system.update(&mut world, 0.016);
+
+    world.clear();
+    world.create_entity_with_id(entity);
+    world.add_component(&entity, Transform2D::new(Vec2::new(100.0, 0.0)))?;
+    world.add_component(&entity, GlobalTransform2D::new(Vec2::new(-40.0, 7.0), 0.0, Vec2::ONE))?;
+    system.update(&mut world, 0.016);
+    assert_eq!(global_pos(&world, entity), Vec2::new(-40.0, 7.0), "without the marker the stale global stays");
+
+    request_transform_hierarchy_reset(&mut world);
+    system.update(&mut world, 0.016);
+
+    assert_eq!(system.recomputed_last_update(), 1, "the marker recomputes everything");
+    assert_eq!(global_pos(&world, entity), Vec2::new(100.0, 0.0), "the global matches the local");
+    assert!(!world.has_resource::<TransformHierarchyReset>(), "the update consumed the marker");
+    system.update(&mut world, 0.016);
+    assert_eq!(system.recomputed_last_update(), 0, "one marker resets once");
     Ok(())
 }

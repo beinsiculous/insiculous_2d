@@ -74,11 +74,6 @@ impl Game for BehaviorDemo {
                 ctx.world.add_component(&player, Behavior::PlayerTopDown { move_speed: 150.0, tag: "player".to_string() }).ok();
             }
         }
-
-        // Initialize physics system
-        if let Some(physics) = &mut self.physics {
-            physics.initialize(ctx.world).ok();
-        }
     }
 
     fn update(&mut self, ctx: &mut GameContext) {

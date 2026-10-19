@@ -135,8 +135,7 @@ impl GlobalTransform2D {
 
     /// Get the transformation matrix
     pub fn matrix(&self) -> Mat3 {
-        let cos_r = self.rotation.cos();
-        let sin_r = self.rotation.sin();
+        let (sin_r, cos_r) = self.rotation.sin_cos();
 
         // Rotation matrix
         let rot = Mat3::from_cols_array(&[cos_r, sin_r, 0.0, -sin_r, cos_r, 0.0, 0.0, 0.0, 1.0]);
@@ -170,8 +169,7 @@ impl GlobalTransform2D {
         let scale = self.scale * local.scale;
 
         // Rotate and scale the local position by parent's transform, then add parent's position
-        let cos_r = self.rotation.cos();
-        let sin_r = self.rotation.sin();
+        let (sin_r, cos_r) = self.rotation.sin_cos();
         let rotated_pos = Vec2::new(
             local.position.x * cos_r - local.position.y * sin_r,
             local.position.x * sin_r + local.position.y * cos_r,

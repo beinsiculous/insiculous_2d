@@ -89,29 +89,25 @@ fn test_stop_restores_the_authored_world_and_resume_never_recaptures() {
 
 #[test]
 fn test_stop_resets_the_transform_propagation_baseline() {
-    use ecs::System;
-
+    // The editor owns no hierarchy system: the frame tail's consumes the
+    // marker (the ecs crate pins what it does), so Stop's half is filing it.
     let mut editor = editor_game();
     let mut world = World::new();
     let entity = spawn_at(&mut world, Vec2::new(10.0, 20.0));
 
-    // Propagate once so the transform system has a cached baseline.
-    editor.transform_system.update(&mut world, 0.016);
-    assert_eq!(editor.transform_system.tracked_entity_count(), 1);
-
     editor.handle_play_action(PlayControlAction::Play, &mut world);
-    if let Some(t) = world.get_mut::<common::Transform2D>(entity) {
-        t.position = Vec2::new(999.0, 999.0);
+    assert!(
+        !world.has_resource::<ecs::TransformHierarchyReset>(),
+        "Play keeps the world, so it keeps the baselines"
+    );
+    if let Some(transform) = world.get_mut::<common::Transform2D>(entity) {
+        transform.position = Vec2::new(999.0, 999.0);
     }
     editor.handle_play_action(PlayControlAction::Stop, &mut world);
 
-    // The restore wholesale-replaced the world — the propagation baseline
-    // must have been dropped so the next update recomputes from scratch.
-    assert_eq!(editor.transform_system.tracked_entity_count(), 0, "Stop resets the cache");
-    editor.transform_system.update(&mut world, 0.016);
-    assert_eq!(
-        world.get::<ecs::GlobalTransform2D>(entity).map(|g| g.position),
-        Some(Vec2::new(10.0, 20.0))
+    assert!(
+        world.has_resource::<ecs::TransformHierarchyReset>(),
+        "the restore wholesale-replaced the world, so Stop files the reset"
     );
 }
 
