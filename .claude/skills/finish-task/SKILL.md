@@ -37,6 +37,9 @@ you introduced must be fixed properly — `#[allow(...)]` is not a fix.
 - No tags in comments — say why, not where it was decided (`training.md`
   § Comment Policy). Run the gate and paste that it printed nothing:
   `grep -riEn "kimi|issue #[0-9]+|GPP-[0-9]+|audit §|\(#[0-9]+\)|#[0-9]{1,4}\b|Sprint [0-9]" crates src examples --include=*.rs`
+- The guides' pitfall tables still point at live tests, and the no-physics build
+  still compiles: run both and paste that each printed its clean line:
+  `scripts/check_guide_tests.sh` and `scripts/check_features.sh`.
 - Every touched file ≤ 600 lines (`wc -l` them). Split, don't grow.
 - Test names describe behavior (`test_selection_toggle_adds_and_removes`),
   not implementation (`test_toggle_method`).
