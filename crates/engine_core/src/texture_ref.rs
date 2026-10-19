@@ -74,10 +74,9 @@ pub(crate) fn resolve_texture(
     }
 
     if let Some(hex) = texture_ref.strip_prefix("#solid:") {
-        // Parse hex color and create solid color texture
         let color = parse_hex_color(hex)?;
         assets
-            .create_solid_color(1, 1, color)
+            .shared_solid_color(color)
             .map_err(|e| SceneLoadError::TextureLoadError(e.to_string()))
     } else if is_unresolvable_sentinel(texture_ref) {
         // Placeholder paths recorded for runtime-generated textures
@@ -174,6 +173,21 @@ mod tests {
                 "{bad}"
             );
         }
+    }
+
+    #[test]
+    fn test_a_solid_reference_resolves_to_one_shared_texture_per_color() {
+        let mut assets = AssetManager::headless(crate::assets::AssetConfig::default());
+        let first = resolve_texture("#solid:FF4040", &mut assets).expect("resolves");
+        let textures_after_first = assets.texture_count();
+
+        let repeat = resolve_texture("#solid:FF4040", &mut assets).expect("resolves again");
+        assert_eq!(repeat, first, "one color, one texture");
+        assert_eq!(assets.texture_count(), textures_after_first, "a repeat uploads nothing");
+        assert_eq!(assets.texture_path(first.id), Some("#solid:FF4040"));
+
+        let other = resolve_texture("#solid:4040FF", &mut assets).expect("resolves");
+        assert_ne!(other, first, "a different color is a different texture");
     }
 
     #[test]

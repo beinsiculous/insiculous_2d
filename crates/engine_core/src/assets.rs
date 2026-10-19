@@ -328,6 +328,19 @@ impl AssetManager {
         Ok(handle)
     }
 
+    /// The 1×1 texture behind a scene's `#solid:` reference, uploaded once per
+    /// color: forty bricks in one color share one texture and one batch, and a
+    /// scene reload reuses it instead of allocating forty more.
+    pub(crate) fn shared_solid_color(&mut self, color: [u8; 4]) -> Result<TextureHandle, AssetError> {
+        let cache_key = (crate::texture_ref::solid_color_path(color), TextureFilter::Linear);
+        if let Some(&handle) = self.loaded_by_path.get(&cache_key) {
+            return Ok(handle);
+        }
+        let handle = self.create_solid_color(1, 1, color)?;
+        self.loaded_by_path.insert(cache_key, handle);
+        Ok(handle)
+    }
+
     /// Create a checkerboard pattern texture
     ///
     /// Useful for debugging or placeholder textures. Always Linear-filtered
