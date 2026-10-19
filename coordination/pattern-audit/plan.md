@@ -170,7 +170,7 @@ pools — the book's own advice is to wait for the profiler).
   any other — each batch rewrites the pitfall that cites its ticket.
 - Anything deferred is filed with `/file-issue` before the effort reports done.
 
-## Batch 0 — planner only: the effort, the sprint, the two gates, the plan review
+## Batch 0 — planner only: the effort, the sprint, the two gates, the plan review — DONE 2026-10-19 (def7ed6 gates, 2c5d3b2 plan; milestone 12 + breakout#6 on milestone 3; Sprint option `4e8e02e5`; two review rounds)
 
 Files: `coordination/pattern-audit/plan.md` (this), `coordination/pattern-audit/reviewer-comparison.md`
 (the empty ledger, header copied from `coordination/playground-ux/reviewer-comparison.md`),
@@ -212,8 +212,9 @@ lines, so they commit without a code review; if they do not, they get one.
 ## Batch 1 — ecs + engine_core: delete the scheduler (#170; KISS-002 doc)
 
 Files: `crates/ecs/src/system.rs` (235 → ~35), `crates/ecs/src/world.rs` (511, shrinks),
-`crates/ecs/src/lib.rs` and `crates/ecs/src/prelude.rs` (re-exports — the executor greps for
-`SystemRegistry` and `SimpleSystem`), `crates/engine_core/src/scene.rs` (`update` and
+`crates/ecs/src/lib.rs` and `crates/ecs/src/prelude.rs` (neither re-exports `SystemRegistry`
+or `SimpleSystem` — verified 2026-10-19; `world.rs` names `crate::system::SystemRegistry`
+directly — so only `pub mod system` and any doc mention are touched there), `crates/engine_core/src/scene.rs` (`update` and
 `update_with_schedule`, lines 123–147), `crates/engine_core/src/lifecycle.rs` (doc only),
 `crates/ecs/tests/system_lifecycle.rs` (149 lines, deleted or reduced to one test),
 `crates/engine_core/tests/scene_lifecycle.rs` (54, reworked), `crates/ecs/CLAUDE.md`,
@@ -224,8 +225,8 @@ Files: `crates/ecs/src/system.rs` (235 → ~35), `crates/ecs/src/world.rs` (511,
   now: the contract every engine system implements, stepped by whoever owns it — the frame
   tail for the engine's, a game's `update` for its own. `SimpleSystem` (36–71) and
   `SystemRegistry` (73–236) are deleted.
-- `World` loses the `systems` field (41–42, 67), `with_systems` (76–86), `add_system`
-  (320–337), `update` (339–351) and `system_count` (371–374). `initialize`, `start`, `stop`
+- `World` loses the `systems` field (42, 67), `with_systems` (76–86), `add_system`
+  (325–337, doc from 320), `update` (339–351) and `system_count` (371–374). `initialize`, `start`, `stop`
   and `shutdown` keep their flag transitions and their `EcsError` variants
   (`AlreadyInitialized`, `NotInitialized`, `AlreadyRunning`, `NotRunning`); the
   `with_systems` calls and the "N systems" log fragments go. `World::clear`'s doc drops
@@ -234,7 +235,8 @@ Files: `crates/ecs/src/system.rs` (235 → ~35), `crates/ecs/src/world.rs` (511,
   `start`, `stop`, `shutdown`, `is_operational` stay (callers: `app_handler.rs:250-251,287,290`,
   `headless.rs:32-33`).
 - **Tests.** `system_lifecycle.rs`: every test drives `add_system`/`World::update`. The
-  World lifecycle flags are live API with no other test, so one strengthened test survives,
+  World lifecycle flags are live API; `scene_lifecycle.rs:26-30` already asserts the happy
+  path through `Scene`, so what survives is the error path — one strengthened test,
   renamed `tests/world_lifecycle.rs`:
   `test_world_lifecycle_flags_follow_initialize_start_stop_shutdown_and_refuse_out_of_order_calls`
   (initialize twice → `AlreadyInitialized`; start before initialize → `NotInitialized`; stop
@@ -247,7 +249,7 @@ Files: `crates/ecs/src/system.rs` (235 → ~35), `crates/ecs/src/world.rs` (511,
   drops "the runtime never calls `World::update`, so a system registered with `add_system`
   is started but never ticks" for "nothing steps a system you do not step yourself; the
   engine's own run from the frame tail" (batch 2 rewrites it again for the hierarchy — that
-  is fine, each batch leaves the doc true). `update-method.md` pitfall at 128–136 ("`World::update`
+  is fine, each batch leaves the doc true). `update-method.md` pitfall at 125–133 ("`World::update`
   never runs in production", three sub-bullets) becomes: there is no scheduler; a system
   ticks where something calls `update` — the frame tail for the engine's systems (named, in
   order), `Game::update` for a game's own; cite `frame_tail.rs step_world_systems`. The
