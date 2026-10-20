@@ -26,3 +26,14 @@ review file's mtime. Review numbering is per subject directory
 | engine · batch 4 diff | gemini | 7 | 1 | 2 | 4 | "`Transform2D()` … parse into `ron::Value::Unit` or an empty `ron::Value::Seq([])` … `named_fields` … fails" — the round's one defect (an empty override failed the load; probed, fixed). False: a "Critical" JSON break on a path that does not exist, a Unit shape the typed parse never lets through; decided: unregistered `Dynamic`, non-object `Dynamic`, the append path, the `spawn_prefab` signature | ~5.5 min |
 | engine · batch 4 diff | claude | 2 | 2 | 0 | 0 | the plan's two errors recorded (436 not 258; behavior_demo's prefabs, not hello_world's); a pin for a bare unit-variant value inside an override, which no shipped scene exercised | — |
 | breakout · batch 4 diff | kimi | 1 | 1 | 0 | 0 | "the per-file list it leaves in place enumerates only 104 … `constants.rs` actually contains 12 … `title_screen_tests.rs` (2) isn't listed" — the guide's test list under its new total; its verification notes confirmed the flow test pins the runtime path for all eight levels | ~7.5 min |
+
+**Totals (2026-10-19, effort done).** kimi: 7 reviews, 26 findings, 16 real, 6 false, 4 policy;
+~8 min a review. gemini: 6 reviews, 33 findings, 17 real, 10 false, 6 policy; ~12 min. The
+planner: 4 code reviews, 5 findings, all real. What the numbers say: kimi's false rate fell to
+zero on the two batches where it read the engine for callers; gemini found the round's one real
+defect on batch 4 (an empty override failed the load) and the batch-1 stale doc nobody else
+swept, but five of its "Critical"/"Major" ratings across the effort were false or decided —
+rate inflation is its pattern, not misses. The executor caught three plan errors the reviewers
+did not (ids never recycled; 436 not 258; the fixture that does not change). Every
+behaviour-changing fix went back through the rule's gate; one (the empty override) landed
+enumerated on Jesse's ruling.

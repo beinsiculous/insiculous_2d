@@ -45,7 +45,7 @@ that is still easy to change wins.
 | command | textbook | editor undo (`EditorCommand`, `CommandHistory`), deferred script/behavior/physics command buffers |
 | flyweight | textbook | `TextureHandle`, deduped asset loads, shared `SpriteSheet`s, GPU instancing |
 | observer | deliberately avoided | collision callbacks were deleted; callbacks survive only at platform edges |
-| prototype | partial | scene-file prefabs plus `spawn_prefab`; games spawn through recipe functions |
+| prototype | textbook on load | scene-file prefabs whose overrides name only the fields they change (`OverrideData`, `SceneLoader::effective_components`), `spawn_prefab` on the same merge; the save path still flattens (insiculous_2d#173); games spawn through recipe functions |
 | singleton | partial, kept for reasons | the component registry and the entity id generator are process-global; prefer World resources |
 | state | textbook | `StateMachine`, `ClipStateMachine`, each game's `GameState` enum |
 | double-buffer | textbook | input previous/current, physics contact sets, bloom ping-pong, the instance cache |
@@ -58,7 +58,7 @@ that is still easy to change wins.
 | event-queue | textbook | the World `EventBus`, drained collision events, the input event queue |
 | service-locator | textbook, passed not looked up | `GameContext`, World resources, null services |
 | data-locality | deferred until a trigger | HashMap-of-boxes storage is the recorded tradeoff |
-| dirty-flag | textbook, by comparing values | transform hierarchy cache, physics edit baseline, upload skip |
+| dirty-flag | textbook, by comparing values | transform hierarchy cache, stepped by the frame tail for every game and reset by `TransformHierarchyReset` on a wholesale world replacement; physics edit baseline; upload skip |
 | object-pool | partial | the particle ring pool; bullets are entities with `Lifetime` |
 | spatial-partition | delegated to rapier | rapier's broad phase; editor picking is a linear scan |
 
@@ -81,9 +81,13 @@ that is still easy to change wins.
 
 ## Freshness
 
-Paths and symbols were checked against `insiculous_2d` at commit `bce5abc` on 2026-10-19.
+Paths and symbols were checked against `insiculous_2d` at commit `c1dcff3` on 2026-10-19, the
+Pattern Audit sprint's last code commit.
 Citations name a file and a symbol, never a line number. If a cited symbol has moved, trust the
 code over this skill and fix the file you were reading. The same day's audit against these files
-fixed what was small and filed the rest as insiculous_2d#168 to #172. Each reference file's
-pitfalls point to the ticket it is waiting on. The full history of the July 2026
-pattern audit is in `log_archive.md` § "Game Programming Patterns Audit".
+fixed what was small and filed the rest as insiculous_2d#168 to #172, and the Pattern Audit
+sprint cleared all five that day (`coordination/pattern-audit/plan.md`; the record in
+`log_archive.md` § "Pattern Audit sprint"). Each reference file's pitfalls describe what the
+engine does now; the follow-ups they name are insiculous_2d#173 (the save path flattens prefabs)
+and #174 (scene-authored audio, under Conductor). The full history of the July 2026 pattern
+audit is in `log_archive.md` § "Game Programming Patterns Audit".

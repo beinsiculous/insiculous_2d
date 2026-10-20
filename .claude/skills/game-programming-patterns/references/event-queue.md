@@ -130,7 +130,8 @@ only channel.
 
 **Audio has no general sound queue, and no scene-data path.** The audio manager's one deferral
 holds the last music request until a user gesture enables output on the web. A game plays a
-sound through `ctx.audio`; scene-authored audio is filed under the Conductor milestone.
+sound through `ctx.audio`; scene-authored audio is filed under the Conductor milestone as
+insiculous_2d#174.
 
 ## Pitfalls here
 

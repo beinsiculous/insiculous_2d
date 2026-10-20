@@ -12,6 +12,40 @@ TECH_DEBT/ROADMAP docs — is what the sections below refer to.)
 
 ---
 
+## Pattern Audit sprint ☑ Oct 19 2026
+The five tickets the skill filed (#168–#172), with #100, #153 and six backlog ticks, cleared in
+one day as a handoff loop (`coordination/pattern-audit/plan.md`, the reviewer ledger beside it,
+the review record under `review/pattern-audit/`): Claude Fable planned and committed, kimi and
+gemini reviewed the plan twice and every batch, a Claude Opus session built each batch from a
+handoff file and never committed.
+- **Landed:** `def7ed6` the two gates (`scripts/check_guide_tests.sh`, `scripts/check_features.sh`);
+  `6b1ccb7` the scheduler deleted — the `System` trait stays, stepped by the frame tail (#170);
+  `1809f87` the frame tail owns the transform hierarchy for every game, `TransformHierarchyReset`
+  on a wholesale world replacement, the loader writing no identity globals, the `System` trait
+  trimmed to `update`, key handlers set state and never emit (#168, #153); `489a8b5`
+  `HierarchicalStateMachine` and the three audio components retired, an old save loading with a
+  warning (#171, #172); `c1dcff3` with breakout `8f7b109` an override names only the fields it
+  changes, and breakout's 436 brick lines stop restating the scale (#169, breakout#6).
+- **Filed:** #173 (the save path flattens prefabs), #174 (K9, scene-authored audio under
+  Conductor), #175 (validate an override's fields on the append path).
+- **Lessons:**
+  - The editor stepped the hierarchy and the runner never did, so the one place a parented
+    sprite was ever looked at was the one place it worked. A system every game needs belongs
+    to the runner's tail, not to a host.
+  - Presence comes from the text. Whether an author wrote a field cannot be recovered from the
+    deserialized value — a default-valued field and an absent one look the same — so
+    `ron::value::RawValue` keeps the text long enough to ask.
+  - A debt label can hide a feature. The audio components read as dead code to delete; what
+    they were is an unbuilt feature (path-named sounds, an asset tier, spatial playback), which
+    is why retiring them was right and the feature went to Conductor.
+  - Verify a reviewer's mechanism, not just its scenario. Both reviewers described a live
+    re-open bug that needed entity ids to be recycled; they never are, and the planner accepted
+    it without reading the generator. The executor caught it.
+  - Check the grep behind a count. The plan's 258 brick lines missed every tagged brick because
+    the pattern wanted `)]` right after the transform; the executor's pairing script found 436.
+  - A reviewer that has not read the plan calls its ride-alongs "smuggled" and its decisions
+    regressions. Four of gemini's seven batch-4 findings were decisions of record.
+
 ## Game Programming Patterns skill + second patterns audit ☑ Oct 19 2026
 The `game-programming-patterns` skill (`.claude/skills/game-programming-patterns/`, `65084dd`)
 distills Nystrom's catalog into one reference file per pattern, each held against this engine's
