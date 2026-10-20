@@ -522,7 +522,18 @@ over `crates/music_midi/fixtures`; Jesse's listen check native and browser.
 **Leaves out:** any production code in the workspace beyond `play_source`; the sidecar schema
 (K2); the composer. The spike project stays committed as the reproducible measurement.
 
-## Batch 2 — K2a `crates/music_midi`: the song schema, owned MIDI data, the tempo map (#61)
+## Batch 2 — K2a `crates/music_midi`: the song schema, owned MIDI data, the tempo map (#61) — DONE 2026-10-20 (837aff6)
+
+Authored by the executor (a Claude Opus session) from `review/conductor/handoff-2.md`; report
+`review/conductor/report-2.md`; reviewed by kimi (`review-5.md`), gemini (`review-5-gemini.md`)
+and the planner (`review-5-claude.md`); adjudicated in `rebuttal-5.md` (7 accepted, 3 rebutted).
+Landed as specified, two things differently and rightly: the "background channels against
+the capacities" check is absent because a four-bit MIDI channel always fits the background
+synthesizer's sixteen, and four of five fixtures round-trip event-identically rather than
+byte-identically because midly's writer always uses running status (Bach, which never repeats
+a status byte, is byte-identical). Egmont's tempi run **84 → 168 → 152** (the first report had
+the order wrong). Carried to batch 3's fix-up list: the background `soundfont` path checked
+against the loaded resources; a tick cap at edit time; `pub use rustysynth` behind `synth`.
 
 Executor: the Opus session. Reviewers: kimi, gemini. Size: about +2200 lines.
 
@@ -568,7 +579,7 @@ song_file.rs, song_file/validate.rs, song_data.rs, song_data/flatten.rs, tempo_m
   time-signature changes, integer boundary counting for beat crossings.
 - **A fourth fixture first:** none of batch 1's three has a tempo or time-signature change.
   Download Beethoven's *Overture to Egmont* (Mutopia id 547, its page "Copyright: Public
-  Domain", 15 tracks, 84 → 152 → 168 bpm, 3/2 → 3/4 → 4/4) verbatim into
+  Domain", 15 tracks, 84 → 168 → 152 bpm, 3/2 → 3/4 → 4/4) verbatim into
   `crates/music_midi/fixtures/` with the same `LICENSE` entry shape (page line, URLs, sha256)
   before the tempo-map tests are written; the provenance gate must stay green.
 - Pins: `rustysynth = "=1.3.8"`, `midly = "=0.5.3"` — the spike's resolved versions.
@@ -593,6 +604,15 @@ Size: about +2000 lines.
 Files (new): `src/{sequencer.rs, conductor.rs, conductor/slots.rs, conductor/ledger.rs,
 commands.rs, position.rs}` and their `tests.rs`; `examples/conductor_background.rs`
 (plays a fixture through `AudioManager::play_source` — the only consumer until K4).
+
+**Batch 2's fix-ups, first** (accepted in `rebuttal-5.md`, behaviour so not patched there):
+`ResourceMetadata` gains `soundfonts: BTreeSet<String>` (the paths the loader decoded) and
+`check_against` refuses a `SongFile.soundfont` not in it with its own `SongFileProblem`
+variant and test; `add_note` and `move_notes` refuse a tick above `u28::MAX` (the largest
+MIDI delta) so every exported gap fits, the error naming the note; `#[cfg(feature =
+"synth")] pub use rustysynth;` in `lib.rs` so no other crate names it (decision 7). Read
+retained events through `RetainedEvent::kind()`, never the stored field — SysEx and text
+payloads live beside it.
 
 **Target shape.** `Sequencer` (pure): given `SongData` + `TempoMap`, yields the background
 events whose tick falls inside `[block_start_sample, block_end_sample)`, wraps on loop
@@ -804,7 +824,10 @@ untouched, a sample without provenance refuses the save and one with it lands in
 `assets/ai/music/ai_x.mid` reopens and saves in place, scene save leaves the song dirty and
 vice versa, New/Open Song and Play park behind the prompt, the parity table (one row per
 `SongEdit` variant, GUI path versus API path, exhaustive match so a new variant without a
-row fails to compile), headless `run_headless_editor_api` answering `song` lines.
+row fails to compile; and an edit on a document whose `UnsupportedReport` is not editable
+is refused by both paths with the report's reason — the gate gemini's batch 2 review asked
+for lives here, not in the data model), headless `run_headless_editor_api` answering `song`
+lines.
 **Gates:** standard; `check_wasm.sh` (editor crates are in the wasm workspace).
 **Leaves out:** any pixel (batch 10), audio (batch 11), multi-song tabs, scripting access.
 
