@@ -1,0 +1,6 @@
+/target
+/dist
+# Built by prepare_assets.sh from the engine's fixtures and a downloaded bank; the
+# bank is tens of megabytes and is reported, not committed.
+/assets
+/saves

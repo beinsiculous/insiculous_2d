@@ -344,6 +344,7 @@ scripts/check_games.sh               # Check every game in its GAMES list (defau
 scripts/check_games.sh --test        # Test every game in its GAMES list (default + editor features, both wasm checks)
 scripts/check_guide_tests.sh         # Every crate guide's pitfall-table citation names a test that exists
 scripts/check_features.sh            # engine_core compiles and is clippy-clean with --no-default-features
+scripts/check_audio_provenance.sh    # Every audio file under assets/{music,soundfonts,sounds} or a crate's fixtures/ is named in a LICENSE beside it
 ```
 
 **Key Files:**

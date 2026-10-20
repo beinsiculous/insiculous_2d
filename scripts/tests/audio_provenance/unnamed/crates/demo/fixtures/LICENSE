@@ -1,0 +1,7 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Comment: Negative fixture: other.mid is named, piece.mid is not, and the glob below must not
+ cover it.
+
+Files: other.mid *
+Copyright: none (placeholder bytes written for the test)
+License: public-domain

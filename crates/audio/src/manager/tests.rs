@@ -140,6 +140,55 @@ fn test_disabled_manager_validates_everything_and_plays_nothing() -> AudioResult
     Ok(())
 }
 
+/// An endless silent source that counts how many samples were pulled from it.
+struct CountingSource {
+    pulled: Arc<AtomicUsize>,
+}
+
+impl Iterator for CountingSource {
+    type Item = f32;
+
+    fn next(&mut self) -> Option<f32> {
+        self.pulled.fetch_add(1, Ordering::SeqCst);
+        Some(0.0)
+    }
+}
+
+impl Source for CountingSource {
+    fn current_frame_len(&self) -> Option<usize> {
+        None
+    }
+
+    fn channels(&self) -> u16 {
+        2
+    }
+
+    fn sample_rate(&self) -> u32 {
+        44100
+    }
+
+    fn total_duration(&self) -> Option<std::time::Duration> {
+        None
+    }
+}
+
+#[test]
+fn test_disabled_manager_accepts_a_source_and_drops_it_unplayed() -> AudioResult<()> {
+    let mut manager = AudioManager::disabled();
+    let pulled = Arc::new(AtomicUsize::new(0));
+
+    for bus in [Bus::Music, Bus::Sfx] {
+        manager.play_source(CountingSource { pulled: Arc::clone(&pulled) }, bus)?;
+    }
+    manager.set_music_volume(0.5);
+    manager.update();
+
+    assert_eq!(pulled.load(Ordering::SeqCst), 0, "no sample is ever pulled");
+    assert_eq!(Arc::strong_count(&pulled), 1, "the sources were dropped, not kept");
+    assert!(manager.active_sources.is_empty(), "nothing is tracked as playing");
+    Ok(())
+}
+
 // === enable_output ===
 
 #[test]

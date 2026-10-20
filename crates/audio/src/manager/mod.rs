@@ -14,7 +14,7 @@ use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
 use common::clamp_volume;
 
 use crate::error::{AudioError, AudioResult};
-use crate::sound::{SoundHandle, SoundSettings};
+use crate::sound::{Bus, SoundHandle, SoundSettings};
 
 mod music;
 
@@ -46,6 +46,13 @@ struct ActiveSound {
     /// The per-sound volume from `SoundSettings`, kept so bus volume changes
     /// (`set_sfx_volume` / `set_master_volume`) can re-derive the sink volume.
     base_volume: f32,
+}
+
+/// A caller-built source playing under a bus (see [`AudioManager::play_source`]).
+/// The sink is kept because dropping a rodio `Sink` stops its source.
+struct ActiveSource {
+    sink: Sink,
+    bus: Bus,
 }
 
 /// Music requested while no output device was connected (web pre-gesture),
@@ -88,6 +95,8 @@ pub struct AudioManager {
     next_sound_id: u32,
     /// Currently active sound instances.
     active_sounds: Vec<ActiveSound>,
+    /// Caller-built sources still playing.
+    active_sources: Vec<ActiveSource>,
     /// Current background music sink.
     music_sink: Option<Sink>,
     /// Music requested while disabled, started when a device connects.
@@ -189,6 +198,7 @@ impl AudioManager {
             sounds: HashMap::new(),
             next_sound_id: 1,
             active_sounds: Vec::new(),
+            active_sources: Vec::new(),
             music_sink: None,
             pending_music: None,
             music_base_volume: 1.0,
@@ -289,6 +299,34 @@ impl AudioManager {
         Ok(())
     }
 
+    /// Play a source the caller built (a synthesizer, a sequencer) on `bus`
+    /// until its iterator ends.
+    ///
+    /// The source's samples are played as they come; the sink volume is the
+    /// bus volume times master and follows later changes to either. Nothing
+    /// here stops the source early: it plays until it returns `None`, and
+    /// [`AudioManager::update`] then frees its sink. A disabled manager drops
+    /// the source without pulling a sample and returns `Ok`, like every other
+    /// playback call.
+    pub fn play_source<S>(&mut self, source: S, bus: Bus) -> AudioResult<()>
+    where
+        S: Source<Item = f32> + Send + 'static,
+    {
+        let Some(output) = &self.output else {
+            return Ok(());
+        };
+        let sink = self.start_sink(output, source, 1.0, self.bus_volume(bus), false)?;
+        self.active_sources.push(ActiveSource { sink, bus });
+        Ok(())
+    }
+
+    fn bus_volume(&self, bus: Bus) -> f32 {
+        match bus {
+            Bus::Music => self.music_volume,
+            Bus::Sfx => self.sfx_volume,
+        }
+    }
+
     /// Create and configure a sink for playback under the given bus volume.
     pub(super) fn start_sink<S>(
         &self,
@@ -335,6 +373,7 @@ impl AudioManager {
     /// from sounds that have finished playing.
     pub fn update(&mut self) {
         self.active_sounds.retain(|active| !active.sink.empty());
+        self.active_sources.retain(|active| !active.sink.empty());
     }
 
     /// Unload a sound from the cache.

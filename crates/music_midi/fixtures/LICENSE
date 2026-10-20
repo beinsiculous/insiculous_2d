@@ -1,0 +1,81 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: music_midi test fixtures
+Comment: Test fixtures for the conductor (MIDI parsing, the tempo map, sequencing,
+ the synthesizer seam and sample instruments). A composition and a given MIDI file
+ carry separate rights, so each MIDI file below is from a Mutopia Project piece whose
+ own page says "Copyright: Public Domain" - that per-piece line is authoritative, and
+ it is quoted for each file with the page it was read from on 2026-10-20. The files
+ are the downloads' verbatim bytes; the sha256 of each is recorded so a later
+ download can be compared. Nothing here ships in a game.
+
+Files: bach-invention-02.mid
+Copyright: Public Domain
+Comment: Johann Sebastian Bach (1685-1750), Invention 2 in C minor, BWV 773.
+ Source edition: Bach-Gesellschaft. Typeset for the Mutopia Project by Allen Garvin
+ (LilyPond 2.11.49), Mutopia-2008/06/15-58.
+ Piece page: https://www.mutopiaproject.org/cgibin/piece-info.cgi?id=58
+ Its line: "Copyright: Public Domain"
+ Download: https://www.mutopiaproject.org/ftp/BachJS/BWV773/bach-invention-02/bach-invention-02.mid
+ sha256: b61e1e4d4a42ca70efd0eb8a65de3ed0ca0ee9c31556354608f6caa360e78e98
+License: public-domain
+
+Files: dansenapolitaine.mid
+Copyright: Public Domain
+Comment: Pyotr Ilyich Tchaikovsky (1840-1893), Napolitan Dance from Swan Lake,
+ Op. 20 (1876), arranged for trumpet, percussion and piano by Laurence Sardain (a new
+ arrangement, placed in the public domain on its page). Mutopia-2006/12/22-896,
+ LilyPond 2.10.4.
+ Piece page: https://www.mutopiaproject.org/cgibin/piece-info.cgi?id=896
+ Its line: "Copyright: Public Domain"
+ Download: https://www.mutopiaproject.org/ftp/TchaikovskyPI/dansenapolitaine/dansenapolitaine.mid
+ sha256: 084540482e5522035447a44be092d38084c3308cdd2ea4f8c468b861f9fba43b
+License: public-domain
+
+Files: dansenapolitaine-type0.mid
+Copyright: Public Domain
+Comment: Derived from dansenapolitaine.mid above by scripts/make_type0_fixture.py
+ (2026-10-20): the five tracks merged into the single track of an SMF type 0 file, and
+ the tambourine track - which LilyPond writes as middle C on a melodic channel - moved
+ to General MIDI percussion channel 10 as key 54, Tambourine. Re-running the script on
+ the source above reproduces these bytes.
+ sha256: 78e8f5effca0d7ecb41369e8a7f14bfc5bb6be602e9c27f6b03f57f7d2dfad18
+License: public-domain
+
+Files: bayadere-ombres.mid
+Copyright: Public Domain
+Comment: Ludwig Minkus (1826-1917), La Bayadere (1877), Variation des Ombres,
+ arranged for piano, flute and percussion by Laurence Sardain (a new arrangement,
+ placed in the public domain on its page). Mutopia-2006/12/22-895, LilyPond 2.10.4.
+ Piece page: https://www.mutopiaproject.org/cgibin/piece-info.cgi?id=895
+ Its line: "Copyright: Public Domain"
+ Download: https://www.mutopiaproject.org/ftp/MinkusLA/bayadere-ombres/bayadere-ombres.mid
+ sha256: 1e4c17aa41577251312e904b32ad91c8631f0cf4670dc446b9d01e1849dc6e2c
+License: public-domain
+
+Files: sine.sf2
+Copyright: none (generated)
+Comment: Written by scripts/make_sine_soundfont.py: one A4 sine sample (44000 Hz,
+ 100 points a cycle, looped), one instrument releasing over 0.1 s, one preset at bank
+ 0, program 0. Byte-reproducible.
+ sha256: e2b55d31e4cc57722f2cc2550b2b3afc8c9f35aff421a5d3c50e7e1683b07199
+License: public-domain
+
+Files: sine_48000_mono.wav
+ sine_48000_stereo.wav
+ sine_22050_mono.wav
+ sine_22050_stereo.wav
+Copyright: none (generated)
+Comment: Written by scripts/make_sine_wav.py: one second of a middle-C sine (MIDI
+ note 60), 16-bit PCM, 5 ms fades; the stereo files carry the right channel at half
+ the left's amplitude. Byte-reproducible.
+ sha256: 925fd37b0034d78303403afa310293d4a25f3e6d63a02fed5bf11ee23f81c950 (48000 mono)
+ sha256: 1803f929037d9cbffa50d304b40675e0359e97011158737a2cc498f6bbaacac7 (48000 stereo)
+ sha256: f489c57fc786017ce1ec09bf147516ba7b430308606f198eaa98b4302a902f33 (22050 mono)
+ sha256: c10d937751756b662ce41b892cbd764bac7796256ce13b3806bb3e072f8a3d43 (22050 stereo)
+License: public-domain
+
+License: public-domain
+ The works above are in the public domain: the compositions by the age of their
+ composers' deaths, the Mutopia files by their typesetters' and arrangers' public-domain
+ dedication on each piece's page, and the generated files by their authors' (the
+ Insiculous 2D engine's) dedication here.

@@ -40,7 +40,11 @@ playback) is the Conductor milestone's feature.
 - Sound bytes cached as `Arc<[u8]>`; each play decodes from
   `Cursor<Arc<[u8]>>` — no buffer copy per play.
 - Volume model: sink volume = `base * bus * master`, re-applied to all live
-  sinks (music + SFX) by `set_master_volume` / `set_sfx_volume` / `set_music_volume`.
+  sinks (music + SFX + sources) by `set_master_volume` / `set_sfx_volume` / `set_music_volume`.
+- `play_source(source, Bus::Music | Bus::Sfx)` plays any caller-built
+  `Source<Item = f32>` (a synthesizer, a sequencer) until it ends, its sink kept
+  so bus and master changes reach it (base volume 1.0). Disabled mode drops the
+  source unpulled and returns `Ok`.
 - Clamping happens at point of use (`clamp_volume` 0..=1, `clamp_speed` floor
   0.1) because `SoundSettings` fields are public.
 - `play(handle)` / `unload(handle)` take `SoundHandle` by value (Copy);

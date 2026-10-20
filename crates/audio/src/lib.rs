@@ -45,4 +45,4 @@ mod sound;
 
 pub use error::{AudioError, AudioResult};
 pub use manager::AudioManager;
-pub use sound::{SoundHandle, SoundSettings};
+pub use sound::{Bus, SoundHandle, SoundSettings};

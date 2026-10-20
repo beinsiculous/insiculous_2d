@@ -23,6 +23,17 @@ impl SoundHandle {
     }
 }
 
+/// The volume bus a caller-built source plays under (see
+/// [`crate::AudioManager::play_source`]): its sink volume is that bus's volume
+/// times master, re-derived whenever either changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Bus {
+    /// Under [`crate::AudioManager::music_volume`].
+    Music,
+    /// Under [`crate::AudioManager::sfx_volume`].
+    Sfx,
+}
+
 /// Settings for sound playback.
 #[derive(Debug, Clone)]
 pub struct SoundSettings {

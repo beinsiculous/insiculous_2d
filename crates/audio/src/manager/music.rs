@@ -161,8 +161,8 @@ impl AudioManager {
         self.music_volume
     }
 
-    /// Re-derive sink volumes for the music track and every live SFX
-    /// instance from `base * bus * master`.
+    /// Re-derive sink volumes for the music track, every live SFX instance
+    /// and every caller-built source from `base * bus * master`.
     fn update_all_volumes(&mut self) {
         if let Some(ref sink) = self.music_sink {
             sink.set_volume(effective_volume(self.music_base_volume, self.music_volume, self.master_volume));
@@ -171,6 +171,11 @@ impl AudioManager {
             active
                 .sink
                 .set_volume(effective_volume(active.base_volume, self.sfx_volume, self.master_volume));
+        }
+        for active in &self.active_sources {
+            active
+                .sink
+                .set_volume(effective_volume(1.0, self.bus_volume(active.bus), self.master_volume));
         }
     }
 }
