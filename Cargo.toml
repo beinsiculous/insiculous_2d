@@ -70,6 +70,12 @@ env_logger = { workspace = true }
 log = { workspace = true }
 physics = { path = "crates/physics" }
 input = { path = "crates/input" }
+music_midi = { path = "crates/music_midi" }
+
+[dev-dependencies]
+# Only the conductor example names rodio's `Source` trait, to hand `play_source` a source
+# of its own; the version is the one the audio crate already locks.
+rodio = { version = "0.20", default-features = false }
 
 [[bin]]
 name = "editor"

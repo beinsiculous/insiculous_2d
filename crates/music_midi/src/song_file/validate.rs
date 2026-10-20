@@ -85,6 +85,11 @@ impl SongFile {
 
     /// Everything that needs the MIDI data or the resources.
     pub(super) fn check_against(&self, song: &SongData) -> Result<(), SongFileProblem> {
+        if !self.resources.soundfonts.contains(&self.soundfont) {
+            return Err(SongFileProblem::SoundFontNotSupplied {
+                path: self.soundfont.clone(),
+            });
+        }
         for part in &self.parts {
             let track = part.resolve_track(song)?;
             if song.tracks()[track].note_count() == 0 {

@@ -47,6 +47,25 @@ pub fn note_off(channel: u8, key: u8) -> TrackEventKind<'static> {
     }
 }
 
+pub fn program_change(channel: u8, program: u8) -> TrackEventKind<'static> {
+    TrackEventKind::Midi {
+        channel: u4::new(channel),
+        message: MidiMessage::ProgramChange {
+            program: u7::new(program),
+        },
+    }
+}
+
+pub fn controller(channel: u8, controller: u8, value: u8) -> TrackEventKind<'static> {
+    TrackEventKind::Midi {
+        channel: u4::new(channel),
+        message: MidiMessage::Controller {
+            controller: u7::new(controller),
+            value: u7::new(value),
+        },
+    }
+}
+
 pub fn tempo(microseconds_per_quarter: u32) -> TrackEventKind<'static> {
     TrackEventKind::Meta(MetaMessage::Tempo(u24::new(microseconds_per_quarter)))
 }

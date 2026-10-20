@@ -22,6 +22,7 @@ fn documented_example() -> &'static str {
 /// and the tambourine sample.
 fn loaded_resources() -> ResourceMetadata {
     let mut resources = ResourceMetadata::default();
+    resources.soundfonts.insert(CAST.to_string());
     for preset in 0..=127 {
         resources.preset_layering.insert(
             PresetKey {
@@ -306,6 +307,20 @@ fn validation_against_the_midi_file_names_the_failing_entry() {
         song_file(flute, &sample_at(72)).validate(LABEL, &napolitan),
         Ok(()),
         "65 to 79 is within 24 of 72"
+    );
+}
+
+#[test]
+fn a_background_soundfont_the_loader_did_not_decode_is_refused() {
+    let (napolitan, _) = read(NAPOLITAN_DANCE);
+    let decoded = with_resources(&format!(r#"SongFile(version: 1, soundfont: "{CAST}")"#));
+    let missing = with_resources(r#"SongFile(version: 1, soundfont: "soundfonts/other.sf2")"#);
+
+    assert_eq!(decoded.validate(LABEL, &napolitan), Ok(()));
+    assert_refused(
+        missing.validate(LABEL, &napolitan),
+        "an undecoded background SoundFont",
+        &["soundfont 'soundfonts/other.sf2'", "did not decode"],
     );
 }
 

@@ -84,6 +84,9 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
   - `song_file.rs` + `song_file/validate.rs` - **the `.mid.ron` song sidecar schema** (`SongFile` v1: parts, instruments, bindings; `parse_song_file`, `SongFile::validate` against the MIDI data and the loader's `ResourceMetadata`)
   - `song_data.rs` + `song_data/{flatten,edit,export}.rs` - `SongData::from_smf` (owned events, types 0 and 1, notes in `MusicalUnit`s under stable `NoteId`s), the mutation helpers returning before-images, `write_smf`
   - `tempo_map.rs` - `TempoMap`: exact tick ↔ seconds ↔ sample ↔ bar across tempo and time-signature changes; integer beat-crossing counts
+  - `sequencer.rs` + `sequencer/{score,fold}.rs` - the background `Sequencer` (pure: the song clock, events on the synthesizer's block grain, the sample-exact loop seam, same-key coalescing), `BackgroundScore` (what export would write, minus trigger tracks), `ChannelStateFold` (the state a seek or wrap rebuilds)
+  - `conductor.rs` + `conductor/{song,background,slots,ledger}.rs` (`synth` feature) - `Conductor` (`new`/`load`/`render`, commands at block boundaries, the bus mix and finite guard), `Song` (SoundFonts parsed from bytes off the audio thread), the two-synthesizer background player, `InstrumentSlot`, the `VoiceLedger`
+  - `commands.rs` + `position.rs` (`synth` feature) - `ConductorCommand` and the never-blocking `ConductorHandle`; `SharedPosition`, the atomics published once a block
 
 - **crates/common/** - Shared types and utilities
   - `rect.rs` / `color.rs` / `transform.rs` / `camera.rs` / `time.rs` / `macros.rs` - Rect, Color, transforms, CameraUniform, Time
@@ -98,6 +101,7 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
   - `hello_world.rs` - Physics platformer with UI, audio, ECS, and scene graph
   - `editor_demo.rs` - Editor wrapping the platformer (`--features editor`, shares `hello_world/platformer.rs`)
   - `behavior_demo.rs` - Scene-driven behaviors
+  - `conductor_background.rs` - A MIDI fixture's background score through the conductor on the music bus, with render-cost and drain-gap log lines
   - Real games live in `../games/` (pong, breakout, space_invaders, snake, asteroids) — see `PROJECT_ROADMAP.md`
 
 ## Coding Guidelines
@@ -932,7 +936,7 @@ list debt here — this file documents APIs and patterns, not status.
 │   ├── ui/                    # Immediate-mode UI framework
 │   ├── physics/               # Rapier2d physics integration
 │   ├── audio/                 # Audio playback via rodio
-│   ├── music_midi/            # Song sidecar, owned MIDI data, tempo map (no I/O)
+│   ├── music_midi/            # Song sidecar, MIDI data, tempo map, sequencer, conductor (no I/O)
 │   ├── common/                # Shared types (Rect, Color, Time, CameraUniform)
 │   ├── editor/                # Editor panels, inspector, gizmos, undo/redo
 │   └── editor_integration/    # EditorGame<G> wrapper, run_game_with_editor()

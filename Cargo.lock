@@ -1396,7 +1396,9 @@ dependencies = [
  "glam",
  "input",
  "log",
+ "music_midi",
  "physics",
+ "rodio",
  "ui",
  "winit",
 ]

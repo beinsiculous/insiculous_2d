@@ -410,6 +410,53 @@ fn restoring_before_images_undoes_an_edit_down_to_the_exported_bytes() {
 }
 
 #[test]
+fn an_edit_ending_past_the_last_writable_midi_tick_is_refused_naming_the_note() {
+    const LAST_WRITABLE_TICK: u64 = 0x0FFF_FFFF;
+    let (mut song, _) = read(BACH_INVENTION);
+    let note = first_note(&song, 1);
+    let before = heard_notes(&song);
+    let to_the_limit = (LAST_WRITABLE_TICK - note.tick - note.duration_ticks) as i64;
+    let new_note = |tick, duration_ticks| NewNote {
+        tick,
+        key: 60,
+        velocity: 64,
+        duration_ticks,
+    };
+
+    assert_eq!(
+        song.move_notes(&[note.id], to_the_limit + 1),
+        Err(EditError::PastSongEnd {
+            note: note.id,
+            limit: LAST_WRITABLE_TICK
+        })
+    );
+    assert_eq!(
+        song.resize_notes(&[note.id], LAST_WRITABLE_TICK),
+        Err(EditError::PastSongEnd {
+            note: note.id,
+            limit: LAST_WRITABLE_TICK
+        })
+    );
+    assert_eq!(
+        song.add_note(1, new_note(LAST_WRITABLE_TICK, 1)),
+        Err(EditError::NewNotePastSongEnd {
+            tick: LAST_WRITABLE_TICK,
+            key: 60,
+            limit: LAST_WRITABLE_TICK
+        })
+    );
+    assert_eq!(heard_notes(&song), before, "a refused edit changes nothing");
+
+    song.move_notes(&[note.id], to_the_limit)
+        .expect("a note may end on the last writable tick");
+    song.add_note(1, new_note(LAST_WRITABLE_TICK - 1, 1))
+        .expect("a new note may end on it too");
+    let reread = SongData::from_smf(&song.write_smf().expect("every gap fits a MIDI delta"))
+        .expect("the export reads back");
+    assert_eq!(heard_notes(&reread.0), heard_notes(&song));
+}
+
+#[test]
 fn a_refused_edit_changes_nothing() {
     let (mut song, _) = read(BACH_INVENTION);
     let note = first_note(&song, 1);

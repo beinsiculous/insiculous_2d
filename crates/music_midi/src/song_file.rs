@@ -39,7 +39,7 @@
 //! a preset the SoundFont lacks or layers too thickly, an undecoded or out-of-range
 //! sample). `docs/SONG_FORMAT.md` is the author's guide.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
@@ -199,9 +199,11 @@ pub struct PresetKey {
 ///
 /// `preset_layering` holds an entry for every preset a loaded SoundFont has — the most
 /// voices one of its note-ons starts — so an absent entry means the preset is missing.
-/// `sample_seconds` holds each decoded sample's length by path.
+/// `sample_seconds` holds each decoded sample's length by path, and `soundfonts` the path
+/// of every SoundFont the loader decoded, so the background score's is known to be there.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ResourceMetadata {
+    pub soundfonts: BTreeSet<String>,
     pub preset_layering: BTreeMap<PresetKey, usize>,
     pub sample_seconds: BTreeMap<String, f64>,
 }

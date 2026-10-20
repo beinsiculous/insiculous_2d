@@ -60,8 +60,10 @@ pub enum EditError {
     ZeroDuration,
     #[error("{note} would move before the start of the song")]
     BeforeSongStart { note: NoteId },
-    #[error("{note} would move past the last representable tick")]
-    PastSongEnd { note: NoteId },
+    #[error("{note} would end past tick {limit}, the last a MIDI file can write")]
+    PastSongEnd { note: NoteId, limit: u64 },
+    #[error("a new note at tick {tick} on key {key} would end past tick {limit}, the last a MIDI file can write")]
+    NewNotePastSongEnd { tick: u64, key: u8, limit: u64 },
     #[error(
         "tempo {microseconds_per_quarter} microseconds per quarter note is outside 1 to 16777215"
     )]
@@ -196,6 +198,8 @@ pub enum SongFileProblem {
         needed: usize,
         polyphony: usize,
     },
+    #[error("soundfont '{path}' plays the background score, but the loader did not decode it")]
+    SoundFontNotSupplied { path: String },
     #[error("instruments['{instrument}'] plays sample '{path}', which the loader did not decode")]
     SampleNotSupplied { instrument: String, path: String },
     #[error(
@@ -207,5 +211,59 @@ pub enum SongFileProblem {
         seconds: f64,
         minimum: f64,
         maximum: f64,
+    },
+}
+
+/// A conductor that cannot be built, or a song it cannot load. Nothing was changed.
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+pub enum ConductorError {
+    #[error("the conductor's {capacity} capacity is zero; every capacity holds at least one")]
+    ZeroCapacity { capacity: &'static str },
+    #[error("sample rate {sample_rate} Hz is outside the synthesizer's 16000 to 192000")]
+    SampleRateOutOfRange { sample_rate: u32 },
+    #[error("block size {block_size} is outside the synthesizer's 8 to 1024 frames")]
+    BlockSizeOutOfRange { block_size: usize },
+    #[error("a pool of {polyphony} voices is outside the synthesizer's 8 to 256")]
+    PolyphonyOutOfRange { polyphony: usize },
+    #[error(
+        "a pool of {polyphony} voices cannot hold {sounding_cap} sounding notes of even one \
+         voice each"
+    )]
+    PoolBelowSoundingCap {
+        polyphony: usize,
+        sounding_cap: usize,
+    },
+    #[error("{lanes} lanes a slot is more than the {maximum} MIDI channels a slot can lease")]
+    TooManyLanes { lanes: usize, maximum: usize },
+    #[error("the song names SoundFont '{path}', but its bytes were not supplied")]
+    SoundFontNotSupplied { path: String },
+    #[error("SoundFont '{path}' cannot be read: {reason}")]
+    SoundFont { path: String, reason: String },
+    #[error("the synthesizer refused its settings: {reason}")]
+    Synthesizer { reason: String },
+    #[error("the song does not fit its MIDI file: {0}")]
+    SongDoesNotFit(SongFileProblem),
+    #[error("the song declares {count} instruments; the conductor has {capacity} slots")]
+    TooManyInstruments { count: usize, capacity: usize },
+    #[error(
+        "instruments['{instrument}'] asks for bank {bank} preset {preset} in '{soundfont}', \
+         which that SoundFont does not have"
+    )]
+    PresetMissing {
+        instrument: String,
+        soundfont: String,
+        bank: u16,
+        preset: u8,
+    },
+    #[error(
+        "instruments['{instrument}'] layers {layering} voices a note; {sounding_cap} sounding \
+         notes need {needed} voices, more than the pool's {polyphony}"
+    )]
+    LayeringExceedsPool {
+        instrument: String,
+        layering: usize,
+        sounding_cap: usize,
+        needed: usize,
+        polyphony: usize,
     },
 }

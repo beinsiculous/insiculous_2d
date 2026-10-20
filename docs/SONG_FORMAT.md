@@ -122,6 +122,10 @@ synthesizer with its program, channel, controller and pitch-bend events as writt
 part's own MIDI program and channel never override its binding's instrument — the
 instrument always wins.
 
+A key struck again on its channel while it still sounds (a pedalled repeat) sounds again
+and keeps sounding until its last instance ends: one note-off would otherwise silence
+both.
+
 ## Modes
 
 - **`Loop`** (the default) — each accepted trigger plays the part's next unit (a chord, or
@@ -152,15 +156,17 @@ unknown field; an empty or repeated name in any collection (actions included); a
 path; a binding naming a part or an instrument that is not declared; a gain that is not
 finite or is negative; a root note, bank or preset out of range; more than 8 instruments.
 
-**Against the MIDI file and the loaded resources** (`SongFile::validate`): a part whose
-track does not exist; a part selecting a shared name; a part whose track has no notes;
-a sample-bound part with a note more than 24 semitones from the root; a SoundFont preset
-the SoundFont does not have; a preset that layers so many voices a note that 24 sounding
-notes would overflow the synthesizer's 128-voice pool (a layering of 6 or more); a sample
-the loader did not decode, or one shorter than 1 ms or longer than 10 s.
+**Against the MIDI file and the loaded resources** (`SongFile::validate`): a background
+SoundFont the loader did not decode; a part whose track does not exist; a part selecting a
+shared name; a part whose track has no notes; a sample-bound part with a note more than 24
+semitones from the root; a SoundFont preset the SoundFont does not have; a preset that
+layers so many voices a note that 24 sounding notes would overflow the synthesizer's
+128-voice pool (a layering of 6 or more); a sample the loader did not decode, or one
+shorter than 1 ms or longer than 10 s.
 
 The loader — not this crate — reads the files and supplies what it learned as
-`ResourceMetadata` (each SoundFont preset's layering, each sample's length).
+`ResourceMetadata` (the SoundFonts it decoded, each preset's layering, each sample's
+length).
 
 ### Capacities
 
@@ -202,3 +208,10 @@ denominator note** — a half note in 3/2, a quarter in 3/4, an eighth in 6/8. A
 signature that arrives mid-bar closes the partial bar and starts a new one. An event at a
 tick sounds on the first audio sample at or after its exact time; beat crossings are
 counted on those samples, never by comparing floating-point times.
+
+**The song's end** is its last event, end-of-track included — its authored length, not
+its last note. A looping song wraps there on the exact sample: every note still sounding
+is released, every channel's program, bank, controllers and pitch bend return to what
+they are at the start (tick 0's own events included), and the first beat plays again, so
+the loop never drifts by a fraction of an audio block. A seek rebuilds the channels the
+same way, and a note that began before the seek's destination is not played again.

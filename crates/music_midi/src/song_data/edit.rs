@@ -11,6 +11,9 @@ use crate::tempo_map::{TempoChange, TimeSignature};
 
 const HIGHEST_KEY: u8 = 127;
 const HIGHEST_VELOCITY: u8 = 127;
+/// MIDI's largest delta time. A note ending past it could leave a gap between two events
+/// that no Standard MIDI File can write, so the edit is refused rather than the export.
+const LAST_WRITABLE_TICK: u64 = 0x0FFF_FFFF;
 
 impl SongData {
     /// Add a note to selectable track `track`, written on that track's channel.
@@ -19,6 +22,13 @@ impl SongData {
         check_key(note.key)?;
         check_velocity(note.velocity)?;
         check_duration(note.duration_ticks)?;
+        if !ends_by_last_writable_tick(note.tick, note.duration_ticks) {
+            return Err(EditError::NewNotePastSongEnd {
+                tick: note.tick,
+                key: note.key,
+                limit: LAST_WRITABLE_TICK,
+            });
+        }
         let id = NoteId(self.next_note_id);
         self.next_note_id += 1;
         let placed = Note {
@@ -53,10 +63,14 @@ impl SongData {
             let tick = image
                 .tick
                 .checked_add_signed(tick_delta)
+                .filter(|tick| ends_by_last_writable_tick(*tick, image.duration_ticks))
                 .ok_or(if tick_delta < 0 {
                     EditError::BeforeSongStart { note: image.id }
                 } else {
-                    EditError::PastSongEnd { note: image.id }
+                    EditError::PastSongEnd {
+                        note: image.id,
+                        limit: LAST_WRITABLE_TICK,
+                    }
                 })?;
             destinations.push(tick);
         }
@@ -73,6 +87,14 @@ impl SongData {
         duration_ticks: u64,
     ) -> Result<Vec<NoteImage>, EditError> {
         check_duration(duration_ticks)?;
+        for image in self.images_of(ids)? {
+            if !ends_by_last_writable_tick(image.tick, duration_ticks) {
+                return Err(EditError::PastSongEnd {
+                    note: image.id,
+                    limit: LAST_WRITABLE_TICK,
+                });
+            }
+        }
         self.modify_notes(ids, |note| note.duration_ticks = duration_ticks)
     }
 
@@ -293,6 +315,11 @@ fn check_velocity(velocity: u8) -> Result<(), EditError> {
         return Err(EditError::VelocityOutOfRange { velocity });
     }
     Ok(())
+}
+
+fn ends_by_last_writable_tick(tick: u64, duration_ticks: u64) -> bool {
+    tick.checked_add(duration_ticks)
+        .is_some_and(|end_tick| end_tick <= LAST_WRITABLE_TICK)
 }
 
 fn check_duration(duration_ticks: u64) -> Result<(), EditError> {
