@@ -274,10 +274,18 @@ Menus use the same song's slowest phrase through the `menu` binding (K6's standa
    `common::clock` instant**; the consumer drops a trigger older than the late tolerance and
    counts it (a suspended tab's backlog never replays as a burst), and quantization measures
    lateness from that stamp, not from the drain, so a frame of transport latency is not
-   lateness. A lifecycle command is never dropped for age. **On the web the stamp is not
-   optional:** cpal's WebAudio backend pulls 2048-frame buffers from the main thread, so a
-   command waits up to 53–61 ms before it is drained (K1 measured); K3 places a trigger
-   inside the burst from its stamp, or every web trigger quantizes to about 46 ms. Every output sample passes a
+   lateness. A lifecycle command is never dropped for age. **The stamp is not optional
+   anywhere:** cpal's WebAudio backend pulls 2048-frame buffers from the main thread, so a
+   command waits up to 53–61 ms before it is drained (K1 measured), and natively a command
+   waits up to the device period, 42.6 ms (batch 3 measured); K3 places a trigger inside
+   the burst from its stamp, or every trigger quantizes to the drain. **Placement is to a
+   64-frame boundary** (1.45 ms): rustysynth applies a message only at the start of its next
+   internal block, and nothing but `reset()` moves that grid — which is also why the
+   **background plays on two synthesizers that take turns** (batch 3): at every seek, wrap or
+   resume the playing one is released to its tails and the other is reset on the exact
+   frame and given the folded state, so the downbeat lands on its sample, bit-exactly; the
+   one edge is a tail still ringing on the idle synthesizer at the *next* reconstruction,
+   which is cut. Every output sample passes a
    finite guard (a non-finite value becomes 0 and is counted) so nothing can poison WebAudio. Bus gains cross as three `Arc<AtomicU32>` f32 bit patterns read per
    block; the source mixes `music_gain * background + sfx_gain * instruments` and the sink
    volume carries master. The score clock advances by samples rendered, so `time_scale = 0`
@@ -594,7 +602,20 @@ song_file.rs, song_file/validate.rs, song_data.rs, song_data/flatten.rs, tempo_m
 **Gates:** the standard list; `check_wasm.sh` (new crate in the workspace). **Leaves out:**
 the synthesizer (batch 3), triggering (batch 4), samples (batch 5), any I/O.
 
-## Batch 3 — K2b `crates/music_midi`: the sequencer, the conductor, background playback (#61)
+## Batch 3 — K2b `crates/music_midi`: the sequencer, the conductor, background playback (#61) — DONE 2026-10-20 (e5fef7a)
+
+Authored by the executor (a Claude Opus session) from `review/conductor/handoff-3.md`; report
+`review/conductor/report-3.md`; reviewed by kimi (`review-6.md`), gemini (`review-6-gemini.md`)
+and the planner (`review-6-claude.md`); adjudicated in `rebuttal-6.md` (4 accepted, 6
+rebutted); Jesse's listen check passed natively. **One design decision taken by the executor
+and accepted:** the background plays on two synthesizers that take turns at every
+reconstruction, because rustysynth applies a message only at its next internal block and
+only `reset()` moves that grid — decision 3 now says so. Measured: the native drain gap is a
+42.6 ms device period (so K3's timestamps are mandatory everywhere), ~9 µs a block, the
+state fold under 41 µs on Egmont's 25 000 events, so it is not cached. Carried to batch 4's
+fix-up list: `seek_to_sample` folds state on the destination sample, `Seek` while paused
+moves the sequencer, `Play` releases the slots. The example plays its fixtures entirely on
+the piano because the Mutopia files set no programs — batch 4 derives a *cast* fixture.
 
 Executor: the Opus session. Reviewers: kimi, gemini. Listen check: Jesse (through the spike's
 `play_source`, a one-screen example in `examples/`); the report pastes the native run's
@@ -654,12 +675,27 @@ Executor: the Opus session. Reviewers: kimi, gemini. Listen check: Jesse (the ex
 keyboard trigger). Size: about +2600 lines.
 
 Files: `src/{triggers.rs, triggers/cursor.rs, triggers/quantize.rs, sources.rs,
-overflow.rs}` + tests; `commands.rs` grows `Trigger { binding, source: SourceId }`
-(activation is lazy — the first trigger activates), `DeactivateSource`, `StopAllSources`,
-`PauseMusic`, `ResumeMusic`; `conductor.rs` dispatches.
+overflow.rs}` + tests; `commands.rs` grows `Trigger { binding, source: SourceId, stamp }`
+(activation is lazy — the first trigger activates), `DeactivateSource`, `StopAllSources {
+flush_epoch }` (the existing `Pause`/`Resume` are the music pause; no second pair);
+`conductor.rs` dispatches; `SourceId { id, generation, epoch }` replaces batch 3's
+`SourceKey(u64)` stand-in.
 
-**Target shape.** `SourceId { id: u64, generation: u64 }` (mirrors `EntityId`, built by the
-host); per-source lane ownership in a slot; one shared cursor per part for `Loop`
+**Batch 3's fix-ups, first** (accepted in `rebuttal-6.md`): `Sequencer::seek_to_sample`
+includes the state events on the destination sample (the `<=` rule `seek_to_tick` keeps),
+with a test that Resume at a sample carrying a program change restores it; `Seek` while
+paused moves the sequencer as well as the resume point, so `Stop` after it publishes the
+seeked position; `Play` releases every slot's notes as `Stop` does. And a **cast fixture for
+the listen checks:** `scripts/make_cast_fixture.py` derives `dansenapolitaine-cast.mid` from
+the type-0 file by adding program changes per channel (flute → 73, the pianos → 0, the
+tambourine already on the kit), licensed in `fixtures/LICENSE` like the type-0 derivation;
+the example plays it by default from this batch on. A slot's trigger sounds on the next
+64-frame boundary of its synthesizer (decision 3): the tests assert placement to that grid,
+never to the sample.
+
+**Target shape.** `SourceId { id: u64, generation: u64, epoch: u32 }` (id and generation
+mirror `EntityId`, built by the host; the epoch counts activations of that identity, decision
+2); per-source lane ownership in a slot; one shared cursor per part for `Loop`
 (advances and wraps) and `Sequence` (skips passed units, exhausts, resets on song loop);
 `AtSongPosition` reads the unit active at the (quantized) target tick without a cursor;
 quantization resolves at the target tick through the tempo map with the one-block late
@@ -705,6 +741,13 @@ and click-free on steal (max sample-to-sample delta bounded). **Gates:** standar
 ## Batch 6 — K4a `crates/audio`: the song manager and the conductor source (#63)
 
 Executor: the Opus session. Reviewers: kimi, gemini. Listen check: Jesse. Size: about +2000 lines.
+
+The loader fills every field of `ResourceMetadata`, the `soundfonts` set included (the
+membership check lands in batch 3 and refuses a song whose background bank it does not
+list); the root `[dev-dependencies] rodio` that batch 3's example needed goes when this
+batch's adapter lands and the example switches to it; `SharedPosition::snapshot` may
+straddle one block (documented) — consumers read one field, `beat_crossed` the sample
+position alone, and a seqlock is added only if a consumer needs two fields together.
 
 Files: `crates/audio/src/manager/song.rs` (`play_song(path)` and `play_song_in_memory(Arc<Song>)`
 — the composer's preview — `stop_song`, `pause_song`, `resume_song`, `seek_song(beat)`,
@@ -893,7 +936,9 @@ about +2500 lines, plus a small `insiculous_web` half reviewed from
 Files (new): `editor_integration/src/editor_game/song_preview.rs` + tests (`SongPreview {
 state, intents: Vec<SongAudioIntent>, generation }`, `SongAudioIntent::{LoadAndPlay { song:
 Arc<Song>, from_beat }, Stop, Seek, Trigger { binding }, PauseGameplay, ResumeGameplay,
-StopAll}`; `song_request` pure, `apply_song_intents(audio)` drained in `finish_frame`),
+StopAll}`; `song_request` pure, `apply_song_intents(audio)` drained in `finish_frame`; "play from
+beat" is `Play` then `Seek(tick)` in one block — the conductor applies them in order, so no
+`PlayFrom` command is added),
 `crates/playground/src/bridge.rs` `playground_write_file_bytes(path, bytes)` (same
 `validate_bridge_path` guard, an allowlist of `assets/music/` and `assets/ai/music/`,
 persisted by the vfs observer), the site's second file input beside the zip import
