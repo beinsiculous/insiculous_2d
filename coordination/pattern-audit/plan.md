@@ -574,7 +574,7 @@ is designed; Jesse may add it.
 
 Size: about −720 / +50 lines.
 
-## Batch 4 — engine_core + games/breakout: overrides merge field by field (#169; DOC-001)
+## Batch 4 — engine_core + games/breakout: overrides merge field by field (#169; DOC-001) — DONE 2026-10-19 (engine c1dcff3, breakout 8f7b109)
 
 Files, engine: `crates/engine_core/src/scene_data.rs` (519: `EntityData.overrides` type), a
 new `crates/engine_core/src/scene_override.rs` (`OverrideData` and its serde), a new
@@ -593,6 +593,27 @@ the eight `assets/scenes/level*.scene.ron`, `src/levels_tests.rs` (29–45: `mer
 is a test-side replica of the engine's merge over `Vec<ComponentData>`; it would not compile
 against `Vec<OverrideData>` and would keep replace semantics if it did — deleted, the test
 calls the engine's merge), one harness test if none pins a brick's scale.
+
+Authored by Jesse's Claude Opus session from `review/pattern-audit/handoff-4.md`, both trees
+in one batch; reviewed by kimi (`review-6.md`; breakout's `review/pattern-audit/review-1.md`),
+gemini (`review-6-gemini.md`) and the planner (`review-6-claude.md`); adjudicated in
+`rebuttal-6.md` — kimi 5 engine findings, 3 accepted (the runtime constructor's doc
+over-promised for `Dynamic`; two overrides of one type now apply in order; the `new-game` skill's
+stale snippet), 2 rebutted; gemini 7, 1 accepted (**the round's one defect**: `Transform2D()`
+reads as an empty sequence and failed the load — fixed, enumerated, Jesse's ruling), 6 rebutted
+(a "Critical" JSON path that does not exist; four decisions of record); kimi on breakout 1,
+accepted (the guide's test list). Two plan errors the executor found and the record keeps: the
+re-verification's 258 was a miscount (436 brick lines carried the scale; the grep missed the
+178 tagged ones), and the prefabs whose instances change (Coin 0.25/0.785, Player 0.5, Chaser
+0.4, Patroller 0.45, Companion 0.35) are `behavior_demo.scene.ron`'s — hello_world's overrides
+restate every non-default field, so its golden fixture re-blesses byte-identical and the
+changing scene is pinned by `behavior_demo_prefab_instances_load_at_their_prefabs_scale_and_rotation`
+instead. Done differently, ratified: the merge functions take an `entity: &str` label so the
+errors can name the entity (the public `effective_components` is as planned); both load paths
+merge before `world.create_entity()`, so a merge error leaves nothing behind; DOC-001's
+`behavior_to_data` and `ui_manager.rs` subjects no longer exist (the `extract_behavior` doc
+landed instead). Follow-up filed at close-out: validate an override's named fields on the
+append path too (gemini F6). 1121 tests, every gate green in both repos.
 
 **Re-verified against the tree 2026-10-19 after batch 3 (489a8b5):** `scene_data.rs` is 522
 lines, `EntityData.overrides` at 128, the newtype variants `Behavior`/`Scripts` at 365/368;
