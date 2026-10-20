@@ -80,7 +80,7 @@ below) — pong and space_invaders use the engine defaults directly.
 - Pickups/drops: `engine_core::pickups::Pickups<K>` + `EffectTimer`.
 - Menu-state sprite hiding: `set_sprites_visible(ctx.world, entities, visible)`
   (prelude) — you supply the entity list and the state match.
-- Scene-defined templates: `instance.spawn_prefab(world, assets, "Name", &overrides)`
+- Scene-defined templates: `instance.spawn_prefab(world, assets, "Name", &[OverrideData::fields(transform, &["position"])])` — an override names only the fields it changes; the rest stay the prefab's
   stamps runtime copies of RON prefabs (breakout levels are scene-driven).
 - Formation movement: kinematic bodies + per-frame `set_kinematic_target`
   toward home-slot + one shared offset (space_invaders fleet).

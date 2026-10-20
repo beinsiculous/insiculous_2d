@@ -10,9 +10,8 @@ use ecs::sprite_components::Name;
 use ecs::{EntityId, World, WorldHierarchyExt};
 
 use crate::texture_ref::TextureResolver;
-use crate::scene_data::{
-    ComponentData, EntityData, PhysicsSettings, PrefabData, SceneData, SceneLoadError,
-};
+use crate::scene_data::{EntityData, PhysicsSettings, PrefabData, SceneData, SceneLoadError};
+use crate::scene_override::OverrideData;
 
 /// Result of loading a scene
 #[derive(Debug)]
@@ -49,10 +48,11 @@ impl SceneInstance {
 
     /// Spawn a new entity from a named prefab at runtime (Prototype pattern).
     ///
-    /// `overrides` replace matching component types from the prefab — the
-    /// same semantics as scene-file `overrides`. Returns the new entity, or
-    /// an error if the prefab doesn't exist or a component fails to build
-    /// (in which case no half-built entity is left behind). The spawned
+    /// Each override names only the fields it changes, the same merge as
+    /// scene-file `overrides` ([`SceneLoader::effective_components`]). Returns
+    /// the new entity, or an error if the prefab doesn't exist, an override
+    /// does not fit it, or a component fails to build (in which case no
+    /// half-built entity is left behind). The spawned
     /// entity is NOT added to `entities`/`named_entities` — the caller owns
     /// its lifecycle.
     pub fn spawn_prefab(
@@ -60,15 +60,20 @@ impl SceneInstance {
         world: &mut World,
         assets: &mut impl TextureResolver,
         prefab_name: &str,
-        overrides: &[ComponentData],
+        overrides: &[OverrideData],
     ) -> Result<EntityId, SceneLoadError> {
         let prefab = self
             .prefabs
             .get(prefab_name)
             .ok_or_else(|| SceneLoadError::PrefabNotFound(prefab_name.to_string()))?;
 
+        let merged = SceneLoader::merge_components(
+            &prefab.components,
+            overrides,
+            &[],
+            &format!("a spawned '{prefab_name}'"),
+        )?;
         let entity_id = world.create_entity();
-        let merged = SceneLoader::merge_components(&prefab.components, overrides, &[]);
         for component in &merged {
             if let Err(e) = SceneLoader::add_component_to_entity(entity_id, component, world, assets) {
                 world.remove_entity(&entity_id).ok();
@@ -266,21 +271,8 @@ impl SceneLoader {
         world: &mut World,
         assets: &mut impl TextureResolver,
     ) -> Result<EntityId, SceneLoadError> {
+        let merged_components = Self::layered_components(prefabs, entity_data)?;
         let entity_id = world.create_entity();
-
-        // Get base components from prefab (if any)
-        let base_components = if let Some(prefab_name) = &entity_data.prefab {
-            let prefab = prefabs
-                .get(prefab_name)
-                .ok_or_else(|| SceneLoadError::PrefabNotFound(prefab_name.clone()))?;
-            prefab.components.clone()
-        } else {
-            Vec::new()
-        };
-
-        // Merge base components with overrides and inline components
-        let merged_components =
-            Self::merge_components(&base_components, &entity_data.overrides, &entity_data.components);
 
         // Apply all components to the entity
         for component in &merged_components {
@@ -289,36 +281,6 @@ impl SceneLoader {
 
         Ok(entity_id)
     }
-
-    /// Merge prefab components with overrides and inline components
-    fn merge_components(
-        base: &[ComponentData],
-        overrides: &[ComponentData],
-        inline: &[ComponentData],
-    ) -> Vec<ComponentData> {
-        let mut result: Vec<ComponentData> = base.to_vec();
-        // Later layers win: overrides replace base, inline replaces both.
-        Self::apply_component_layer(&mut result, overrides);
-        Self::apply_component_layer(&mut result, inline);
-        result
-    }
-
-    /// Replace-or-append each component of `layer` into `result`, matching
-    /// by component type name.
-    fn apply_component_layer(result: &mut Vec<ComponentData>, layer: &[ComponentData]) {
-        for comp in layer {
-            let component_type = Self::component_type_name(comp);
-            if let Some(pos) = result
-                .iter()
-                .position(|c| Self::component_type_name(c) == component_type)
-            {
-                result[pos] = comp.clone();
-            } else {
-                result.push(comp.clone());
-            }
-        }
-    }
-
 }
 
 // Parse-level tests (public API) live in `tests/scene_loader_parse.rs`;
@@ -326,46 +288,6 @@ impl SceneLoader {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn transform_at(x: f32) -> ComponentData {
-        ComponentData::Transform2D { position: (x, 0.0), rotation: 0.0, scale: (1.0, 1.0) }
-    }
-
-    fn position_of(component: &ComponentData) -> (f32, f32) {
-        match component {
-            ComponentData::Transform2D { position, .. } => *position,
-            other => panic!("expected Transform2D, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn later_layers_replace_earlier_ones_by_component_type_and_append_the_rest() {
-        // prefab base < entity overrides < inline components — the same
-        // type is replaced in place, a type only one layer carries is kept.
-        let base = vec![transform_at(0.0), ComponentData::EntityTag { tag: "ball".to_string() }];
-        let overrides = vec![transform_at(100.0)];
-        let inline = vec![transform_at(500.0), ComponentData::Sprite {
-            texture: "#white".to_string(),
-            offset: (0.0, 0.0),
-            rotation: 0.0,
-            scale: (1.0, 1.0),
-            color: (1.0, 1.0, 1.0, 1.0),
-            depth: 0.0,
-            emissive: 0.0,
-            tex_region: (0.0, 0.0, 1.0, 1.0),
-            visible: true,
-        }];
-
-        let base_and_overrides = SceneLoader::merge_components(&base, &overrides, &[]);
-        let all_three = SceneLoader::merge_components(&base, &overrides, &inline);
-
-        assert_eq!(base_and_overrides.len(), 2, "override replaces, tag kept: {base_and_overrides:?}");
-        assert_eq!(position_of(&base_and_overrides[0]), (100.0, 0.0));
-        assert_eq!(all_three.len(), 3, "inline replaces the transform and appends the sprite: {all_three:?}");
-        assert_eq!(position_of(&all_three[0]), (500.0, 0.0));
-        assert!(matches!(&all_three[1], ComponentData::EntityTag { tag } if tag == "ball"));
-        assert!(matches!(&all_three[2], ComponentData::Sprite { .. }));
-    }
 
     #[test]
     fn first_scene_in_is_the_sorted_first_ron_whatever_the_dir_order() -> std::io::Result<()> {

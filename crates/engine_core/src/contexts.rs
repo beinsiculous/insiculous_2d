@@ -100,6 +100,10 @@ pub struct GameContext<'a> {
     /// vertices form line segments. Cleared each frame before `update()`.
     /// Typical use: step a [`GridMesh`](crate::grid::GridMesh) and append
     /// its `build_line_vertices()` output here, or push debug-draw segments.
+    /// Append (`push`/`extend`), never replace or clear: helpers such as
+    /// `debug::draw_colliders` add to the same frame's buffer, and after
+    /// `update()` the frame tail prepends each scene `GridBackdrop` drawn
+    /// over sprites, so the game's own lines stay on top.
     pub lines: &'a mut Vec<LineVertex>,
     /// Localization tables. `ctx.strings.tr("menu.play")` translates a key
     /// in the current locale (fallback: `en` → the key itself); mutable so

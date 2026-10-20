@@ -40,7 +40,7 @@ spawn function. The idea earns its keep as **data**. That is where this engine u
   someone will later mutate. Every prototype system has to answer which fields are which.
 - **Overrides are the whole design.** "Copy, then change these" is only as good as the
   granularity of "these". Whole-object overrides force every instance to restate fields it
-  didn't mean to change (see Pitfalls here).
+  didn't mean to change; this engine merges field by field instead (see Pitfalls here).
 - **Data loses the compiler.** A misspelled prototype name or a wrong field type is a load-time
   error instead of a compile error, so a data prototype needs good error messages.
 - **One more indirection when reading.** To learn what an instance *is*, you read the
@@ -84,12 +84,18 @@ prefers. The editor uses typed copying to duplicate and snapshot.
 - `crates/engine_core/src/scene_loader.rs` · `SceneInstance::spawn_prefab` — spawns a prefab at
   runtime from the instance that loaded the scene. A failed component leaves no half-built
   entity behind.
-- `crates/engine_core/src/scene_loader.rs` · `SceneLoader::apply_component_layer` — the override
-  rule. A layer replaces the *whole* component of the same type, or appends it.
+- `crates/engine_core/src/scene_loader_merge.rs` · `SceneLoader::effective_components` — the
+  override rule. An override replaces only the top-level fields its text names in the prefab's
+  component of the same type, or is appended whole when the prefab has none.
 
 ```rust excerpt=crates/engine_core/src/scene_loader.rs
+        let merged = SceneLoader::merge_components(
+            &prefab.components,
+            overrides,
+            &[],
+            &format!("a spawned '{prefab_name}'"),
+        )?;
         let entity_id = world.create_entity();
-        let merged = SceneLoader::merge_components(&prefab.components, overrides, &[]);
         for component in &merged {
             if let Err(e) = SceneLoader::add_component_to_entity(entity_id, component, world, assets) {
                 world.remove_entity(&entity_id).ok();
@@ -106,7 +112,7 @@ brick is a one-line instance of one:
   body and a collider, shared by every Donut brick.
 
 ```ron excerpt=../games/breakout/assets/scenes/level1.scene.ron
-        EntityData(name: Some("brick_r0_c0"), prefab: Some("Donut"), overrides: [Transform2D(position: (-306.0, 222.0), scale: (0.8, 0.4))]),
+        EntityData(name: Some("brick_r0_c0"), prefab: Some("Donut"), overrides: [Transform2D(position: (-306.0, 222.0))]),
 ```
 
 - `crates/engine_core/tests/prefab_spawning.rs` · `spawn_prefab` — the runtime path's tests.
@@ -132,11 +138,15 @@ data should be editable without recompiling is the one that will want it.
 
 ## Pitfalls here
 
-- **Overrides replace whole components, not fields.** An override `Transform2D(position: …)`
-  with no `scale` deserializes to the default scale `(1.0, 1.0)` and *replaces* the prefab's
-  scale. That is why every breakout brick restates `scale: (0.8, 0.4)`. The flip side: change a
-  prefab's scale and no instance follows it. Field-level overrides are tracked as
-  insiculous_2d#169.
+- **An override names only the fields it changes; everything else is the prefab's.** An
+  override `Transform2D(position: …)` keeps the prefab's scale and rotation, so change a prefab's
+  scale and every instance that does not name one follows it. Presence comes from the text: an
+  explicit default (`scale: (1.0, 1.0)`) is honoured, and a field the component lacks is a load
+  error naming the entity, the component and the field. `Behavior` and `Scripts` still replace
+  whole. Only top-level fields merge (`position`, never `position.x`). The save path still
+  flattens prefabs, so an editor save writes whole components (minimal-override saving is
+  filed). Load, runtime `spawn_prefab` and breakout's level test share
+  `SceneLoader::effective_components`.
 - **Unregistered components don't copy.** Snapshot, clipboard and duplicate copy only the types
   the editor knows: the component registry plus a few internal entries. A generic component such as `StateMachine<MyState>`, attached directly,
   is reported by `WorldSnapshot::loss_warning` and dropped on Stop.

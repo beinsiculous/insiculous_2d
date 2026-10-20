@@ -22,6 +22,7 @@ pub type BehaviorData = ecs::behavior::Behavior;
 // `script_data.rs`; re-exported so `scene_data::ScriptRefData`
 // stays the canonical import path.
 pub use crate::script_data::{ScriptRefData, ScriptValueData};
+pub use crate::scene_override::OverrideData;
 
 /// Editor-specific settings persisted with the scene
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -123,9 +124,14 @@ pub struct EntityData {
     /// when this entity is created. Use the parent entity's `name` field.
     #[serde(default)]
     pub parent: Option<String>,
-    /// Component overrides (applied on top of prefab)
+    /// Component overrides on top of the prefab. Each names only the fields
+    /// it changes, and the rest stay the prefab's, an explicit default
+    /// included; `Behavior` and `Scripts` replace whole. A named field the
+    /// component lacks is a load error. An override of a component the
+    /// prefab lacks, or on an entity with no prefab, is added whole. Two
+    /// overrides of one type apply in order, each its own fields.
     #[serde(default)]
-    pub overrides: Vec<ComponentData>,
+    pub overrides: Vec<OverrideData>,
     /// Inline components (if no prefab is used)
     #[serde(default)]
     pub components: Vec<ComponentData>,

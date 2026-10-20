@@ -1,6 +1,6 @@
 //! Runtime prefab spawning (the Prototype pattern's actual purpose): a loaded
 //! scene retains its prefab table and can stamp out new entities from it
-//! mid-game with override semantics, and a spawn that fails leaves nothing
+//! mid-game, each override naming only the fields it changes, and a spawn that fails leaves nothing
 //! behind — all headless through the `TextureResolver` seam.
 
 use std::collections::HashMap;
@@ -59,7 +59,10 @@ fn spawn_prefab_stamps_a_new_entity_with_overrides_applied() -> Result<(), Scene
     let mut resolver = StubResolver::default();
     let instance = SceneLoader::instantiate(&ball_scene(), &mut world, &mut resolver)?;
     let scene_ball = instance.get_entity("first_ball").expect("the placed ball is named");
-    let overrides = [ComponentData::Transform2D { position: (200.0, 300.0), rotation: 0.0, scale: (1.0, 1.0) }];
+    let overrides = [OverrideData::fields(
+        ComponentData::Transform2D { position: (200.0, 300.0), rotation: 0.0, scale: (5.0, 5.0) },
+        &["position"],
+    )];
 
     let spawned = instance.spawn_prefab(&mut world, &mut resolver, "Ball", &overrides)?;
 
@@ -68,7 +71,12 @@ fn spawn_prefab_stamps_a_new_entity_with_overrides_applied() -> Result<(), Scene
     assert_eq!(
         world.get::<Transform2D>(spawned).map(|t| t.position),
         Some(Vec2::new(200.0, 300.0)),
-        "the override replaces the prefab's transform"
+        "the override's named field applies"
+    );
+    assert_eq!(
+        world.get::<Transform2D>(spawned).map(|t| t.scale),
+        Some(Vec2::ONE),
+        "a field the override does not name stays the prefab's"
     );
     assert!(world.get::<Sprite>(spawned).is_some(), "non-overridden prefab components still apply");
     assert!(world.get::<EntityTag>(spawned).is_some_and(|tag| tag.matches("ball")));

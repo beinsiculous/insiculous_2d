@@ -17,7 +17,7 @@ pub use crate::{
     assets::sheet_spec::SheetSpec,
     sheet_file::SheetFile,
     // Scene serialization
-    scene_data::{SceneData, PhysicsSettings, PrefabData, EntityData, ComponentData, BehaviorData, SceneLoadError},
+    scene_data::{SceneData, PhysicsSettings, PrefabData, EntityData, OverrideData, ComponentData, BehaviorData, SceneLoadError},
     scene_loader::{SceneLoader, SceneInstance},
 
     // Particle system (CPU pool; spawn bursts or attach a ParticleEmitter)

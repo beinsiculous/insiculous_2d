@@ -7,7 +7,7 @@
 
 use std::borrow::Cow;
 
-use crate::scene_data::{ComponentData, EntityData, SceneData};
+use crate::scene_data::{ComponentData, EntityData, OverrideData, SceneData};
 
 /// The retired names. A game that registers one of them again owns that
 /// component, and its entries load as usual.
@@ -34,7 +34,7 @@ pub(crate) fn without_retired_components(data: &SceneData) -> (Cow<'_, SceneData
     prefab_names.sort();
     for prefab_name in prefab_names {
         if let Some(prefab) = stripped.prefabs.get_mut(&prefab_name) {
-            strip_layer(&mut prefab.components, &format!("prefab '{prefab_name}'"), &retired, &mut warnings);
+            strip_layer(&mut prefab.components, inline_component, &format!("prefab '{prefab_name}'"), &retired, &mut warnings);
         }
     }
     for entity in &mut stripped.entities {
@@ -55,12 +55,20 @@ fn retired_name<'a>(component: &'a ComponentData, retired: &[&str]) -> Option<&'
     }
 }
 
-fn layer_mentions_any(layer: &[ComponentData], retired: &[&str]) -> bool {
-    layer.iter().any(|component| retired_name(component, retired).is_some())
+fn layer_mentions_any<'a>(layer: impl IntoIterator<Item = &'a ComponentData>, retired: &[&str]) -> bool {
+    layer.into_iter().any(|component| retired_name(component, retired).is_some())
+}
+
+fn override_component(layer: &OverrideData) -> &ComponentData {
+    &layer.component
+}
+
+fn inline_component(component: &ComponentData) -> &ComponentData {
+    component
 }
 
 fn entity_mentions_any(entity: &EntityData, retired: &[&str]) -> bool {
-    layer_mentions_any(&entity.overrides, retired)
+    layer_mentions_any(entity.overrides.iter().map(override_component), retired)
         || layer_mentions_any(&entity.components, retired)
         || entity.children.iter().any(|child| entity_mentions_any(child, retired))
 }
@@ -83,16 +91,22 @@ fn strip_entity(
         (None, Some(ancestor)) => format!("an unnamed descendant of '{ancestor}'"),
         (None, None) => "an unnamed root entity".to_string(),
     };
-    strip_layer(&mut entity.overrides, &owner, retired, warnings);
-    strip_layer(&mut entity.components, &owner, retired, warnings);
+    strip_layer(&mut entity.overrides, override_component, &owner, retired, warnings);
+    strip_layer(&mut entity.components, inline_component, &owner, retired, warnings);
     let nearest_named = entity.name.as_deref().or(named_ancestor);
     for child in &mut entity.children {
         strip_entity(child, nearest_named, retired, warnings);
     }
 }
 
-fn strip_layer(layer: &mut Vec<ComponentData>, owner: &str, retired: &[&str], warnings: &mut Vec<String>) {
-    layer.retain(|component| match retired_name(component, retired) {
+fn strip_layer<Entry>(
+    layer: &mut Vec<Entry>,
+    component_of: impl Fn(&Entry) -> &ComponentData,
+    owner: &str,
+    retired: &[&str],
+    warnings: &mut Vec<String>,
+) {
+    layer.retain(|entry| match retired_name(component_of(entry), retired) {
         Some(name) => {
             warnings.push(format!(
                 "{owner} carried the retired component '{name}', which was dropped (play sounds from game code)"

@@ -1,5 +1,5 @@
-//! Parse-level contracts of `SceneLoader` (public API only — tests that need
-//! the private merge live inline in `scene_loader.rs`): the serde defaults
+//! Parse-level contracts of `SceneLoader` (public API only — the override
+//! merge's own contract is `prefab_override_merge.rs`): the serde defaults
 //! that keep old scene files loading, the tilemap component, the bundled
 //! example scenes, and the legacy camera-follow shape.
 
@@ -169,10 +169,10 @@ fn legacy_camera_follow_scene_without_look_ahead_still_parses() {
 }
 
 #[test]
-fn prefab_entity_instantiates_with_its_overrides_merged_over_the_prefab() {
+fn a_position_only_override_keeps_the_prefabs_scale_and_the_rest_of_the_prefab() {
     // The prefab wire: a prefab table, an entity referencing one by name,
-    // and an override layer replacing the prefab's component of the same
-    // type while the rest of the prefab still applies.
+    // and an override naming only the fields it changes while every other
+    // field and component of the prefab still applies.
     let (world, instance) = load_ron(
         r##"SceneData(
             name: "Prefab Test",
@@ -197,8 +197,8 @@ fn prefab_entity_instantiates_with_its_overrides_merged_over_the_prefab() {
 
     let enemy = instance.named_entities["enemy1"];
     let transform = world.get::<ecs::sprite_components::Transform2D>(enemy).expect("Transform2D");
-    assert_eq!(transform.position, glam::Vec2::new(500.0, 100.0), "the override replaces the prefab's transform");
-    assert_eq!(transform.scale, glam::Vec2::ONE, "replaced whole, not merged field by field");
+    assert_eq!(transform.position, glam::Vec2::new(500.0, 100.0), "the override's position applies");
+    assert_eq!(transform.scale, glam::Vec2::new(2.0, 2.0), "the prefab's scale survives a position-only override");
     let sprite = world.get::<ecs::sprite_components::Sprite>(enemy).expect("prefab Sprite still applies");
     assert_eq!(sprite.color, glam::Vec4::new(1.0, 0.0, 0.0, 1.0));
     assert_eq!(sprite.texture_handle, TextureHandle::WHITE.id);

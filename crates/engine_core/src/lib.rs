@@ -39,6 +39,8 @@ pub mod scene_data;
 pub mod component_registration;
 pub mod scene_loader;
 mod scene_loader_components;
+mod scene_loader_merge;
+mod scene_override;
 mod scene_retired_components;
 pub mod scene_serializer;
 mod texture_ref;
@@ -95,8 +97,8 @@ pub use assets::{
 };
 pub use sheet_file::{sidecar_path_for, SheetFile, SHEET_FILE_VERSION};
 pub use scene_data::{
-    BehaviorData, ColliderShapeData, ComponentData, EditorSettings, EntityData, PhysicsSettings,
-    PrefabData, RigidBodyTypeData, SceneData, SceneLoadError,
+    BehaviorData, ColliderShapeData, ComponentData, EditorSettings, EntityData, OverrideData,
+    PhysicsSettings, PrefabData, RigidBodyTypeData, SceneData, SceneLoadError,
 };
 pub use chaos_theme::ChaosTheme;
 pub use scene_loader::{SceneInstance, SceneLoader};

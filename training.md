@@ -510,12 +510,13 @@ SceneData(
 // Load in code
 let instance = SceneLoader::load_and_instantiate("scene.ron", &mut world, &mut assets)?;
 
-// Spawn more copies of a prefab at runtime (Prototype pattern) — overrides
-// replace matching component types, same semantics as scene-file overrides
-let ball = instance.spawn_prefab(&mut world, &mut assets, "Player", &[])?;
+// Spawn more copies of a prefab at runtime (Prototype pattern) — an override
+// names only the fields it changes, the same merge as scene-file overrides
+let at = ComponentData::Transform2D { position: (64.0, 0.0), rotation: 0.0, scale: (1.0, 1.0) };
+let ball = instance.spawn_prefab(&mut world, &mut assets, "Player", &[OverrideData::fields(at, &["position"])])?;
 ```
 
-**Files:** `scene_loader.rs`, `scene_data.rs`, `examples/assets/scenes/*.ron` (games keep theirs in `../games/<name>/assets/scenes/`)
+**Files:** `scene_loader.rs`, `scene_loader_merge.rs` (the override merge), `scene_override.rs`, `scene_data.rs`, `examples/assets/scenes/*.ron` (games keep theirs in `../games/<name>/assets/scenes/`)
 
 ### Physics Integration Pattern
 ECS-friendly 2D physics via rapier2d. Game-facing movement API is a single

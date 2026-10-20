@@ -361,6 +361,8 @@ fn extract_ui_button(
     })
 }
 
+/// `ecs::Behavior` is its own wire type (`scene_data::BehaviorData` is an
+/// alias), so saving one is a clone; a new variant or field changes scene files.
 fn extract_behavior(
     world: &World,
     entity: EntityId,
