@@ -404,7 +404,7 @@ The pattern-audit list verbatim, plus the sprint's own:
   the report names what to run and what should be heard.
 - Anything deferred is filed with `/file-issue` before the effort reports done.
 
-## Batch 0 — planner only: the effort directory, the gates' plan, the plan review
+## Batch 0 — planner only: the effort directory, the gates' plan, the plan review — DONE 2026-10-20 (116a8f0; three review rounds; the board's Sprint field was already set on all nine issues)
 
 Files: `coordination/conductor/plan.md` (this file, moved to its tracked path),
 `coordination/conductor/reviewer-comparison.md` (pattern-audit's header), `review/conductor/`.
