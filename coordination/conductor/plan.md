@@ -144,7 +144,9 @@ the first frame instead of blocking boot (every asset is prefetched today; 27 s 
 5.5 s at 50). The hard line is hosting (Cloudflare's 25 MiB per static file); the one site
 URL shared by the six games, so the browser caches it once, is K2's call. SF3 is out
 (rustysynth rejects it); GPL banks are out. Subsetting is not authoring (K's exclusions stand);
-`scripts/subset_soundfont.py` does it byte-reproducibly.
+`scripts/subset_soundfont.py` does it byte-reproducibly. The shipping subset's preset list is
+the casting's **plus every program the sequenced songs and the fixtures use** — the spike's
+cast bank has no flute (0:73), so the cast fixture's flute plays as a piano on it.
 
 **Casting (proposal, all public domain; the plan review and Jesse's ear adjust it):**
 
@@ -246,7 +248,9 @@ Menus use the same song's slowest phrase through the `menu` binding (K6's standa
    length is exact — the pitch-scaled sample length) and counts against the sample slot's
    own live-voice cap (16 proposed, K1 measures) with oldest-voice steal through the 5 ms
    fade, so no lane can wedge and no tail goes uncounted. **`SourceId` carries an activation epoch** beside the
-   entity generation: re-entry is a new epoch, and queued work for an old epoch is dropped.
+   entity generation — one host-wide count that every activation of any source advances,
+   so re-entry is a new epoch, queued work for an old epoch is dropped, and a flush can
+   name a point in that count below which every activation is over.
    **Activation is lazy:** a source's first trigger activates it; there is no activate
    command, so a trigger can never arrive before its activation. *Rejected:* a synth per
    entity (the issue forbids it); forking rustysynth for voice handles (KISS); a measured
@@ -669,7 +673,19 @@ that the downbeat attacks on the exact sample the loop's first tick maps to; `Se
 for `Conductor`. **Gates:** standard; `check_wasm.sh`.
 **Leaves out:** triggers, sources, samples, rodio.
 
-## Batch 4 — K3: shared-part triggering, musical timing, bounded voice ownership (#62)
+## Batch 4 — K3: shared-part triggering, musical timing, bounded voice ownership (#62) — DONE 2026-10-20 (fe1bd5f)
+
+Authored by the executor (a Claude Opus session) from `review/conductor/handoff-4.md`; report
+`review/conductor/report-4.md`; reviewed by kimi (`review-7.md`), gemini (`review-7-gemini.md`)
+and the planner (`review-7-claude.md`); adjudicated in `rebuttal-7.md` (4 accepted, 4
+rebutted); Jesse's listen check passed natively. Six executor decisions accepted: the epoch
+is one host-wide activation count; the per-instrument cap is the slot's waiting note-ons;
+every ledger note has a `NoteTicket` so a scheduled note-off ends only its own note; a song
+change flushes before it loads; `AtSongPosition` reads the last-started unit; note ends are
+measured from the play sample. The discontinuity threshold is frozen at 0.02 (measured
+0.0131 overflowing). **Carried to batch 5's fix-up list:** kimi's catch — a trigger admits
+its source before the checks that may refuse it, and a full table's admission evicts a live
+source — and the drain clock advanced per block inside a multi-block `render`.
 
 Executor: the Opus session. Reviewers: kimi, gemini. Listen check: Jesse (the example gains a
 keyboard trigger). Size: about +2600 lines.
@@ -722,6 +738,15 @@ Loop-versus-background-chord caveat the composer will surface. **Gates:** standa
 
 Executor: the Opus session. Reviewers: kimi, gemini. Listen check: Jesse. Size: about +1600 lines.
 
+**Batch 4's fix-ups, first** (accepted in `rebuttal-7.md`): `TriggerEngine::trigger` admits
+its source only after every check that may refuse the trigger (the slot, the playing gate,
+lateness, the unit selection and the capacity check need no source), so a refused, late or
+paused trigger is a no-op and a full table never evicts a live source for nothing — with
+kimi's test: a full table, sounding notes, refused and late triggers, no live source evicted;
+and `Conductor::render_at` advances `now` by each block's duration before `begin_block`, so a
+2048-frame pull reads its 32 blocks as 32 instants and the documented stamp bound holds for
+any call length.
+
 Files: `crates/audio/src/sample_loader.rs` (+ tests; `load_sample_pcm(path) -> AudioResult<OwnedPcm>`
 through `common::vfs` and the rodio `Decoder`, WAV only accepted as a *pitched* import, the
 limits of decision 5, typed errors naming the path); `crates/music_midi/src/{pcm.rs,
@@ -730,7 +755,14 @@ on it, not the reverse); `conductor/slots.rs` learns a `SampleSlot` (no lanes: a
 live-voice cap and oldest-voice steal through the fade, **and a hard ceiling of the live cap
 plus a fade budget that cuts the oldest fading voice**, so a burst inside one block cannot
 pile up voices; a one-shot is sounding until its pitch-scaled end); a sample shorter than
-1 ms is rejected before allocation; fixtures from batch 1.
+1 ms is rejected before allocation; fixtures from batch 1. **The trigger path learns sample
+slots:** a binding to a sample instrument resolves to a sample slot (batch 4 left it `None`
+and rejected the trigger), the conductor's `SlotSink` plays either kind — an `enum` over
+`InstrumentSlot` and `SampleSlot`, or a trait both implement — and a sample slot issues
+`NoteTicket`s like a synth slot so scheduled note-offs, `release_source`, wrap and `Play`
+treat both alike; a one-shot ignores its scheduled note-off, a gated voice fades over 5 ms
+on it. `crates/audio` gains `music_midi = { path, default-features = false }` (the PCM type
+and nothing of the synth; batch 6 turns `synth` on there).
 Tests: known-frequency pitch at 48 kHz and 22.05 kHz sources rendered at 44.1 kHz (zero
 crossings counted), duration behaviour, stereo/mono, gated vs one-shot, two concurrent
 voices of one sample with independent note-off, oversized and non-finite input rejected
@@ -744,7 +776,11 @@ Executor: the Opus session. Reviewers: kimi, gemini. Listen check: Jesse. Size: 
 
 The loader fills every field of `ResourceMetadata`, the `soundfonts` set included (the
 membership check lands in batch 3 and refuses a song whose background bank it does not
-list); the root `[dev-dependencies] rodio` that batch 3's example needed goes when this
+list); a song change sends `StopAllSources` and loads only once it is drained (a
+`BindingIndex` is an index into one song's bindings, and the conductor keeps the flush
+floor across the swap); the rodio adapter renders one block per pull so each block drains
+with its own clock; `song_position` reports block starts, which is where a scheduled
+trigger fires (up to 63 frames early, never late); the root `[dev-dependencies] rodio` that batch 3's example needed goes when this
 batch's adapter lands and the example switches to it; `SharedPosition::snapshot` may
 straddle one block (documented) — consumers read one field, `beat_crossed` the sample
 position alone, and a seqlock is added only if a consumer needs two fields together.
@@ -780,7 +816,8 @@ Files: `crates/engine_core/src/sound_sources.rs` (+ tests; `SoundSources` resour
 `EntityId → SourceId` with generations, `reconcile(world, audio)` deactivating sources whose
 entity no longer validates — run in the frame tail after despawns and before command
 submission, and on world replacement/reset; a deactivation whose send fails stays pending
-and is retried next frame; flushed on a song change; a `Menu` source and a **game-owned
+and is retried next frame; flushed on a song change; epochs allocated from **one host-wide
+counter** (decision 2), the flush epoch being its value at the flush; a `Menu` source and a **game-owned
 `SourceId::game()`** independent of the world and never deactivated by reconciliation — a
 sound that must outlive its entity, a brick's explosion, is triggered on it, which is the
 game's arrangement choice under K3's "fade owned voices" rule),
