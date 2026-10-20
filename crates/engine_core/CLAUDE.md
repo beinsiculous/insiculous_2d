@@ -41,6 +41,7 @@ Cross-cutting glue biases toward `engine_core`: `ui` defines `DrawCommand` (rend
 - `render_manager.rs` — `sync_main_camera` copies pose (position and zoom, rotation excluded) onto render camera; device loss fail-stop stops frame loop after `MAX_SURFACE_ERROR_STREAK = 10` or `DeviceLost`.
 - `tilemap_render.rs` — expands `Tilemap` and `Transform2D` into the game sprite batcher (one batch per tileset).
 - `scene_loader.rs` — RON to World deserialization; `SceneInstance` retains prefabs for runtime `spawn_prefab`.
+- `scene_retired_components.rs` — the component names the engine retired (the three audio components): before a load instantiates anything, a `Dynamic` entry of a retired, unregistered name is dropped from every layer with a warning in `SceneInstance.load_warnings`, so an older save still loads; every other unregistered name stays a hard error.
 - `scene_serializer.rs` — World to `SceneData` serialization (inverse of `scene_loader`, requires loader match arm and serializer table row for new components).
 - `scene_data.rs` — `SceneData` schema; Sprite `emissive`/`tex_region`/`visible` require named serde defaults to avoid blanking old sprites.
 - `script_data.rs` — script wire schema: entity params persist by name, auto-named at save and resolved post-instantiate.

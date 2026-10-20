@@ -25,7 +25,6 @@ mod query;
 mod world;
 
 // Domain modules - public for documentation, also re-exported at crate root
-pub mod audio_components;
 pub mod behavior;
 pub mod blackboard;
 pub mod clip_state_machine;
@@ -50,7 +49,6 @@ pub mod prelude;
 
 // Re-export all public items at crate root for convenient access
 pub use query::*;
-pub use audio_components::*;
 pub use behavior::*;
 pub use blackboard::Blackboard;
 pub use lifetime::{Lifetime, LifetimeSystem};
@@ -75,7 +73,7 @@ pub use resource::ResourceStorage;
 pub use script::{ScriptRef, ScriptValue, Scripts};
 pub use sprite_components::*;
 pub use sprite_system::*;
-pub use state_machine::{HierarchicalStateMachine, StateMachine};
+pub use state_machine::StateMachine;
 pub use system::*;
 pub use tilemap::{TileInstance, Tilemap};
 pub use ui_components::{resolve_anchored_pos, UiAnchor, UiButton, UiLabel, UiPanel};

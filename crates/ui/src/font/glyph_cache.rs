@@ -35,10 +35,6 @@ pub struct RasterizedGlyph {
 pub struct GlyphInfo {
     /// Rasterized bitmap
     pub rasterized: RasterizedGlyph,
-    /// Character this glyph represents
-    pub character: char,
-    /// Font size this was rasterized at
-    pub font_size: f32,
 }
 
 /// Key for glyph cache lookup.
@@ -108,8 +104,6 @@ impl GlyphCache {
                     offset_y: -(metrics.ymin as f32 + metrics.height as f32),
                     advance: metrics.advance_width,
                 },
-                character,
-                font_size,
             };
 
             self.evict_if_full();
@@ -152,8 +146,6 @@ mod tests {
                 offset_y: 0.0,
                 advance: 0.0,
             },
-            character: 'a',
-            font_size: 16.0,
         }
     }
 

@@ -29,8 +29,6 @@ fn entity_with_every_registry_type(world: &mut World) -> EntityId {
     world.add_component(&entity, Tilemap::default()).ok();
     world.add_component(&entity, RigidBody::default()).ok();
     world.add_component(&entity, Collider::default()).ok();
-    world.add_component(&entity, AudioSource::default()).ok();
-    world.add_component(&entity, AudioListener::default()).ok();
     world.add_component(&entity, Behavior::default()).ok();
     world.add_component(&entity, BehaviorState::default()).ok();
     world.add_component(&entity, EntityTag::default()).ok();
@@ -174,7 +172,7 @@ fn test_stored_component_from_json_round_trips_all_settable_types() {
 
     let values = capture_all_values(&world, entity);
     for name in settable_component_names() {
-        // Dynamic-tier names (e.g. PlaySoundEffect) are settable but not on
+        // Dynamic-tier names (a game's registered types) are settable but not on
         // this entity — the typed set is what the fixture attaches.
         let Some((_, value)) = values.iter().find(|(n, _)| *n == name) else {
             assert!(

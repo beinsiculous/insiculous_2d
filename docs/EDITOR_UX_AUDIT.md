@@ -88,7 +88,7 @@ if input_result.clicked {
 
 `restore` calls `world.clear()` (`:120`) then rebuilds from 18 hardcoded `Option<T>` fields (`:19-46`). Anything else is gone — not un-restored, **destroyed**.
 
-Concretely: `examples/editor_demo.rs:194-198` attaches `HierarchicalStateMachine<PlayerState, PlayerGroup>` to the player. The first Play→Stop cycle silently deletes it. `Tilemap` is in the editor registry (`stored_component.rs:322`) but absent from `EntitySnapshot` — a *first-party* type erased by the Play button.
+Concretely: the platformer that `editor_demo` wraps (`examples/hello_world/platformer.rs`) attaches a generic state machine to the player — `HierarchicalStateMachine<PlayerState, PlayerGroup>` when this was written, `StateMachine<PlayerState>` since that type was retired. The first Play→Stop cycle deletes it; since the reconciliation it does so with a loss warning, not silently. `Tilemap` is in the editor registry (`stored_component.rs:322`) but absent from `EntitySnapshot` — a *first-party* type erased by the Play button.
 
 For an engine whose pitch is "build 2D games", the first custom component a user writes is annihilated by Play.
 

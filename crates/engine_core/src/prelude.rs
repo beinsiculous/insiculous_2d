@@ -66,7 +66,6 @@ pub use ecs::clip_state_machine::{
     set_clip_state, ClipState, ClipStateMachine, ClipStateMachineSystem, OnFinished,
 };
 pub use ecs::grid_backdrop::{GridBackdrop, GridDrawOrder, GridTopology};
-pub use ecs::audio_components::{AudioSource, AudioListener, PlaySoundEffect};
 pub use ecs::hierarchy_system::{
     request_transform_hierarchy_reset, TransformHierarchyReset, TransformHierarchySystem,
 };
@@ -74,7 +73,7 @@ pub use ecs::lifetime::{Lifetime, LifetimeSystem};
 pub use ecs::WorldHierarchyExt;
 pub use ecs::System;
 pub use ecs::behavior::{Behavior, EntityTag};
-pub use ecs::{StateMachine, HierarchicalStateMachine, EventBus, ResourceStorage};
+pub use ecs::{StateMachine, EventBus, ResourceStorage};
 
 // Re-export input types (KeyCode/MouseButton re-exported through input crate, not directly from winit)
 pub use input::prelude::{

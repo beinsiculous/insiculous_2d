@@ -5,7 +5,6 @@
 //! - Sprite
 //! - RigidBody
 //! - Collider
-//! - AudioSource
 //!
 //! Each `edit_*` function renders the component's fields and returns
 //! `Option<ComponentEdit<T>>` — `None` when nothing changed this frame,
@@ -19,7 +18,6 @@ pub use grid_backdrop::edit_grid_backdrop;
 use ecs::sprite_components::Sprite;
 use common::Transform2D;
 use physics::components::{Collider, RigidBody, RigidBodyType, ColliderShape};
-use ecs::audio_components::AudioSource;
 
 use crate::editable_inspector::{EditResult, EditableInspector};
 
@@ -40,8 +38,6 @@ mod ranges {
     pub const FRICTION: RangeInclusive<f32> = 0.0..=2.0;
     /// Restitution is conventionally 0..=1 (soft range).
     pub const RESTITUTION: RangeInclusive<f32> = 0.0..=1.0;
-    /// Volume is conventionally 0..=1 (soft range).
-    pub const VOLUME: RangeInclusive<f32> = crate::physical_floors::VOLUME_MIN..=crate::physical_floors::VOLUME_MAX;
     /// Sprite/collider offsets relative to the entity.
     pub const OFFSET: RangeInclusive<f32> = -100.0..=100.0;
     /// Collider shape dimensions (half-extents, radii) in pixels.
@@ -54,14 +50,6 @@ mod ranges {
     pub const ANGULAR_VELOCITY: RangeInclusive<f32> = -10.0..=10.0;
     /// Gravity scale (1.0 is normal gravity).
     pub const GRAVITY_SCALE: RangeInclusive<f32> = 0.0..=2.0;
-    /// Audio pitch (slow-motion to chipmunk).
-    pub const PITCH: RangeInclusive<f32> = crate::physical_floors::PITCH_FLOOR..=3.0;
-    /// Spatial audio cutoff distance.
-    pub const MAX_DISTANCE: RangeInclusive<f32> = 0.0..=5000.0;
-    /// Spatial audio reference distance.
-    pub const REFERENCE_DISTANCE: RangeInclusive<f32> = 0.0..=1000.0;
-    /// Spatial audio rolloff factor.
-    pub const ROLLOFF: RangeInclusive<f32> = 0.0..=5.0;
 }
 
 /// A completed single-frame inspector edit on a component.
@@ -342,41 +330,6 @@ pub fn edit_collider(
     hint.map(|field_hint| ComponentEdit { new_value: new, field_hint })
 }
 
-/// Edit an AudioSource component.
-pub fn edit_audio_source(
-    inspector: &mut EditableInspector<'_>,
-    source: &AudioSource,
-    _extras: &mut crate::InspectorExtras<'_>,
-) -> Option<ComponentEdit<AudioSource>> {
-    let mut new = source.clone();
-    let mut hint = None;
-
-    inspector.header("AudioSource");
-
-    // Sound ID (read-only asset reference)
-    inspector.u32("Sound ID", source.sound_id);
-
-    // Volume/pitch are HARD ranges: the audio runtime clamps playback to
-    // volume 0..=1 and speed >= 0.1, so an unclamped inspector value would
-    // display parameters that are not actually taking effect.
-    inspector.f32_hard("Volume", source.volume, ranges::VOLUME).assign(&mut new.volume, &mut hint, "volume");
-    inspector.f32_hard("Pitch", source.pitch, ranges::PITCH).assign(&mut new.pitch, &mut hint, "pitch");
-    inspector.bool("Looping", source.looping).assign(&mut new.looping, &mut hint, "looping");
-    inspector.bool("Play on Spawn", source.play_on_spawn).assign(&mut new.play_on_spawn, &mut hint, "play_on_spawn");
-    inspector.bool("Spatial", source.spatial).assign(&mut new.spatial, &mut hint, "spatial");
-
-    // Spatial audio parameters (only relevant if spatial is true)
-    if source.spatial {
-        inspector.advanced(|inspector| {
-            inspector.f32("Max Distance", source.max_distance, ranges::MAX_DISTANCE).assign(&mut new.max_distance, &mut hint, "max_distance");
-            inspector.f32("Ref Distance", source.reference_distance, ranges::REFERENCE_DISTANCE).assign(&mut new.reference_distance, &mut hint, "reference_distance");
-            inspector.f32("Rolloff", source.rolloff_factor, ranges::ROLLOFF).assign(&mut new.rolloff_factor, &mut hint, "rolloff_factor");
-        });
-    }
-
-    hint.map(|field_hint| ComponentEdit { new_value: new, field_hint })
-}
-
 /// Apply an inspector edit: write the new value to the world (for immediate
 /// visual feedback) and record it on the undo stack with merge support, so
 /// continuous slider drags collapse into a single undo entry.
@@ -429,7 +382,6 @@ mod range_tests {
         // collider extent to zero, which rapier rejects.
         assert!(ranges::POSITION.start() < ranges::POSITION.end());
         assert!(ranges::SCALE.start() > &0.0, "scale must stay positive");
-        assert!(ranges::PITCH.start() > &0.0, "pitch of zero is silence");
         assert!(ranges::DAMPING.end() > &1.0, "damping is unbounded in rapier — the range must exceed 1");
         assert!(ranges::FRICTION.end() > &1.0, "friction above 1.0 is legal in rapier");
         assert!(ranges::COLLIDER_EXTENT.start() > &0.0, "rapier rejects zero extents");

@@ -1,10 +1,9 @@
 # Audio Crate — Agent Context
 
 Audio playback via rodio (sound effects + background music). **No spatial audio
-lives in this crate**: the ECS components `AudioSource`, `AudioListener`, and
-`PlaySoundEffect` live in `crates/ecs/src/audio_components.rs` to avoid a circular dependency
-and are currently editor-inspectable data only — no runtime system consumes them (a bridging
-audio system is future work).
+lives in this crate, and no audio component lives anywhere**: a game plays sound from
+its own code through `ctx.audio`. Scene-authored audio (a sound component, spatial
+playback) is the Conductor milestone's feature.
 
 ## Files
 - `manager/mod.rs` — `AudioManager` device/output lifecycle, load/cache, SFX playback, and active sound tracking.

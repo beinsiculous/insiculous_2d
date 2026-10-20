@@ -200,10 +200,6 @@ fn sanitize(stored: StoredComponent) -> StoredComponent {
             crate::physical_floors::clamp_collider(&mut c);
             StoredComponent::Collider(c)
         }
-        StoredComponent::AudioSource(mut a) => {
-            crate::physical_floors::clamp_audio_source(&mut a);
-            StoredComponent::AudioSource(a)
-        }
         other => other,
     }
 }

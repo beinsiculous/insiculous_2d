@@ -2,7 +2,7 @@
 //!
 //! This module provides editable UI widgets for modifying component
 //! properties directly in the editor. Supports all common component
-//! field types used in Transform2D, Sprite, RigidBody, Collider, and AudioSource.
+//! field types used in Transform2D, Sprite, RigidBody, and Collider.
 //! Field identity and styling types live in [`crate::field_style`]; horizontal
 //! placement is computed by the pure [`crate::row_layout`] module so controls
 //! track the panel's actual width; Vec2/color composite rows live in

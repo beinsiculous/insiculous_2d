@@ -6,7 +6,6 @@
 //! invocation below. **To make a new component editor-visible, add one line
 //! to that invocation** — no match statements elsewhere need to change.
 
-use ecs::audio_components::{AudioListener, AudioSource};
 use ecs::behavior::{Behavior, BehaviorState, EntityTag};
 use ecs::clip_state_machine::ClipStateMachine;
 use ecs::grid_backdrop::GridBackdrop;
@@ -23,7 +22,7 @@ pub use component_ref::ComponentRef;
 use crate::behavior_editor::edit_behavior;
 use crate::commands::{CommandHistory, RemoveComponentCommand};
 use crate::component_editors::{
-    edit_audio_source, edit_collider, edit_entity_tag, edit_grid_backdrop, edit_name,
+    edit_collider, edit_entity_tag, edit_grid_backdrop, edit_name,
     edit_rigid_body, edit_sprite, edit_transform2d,
 };
 use crate::script_editor::edit_scripts;
@@ -502,8 +501,6 @@ editor_component_registry! {
         GridBackdrop    => GridBackdrop : Rendering { edit edit_grid_backdrop },
         RigidBody       => RigidBody : Physics { edit edit_rigid_body },
         Collider        => Collider : Physics { edit edit_collider },
-        AudioSource     => AudioSource : Audio { edit edit_audio_source },
-        AudioListener   => AudioListener : Audio { readonly },
         Behavior        => Behavior : Gameplay { edit edit_behavior },
         Scripts         => ecs::script::Scripts : Gameplay { edit edit_scripts },
         EntityTag       => EntityTag : Gameplay { edit edit_entity_tag },

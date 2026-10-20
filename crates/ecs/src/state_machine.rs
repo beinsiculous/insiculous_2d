@@ -1,4 +1,4 @@
-//! Hierarchical state machine component for entity behaviors.
+//! State machine component for entity behaviors.
 //!
 //! Replaces flat enum-matching with per-entity state machines that track the
 //! current state, the one previous state, a just-entered flag and the time spent
@@ -111,120 +111,6 @@ impl<S: Clone + PartialEq + Debug + Send + Sync + 'static> StateMachine<S> {
     }
 }
 
-/// A hierarchical state machine that supports nested states.
-///
-/// Each state can have a parent state, enabling shared behavior for
-/// state groups. For example, `OnGround` could be a parent of both
-/// `Idle` and `Running`, sharing ground-detection logic.
-///
-/// `S` is the leaf state type, `P` is the parent/group state type.
-#[derive(Debug, Clone)]
-pub struct HierarchicalStateMachine<S, P>
-where
-    S: Clone + PartialEq + Debug + Send + Sync + 'static,
-    P: Clone + PartialEq + Debug + Send + Sync + 'static,
-{
-    inner: StateMachine<S>,
-    parent_state: P,
-    previous_parent: Option<P>,
-    parent_map: fn(&S) -> P,
-}
-
-impl<S, P> HierarchicalStateMachine<S, P>
-where
-    S: Clone + PartialEq + Debug + Send + Sync + 'static,
-    P: Clone + PartialEq + Debug + Send + Sync + 'static,
-{
-    /// Create a hierarchical state machine with a parent-mapping function.
-    ///
-    /// The `parent_map` function defines which parent state each leaf state
-    /// belongs to.
-    ///
-    /// # Example
-    /// ```
-    /// # use ecs::HierarchicalStateMachine;
-    /// #[derive(Clone, PartialEq, Debug)]
-    /// enum PlayerState { Idle, Running, Jumping, Falling }
-    ///
-    /// #[derive(Clone, PartialEq, Debug)]
-    /// enum PlayerGroup { OnGround, InAir }
-    ///
-    /// let mut sm = HierarchicalStateMachine::new(PlayerState::Idle, |s| match s {
-    ///     PlayerState::Idle | PlayerState::Running => PlayerGroup::OnGround,
-    ///     PlayerState::Jumping | PlayerState::Falling => PlayerGroup::InAir,
-    /// });
-    /// assert_eq!(sm.parent(), &PlayerGroup::OnGround);
-    ///
-    /// sm.transition_to(PlayerState::Jumping);
-    /// assert_eq!(sm.parent(), &PlayerGroup::InAir);
-    /// ```
-    pub fn new(initial: S, parent_map: fn(&S) -> P) -> Self {
-        let parent_state = parent_map(&initial);
-        Self {
-            inner: StateMachine::new(initial),
-            parent_state,
-            previous_parent: None,
-            parent_map,
-        }
-    }
-
-    /// Get the current leaf state.
-    pub fn current(&self) -> &S {
-        self.inner.current()
-    }
-
-    /// Get the current parent/group state.
-    pub fn parent(&self) -> &P {
-        &self.parent_state
-    }
-
-    /// Get the previous leaf state.
-    pub fn previous(&self) -> Option<&S> {
-        self.inner.previous()
-    }
-
-    /// Get the previous parent state.
-    pub fn previous_parent(&self) -> Option<&P> {
-        self.previous_parent.as_ref()
-    }
-
-    /// Transition to a new leaf state, automatically updating the parent.
-    pub fn transition_to(&mut self, new_state: S) {
-        if *self.inner.current() == new_state {
-            return;
-        }
-        let new_parent = (self.parent_map)(&new_state);
-        self.previous_parent = Some(std::mem::replace(&mut self.parent_state, new_parent));
-        self.inner.transition_to(new_state);
-    }
-
-    /// Returns true if the leaf state just changed.
-    pub fn just_entered(&self) -> bool {
-        self.inner.just_entered()
-    }
-
-    /// Returns true if the parent/group state just changed.
-    pub fn parent_just_changed(&self) -> bool {
-        self.inner.just_entered()
-            && self.previous_parent.as_ref() != Some(&self.parent_state)
-    }
-
-    /// How long in the current leaf state.
-    pub fn elapsed(&self) -> f32 {
-        self.inner.elapsed()
-    }
-
-    /// Advance time. Clears `just_entered` flag.
-    pub fn tick(&mut self, delta_time: f32) {
-        self.inner.tick(delta_time);
-    }
-
-    /// Check if the current leaf state matches.
-    pub fn is(&self, state: &S) -> bool {
-        self.inner.is(state)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -234,20 +120,6 @@ mod tests {
         Idle,
         Running { speed: f32 },
         Jumping { velocity: f32 },
-        Falling,
-    }
-
-    #[derive(Debug, Clone, PartialEq)]
-    enum PlayerGroup {
-        OnGround,
-        InAir,
-    }
-
-    fn player_group(state: &PlayerState) -> PlayerGroup {
-        match state {
-            PlayerState::Idle | PlayerState::Running { .. } => PlayerGroup::OnGround,
-            PlayerState::Jumping { .. } | PlayerState::Falling => PlayerGroup::InAir,
-        }
     }
 
     #[test]
@@ -294,31 +166,5 @@ mod tests {
 
         machine.tick(0.016);
         assert!((machine.elapsed() - 0.032).abs() < f32::EPSILON);
-    }
-
-    #[test]
-    fn test_hierarchical_transition_reports_parent_change_only_across_groups() {
-        let mut machine = HierarchicalStateMachine::new(PlayerState::Idle, player_group);
-        assert_eq!(*machine.parent(), PlayerGroup::OnGround, "the parent derives from the state");
-        machine.tick(0.016);
-
-        // Idle -> Running stays OnGround.
-        machine.transition_to(PlayerState::Running { speed: 200.0 });
-        assert!(machine.just_entered());
-        assert!(!machine.parent_just_changed());
-        assert_eq!(*machine.parent(), PlayerGroup::OnGround);
-        machine.tick(0.016);
-
-        // Running -> Jumping crosses into InAir.
-        machine.transition_to(PlayerState::Jumping { velocity: 300.0 });
-        assert!(machine.parent_just_changed());
-        assert_eq!(*machine.parent(), PlayerGroup::InAir);
-        assert_eq!(machine.previous_parent(), Some(&PlayerGroup::OnGround));
-        machine.tick(0.016);
-
-        // Jumping -> Falling stays InAir.
-        machine.transition_to(PlayerState::Falling);
-        assert!(!machine.parent_just_changed());
-        assert_eq!(*machine.parent(), PlayerGroup::InAir);
     }
 }

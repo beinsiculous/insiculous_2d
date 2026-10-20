@@ -23,7 +23,6 @@ Query types: Single<T>, Pair<T, U>, Triple<T, U, V>
 - `Sprite` — texture_handle, offset, rotation, scale, color, depth, tex_region
 - `Camera` / `Camera2D` — viewport, zoom, main camera flag
 - `Name` — entity display name
-- `AudioSource`, `AudioListener` — audio components
 - `SpriteAnimation` — named-clip animation over a `SheetGrid` (`clips: Vec<(String, AnimationClip)>`, played by name via `play`/`ensure_playing`). `AnimationClip` is NOT a component — it lives inside. While a clip is selected and its frame resolves, the component owns `Sprite.tex_region`
 - `Tilemap` — row-major tile grid drawn from a tileset (`sprite_instances()` yields plain data; engine_core expands to the sprite batch)
 - `Scripts` (`script.rs`) — `Scripts(Vec<ScriptRef>)`, `ScriptRef { script_id, source_path, params: BTreeMap<String, ScriptValue> }` — the scripting seam executed by `engine_core::scripting::ScriptRunner`; Entity params live as ids at runtime, persist by Name on the wire

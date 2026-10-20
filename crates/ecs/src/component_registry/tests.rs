@@ -156,8 +156,6 @@ fn test_global_registry_has_builtin_components() {
         ("Camera", true),
         ("Name", true),
         ("Tilemap", true),
-        ("AudioSource", true),
-        ("AudioListener", true),
         ("UiLabel", true),
         ("UiPanel", true),
         ("UiButton", true),
@@ -168,8 +166,6 @@ fn test_global_registry_has_builtin_components() {
         // silently eating its data.
         ("Behavior", true),
         ("EntityTag", true),
-        // PlaySoundEffect is a one-shot request: editable, never saved.
-        ("PlaySoundEffect", false),
         // System-computed, never saved.
         ("GlobalTransform2D", false),
     ];

@@ -47,8 +47,8 @@ pub trait ComponentMeta: Send + Sync + 'static {
 /// deserializes) to the concrete `T` and uses the ordinary generic API.
 struct ComponentEntry {
     type_id: TypeId,
-    /// Written to scene files on save? Transient components (one-shot
-    /// requests like `PlaySoundEffect`) are editable but never persisted.
+    /// Written to scene files on save? Transient components (values the
+    /// engine recomputes, like `GlobalTransform2D`) are editable but never persisted.
     persist: bool,
     create: ComponentFactoryFn,
     insert: fn(&mut World, EntityId, serde_json::Value) -> Result<(), String>,
@@ -92,7 +92,7 @@ impl ComponentRegistry {
     }
 
     /// Register a component type that is editable/inspectable but never
-    /// written to scene files (one-shot requests like `PlaySoundEffect`).
+    /// written to scene files (values the engine recomputes, like `GlobalTransform2D`).
     pub fn register_transient<T>(&mut self)
     where
         T: ComponentMeta
@@ -324,7 +324,6 @@ fn global() -> &'static RwLock<ComponentRegistry> {
         let mut registry = ComponentRegistry::new();
 
         // Register built-in ECS components
-        use crate::audio_components::{AudioListener, AudioSource, PlaySoundEffect};
         use crate::sprite_components::{Camera, Name, Sprite, SpriteAnimation, Transform2D};
         use crate::tilemap::Tilemap;
         use crate::ui_components::{UiButton, UiLabel, UiPanel};
@@ -334,10 +333,6 @@ fn global() -> &'static RwLock<ComponentRegistry> {
         registry.register::<Camera>();
         registry.register::<Name>();
         registry.register::<Tilemap>();
-        registry.register::<AudioSource>();
-        registry.register::<AudioListener>();
-        // One-shot request, editable but never saved to a scene file.
-        registry.register_transient::<PlaySoundEffect>();
         registry.register::<UiLabel>();
         registry.register::<UiPanel>();
         registry.register::<UiButton>();

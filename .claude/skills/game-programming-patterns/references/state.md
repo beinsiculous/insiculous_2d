@@ -168,11 +168,11 @@ pause is a `PauseMenu` overlay that sets `time_scale` to zero. Add a stack only 
 - `crates/editor/src/stored_component/mod.rs` · `BehaviorState` — the precedent. It holds a
   `StateMachine<BehaviorPhase>` and is an internal entry in the editor's stored-component list,
   so Play/Stop keeps it.
-- **`HierarchicalStateMachine` has one caller, an example.** It is exported from both preludes,
-  but no engine code or shipped game uses it. Only the `hello_world`/`editor_demo` platformer
-  example does, and Play/Stop drops it there. Prove a need before you build on it. Deleting it
-  (and moving that example onto a flat `StateMachine`) or justifying it is tracked as
-  insiculous_2d#171.
-- `examples/hello_world/platformer.rs` · `HierarchicalStateMachine` — the one user.
+- `examples/hello_world/platformer.rs` · `StateMachine<PlayerState>` — the example that loses
+  its machine on Stop, with the warning.
+- **There is no hierarchical machine.** When states fall into groups, derive the group from the
+  state with a function rather than storing a parent beside it.
+- `examples/hello_world/platformer.rs` · `player_group` — the group the panel prints, computed
+  from `PlayerState`.
 - **Clip machines are string-keyed.** A misspelled state name is a runtime miss, not a compile
   error. pong's tests check every state against the clips its sheet really has. Do the same.

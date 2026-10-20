@@ -9,8 +9,8 @@
 //!
 //! The parity holds for a fixed component value, not across one that the
 //! simulation changes: an editor function may draw a different set of rows
-//! for a different value — `edit_audio_source` draws its spatial block only
-//! while `spatial` is true — so a script that flips such a field mid-Play
+//! for a different value — `edit_behavior` draws the fields of the current
+//! variant only — so a script that changes such a value mid-Play
 //! changes the row count, and the panel's scroll offset clamps to the new
 //! content height. No shipped game does that, and the behaviour is
 //! accepted; a row set that must survive it has to draw every row

@@ -211,7 +211,7 @@ impl PlatformerGame {
         if let Some(player) = self.player_entity() {
             ctx.world.add_component(
                 &player,
-                HierarchicalStateMachine::new(PlayerState::Idle, player_group),
+                StateMachine::new(PlayerState::Idle),
             ).ok();
         }
     }
@@ -374,7 +374,7 @@ impl PlatformerGame {
             PlayerState::Idle
         };
 
-        if let Some(state_machine) = ctx.world.get_mut::<HierarchicalStateMachine<PlayerState, PlayerGroup>>(player) {
+        if let Some(state_machine) = ctx.world.get_mut::<StateMachine<PlayerState>>(player) {
             state_machine.transition_to(new_state);
             state_machine.tick(ctx.delta_time);
         }
@@ -401,8 +401,8 @@ impl PlatformerGame {
 
         let state_label = ctx.strings.tr("panel.state").to_string();
         let state_text = if let Some(player) = self.player_entity() {
-            if let Some(state_machine) = ctx.world.get::<HierarchicalStateMachine<PlayerState, PlayerGroup>>(player) {
-                format!("{}: {:?} ({:?})", state_label, state_machine.current(), state_machine.parent())
+            if let Some(state_machine) = ctx.world.get::<StateMachine<PlayerState>>(player) {
+                format!("{}: {:?} ({:?})", state_label, state_machine.current(), player_group(state_machine.current()))
             } else {
                 format!("{}: N/A", state_label)
             }

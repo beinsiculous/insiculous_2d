@@ -12,7 +12,7 @@ pub use crate::{
     hierarchy_extension::WorldHierarchyExt,
     hierarchy_system::{request_transform_hierarchy_reset, TransformHierarchyReset, TransformHierarchySystem},
     resource::ResourceStorage,
-    state_machine::{HierarchicalStateMachine, StateMachine},
+    state_machine::StateMachine,
     system::System,
     world::World,
     EcsError,

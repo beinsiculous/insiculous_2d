@@ -122,6 +122,9 @@ impl SceneLoader {
         // from disk so an artist's `.sheet.ron` edit — including fixing a file
         // that was malformed a moment ago — takes effect on reload.
         assets.clear_sidecar_cache();
+        let (stripped, retired_warnings) =
+            crate::scene_retired_components::without_retired_components(data);
+        let data: &SceneData = &stripped;
 
         let mut named_entities = HashMap::new();
         let mut entities = Vec::new();
@@ -165,8 +168,8 @@ impl SceneLoader {
 
         // Script Entity params were deferred until every entity existed —
         // resolve them against the finished name table.
-        let load_warnings =
-            crate::script_data::resolve_pending_script_targets(world, &named_entities);
+        let mut load_warnings = retired_warnings;
+        load_warnings.extend(crate::script_data::resolve_pending_script_targets(world, &named_entities));
 
         let entity_count = entities.len();
 

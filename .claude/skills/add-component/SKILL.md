@@ -13,7 +13,7 @@ each one explicitly in your summary.
 ## Step 1 — Define the component (crates/ecs)
 
 Put it in `crates/ecs/src/` (own file if substantial, e.g. next to
-`sprite_components.rs` / `audio_components.rs`). Required derives:
+`sprite_components.rs` / `ui_components.rs`). Required derives:
 
 ```rust
 #[derive(Debug, Clone, Serialize, Deserialize, DeriveComponentMeta)]

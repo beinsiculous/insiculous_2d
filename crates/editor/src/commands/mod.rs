@@ -19,7 +19,7 @@ pub use entity_commands::{CreateEntityCommand, DeleteEntityCommand, MacroCommand
 pub use rebase::Rebase;
 pub(crate) use rebase::{entity_is_alive, patch_changed_leaves, script_references_resolve};
 pub use set_commands::{
-    NudgeCommand, RenameEntityCommand, SetAudioSourceCommand, SetBehaviorCommand, SetColliderCommand,
+    NudgeCommand, RenameEntityCommand, SetBehaviorCommand, SetColliderCommand,
     SetComponentCommand, SetEntityTagCommand, SetGridBackdropCommand, SetNameCommand,
     SetRigidBodyCommand, SetScriptsCommand, SetSpriteCommand, SetTransformCommand,
     SetUiButtonCommand, SetUiLabelCommand, SetUiPanelCommand, GIZMO_FIELD_HINT,

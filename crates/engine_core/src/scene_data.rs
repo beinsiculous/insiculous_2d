@@ -373,14 +373,17 @@ pub enum ComponentData {
     },
     /// Dynamic component: any type registered in the ecs `ComponentRegistry`
     /// that has no concrete variant above. This is how
-    /// game-defined components and the audio components reach scene files.
+    /// game-defined components reach scene files.
     ///
     /// Concrete variants remain reserved for types with load-time resolve
     /// logic (texture references, `.sheet.ron` sidecars, physics shape
     /// enums) — a pure serde path cannot express that resolution.
     ///
     /// Loading a `Dynamic` whose name is not registered is a HARD error —
-    /// authored data is never silently dropped. The payload is plain JSON
+    /// authored data is never silently dropped. The one exception is a name
+    /// the engine has retired (`AudioSource`, `AudioListener`,
+    /// `PlaySoundEffect`): the loader drops that entry with a warning naming
+    /// the entity, and the scene loads. The payload is plain JSON
     /// (serde_json::Value round-trips through RON as a map; deliberately
     /// NOT `#[serde(flatten)]`, which is fragile through RON's enum
     /// representation).

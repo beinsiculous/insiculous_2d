@@ -6,9 +6,6 @@ use physics::components::{Collider, ColliderShape};
 pub const SCALE_FLOOR: f32 = 0.01;
 pub const COLLIDER_EXTENT_FLOOR: f32 = 0.5;
 pub const CAPSULE_HALF_HEIGHT_FLOOR: f32 = 0.0;
-pub const VOLUME_MIN: f32 = 0.0;
-pub const VOLUME_MAX: f32 = 1.0;
-pub const PITCH_FLOOR: f32 = 0.1;
 
 /// Clamp Transform2D scale above the physical floor.
 pub fn clamp_transform(transform: &mut common::Transform2D) {
@@ -55,12 +52,6 @@ fn clamp_shape(shape: ColliderShape) -> ColliderShape {
             ColliderShape::Compound(parts.into_iter().map(clamp_shape).collect())
         }
     }
-}
-
-/// Clamp AudioSource volume to [0, 1] and pitch above the playback floor.
-pub fn clamp_audio_source(source: &mut ecs::audio_components::AudioSource) {
-    source.volume = source.volume.clamp(VOLUME_MIN, VOLUME_MAX);
-    source.pitch = source.pitch.max(PITCH_FLOOR);
 }
 
 #[cfg(test)]
@@ -143,19 +134,5 @@ mod tests {
                 },
             ])
         );
-    }
-
-    #[test]
-    fn test_clamp_audio_source_enforces_volume_and_pitch() {
-        let mut a = ecs::audio_components::AudioSource::new(1);
-        a.volume = -0.5;
-        a.pitch = 0.01;
-        clamp_audio_source(&mut a);
-        assert_eq!(a.volume, VOLUME_MIN);
-        assert_eq!(a.pitch, PITCH_FLOOR);
-
-        a.volume = 1.5;
-        clamp_audio_source(&mut a);
-        assert_eq!(a.volume, VOLUME_MAX);
     }
 }

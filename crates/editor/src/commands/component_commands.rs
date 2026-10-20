@@ -164,7 +164,7 @@ impl EditorCommand for RemoveComponentCommand {
 /// Generic whole-component write used by the command API's `set` verb: the
 /// old and new values are captured as [`StoredComponent`]s, so ANY registry
 /// component works — including the ones without a typed `Set*Command`
-/// (Camera, SpriteAnimation, Tilemap, AudioListener). Never merges: each
+/// (Camera, SpriteAnimation, Tilemap). Never merges: each
 /// API `set` line is one discrete undo entry.
 pub struct SetComponentValueCommand {
     entity: EntityId,

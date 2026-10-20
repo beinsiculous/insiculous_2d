@@ -128,9 +128,9 @@ only channel.
   queue filled by `ripple()` and removed whole by the backdrop system each frame. Impulses
   queued while time is frozen are dropped, not saved up.
 
-**Audio has no general sound queue.** The audio manager's one deferral holds the last music
-request until a user gesture enables output on the web. `PlaySoundEffect` reads like a request
-queue, but no system consumes it yet (see Pitfalls).
+**Audio has no general sound queue, and no scene-data path.** The audio manager's one deferral
+holds the last music request until a user gesture enables output on the web. A game plays a
+sound through `ctx.audio`; scene-authored audio is filed under the Conductor milestone.
 
 ## Pitfalls here
 
@@ -144,9 +144,9 @@ queue, but no system consumes it yet (see Pitfalls).
     `a_world_event_emitted_in_a_key_handler_is_flushed_before_the_next_update_reads_it`
 - **Take collisions once.** Two `take_collision_events()` calls in one frame give the second
   caller nothing. Drain into a local and pass `&collisions` around, as every game does.
-- **`PlaySoundEffect` is not a queue yet.** It is a transient, editor-editable component, and
-  nothing plays it. Adding one to an entity is silent. Call `ctx.audio.play(handle)` instead.
-  A consumer system, or removing the component, is tracked as insiculous_2d#172.
+- **There is no sound component to queue on.** The old `PlaySoundEffect` component was retired
+  with the other audio components; a saved scene that still names one loads with a warning and
+  the entry is dropped. Call `ctx.audio.play(handle)` from game code.
 - **Don't add observers to dodge the queue.** Collision callbacks were deleted because they
   fired under `&mut World` and could change nothing. See [observer](observer.md).
 - History: `log_archive.md` § "July 13, 2026 — GPP-08 + GPP-10 + GPP-L9".

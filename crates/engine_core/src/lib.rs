@@ -39,6 +39,7 @@ pub mod scene_data;
 pub mod component_registration;
 pub mod scene_loader;
 mod scene_loader_components;
+mod scene_retired_components;
 pub mod scene_serializer;
 mod texture_ref;
 pub mod sheet_file;

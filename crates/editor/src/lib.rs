@@ -101,7 +101,7 @@ pub use collider_overlay::{
 };
 pub use commands::{CommandHistory, EditorCommand};
 pub use component_editors::{
-    apply_component_edit, edit_audio_source, edit_collider, edit_rigid_body, edit_sprite,
+    apply_component_edit, edit_collider, edit_rigid_body, edit_sprite,
     edit_transform2d, ComponentEdit,
 };
 pub use context::EditorContext;

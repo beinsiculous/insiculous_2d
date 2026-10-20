@@ -1,11 +1,9 @@
 //! Scene round-trips for the two by-name wire tiers: `ComponentData::Dynamic`
-//! (game-registered components, and the audio components the
-//! serializer used to drop silently) and `ComponentData::Scripts`
-//! (Entity params persist by NAME).
+//! (game-registered components, and the retired names a load drops with a
+//! warning) and `ComponentData::Scripts` (Entity params persist by NAME).
 
 use std::collections::BTreeMap;
 
-use ecs::audio_components::{AudioListener, AudioSource, PlaySoundEffect};
 use ecs::script::{ScriptRef, ScriptValue, Scripts};
 use ecs::sprite_components::{Name, Transform2D};
 use ecs::World;
@@ -34,6 +32,20 @@ ecs::define_component! {
     }
 }
 
+ecs::define_component! {
+    /// A second game-registered stand-in, for the wire order of two rows.
+    pub struct SceneDynSpikeBadge {
+        pub rank: u32 = 0,
+    }
+}
+
+ecs::define_component! {
+    /// A game's one-shot request, registered transient.
+    pub struct SceneDynSpikeRequest {
+        pub sound: u32 = 0,
+    }
+}
+
 /// The `Dynamic` rows the serializer writes for `world`'s only entity, by
 /// component type name, in wire order.
 fn dynamic_types(world: &World) -> Vec<String> {
@@ -51,8 +63,7 @@ fn dynamic_types(world: &World) -> Vec<String> {
 #[test]
 fn dynamic_payload_survives_ron_round_trip() {
     // The load-bearing risk of the dynamic tier: serde_json::Value → RON → Value must
-    // preserve ints, floats, strings and nesting exactly — for a game type
-    // and for the engine's own dynamic-tier audio components.
+    // preserve ints, floats, strings and nesting exactly.
     ecs::register_components(|r| r.register::<SceneDynSpikeStats>());
     let mut world = World::new();
     let entity = world.create_entity();
@@ -64,41 +75,41 @@ fn dynamic_payload_survives_ron_round_trip() {
         aim: (-0.25, 1.0),
     };
     world.add_component(&entity, stats.clone()).ok();
-    let source = AudioSource { sound_id: 7, volume: 0.4, spatial: true, max_distance: 640.0, ..AudioSource::default() };
-    world.add_component(&entity, source.clone()).ok();
-    world.add_component(&entity, AudioListener::default()).ok();
 
     let (loaded, instance) = roundtrip(&world);
 
     let entity = instance.entities[0];
     assert_eq!(as_json(&loaded.get::<SceneDynSpikeStats>(entity)), as_json(&Some(&stats)));
-    assert_eq!(as_json(&loaded.get::<AudioSource>(entity)), as_json(&Some(&source)));
-    assert_eq!(as_json(&loaded.get::<AudioListener>(entity)), as_json(&Some(&AudioListener::default())));
 }
 
 #[test]
 fn transient_components_are_never_saved() {
+    ecs::register_components(|r| r.register_transient::<SceneDynSpikeRequest>());
     let mut world = World::new();
     let entity = world.create_entity();
     world.add_component(&entity, Transform2D::new(Vec2::ZERO)).ok();
-    world.add_component(&entity, PlaySoundEffect::new(3)).ok();
+    world.add_component(&entity, SceneDynSpikeRequest { sound: 3 }).ok();
 
     let types = dynamic_types(&world);
 
-    assert!(!types.contains(&"PlaySoundEffect".to_string()), "one-shot requests must not persist: {types:?}");
+    assert!(!types.contains(&"SceneDynSpikeRequest".to_string()), "one-shot requests must not persist: {types:?}");
 }
 
 #[test]
 fn dynamic_rows_are_name_sorted_so_repeated_saves_diff_clean() {
+    ecs::register_components(|r| {
+        r.register::<SceneDynSpikeStats>();
+        r.register::<SceneDynSpikeBadge>();
+    });
     let mut world = World::new();
     let entity = world.create_entity();
     world.add_component(&entity, Transform2D::new(Vec2::ZERO)).ok();
-    world.add_component(&entity, AudioSource::default()).ok();
-    world.add_component(&entity, AudioListener::default()).ok();
+    world.add_component(&entity, SceneDynSpikeStats::default()).ok();
+    world.add_component(&entity, SceneDynSpikeBadge::default()).ok();
 
     let types = dynamic_types(&world);
 
-    assert_eq!(types, vec!["AudioListener".to_string(), "AudioSource".to_string()]);
+    assert_eq!(types, vec!["SceneDynSpikeBadge".to_string(), "SceneDynSpikeStats".to_string()]);
 }
 
 #[test]
@@ -115,6 +126,51 @@ fn unknown_dynamic_component_refuses_the_whole_load() {
         .expect_err("unregistered dynamic component must refuse the load");
 
     assert!(err.to_string().contains("NeverRegisteredComponent"), "error names the component: {err}");
+}
+
+#[test]
+fn a_retired_component_in_any_layer_is_dropped_with_a_warning_and_the_scene_loads() {
+    // A playground project or an older editor save can still name the
+    // retired audio components; refusing it would lock the author out of
+    // their own scene.
+    let (world, instance) = load_ron(
+        r#"SceneData(
+            name: "Retired",
+            prefabs: {
+                "Speaker": PrefabData(components: [
+                    Transform2D(position: (0.0, 0.0)),
+                    Dynamic(type: "AudioSource", data: {"sound_id": 7}),
+                ]),
+            },
+            entities: [
+                EntityData(
+                    name: Some("speaker"),
+                    prefab: Some("Speaker"),
+                    overrides: [Dynamic(type: "AudioListener", data: {})],
+                    components: [Dynamic(type: "PlaySoundEffect", data: {"sound_id": 3})],
+                ),
+            ],
+        )"#,
+    );
+
+    let speaker = instance.named_entities["speaker"];
+    let types: Vec<&str> = world.component_types(speaker).into_iter().map(|(_, name)| name).collect();
+    assert!(world.get::<Transform2D>(speaker).is_some(), "the entity loads with its other components");
+    for retired in ["AudioSource", "AudioListener", "PlaySoundEffect"] {
+        assert!(!types.iter().any(|name| name.ends_with(retired)), "{retired} was dropped: {types:?}");
+        let expected = format!("entity 'speaker' carried the retired component '{retired}'");
+        let expected_in_prefab = format!("prefab 'Speaker' carried the retired component '{retired}'");
+        assert!(
+            instance.load_warnings.iter().any(|warning| warning.contains(&expected) || warning.contains(&expected_in_prefab)),
+            "a warning names the owner and {retired}: {:?}",
+            instance.load_warnings
+        );
+    }
+    let mut world = world;
+    let spawned = instance
+        .spawn_prefab(&mut world, &mut StubResolver::default(), "Speaker", &[])
+        .expect("the retained prefab no longer carries the retired name");
+    assert!(world.get::<Transform2D>(spawned).is_some());
 }
 
 fn full_params(target: ecs::EntityId) -> BTreeMap<String, ScriptValue> {

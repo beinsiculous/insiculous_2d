@@ -8,18 +8,16 @@ pub enum ComponentCategory {
     Core,
     Rendering,
     Physics,
-    Audio,
     Gameplay,
     Ui,
 }
 
 impl ComponentCategory {
     /// All categories in display order.
-    pub const ALL: [ComponentCategory; 6] = [
+    pub const ALL: [ComponentCategory; 5] = [
         ComponentCategory::Core,
         ComponentCategory::Rendering,
         ComponentCategory::Physics,
-        ComponentCategory::Audio,
         ComponentCategory::Gameplay,
         ComponentCategory::Ui,
     ];
@@ -30,7 +28,6 @@ impl ComponentCategory {
             ComponentCategory::Core => "Core",
             ComponentCategory::Rendering => "Rendering",
             ComponentCategory::Physics => "Physics",
-            ComponentCategory::Audio => "Audio",
             ComponentCategory::Gameplay => "Gameplay",
             ComponentCategory::Ui => "UI",
         }

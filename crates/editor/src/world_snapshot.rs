@@ -8,7 +8,7 @@
 //! automatically; there is no second list to maintain here.
 //!
 //! Component types NOT in the registry (e.g. game-defined generics like
-//! `HierarchicalStateMachine<S, P>`) cannot be cloned by any engine-side
+//! `StateMachine<S>`) cannot be cloned by any engine-side
 //! list. Capture detects them via [`ecs::World::component_types`], reports
 //! them through [`WorldSnapshot::uncaptured_types`] /
 //! [`WorldSnapshot::loss_warning`], and they are lost on restore.

@@ -2,7 +2,6 @@
 
 use std::any::Any;
 
-use ecs::audio_components::AudioSource;
 use ecs::behavior::{Behavior, EntityTag};
 use ecs::component_registry::ComponentMeta;
 use ecs::sprite_components::{Name, Sprite};
@@ -19,7 +18,7 @@ use super::{patch_changed_leaves, script_references_resolve, EditorCommand, Reba
 /// Whole-component write for one component type (inspector fields, gizmo drags).
 /// Consecutive edits to the same entity AND the same `field_hint` merge into one undo
 /// entry. Distinct `T`s are distinct types, so `downcast_ref::<Self>` keeps merge
-/// isolation per component exactly as the thirteen macro-generated structs did.
+/// isolation per component exactly as the macro-generated structs once did.
 pub struct SetComponentCommand<T: ecs::Component + ComponentMeta + Clone + Send + serde::Serialize + serde::de::DeserializeOwned + 'static> {
     entity: EntityId,
     old: T,
@@ -107,7 +106,6 @@ pub type SetTransformCommand = SetComponentCommand<common::Transform2D>;
 pub type SetSpriteCommand = SetComponentCommand<Sprite>;
 pub type SetRigidBodyCommand = SetComponentCommand<RigidBody>;
 pub type SetColliderCommand = SetComponentCommand<Collider>;
-pub type SetAudioSourceCommand = SetComponentCommand<AudioSource>;
 pub type SetBehaviorCommand = SetComponentCommand<Behavior>;
 pub type SetUiLabelCommand = SetComponentCommand<UiLabel>;
 pub type SetUiPanelCommand = SetComponentCommand<UiPanel>;

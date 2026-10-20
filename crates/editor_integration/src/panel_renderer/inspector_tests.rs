@@ -20,7 +20,6 @@ pub(super) fn world_with_selection(editor: &mut EditorContext) -> World {
     world.add_component(&entity, ecs::sprite_components::Sprite::new(0)).ok();
     world.add_component(&entity, physics::components::RigidBody::default()).ok();
     world.add_component(&entity, physics::components::Collider::default()).ok();
-    world.add_component(&entity, ecs::audio_components::AudioSource::default()).ok();
     world.add_component(&entity, ecs::ui_components::UiPanel::default()).ok();
     editor.selection.select(entity);
     world

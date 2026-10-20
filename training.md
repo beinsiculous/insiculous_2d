@@ -51,9 +51,8 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
   - `sprite_components.rs` - Sprite, Transform2D, Camera, plus `AnimationClip` + `SpriteAnimation` (named clips over a `SheetGrid`); `sprite_system.rs` - `SpriteAnimationSystem` advances clips and writes `Sprite.tex_region` (driven from engine_core's `frame_tail.rs`)
   - `behavior.rs` - Scene-driven `Behavior` enum + `BehaviorState` (incl. `CameraFollow`)
   - `tilemap.rs` - `Tilemap` component (row-major tile grid over a tileset; `sprite_instances()` yields plain per-tile data)
-  - `state_machine.rs` - `StateMachine` / `HierarchicalStateMachine` FSM components
+  - `state_machine.rs` - `StateMachine` FSM component
   - `event.rs` - `EventBus` (typed per-frame event queue)
-  - `audio_components.rs` - AudioSource/AudioListener (editor-inspectable data only)
 
 - **crates/input/** - Event-based input with action-mapping + player-aware settings layers
   - `input_handler.rs` - Device state (keyboard/mouse/gamepads) + event queue
@@ -79,8 +78,6 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
 - **crates/audio/** - Audio playback via rodio
   - `lib.rs` - crate docs + re-exports
   - `manager.rs` - Sound loading, playback, volume buses; `sound.rs` - SoundHandle, SoundSettings; `error.rs` - AudioError
-  - Note: AudioSource/AudioListener/PlaySoundEffect live in `crates/ecs/src/audio_components.rs`
-    and are editor-inspectable data only — no runtime system consumes them yet
 
 - **crates/common/** - Shared types and utilities
   - `rect.rs` / `color.rs` / `transform.rs` / `camera.rs` / `time.rs` / `macros.rs` - Rect, Color, transforms, CameraUniform, Time
