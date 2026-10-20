@@ -1,0 +1,19 @@
+[package]
+name = "music_midi"
+version = "0.1.0"
+edition = "2021"
+description = "MIDI songs for insiculous_2d: the song sidecar, owned MIDI data and the tempo map"
+publish = false
+
+[features]
+default = ["synth"]
+# The synthesizer side of the conductor. The schema and data model build without it,
+# which is how the editor depends on this crate.
+synth = ["dep:rustysynth"]
+
+[dependencies]
+midly = { workspace = true }
+rustysynth = { workspace = true, optional = true }
+serde = { workspace = true }
+ron = { workspace = true }
+thiserror = { workspace = true }

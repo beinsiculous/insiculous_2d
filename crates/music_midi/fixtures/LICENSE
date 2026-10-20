@@ -52,6 +52,18 @@ Comment: Ludwig Minkus (1826-1917), La Bayadere (1877), Variation des Ombres,
  sha256: 1e4c17aa41577251312e904b32ad91c8631f0cf4670dc446b9d01e1849dc6e2c
 License: public-domain
 
+Files: Egmont.mid
+Copyright: Public Domain
+Comment: Ludwig van Beethoven (1770-1827), Overture to Egmont, Op. 84 (1810).
+ Source edition: Breitkopf and Hartel. Typeset for the Mutopia Project by Stelios
+ Samelis (LilyPond 2.18.2), Mutopia-2015/09/03-547. Read 2026-10-20 for its tempo
+ and time-signature changes, which none of the files above carries.
+ Piece page: https://www.mutopiaproject.org/cgibin/piece-info.cgi?id=547
+ Its line: "Copyright: Public Domain"
+ Download: https://www.mutopiaproject.org/ftp/BeethovenLv/O84/Egmont/Egmont.mid
+ sha256: f189d4dfbd6058a144555393bfd3f116e751310ffb5134a5b98193ba92ba548e
+License: public-domain
+
 Files: sine.sf2
 Copyright: none (generated)
 Comment: Written by scripts/make_sine_soundfont.py: one A4 sine sample (44000 Hz,

@@ -77,7 +77,13 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
 
 - **crates/audio/** - Audio playback via rodio
   - `lib.rs` - crate docs + re-exports
-  - `manager.rs` - Sound loading, playback, volume buses; `sound.rs` - SoundHandle, SoundSettings; `error.rs` - AudioError
+  - `manager/mod.rs` - `AudioManager`: the device/output connection, the gesture-gated `enable_output`, sound loading and SFX playback, `play_source` (any rodio `Source` on a bus); `manager/music.rs` - background music (play/stop/pause/resume) and the master/SFX/music volume buses; `manager/tests.rs` - both seams' tests
+  - `sound.rs` - SoundHandle, SoundSettings; `error.rs` - AudioError
+
+- **crates/music_midi/** - The conductor's song core: no I/O, no rodio — bytes in, data out. See its `CLAUDE.md` for the file map and pitfalls, `docs/SONG_FORMAT.md` for the sidecar grammar
+  - `song_file.rs` + `song_file/validate.rs` - **the `.mid.ron` song sidecar schema** (`SongFile` v1: parts, instruments, bindings; `parse_song_file`, `SongFile::validate` against the MIDI data and the loader's `ResourceMetadata`)
+  - `song_data.rs` + `song_data/{flatten,edit,export}.rs` - `SongData::from_smf` (owned events, types 0 and 1, notes in `MusicalUnit`s under stable `NoteId`s), the mutation helpers returning before-images, `write_smf`
+  - `tempo_map.rs` - `TempoMap`: exact tick ↔ seconds ↔ sample ↔ bar across tempo and time-signature changes; integer beat-crossing counts
 
 - **crates/common/** - Shared types and utilities
   - `rect.rs` / `color.rs` / `transform.rs` / `camera.rs` / `time.rs` / `macros.rs` - Rect, Color, transforms, CameraUniform, Time
@@ -926,6 +932,7 @@ list debt here — this file documents APIs and patterns, not status.
 │   ├── ui/                    # Immediate-mode UI framework
 │   ├── physics/               # Rapier2d physics integration
 │   ├── audio/                 # Audio playback via rodio
+│   ├── music_midi/            # Song sidecar, owned MIDI data, tempo map (no I/O)
 │   ├── common/                # Shared types (Rect, Color, Time, CameraUniform)
 │   ├── editor/                # Editor panels, inspector, gizmos, undo/redo
 │   └── editor_integration/    # EditorGame<G> wrapper, run_game_with_editor()

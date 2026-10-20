@@ -295,7 +295,8 @@ Domain" line in the `LICENSE`):
 
 **Alternates, each verified Public Domain on its own page and parsed:**
 - *Several tracks with a tempo change, and a time-signature change in the same file:*
-  Beethoven, *Overture to Egmont*, id 547. 15 tracks; 84 → 152 → 168 bpm; 3/2 → 3/4 → 4/4.
+  Beethoven, *Overture to Egmont*, id 547. 15 tracks; 84 → 168 → 152 bpm (batch 2 read the
+  file: the order here was wrong in the first report); 3/2 → 3/4 → 4/4.
   https://www.mutopiaproject.org/ftp/BeethovenLv/O84/Egmont/Egmont.mid
 - *A small time-signature change:* Grieg, *Wedding-day at Troldhaugen*, id 781. 4/4 ↔
   2/4; 90 → 120 bpm.
