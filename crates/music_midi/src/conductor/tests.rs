@@ -4,6 +4,11 @@ use super::*;
 use crate::song_data::SongData;
 use crate::song_file::parse_song_file;
 use crate::test_support::*;
+use crate::{BLOCK_FRAMES, SOUNDING_NOTE_CAP};
+
+mod saturation;
+mod stage;
+mod triggering;
 
 const SAMPLE_RATE: u32 = 44_100;
 const SINE_FONT: &[u8] = include_bytes!("../../fixtures/sine.sf2");
@@ -345,17 +350,22 @@ fn a_storm_of_random_notes_and_seeks_never_writes_a_non_finite_sample() {
         seed
     };
 
+    let mut tickets = Vec::new();
     for block in 0..seconds(10.0) / BLOCK_FRAMES {
         let slot = conductor
             .slot_mut(0)
             .expect("the sine instrument has a slot");
         for _ in 0..next() % 4 {
-            let source = SourceKey(next() % 40);
+            let source = SourceId {
+                id: next() % 40,
+                generation: 0,
+                epoch: 0,
+            };
             let key = (next() % 128) as u8;
-            if next() % 3 == 0 {
-                slot.note_off(source, key);
+            if next() % 3 == 0 && !tickets.is_empty() {
+                slot.note_off(tickets.swap_remove(next() as usize % tickets.len()));
             } else {
-                slot.note_on(source, key, 1 + (next() % 127) as u8);
+                tickets.push(slot.note_on(source, key, 1 + (next() % 127) as u8).ticket);
             }
         }
         assert!(slot.sounding_count() <= SOUNDING_NOTE_CAP);

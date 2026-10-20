@@ -51,6 +51,20 @@ pub struct PositionSnapshot {
     pub commands_applied: u64,
     /// Commands a full or abandoned queue refused at the sender.
     pub commands_rejected: u64,
+    /// Triggers that played a unit.
+    pub accepted_triggers: u64,
+    /// Triggers refused with their cursor unmoved: no room for their notes, a song not
+    /// playing, or an instrument with nothing to play them on.
+    pub rejected_triggers: u64,
+    /// Triggers older than the late tolerance when drained, dropped.
+    pub late_triggers: u64,
+    /// Triggers and deactivations naming an ended source, or a binding of another song.
+    pub stale_triggers: u64,
+    /// Triggers that found nothing to play: an exhausted sequence, or a rest.
+    pub silent_triggers: u64,
+    pub live_sources: u64,
+    /// Scheduled note-ons and note-offs held.
+    pub pending_events: u64,
 }
 
 /// The conductor's published position and counters. Each value is whole; a reader that
@@ -67,6 +81,13 @@ pub struct SharedPosition {
     loop_wraps: AtomicU64,
     commands_applied: AtomicU64,
     commands_rejected: AtomicU64,
+    accepted_triggers: AtomicU64,
+    rejected_triggers: AtomicU64,
+    late_triggers: AtomicU64,
+    stale_triggers: AtomicU64,
+    silent_triggers: AtomicU64,
+    live_sources: AtomicU64,
+    pending_events: AtomicU64,
 }
 
 impl SharedPosition {
@@ -83,6 +104,13 @@ impl SharedPosition {
             loop_wraps: self.loop_wraps.load(Ordering::Acquire),
             commands_applied: self.commands_applied.load(Ordering::Acquire),
             commands_rejected: self.commands_rejected.load(Ordering::Acquire),
+            accepted_triggers: self.accepted_triggers.load(Ordering::Acquire),
+            rejected_triggers: self.rejected_triggers.load(Ordering::Acquire),
+            late_triggers: self.late_triggers.load(Ordering::Acquire),
+            stale_triggers: self.stale_triggers.load(Ordering::Acquire),
+            silent_triggers: self.silent_triggers.load(Ordering::Acquire),
+            live_sources: self.live_sources.load(Ordering::Acquire),
+            pending_events: self.pending_events.load(Ordering::Acquire),
         }
     }
 
@@ -119,6 +147,17 @@ impl SharedPosition {
             .store(snapshot.loop_wraps, Ordering::Release);
         self.commands_applied
             .store(snapshot.commands_applied, Ordering::Release);
+        for (atomic, value) in [
+            (&self.accepted_triggers, snapshot.accepted_triggers),
+            (&self.rejected_triggers, snapshot.rejected_triggers),
+            (&self.late_triggers, snapshot.late_triggers),
+            (&self.stale_triggers, snapshot.stale_triggers),
+            (&self.silent_triggers, snapshot.silent_triggers),
+            (&self.live_sources, snapshot.live_sources),
+            (&self.pending_events, snapshot.pending_events),
+        ] {
+            atomic.store(value, Ordering::Release);
+        }
         self.sample_position
             .store(snapshot.sample_position, Ordering::Release);
     }

@@ -9,9 +9,12 @@ publish = false
 default = ["synth"]
 # The synthesizer side: the conductor, its commands and its position. The schema, the data
 # model and the sequencer build without it, which is how the editor depends on this crate.
-synth = ["dep:rustysynth"]
+synth = ["dep:rustysynth", "dep:common"]
 
 [dependencies]
+# The engine's own clock: a trigger's stamp is `common::clock::Instant`, which is the
+# browser's clock on the web.
+common = { workspace = true, optional = true }
 midly = { workspace = true }
 rustysynth = { workspace = true, optional = true }
 serde = { workspace = true }

@@ -12,13 +12,20 @@
 //! source is never refused.
 //!
 //! **A same-key strike on a lane** releases the old note first, then sounds the new one.
+//!
+//! **Every note has a ticket.** A note-off names the note it ends, not its source and
+//! key, so a scheduled note-off reaches only its own note: when the same source has
+//! struck the same key again since, the newer note keeps sounding its whole length.
+
+use crate::sources::SourceId;
 
 #[cfg(test)]
 mod tests;
 
-/// Whoever triggers notes on a slot. The conductor keeps one per active source.
+/// One started note. Tickets are never reused, so a note-off for a note already
+/// released (stolen, retriggered, released with its source) finds nothing to end.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SourceKey(pub u64);
+pub struct NoteTicket(u64);
 
 /// What the ledger tells the synthesizer to do, in order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,9 +34,10 @@ pub enum LedgerAction {
     NoteOff { lane: usize, key: u8 },
 }
 
-/// What one note-on cost.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+/// What one note-on cost, and the ticket that ends the note.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NoteStart {
+    pub ticket: NoteTicket,
     /// The source held no lane and none was free, so another source lost its lane.
     pub lane_stolen: bool,
     /// The same key was sounding on the source's lane and was released first.
@@ -50,14 +58,15 @@ pub struct LedgerCounters {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Lease {
-    source: SourceKey,
+    source: SourceId,
     /// Leases are ordered by when they were taken; the smallest is the oldest.
     order: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SoundingNote {
-    source: SourceKey,
+    ticket: NoteTicket,
+    source: SourceId,
     lane: usize,
     key: u8,
 }
@@ -70,6 +79,7 @@ pub struct VoiceLedger {
     sounding: Vec<SoundingNote>,
     sounding_cap: usize,
     next_lease_order: u64,
+    next_ticket: u64,
     counters: LedgerCounters,
 }
 
@@ -83,6 +93,7 @@ impl VoiceLedger {
             sounding: Vec::with_capacity(sounding_cap),
             sounding_cap,
             next_lease_order: 0,
+            next_ticket: 0,
             counters: LedgerCounters::default(),
         }
     }
@@ -91,12 +102,19 @@ impl VoiceLedger {
     /// note-on.
     pub fn note_on(
         &mut self,
-        source: SourceKey,
+        source: SourceId,
         key: u8,
         velocity: u8,
         mut act: impl FnMut(LedgerAction),
     ) -> NoteStart {
-        let mut start = NoteStart::default();
+        let ticket = NoteTicket(self.next_ticket);
+        self.next_ticket += 1;
+        let mut start = NoteStart {
+            ticket,
+            lane_stolen: false,
+            retriggered: false,
+            notes_stolen: 0,
+        };
         let lane = match self.lane_of(source) {
             Some(lane) => lane,
             None => {
@@ -133,20 +151,22 @@ impl VoiceLedger {
             key,
             velocity,
         });
-        self.sounding.push(SoundingNote { source, lane, key });
+        self.sounding.push(SoundingNote {
+            ticket,
+            source,
+            lane,
+            key,
+        });
         self.counters.notes_started += 1;
         self.counters.peak_sounding = self.counters.peak_sounding.max(self.sounding.len());
         start
     }
 
-    /// Release `key` for `source`. A note already released (stolen, retriggered) sends
-    /// nothing: its lane may belong to another source by now.
-    pub fn note_off(&mut self, source: SourceKey, key: u8, mut act: impl FnMut(LedgerAction)) {
-        let Some(index) = self
-            .sounding
-            .iter()
-            .position(|note| note.source == source && note.key == key)
-        else {
+    /// Release the note `ticket` started. A note already released (stolen, retriggered,
+    /// released with its source) sends nothing: its lane may belong to another source
+    /// by now, and its key to a newer note.
+    pub fn note_off(&mut self, ticket: NoteTicket, mut act: impl FnMut(LedgerAction)) {
+        let Some(index) = self.sounding.iter().position(|note| note.ticket == ticket) else {
             return;
         };
         let note = self.sounding.remove(index);
@@ -154,11 +174,16 @@ impl VoiceLedger {
             lane: note.lane,
             key: note.key,
         });
-        self.free_lane_if_silent(source, note.lane);
+        self.free_lane_if_silent(note.source, note.lane);
+    }
+
+    /// Whether the note `ticket` started is still sounding.
+    pub fn is_sounding(&self, ticket: NoteTicket) -> bool {
+        self.sounding.iter().any(|note| note.ticket == ticket)
     }
 
     /// Release every note `source` holds and free its lane.
-    pub fn release_source(&mut self, source: SourceKey, mut act: impl FnMut(LedgerAction)) {
+    pub fn release_source(&mut self, source: SourceId, mut act: impl FnMut(LedgerAction)) {
         self.sounding.retain(|note| {
             if note.source == source {
                 act(LedgerAction::NoteOff {
@@ -188,7 +213,7 @@ impl VoiceLedger {
     }
 
     /// The lane `source` holds, if it has sounding notes.
-    pub fn lane_of(&self, source: SourceKey) -> Option<usize> {
+    pub fn lane_of(&self, source: SourceId) -> Option<usize> {
         self.leases
             .iter()
             .position(|lease| lease.is_some_and(|lease| lease.source == source))
@@ -201,7 +226,7 @@ impl VoiceLedger {
     /// A free lane for `source`, or the oldest lease's lane with its notes released.
     fn lease_lane(
         &mut self,
-        source: SourceKey,
+        source: SourceId,
         act: &mut impl FnMut(LedgerAction),
     ) -> (usize, bool) {
         let order = self.next_lease_order;
@@ -224,7 +249,7 @@ impl VoiceLedger {
         (lane, true)
     }
 
-    fn free_lane_if_silent(&mut self, source: SourceKey, lane: usize) {
+    fn free_lane_if_silent(&mut self, source: SourceId, lane: usize) {
         if !self.sounding.iter().any(|note| note.source == source) {
             self.leases[lane] = None;
         }

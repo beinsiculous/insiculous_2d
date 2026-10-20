@@ -41,6 +41,17 @@ Comment: Derived from dansenapolitaine.mid above by scripts/make_type0_fixture.p
  sha256: 78e8f5effca0d7ecb41369e8a7f14bfc5bb6be602e9c27f6b03f57f7d2dfad18
 License: public-domain
 
+Files: dansenapolitaine-cast.mid
+Copyright: Public Domain
+Comment: Derived from dansenapolitaine-type0.mid above by scripts/make_cast_fixture.py
+ (2026-10-20): a program change at tick 0 on each melodic channel, after the track
+ name - the flute's channel 2 to program 73 (Flute), the two piano channels 4 and 5 to
+ program 0 (Acoustic Grand Piano) - and nothing else; the tambourine stays on General
+ MIDI percussion channel 10. LilyPond sets no program, so without them every part plays
+ the piano. Re-running the script on the source above reproduces these bytes.
+ sha256: cfe1333856e0576339662b2efbf799f3309a449a53227f31dbd3e3a05f908c6d
+License: public-domain
+
 Files: bayadere-ombres.mid
 Copyright: Public Domain
 Comment: Ludwig Minkus (1826-1917), La Bayadere (1877), Variation des Ombres,

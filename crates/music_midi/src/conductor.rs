@@ -6,10 +6,18 @@
 //! conductor to whatever pulls audio; it keeps the [`ConductorHandle`] to send
 //! [`ConductorCommand`]s and read the [`SharedPosition`].
 //!
-//! **Blocks.** Commands are drained at the start of every block of
-//! [`ConductorConfig::block_size`] frames, whatever lengths [`Conductor::render`] is
-//! called with, and the position is published at the end of each. The background
-//! synthesizers render on the same block, which is the sequencer's grain.
+//! **Blocks.** At the start of every block of [`ConductorConfig::block_size`] frames,
+//! whatever lengths [`Conductor::render`] is called with, up to
+//! [`Capacities::commands_per_block`] commands are drained and the scheduled trigger
+//! events due in the block are fired; the position is published at the end of each. The
+//! background synthesizers and the instrument slots render on the same block, so a
+//! trigger sounds on the first frame of a block — the 64-frame grid.
+//!
+//! **Triggers** (see [`crate::triggers`]) play a binding's part on its instrument's
+//! slot for one source. A seek, a loop wrap and `Play` release every slot's notes, drop
+//! every scheduled event and set each part's cursor to the new position; a pause or a
+//! stop releases and drops without moving the cursors, and triggers are refused until
+//! the song plays again.
 //!
 //! **The mix** is `music × background + sfx × slots`; every output sample passes a finite
 //! guard (a value that is not finite is written as 0 and counted), so nothing downstream
@@ -18,20 +26,20 @@
 //! **The clock** advances by the frames rendered while playing, so it holds still only
 //! when paused or stopped; zero gain does not stop it.
 
-use std::sync::mpsc::Receiver;
 use std::sync::Arc;
 
-use crate::commands::{command_channel, ConductorCommand, ConductorHandle};
+use common::clock::Instant;
+
+use crate::commands::{command_channel, CommandReceiver, ConductorCommand, ConductorHandle};
 use crate::error::ConductorError;
 use crate::position::{PositionSnapshot, SharedPosition, TransportState};
 use crate::sequencer::{Sequencer, SequencerSink};
 use crate::song_file::{InstrumentSource, PresetKey};
-use crate::{
-    BLOCK_FRAMES, COMMAND_QUEUE_CAPACITY, INSTRUMENT_SLOT_CAPACITY, LANES_PER_SLOT,
-    PENDING_EVENT_CAPACITY, SAMPLE_VOICE_CAP, SOUNDING_NOTE_CAP, SYNTHESIZER_POLYPHONY,
-};
+use crate::sources::SourceId;
+use crate::triggers::{DrainClock, EngineShape, Trigger, TriggerEngine, TriggerSink};
 
 mod background;
+mod config;
 pub mod ledger;
 mod slots;
 mod song;
@@ -39,118 +47,11 @@ mod song;
 mod tests;
 
 use background::BackgroundPlayer;
-pub use ledger::{LedgerAction, LedgerCounters, NoteStart, SourceKey, VoiceLedger};
+pub use config::{BusGains, Capacities, ConductorConfig};
+pub use ledger::{LedgerAction, LedgerCounters, NoteStart, NoteTicket, VoiceLedger};
 use slots::SlotShape;
 pub use slots::{InstrumentSlot, MAXIMUM_LANES};
 pub use song::{BackgroundPeak, Song};
-
-const SAMPLE_RATES: std::ops::RangeInclusive<u32> = 16_000..=192_000;
-const BLOCK_SIZES: std::ops::RangeInclusive<usize> = 8..=1024;
-const POLYPHONIES: std::ops::RangeInclusive<usize> = 8..=256;
-
-/// Every fixed capacity of a conductor. The defaults are the measured, frozen values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Capacities {
-    pub instrument_slots: usize,
-    pub lanes_per_slot: usize,
-    pub sounding_cap: usize,
-    /// Voices in each synthesizer's pool, release tails included.
-    pub polyphony: usize,
-    pub sample_voices: usize,
-    pub command_queue: usize,
-    pub pending_events: usize,
-}
-
-impl Default for Capacities {
-    fn default() -> Self {
-        Self {
-            instrument_slots: INSTRUMENT_SLOT_CAPACITY,
-            lanes_per_slot: LANES_PER_SLOT,
-            sounding_cap: SOUNDING_NOTE_CAP,
-            polyphony: SYNTHESIZER_POLYPHONY,
-            sample_voices: SAMPLE_VOICE_CAP,
-            command_queue: COMMAND_QUEUE_CAPACITY,
-            pending_events: PENDING_EVENT_CAPACITY,
-        }
-    }
-}
-
-/// How a conductor is built.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ConductorConfig {
-    pub sample_rate: u32,
-    pub block_size: usize,
-    pub capacities: Capacities,
-}
-
-impl ConductorConfig {
-    /// The frozen block and capacities at `sample_rate`.
-    pub fn new(sample_rate: u32) -> Self {
-        Self {
-            sample_rate,
-            block_size: BLOCK_FRAMES,
-            capacities: Capacities::default(),
-        }
-    }
-
-    fn validate(&self) -> Result<(), ConductorError> {
-        let capacities = &self.capacities;
-        let named = [
-            ("instrument slots", capacities.instrument_slots),
-            ("lanes per slot", capacities.lanes_per_slot),
-            ("sounding cap", capacities.sounding_cap),
-            ("polyphony", capacities.polyphony),
-            ("sample voices", capacities.sample_voices),
-            ("command queue", capacities.command_queue),
-            ("pending events", capacities.pending_events),
-        ];
-        if let Some((capacity, _)) = named.iter().find(|(_, value)| *value == 0) {
-            return Err(ConductorError::ZeroCapacity { capacity });
-        }
-        if !SAMPLE_RATES.contains(&self.sample_rate) {
-            return Err(ConductorError::SampleRateOutOfRange {
-                sample_rate: self.sample_rate,
-            });
-        }
-        if !BLOCK_SIZES.contains(&self.block_size) {
-            return Err(ConductorError::BlockSizeOutOfRange {
-                block_size: self.block_size,
-            });
-        }
-        if !POLYPHONIES.contains(&capacities.polyphony) {
-            return Err(ConductorError::PolyphonyOutOfRange {
-                polyphony: capacities.polyphony,
-            });
-        }
-        if capacities.polyphony < capacities.sounding_cap {
-            return Err(ConductorError::PoolBelowSoundingCap {
-                polyphony: capacities.polyphony,
-                sounding_cap: capacities.sounding_cap,
-            });
-        }
-        if capacities.lanes_per_slot > MAXIMUM_LANES {
-            return Err(ConductorError::TooManyLanes {
-                lanes: capacities.lanes_per_slot,
-                maximum: MAXIMUM_LANES,
-            });
-        }
-        Ok(())
-    }
-}
-
-/// The two bus gains the conductor mixes under; master volume is the output's.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct BusGains {
-    pub music: f32,
-    pub sfx: f32,
-}
-
-impl BusGains {
-    pub const UNITY: BusGains = BusGains {
-        music: 1.0,
-        sfx: 1.0,
-    };
-}
 
 /// Something a load let through that may still sound wrong.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -175,12 +76,13 @@ struct LoadedSong {
     sequencer: Sequencer,
     background: BackgroundPlayer,
     slots: Vec<InstrumentSlot>,
+    triggers: TriggerEngine,
 }
 
 /// See the module docs. `Send`, so it can move onto the audio thread.
 pub struct Conductor {
     config: ConductorConfig,
-    receiver: Receiver<ConductorCommand>,
+    receiver: CommandReceiver,
     position: Arc<SharedPosition>,
     loaded: Option<LoadedSong>,
     transport: TransportState,
@@ -201,7 +103,10 @@ impl Conductor {
     /// synthesizer cannot honour: see [`ConductorError`].
     pub fn new(config: ConductorConfig) -> Result<(Self, ConductorHandle), ConductorError> {
         config.validate()?;
-        let (handle, receiver, position) = command_channel(config.capacities.command_queue);
+        let (handle, receiver, position) = command_channel(
+            config.capacities.command_queue,
+            config.capacities.lifecycle_reserve,
+        );
         let block = || vec![0.0; config.block_size];
         let conductor = Self {
             config,
@@ -227,11 +132,17 @@ impl Conductor {
         &self.config
     }
 
-    /// Load `song`, replacing any song loaded before, stopped at its start. Refuses a
-    /// song with more instruments than slots, or whose instrument preset is missing or
-    /// layers too thickly for the pool at the sounding cap; warns, without refusing, when
-    /// the background score alone may overflow its pool. A sample instrument takes a
-    /// slot in the count but plays nothing yet.
+    /// Load `song`, replacing any song loaded before, stopped at its start with no
+    /// source live (a flush's floor carries over); the next block starts on the next frame rendered, so the slots'
+    /// synthesizers keep the conductor's block grid. Refuses a song with more instruments
+    /// than slots, or whose instrument preset is missing or layers too thickly for the
+    /// pool at the sounding cap; warns, without refusing, when the background score alone
+    /// may overflow its pool. A sample instrument takes a slot in the count but plays
+    /// nothing yet: a trigger on its binding is rejected.
+    ///
+    /// Commands still queued are drained against the new song, so a host changing songs
+    /// sends `StopAllSources` and loads once it is drained, or triggers resolved against
+    /// the old song's bindings play the new one's.
     pub fn load(&mut self, song: Arc<Song>) -> Result<LoadReport, ConductorError> {
         let capacities = self.config.capacities;
         let instruments = &song.file().instruments;
@@ -289,6 +200,17 @@ impl Conductor {
             self.config.block_size,
             capacities.polyphony,
         )?;
+        let mut triggers = TriggerEngine::new(
+            &song,
+            EngineShape {
+                sources: capacities.sources,
+                pending_events: capacities.pending_events,
+                sounding_cap: capacities.sounding_cap,
+            },
+        )?;
+        if let Some(previous) = &self.loaded {
+            triggers.keep_flush_floor_of(&previous.triggers);
+        }
         let sequencer = Sequencer::new(
             Arc::clone(song.background()),
             self.config.sample_rate,
@@ -311,9 +233,11 @@ impl Conductor {
             sequencer,
             background,
             slots,
+            triggers,
         });
         self.transport = TransportState::Stopped;
         self.resume_sample = 0;
+        self.frames_into_block = 0;
         self.publish();
         Ok(report)
     }
@@ -323,20 +247,38 @@ impl Conductor {
         self.loaded.as_ref().map(|loaded| &loaded.song)
     }
 
+    /// The unit part `part`'s cursor plays next (`Loop`) or may play first
+    /// (`Sequence`); `None` without a song or past the parts.
+    pub fn part_cursor(&self, part: usize) -> Option<usize> {
+        self.loaded.as_ref()?.triggers.cursor_of(part)
+    }
+
     /// The slot of the `index`th SoundFont instrument the song declares.
     pub fn slot_mut(&mut self, index: usize) -> Option<&mut InstrumentSlot> {
         self.loaded.as_mut()?.slots.get_mut(index)
     }
 
     /// Render `left.len()` frames into `left` and `right` (overwritten; a longer one keeps
-    /// its extra frames untouched), applying commands at every block boundary. Without a
-    /// song it renders silence.
+    /// its extra frames untouched), applying commands at every block boundary with the
+    /// wall clock read now. Without a song it renders silence.
     pub fn render(&mut self, left: &mut [f32], right: &mut [f32], buses: BusGains) {
+        self.render_at(Instant::now(), left, right, buses);
+    }
+
+    /// [`Conductor::render`] with `now` as the wall clock every drain in this call reads:
+    /// a trigger's age is `now` minus its stamp.
+    pub fn render_at(
+        &mut self,
+        now: Instant,
+        left: &mut [f32],
+        right: &mut [f32],
+        buses: BusGains,
+    ) {
         let frames = left.len().min(right.len());
         let mut offset = 0;
         while offset < frames {
             if self.frames_into_block == 0 {
-                self.drain_commands();
+                self.begin_block(now);
             }
             let chunk = (self.config.block_size - self.frames_into_block).min(frames - offset);
             let range = offset..offset + chunk;
@@ -350,23 +292,31 @@ impl Conductor {
         }
     }
 
-    /// Apply one command now, as a block boundary would.
+    /// Apply one command now, as a block boundary would, reading the wall clock now.
     pub fn apply(&mut self, command: ConductorCommand) {
+        self.apply_at(command, Instant::now());
+    }
+
+    fn apply_at(&mut self, command: ConductorCommand, now: Instant) {
         self.commands_applied += 1;
         let Some(loaded) = self.loaded.as_mut() else {
             return;
         };
         match command {
             ConductorCommand::Play => {
+                loaded.release_slots();
                 loaded.sequencer.seek_to_tick(0, &mut loaded.background);
+                loaded.triggers.restart_at(0, &loaded.song);
                 self.transport = TransportState::Playing;
             }
             ConductorCommand::Stop => {
                 loaded.release_all();
+                loaded.triggers.clear_pending();
                 self.transport = TransportState::Stopped;
             }
             ConductorCommand::Pause if self.transport == TransportState::Playing => {
                 loaded.release_all();
+                loaded.triggers.clear_pending();
                 self.resume_sample = loaded.sequencer.position_sample();
                 self.transport = TransportState::Paused;
             }
@@ -379,24 +329,72 @@ impl Conductor {
             ConductorCommand::Pause | ConductorCommand::Resume => {}
             ConductorCommand::Seek(tick) => match self.transport {
                 TransportState::Playing => {
+                    loaded.release_slots();
                     loaded.sequencer.seek_to_tick(tick, &mut loaded.background);
+                    loaded.triggers.restart_at(tick, &loaded.song);
                 }
+                // The sequencer moves too, so a stop after this publishes the seeked
+                // position rather than the one the pause held.
                 TransportState::Paused => {
-                    let score = loaded.sequencer.score();
-                    self.resume_sample = score
-                        .tempo_map()
-                        .sample_at_tick(tick.min(score.end_tick()), self.config.sample_rate);
+                    loaded.sequencer.seek_to_tick(tick, &mut loaded.background);
+                    self.resume_sample = loaded.sequencer.position_sample();
+                    loaded.triggers.restart_at(tick, &loaded.song);
                 }
                 TransportState::Stopped => {}
             },
             ConductorCommand::SetLooping(looping) => loaded.sequencer.set_looping(looping),
+            ConductorCommand::Trigger {
+                binding,
+                source,
+                stamp,
+            } => {
+                let clock = DrainClock {
+                    song: &loaded.song,
+                    tempo_map: loaded.song.background().tempo_map(),
+                    sample_rate: self.config.sample_rate,
+                    block_frames: self.config.block_size,
+                    drained_at: now,
+                    position_sample: loaded.sequencer.position_sample(),
+                    playing: self.transport == TransportState::Playing,
+                };
+                let trigger = Trigger {
+                    binding,
+                    source,
+                    stamp,
+                };
+                loaded
+                    .triggers
+                    .trigger(trigger, &clock, &mut SlotSink(&mut loaded.slots));
+            }
+            ConductorCommand::DeactivateSource { source } => loaded
+                .triggers
+                .deactivate(source, &mut SlotSink(&mut loaded.slots)),
+            ConductorCommand::StopAllSources { flush_epoch } => loaded
+                .triggers
+                .flush(flush_epoch, &mut SlotSink(&mut loaded.slots)),
         }
     }
 
-    fn drain_commands(&mut self) {
-        while let Ok(command) = self.receiver.try_recv() {
-            self.apply(command);
+    /// Drain this block's commands, then fire the scheduled events due in it — up to
+    /// the loop seam, since a wrap drops what lies beyond.
+    fn begin_block(&mut self, now: Instant) {
+        for _ in 0..self.config.capacities.commands_per_block {
+            let Some(command) = self.receiver.try_recv() else {
+                break;
+            };
+            self.apply_at(command, now);
         }
+        if self.transport != TransportState::Playing {
+            return;
+        }
+        let Some(loaded) = self.loaded.as_mut() else {
+            return;
+        };
+        let block_end = loaded.sequencer.position_sample() + self.config.block_size as u64;
+        let due_before = block_end.min(loaded.sequencer.end_sample());
+        loaded
+            .triggers
+            .fire_due(due_before, &mut SlotSink(&mut loaded.slots));
     }
 
     fn render_chunk(&mut self, left: &mut [f32], right: &mut [f32], buses: BusGains) {
@@ -408,8 +406,15 @@ impl Conductor {
         };
         loaded.background.begin_block();
         if self.transport == TransportState::Playing {
+            let wraps_before = loaded.sequencer.loop_wraps();
             loaded.sequencer.advance(frames, &mut loaded.background);
+            if loaded.sequencer.loop_wraps() != wraps_before {
+                loaded.release_slots();
+                loaded.triggers.restart_at(0, &loaded.song);
+            }
             if loaded.sequencer.has_ended() {
+                loaded.release_slots();
+                loaded.triggers.clear_pending();
                 self.transport = TransportState::Stopped;
             }
         } else {
@@ -472,6 +477,14 @@ impl Conductor {
             snapshot.ended = sequencer.has_ended();
             snapshot.reconstructions = sequencer.reconstructions();
             snapshot.loop_wraps = sequencer.loop_wraps();
+            let triggers = loaded.triggers.counters();
+            snapshot.accepted_triggers = triggers.accepted;
+            snapshot.rejected_triggers = triggers.rejected;
+            snapshot.late_triggers = triggers.late;
+            snapshot.stale_triggers = triggers.stale;
+            snapshot.silent_triggers = triggers.silent;
+            snapshot.live_sources = loaded.triggers.live_sources() as u64;
+            snapshot.pending_events = loaded.triggers.pending_len() as u64;
         }
         self.position.publish(&snapshot);
     }
@@ -480,8 +493,46 @@ impl Conductor {
 impl LoadedSong {
     fn release_all(&mut self) {
         self.background.release_all();
+        self.release_slots();
+    }
+
+    fn release_slots(&mut self) {
         for slot in &mut self.slots {
             slot.release_all();
+        }
+    }
+}
+
+/// The instrument slots as a trigger engine plays them.
+struct SlotSink<'a>(&'a mut [InstrumentSlot]);
+
+impl TriggerSink for SlotSink<'_> {
+    fn note_on(
+        &mut self,
+        slot: usize,
+        source: SourceId,
+        key: u8,
+        velocity: u8,
+    ) -> Option<NoteTicket> {
+        let slot = self.0.get_mut(slot)?;
+        Some(slot.note_on(source, key, velocity).ticket)
+    }
+
+    fn note_off(&mut self, slot: usize, ticket: NoteTicket) {
+        if let Some(slot) = self.0.get_mut(slot) {
+            slot.note_off(ticket);
+        }
+    }
+
+    fn is_sounding(&self, slot: usize, ticket: NoteTicket) -> bool {
+        self.0
+            .get(slot)
+            .is_some_and(|slot| slot.is_sounding(ticket))
+    }
+
+    fn release_source(&mut self, source: SourceId) {
+        for slot in self.0.iter_mut() {
+            slot.release_source(source);
         }
     }
 }

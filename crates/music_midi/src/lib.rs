@@ -21,7 +21,9 @@
 //! - [`Sequencer`] — the background score's clock: channel messages at the right samples,
 //!   a sample-exact loop seam, and the state a seek rebuilds.
 //! - `Conductor` (`synth`) — the background synthesizers and the instrument slots,
-//!   rendered block by block under the game's transport commands.
+//!   rendered block by block under the game's commands: transport, and triggers that
+//!   play a binding's part on its instrument for one source, placed from the
+//!   producer's stamp.
 
 #[cfg(feature = "synth")]
 pub mod commands;
@@ -29,20 +31,26 @@ pub mod commands;
 pub mod conductor;
 pub mod error;
 #[cfg(feature = "synth")]
+mod overflow;
+#[cfg(feature = "synth")]
 pub mod position;
 pub mod sequencer;
 pub mod song_data;
 pub mod song_file;
+#[cfg(feature = "synth")]
+pub mod sources;
 pub mod tempo_map;
 #[cfg(test)]
 mod test_support;
+#[cfg(feature = "synth")]
+pub mod triggers;
 
 #[cfg(feature = "synth")]
 pub use commands::{CommandRejected, ConductorCommand, ConductorHandle};
 #[cfg(feature = "synth")]
 pub use conductor::{
     BackgroundPeak, BusGains, Capacities, Conductor, ConductorConfig, InstrumentSlot, LoadReport,
-    LoadWarning, Song, SourceKey,
+    LoadWarning, NoteTicket, Song,
 };
 pub use error::{Collection, ConductorError, EditError, SongError, SongFileError, SongFileProblem};
 #[cfg(feature = "synth")]
@@ -58,9 +66,13 @@ pub use song_file::{
     parse_song_file, Binding, Instrument, InstrumentSource, Part, PartMode, PresetKey, Quantize,
     ResourceMetadata, SamplePlayback, SongFile, TrackSelector, SONG_FILE_VERSION,
 };
+#[cfg(feature = "synth")]
+pub use sources::SourceId;
 pub use tempo_map::{
     MusicalPosition, TempoChange, TempoMap, TimeSignature, DEFAULT_MICROSECONDS_PER_QUARTER,
 };
+#[cfg(feature = "synth")]
+pub use triggers::{BindingIndex, TriggerCounters};
 
 /// The MIDI parser and writer behind [`SongData`]. Retained events are midly's types, so
 /// it is re-exported here and no other crate names it in its own manifest.
@@ -108,8 +120,25 @@ pub const BLOCK_FRAMES: usize = 64;
 /// Commands the conductor's queue holds before a send is refused.
 pub const COMMAND_QUEUE_CAPACITY: usize = 256;
 
-/// Scheduled events the conductor holds pending at once.
+/// Places of the command queue held back from triggers, so a stop, a pause or a
+/// deactivation always fits behind a queue full of them.
+pub const LIFECYCLE_RESERVE: usize = 16;
+
+/// Commands drained at the start of one block. A full queue drains in
+/// `COMMAND_QUEUE_CAPACITY / COMMANDS_PER_BLOCK` = 4 blocks, 5.8 ms at 44.1 kHz, on top of
+/// the wait for the block itself.
+pub const COMMANDS_PER_BLOCK: usize = 64;
+
+/// Scheduled note-ons and note-offs the conductor holds pending at once.
 pub const PENDING_EVENT_CAPACITY: usize = 512;
+
+/// Source identities the conductor tracks at once, live or remembered dead.
+pub const SOURCE_CAPACITY: usize = 128;
+
+/// How long a command can wait for the audio thread to drain it: the longest device
+/// period measured, the browser's 2048-frame pulls at 53 to 61 ms (natively 42.6 ms). A
+/// trigger older than this plus one block when it is drained is dropped as late.
+pub const DEVICE_PERIOD_ALLOWANCE: std::time::Duration = std::time::Duration::from_millis(61);
 
 /// The largest MIDI file [`SongData::from_smf`] reads, checked before parsing.
 pub const MIDI_BYTE_LIMIT: usize = 1024 * 1024;

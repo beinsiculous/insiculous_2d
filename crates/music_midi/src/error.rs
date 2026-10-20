@@ -219,6 +219,14 @@ pub enum SongFileProblem {
 pub enum ConductorError {
     #[error("the conductor's {capacity} capacity is zero; every capacity holds at least one")]
     ZeroCapacity { capacity: &'static str },
+    #[error(
+        "a lifecycle reserve of {reserve} leaves no room for a trigger in a queue of \
+         {command_queue}"
+    )]
+    ReserveFillsQueue {
+        reserve: usize,
+        command_queue: usize,
+    },
     #[error("sample rate {sample_rate} Hz is outside the synthesizer's 16000 to 192000")]
     SampleRateOutOfRange { sample_rate: u32 },
     #[error("block size {block_size} is outside the synthesizer's 8 to 1024 frames")]
@@ -243,6 +251,8 @@ pub enum ConductorError {
     Synthesizer { reason: String },
     #[error("the song does not fit its MIDI file: {0}")]
     SongDoesNotFit(SongFileProblem),
+    #[error("bindings['{action}'] names a part the song does not declare")]
+    BindingUnresolved { action: String },
     #[error("the song declares {count} instruments; the conductor has {capacity} slots")]
     TooManyInstruments { count: usize, capacity: usize },
     #[error(

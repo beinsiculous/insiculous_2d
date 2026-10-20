@@ -85,8 +85,9 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
   - `song_data.rs` + `song_data/{flatten,edit,export}.rs` - `SongData::from_smf` (owned events, types 0 and 1, notes in `MusicalUnit`s under stable `NoteId`s), the mutation helpers returning before-images, `write_smf`
   - `tempo_map.rs` - `TempoMap`: exact tick ↔ seconds ↔ sample ↔ bar across tempo and time-signature changes; integer beat-crossing counts
   - `sequencer.rs` + `sequencer/{score,fold}.rs` - the background `Sequencer` (pure: the song clock, events on the synthesizer's block grain, the sample-exact loop seam, same-key coalescing), `BackgroundScore` (what export would write, minus trigger tracks), `ChannelStateFold` (the state a seek or wrap rebuilds)
-  - `conductor.rs` + `conductor/{song,background,slots,ledger}.rs` (`synth` feature) - `Conductor` (`new`/`load`/`render`, commands at block boundaries, the bus mix and finite guard), `Song` (SoundFonts parsed from bytes off the audio thread), the two-synthesizer background player, `InstrumentSlot`, the `VoiceLedger`
-  - `commands.rs` + `position.rs` (`synth` feature) - `ConductorCommand` and the never-blocking `ConductorHandle`; `SharedPosition`, the atomics published once a block
+  - `conductor.rs` + `conductor/{config,song,background,slots,ledger}.rs` (`synth` feature) - `Conductor` (`new`/`load`/`render`/`render_at`, a bounded drain and the scheduled events at block boundaries, the bus mix and finite guard), `ConductorConfig`/`Capacities`, `Song` (SoundFonts parsed from bytes off the audio thread), the two-synthesizer background player, `InstrumentSlot`, the `VoiceLedger` and its `NoteTicket`s
+  - `commands.rs` + `position.rs` (`synth` feature) - `ConductorCommand` (transport, `Trigger`, `DeactivateSource`, `StopAllSources`) and the never-blocking `ConductorHandle` with its lifecycle reserve; `SharedPosition`, the atomics published once a block, trigger counters included
+  - `sources.rs` + `triggers.rs` + `triggers/{cursor,quantize}.rs` + `overflow.rs` (`synth` feature) - `SourceId` and the `SourceTable` (lazy activation, epochs, the flush floor); the trigger engine (bindings to parts and slots, one shared cursor per part, placement from the producer's stamp onto the beat grid); the bounded scheduled-event buffer and the rule that refuses a trigger whole
 
 - **crates/common/** - Shared types and utilities
   - `rect.rs` / `color.rs` / `transform.rs` / `camera.rs` / `time.rs` / `macros.rs` - Rect, Color, transforms, CameraUniform, Time
@@ -101,7 +102,7 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
   - `hello_world.rs` - Physics platformer with UI, audio, ECS, and scene graph
   - `editor_demo.rs` - Editor wrapping the platformer (`--features editor`, shares `hello_world/platformer.rs`)
   - `behavior_demo.rs` - Scene-driven behaviors
-  - `conductor_background.rs` - A MIDI fixture's background score through the conductor on the music bus, with render-cost and drain-gap log lines
+  - `conductor_background.rs` - A MIDI fixture through the conductor on the music bus — by default the *Napolitan Dance* cast fixture with keys 1–4 triggering two parts on two instruments — with render-cost, drain-gap and trigger-counter log lines
   - Real games live in `../games/` (pong, breakout, space_invaders, snake, asteroids) — see `PROJECT_ROADMAP.md`
 
 ## Coding Guidelines

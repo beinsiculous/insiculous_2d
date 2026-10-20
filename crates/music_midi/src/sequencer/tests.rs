@@ -227,6 +227,40 @@ fn seeking_to_tick_zero_keeps_its_tempo_and_programs() {
 }
 
 #[test]
+fn a_seek_to_the_sample_of_a_program_change_folds_it_into_the_rebuilt_state() {
+    let song = song_with_state_changes();
+    let mut sequencer = sequencer(&song, BLOCK_GRAIN, false);
+    let mut recorder = Recorder::default();
+    let second_beat_sample = song.tempo_map().sample_at_tick(384, SAMPLE_RATE);
+
+    sequencer.seek_to_sample(second_beat_sample, &mut recorder);
+
+    assert_eq!(second_beat_sample, 250);
+    assert_eq!(
+        (recorder.state.program(0), recorder.state.controller(0, 7)),
+        (Some(41), Some(70)),
+        "the reconstruction itself carries the destination's program and volume"
+    );
+    assert!(
+        recorder.sends.is_empty(),
+        "nothing is sent until the first grain"
+    );
+    sequencer.advance(1, &mut recorder);
+    assert_eq!(
+        recorder.note_ons_from(0),
+        vec![(
+            0,
+            0,
+            ChannelMessage::NoteOn {
+                key: 64,
+                velocity: 100
+            }
+        )],
+        "the destination's own note is sent again; the bass held across it is not"
+    );
+}
+
+#[test]
 fn a_seek_rebuilds_the_same_channel_state_as_playing_up_to_the_destination() {
     let state_song = song_with_state_changes();
     let (egmont, _) = read(EGMONT);
@@ -439,4 +473,37 @@ fn replaying_a_fold_rebuilds_its_state_with_registered_parameters_in_order() {
         "the pitch-bend range is entered with its parameter selected, not in controller-number order"
     );
     assert_eq!(selection_before(data_entry_at(70)), Some(1));
+}
+
+#[test]
+fn the_cast_fixture_is_its_source_plus_one_program_on_each_melodic_channel() {
+    let (source, _) = read(NAPOLITAN_DANCE_TYPE_ZERO);
+    let (cast, _) = read(NAPOLITAN_DANCE_CAST);
+    let source_events = background(&source).events().to_vec();
+    let cast_events = background(&cast).events().to_vec();
+
+    let programs: Vec<(u64, u8, ChannelMessage)> = cast_events
+        .iter()
+        .filter(|event| matches!(event.message, ChannelMessage::Program { .. }))
+        .map(|event| (event.tick, event.channel, event.message))
+        .collect();
+    assert_eq!(
+        programs,
+        vec![
+            (0, 1, ChannelMessage::Program { program: 73 }),
+            (0, 3, ChannelMessage::Program { program: 0 }),
+            (0, 4, ChannelMessage::Program { program: 0 }),
+        ],
+        "the flute's channel plays the flute and both piano channels the piano"
+    );
+    let without_programs: Vec<(u64, u8, ChannelMessage)> = cast_events
+        .iter()
+        .filter(|event| !matches!(event.message, ChannelMessage::Program { .. }))
+        .map(|event| (event.tick, event.channel, event.message))
+        .collect();
+    let original: Vec<(u64, u8, ChannelMessage)> = source_events
+        .iter()
+        .map(|event| (event.tick, event.channel, event.message))
+        .collect();
+    assert_eq!(without_programs, original, "and nothing else changed");
 }

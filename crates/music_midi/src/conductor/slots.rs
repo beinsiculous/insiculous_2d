@@ -9,8 +9,9 @@ use std::sync::Arc;
 
 use rustysynth::{SoundFont, Synthesizer, SynthesizerSettings};
 
-use super::ledger::{LedgerAction, LedgerCounters, NoteStart, SourceKey, VoiceLedger};
+use super::ledger::{LedgerAction, LedgerCounters, NoteStart, NoteTicket, VoiceLedger};
 use crate::error::ConductorError;
+use crate::sources::SourceId;
 
 /// rustysynth treats MIDI channel 10 (index 9) as General MIDI percussion and adds 128
 /// to any bank selected on it, so a melodic preset cannot live there: lanes skip it.
@@ -72,21 +73,30 @@ impl InstrumentSlot {
     }
 
     /// Start `key` for `source`; see [`VoiceLedger::note_on`].
-    pub fn note_on(&mut self, source: SourceKey, key: u8, velocity: u8) -> NoteStart {
+    pub fn note_on(&mut self, source: SourceId, key: u8, velocity: u8) -> NoteStart {
         let synthesizer = &mut self.synthesizer;
         self.ledger
             .note_on(source, key, velocity, |action| apply(synthesizer, action))
     }
 
-    /// Release `key` for `source`, if it is still sounding.
-    pub fn note_off(&mut self, source: SourceKey, key: u8) {
+    /// Release the note `ticket` started, if it is still sounding.
+    pub fn note_off(&mut self, ticket: NoteTicket) {
         let synthesizer = &mut self.synthesizer;
         self.ledger
-            .note_off(source, key, |action| apply(synthesizer, action));
+            .note_off(ticket, |action| apply(synthesizer, action));
+    }
+
+    pub fn is_sounding(&self, ticket: NoteTicket) -> bool {
+        self.ledger.is_sounding(ticket)
+    }
+
+    /// The lane `source` holds, if it has sounding notes.
+    pub fn lane_of(&self, source: SourceId) -> Option<usize> {
+        self.ledger.lane_of(source)
     }
 
     /// Release every note `source` holds.
-    pub fn release_source(&mut self, source: SourceKey) {
+    pub fn release_source(&mut self, source: SourceId) {
         let synthesizer = &mut self.synthesizer;
         self.ledger
             .release_source(source, |action| apply(synthesizer, action));

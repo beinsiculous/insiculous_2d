@@ -170,7 +170,7 @@ Wait for all to complete, then verify with `cargo test --workspace`.
 | `ui` | Immediate-mode widgets, fonts | `cargo test -p ui` |
 | `input` | Keyboard, mouse, gamepad, actions | `cargo test -p input` |
 | `audio` | Rodio playback, SFX and music buses | `cargo test -p audio` |
-| `music_midi` | Song sidecar schema, owned MIDI data, tempo map, background sequencer, conductor (no I/O, no rodio) | `cargo test -p music_midi` |
+| `music_midi` | Song sidecar schema, owned MIDI data, tempo map, background sequencer, conductor, sources and triggers (no I/O, no rodio) | `cargo test -p music_midi` |
 | `common` | Math, shared types | `cargo test -p common` |
 
 ## Quality Review Role

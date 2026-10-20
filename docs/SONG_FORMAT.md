@@ -136,7 +136,14 @@ both.
   exhausted and triggers are silent until the song loops, which resets the cursor.
 - **`AtSongPosition`** — a trigger plays whatever unit is sounding at the song position it
   lands on (after quantization, through every tempo change), with no cursor; a trigger in a
-  rest plays nothing.
+  rest plays nothing. "Sounding" means the unit that started last at or before that
+  position: the trigger plays what remains of its notes, each ending where it was written
+  to end. When that unit has already ended the position is a rest, even if an earlier,
+  longer note still rings over it in the file.
+
+Every mode plays a unit's notes at their own velocities and their own written lengths,
+measured through the tempo map from where they play. A note shorter than a 64-frame block
+(1.45 ms) sounds for one block.
 
 **Loop and Sequence do not follow the background's harmony.** A `Loop` part plays its
 authored notes in order whenever the player acts, so a unit written over one chord can
@@ -144,6 +151,34 @@ sound over another — the part's notes are guaranteed to be *its* notes, not to
 background at that moment. Write a looping part to suit every chord it may land on (a
 pentatonic riff, a percussion line), or use `AtSongPosition`, which always plays the unit
 written for that moment. The composer is to show this caveat beside the mode.
+
+### Timing: the stamp and the grid
+
+The game stamps every trigger with the moment the player acted, and the conductor places
+the trigger from that stamp, not from when the audio thread got to it — the audio thread
+takes commands only once a device period, every 43 ms natively and up to 61 ms in a
+browser, so placing by the drain would put every trigger on the drain's beat. The stamp is turned into a song position to within one device period plus one
+block; that is how precise "when the player acted" can be.
+
+- **`quantize: Off`** — the notes start on the next 64-frame block, at once.
+- **`Beat`, `Eighth`, `Sixteenth`** — the grid is the song's beats (the time signature's
+  beat, so a half note in 3/2), or eighths or sixteenths laid from each beat's start. A
+  trigger stamped no more than one block after a grid line was on time and plays at once;
+  one stamped later waits for the next line. A trigger never plays earlier than it was
+  drained.
+- **Every start lands on a 64-frame block**, up to 1.45 ms before the exact sample: the
+  synthesizer applies a note only at the start of its next block. Two triggers on the same
+  grid line start together.
+- **A trigger older than one block plus 61 ms when the conductor drains it is dropped**,
+  so a tab that was asleep never wakes to a burst of old notes. So is any trigger while the
+  song is paused or stopped.
+
+A trigger that does not fit is refused whole and its part's cursor does not move: when the
+conductor's 512 scheduled events are full, or when its instrument already waits on the
+grid to start as many notes as it can hold sounding, 24. Past 24 notes sounding at once on one instrument, the oldest
+is released to make room — it rings out its tail rather than being cut. A loop wrap, a
+seek and `Play` release every triggered note and drop every scheduled one; `Loop` and
+`Sequence` cursors restart at the first unit at or after the new position.
 
 ## What fails, and when
 

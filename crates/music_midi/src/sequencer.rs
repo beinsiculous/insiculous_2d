@@ -166,14 +166,20 @@ impl Sequencer {
     }
 
     /// Move to `sample` of the song (past the end means the end) and rebuild the
-    /// channels there: every event on or after it is sent again.
+    /// channels there, by the rule [`Sequencer::seek_to_tick`] keeps: state events on
+    /// the destination sample are folded, its notes are sent again.
     pub fn seek_to_sample(&mut self, sample: u64, sink: &mut impl SequencerSink) {
         let sample = sample.min(self.end_sample);
+        // Two ticks share a sample only when a tick is shorter than a sample; the
+        // predicate is then not monotone there, but every event left after the cursor
+        // on the destination sample is sent in the first grain, so either boundary
+        // rebuilds the same sound.
         let cursor = self.score.events().partition_point(|event| {
-            self.score
+            let event_sample = self
+                .score
                 .tempo_map()
-                .sample_at_tick(event.tick, self.sample_rate)
-                < sample
+                .sample_at_tick(event.tick, self.sample_rate);
+            event_sample < sample || (event_sample == sample && event.message.is_state())
         });
         self.reconstruct(cursor, sample, sink);
     }

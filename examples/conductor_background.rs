@@ -1,23 +1,36 @@
-//! Conductor Background — a MIDI song's background score played by the conductor.
+//! Conductor Background — a MIDI song played by the conductor, with keys that trigger
+//! its parts.
 //!
-//! Loads a fixture from `crates/music_midi/fixtures/` (Tchaikovsky's *Napolitan Dance*;
-//! its type-0 derivative, whose tambourine is moved to General MIDI percussion, with
-//! `--fixture napolitan-type0`; or Beethoven's *Egmont* overture with `--fixture egmont`)
-//! with a SoundFont, builds the conductor and plays it on the music bus once audio is
-//! enabled. Every ten seconds it
-//! prints a `conductor=on` line: render cost per block, the longest gap between two
-//! blocks (how long a command can wait), the longest block that rebuilt the channels,
-//! frame times, the position and the counters.
+//! Loads a fixture from `crates/music_midi/fixtures/` with a SoundFont, builds the
+//! conductor and plays it on the music bus once audio is enabled. The default is the
+//! *Napolitan Dance*'s cast derivative (flute, two piano hands and the tambourine, each
+//! on its own General MIDI program); `--fixture napolitan` plays the Mutopia file itself,
+//! `--fixture napolitan-type0` its type-0 derivative and `--fixture egmont` Beethoven's
+//! *Egmont* overture.
 //!
-//! Controls: Space pauses and resumes, K seeks to bar 8, L turns looping off and on,
-//! Escape quits.
+//! **Triggers.** For the cast fixture the example writes a sidecar with two parts — the
+//! flute's melody (channel 2) and the piano's left hand (channel 5), which then leave
+//! the background — two instruments, the piano and the drum kit, and four bindings: keys
+//! 1 and 2 walk the melody on the piano and on the kit, one shared cursor between them;
+//! keys 3 and 4 walk the left hand the same way. `--background-only` writes no parts, so
+//! the whole score plays by itself.
+//!
+//! Every ten seconds it prints a `conductor=on` line: render cost per block, the longest
+//! gap between two blocks (how long a command can wait), the longest block that rebuilt
+//! the channels, frame times, the position and the counters, triggers included.
+//!
+//! Controls: 1–4 trigger, Space pauses and resumes, K seeks to bar 8, L turns looping
+//! off and on, Escape quits.
 //!
 //! Run with: cargo run --release --example conductor_background -- [SOUNDFONT]
-//!   [--fixture napolitan-type0|egmont] [--seconds N]
+//!   [--fixture napolitan|napolitan-type0|egmont] [--background-only] [--seconds N]
 //! The SoundFont defaults to the spike's cast bank when its `prepare_assets.sh` has been
-//! run, and to the sine test bank otherwise. `--seconds N` quits after N seconds and
-//! seeks to bar 8 once halfway, so an unattended run measures a seek as well as the loop
-//! wraps.
+//! run, and to the sine test bank otherwise; the cast bank has no flute, so its flute
+//! channel falls back to the piano — any General MIDI bank, such as
+//! `/usr/share/sounds/sf2/TimGM6mb.sf2`, plays it as a flute. The sine bank has no kit
+//! either, and the kit bindings play its one preset. `--seconds N` quits after N seconds
+//! and seeks to bar 8 once halfway, so an unattended run measures a seek as well as the
+//! loop wraps.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -27,8 +40,9 @@ use std::time::Duration;
 use common::clock::Instant;
 use engine_core::prelude::*;
 use music_midi::{
-    parse_song_file, BusGains, ChannelStateFold, Conductor, ConductorCommand, ConductorConfig,
-    ConductorHandle, LoadWarning, Song, SongData, TempoMap, TransportState, BLOCK_FRAMES,
+    parse_song_file, BindingIndex, BusGains, ChannelStateFold, Conductor, ConductorCommand,
+    ConductorConfig, ConductorHandle, LoadWarning, Song, SongData, SourceId, TempoMap,
+    TransportState, BLOCK_FRAMES,
 };
 
 /// Anchor asset paths to the repository so the example runs from any working directory.
@@ -37,11 +51,20 @@ const CAST_SOUNDFONT: &str = "coordination/conductor/spike/assets/soundfonts/cas
 const SINE_SOUNDFONT: &str = "crates/music_midi/fixtures/sine.sf2";
 const NAPOLITAN_DANCE: &str = "crates/music_midi/fixtures/dansenapolitaine.mid";
 const NAPOLITAN_DANCE_TYPE_ZERO: &str = "crates/music_midi/fixtures/dansenapolitaine-type0.mid";
+const NAPOLITAN_DANCE_CAST: &str = "crates/music_midi/fixtures/dansenapolitaine-cast.mid";
 const EGMONT: &str = "crates/music_midi/fixtures/Egmont.mid";
 const SAMPLE_RATE: u32 = 44_100;
 const REPORT_SECONDS: f32 = 10.0;
 /// Bar 8 as musicians count it; bars count from zero in the tempo map.
 const SEEK_BAR: u64 = 7;
+/// The keyboard is one source for the whole run: it never leaves the screen.
+const KEYBOARD: SourceId = SourceId {
+    id: 1,
+    generation: 0,
+    epoch: 1,
+};
+/// The four keys' actions, in key order.
+const ACTIONS: [&str; 4] = ["melody-piano", "melody-kit", "bass-piano", "bass-kit"];
 
 /// What the audio thread measures, readable from the game thread.
 #[derive(Default)]
@@ -138,22 +161,26 @@ impl rodio::Source for ConductorSource {
 struct Settings {
     sound_font: PathBuf,
     fixture: &'static str,
+    background_only: bool,
     quit_after_seconds: Option<f32>,
 }
 
 impl Settings {
     fn from_arguments() -> Self {
         let mut sound_font = None;
-        let mut fixture = NAPOLITAN_DANCE;
+        let mut fixture = NAPOLITAN_DANCE_CAST;
+        let mut background_only = false;
         let mut quit_after_seconds = None;
         let mut arguments = std::env::args().skip(1);
         while let Some(argument) = arguments.next() {
             match argument.as_str() {
                 "--fixture" => match arguments.next().as_deref() {
                     Some("egmont") => fixture = EGMONT,
+                    Some("napolitan") => fixture = NAPOLITAN_DANCE,
                     Some("napolitan-type0") => fixture = NAPOLITAN_DANCE_TYPE_ZERO,
-                    other => println!("unknown fixture {other:?}; playing the Napolitan Dance"),
+                    other => println!("unknown fixture {other:?}; playing the cast"),
                 },
+                "--background-only" => background_only = true,
                 "--seconds" => {
                     quit_after_seconds = arguments.next().and_then(|value| value.parse().ok())
                 }
@@ -171,8 +198,43 @@ impl Settings {
         Self {
             sound_font,
             fixture,
+            background_only,
             quit_after_seconds,
         }
+    }
+
+    /// The sidecar this run plays: the cast fixture's parts and bindings unless the
+    /// background plays alone.
+    fn sidecar(&self, sound_font_label: &str) -> String {
+        if self.background_only || self.fixture != NAPOLITAN_DANCE_CAST {
+            return format!(r#"SongFile(version: 1, soundfont: "{sound_font_label}")"#);
+        }
+        // The sine test bank has one preset, so there the kit is that preset too.
+        let kit_bank = if self.sound_font == Path::new(SINE_SOUNDFONT) {
+            0
+        } else {
+            128
+        };
+        format!(
+            r#"SongFile(
+                version: 1,
+                soundfont: "{sound_font_label}",
+                parts: [
+                    (name: "melody", track: Name("channel 2")),
+                    (name: "bass", track: Name("channel 5")),
+                ],
+                instruments: [
+                    (name: "piano", source: SoundFont(path: "{sound_font_label}", bank: 0, preset: 0)),
+                    (name: "kit", source: SoundFont(path: "{sound_font_label}", bank: {kit_bank}, preset: 0)),
+                ],
+                bindings: [
+                    (action: "melody-piano", part: "melody", instrument: "piano"),
+                    (action: "melody-kit", part: "melody", instrument: "kit"),
+                    (action: "bass-piano", part: "bass", instrument: "piano"),
+                    (action: "bass-kit", part: "bass", instrument: "kit"),
+                ],
+            )"#
+        )
     }
 }
 
@@ -189,6 +251,8 @@ struct ConductorBackground {
     source: Option<ConductorSource>,
     handle: Option<ConductorHandle>,
     tempo_map: Option<TempoMap>,
+    /// The bindings keys 1 to 4 fire, resolved once from their actions.
+    bindings: [Option<BindingIndex>; 4],
     stats: Arc<RenderStats>,
     seek_tick: u64,
     looping: bool,
@@ -204,6 +268,7 @@ impl ConductorBackground {
             source: None,
             handle: None,
             tempo_map: None,
+            bindings: [None; 4],
             stats: Arc::new(RenderStats::default()),
             seek_tick: 0,
             looping: true,
@@ -221,7 +286,7 @@ impl ConductorBackground {
         let sound_font_label = self.settings.sound_font.to_string_lossy().into_owned();
         let sound_font_bytes = read(&self.settings.sound_font)?;
         let midi_bytes = read(Path::new(self.settings.fixture))?;
-        let sidecar = format!(r#"SongFile(version: 1, soundfont: "{sound_font_label}")"#);
+        let sidecar = self.settings.sidecar(&sound_font_label);
         let file =
             parse_song_file("conductor_background", &sidecar).map_err(|error| error.to_string())?;
         let (data, _) = SongData::from_smf(&midi_bytes).map_err(|error| error.to_string())?;
@@ -240,6 +305,7 @@ impl ConductorBackground {
         );
 
         let tempo_map = song.data().tempo_map();
+        self.bindings = ACTIONS.map(|action| song.binding_index(action));
         self.seek_tick = bar_start_tick(&tempo_map, SEEK_BAR);
         report_fold_costs(&song, self.seek_tick);
         let (mut conductor, handle) =
@@ -280,6 +346,16 @@ impl ConductorBackground {
         }
     }
 
+    fn trigger(&self, key_index: usize) {
+        if let Some(binding) = self.bindings[key_index] {
+            self.send(ConductorCommand::Trigger {
+                binding,
+                source: KEYBOARD,
+                stamp: Instant::now(),
+            });
+        }
+    }
+
     fn report(&mut self) {
         let (Some(handle), Some(tempo_map)) = (&self.handle, &self.tempo_map) else {
             return;
@@ -294,7 +370,8 @@ impl ConductorBackground {
         println!(
             "conductor=on t={:.0}s block_mean={:.1}us block_longest={:.1}us drain_gap_longest={:.2}ms \
              reconstruction_block_longest={:.1}us frame_mean={:.2}ms frame_longest={:.2}ms \
-             bar={} beat={} transport={:?} wraps={} reconstructions={} non_finite={} applied={} rejected={}",
+             bar={} beat={} transport={:?} wraps={} reconstructions={} non_finite={} applied={} rejected={} \
+             triggers_accepted={} triggers_rejected={} triggers_late={} triggers_stale={} triggers_silent={} pending={}",
             self.elapsed_seconds,
             microseconds(&stats.render_nanoseconds_total) / blocks as f64,
             microseconds(&stats.render_nanoseconds_longest),
@@ -310,6 +387,12 @@ impl ConductorBackground {
             position.non_finite_samples,
             position.commands_applied,
             position.commands_rejected,
+            position.accepted_triggers,
+            position.rejected_triggers,
+            position.late_triggers,
+            position.stale_triggers,
+            position.silent_triggers,
+            position.pending_events,
         );
     }
 }
@@ -348,7 +431,7 @@ impl Game for ConductorBackground {
         println!("=== Conductor Background ===");
         println!("SoundFont: {}", self.settings.sound_font.display());
         println!("Song: {}", self.settings.fixture);
-        println!("Controls: Space pause/resume, K bar 8, L looping, Escape quit");
+        println!("Controls: 1-4 trigger, Space pause/resume, K bar 8, L looping, Escape quit");
         let base_path = PathBuf::from(ctx.assets.base_path());
         if let Err(error) = self.build(&base_path) {
             println!("the conductor cannot start: {error}");
@@ -381,10 +464,23 @@ impl Game for ConductorBackground {
                 ctx.request_exit();
             }
         }
+        let triggered = self
+            .handle
+            .as_ref()
+            .map(|handle| handle.position().snapshot())
+            .unwrap_or_default();
         let lines = [
             "Conductor Background".to_string(),
+            "1 melody/piano  2 melody/kit  3 bass/piano  4 bass/kit".to_string(),
             "Space pause/resume   K bar 8   L looping".to_string(),
-            format!("looping: {}", self.looping),
+            format!(
+                "looping: {}   triggers played {} refused {} late {} silent {}",
+                self.looping,
+                triggered.accepted_triggers,
+                triggered.rejected_triggers,
+                triggered.late_triggers,
+                triggered.silent_triggers
+            ),
         ];
         for (row, line) in lines.iter().enumerate() {
             ctx.ui
@@ -406,6 +502,10 @@ impl Game for ConductorBackground {
                 };
                 self.send(command);
             }
+            KeyCode::Digit1 => self.trigger(0),
+            KeyCode::Digit2 => self.trigger(1),
+            KeyCode::Digit3 => self.trigger(2),
+            KeyCode::Digit4 => self.trigger(3),
             KeyCode::KeyK => self.send(ConductorCommand::Seek(self.seek_tick)),
             KeyCode::KeyL => {
                 self.looping = !self.looping;
@@ -419,7 +519,7 @@ impl Game for ConductorBackground {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = GameConfig::new("Conductor Background - Insiculous 2D")
-        .with_size(640, 160)
+        .with_size(640, 190)
         .with_clear_color(0.08, 0.08, 0.1, 1.0)
         .with_asset_base_path(REPOSITORY_DIR);
     run_game(ConductorBackground::new(Settings::from_arguments()), config)?;

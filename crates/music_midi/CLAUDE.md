@@ -2,8 +2,9 @@
 
 The conductor and its song core: the `.mid.ron` song sidecar, a Standard MIDI File as owned
 and editable data, the tempo map, the background sequencer, and the conductor that renders a
-song's background score and instrument slots. `docs/SONG_FORMAT.md` is the author's guide to
-the sidecar; this file is the code's.
+song's background score and instrument slots, and plays its parts when the game triggers
+their bindings. `docs/SONG_FORMAT.md` is the author's guide to the sidecar; this file is
+the code's.
 
 ## The contract
 - **No I/O, no rodio.** Bytes in, data out. The audio crate reads files, decodes
@@ -12,24 +13,31 @@ the sidecar; this file is the code's.
 - **Exactly two dependencies of its own**, `midly` and `rustysynth`, pinned in the root
   `[workspace.dependencies]`; any third is a plan change. Both are re-exported
   (`music_midi::midly`, `music_midi::rustysynth`) so no other crate names them. `serde`,
-  `ron` and `thiserror` are the workspace's.
+  `ron` and `thiserror` are the workspace's, and so is the engine's own `common`, under
+  `synth` only: a trigger's stamp is `common::clock::Instant`, the browser's clock on
+  the web.
 - **The `synth` feature** (default on) owns rustysynth and everything that renders: the
-  conductor, its commands and its published position. The schema, the data model and the
+  conductor, its commands, its published position, the sources and the triggers. The schema, the data model and the
   sequencer build and test with `--no-default-features`, which is how the editor depends
   on the crate.
 - **The audio thread never allocates or parses.** `Song::new` parses the SoundFonts and
-  prepares the background score on the thread that builds it; `Conductor::load` only
-  builds synthesizers; `Conductor::render` touches preallocated buffers.
+  prepares the background score on the thread that builds it; `Conductor::load` builds
+  the synthesizers and sizes the trigger engine (parts, bindings, the source table, the
+  scheduled-event buffer) to its capacities; `Conductor::render` touches preallocated
+  buffers. A binding is resolved from its action on the game thread
+  (`Song::binding_index`), so `render` never compares a string.
 - **Authored data fails loud**, naming the file, the collection and the entry
   (`parts['drums']`), in the manner of `engine_core`'s `sheet_file.rs`.
 
 ## File Map
 - `lib.rs` — crate docs, re-exports, and the frozen capacities: 8 instrument slots, 15
-  lanes and 24 sounding notes a slot, a 128-voice synthesizer pool, 16 sample voices, a
-  64-frame block, 256 queued commands, 512 pending events (the trigger scheduler's bound,
-  which arrives with triggering; the 16 sample voices are the sample slot's, which arrives
-  with samples — until then neither bounds anything), ±24 semitones for a sample,
-  1 ms to 10 s of sample, 1 MiB and 262 144 events of MIDI.
+  lanes and 24 sounding notes a slot, a 128-voice synthesizer pool, 16 sample voices (the
+  sample slot's, which arrives with samples — until then it bounds nothing), a 64-frame
+  block, 256 queued commands with 16 of them reserved for lifecycle and transport, 64
+  commands drained a block (a full queue drains in 4 blocks, 5.8 ms at 44.1 kHz, after
+  the drain gap), 512 scheduled events, 128 tracked sources, the 61 ms device-period
+  allowance of the late tolerance, ±24 semitones for a sample, 1 ms to 10 s of sample,
+  1 MiB and 262 144 events of MIDI.
 - `error.rs` — `SongError` (reading and writing MIDI), `EditError` (a refused mutation),
   `SongFileError` = the file's label + a `SongFileProblem`, `Collection`, and
   `ConductorError` (a conductor that cannot be built or a song it cannot load).
@@ -58,9 +66,12 @@ the sidecar; this file is the code's.
   `ChannelMessage`, `ScoreEvent`.
 - `sequencer/fold.rs` — `ChannelStateFold`: each channel's program, bank, controllers,
   registered parameters and pitch bend folded from the score, and their replay order.
-- `conductor.rs` (`synth`) — `Conductor` (`new`, `load`, `render`, `apply`),
-  `ConductorConfig`, `Capacities`, `BusGains`, `LoadReport`/`LoadWarning`; the block loop,
-  the transport, the mix and the finite guard.
+- `conductor.rs` (`synth`) — `Conductor` (`new`, `load`, `render`, `render_at`, `apply`,
+  `part_cursor`), `LoadReport`/`LoadWarning`; the block loop (a bounded drain, then the
+  scheduled events due), the transport and what it releases, the command dispatch, the
+  mix and the finite guard.
+- `conductor/config.rs` — `ConductorConfig`, `Capacities`, `BusGains`, and every check
+  `Conductor::new` makes of them.
 - `conductor/song.rs` — `Song::new`: SoundFonts from bytes, trigger tracks from the
   parts, the background score, instrument layering, the background's peak voice count.
 - `conductor/background.rs` — `BackgroundPlayer`: two synthesizers taking turns as the
@@ -68,13 +79,26 @@ the sidecar; this file is the code's.
 - `conductor/slots.rs` — `InstrumentSlot`: one synthesizer per instrument, lanes skipping
   the percussion channel.
 - `conductor/ledger.rs` — `VoiceLedger` (pure): sounding notes bounded exactly, lanes
-  leased while sounding and stolen oldest-first, `SourceKey`.
-- `commands.rs` (`synth`) — `ConductorCommand`, `ConductorHandle` (the bounded, never
-  blocking sender), `CommandRejected`.
+  leased while sounding and stolen oldest-first, a `NoteTicket` for every note so a
+  note-off ends that note and no other.
+- `commands.rs` (`synth`) — `ConductorCommand` (transport, `Trigger`, `DeactivateSource`,
+  `StopAllSources`), `ConductorHandle` (the bounded, never blocking sender with the
+  in-flight count and the lifecycle reserve), `CommandRejected`.
 - `position.rs` (`synth`) — `SharedPosition` (atomics published once a block),
-  `PositionSnapshot`, `TransportState`.
+  `PositionSnapshot` (the trigger counters included), `TransportState`.
+- `sources.rs` (`synth`) — `SourceId { id, generation, epoch }` and `SourceTable`: lazy
+  activation, deactivation, supersession, the flush floor, bounded eviction.
+- `triggers.rs` (`synth`) — `TriggerEngine`: bindings to parts and slots, a trigger's
+  path from stamp to notes, the counters, `BindingIndex`, `Song::binding_index`.
+- `triggers/cursor.rs` — `PartCursor`: `Loop`, `Sequence` and `AtSongPosition`, choosing
+  a unit apart from consuming it.
+- `triggers/quantize.rs` — the stamp's song sample and the grid placement, with the
+  mapping's error bound.
+- `overflow.rs` (`synth`) — `PendingEvents`, the scheduled-event buffer, and the rule that
+  refuses a trigger before its notes would overflow it or its instrument.
 - `test_support.rs` — test-only: the fixtures and a hand-built-SMF helper.
-- `fixtures/` — the Mutopia MIDI files, the derived type-0 file, the generated sine
+- `fixtures/` — the Mutopia MIDI files, the derived type-0 file and its cast derivative
+  (`scripts/make_cast_fixture.py`: a program on each melodic channel), the generated sine
   SoundFont and WAVs; each named in `fixtures/LICENSE` (the provenance gate checks).
 
 ## Pitfalls and their guard tests
@@ -113,6 +137,21 @@ the sidecar; this file is the code's.
 | Every output sample passes the finite guard: a value that is not finite is written as 0 and counted | `src/conductor/tests.rs a_mix_that_is_not_finite_is_written_as_silence_and_counted` `src/conductor/tests.rs a_storm_of_random_notes_and_seeks_never_writes_a_non_finite_sample` |
 | Pause releases every note and holds the clock; resume rebuilds the channels at the held sample, so nothing bursts | `src/conductor/tests.rs pause_holds_the_clock_and_resume_continues_from_the_same_sample` |
 | Commands drain at block boundaries, not at the start of every `render` call: a render that ends mid-block leaves the next command for the call after | — none |
+| A resume rebuilds the channels by `seek_to_tick`'s rule: state events on the destination sample are folded, its notes sent again | `src/sequencer/tests.rs a_seek_to_the_sample_of_a_program_change_folds_it_into_the_rebuilt_state` `src/conductor/tests/triggering.rs resuming_on_a_sample_carrying_a_state_change_sounds_as_a_seek_to_it_does` |
+| A seek while paused moves the sequencer as well as the resume point, or a stop after it publishes the position the pause held | `src/conductor/tests/triggering.rs a_seek_while_paused_is_the_position_a_stop_then_publishes` |
+| `Play`, a seek and a loop wrap release every slot's notes and drop every scheduled event; a pause and a stop do too, keeping the cursors; scheduled events past the loop seam are never fired before the wrap drops them | `src/conductor/tests/triggering.rs play_releases_every_triggered_note` `src/conductor/tests/triggering.rs a_loop_wrap_and_a_pause_never_hang_a_triggered_note` |
+| A note-off names its note's ticket, never its source and key: a source striking the same key again keeps the newer note its whole length | `src/conductor/ledger/tests.rs a_note_off_ends_only_its_own_note_when_the_source_has_struck_the_key_again` |
+| The lifecycle reserve is accounting on one channel: the sender claims its place before `try_send` (and gives it back on failure), a trigger only below `capacity − reserve`, so two racing senders cannot both take the last place and a stop always fits | `src/conductor/tests/saturation.rs a_ten_thousand_trigger_storm_never_crowds_out_a_lifecycle_command_and_keeps_the_cursor` `src/conductor/tests/saturation.rs a_lifecycle_storm_past_the_queue_is_lost_by_none_once_the_host_retries` |
+| One channel keeps order: a trigger sent before a deactivation is drained, and plays, before it | `src/conductor/tests/saturation.rs a_consumer_stalled_ten_blocks_drains_triggers_before_the_deactivation_that_followed_them` |
+| A trigger is placed from its stamp, never from its drain, and one older than a block plus 61 ms when drained is dropped: a stalled consumer's backlog never bursts | `src/conductor/tests/saturation.rs two_hundred_triggers_queued_before_a_two_second_stall_never_sound` `src/triggers/tests.rs a_trigger_older_than_the_tolerance_is_dropped_and_its_cursor_kept` |
+| Choosing a unit and consuming it are two steps, so a refused trigger — its instrument's waiting note-ons at the sounding cap, or no room in the scheduler — never moves the cursor | `src/triggers/tests.rs past_the_instruments_cap_the_newest_scheduled_trigger_is_refused_and_its_cursor_kept` `src/triggers/tests.rs a_full_scheduler_refuses_the_newest_trigger_and_keeps_its_cursor` |
+| An epoch is one count across every source, so a flush can name a point in it; the floor outlives a load, so a straggler of a flushed epoch never activates on the next song | `src/sources/tests.rs a_flush_ends_only_sources_activated_before_its_epoch_and_refuses_those_epochs_after` `src/conductor/tests/saturation.rs a_flush_through_a_full_channel_spares_the_epoch_queued_behind_it_and_the_next_song_plays` |
+| Naming a newer activation of an id ends the older one; a deactivation of the older one arriving late never touches the newer | `src/sources/tests.rs a_recycled_id_supersedes_its_old_generation_which_never_revives` `src/sources/tests.rs a_late_deactivation_of_an_older_epoch_never_touches_the_newer_one` |
+| A full source table forgets a dead identity before it evicts the oldest live source; a forgotten one could be revived only by a trigger the host sends after deactivating it | `src/sources/tests.rs a_full_table_forgets_a_dead_identity_before_it_evicts_the_oldest_live_source` |
+| A binding index belongs to one song: commands still queued at a `load` are drained against the new song, so a host changing songs flushes and loads once the flush is drained | — none |
+| A trigger sounds on the first frame of a block, the slots' synthesizer grid; `load` restarts the block so that grid stays the conductor's | `src/conductor/tests/triggering.rs a_quantized_trigger_attacks_on_the_first_frame_of_the_block_holding_its_beat` |
+| Under a storm overflowing the pool, the synthesizer's stealer takes only tails: no energy is lost at a held note's pitch, and the largest step stays under the frozen 0.02 | `src/conductor/tests/saturation.rs a_storm_overflowing_the_pool_steps_under_the_frozen_threshold_and_cuts_no_sounding_note` `src/conductor/tests/saturation.rs one_lane_hammering_one_key_steps_under_the_threshold_and_hangs_nothing` |
+| `AtSongPosition` plays the unit that started last at or before its tick, what remains of it; when that unit has ended it is a rest, and an earlier, longer unit is not looked back for | `src/triggers/tests.rs at_song_position_plays_the_unit_sounding_through_a_tempo_change_and_nothing_in_a_rest` |
 | rustysynth hard-wires channel 10 (index 9) as percussion and adds 128 to its bank, so a slot's lanes skip it | — none |
 
 ## Testing

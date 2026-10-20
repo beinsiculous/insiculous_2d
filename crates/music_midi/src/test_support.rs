@@ -9,13 +9,15 @@ pub const BACH_INVENTION: &[u8] = include_bytes!("../fixtures/bach-invention-02.
 pub const NAPOLITAN_DANCE: &[u8] = include_bytes!("../fixtures/dansenapolitaine.mid");
 pub const NAPOLITAN_DANCE_TYPE_ZERO: &[u8] =
     include_bytes!("../fixtures/dansenapolitaine-type0.mid");
+pub const NAPOLITAN_DANCE_CAST: &[u8] = include_bytes!("../fixtures/dansenapolitaine-cast.mid");
 pub const BAYADERE: &[u8] = include_bytes!("../fixtures/bayadere-ombres.mid");
 pub const EGMONT: &[u8] = include_bytes!("../fixtures/Egmont.mid");
 
-pub const ALL_FIXTURES: [(&str, &[u8]); 5] = [
+pub const ALL_FIXTURES: [(&str, &[u8]); 6] = [
     ("bach-invention-02.mid", BACH_INVENTION),
     ("dansenapolitaine.mid", NAPOLITAN_DANCE),
     ("dansenapolitaine-type0.mid", NAPOLITAN_DANCE_TYPE_ZERO),
+    ("dansenapolitaine-cast.mid", NAPOLITAN_DANCE_CAST),
     ("bayadere-ombres.mid", BAYADERE),
     ("Egmont.mid", EGMONT),
 ];
