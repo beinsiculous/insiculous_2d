@@ -73,7 +73,8 @@ theme — nothing original), and records the architectural constraints found bef
   channel per active source within it (16 lanes per instrument), background score on its own
   synthesizer; a voice ledger owned by `music_midi` keeps each synth under
   `maximum_polyphony` minus a measured layering headroom so that stealing is *our* `note_off`
-  (a real envelope release), never the synth's hard cut. K1 measures the headroom.
+  (a real envelope release), never the synth's hard cut. K1 measured it: layering ≤ 2 for
+  every cast preset, pool 128 bit-identical to pool 256 under the worst-case storm.
   **Verified in rustysynth's source (round 2):** a voice's steal priority is `4 + value` in
   delay, `3 + value` in attack, `2 + value` in hold, `1 + value` in decay/sustain and plain
   `value` (≤ 1) in release, `0` once inaudible; the stealer takes the lowest, oldest on ties —
@@ -132,9 +133,18 @@ another public-domain genre that fits the game's theme. Nothing original. Three 
    URL, who sequenced it and when, license. The SoundFont subset lists its source bank, its
    preset numbers and the MIT notice.
 
-**SoundFont.** A 1–2 MB SF2 subset of an MIT bank (FluidR3 GM first choice; MuseScore General
-SF2 second), presets named per game in K1 and frozen by K2; SF3 is out (rustysynth rejects it);
-GPL banks are out. Subsetting is not authoring (K's exclusions stand).
+**SoundFont.** An SF2 subset of an MIT bank — FluidR3 GM, measured by K1: the twelve cast
+presets are 32.6 MiB, 22.0 MiB without the full drum kit (kit 10.6, piano 7.5, strings 5.3,
+the rest under 2.7 each); MuseScore General is larger (its piano alone 98 MiB). **The 2 MB
+target is waived (Jesse, 2026-10-20: "who cares? we need music").** What replaces it, for K2
+to freeze: a per-game audio budget of **≤ 24 MiB downloaded** (bank ≤ 22, songs ≤ 256 KiB,
+samples ≤ 2 MiB) and **≤ 50 MiB loaded**, with three levers — a key-range kit subset (snare,
+bass drum, a cymbal, not the whole kit), per-game preset lists, and fetching the bank after
+the first frame instead of blocking boot (every asset is prefetched today; 27 s at 10 Mbit/s,
+5.5 s at 50). The hard line is hosting (Cloudflare's 25 MiB per static file); the one site
+URL shared by the six games, so the browser caches it once, is K2's call. SF3 is out
+(rustysynth rejects it); GPL banks are out. Subsetting is not authoring (K's exclusions stand);
+`scripts/subset_soundfont.py` does it byte-reproducibly.
 
 **Casting (proposal, all public domain; the plan review and Jesse's ear adjust it):**
 
@@ -208,8 +218,12 @@ Menus use the same song's slowest phrase through the `menu` binding (K6's standa
    instrument never retimbres another. Capacities (K1 measures, K2 freezes): 8 instrument
    slots, 16 lanes per slot, 256 queued commands, 512 pending scheduled events, and per slot
    a **sounding-note cap** of 24 with the synth pool sized so sounding voices can never
-   fill it: `polyphony ≥ sounding_cap × max layering + tail headroom` — 128 proposed, K1
-   measures its cost and each shipped preset's layering factor. The ledger knows the
+   fill it: `polyphony ≥ sounding_cap × max layering + tail headroom` — 128, measured by K1 (7% of
+   real time natively under the worst case, layering ≤ 2; rustysynth's maximum is 256).
+   **15 lanes per slot, not 16:** rustysynth's channel 9 is General MIDI percussion and adds
+   128 to its bank, so lanes skip it. **When no lane is free, lanes steal like voices:** the
+   oldest source's sounding notes are released and its lane taken, oldest first — a 16th
+   one-note source is never starved (K1's code rejected it; the rule is batch 4's). The ledger knows the
    sounding set exactly (it issued every note-on and note-off) and steals among *sounding*
    notes only: the oldest gets our `note_off` (a real release) to make room for the
    newcomer; above the per-instrument polyphony cap the newcomer is rejected without
@@ -260,7 +274,10 @@ Menus use the same song's slowest phrase through the `menu` binding (K6's standa
    `common::clock` instant**; the consumer drops a trigger older than the late tolerance and
    counts it (a suspended tab's backlog never replays as a burst), and quantization measures
    lateness from that stamp, not from the drain, so a frame of transport latency is not
-   lateness. A lifecycle command is never dropped for age. Every output sample passes a
+   lateness. A lifecycle command is never dropped for age. **On the web the stamp is not
+   optional:** cpal's WebAudio backend pulls 2048-frame buffers from the main thread, so a
+   command waits up to 53–61 ms before it is drained (K1 measured); K3 places a trigger
+   inside the burst from its stamp, or every web trigger quantizes to about 46 ms. Every output sample passes a
    finite guard (a non-finite value becomes 0 and is counted) so nothing can poison WebAudio. Bus gains cross as three `Arc<AtomicU32>` f32 bit patterns read per
    block; the source mixes `music_gain * background + sfx_gain * instruments` and the sink
    volume carries master. The score clock advances by samples rendered, so `time_scale = 0`
@@ -283,7 +300,8 @@ Menus use the same song's slowest phrase through the `menu` binding (K6's standa
 5. **Sample instruments decode in `crates/audio`, render in `music_midi`.** The WAV loader
    uses the rodio `Decoder` already in the crate and yields `OwnedPcm { sample_rate,
    channels, frames: Arc<[f32]> }`; `music_midi` never decodes. Limits (K1 proposes, K7
-   freezes): ≤ 10 s decoded, 8–96 kHz, mono or stereo, finite samples only, and **±24
+   freezes; K1 enforced them before allocation): ≥ 1 ms and ≤ 10 s decoded, 8–96 kHz, mono
+   or stereo, finite samples only, and **±24
    semitones from the root** (validated in `SongFile`, clamped in `SampleVoice`; the
    composer's root-note field says pitching up aliases, since the resampler has no filter). Resampling
    is linear interpolation at `2^(semitones/12) * source_rate / output_rate`; duration
@@ -412,7 +430,20 @@ Plan review rounds: kimi + gemini + codex on one snapshot per round until Jesse 
 settled; decisions recorded here, rebuttals in `review/conductor/rebuttal-N.md`. Then the
 Studio Board: the nine issues are already on milestone 2; set the board's Sprint field.
 
-## Batch 1 — K1 spike: prove the architecture, choose the assets (#60)
+## Batch 1 — K1 spike: prove the architecture, choose the assets (#60) — DONE 2026-10-20 (62686ae)
+
+Authored by the executor (a Claude Opus session) from `review/conductor/handoff-1.md`; report
+`review/conductor/report-1.md`; reviewed by kimi (`review-4.md`), gemini (`review-4-gemini.md`,
+recovered from agy's kept output) and the planner (`review-4-claude.md`); adjudicated in
+`rebuttal-4.md` (10 accepted, 3 rebutted); Jesse's listen check passed natively and in both
+browsers. **The architecture holds.** What the measurements changed, each carried into the
+section that acts on it: 15 lanes per slot (rustysynth's channel 9 is percussion); the web
+backend pulls 2048-frame buffers, so K3's timestamps are mandatory; the three fixtures have
+no tempo or time-signature change, so batch 2 adds *Egmont*; the 2 MB SoundFont target is
+waived (Jesse, 2026-10-20) and a per-game audio budget replaces it; the spike's known limits
+(`coordination/K1_SPIKE.md` § Known limits) are rules in batches 3–5. Pins for batch 2:
+rustysynth 1.3.8, midly 0.5.3. The provenance gate is live; wiring the hand-run gates into CI
+is filed as insiculous_2d#176.
 
 Executor: the Opus session. Reviewers: kimi, gemini (a harness and fixtures). Listen check: Jesse.
 
@@ -535,9 +566,15 @@ song_file.rs, song_file/validate.rs, song_data.rs, song_data/flatten.rs, tempo_m
   model compile without it, which is how `crates/editor` depends on it.
 - `TempoMap`: tick ↔ seconds ↔ samples ↔ (bar, beat, beat_in_bar) across tempo and
   time-signature changes, integer boundary counting for beat crossings.
-- Tests: the fixtures from batch 1 (the type-1 Tchaikovsky, the type-0 generated one, the
-  Bach invention), two bindings over one part without note duplication, tempo and
-  time-signature changes, the reject list, schema round trip. Docs: the grammar with
+- **A fourth fixture first:** none of batch 1's three has a tempo or time-signature change.
+  Download Beethoven's *Overture to Egmont* (Mutopia id 547, its page "Copyright: Public
+  Domain", 15 tracks, 84 → 152 → 168 bpm, 3/2 → 3/4 → 4/4) verbatim into
+  `crates/music_midi/fixtures/` with the same `LICENSE` entry shape (page line, URLs, sha256)
+  before the tempo-map tests are written; the provenance gate must stay green.
+- Pins: `rustysynth = "=1.3.8"`, `midly = "=0.5.3"` — the spike's resolved versions.
+- Tests: the fixtures from batch 1 plus *Egmont* (the type-1 Tchaikovsky, the type-0 generated
+  one, the Bach invention, the overture), two bindings over one part without note
+  duplication, tempo and time-signature changes, the reject list, schema round trip. Docs: the grammar with
   examples in `SONG_FORMAT.md`; the crate guide with its pitfall table.
 
 **Gates:** the standard list; `check_wasm.sh` (new crate in the workspace). **Leaves out:**
@@ -546,7 +583,9 @@ the synthesizer (batch 3), triggering (batch 4), samples (batch 5), any I/O.
 ## Batch 3 — K2b `crates/music_midi`: the sequencer, the conductor, background playback (#61)
 
 Executor: the Opus session. Reviewers: kimi, gemini. Listen check: Jesse (through the spike's
-`play_source`, a one-screen example in `examples/`). Size: about +2000 lines.
+`play_source`, a one-screen example in `examples/`); the report pastes the native run's
+`conductor=on` log lines — drain gap and frame times — which K1's listen run did not keep.
+Size: about +2000 lines.
 
 Files (new): `src/{sequencer.rs, conductor.rs, conductor/slots.rs, conductor/ledger.rs,
 commands.rs, position.rs}` and their `tests.rs`; `examples/conductor_background.rs`
@@ -555,7 +594,8 @@ commands.rs, position.rs}` and their `tests.rs`; `examples/conductor_background.
 **Target shape.** `Sequencer` (pure): given `SongData` + `TempoMap`, yields the background
 events whose tick falls inside `[block_start_sample, block_end_sample)`, wraps on loop
 (all-notes-off at the seam, cursors reset); `Conductor::new(ConductorConfig { sample_rate,
-block_size: 64, capacities })` owns the background `Synthesizer` and `InstrumentSlots`
+block_size: 64, capacities })` — rejecting a zero sounding cap and a pool below `cap ×
+layering` at construction — owns the background `Synthesizer` and `InstrumentSlots`
 (decision 2) and `render(&mut self, left: &mut [f32], right: &mut [f32], buses: BusGains)`;
 `ConductorCommand` enum (`Play, Stop, Pause, Resume, Seek(tick)`; triggers come in batch 4);
 `Conductor::load(Arc<Song>)` takes an in-memory song (the composer previews unsaved
@@ -566,7 +606,9 @@ sample-exact; the sequencer coalesces same-key overlaps per channel — it count
 instances per (channel, key) and emits the note-off when the last ends, so a piano
 reduction's pedalled repeats sustain (rustysynth's `note_off` would otherwise release both),
 tested on the Tchaikovsky fixture; `Seek` and loop wrap reconstruct channel state (decision 3) — a
-`ChannelStateFold` over the score's program, bank, controller and pitch-bend events, tested
+`ChannelStateFold` over the score's program, bank, controller and pitch-bend events (state
+events fold `<=` the target tick, note events `<`, so a seek to 0 keeps tick-0 tempo and
+programs), tested
 by comparing seek-to-tick against linear playback on a fixture with state changes, the fold
 cached at loop points if batch 1's capture shows its cost; K2's load-time check of the
 background score's peak polyphony against the pool. The
@@ -596,7 +638,8 @@ than the tolerance at drain is dropped and counted); overflow = reject newest tr
 accounting (decision 3), so saturation by triggers cannot drop a stop or a deactivation and
 a trigger enqueued before a deactivation is always drained before it (asserted under a
 10 000-trigger storm, a lifecycle storm, and a consumer that makes no progress for ten
-blocks); activation epochs on `SourceId`; the synth-side discontinuity threshold from
+blocks); activation epochs on `SourceId`; lanes stealing oldest-source-first when none is
+free (15 one-note sources plus a 16th, the 16th sounds); the synth-side discontinuity threshold from
 batch 1 asserted under the storm, with no sounding note cut; the single-lane single-key
 burst; a song change under a full channel where the new song's first triggers survive the
 flush; 200 triggers queued and a consumer resuming two seconds later where none sounds; deactivation fades the source's voices (release for synth,
@@ -616,8 +659,10 @@ through `common::vfs` and the rodio `Decoder`, WAV only accepted as a *pitched* 
 limits of decision 5, typed errors naming the path); `crates/music_midi/src/{pcm.rs,
 sample_voice.rs, sample_bank.rs}` + tests (`OwnedPcm` lives in `music_midi` so audio depends
 on it, not the reverse); `conductor/slots.rs` learns a `SampleSlot` (no lanes: a direct voice list with its own
-live-voice cap and oldest-voice steal through the fade; a one-shot is sounding until its
-pitch-scaled end); fixtures from batch 1.
+live-voice cap and oldest-voice steal through the fade, **and a hard ceiling of the live cap
+plus a fade budget that cuts the oldest fading voice**, so a burst inside one block cannot
+pile up voices; a one-shot is sounding until its pitch-scaled end); a sample shorter than
+1 ms is rejected before allocation; fixtures from batch 1.
 Tests: known-frequency pitch at 48 kHz and 22.05 kHz sources rendered at 44.1 kHz (zero
 crossings counted), duration behaviour, stereo/mono, gated vs one-shot, two concurrent
 voices of one sample with independent note-off, oversized and non-finite input rejected
