@@ -603,7 +603,14 @@ Size: about +2000 lines.
 
 Files (new): `src/{sequencer.rs, conductor.rs, conductor/slots.rs, conductor/ledger.rs,
 commands.rs, position.rs}` and their `tests.rs`; `examples/conductor_background.rs`
-(plays a fixture through `AudioManager::play_source` — the only consumer until K4).
+(plays a fixture through `AudioManager::play_source` — the only consumer until K4; it takes
+the SoundFont path as its first argument, defaulting to the spike's
+`coordination/conductor/spike/assets/soundfonts/cast.sf2` when that exists and to the sine
+fixture otherwise, and reads its assets by `with_asset_base_path` like `behavior_demo.rs`).
+Two one-line enablers outside the crate: the root `Cargo.toml` `[dependencies]` gains
+`music_midi = { path = "crates/music_midi" }` (an internal crate, like `physics` there), and
+`crates/engine_core/src/prelude.rs` re-exports `audio::Bus` beside `AudioManager`, so an
+example or a game names the bus without depending on `audio` itself.
 
 **Batch 2's fix-ups, first** (accepted in `rebuttal-5.md`, behaviour so not patched there):
 `ResourceMetadata` gains `soundfonts: BTreeSet<String>` (the paths the loader decoded) and
@@ -635,8 +642,10 @@ programs), tested
 by comparing seek-to-tick against linear playback on a fixture with state changes, the fold
 cached at loop points if batch 1's capture shows its cost; K2's load-time check of the
 background score's peak polyphony against the pool. The
-non-silent-render test with `sine.sf2`; the loop-wrap test asserting silence after the seam
-plus a fresh attack; `Send` asserted for `Conductor`. **Gates:** standard; `check_wasm.sh`.
+non-silent-render test with `sine.sf2`; the loop-wrap test asserting that the seam releases
+every pre-seam note (tails only, no sustained energy at their pitches after the release) and
+that the downbeat attacks on the exact sample the loop's first tick maps to; `Send` asserted
+for `Conductor`. **Gates:** standard; `check_wasm.sh`.
 **Leaves out:** triggers, sources, samples, rodio.
 
 ## Batch 4 — K3: shared-part triggering, musical timing, bounded voice ownership (#62)
