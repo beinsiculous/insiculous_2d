@@ -575,7 +575,10 @@ song_file.rs, song_file/validate.rs, song_data.rs, song_data/flatten.rs, tempo_m
 - Tests: the fixtures from batch 1 plus *Egmont* (the type-1 Tchaikovsky, the type-0 generated
   one, the Bach invention, the overture), two bindings over one part without note
   duplication, tempo and time-signature changes, the reject list, schema round trip. Docs: the grammar with
-  examples in `SONG_FORMAT.md`; the crate guide with its pitfall table.
+  examples in `SONG_FORMAT.md`; the crate guide with its pitfall table (`check_guide_tests.sh`
+  reads it, so every cited test must exist); a `crates/music_midi/` entry in `training.md`
+  § Directory Map and a row in `CLAUDE.md`'s crate → agent table, and `training.md`'s audio
+  line (`manager.rs`) brought current — a new crate nobody's map names is a defect.
 
 **Gates:** the standard list; `check_wasm.sh` (new crate in the workspace). **Leaves out:**
 the synthesizer (batch 3), triggering (batch 4), samples (batch 5), any I/O.
