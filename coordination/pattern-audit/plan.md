@@ -465,7 +465,23 @@ anything in `renderer`.
 
 Size: about +260 / −110 lines (the trait trim is about forty deleted lines across six files).
 
-## Batch 3 — ecs + editor + engine_core + examples: retire two advertised, unused APIs (#171, #172; GPP-L8)
+## Batch 3 — ecs + editor + engine_core + examples: retire two advertised, unused APIs (#171, #172; GPP-L8) — DONE 2026-10-19 (489a8b5)
+
+Authored by Jesse's Claude Opus session from `review/pattern-audit/handoff-3.md`; reviewed by
+kimi (`review-5.md`), gemini (`review-5-gemini.md`) and the planner (`review-5-claude.md`);
+adjudicated in `rebuttal-5.md` — kimi 3 findings, 1 accepted (a stale "thirteen" in a doc
+comment), 2 rebutted (history; a note for the Conductor filing); gemini 6, 2 accepted
+(warning order followed `HashMap` iteration; an unnamed child's warning now names its nearest
+named ancestor), 4 rebutted (load→save "data loss" is the ruling and `sound_id` never named a
+file; `GlyphInfo` is the planned ride-along; the deletion is decision of record; a code-authored
+`spawn_prefab` override is not a saved file); the planner 3, all accepted (the root guide's
+"spatial audio" cell, the empty `ComponentCategory::Audio` deleted on Jesse's call, a phrasing).
+The executor made two decisions the plan had not: a retired name is stripped only while it is
+**unregistered** (a game or Conductor that registers one again owns it), and the strip runs
+once over the whole `SceneData` at the top of `instantiate` rather than inside `create_entity`
+— so `SceneInstance.prefabs` is stripped (a runtime `spawn_prefab` of such a prefab succeeds)
+and the warnings reach `load_warnings` and the status bar. Both ratified. `GlyphInfo` lost
+both fields (nothing read them; the compile is the proof). 1106 tests, every gate green.
 
 **Re-verified against the tree 2026-10-19 after batch 2 (1809f87):** `engine_core/src/prelude.rs`
 re-exports `HierarchicalStateMachine` at line 77 (not 75) and the audio components at 69;
@@ -578,6 +594,23 @@ is a test-side replica of the engine's merge over `Vec<ComponentData>`; it would
 against `Vec<OverrideData>` and would keep replace semantics if it did — deleted, the test
 calls the engine's merge), one harness test if none pins a brick's scale.
 
+**Re-verified against the tree 2026-10-19 after batch 3 (489a8b5):** `scene_data.rs` is 522
+lines, `EntityData.overrides` at 128, the newtype variants `Behavior`/`Scripts` at 365/368;
+`scene_loader.rs` is 390 lines — `spawn_prefab` 58–71 (its `merge_components` call at 71, doc
+at 52–53), `create_entity` 263 with the merge call at 281–283, `merge_components` 294–301, the
+inline layering test at 343–362; `scene_loader_parse.rs:172-201` and
+`prefab_spawning.rs:48, 57-64, 93-94` hold; `prototype.md`'s pitfall is at 134–139; ron is
+0.12.0 in `Cargo.lock`; `crates/ui/src/ui_manager.rs` does not exist, so DOC-001's third line
+is ticked as such. Batch 3's retired-names strip runs at the top of `instantiate`, so the merge
+never sees a retired name on either path. Breakout: `regenerate_levels.py:279, 284` write the
+prefab's scale (they stay), `:304, 316` the override's (they go); **258** override lines carry
+`, scale: (0.8, 0.4)` across the eight level files (not 436 — the mechanical check below uses
+258); `levels_tests.rs` defines `merged_components` at 29 with callers at 99, 162, 189, 220,
+248, 477 and 508. The non-empty override blocks outside breakout are `hello_world.scene.ron`
+(127, 136, 174, 189, 205–215, 223, 238, 249, 260, 273, 280–300) and `behavior_demo.scene.ron`
+(108–211); the five hello_world coins at 280–300 already restate scale and rotation and must
+load unchanged.
+
 **Target shape.**
 - `OverrideData { component: ComponentData, fields: Option<BTreeSet<String>> }` in
   `scene_override.rs`. `fields: None` means the whole component (today's semantics);
@@ -645,7 +678,7 @@ calls the engine's merge), one harness test if none pins a brick's scale.
   level files are regenerated; `assert_same_bricks` holds. `src/levels_tests.rs`'s `merged_components` replica is
   deleted and its callers use `SceneLoader::effective_components`. The planner checks the
   breakout scene diff mechanically: every changed scene line loses exactly
-  `, scale: (0.8, 0.4)` and nothing else (436 lines). **Staging order:** the executor
+  `, scale: (0.8, 0.4)` and nothing else (258 lines on 2026-10-19). **Staging order:** the executor
   modifies both working trees before any gate runs — `check_games.sh --test` compiles
   breakout's tests against the new engine, so `levels_tests.rs` must already be on the
   engine's merge; the engine commit lands first, breakout's second, and both messages name
