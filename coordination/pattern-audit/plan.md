@@ -1,5 +1,10 @@
 # Pattern Audit — clearing the game-programming-patterns skill's five tickets
 
+**EFFORT DONE 2026-10-19.** Five batches landed on `jesse` in `insiculous_2d` (def7ed6, 6b1ccb7,
+1809f87, 489a8b5, c1dcff3, close-out e6a2bb9) and one in `games/breakout` (8f7b109); #168–#172,
+#100, #153 and breakout#6 closed; #84/#86/#88 ticked; #173, #174 (K9) and #175 filed;
+`check-sprint-sync.sh` green; `jesse → dev` merged in both repos. The record below is history.
+
 Effort directory: `insiculous_2d/coordination/pattern-audit/` (the plan; the reviewer ledger
 `reviewer-comparison.md` beside it). Review conversations: `insiculous_2d/review/pattern-audit/`
 for the plan, every engine diff and every handoff; `games/breakout/review/pattern-audit/` for
@@ -729,7 +734,7 @@ nested field merges (`position.x`); prefab chaining; any editor change.
 
 Size: about +320 / −40 engine; 436 modified lines in breakout.
 
-## Batch 5 — planner only: close-out
+## Batch 5 — planner only: close-out — DONE 2026-10-19 (e6a2bb9)
 
 - `.claude/skills/game-programming-patterns/SKILL.md` § Where the engine stands: the
   prototype row (partial → textbook, field-level overrides on load; save flattens), the
