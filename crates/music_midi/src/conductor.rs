@@ -14,7 +14,7 @@
 //! trigger sounds on the first frame of a block — the 64-frame grid.
 //!
 //! **Triggers** (see [`crate::triggers`]) play a binding's part on its instrument's
-//! slot for one source. A seek, a loop wrap and `Play` release every slot's notes, drop
+//! slot for one source: a SoundFont preset's synthesizer, or a sample's voices. A seek, a loop wrap and `Play` release every slot's notes, drop
 //! every scheduled event and set each part's cursor to the new position; a pause or a
 //! stop releases and drops without moving the cursors, and triggers are refused until
 //! the song plays again.
@@ -27,6 +27,7 @@
 //! when paused or stopped; zero gain does not stop it.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use common::clock::Instant;
 
@@ -35,12 +36,13 @@ use crate::error::ConductorError;
 use crate::position::{PositionSnapshot, SharedPosition, TransportState};
 use crate::sequencer::{Sequencer, SequencerSink};
 use crate::song_file::{InstrumentSource, PresetKey};
-use crate::sources::SourceId;
-use crate::triggers::{DrainClock, EngineShape, Trigger, TriggerEngine, TriggerSink};
+use crate::triggers::{DrainClock, EngineShape, Trigger, TriggerEngine};
+use crate::SAMPLE_FADE_BUDGET;
 
 mod background;
 mod config;
 pub mod ledger;
+mod sample_slot;
 mod slots;
 mod song;
 #[cfg(test)]
@@ -49,8 +51,10 @@ mod tests;
 use background::BackgroundPlayer;
 pub use config::{BusGains, Capacities, ConductorConfig};
 pub use ledger::{LedgerAction, LedgerCounters, NoteStart, NoteTicket, VoiceLedger};
-use slots::SlotShape;
+pub use sample_slot::{SampleCounters, SampleSlot};
+use sample_slot::{SampleInstrument, SampleShape};
 pub use slots::{InstrumentSlot, MAXIMUM_LANES};
+use slots::{Slot, SlotShape, SlotSink};
 pub use song::{BackgroundPeak, Song};
 
 /// Something a load let through that may still sound wrong.
@@ -75,7 +79,7 @@ struct LoadedSong {
     song: Arc<Song>,
     sequencer: Sequencer,
     background: BackgroundPlayer,
-    slots: Vec<InstrumentSlot>,
+    slots: Vec<Slot>,
     triggers: TriggerEngine,
 }
 
@@ -135,10 +139,11 @@ impl Conductor {
     /// Load `song`, replacing any song loaded before, stopped at its start with no
     /// source live (a flush's floor carries over); the next block starts on the next frame rendered, so the slots'
     /// synthesizers keep the conductor's block grid. Refuses a song with more instruments
-    /// than slots, or whose instrument preset is missing or layers too thickly for the
-    /// pool at the sounding cap; warns, without refusing, when the background score alone
-    /// may overflow its pool. A sample instrument takes a slot in the count but plays
-    /// nothing yet: a trigger on its binding is rejected.
+    /// than slots, whose instrument preset is missing or layers too thickly for the pool
+    /// at the sounding cap, or whose sample instrument's sample the song was not given
+    /// (`SampleNotSupplied`); warns, without refusing, when the background score alone
+    /// may overflow its pool. A refused song leaves the loaded one playing. A sample
+    /// slot's voices are allocated here, to the live cap plus the fade budget.
     ///
     /// Commands still queued are drained against the new song, so a host changing songs
     /// sends `StopAllSources` and loads once it is drained, or triggers resolved against
@@ -159,10 +164,36 @@ impl Conductor {
             sounding_cap: capacities.sounding_cap,
             lanes: capacities.lanes_per_slot,
         };
+        let sample_shape = SampleShape {
+            output_rate: self.config.sample_rate,
+            live_voice_cap: capacities.sample_voices,
+            fade_budget: SAMPLE_FADE_BUDGET,
+        };
         let mut slots = Vec::with_capacity(instruments.len());
         for instrument in instruments {
-            let InstrumentSource::SoundFont { path, bank, preset } = &instrument.source else {
-                continue;
+            let (path, bank, preset) = match &instrument.source {
+                InstrumentSource::SoundFont { path, bank, preset } => (path, bank, preset),
+                InstrumentSource::Sample {
+                    path,
+                    root_note,
+                    gain,
+                    playback,
+                } => {
+                    let pcm = song.samples().get(path).ok_or_else(|| {
+                        ConductorError::SampleNotSupplied {
+                            instrument: instrument.name.clone(),
+                            path: path.clone(),
+                        }
+                    })?;
+                    let sample = SampleInstrument {
+                        pcm: pcm.clone(),
+                        root_note: *root_note,
+                        gain: *gain,
+                        playback: *playback,
+                    };
+                    slots.push(Slot::Sample(SampleSlot::new(sample, sample_shape)));
+                    continue;
+                }
             };
             let missing = || ConductorError::PresetMissing {
                 instrument: instrument.name.clone(),
@@ -187,7 +218,9 @@ impl Conductor {
                 });
             }
             let sound_font = song.sound_font(path).ok_or_else(missing)?;
-            slots.push(InstrumentSlot::new(sound_font, shape, *bank, *preset)?);
+            slots.push(Slot::Synth(Box::new(InstrumentSlot::new(
+                sound_font, shape, *bank, *preset,
+            )?)));
         }
         let background_font = song.sound_font(&song.file().soundfont).ok_or_else(|| {
             ConductorError::SoundFontNotSupplied {
@@ -206,6 +239,7 @@ impl Conductor {
                 sources: capacities.sources,
                 pending_events: capacities.pending_events,
                 sounding_cap: capacities.sounding_cap,
+                sample_voices: capacities.sample_voices,
             },
         )?;
         if let Some(previous) = &self.loaded {
@@ -253,9 +287,21 @@ impl Conductor {
         self.loaded.as_ref()?.triggers.cursor_of(part)
     }
 
-    /// The slot of the `index`th SoundFont instrument the song declares.
+    /// The synthesizer slot of the song's `index`th instrument, when that is a SoundFont
+    /// preset.
     pub fn slot_mut(&mut self, index: usize) -> Option<&mut InstrumentSlot> {
-        self.loaded.as_mut()?.slots.get_mut(index)
+        match self.loaded.as_mut()?.slots.get_mut(index)? {
+            Slot::Synth(slot) => Some(slot.as_mut()),
+            Slot::Sample(_) => None,
+        }
+    }
+
+    /// The sample slot of the song's `index`th instrument, when that is a sample.
+    pub fn sample_slot_mut(&mut self, index: usize) -> Option<&mut SampleSlot> {
+        match self.loaded.as_mut()?.slots.get_mut(index)? {
+            Slot::Sample(slot) => Some(slot),
+            Slot::Synth(_) => None,
+        }
     }
 
     /// Render `left.len()` frames into `left` and `right` (overwritten; a longer one keeps
@@ -265,8 +311,10 @@ impl Conductor {
         self.render_at(Instant::now(), left, right, buses);
     }
 
-    /// [`Conductor::render`] with `now` as the wall clock every drain in this call reads:
-    /// a trigger's age is `now` minus its stamp.
+    /// [`Conductor::render`] with `now` as the wall clock of this call's first frame. Each
+    /// block drains at `now` plus the frames rendered before it in this call, so a long
+    /// pull reads its blocks as the instants they play at: a trigger's age is that
+    /// instant minus its stamp.
     pub fn render_at(
         &mut self,
         now: Instant,
@@ -275,10 +323,12 @@ impl Conductor {
         buses: BusGains,
     ) {
         let frames = left.len().min(right.len());
+        let sample_rate = f64::from(self.config.sample_rate);
         let mut offset = 0;
         while offset < frames {
             if self.frames_into_block == 0 {
-                self.begin_block(now);
+                let block_now = now + Duration::from_secs_f64(offset as f64 / sample_rate);
+                self.begin_block(block_now);
             }
             let chunk = (self.config.block_size - self.frames_into_block).min(frames - offset);
             let range = offset..offset + chunk;
@@ -425,15 +475,12 @@ impl Conductor {
         slot_left.fill(0.0);
         slot_right.fill(0.0);
         for slot in &mut loaded.slots {
-            let scratch_left = &mut self.scratch_left[..frames];
-            let scratch_right = &mut self.scratch_right[..frames];
-            slot.render(scratch_left, scratch_right);
-            for (mixed, rendered) in slot_left.iter_mut().zip(scratch_left.iter()) {
-                *mixed += rendered;
-            }
-            for (mixed, rendered) in slot_right.iter_mut().zip(scratch_right.iter()) {
-                *mixed += rendered;
-            }
+            slot.mix_into(
+                slot_left,
+                slot_right,
+                &mut self.scratch_left[..frames],
+                &mut self.scratch_right[..frames],
+            );
         }
         let (background_left, background_right) = loaded.background.output();
         for (output, (background, slots)) in left
@@ -485,6 +532,11 @@ impl Conductor {
             snapshot.silent_triggers = triggers.silent;
             snapshot.live_sources = loaded.triggers.live_sources() as u64;
             snapshot.pending_events = loaded.triggers.pending_len() as u64;
+            snapshot.sample_voices = loaded
+                .slots
+                .iter()
+                .map(Slot::sample_voice_count)
+                .sum::<usize>() as u64;
         }
         self.position.publish(&snapshot);
     }
@@ -499,40 +551,6 @@ impl LoadedSong {
     fn release_slots(&mut self) {
         for slot in &mut self.slots {
             slot.release_all();
-        }
-    }
-}
-
-/// The instrument slots as a trigger engine plays them.
-struct SlotSink<'a>(&'a mut [InstrumentSlot]);
-
-impl TriggerSink for SlotSink<'_> {
-    fn note_on(
-        &mut self,
-        slot: usize,
-        source: SourceId,
-        key: u8,
-        velocity: u8,
-    ) -> Option<NoteTicket> {
-        let slot = self.0.get_mut(slot)?;
-        Some(slot.note_on(source, key, velocity).ticket)
-    }
-
-    fn note_off(&mut self, slot: usize, ticket: NoteTicket) {
-        if let Some(slot) = self.0.get_mut(slot) {
-            slot.note_off(ticket);
-        }
-    }
-
-    fn is_sounding(&self, slot: usize, ticket: NoteTicket) -> bool {
-        self.0
-            .get(slot)
-            .is_some_and(|slot| slot.is_sounding(ticket))
-    }
-
-    fn release_source(&mut self, source: SourceId) {
-        for slot in self.0.iter_mut() {
-            slot.release_source(source);
         }
     }
 }

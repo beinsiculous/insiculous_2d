@@ -1,6 +1,8 @@
 //! The crate's errors: [`SongError`] for reading and writing a MIDI file, [`EditError`]
-//! for a mutation [`SongData`](crate::SongData) refuses, and [`SongFileError`] for a song
-//! sidecar that fails validation — naming the file, the collection and the entry.
+//! for a mutation [`SongData`](crate::SongData) refuses, [`SongFileError`] for a song
+//! sidecar that fails validation — naming the file, the collection and the entry —
+//! [`PcmError`] for decoded sample audio outside the sample limits, and
+//! [`ConductorError`] for a conductor or a song load that is refused.
 
 use std::fmt;
 
@@ -214,6 +216,38 @@ pub enum SongFileProblem {
     },
 }
 
+/// Decoded sample audio outside the limits a sample instrument keeps. Each variant names
+/// the limit it broke.
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+pub enum PcmError {
+    #[error("a sample recorded at {sample_rate} Hz is outside {minimum} to {maximum} Hz")]
+    SampleRateOutOfRange {
+        sample_rate: u32,
+        minimum: u32,
+        maximum: u32,
+    },
+    #[error("a sample with {channels} channels is neither mono nor stereo")]
+    UnsupportedChannels { channels: u16 },
+    #[error("{samples} samples do not divide into whole frames of {channels} channels")]
+    PartialFrame { samples: usize, channels: u8 },
+    #[error(
+        "a sample of {frames} frames at {sample_rate} Hz is shorter than the {minimum_seconds} s \
+         minimum"
+    )]
+    TooShort {
+        frames: usize,
+        sample_rate: u32,
+        minimum_seconds: f64,
+    },
+    #[error("a sample at {sample_rate} Hz runs longer than the {maximum_seconds} s maximum")]
+    TooLong {
+        sample_rate: u32,
+        maximum_seconds: f64,
+    },
+    #[error("sample value {index} is not a finite number")]
+    NotFinite { index: usize },
+}
+
 /// A conductor that cannot be built, or a song it cannot load. Nothing was changed.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum ConductorError {
@@ -276,4 +310,6 @@ pub enum ConductorError {
         needed: usize,
         polyphony: usize,
     },
+    #[error("instruments['{instrument}'] plays sample '{path}', which was not supplied")]
+    SampleNotSupplied { instrument: String, path: String },
 }

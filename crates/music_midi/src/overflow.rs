@@ -8,10 +8,10 @@
 //! **A trigger is refused whole, before its cursor moves,** when its notes do not fit:
 //! the buffer has no room for one event per note, or — for a trigger scheduled ahead —
 //! its notes added to the instrument's note-ons already waiting would pass the
-//! instrument's sounding cap. Sounding notes are the ledger's to steal; notes not yet
-//! started would only steal each other at their boundary, so the newest is refused. A
-//! note-off whose note the ledger has already released is dead weight, and is purged
-//! before a trigger is refused for room.
+//! instrument's cap (a SoundFont instrument's sounding cap, a sample's live voice cap).
+//! Sounding notes are the slot's to steal; notes not yet started would only steal each
+//! other at their boundary, so the newest is refused. A note-off whose note the slot has
+//! already ended is dead weight, and is purged before a trigger is refused for room.
 
 use crate::conductor::NoteTicket;
 use crate::sources::SourceId;

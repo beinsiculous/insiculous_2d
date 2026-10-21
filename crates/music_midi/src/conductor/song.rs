@@ -1,5 +1,6 @@
 //! A song ready for the conductor: its sidecar, its MIDI data, its SoundFonts parsed from
-//! bytes already in memory, and what the conductor needs to know before loading it — the
+//! bytes already in memory, its samples' decoded audio, and what the conductor needs to
+//! know before loading it — the
 //! background score, the instruments' layering and the background's peak voice count.
 //! Everything costly happens here, on the thread that builds the song, so
 //! [`Conductor::load`](super::Conductor::load) only wires it up.
@@ -11,6 +12,8 @@ use std::sync::Arc;
 use rustysynth::{SoundFont, Synthesizer};
 
 use crate::error::ConductorError;
+use crate::pcm::OwnedPcm;
+use crate::sample_bank::SampleBank;
 use crate::sequencer::{BackgroundScore, ChannelMessage};
 use crate::song_data::SongData;
 use crate::song_file::{InstrumentSource, PresetKey, SongFile};
@@ -32,6 +35,7 @@ pub struct Song {
     file: SongFile,
     data: SongData,
     sound_fonts: BTreeMap<String, Arc<SoundFont>>,
+    samples: SampleBank,
     background: Arc<BackgroundScore>,
     instrument_layering: BTreeMap<PresetKey, usize>,
     background_peak: BackgroundPeak,
@@ -39,13 +43,16 @@ pub struct Song {
 
 impl Song {
     /// Parse every SoundFont the song names from `sound_fonts` (path → bytes, as the
-    /// sidecar names them) and prepare the song. Each part's track is a trigger track and
-    /// is left out of the background. Validate the sidecar first: an unresolvable part is
-    /// refused here, not explained.
+    /// sidecar names them), keep each sample it names from `samples` (path → decoded
+    /// audio, one per unique path) in its [`SampleBank`], and prepare the song. Each
+    /// part's track is a trigger track and is left out of the background. Validate the
+    /// sidecar first: an unresolvable part is refused here, not explained; a sample left
+    /// unsupplied is refused by [`Conductor::load`](super::Conductor::load).
     pub fn new(
         file: SongFile,
         data: SongData,
         sound_fonts: &[(&str, &[u8])],
+        samples: &[(&str, OwnedPcm)],
     ) -> Result<Self, ConductorError> {
         let mut needed: BTreeSet<&str> = BTreeSet::from([file.soundfont.as_str()]);
         for instrument in &file.instruments {
@@ -104,10 +111,12 @@ impl Song {
                     path: file.soundfont.clone(),
                 })?;
         let background_peak = background_peak(&background, background_font);
+        let samples = SampleBank::new(&file, samples);
         Ok(Self {
             file,
             data,
             sound_fonts: parsed,
+            samples,
             background,
             instrument_layering,
             background_peak,
@@ -125,6 +134,11 @@ impl Song {
     /// A SoundFont the song names, by the path the sidecar gives it.
     pub fn sound_font(&self, path: &str) -> Option<&Arc<SoundFont>> {
         self.sound_fonts.get(path)
+    }
+
+    /// The decoded audio of every sample the song names and was given.
+    pub fn samples(&self) -> &SampleBank {
+        &self.samples
     }
 
     pub fn background(&self) -> &Arc<BackgroundScore> {

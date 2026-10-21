@@ -1,17 +1,23 @@
-//! An instrument slot: one synthesizer playing one SoundFont preset for every source that
-//! triggers that instrument, its notes kept by a [`VoiceLedger`].
+//! A song's instrument slots, one per instrument: an [`InstrumentSlot`] — one synthesizer
+//! playing one SoundFont preset for every source that triggers that instrument, its notes
+//! kept by a [`VoiceLedger`] — or a [`SampleSlot`]. A trigger plays either through one
+//! [`Slot`], so scheduled note-offs, a source's release, a wrap and the transport treat
+//! both kinds alike.
 //!
-//! Isolation is structural. Two instruments are two synthesizers, so a program change or
-//! a note-off on one cannot reach the other; two sources on one instrument are two lanes
-//! (MIDI channels), so a note-off from one cannot release the other's note of that key.
+//! Isolation is structural. Two instruments are two slots, so a program change or a
+//! note-off on one cannot reach the other; two sources on one SoundFont instrument are two
+//! lanes (MIDI channels), so a note-off from one cannot release the other's note of that
+//! key, and two sources on one sample hold voices of their own.
 
 use std::sync::Arc;
 
 use rustysynth::{SoundFont, Synthesizer, SynthesizerSettings};
 
 use super::ledger::{LedgerAction, LedgerCounters, NoteStart, NoteTicket, VoiceLedger};
+use super::sample_slot::SampleSlot;
 use crate::error::ConductorError;
 use crate::sources::SourceId;
+use crate::triggers::TriggerSink;
 
 /// rustysynth treats MIDI channel 10 (index 9) as General MIDI percussion and adds 128
 /// to any bank selected on it, so a melodic preset cannot live there: lanes skip it.
@@ -151,4 +157,113 @@ pub(crate) fn new_synthesizer(
     Synthesizer::new(sound_font, &settings).map_err(|error| ConductorError::Synthesizer {
         reason: error.to_string(),
     })
+}
+
+/// One instrument's slot, of either kind. A synthesizer is several hundred bytes and a
+/// sample slot a few dozen, so the synthesizer is boxed, once, at load.
+pub(crate) enum Slot {
+    Synth(Box<InstrumentSlot>),
+    Sample(SampleSlot),
+}
+
+impl Slot {
+    fn note_on(&mut self, source: SourceId, key: u8, velocity: u8) -> NoteTicket {
+        match self {
+            Slot::Synth(slot) => slot.note_on(source, key, velocity).ticket,
+            Slot::Sample(slot) => slot.note_on(source, key, velocity),
+        }
+    }
+
+    fn note_off(&mut self, ticket: NoteTicket) {
+        match self {
+            Slot::Synth(slot) => slot.note_off(ticket),
+            Slot::Sample(slot) => slot.note_off(ticket),
+        }
+    }
+
+    fn is_sounding(&self, ticket: NoteTicket) -> bool {
+        match self {
+            Slot::Synth(slot) => slot.is_sounding(ticket),
+            Slot::Sample(slot) => slot.is_sounding(ticket),
+        }
+    }
+
+    fn release_source(&mut self, source: SourceId) {
+        match self {
+            Slot::Synth(slot) => slot.release_source(source),
+            Slot::Sample(slot) => slot.release_source(source),
+        }
+    }
+
+    /// End every note: a synthesizer's ring out as tails, a sample's voices fade.
+    pub(crate) fn release_all(&mut self) {
+        match self {
+            Slot::Synth(slot) => slot.release_all(),
+            Slot::Sample(slot) => slot.release_all(),
+        }
+    }
+
+    /// Add this slot's next `mix_left.len()` frames into the mix. A synthesizer renders
+    /// into the scratch pair first, since it overwrites what it renders into.
+    pub(crate) fn mix_into(
+        &mut self,
+        mix_left: &mut [f32],
+        mix_right: &mut [f32],
+        scratch_left: &mut [f32],
+        scratch_right: &mut [f32],
+    ) {
+        match self {
+            Slot::Synth(slot) => {
+                slot.render(scratch_left, scratch_right);
+                for (mixed, rendered) in mix_left.iter_mut().zip(scratch_left.iter()) {
+                    *mixed += rendered;
+                }
+                for (mixed, rendered) in mix_right.iter_mut().zip(scratch_right.iter()) {
+                    *mixed += rendered;
+                }
+            }
+            Slot::Sample(slot) => slot.render_add(mix_left, mix_right),
+        }
+    }
+
+    /// Sample voices playing, fading ones included; none for a synthesizer.
+    pub(crate) fn sample_voice_count(&self) -> usize {
+        match self {
+            Slot::Synth(_) => 0,
+            Slot::Sample(slot) => slot.voice_count(),
+        }
+    }
+}
+
+/// The instrument slots as a trigger engine plays them.
+pub(crate) struct SlotSink<'a>(pub &'a mut [Slot]);
+
+impl TriggerSink for SlotSink<'_> {
+    fn note_on(
+        &mut self,
+        slot: usize,
+        source: SourceId,
+        key: u8,
+        velocity: u8,
+    ) -> Option<NoteTicket> {
+        Some(self.0.get_mut(slot)?.note_on(source, key, velocity))
+    }
+
+    fn note_off(&mut self, slot: usize, ticket: NoteTicket) {
+        if let Some(slot) = self.0.get_mut(slot) {
+            slot.note_off(ticket);
+        }
+    }
+
+    fn is_sounding(&self, slot: usize, ticket: NoteTicket) -> bool {
+        self.0
+            .get(slot)
+            .is_some_and(|slot| slot.is_sounding(ticket))
+    }
+
+    fn release_source(&mut self, source: SourceId) {
+        for slot in self.0.iter_mut() {
+            slot.release_source(source);
+        }
+    }
 }

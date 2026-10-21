@@ -14,7 +14,9 @@
 //! **What a trigger can meet,** each counted: a binding from another song or an ended
 //! source (stale); a song not playing, or no room for its notes (rejected, cursor
 //! unmoved); a stamp older than one block plus [`DEVICE_PERIOD_ALLOWANCE`] at the drain
-//! (late); an exhausted `Sequence` or a rest under `AtSongPosition` (silent).
+//! (late); an exhausted `Sequence` or a rest under `AtSongPosition` (silent). Its source
+//! is admitted only after every one of those checks, so a refused, late or silent trigger
+//! activates nothing and never evicts a live source from a full table.
 //!
 //! Nothing here allocates once the engine is built: the parts, the bindings, the source
 //! table and the scheduled events are sized at load.
@@ -104,7 +106,8 @@ struct PartPlayer {
 #[derive(Debug, Clone, Copy)]
 struct BoundTarget {
     part: usize,
-    /// `None` for an instrument with no synthesizer slot (a sample).
+    /// `None` for an instrument the song does not declare, which only a `SongFile` built
+    /// without the parser can name.
     slot: Option<usize>,
 }
 
@@ -114,7 +117,9 @@ pub(crate) struct TriggerEngine {
     bindings: Vec<BoundTarget>,
     sources: SourceTable,
     pending: PendingEvents,
-    sounding_cap: usize,
+    /// Each slot's cap on note-ons waiting to start: the sounding cap for a SoundFont
+    /// instrument, the live voice cap for a sample.
+    slot_caps: Vec<usize>,
     counters: TriggerCounters,
 }
 
@@ -124,11 +129,12 @@ pub(crate) struct EngineShape {
     pub sources: usize,
     pub pending_events: usize,
     pub sounding_cap: usize,
+    pub sample_voices: usize,
 }
 
 impl TriggerEngine {
     /// The engine for `song`: each part's track resolved, each binding to its part and
-    /// to its instrument's slot (the `n`th SoundFont instrument plays on slot `n`).
+    /// to its instrument's slot (the `n`th instrument plays on slot `n`, whatever its kind).
     pub(crate) fn new(song: &Song, shape: EngineShape) -> Result<Self, ConductorError> {
         let file = song.file();
         let mut parts = Vec::with_capacity(file.parts.len());
@@ -142,17 +148,9 @@ impl TriggerEngine {
             });
         }
         let slot_of = |name: &str| {
-            let instrument = file
-                .instruments
+            file.instruments
                 .iter()
-                .position(|instrument| instrument.name == name)?;
-            let instrument_source = &file.instruments[instrument].source;
-            matches!(instrument_source, InstrumentSource::SoundFont { .. }).then(|| {
-                file.instruments[..instrument]
-                    .iter()
-                    .filter(|earlier| matches!(earlier.source, InstrumentSource::SoundFont { .. }))
-                    .count()
-            })
+                .position(|instrument| instrument.name == name)
         };
         let mut bindings = Vec::with_capacity(file.bindings.len());
         for binding in &file.bindings {
@@ -166,17 +164,20 @@ impl TriggerEngine {
                 slot: slot_of(&binding.instrument),
             });
         }
-        let slot_count = bindings
+        let slot_caps: Vec<usize> = file
+            .instruments
             .iter()
-            .filter_map(|binding| binding.slot)
-            .max()
-            .map_or(0, |slot| slot + 1);
+            .map(|instrument| match instrument.source {
+                InstrumentSource::SoundFont { .. } => shape.sounding_cap,
+                InstrumentSource::Sample { .. } => shape.sample_voices,
+            })
+            .collect();
         Ok(Self {
             parts,
             bindings,
             sources: SourceTable::with_capacity(shape.sources),
-            pending: PendingEvents::new(shape.pending_events, slot_count),
-            sounding_cap: shape.sounding_cap,
+            pending: PendingEvents::new(shape.pending_events, slot_caps.len()),
+            slot_caps,
             counters: TriggerCounters::default(),
         })
     }
@@ -215,17 +216,6 @@ impl TriggerEngine {
             self.counters.stale += 1;
             return;
         };
-        match self.sources.admit(trigger.source) {
-            Admission::Dead => {
-                self.counters.stale += 1;
-                return;
-            }
-            Admission::Live { ended } => {
-                if let Some(ended) = ended {
-                    self.end_source(ended, sink);
-                }
-            }
-        }
         let (Some(slot), true) = (target.slot, clock.playing) else {
             self.counters.rejected += 1;
             return;
@@ -261,15 +251,29 @@ impl TriggerEngine {
         let unit = &units[selection.unit];
         let notes = sounding_notes(unit, selection.elapsed_ticks).count();
         let scheduled = matches!(placement, Placement::At { .. });
+        let slot_cap = self.slot_caps.get(slot).copied().unwrap_or(0);
         if self
             .pending
-            .admit(slot, notes, scheduled, self.sounding_cap, |slot, ticket| {
+            .admit(slot, notes, scheduled, slot_cap, |slot, ticket| {
                 sink.is_sounding(slot, ticket)
             })
             .is_err()
         {
             self.counters.rejected += 1;
             return;
+        }
+        // Admitted only once nothing can refuse the trigger: admission into a full table
+        // ends the oldest live source, which a refused trigger must never cost.
+        match self.sources.admit(trigger.source) {
+            Admission::Dead => {
+                self.counters.stale += 1;
+                return;
+            }
+            Admission::Live { ended } => {
+                if let Some(ended) = ended {
+                    self.end_source(ended, sink);
+                }
+            }
         }
         self.parts[target.part]
             .cursor

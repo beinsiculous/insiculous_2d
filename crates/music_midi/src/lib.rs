@@ -20,10 +20,12 @@
 //!   time-signature changes.
 //! - [`Sequencer`] — the background score's clock: channel messages at the right samples,
 //!   a sample-exact loop seam, and the state a seek rebuilds.
-//! - `Conductor` (`synth`) — the background synthesizers and the instrument slots,
-//!   rendered block by block under the game's commands: transport, and triggers that
-//!   play a binding's part on its instrument for one source, placed from the
-//!   producer's stamp.
+//! - [`OwnedPcm`] — a decoded sample, checked against the sample limits; the audio crate
+//!   decodes the file, this crate only holds and plays what it produced.
+//! - `Conductor` (`synth`) — the background synthesizers and the instrument slots (a
+//!   SoundFont preset's synthesizer, or a sample's voices), rendered block by block under
+//!   the game's commands: transport, and triggers that play a binding's part on its
+//!   instrument for one source, placed from the producer's stamp.
 
 #[cfg(feature = "synth")]
 pub mod commands;
@@ -32,8 +34,13 @@ pub mod conductor;
 pub mod error;
 #[cfg(feature = "synth")]
 mod overflow;
+pub mod pcm;
 #[cfg(feature = "synth")]
 pub mod position;
+#[cfg(feature = "synth")]
+pub mod sample_bank;
+#[cfg(feature = "synth")]
+mod sample_voice;
 pub mod sequencer;
 pub mod song_data;
 pub mod song_file;
@@ -50,11 +57,16 @@ pub use commands::{CommandRejected, ConductorCommand, ConductorHandle};
 #[cfg(feature = "synth")]
 pub use conductor::{
     BackgroundPeak, BusGains, Capacities, Conductor, ConductorConfig, InstrumentSlot, LoadReport,
-    LoadWarning, NoteTicket, Song,
+    LoadWarning, NoteTicket, SampleCounters, SampleSlot, Song,
 };
-pub use error::{Collection, ConductorError, EditError, SongError, SongFileError, SongFileProblem};
+pub use error::{
+    Collection, ConductorError, EditError, PcmError, SongError, SongFileError, SongFileProblem,
+};
+pub use pcm::OwnedPcm;
 #[cfg(feature = "synth")]
 pub use position::{PositionSnapshot, SharedPosition, TransportState};
+#[cfg(feature = "synth")]
+pub use sample_bank::SampleBank;
 pub use sequencer::{
     BackgroundScore, ChannelMessage, ChannelStateFold, ScoreEvent, Sequencer, SequencerSink,
 };
@@ -106,12 +118,29 @@ pub const SAMPLE_SECONDS_MINIMUM: f64 = 0.001;
 /// The longest decoded sample an instrument may play, in seconds.
 pub const SAMPLE_SECONDS_MAXIMUM: f64 = 10.0;
 
+/// The lowest sample rate a sample may be recorded at, in hertz.
+pub const SAMPLE_RATE_MINIMUM_HERTZ: u32 = 8_000;
+
+/// The highest sample rate a sample may be recorded at, in hertz.
+pub const SAMPLE_RATE_MAXIMUM_HERTZ: u32 = 96_000;
+
 /// MIDI channels an instrument slot leases to sources: all sixteen but channel 10, which
 /// the synthesizer reserves for General MIDI percussion.
 pub const LANES_PER_SLOT: usize = 15;
 
-/// Live voices a sample instrument's slot holds at once.
+/// Live voices a sample instrument's slot holds at once; past it the oldest live voice
+/// fades out to make room.
 pub const SAMPLE_VOICE_CAP: usize = 16;
+
+/// Fading voices a sample slot holds beyond its live voices. A burst inside one block
+/// fades a stolen voice per trigger; past the live cap plus this budget the oldest fading
+/// voice is cut outright, so voices never pile up.
+pub const SAMPLE_FADE_BUDGET: usize = 16;
+
+/// How long a sample voice fades when its gated note ends or it is ended by force (a
+/// steal, a deactivation, a seek, a wrap, a pause, a stop), in seconds: long enough not
+/// to click, short enough to read as a cut.
+pub const SAMPLE_FADE_SECONDS: f64 = 0.005;
 
 /// Frames the conductor renders between two command drains: its synthesizers' block, and
 /// the background sequencer's grain.

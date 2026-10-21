@@ -62,6 +62,54 @@ fn a_quantized_trigger_attacks_on_the_first_frame_of_the_block_holding_its_beat(
 }
 
 #[test]
+fn a_long_pull_places_a_trigger_drained_in_its_last_block_as_block_by_block_rendering_does() {
+    const PULL_FRAMES: usize = 2048;
+    let song = one_part_song(&[(A4, 100, QUARTER)], "Beat", true, QUARTER * 8);
+    let config = ConductorConfig {
+        capacities: Capacities {
+            commands_per_block: 1,
+            ..Capacities::default()
+        },
+        ..ConductorConfig::new(SAMPLE_RATE)
+    };
+    let mut outputs = Vec::new();
+    for in_one_call in [true, false] {
+        let mut stage = Stage::new(Arc::clone(&song), config);
+        stage.send(ConductorCommand::Play);
+        let beat = stage.sample_at_tick(u64::from(QUARTER)) as usize;
+        let pull_starts_at = (beat / BLOCK_FRAMES + 1) * BLOCK_FRAMES;
+        stage.render(pull_starts_at);
+        // Struck on the beat, just before the pull; the commands ahead of it hold it in
+        // the queue until the pull's last block.
+        let stamp = stage.now()
+            - std::time::Duration::from_secs_f64(
+                (pull_starts_at - beat) as f64 / f64::from(SAMPLE_RATE),
+            );
+        for _ in 1..PULL_FRAMES / BLOCK_FRAMES {
+            stage.send(ConductorCommand::SetLooping(true));
+        }
+        stage
+            .trigger_stamped("hit", source(1), stamp)
+            .expect("queued");
+        let (output, _) = if in_one_call {
+            stage.render_in_one_call(PULL_FRAMES)
+        } else {
+            stage.render(PULL_FRAMES)
+        };
+        assert_eq!(stage.snapshot().late_triggers, 0);
+        outputs.push(output);
+    }
+
+    let last_block = PULL_FRAMES - BLOCK_FRAMES;
+    assert_eq!(energy(&outputs[0][..last_block]), 0.0);
+    assert!(
+        energy(&outputs[0][last_block..]) > 0.0,
+        "on time for its beat, it plays in the block that drained it"
+    );
+    assert_same_samples(&outputs[0], &outputs[1], "one pull against block by block");
+}
+
+#[test]
 fn an_unquantized_trigger_attacks_on_the_block_it_is_drained_in() {
     let mut stage = Stage::playing(one_part_song(
         &[(A4, 100, QUARTER)],

@@ -3,9 +3,11 @@ use std::sync::Arc;
 use super::*;
 use crate::song_data::SongData;
 use crate::song_file::parse_song_file;
+use crate::sources::SourceId;
 use crate::test_support::*;
 use crate::{BLOCK_FRAMES, SOUNDING_NOTE_CAP};
 
+mod samples;
 mod saturation;
 mod stage;
 mod triggering;
@@ -29,7 +31,7 @@ fn song(midi: &[u8], looping: bool, instruments: &[&str]) -> Arc<Song> {
     )
     .expect("the sidecar parses");
     let (data, _) = SongData::from_smf(midi).expect("the MIDI reads");
-    Arc::new(Song::new(file, data, &[(SINE_PATH, SINE_FONT)]).expect("the song builds"))
+    Arc::new(Song::new(file, data, &[(SINE_PATH, SINE_FONT)], &[]).expect("the song builds"))
 }
 
 fn loaded(song: Arc<Song>) -> (Conductor, ConductorHandle) {
@@ -95,10 +97,16 @@ fn goertzel_power(samples: &[f32], frequency_hertz: f32) -> f32 {
 }
 
 #[test]
-fn a_conductor_can_move_to_the_audio_thread() {
+fn a_conductor_its_song_and_its_samples_can_move_to_the_audio_thread() {
     fn assert_send<T: Send>() {}
     assert_send::<Conductor>();
     assert_send::<ConductorHandle>();
+    assert_send::<Song>();
+    assert_send::<crate::OwnedPcm>();
+    assert_send::<crate::SampleBank>();
+    assert_send::<SampleSlot>();
+    assert_send::<Slot>();
+    assert_send::<crate::sample_voice::SampleVoice>();
 }
 
 #[test]

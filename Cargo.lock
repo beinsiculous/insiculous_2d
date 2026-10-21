@@ -225,6 +225,7 @@ dependencies = [
  "common",
  "env_logger",
  "log",
+ "music_midi",
  "rodio",
  "thiserror 2.0.17",
 ]
@@ -1387,6 +1388,7 @@ dependencies = [
 name = "insiculous_2d"
 version = "0.1.0"
 dependencies = [
+ "audio",
  "common",
  "ecs",
  "editor",

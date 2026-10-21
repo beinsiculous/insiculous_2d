@@ -368,3 +368,49 @@ fn a_song_not_playing_refuses_triggers_without_moving_the_cursor() {
     assert_eq!(bench.engine.cursor_of(0), Some(0));
     assert!(bench.recorder.heard.is_empty());
 }
+
+#[test]
+fn a_refused_late_or_paused_trigger_never_evicts_a_live_source_from_a_full_table() {
+    let mut bench = Bench::with_shape(
+        song_of(four_notes(), "Loop", "Off"),
+        EngineShape {
+            sources: 4,
+            pending_events: 4,
+            sounding_cap: 8,
+            sample_voices: 8,
+        },
+    );
+    for id in 1..=4 {
+        bench.trigger("slime", source(id), 0);
+    }
+    let tolerance_samples = (DEVICE_PERIOD_ALLOWANCE.as_secs_f64() * f64::from(SAMPLE_RATE)) as u64
+        + BLOCK_FRAMES as u64;
+
+    bench.trigger("slime", source(5), 0);
+    bench.trigger("slime", source(6), tolerance_samples + 50);
+    bench.playing = false;
+    bench.trigger("slime", source(7), 0);
+
+    let counters = bench.engine.counters();
+    assert_eq!(
+        (counters.accepted, counters.rejected, counters.late),
+        (4, 2, 1),
+        "the scheduler was full, then a trigger was late, then the song was paused"
+    );
+    assert!(
+        (1..=4).all(|id| bench.engine.sources.is_live(source(id))),
+        "every source that played is still live"
+    );
+    assert!(
+        (5..=7).all(|id| !bench.engine.sources.is_live(source(id))),
+        "no refused trigger activated its source"
+    );
+    assert!(
+        bench
+            .recorder
+            .heard
+            .iter()
+            .all(|heard| heard.velocity.is_some()),
+        "no live source lost a note"
+    );
+}

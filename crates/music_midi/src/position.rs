@@ -65,6 +65,8 @@ pub struct PositionSnapshot {
     pub live_sources: u64,
     /// Scheduled note-ons and note-offs held.
     pub pending_events: u64,
+    /// Sample voices playing across every sample slot, fading ones included.
+    pub sample_voices: u64,
 }
 
 /// The conductor's published position and counters. Each value is whole; a reader that
@@ -88,6 +90,7 @@ pub struct SharedPosition {
     silent_triggers: AtomicU64,
     live_sources: AtomicU64,
     pending_events: AtomicU64,
+    sample_voices: AtomicU64,
 }
 
 impl SharedPosition {
@@ -111,6 +114,7 @@ impl SharedPosition {
             silent_triggers: self.silent_triggers.load(Ordering::Acquire),
             live_sources: self.live_sources.load(Ordering::Acquire),
             pending_events: self.pending_events.load(Ordering::Acquire),
+            sample_voices: self.sample_voices.load(Ordering::Acquire),
         }
     }
 
@@ -155,6 +159,7 @@ impl SharedPosition {
             (&self.silent_triggers, snapshot.silent_triggers),
             (&self.live_sources, snapshot.live_sources),
             (&self.pending_events, snapshot.pending_events),
+            (&self.sample_voices, snapshot.sample_voices),
         ] {
             atomic.store(value, Ordering::Release);
         }

@@ -8,8 +8,11 @@ the code's.
 
 ## The contract
 - **No I/O, no rodio.** Bytes in, data out. The audio crate reads files, decodes
-  SoundFonts and WAVs, and hands this crate the MIDI bytes, the sidecar text and a
-  `ResourceMetadata` describing what it loaded. Fixtures reach tests by `include_bytes!`.
+  SoundFonts and WAVs (a sample's WAV into an `OwnedPcm`), and hands this crate the MIDI
+  bytes, the sidecar text, the decoded samples and a `ResourceMetadata` describing what
+  it loaded. Fixtures reach tests by `include_bytes!`; the sine WAVs reach them through
+  `test_support::fixture_pcm`, a reader of the generator's own 16-bit layout that exists
+  only in tests.
 - **Exactly two dependencies of its own**, `midly` and `rustysynth`, pinned in the root
   `[workspace.dependencies]`; any third is a plan change. Both are re-exported
   (`music_midi::midly`, `music_midi::rustysynth`) so no other crate names them. `serde`,
@@ -17,30 +20,34 @@ the code's.
   `synth` only: a trigger's stamp is `common::clock::Instant`, the browser's clock on
   the web.
 - **The `synth` feature** (default on) owns rustysynth and everything that renders: the
-  conductor, its commands, its published position, the sources and the triggers. The schema, the data model and the
-  sequencer build and test with `--no-default-features`, which is how the editor depends
-  on the crate.
-- **The audio thread never allocates or parses.** `Song::new` parses the SoundFonts and
-  prepares the background score on the thread that builds it; `Conductor::load` builds
-  the synthesizers and sizes the trigger engine (parts, bindings, the source table, the
-  scheduled-event buffer) to its capacities; `Conductor::render` touches preallocated
-  buffers. A binding is resolved from its action on the game thread
-  (`Song::binding_index`), so `render` never compares a string.
+  conductor, its commands, its published position, the sources, the triggers and the
+  sample voices. The schema, the data model, `OwnedPcm` and the sequencer build and test
+  with `--no-default-features`, which is how the editor and the audio crate depend on the
+  crate.
+- **The audio thread never allocates or parses.** `Song::new` parses the SoundFonts,
+  keeps the decoded samples in its `SampleBank` and prepares the background score on the
+  thread that builds it; `Conductor::load` builds the synthesizers and the sample slots
+  (their voice lists allocated to the live cap plus the fade budget) and sizes the
+  trigger engine (parts, bindings, the source table, the scheduled-event buffer) to its
+  capacities; `Conductor::render` touches preallocated buffers. A binding is resolved
+  from its action on the game thread (`Song::binding_index`), so `render` never compares
+  a string.
 - **Authored data fails loud**, naming the file, the collection and the entry
   (`parts['drums']`), in the manner of `engine_core`'s `sheet_file.rs`.
 
 ## File Map
 - `lib.rs` — crate docs, re-exports, and the frozen capacities: 8 instrument slots, 15
-  lanes and 24 sounding notes a slot, a 128-voice synthesizer pool, 16 sample voices (the
-  sample slot's, which arrives with samples — until then it bounds nothing), a 64-frame
+  lanes and 24 sounding notes a slot, a 128-voice synthesizer pool, 16 live voices a
+  sample slot plus a fade budget of 16, the 5 ms sample fade, 8–96 kHz samples, a 64-frame
   block, 256 queued commands with 16 of them reserved for lifecycle and transport, 64
   commands drained a block (a full queue drains in 4 blocks, 5.8 ms at 44.1 kHz, after
   the drain gap), 512 scheduled events, 128 tracked sources, the 61 ms device-period
   allowance of the late tolerance, ±24 semitones for a sample, 1 ms to 10 s of sample,
   1 MiB and 262 144 events of MIDI.
 - `error.rs` — `SongError` (reading and writing MIDI), `EditError` (a refused mutation),
-  `SongFileError` = the file's label + a `SongFileProblem`, `Collection`, and
-  `ConductorError` (a conductor that cannot be built or a song it cannot load).
+  `SongFileError` = the file's label + a `SongFileProblem`, `Collection`, `PcmError`
+  (decoded sample audio outside the limits, naming the limit), and `ConductorError` (a
+  conductor that cannot be built or a song it cannot load).
 - `song_file.rs` — **the sidecar schema**: `SongFile` v1, `Part`, `TrackSelector`,
   `PartMode`, `Quantize`, `Instrument`, `InstrumentSource`, `SamplePlayback`, `Binding`,
   `ResourceMetadata`/`PresetKey`; `parse_song_file` (version probed first, unknown
@@ -58,6 +65,10 @@ the code's.
   original pairs, plus live notes and edited timing, through midly's writer.
 - `tempo_map.rs` — `TempoMap` (exact integer tick ↔ seconds ↔ sample ↔ bar),
   `TempoChange`, `TimeSignature`, `MusicalPosition`.
+- `pcm.rs` — `OwnedPcm`: a decoded sample (rate, mono or stereo, interleaved values in an
+  `Arc`), refused by `new` outside 8–96 kHz, 1 ms–10 s or with a value not finite;
+  `check_format` and `maximum_frames` let a decoder refuse before decoding. Builds
+  without `synth`.
 - `sequencer.rs` — **the background sequencer** (pure): `Sequencer` owns the song clock
   and drives a `SequencerSink` with messages on the sink's grain, the seam split, the
   reconstructions and same-key coalescing; `seek_to_tick`, `seek_to_sample`, `advance`.
@@ -72,12 +83,22 @@ the code's.
   mix and the finite guard.
 - `conductor/config.rs` — `ConductorConfig`, `Capacities`, `BusGains`, and every check
   `Conductor::new` makes of them.
-- `conductor/song.rs` — `Song::new`: SoundFonts from bytes, trigger tracks from the
-  parts, the background score, instrument layering, the background's peak voice count.
+- `conductor/song.rs` — `Song::new`: SoundFonts from bytes, the samples it names, trigger
+  tracks from the parts, the background score, instrument layering, the background's
+  peak voice count.
+- `sample_bank.rs` (`synth`) — `SampleBank`: each sample path the song names with its
+  decoded audio, held once however many instruments name it.
+- `sample_voice.rs` (`synth`) — `SampleVoice`: one voice's position, pitch step (linear
+  interpolation at `2^(semitones/12) × source_rate / output_rate`, ±24 semitones), gain
+  and fade; mono to both channels, stereo kept.
 - `conductor/background.rs` — `BackgroundPlayer`: two synthesizers taking turns as the
   sequencer's sink.
-- `conductor/slots.rs` — `InstrumentSlot`: one synthesizer per instrument, lanes skipping
-  the percussion channel.
+- `conductor/slots.rs` — `InstrumentSlot`: one synthesizer per SoundFont instrument, lanes
+  skipping the percussion channel; `Slot`, the enum over it and `SampleSlot` every
+  trigger plays through, and `SlotSink`, the slots as the trigger engine's sink.
+- `conductor/sample_slot.rs` — `SampleSlot`: a sample instrument's voices, no lanes; the
+  live cap (oldest live voice faded), the ceiling of the live cap plus the fade budget
+  (oldest fading voice cut), one-shot and gated note-offs, a `NoteTicket` per voice.
 - `conductor/ledger.rs` — `VoiceLedger` (pure): sounding notes bounded exactly, lanes
   leased while sounding and stolen oldest-first, a `NoteTicket` for every note so a
   note-off ends that note and no other.
@@ -85,7 +106,8 @@ the code's.
   `StopAllSources`), `ConductorHandle` (the bounded, never blocking sender with the
   in-flight count and the lifecycle reserve), `CommandRejected`.
 - `position.rs` (`synth`) — `SharedPosition` (atomics published once a block),
-  `PositionSnapshot` (the trigger counters included), `TransportState`.
+  `PositionSnapshot` (the trigger counters and the sample voice count included),
+  `TransportState`.
 - `sources.rs` (`synth`) — `SourceId { id, generation, epoch }` and `SourceTable`: lazy
   activation, deactivation, supersession, the flush floor, bounded eviction.
 - `triggers.rs` (`synth`) — `TriggerEngine`: bindings to parts and slots, a trigger's
@@ -96,7 +118,8 @@ the code's.
   mapping's error bound.
 - `overflow.rs` (`synth`) — `PendingEvents`, the scheduled-event buffer, and the rule that
   refuses a trigger before its notes would overflow it or its instrument.
-- `test_support.rs` — test-only: the fixtures and a hand-built-SMF helper.
+- `test_support.rs` — test-only: the fixtures, a hand-built-SMF helper, and the sine WAVs
+  as `OwnedPcm`.
 - `fixtures/` — the Mutopia MIDI files, the derived type-0 file and its cast derivative
   (`scripts/make_cast_fixture.py`: a program on each melodic channel), the generated sine
   SoundFont and WAVs; each named in `fixtures/LICENSE` (the provenance gate checks).
@@ -153,6 +176,15 @@ the code's.
 | Under a storm overflowing the pool, the synthesizer's stealer takes only tails: no energy is lost at a held note's pitch, and the largest step stays under the frozen 0.02 | `src/conductor/tests/saturation.rs a_storm_overflowing_the_pool_steps_under_the_frozen_threshold_and_cuts_no_sounding_note` `src/conductor/tests/saturation.rs one_lane_hammering_one_key_steps_under_the_threshold_and_hangs_nothing` |
 | `AtSongPosition` plays the unit that started last at or before its tick, what remains of it; when that unit has ended it is a rest, and an earlier, longer unit is not looked back for | `src/triggers/tests.rs at_song_position_plays_the_unit_sounding_through_a_tempo_change_and_nothing_in_a_rest` |
 | rustysynth hard-wires channel 10 (index 9) as percussion and adds 128 to its bank, so a slot's lanes skip it | — none |
+| A trigger's source is admitted only after every check that may refuse it: admission into a full table ends the oldest live source, which a refused, late or paused trigger must never cost | `src/triggers/tests.rs a_refused_late_or_paused_trigger_never_evicts_a_live_source_from_a_full_table` |
+| A host pulling many blocks in one `render` call drains each block at its own instant (the call's `now` plus the frames before it), or a trigger drained late in the pull reads too young and misses its beat | `src/conductor/tests/triggering.rs a_long_pull_places_a_trigger_drained_in_its_last_block_as_block_by_block_rendering_does` |
+| A sample is at least 1 ms (two frames at the least), or a voice has no frame to interpolate towards and an empty one underflows | `src/pcm/tests.rs a_sample_shorter_than_a_millisecond_is_refused_and_one_exactly_a_millisecond_is_kept` |
+| Pitch is speed: a sample a fifth up lasts two thirds as long and an octave down twice as long, and the step carries the source-to-output rate ratio as well as the semitones | `src/conductor/sample_slot/tests.rs a_voice_lasts_its_pitch_scaled_length_two_thirds_a_fifth_up_and_double_an_octave_down` `src/conductor/sample_slot/tests.rs a_sample_from_either_source_rate_plays_its_written_pitch_at_the_root_a_fifth_up_and_an_octave_down` |
+| A key further than 24 semitones from the root plays at 24: the voice clamps what the sidecar's validation should already have refused | `src/conductor/sample_slot/tests.rs a_key_more_than_two_octaves_from_the_root_plays_at_two_octaves` |
+| A one-shot ignores its note-off and is sounding until its pitch-scaled end; a gated voice fades over 5 ms from it; every forced end (steal, deactivation, seek, wrap, pause, stop) fades a one-shot too | `src/conductor/sample_slot/tests.rs a_one_shot_plays_through_its_note_off_and_a_gated_voice_fades_out_from_it` `src/conductor/sample_slot/tests.rs every_forced_end_fades_without_a_step_steeper_than_the_sine_itself` `src/conductor/tests/samples.rs a_sample_and_a_preset_triggered_in_one_block_both_end_on_a_wrap_a_seek_a_pause_and_a_stop` |
+| Fading voices are bounded: past the live cap plus the fade budget the oldest fading voice is cut outright — the one step a sample slot takes on purpose, frozen at 4.5 under a 64-trigger burst (measured 2.979) | `src/conductor/sample_slot/tests.rs a_burst_past_the_live_cap_fades_the_oldest_and_never_holds_more_than_the_ceiling` `src/conductor/tests/samples.rs a_burst_of_sixty_four_triggers_in_one_block_never_passes_the_ceiling_and_stays_finite` |
+| Two sources on one sample hold voices of their own: a note-off names its voice's ticket, never the sample and key | `src/conductor/sample_slot/tests.rs two_sources_on_one_sample_hold_voices_with_their_own_positions_and_note_offs` |
+| A sample instrument is slot `n` like any instrument; its sample must be in the song's bank, or `load` refuses the song and the loaded one plays on | `src/conductor/tests/samples.rs a_song_whose_sample_was_not_supplied_is_refused_and_the_loaded_song_plays_on` |
 
 ## Testing
 - `cargo test -p music_midi` and `cargo test -p music_midi --no-default-features` — 0

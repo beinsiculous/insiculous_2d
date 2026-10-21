@@ -4,6 +4,8 @@
 //! - Sound effect playback with volume and speed control
 //! - Background music playback (looping or one-shot)
 //! - Audio resource management and caching
+//! - Sample instruments' audio: a WAV decoded once into the conductor's `OwnedPcm`
+//!   ([`load_sample_pcm`])
 //!
 //! # Example
 //! ```
@@ -41,8 +43,10 @@
 
 mod error;
 mod manager;
+mod sample_loader;
 mod sound;
 
 pub use error::{AudioError, AudioResult};
 pub use manager::AudioManager;
+pub use sample_loader::{decode_sample_pcm, load_sample_pcm, SampleProblem, SAMPLE_BYTE_LIMIT};
 pub use sound::{Bus, SoundHandle, SoundSettings};

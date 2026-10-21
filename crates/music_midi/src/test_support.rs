@@ -1,8 +1,10 @@
-//! Fixtures and a hand-built-SMF helper shared by the crate's tests.
+//! Fixtures, a hand-built-SMF helper and the sine WAVs as decoded audio, shared by the
+//! crate's tests.
 
 use midly::num::{u15, u24, u28, u4, u7};
 use midly::{Format, Header, MetaMessage, MidiMessage, Smf, Timing, TrackEvent, TrackEventKind};
 
+use crate::pcm::OwnedPcm;
 use crate::song_data::{SongData, UnsupportedReport};
 
 pub const BACH_INVENTION: &[u8] = include_bytes!("../fixtures/bach-invention-02.mid");
@@ -21,6 +23,52 @@ pub const ALL_FIXTURES: [(&str, &[u8]); 6] = [
     ("bayadere-ombres.mid", BAYADERE),
     ("Egmont.mid", EGMONT),
 ];
+
+/// One second of middle C (261.63 Hz), written by `scripts/make_sine_wav.py`: 16-bit PCM
+/// with a 5 ms fade at each end; a stereo file's right channel is half its left.
+pub const SINE_48000_MONO: &[u8] = include_bytes!("../fixtures/sine_48000_mono.wav");
+pub const SINE_48000_STEREO: &[u8] = include_bytes!("../fixtures/sine_48000_stereo.wav");
+pub const SINE_22050_MONO: &[u8] = include_bytes!("../fixtures/sine_22050_mono.wav");
+pub const SINE_22050_STEREO: &[u8] = include_bytes!("../fixtures/sine_22050_stereo.wav");
+
+/// The key the sine WAVs play unpitched, and its frequency.
+#[cfg(feature = "synth")]
+pub const SINE_WAV_ROOT_NOTE: u8 = 60;
+#[cfg(feature = "synth")]
+pub const SINE_WAV_HERTZ: f64 = 261.625_565_300_598_6;
+
+/// A sine fixture as the audio crate's loader would hand it over. The crate itself never
+/// decodes: this reads only the generator's own layout (a `fmt ` chunk, then 16-bit PCM in
+/// a `data` chunk), and only in tests.
+pub fn fixture_pcm(wav: &[u8]) -> OwnedPcm {
+    let little_endian_u16 = |at: usize| u16::from_le_bytes([wav[at], wav[at + 1]]);
+    let little_endian_u32 =
+        |at: usize| u32::from_le_bytes([wav[at], wav[at + 1], wav[at + 2], wav[at + 3]]);
+    assert_eq!(&wav[..4], b"RIFF");
+    assert_eq!(&wav[8..12], b"WAVE");
+    let (mut channels, mut sample_rate, mut samples) = (0, 0, Vec::new());
+    let mut chunk = 12;
+    while chunk + 8 <= wav.len() {
+        let body = chunk + 8;
+        let length = little_endian_u32(chunk + 4) as usize;
+        match &wav[chunk..chunk + 4] {
+            b"fmt " => {
+                channels = little_endian_u16(body + 2);
+                sample_rate = little_endian_u32(body + 4);
+                assert_eq!(little_endian_u16(body + 14), 16, "16-bit PCM");
+            }
+            b"data" => {
+                samples = wav[body..body + length]
+                    .chunks_exact(2)
+                    .map(|pair| f32::from(i16::from_le_bytes([pair[0], pair[1]])) / 32_768.0)
+                    .collect();
+            }
+            _ => {}
+        }
+        chunk = body + length + length % 2;
+    }
+    OwnedPcm::new(sample_rate, channels, samples).expect("a sine fixture is within the limits")
+}
 
 pub fn read(bytes: &[u8]) -> (SongData, UnsupportedReport) {
     SongData::from_smf(bytes).expect("fixture reads")

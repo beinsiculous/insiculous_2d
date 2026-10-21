@@ -7,6 +7,7 @@ use common::clock::Instant;
 
 use super::*;
 use crate::commands::CommandRejected;
+use crate::pcm::OwnedPcm;
 use crate::test_support::Step;
 
 /// The sine bank's preset as an instrument named `name`.
@@ -17,11 +18,30 @@ pub(super) fn sine_instrument(name: &str) -> String {
 /// A song whose control track ends at `end_tick` and whose other tracks are named trigger
 /// tracks; `sidecar` holds its parts, instruments and bindings. Nothing plays in the
 /// background, so the output is the slots' alone.
+/// A sample instrument named `name` playing `path`, rooted on middle C, as the sine WAVs
+/// are.
+pub(super) fn sample_instrument(name: &str, path: &str, playback: &str) -> String {
+    format!(
+        r#"(name: "{name}", source: Sample(path: "{path}", root_note: 60, gain: 1.0, playback: {playback}))"#
+    )
+}
+
 pub(super) fn trigger_song(
     tracks: Vec<(&'static str, Vec<Step>)>,
     end_tick: u32,
     looping: bool,
     sidecar: &str,
+) -> Arc<Song> {
+    trigger_song_with_samples(tracks, end_tick, looping, sidecar, &[])
+}
+
+/// [`trigger_song`] given the decoded samples its sample instruments play.
+pub(super) fn trigger_song_with_samples(
+    tracks: Vec<(&'static str, Vec<Step>)>,
+    end_tick: u32,
+    looping: bool,
+    sidecar: &str,
+    samples: &[(&str, OwnedPcm)],
 ) -> Arc<Song> {
     let mut midi_tracks = vec![vec![
         (0, tempo(500_000)),
@@ -41,7 +61,7 @@ pub(super) fn trigger_song(
     )
     .expect("the sidecar parses");
     let (data, _) = SongData::from_smf(&midi).expect("the MIDI reads");
-    Arc::new(Song::new(file, data, &[(SINE_PATH, SINE_FONT)]).expect("the song builds"))
+    Arc::new(Song::new(file, data, &[(SINE_PATH, SINE_FONT)], samples).expect("the song builds"))
 }
 
 /// Notes one after another on channel 0: each `(key, velocity, length in ticks)` starts
@@ -121,6 +141,17 @@ impl Stage {
                 .render_at(now, left_block, right_block, buses);
             self.frames += left_block.len() as u64;
         }
+        (left, right)
+    }
+
+    /// Render `frames` frames in one call, as a host pulling a whole device period does.
+    pub(super) fn render_in_one_call(&mut self, frames: usize) -> (Vec<f32>, Vec<f32>) {
+        let mut left = vec![0.0; frames];
+        let mut right = vec![0.0; frames];
+        let now = self.now();
+        self.conductor
+            .render_at(now, &mut left, &mut right, BusGains::UNITY);
+        self.frames += frames as u64;
         (left, right)
     }
 

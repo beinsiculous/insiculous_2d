@@ -79,14 +79,17 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
   - `lib.rs` - crate docs + re-exports
   - `manager/mod.rs` - `AudioManager`: the device/output connection, the gesture-gated `enable_output`, sound loading and SFX playback, `play_source` (any rodio `Source` on a bus); `manager/music.rs` - background music (play/stop/pause/resume) and the master/SFX/music volume buses; `manager/tests.rs` - both seams' tests
   - `sound.rs` - SoundHandle, SoundSettings; `error.rs` - AudioError
+  - `sample_loader.rs` - `load_sample_pcm`: a sample instrument's WAV through `common::vfs` and rodio's WAV decoder into `music_midi::OwnedPcm` — the byte limit and the RIFF header before decoding, the decode stopped one frame past 10 s
 
 - **crates/music_midi/** - The conductor's song core: no I/O, no rodio — bytes in, data out. See its `CLAUDE.md` for the file map and pitfalls, `docs/SONG_FORMAT.md` for the sidecar grammar
   - `song_file.rs` + `song_file/validate.rs` - **the `.mid.ron` song sidecar schema** (`SongFile` v1: parts, instruments, bindings; `parse_song_file`, `SongFile::validate` against the MIDI data and the loader's `ResourceMetadata`)
   - `song_data.rs` + `song_data/{flatten,edit,export}.rs` - `SongData::from_smf` (owned events, types 0 and 1, notes in `MusicalUnit`s under stable `NoteId`s), the mutation helpers returning before-images, `write_smf`
   - `tempo_map.rs` - `TempoMap`: exact tick ↔ seconds ↔ sample ↔ bar across tempo and time-signature changes; integer beat-crossing counts
+  - `pcm.rs` - `OwnedPcm`: a decoded sample, refused outside 8–96 kHz, mono or stereo, 1 ms–10 s, finite values (builds without `synth`)
   - `sequencer.rs` + `sequencer/{score,fold}.rs` - the background `Sequencer` (pure: the song clock, events on the synthesizer's block grain, the sample-exact loop seam, same-key coalescing), `BackgroundScore` (what export would write, minus trigger tracks), `ChannelStateFold` (the state a seek or wrap rebuilds)
-  - `conductor.rs` + `conductor/{config,song,background,slots,ledger}.rs` (`synth` feature) - `Conductor` (`new`/`load`/`render`/`render_at`, a bounded drain and the scheduled events at block boundaries, the bus mix and finite guard), `ConductorConfig`/`Capacities`, `Song` (SoundFonts parsed from bytes off the audio thread), the two-synthesizer background player, `InstrumentSlot`, the `VoiceLedger` and its `NoteTicket`s
-  - `commands.rs` + `position.rs` (`synth` feature) - `ConductorCommand` (transport, `Trigger`, `DeactivateSource`, `StopAllSources`) and the never-blocking `ConductorHandle` with its lifecycle reserve; `SharedPosition`, the atomics published once a block, trigger counters included
+  - `conductor.rs` + `conductor/{config,song,background,slots,sample_slot,ledger}.rs` (`synth` feature) - `Conductor` (`new`/`load`/`render`/`render_at`, a bounded drain and the scheduled events at block boundaries, each block at its own instant, the bus mix and finite guard), `ConductorConfig`/`Capacities`, `Song` (SoundFonts parsed from bytes off the audio thread, its samples in a `SampleBank`), the two-synthesizer background player, `InstrumentSlot` and `SampleSlot` behind one `Slot`, the `VoiceLedger` and its `NoteTicket`s
+  - `sample_bank.rs` + `sample_voice.rs` (`synth` feature) - `SampleBank` (each sample the song names, decoded once), `SampleVoice` (linear-interpolation pitch at `2^(semitones/12) × source_rate / output_rate`, ±24 semitones, the 5 ms fade)
+  - `commands.rs` + `position.rs` (`synth` feature) - `ConductorCommand` (transport, `Trigger`, `DeactivateSource`, `StopAllSources`) and the never-blocking `ConductorHandle` with its lifecycle reserve; `SharedPosition`, the atomics published once a block, trigger counters and the sample voice count included
   - `sources.rs` + `triggers.rs` + `triggers/{cursor,quantize}.rs` + `overflow.rs` (`synth` feature) - `SourceId` and the `SourceTable` (lazy activation, epochs, the flush floor); the trigger engine (bindings to parts and slots, one shared cursor per part, placement from the producer's stamp onto the beat grid); the bounded scheduled-event buffer and the rule that refuses a trigger whole
 
 - **crates/common/** - Shared types and utilities
@@ -102,7 +105,7 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
   - `hello_world.rs` - Physics platformer with UI, audio, ECS, and scene graph
   - `editor_demo.rs` - Editor wrapping the platformer (`--features editor`, shares `hello_world/platformer.rs`)
   - `behavior_demo.rs` - Scene-driven behaviors
-  - `conductor_background.rs` - A MIDI fixture through the conductor on the music bus — by default the *Napolitan Dance* cast fixture with keys 1–4 triggering two parts on two instruments — with render-cost, drain-gap and trigger-counter log lines
+  - `conductor_background.rs` - A MIDI fixture through the conductor on the music bus — by default the *Napolitan Dance* cast fixture with keys 1–4 triggering two parts on two instruments, and key 5 the left hand on a sample instrument with `--sample` — with render-cost, drain-gap, trigger-counter and sample-voice log lines
   - Real games live in `../games/` (pong, breakout, space_invaders, snake, asteroids) — see `PROJECT_ROADMAP.md`
 
 ## Coding Guidelines

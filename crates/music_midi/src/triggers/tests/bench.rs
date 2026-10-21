@@ -118,15 +118,19 @@ impl Bench {
     }
 
     pub(super) fn with_pending_capacity(song: Arc<Song>, pending_events: usize) -> Self {
-        let engine = TriggerEngine::new(
-            &song,
+        Self::with_shape(
+            song,
             EngineShape {
                 sources: 16,
                 pending_events,
                 sounding_cap: 8,
+                sample_voices: 8,
             },
         )
-        .expect("the song's parts resolve");
+    }
+
+    pub(super) fn with_shape(song: Arc<Song>, shape: EngineShape) -> Self {
+        let engine = TriggerEngine::new(&song, shape).expect("the song's parts resolve");
         let slots = song.file().instruments.len();
         Self {
             song,
@@ -256,7 +260,7 @@ pub(super) fn song_of(melody: Vec<Step>, mode: &str, quantize: &str) -> Arc<Song
     );
     let file = parse_song_file("test.mid.ron", &sidecar).expect("the sidecar parses");
     let (data, _) = SongData::from_smf(&midi).expect("the MIDI reads");
-    Arc::new(Song::new(file, data, &[(SINE_PATH, SINE_FONT)]).expect("the song builds"))
+    Arc::new(Song::new(file, data, &[(SINE_PATH, SINE_FONT)], &[]).expect("the song builds"))
 }
 
 /// Four quarter notes, C D E F, each an eighth long.

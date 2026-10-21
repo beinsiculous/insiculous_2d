@@ -76,6 +76,8 @@ music_midi = { path = "crates/music_midi" }
 # Only the conductor example names rodio's `Source` trait, to hand `play_source` a source
 # of its own; the version is the one the audio crate already locks.
 rodio = { version = "0.20", default-features = false }
+# The conductor example decodes its sample instrument's WAV with the audio crate's loader.
+audio = { path = "crates/audio" }
 
 [[bin]]
 name = "editor"

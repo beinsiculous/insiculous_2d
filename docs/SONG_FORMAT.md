@@ -96,12 +96,28 @@ the background's. Banks run 0–127 for melodic presets, 128 for General MIDI pe
 presets 0–127.
 
 `Sample(path: "…", root_note: n, gain: g, playback: OneShot | Gated)` — a recorded WAV.
-`root_note` (0–127) is the key at which it plays unchanged; other keys resample it, so
-**it plays shorter going up and longer going down**, and **pitching up aliases** — there
-is no filter. Every note a bound part plays must lie within 24 semitones of the root.
-`gain` defaults to `1.0` and must be finite and at least zero. `playback` defaults to
-`OneShot` (plays to the sample's end whatever the note's length); `Gated` fades out over
-5 ms when the note ends.
+`root_note` (0–127) is the key at which it plays unchanged; other keys resample it by
+linear interpolation, stepping `2^(semitones / 12) × the WAV's rate / the output rate`
+through it, so **duration changes with pitch**: a fifth up lasts two thirds as long, an
+octave up half, an octave down twice. There is no time stretch and no filter, so
+**pitching up aliases**. Every note a bound part plays must lie within 24 semitones of the
+root (a key past that plays at 24). `gain` defaults to `1.0` and must be finite and at
+least zero; it scales the sample at velocity 127, and a note's velocity scales it
+linearly below that. Nothing limits the mix of many loud voices but the output itself.
+
+`playback` defaults to `OneShot`: the note-on starts the sample and it plays to its
+(pitch-scaled) end whatever the note's length, sounding all that time. `Gated` plays it
+until the note ends, then fades it out over 5 ms. Either way, a voice ended by force — a
+steal, its source leaving, a seek, a loop wrap, a pause or a stop — fades over the same
+5 ms, a one-shot included, so nothing clicks. A mono WAV plays alike on both channels; a
+stereo one keeps its two.
+
+**The sample's limits:** a WAV file (told by its `RIFF`/`WAVE` header, not its name — the
+decoder reads more formats than a pitched sample is imported from) of at most 4 MiB,
+recorded at 8 to 96 kHz, mono or stereo, 1 ms to 10 s long once decoded. A file past the
+byte limit is refused before it is decoded, and a decode stops one frame past 10 s; a
+refused sample never replaces the song already loaded. Two instruments naming one path
+share one decoded copy.
 
 ### `Binding`
 
@@ -205,9 +221,12 @@ length).
 
 ### Capacities
 
-Each instrument takes one of **8 instrument slots**, each with its own synthesizer, so a
-program change on one never changes another's sound. Each slot keeps at most **24 notes
-sounding** and releases its oldest past that. The background score has a synthesizer of
+Each instrument takes one of **8 instrument slots**, so a program change on one never
+changes another's sound. A SoundFont instrument's slot is its own synthesizer and keeps
+at most **24 notes sounding**, releasing its oldest past that. A sample instrument's slot
+holds at most **16 live voices**, fading the oldest out past that, and at most 16 more
+fading; past those 32 the oldest fading voice is cut outright, so a burst of triggers
+cannot pile voices up. The background score has a synthesizer of
 its own with all 16 MIDI channels, which any MIDI file fits, so it takes no slot.
 
 ## The MIDI file

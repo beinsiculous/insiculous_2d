@@ -3,6 +3,8 @@
 use std::io;
 use thiserror::Error;
 
+use crate::sample_loader::SampleProblem;
+
 /// Errors that can occur in the audio system.
 #[derive(Debug, Error)]
 pub enum AudioError {
@@ -29,6 +31,13 @@ pub enum AudioError {
     /// I/O error occurred.
     #[error("I/O error: {0}")]
     IoError(#[from] io::Error),
+
+    /// A file that cannot be a sample instrument's audio, named by its path.
+    #[error("Sample '{path}' {problem}")]
+    Sample {
+        path: String,
+        problem: SampleProblem,
+    },
 }
 
 /// Result type for audio operations.

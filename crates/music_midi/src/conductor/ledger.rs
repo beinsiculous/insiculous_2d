@@ -27,6 +27,14 @@ mod tests;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NoteTicket(u64);
 
+impl NoteTicket {
+    /// The `number`th ticket a slot issues. Each slot numbers its own, and a ticket is
+    /// only ever handed back to the slot that issued it.
+    pub(crate) fn numbered(number: u64) -> Self {
+        Self(number)
+    }
+}
+
 /// What the ledger tells the synthesizer to do, in order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LedgerAction {
@@ -107,7 +115,7 @@ impl VoiceLedger {
         velocity: u8,
         mut act: impl FnMut(LedgerAction),
     ) -> NoteStart {
-        let ticket = NoteTicket(self.next_ticket);
+        let ticket = NoteTicket::numbered(self.next_ticket);
         self.next_ticket += 1;
         let mut start = NoteStart {
             ticket,

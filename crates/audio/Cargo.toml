@@ -6,6 +6,9 @@ description = "Audio system for insiculous_2d game engine"
 
 [dependencies]
 common = { workspace = true }
+# The sample instruments' audio type and its limits, nothing of the synthesizer: this crate
+# decodes a WAV into `OwnedPcm`, the conductor's crate never decodes.
+music_midi = { path = "../music_midi", default-features = false }
 rodio = { version = "0.20", default-features = false, features = ["symphonia-all"] }
 log = { workspace = true }
 thiserror = { workspace = true }
