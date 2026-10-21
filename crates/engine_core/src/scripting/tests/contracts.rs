@@ -17,6 +17,7 @@ use physics::{
 use crate::scripting::commands::{ScriptCommand, ScriptCommands, Target};
 use crate::scripting::registry::{ScriptBehavior, ScriptDescriptor};
 use crate::scripting::runner::{ScriptErrorKind, ScriptErrors, ScriptRunner};
+use crate::scripting::triggers::TriggerQueue;
 use crate::scripting::view::{ScriptView, SelfView};
 
 use super::{test_inputs, test_world};
@@ -141,7 +142,7 @@ fn test_two_instances_issue_velocity_and_reset_in_either_order_ends_reset_and_st
         });
 
         let mut errors = ScriptErrors::new();
-        commands.apply(&mut world, None, 0.016, &mut errors);
+        commands.apply(&mut world, None, 0.016, &mut errors, &mut TriggerQueue::default());
 
         let transform = world.get::<Transform2D>(entity).unwrap();
         let rb = world.get::<RigidBody>(entity).unwrap();
@@ -171,7 +172,7 @@ fn test_two_instances_issue_velocity_and_reset_in_either_order_ends_reset_and_st
         });
 
         let mut errors = ScriptErrors::new();
-        commands.apply(&mut world, None, 0.016, &mut errors);
+        commands.apply(&mut world, None, 0.016, &mut errors, &mut TriggerQueue::default());
 
         let transform = world.get::<Transform2D>(entity).unwrap();
         let rb = world.get::<RigidBody>(entity).unwrap();
@@ -306,7 +307,7 @@ fn test_kinematic_target_routes_through_physics_when_present_and_transform_when_
     });
 
     let mut errors = ScriptErrors::new();
-    commands.apply(&mut world, Some(&mut physics), 0.016, &mut errors);
+    commands.apply(&mut world, Some(&mut physics), 0.016, &mut errors, &mut TriggerQueue::default());
 
     // Non-body entity immediately updated Transform2D
     let non_body_transform = world.get::<Transform2D>(non_body_entity).unwrap();
@@ -430,7 +431,7 @@ fn test_two_missing_target_names_are_both_reported() {
     commands.set_position("Goal", Vec2::ZERO);
 
     let mut errors = ScriptErrors::new();
-    commands.apply(&mut world, None, 0.016, &mut errors);
+    commands.apply(&mut world, None, 0.016, &mut errors, &mut TriggerQueue::default());
 
     let missing: Vec<&str> = errors.as_slice().iter().map(|error| error.file.as_str()).collect();
     assert_eq!(missing, ["Ball", "Goal"], "one report per missing name, not one per kind");

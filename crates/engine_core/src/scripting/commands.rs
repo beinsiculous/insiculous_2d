@@ -74,6 +74,8 @@ pub enum ScriptCommand {
     /// Move a `ClipStateMachine` to another state.
     SetClipState { target: Target, state: String },
     Despawn { target: Target },
+    /// Play a song binding for the target's source, or the game's with no target.
+    TriggerBinding { target: Option<Target>, binding: String },
 }
 
 /// Buffer of commands returned by scripts.
@@ -223,13 +225,28 @@ impl ScriptCommands {
         });
     }
 
-    /// Apply commands to the world and physics systems by kind order.
+    /// Play a song binding for `target`'s source, after this frame's commands.
+    pub fn trigger(&mut self, target: impl Into<Target>, binding: impl Into<String>) {
+        self.commands.push(ScriptCommand::TriggerBinding {
+            target: Some(target.into()),
+            binding: binding.into(),
+        });
+    }
+
+    /// Play a song binding for the game's own source.
+    pub fn trigger_game(&mut self, binding: impl Into<String>) {
+        self.commands.push(ScriptCommand::TriggerBinding { target: None, binding: binding.into() });
+    }
+
+    /// Apply commands to the world and physics systems by kind order. Triggers resolve
+    /// their target here and wait in `triggers` for the frame tail, which holds the audio.
     pub fn apply(
         self,
         world: &mut World,
         mut physics: Option<&mut PhysicsSystem>,
         delta_time: f32,
         errors: &mut super::runner::ScriptErrors,
+        triggers: &mut super::triggers::TriggerQueue,
     ) {
         let mut name_to_entities: HashMap<String, Vec<EntityId>> = HashMap::new();
         for entity in world.entities() {
@@ -370,6 +387,14 @@ impl ScriptCommands {
                 ScriptCommand::Despawn { target } => {
                     if let Some(e) = resolve_target(&target) {
                         despawns.push(e);
+                    }
+                }
+                ScriptCommand::TriggerBinding { target: None, binding } => {
+                    triggers.push(None, binding);
+                }
+                ScriptCommand::TriggerBinding { target: Some(target), binding } => {
+                    if let Some(entity) = resolve_target(&target) {
+                        triggers.push(Some(entity), binding);
                     }
                 }
             }

@@ -64,6 +64,10 @@ pub struct GameContext<'a> {
     pub assets: &'a mut AssetManager,
     /// Audio manager for sound playback
     pub audio: &'a mut AudioManager,
+    /// The sources a song's triggers sound under: `ctx.sources.entity(id)` for an entity,
+    /// `game()` for a sound that outlives its cause, `menu()` for the menus. The frame
+    /// tail ends a despawned entity's source, so a game never deactivates one by hand.
+    pub sources: &'a mut crate::sound_sources::SoundSources,
     /// UI context for immediate-mode UI
     pub ui: &'a mut UIContext,
     /// Delta time since last frame in seconds

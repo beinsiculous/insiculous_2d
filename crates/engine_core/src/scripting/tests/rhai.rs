@@ -7,7 +7,7 @@ use tempfile::tempdir;
 
 use common::Transform2D;
 use ecs::script::{ScriptRef, Scripts};
-use ecs::Name;
+use ecs::{EntityId, Name};
 
 use crate::scripting::param_header::parse_param_header;
 use crate::scripting::runner::{ScriptErrorKind, ScriptRunner};
@@ -523,4 +523,47 @@ fn test_set_velocity_x_then_y_in_one_hook_lands_as_one_write() {
     let position = world.get::<Transform2D>(ball).unwrap().position;
     assert_eq!(position, Vec2::new(250.0, -100.0), "both axes land, and only once");
     assert!(runner.errors().is_empty(), "{:?}", runner.errors());
+}
+
+#[test]
+fn trigger_queues_a_binding_for_me_a_named_entity_or_the_game_and_reports_a_missing_name() {
+    let mut world = test_world();
+    let (input, players) = test_inputs();
+    let dir = tempdir().expect("tempdir");
+    let script_code = r#"
+        fn update(me, view, params, cmd, dt) {
+            cmd.trigger(me, "hit");
+            cmd.trigger("drum", "roll");
+            cmd.trigger("score");
+            cmd.trigger("nobody", "miss");
+        }
+    "#;
+    fs::write(dir.path().join("hit.rhai"), script_code).expect("wrote script");
+    let mut runner = ScriptRunner::new();
+    runner.reset(&mut world, dir.path().to_str().expect("a utf-8 path"));
+
+    let bat = world.create_entity();
+    let mut script_ref = ScriptRef::new("hit");
+    script_ref.source_path = "hit.rhai".to_string();
+    world.add_component(&bat, Scripts(vec![script_ref])).expect("scripts attach");
+    let drum = world.create_entity();
+    world.add_component(&drum, Name("drum".to_string())).expect("name attaches");
+
+    runner.update(&mut world, &input, &players, 1.0 / 60.0, &[], None);
+    let queued: Vec<(Option<EntityId>, String)> = runner
+        .take_triggers()
+        .into_iter()
+        .map(|trigger| (trigger.source, trigger.binding))
+        .collect();
+    assert_eq!(
+        queued,
+        vec![
+            (Some(bat), "hit".to_string()),
+            (Some(drum), "roll".to_string()),
+            (None, "score".to_string()),
+        ]
+    );
+    assert!(runner.take_triggers().is_empty(), "taking empties the queue");
+    assert_eq!(runner.errors().len(), 1);
+    assert_eq!(runner.errors()[0].kind, ScriptErrorKind::MissingTarget);
 }

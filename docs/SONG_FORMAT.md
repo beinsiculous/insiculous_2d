@@ -64,7 +64,10 @@ being ignored.
 | `bindings` | list of `Binding` | empty | which action plays which part on which instrument |
 
 Paths are relative to the game's asset directory, as every other asset path is (the
-audio manager resolves them against `set_asset_base`).
+audio manager resolves them against `set_asset_base`, which the engine's runner sets from
+`GameConfig::asset_base()` — `assets` by default — before a game's `init`; a host that
+builds its own `AudioManager` sets it itself, or the paths resolve against the working
+directory).
 
 ### `Part`
 

@@ -111,7 +111,8 @@ Conductor milestone's feature.
 - Music: `play_music` / `play_music_with_volume` loop forever. No crossfade.
 - **Songs.** `play_song(path)` reads `path` and `<path>.ron`; the sidecar's
   SoundFont and sample paths are relative to `set_asset_base` (the game's asset
-  directory; the working directory until set). Every song renders at 44.1 kHz
+  directory, which `engine_core`'s runner sets from `GameConfig::asset_base` when it
+  builds the manager; the working directory until set). Every song renders at 44.1 kHz
   in a conductor of its own (the device's mixer resamples). `trigger(action,
   source)` resolves the action through a table built at load and stamps the
   trigger with `common::clock::Instant::now()`; an unbound action is

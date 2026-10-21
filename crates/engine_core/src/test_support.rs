@@ -14,6 +14,7 @@
 //! feature, for its integration tests (`tests/`) and downstream crates'
 //! test builds — never for a shipped game.
 
+use audio::AudioManager;
 use ecs::World;
 use glam::Vec2;
 use input::InputHandler;
@@ -35,6 +36,7 @@ use crate::scene_data::SceneLoadError;
 use crate::scene_loader::{SceneInstance, SceneLoader};
 use crate::scene_serializer::{serialize_to_ron, world_to_scene_data};
 use crate::scores::Scores;
+use crate::sound_sources::SoundSources;
 use crate::texture_ref::TextureResolver;
 
 /// The texture-path function a save uses in tests: handle 0 is the built-in
@@ -239,6 +241,23 @@ impl<G: Game> GameHarness<G> {
 
     pub fn achievements(&self) -> &AchievementManager {
         self.runner.achievements()
+    }
+
+    /// The runner's audio manager: the disabled one, so a song plays on its virtual
+    /// clock, advanced by the wall time between frames. `song_snapshot()` reads the
+    /// conductor's trigger counters.
+    pub fn audio(&self) -> &AudioManager {
+        self.runner.audio()
+    }
+
+    /// The audio manager, to play a song or drive its buses between frames.
+    pub fn audio_mut(&mut self) -> &mut AudioManager {
+        self.runner.audio_mut()
+    }
+
+    /// The song sources the frame tail reconciles, and the triggers it saw refused.
+    pub fn sound_sources(&self) -> &SoundSources {
+        self.runner.sound_sources()
     }
 
     pub fn scores(&self) -> &Scores {

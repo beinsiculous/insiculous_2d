@@ -477,6 +477,17 @@ fn register_commands(engine: &mut Engine) {
     engine.register_fn("despawn", |out: &mut ScriptCommandsHandle, name: ImmutableString| {
         out.push(ScriptCommand::Despawn { target: Target::Named(name.to_string()) });
     });
+
+    // trigger: a song binding, for an entity's source or, with no target, the game's.
+    engine.register_fn("trigger", |out: &mut ScriptCommandsHandle, me: Rc<SelfView>, binding: &str| {
+        out.push(ScriptCommand::TriggerBinding { target: Some(Target::Entity(me.entity)), binding: binding.to_string() });
+    });
+    engine.register_fn("trigger", |out: &mut ScriptCommandsHandle, name: &str, binding: &str| {
+        out.push(ScriptCommand::TriggerBinding { target: Some(Target::Named(name.to_string())), binding: binding.to_string() });
+    });
+    engine.register_fn("trigger", |out: &mut ScriptCommandsHandle, binding: &str| {
+        out.push(ScriptCommand::TriggerBinding { target: None, binding: binding.to_string() });
+    });
 }
 
 /// Rhai integers are `i64` and the blackboard stores `i32`: a value that does not fit is

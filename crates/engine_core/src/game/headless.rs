@@ -5,6 +5,7 @@
 //! Child module of `game` (like `frame_tail`) so it can reach the runner's
 //! private fields without widening their visibility.
 
+use audio::AudioManager;
 use ecs::World;
 use glam::Vec2;
 use input::InputEvent;
@@ -22,10 +23,12 @@ impl<G: Game> GameRunner<G> {
     /// do before the first frame: engine components are registered, the
     /// runner is built, the game registers its achievements, and the scene
     /// is initialized and started. The gamepad backend is the disabled one,
-    /// so a controller on the machine cannot reach a test's input queue.
+    /// so a controller on the machine cannot reach a test's input queue, and
+    /// so is the audio manager: no sound reaches the machine's speakers, and a
+    /// song plays on the manager's virtual clock.
     pub(crate) fn headless(game: G, config: GameConfig) -> Self {
         crate::component_registration::register_engine_components();
-        let mut runner = Self::new(game, config);
+        let mut runner = Self::with_audio_manager(game, config, AudioManager::disabled());
         runner.game.register_achievements(&mut runner.achievements, &runner.localization.strings);
         runner.gamepad_backend = crate::gamepad_backend::GamepadBackend::disabled();
         runner.asset_manager = Some(AssetManager::headless(AssetConfig::from(&runner.config)));
@@ -107,6 +110,18 @@ impl<G: Game> GameRunner<G> {
 
     pub(crate) fn world_mut(&mut self) -> &mut World {
         &mut self.scene.world
+    }
+
+    pub(crate) fn audio(&self) -> &AudioManager {
+        &self.audio_manager
+    }
+
+    pub(crate) fn audio_mut(&mut self) -> &mut AudioManager {
+        &mut self.audio_manager
+    }
+
+    pub(crate) fn sound_sources(&self) -> &crate::sound_sources::SoundSources {
+        &self.sound_sources
     }
 
     pub(crate) fn achievements(&self) -> &AchievementManager {

@@ -130,6 +130,7 @@ pub struct ScriptRunner {
     /// Refs that failed to resolve this Play, with the identity they failed under: retrying
     /// twice a frame would re-read a missing file forever, but an edited ref gets a new try.
     failed: HashMap<(EntityId, usize), (String, String)>,
+    pub(super) triggers: super::triggers::TriggerQueue,
 }
 
 impl Default for ScriptRunner {
@@ -150,6 +151,7 @@ impl ScriptRunner {
             asset_base: String::new(),
             quarantined: HashSet::new(),
             failed: HashMap::new(),
+            triggers: super::triggers::TriggerQueue::default(),
         }
     }
 
@@ -187,6 +189,7 @@ impl ScriptRunner {
         self.errors.clear();
         self.quarantined.clear();
         self.failed.clear();
+        self.triggers.clear();
         world.insert_resource(Blackboard::new());
     }
 
@@ -499,7 +502,7 @@ impl ScriptRunner {
             }
         }
 
-        phase_commands.apply(world, physics, ctx.delta_time, &mut self.errors);
+        phase_commands.apply(world, physics, ctx.delta_time, &mut self.errors, &mut self.triggers);
     }
 
     /// Early update phase: executed before physics simulation step.

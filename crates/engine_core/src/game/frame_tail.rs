@@ -1,7 +1,7 @@
 //! GameRunner's post-update frame tail: everything the engine does after
 //! the game's `update()` returns — particle stepping, the world systems,
-//! transform propagation, line forwarding, scene-defined UI elements,
-//! achievement toasts, and locale-font capture.
+//! the song sources, transform propagation, line forwarding, scene-defined UI
+//! elements, achievement toasts, and locale-font capture.
 //!
 //! Child module of `game` (like `render`) so it can reach the runner's
 //! private fields without widening visibility.
@@ -43,7 +43,8 @@ impl<G: Game> GameRunner<G> {
     /// The transform hierarchy runs after the world systems, so a clip machine's despawn is
     /// already gone, and before the grid backdrops, which read `GlobalTransform2D`. It ignores
     /// the delta: a paused game and the editor's frozen Editing state still propagate, so a
-    /// parented entity moved by hand follows its parent before the frame draws.
+    /// parented entity moved by hand follows its parent before the frame draws. The song
+    /// sources settle between the two, once this frame's despawns are done.
     fn step_simulations(&mut self, delta_time: f32) {
         let scaled_delta = delta_time * self.time_scale;
 
@@ -54,6 +55,7 @@ impl<G: Game> GameRunner<G> {
         );
 
         step_world_systems(&mut self.scene.world, scaled_delta);
+        self.settle_sound_sources();
         self.transform_hierarchy.update(&mut self.scene.world, scaled_delta);
 
         // Each grid's vertices go to the layer it asked for: over-sprites
@@ -67,6 +69,23 @@ impl<G: Game> GameRunner<G> {
         );
 
         self.render_manager.set_lines(&self.lines, &self.behind_lines);
+    }
+
+    /// Submit the triggers scripts queued this frame, then end the source of every entity
+    /// that is gone — so an entity that triggers and despawns in one frame plays its note
+    /// and has it released here. A world replaced wholesale (the hierarchy reset is filed,
+    /// read before the hierarchy consumes it) flushes every source instead, and this
+    /// frame's triggers, which belong to the old world, are dropped.
+    fn settle_sound_sources(&mut self) {
+        #[cfg(feature = "physics")]
+        let triggers = self.scripts.take_triggers();
+        if self.scene.world.has_resource::<ecs::TransformHierarchyReset>() {
+            self.sound_sources.flush(&mut self.audio_manager);
+            return;
+        }
+        #[cfg(feature = "physics")]
+        crate::scripting::triggers::submit(triggers, &mut self.sound_sources, &mut self.audio_manager);
+        self.sound_sources.reconcile(&self.scene.world, &mut self.audio_manager);
     }
 
     /// Draw scene-authored UI elements, toasts, and tick achievements.

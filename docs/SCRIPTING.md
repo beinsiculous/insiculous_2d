@@ -135,6 +135,16 @@ Commands queue deferred actions executed cleanly at the end of the phase:
   - `cmd.set_blackboard_str(key, str)`
 - **Lifecycle**:
   - `cmd.despawn(target)`
+- **Audio** (a song's bindings — the song's sidecar names them, `docs/SONG_FORMAT.md`):
+  - `cmd.trigger(me, binding)` or `cmd.trigger(name, binding)`: play the binding for that
+    entity's own source, so its notes end when the entity does
+  - `cmd.trigger(binding)`: play it for the game's source, for a sound that must outlive
+    its entity (a brick's explosion)
+
+  A trigger is best-effort: with no song playing, a binding the song lacks, or a full
+  queue, it is dropped and counted (`ctx.sources.refused_triggers()`), never a script
+  error. A name that matches no entity is reported as a missing target, as for any
+  command.
 
 `target` can be `me`, an entity ID, or an entity's name string.
 
@@ -153,6 +163,16 @@ engine's frame tail — `SpriteAnimationSystem`, the lifetime pass, and
 - A **completion** or an auto-transition is what the *next* frame's view
   reports: `view.clip_finished` and `view.clip_state` are snapshots taken
   before your commands apply.
+- A **trigger** reaches the song in the frame tail, after the lifetime pass and
+  the clip machine and before the transform hierarchy: every trigger queued that
+  frame, in the order its command applied (`early_update` before `update`, and
+  within a phase by entity, then by script on the entity). The same tail then ends
+  the source of every entity that is gone, so a script that triggers and
+  `cmd.despawn`s its entity in one hook plays the note and has it released at
+  once — trigger on the game's source (`cmd.trigger(binding)`) for a sound that
+  must ring on. In the frame a world is replaced wholesale (a snapshot restore, a
+  scene load), every source is flushed and that frame's triggers are dropped:
+  they belong to the old world.
 
 ---
 

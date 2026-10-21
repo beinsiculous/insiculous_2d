@@ -18,7 +18,11 @@
 //! (channel 2) and the piano's left hand (channel 5), which then leave the background —
 //! two instruments, the piano and the drum kit, and four bindings: keys 1 and 2 walk the
 //! melody on the piano and on the kit, one shared cursor between them; keys 3 and 4 walk
-//! the left hand the same way, each through `ctx.audio.trigger`. `--sample` adds a third
+//! the left hand the same way, each through `ctx.audio.trigger`. Left Shift plays the
+//! melody on the piano from a script instead — an entity carrying
+//! `examples/assets/scripts/conductor_trigger.rhai`, whose `cmd.trigger(me, …)` the frame
+//! tail submits under the entity's own source, onto the same shared cursor and the same
+//! grid as the keys. `--sample` adds a third
 //! instrument, a gated sample instrument made from the middle-C sine fixture (root note
 //! 60), and key 5 walks the left hand on it: its notes play at their written pitches,
 //! higher ones shorter and lower ones longer. `--background-only` writes no parts, so the
@@ -29,7 +33,8 @@
 //! command can wait), frame times, the position and the counters, triggers, sample voices
 //! and the limiter's included.
 //!
-//! Controls (a held key acts once): 1–4 trigger (5 with `--sample`), Space pauses and
+//! Controls (a held key acts once): 1–4 trigger (5 with `--sample`), Left Shift triggers
+//! through the script, Space pauses and
 //! resumes, K seeks to bar 8, L turns looping off and on, M mutes and unmutes the music
 //! bus (the triggers keep sounding), S mutes and unmutes the sfx bus (the background keeps
 //! playing), Escape quits.
@@ -47,6 +52,7 @@
 
 use std::path::{Path, PathBuf};
 
+use ecs::script::{ScriptRef, Scripts};
 use engine_core::prelude::*;
 use music_midi::{SongData, SourceId, TempoMap, TransportState};
 
@@ -59,6 +65,7 @@ const NAPOLITAN_DANCE_TYPE_ZERO: &str = "crates/music_midi/fixtures/dansenapolit
 const NAPOLITAN_DANCE_CAST: &str = "crates/music_midi/fixtures/dansenapolitaine-cast.mid";
 const EGMONT: &str = "crates/music_midi/fixtures/Egmont.mid";
 const SINE_SAMPLE: &str = "crates/music_midi/fixtures/sine_48000_mono.wav";
+const TRIGGER_SCRIPT: &str = "examples/assets/scripts/conductor_trigger.rhai";
 const REPORT_SECONDS: f32 = 10.0;
 /// Bar 8 as musicians count it; bars count from zero in the tempo map.
 const SEEK_BAR: u64 = 7;
@@ -253,7 +260,6 @@ impl ConductorBackground {
         self.seek_beat = tempo_map
             .position_at_tick(bar_start_tick(&tempo_map, SEEK_BAR))
             .beat;
-        ctx.audio.set_asset_base(&base_path);
         let started = common::clock::Instant::now();
         let played = ctx.audio.play_song(&midi_path);
         // Every byte of the song is in memory once it loads, so its files can go.
@@ -265,7 +271,17 @@ impl ConductorBackground {
             "song loaded in {:.1} ms",
             started.elapsed().as_secs_f64() * 1000.0
         );
+        Self::spawn_scripted_trigger(ctx, &base_path);
         Ok(())
+    }
+
+    /// The entity whose script triggers the melody on Left Shift.
+    fn spawn_scripted_trigger(ctx: &mut GameContext, base_path: &Path) {
+        ctx.scripts.reset(ctx.world, &base_path.to_string_lossy());
+        let entity = ctx.world.create_entity();
+        let mut script = ScriptRef::new("conductor_trigger");
+        script.source_path = TRIGGER_SCRIPT.to_string();
+        ctx.world.add_component(&entity, Scripts(vec![script])).ok();
     }
 
     fn trigger(&self, ctx: &mut GameContext, key_index: usize) {
@@ -329,7 +345,7 @@ impl Game for ConductorBackground {
         println!("=== Conductor Background ===");
         println!("SoundFont: {}", self.settings.sound_font.display());
         println!("Song: {}", self.settings.fixture);
-        println!("Controls: 1-5 trigger, Space pause/resume, K bar 8, L looping, M music, S sfx, Escape quit");
+        println!("Controls: 1-5 trigger, Left Shift scripted trigger, Space pause/resume, K bar 8, L looping, M music, S sfx, Escape quit");
         if let Err(error) = self.start(ctx) {
             println!("the song cannot start: {error}");
             ctx.request_exit();
@@ -337,6 +353,7 @@ impl Game for ConductorBackground {
     }
 
     fn update(&mut self, ctx: &mut GameContext) {
+        ctx.scripts.update(ctx.world, ctx.input, ctx.players, ctx.delta_time, &[], None);
         self.elapsed_seconds += ctx.delta_time;
         self.window.frames += 1;
         self.window.seconds_total += ctx.delta_time;
@@ -361,7 +378,7 @@ impl Game for ConductorBackground {
             .unwrap_or_default();
         let lines = [
             "Conductor Background".to_string(),
-            "1 melody/piano  2 melody/kit  3 bass/piano  4 bass/kit  5 bass/sample".to_string(),
+            "1 melody/piano  2 melody/kit  3 bass/piano  4 bass/kit  5 bass/sample  LShift script".to_string(),
             "Space pause/resume   K bar 8   L looping   M music   S sfx".to_string(),
             format!(
                 "looping: {}   music {}   sfx {}   triggers played {} refused {} late {} silent {}",

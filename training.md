@@ -12,6 +12,7 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
   - `game_loop_manager.rs` - Game loop timing and frame delta management (the only frame timer)
   - `render_manager.rs` / `window_manager.rs` - Focused managers (renderer lifecycle, window creation)
   - `contexts.rs` - `GameContext` / `RenderContext` passed to Game methods
+  - `sound_sources.rs` - `SoundSources` (`ctx.sources`): the `SourceId` an entity, the game or the menu triggers a song binding under, the host-wide activation epoch, the reconcile and the flush the frame tail runs
   - `assets.rs` - Asset loading and caching (tracks handle→path for scene save)
   - `assets/sprite_sheet.rs` - `AssetManager::load_sprite_sheet` (PNG + sidecar → `SpriteSheet`), `SidecarCache` (one sidecar read per path per scene load, cleared at the top of every load)
   - `sheet_file.rs` - **the `.sheet.ron` schema** (`SheetFile` v1, `parse_sheet_file`, `into_parts`, `sidecar_path_for`); all sidecar validation lives here
@@ -107,7 +108,7 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
   - `hello_world.rs` - Physics platformer with UI, audio, ECS, and scene graph
   - `editor_demo.rs` - Editor wrapping the platformer (`--features editor`, shares `hello_world/platformer.rs`)
   - `behavior_demo.rs` - Scene-driven behaviors
-  - `conductor_background.rs` - A MIDI fixture through `ctx.audio.play_song` (copied with its written sidecar into a temporary directory) — by default the *Napolitan Dance* cast fixture with keys 1–4 triggering two parts on two instruments through `ctx.audio.trigger`, key 5 the left hand on a sample instrument with `--sample`, M and S muting the music and sfx buses — with render-cost, drain-gap, trigger-counter, sample-voice and limiter log lines from `song_position` and `song_snapshot`
+  - `conductor_background.rs` - A MIDI fixture through `ctx.audio.play_song` (copied with its written sidecar into a temporary directory) — by default the *Napolitan Dance* cast fixture with keys 1–4 triggering two parts on two instruments through `ctx.audio.trigger`, Left Shift the melody through a script's `cmd.trigger` (`examples/assets/scripts/conductor_trigger.rhai`), key 5 the left hand on a sample instrument with `--sample`, M and S muting the music and sfx buses — with render-cost, drain-gap, trigger-counter, sample-voice and limiter log lines from `song_position` and `song_snapshot`
   - Real games live in `../games/` (pong, breakout, space_invaders, snake, asteroids) — see `PROJECT_ROADMAP.md`
 
 ## Coding Guidelines
@@ -912,6 +913,50 @@ impl Game for MyGame {
 ```
 
 **Files:** `engine_core/src/scripting/`, `ecs/src/blackboard.rs`, `docs/SCRIPTING.md`
+
+### Conductor Pattern (songs, triggers and sources)
+A song is a MIDI file and its `.mid.ron` sidecar (`docs/SONG_FORMAT.md`): a background
+score that plays by itself, and bindings — named actions that play a part on an
+instrument when the game triggers them, on the beat grid.
+
+```rust
+fn init(&mut self, ctx: &mut GameContext) {
+    // The sidecar's SoundFont and sample paths are relative to the game's asset base,
+    // which the engine hands the audio manager; the MIDI path is the one given here.
+    let song = format!("{}/music/theme.mid", ctx.assets.base_path());
+    if let Err(error) = ctx.audio.play_song(song) {
+        log::warn!("no song: {error}");
+    }
+}
+
+fn on_brick_hit(&mut self, ctx: &mut GameContext, brick: EntityId) {
+    let source = ctx.sources.entity(brick);           // the brick's own activation
+    ctx.sources.trigger(ctx.audio, "hit", source);    // refused → counted, never an error
+}
+```
+
+- **One music slot.** `play_song` and `play_music` share it, last request wins across
+  both kinds, and nothing is replaced until the new request has loaded. **`stop_music`
+  and `stop_song` each stop their own kind, pending included — call both to silence
+  everything.**
+- **Headless, a song runs on a virtual clock.** A disabled manager with no device
+  (`GameHarness`, tests) plays the song on a clock advanced by the wall time between
+  `update()`s, so `song_position`, `beat_crossed` and the conductor's counters
+  (`song_snapshot()`) move; before the web's first gesture the song waits pending.
+- **Three kinds of source** on `ctx.sources`: `entity(id)` for an entity — its notes
+  end when it does; `game()` for a sound that must outlive whatever caused it (a brick's
+  explosion); `menu()` for the menus. Each keeps one activation, so repeated triggers
+  walk one shared cursor; the game and the menu are never ended by the reconcile.
+- **The same-frame rule.** The frame tail, after the lifetime pass and before the
+  hierarchy, submits the triggers scripts queued this frame (`cmd.trigger`), then ends
+  the source of every entity that is gone. An entity that triggers and despawns in one
+  frame plays its note and has it released at once — trigger on `game()` for a sound
+  that must ring on. A world replaced wholesale (the hierarchy reset is filed) flushes
+  every source instead and drops that frame's triggers; a song change flushes nothing,
+  and a live entity keeps its source into the next song.
+
+**Files:** `engine_core/src/sound_sources.rs`, `engine_core/src/scripting/triggers.rs`,
+`engine_core/src/game/frame_tail.rs`, `audio/src/manager/song.rs`
 
 ## Current Known Limitations
 

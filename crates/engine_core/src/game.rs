@@ -178,6 +178,9 @@ pub(crate) struct GameRunner<G: Game> {
     /// Audio playback management. Falls back to a disabled (no-op) manager
     /// when no audio device is available, so the game always runs.
     audio_manager: AudioManager,
+    /// The song sources the game triggers under, reconciled against the world in the
+    /// frame tail.
+    sound_sources: crate::sound_sources::SoundSources,
     /// Input handling
     input: InputHandler,
     /// Gamepad hardware backend (gilrs); disabled no-op when unavailable.
@@ -271,6 +274,7 @@ macro_rules! build_context {
             world: &mut $runner.scene.world,
             assets: $assets,
             audio: &mut $runner.audio_manager,
+            sources: &mut $runner.sound_sources,
             ui: &mut $runner.ui,
             delta_time: $delta_time,
             window_size: $window_size,
@@ -291,13 +295,17 @@ pub(super) use build_context;
 
 impl<G: Game> GameRunner<G> {
     fn new(game: G, config: GameConfig) -> Self {
-        // Create window manager from game config
-        let window_config = WindowConfig::from(&config);
-        let startup = crate::startup_splash::StartupSplash::new(config.startup_splashes.clone());
-
         // Audio init failure is non-fatal: falls back to a disabled manager
         // whose playback calls are no-ops, so init()/update() always run.
-        let audio_manager = AudioManager::new_or_disabled();
+        Self::with_audio_manager(game, config, AudioManager::new_or_disabled())
+    }
+
+    /// The runner around `audio_manager`, which reads a song's files under the config's
+    /// asset base.
+    fn with_audio_manager(game: G, config: GameConfig, mut audio_manager: AudioManager) -> Self {
+        let window_config = WindowConfig::from(&config);
+        let startup = crate::startup_splash::StartupSplash::new(config.startup_splashes.clone());
+        audio_manager.set_asset_base(config.asset_base());
 
         let save_documents::SaveDocuments { achievements, scores, player_input } =
             save_documents::open_save_documents(&config);
@@ -325,6 +333,7 @@ impl<G: Game> GameRunner<G> {
             render_manager: RenderManager::new(),
             asset_manager: None,
             audio_manager,
+            sound_sources: crate::sound_sources::SoundSources::new(),
             input: InputHandler::new(),
             gamepad_backend: crate::gamepad_backend::GamepadBackend::new_or_disabled(),
             player_input,
