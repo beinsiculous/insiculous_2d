@@ -59,8 +59,10 @@ set -euo pipefail
 # below applies to every kind and only warns). This is the size budget the
 # playground's documented performance numbers are held to; Jesse sets the
 # number after measuring on an ordinary laptop, and it is a one-time value
-# edited here rather than a flag a caller varies per invocation.
-PLAYGROUND_SIZE_BUDGET_MIB=12
+# edited here rather than a flag a caller varies per invocation. Raised from
+# 12 on 2026-10-21 for the composer (Conductor batches 10 and 11), with the
+# bundle at 11.83; the platform's own per-file ceiling is well above it.
+PLAYGROUND_SIZE_BUDGET_MIB=16
 
 if [[ $# -lt 2 ]]; then
     echo "usage: $0 <crate_dir> <slug> [--kind games|playground|editor] [--project <slug>=<title>=<dir>]... [--version vN] [--serve] [--sync <site_public_dir>] [--force]" >&2
