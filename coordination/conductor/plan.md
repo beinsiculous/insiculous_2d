@@ -734,7 +734,18 @@ isolation tests from batch 1 made permanent. `docs/SONG_FORMAT.md` § Modes show
 Loop-versus-background-chord caveat the composer will surface. **Gates:** standard;
 `check_wasm.sh`. **Leaves out:** samples (next), the audio crate (batch 6).
 
-## Batch 5 — K7: user sample instruments (#140)
+## Batch 5 — K7: user sample instruments (#140) — DONE 2026-10-20 (577b53b)
+
+Authored by the executor (a Claude Opus session) from `review/conductor/handoff-5.md`; report
+`review/conductor/report-5.md`; reviewed by kimi (`review-8.md`), gemini (`review-8-gemini.md`)
+and the planner (`review-8-claude.md`); adjudicated in `rebuttal-8.md` (2 accepted, 5
+rebutted); Jesse's listen check passed natively. Measured: pitch within 0.0001 %, durations
+within a frame, the ceiling held under three bursts of 64. **Carried to batch 6's fix-up
+list:** the loader checks the file's size before reading it (kimi), a one-shot fades its
+last 5 ms instead of stopping dead when the WAV does not end at silence (kimi), the sample
+slot refuses the newest trigger at its ceiling instead of cutting a fading voice (Jesse's
+call, 2026-10-20: no click under a scripted burst), and the final output limiter K7's issue
+asks for, which belongs after the bus gains in the audio source.
 
 Executor: the Opus session. Reviewers: kimi, gemini. Listen check: Jesse. Size: about +1600 lines.
 
@@ -774,9 +785,22 @@ and click-free on steal (max sample-to-sample delta bounded). **Gates:** standar
 
 Executor: the Opus session. Reviewers: kimi, gemini. Listen check: Jesse. Size: about +2000 lines.
 
+**Batch 5's fix-ups, first** (accepted in `rebuttal-8.md`): `common::vfs::file_size(path)`
+(native metadata; the memory map's length on wasm) and `load_sample_pcm` refuses a file over
+`SAMPLE_BYTE_LIMIT` by size *before* reading it; `SampleVoice` starts its 5 ms fade when its
+position comes within one fade of the sample's last frame, so a one-shot whose WAV ends at
+full scale ends on the same ramp as every other end (test: a hand-built WAV ending at 1.0);
+`SampleSlot::note_on` at the ceiling **refuses the newest voice** — the trigger engine's
+`admit` treats the sample slot's ceiling like every other overflow (newest refused, cursor
+kept, counted) — and the burst test's step threshold is re-frozen at the fade's own; a
+**soft peak limiter on the combined stream after the bus gains** in `ConductorSource`
+(threshold and knee as constants, its action counted on `SharedPosition`), measured on the
+worst-case storm so 24 synth notes and 16 sample voices cannot clip the device.
+
 The loader fills every field of `ResourceMetadata`, the `soundfonts` set included (the
 membership check lands in batch 3 and refuses a song whose background bank it does not
-list); a song change sends `StopAllSources` and loads only once it is drained (a
+list) and `sample_seconds` from `SampleBank::seconds()`, decoding each sample path once
+into a map so `Song::new` never sees a duplicate; a song change sends `StopAllSources` and loads only once it is drained (a
 `BindingIndex` is an index into one song's bindings, and the conductor keeps the flush
 floor across the swap); the rodio adapter renders one block per pull so each block drains
 with its own clock; `song_position` reports block starts, which is where a scheduled
