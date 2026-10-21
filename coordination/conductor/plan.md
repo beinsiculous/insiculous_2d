@@ -939,31 +939,227 @@ flush (batch 11 calls `flush` from `song_preview`).
 
 ## Batch 8 — K9: scene-authored audio — `SoundEmitter`, the sound tier, the asset kind (#174)
 
-Executor: the Opus session. Reviewers: kimi, gemini, codex (the popup and the inspector rows).
-Size: about +1900 lines.
+Executor: the Opus session. Reviewers: kimi, gemini, codex (the popup, the inspector rows,
+the asset tile, the drag ghost). Size: about +2500 lines (up from +1900 on re-verification:
+the instance API, the pending loops and the pan adapter of correction 1).
 
-Files: `crates/ecs/src/sound_emitter.rs` (the component, decision 6, registered as a builtin),
-`crates/engine_core/src/sound_library.rs` (path → handle, loads through `ctx.audio` lazily,
-cleared on scene load), `sound_emitter_system.rs` (frame tail: play-on-spawn once, looping
-kept alive, spatial attenuation and pan from the main camera, `max_distance` floored at
-0.01 world units by validation, an `EntityId → playing instance` table so an emitter whose
-entity no longer validates is stopped next frame and on scene load, binding-named emitters go
-through `trigger`), `scene_data.rs` (`ComponentData::SoundEmitter`, typed because its path
-resolves at load like `Sprite.texture`), `scene_serializer/components.rs`,
-`scripting` (`cmd.play_sound(target)`, `cmd.stop_sound(target)`), `crates/editor/src/asset_browser.rs`
-(`AssetKind::Sound` for wav/mp3/ogg/mid/sf2, `DragPayload::Sound { path }`),
-`stored_component/mod.rs` (one registry line, `ComponentCategory::Audio` back),
-`component_editors/sound_emitter.rs`, `panel_renderer/asset_browser.rs` is at 598 lines —
-the drop target for a sound path is written in a new `asset_browser/drop.rs`, `crates/audio`
-gains a pan field on `SoundSettings` (applied as a stereo gain pair; no `SpatialSink`). Docs: `crates/audio/CLAUDE.md`'s
-first paragraph, `training.md`, the scene RON example. Tests: a scene names a sound by path
-and the harness hears a play call (`GameHarness`), a missing file is a load warning not a
-panic, the emitter on a despawned entity stops, serializer round trip, popup row present,
-attenuation and pan in world units at `max_distance` and at half of it, `spatial` on a
-binding emitter refused at load, two binding emitters on one slot where only one stops, a
-looping emitter's entity destroyed and its sink gone next frame.
-**Gates:** standard; `check_wasm.sh`; `check_games.sh`. **Leaves out:** occlusion, a
-listener component (the main camera is the listener), the composer.
+**Re-verified against the tree 2026-10-21, after batch 7, and reviewed** (`review-12.md`,
+`review-12-gemini.md`, `review-12-codex.md`, adjudicated in `rebuttal-12.md`: 19 findings,
+18 accepted). Six corrections to the first cut, each carrying what the round added:
+
+1. **`crates/audio` has no playback instance.** `play_with_settings` returns `AudioResult<()>`
+   and `stop(handle)` stops every instance of a sound (`manager/mod.rs:303, 393`), so "an
+   `EntityId → playing instance` table" had nothing to hold and "only one stops" nothing to
+   do it with. The batch gives the manager a **`PlaybackId`** (a `Copy` id from a
+   manager-local counter, minted in disabled mode too so the host's table is uniform),
+   returned by `play_with_settings` and `play` (callers: `manager/tests.rs`,
+   `tests/song_triggers.rs:286`, the example — none reads the `()`), `stop_playback(id)`
+   (that instance alone; an ended or unknown id is a no-op), `set_playback_mix(id, volume,
+   pan)` (the instance's base volume re-derived through the bus and master as
+   `update_all_volumes` does, and its pan) and **`is_playing(id)`** (true while the instance's
+   sink is in the table, which `update_at` already prunes at `:416`). **Disabled mode keeps a
+   ledger** so the host and the headless tests see one contract: a looping instance is
+   reported playing until `stop_playback`, a one-shot is reported ended at the next
+   `update`; and the **gesture-gated mode keeps a looping instance pending** — the handle,
+   its settings and its pan atomic — started from `enable_output` exactly as `pending_music`
+   is (`manager/mod.rs:222`), dropped by `stop_playback`; a one-shot played before the
+   gesture is dropped. Pan is live: rodio's `ChannelVolume` holds fixed gains, so a new
+   **`pan_source.rs`** wraps the decoder as a `Source` reading the pan from an
+   `Arc<AtomicU32>` f32 bit pattern once a frame (the conductor's bus-gain idiom): two
+   channels for mono input (each sample emitted twice) and stereo input (alternated); an
+   input above two channels is reported at its own channel count and passed through
+   unpanned. **The law is unity at centre**, `left = min(1, 1 − pan)`, `right = min(1, 1 +
+   pan)`, so a default play is byte-identical to today's; pan clamped to −1..=1 at the point
+   of use like volume. `SoundSettings` gains `pan: f32` (default 0, `with_pan`).
+   `play_source` and recorded music are untouched. Unit tests: the adapter's sample pairs at
+   pan −1, 0 and 1 on mono and stereo input, a default play untouched, a six-channel input
+   passed through, the clamp; the pending loop surviving a failed `enable_output` (matched on
+   the result, as the gesture tests do).
+2. **"Cleared on scene load" is gone.** The runner has no scene-load hook — a game calls
+   `SceneLoader::load_and_instantiate` itself — and the texture cache this tier sits beside
+   is never cleared in a session (`AssetManager`'s `(path, filter)` dedupe); a clear that
+   left the handles loaded would leak a `SoundData` per reload. The library lives in
+   `AssetManager` as its sound tier, **`assets/sound_library.rs`** beside
+   `assets/sprite_sheet.rs` (`assets.rs` is at 552: the field only there, the impl block in
+   the child module): `AssetManager::resolve_sound(&mut self, path: &str, audio: &mut
+   AudioManager) -> Result<SoundHandle, AudioError>` — `path` relative to the asset base
+   like a texture, loaded through `audio.load_sound` on first sight and cached by path for
+   the session; a path that failed is remembered with its error and warned **once**, so a
+   missing file costs one log line, not one a frame. `set_base_path` clears the map as it
+   clears the texture map (`assets.rs:469`); the handles stay loaded, a base change being a
+   project switch. That method is the public handle lookup #174 asks for: game code
+   resolves and plays through `ctx.audio` itself.
+3. **The system is a runner field, not a world resource; it runs after the hierarchy, and
+   not at all while the engine is frozen.** `crates/engine_core/src/sound_emitters.rs`:
+   **`SoundEmitters`**, lent to the context as `ctx.emitters` the way `sources` is, with
+   `play(entity)` and `stop(entity)` queueing a request (game code; scripts reach the same
+   system through correction 5), `playing(entity) -> Option<PlaybackId>`, `plays(entity) ->
+   u64` (starts, kept across evictions), `last_mix(entity) -> Option<(f32, f32)>` (the gain
+   and pan last sent — what a headless test asserts), `failed_loads`, `detached_plays` and
+   `refused` counters (a request on an entity without an emitter is refused, counted and
+   logged at debug); and `update(world, assets, audio, sources)`, run by the frame tail
+   **after `transform_hierarchy.update`** (a child emitter's position is this frame's
+   `GlobalTransform2D`, which the grids read the same way; `Transform2D` when there is none)
+   and before the grids — **skipped whole while `time_scale == 0`**: the editor and the
+   playground freeze the engine that way outside Play (`editor_game/mod.rs:172-176`,
+   `preview.rs:162-165`), so Editing records no first sight and starts nothing, Play's first
+   frame is the first sight and the spawn sounds fire then, and a paused game keeps its
+   loops and starts nothing while its queued requests wait. The pass: an entity seen for the
+   first time with `play_on_spawn` plays; the requests drain; every playing spatial
+   instance's mix is recomputed; an entry whose instance ended (`is_playing` false), whose
+   entity no longer `validate_entity`s, **or whose entity no longer carries the component**
+   (an inspector `[X]`, an undo) is stopped and forgotten in that same tail, and a stop
+   request acts on the table whether or not the component is still there. **`play` on a
+   playing entry**: a one-shot starts a new instance and the previous one plays out
+   untracked, its mix frozen where it was; a looping emitter's loop already running is a
+   no-op. A path emitter plays through the library and the manager (looping and volume from
+   the component, pan from the mix); **a binding emitter plays through
+   `SoundSources::trigger(audio, binding, sources.entity(entity))`** (`sound_sources.rs:86`)
+   and stops through the new `end`. The world-replacement branch of `settle_sound_sources`
+   calls `clear(audio)` whatever the time scale: every instance stopped, the table and the
+   requests dropped — the flush rule, applied to emitters. **The component carries no
+   runtime state**: first sight, the instance and the last mix live in the system's table,
+   so `SoundEmitter` serializes and snapshots as plain data.
+4. **The spatial math, frozen for the tests.** `d` is the distance from the emitter to the
+   main camera (`render_manager::main_camera_pose`, which the render path already trusts)
+   in world units, pixels over `RENDER_UNIT`; `gain = volume · (1 − d / max_distance)`
+   clamped to 0..=1; `pan = (emitter.x − camera.x) / RENDER_UNIT / max_distance` clamped to
+   −1..=1; zoom ignored; with no main camera the mix is `(volume, 0)`. So at `max_distance`
+   the gain is 0, at half of it `volume / 2`, and half of `max_distance` to the right pans
+   0.5. A pure `spatial_mix` function carries it and **applies the 0.01 floor to
+   `max_distance` itself** (the loader floors a file's value; code builds components too)
+   and returns `(0, 0)` for a non-finite distance, so no NaN reaches a sink; unit-tested
+   with those numbers, a zero `max_distance` included.
+5. **Scripts cannot reach the emitters from `apply`** (`ScriptCommands::apply` has the world
+   and physics alone — batch 7's rule), so `cmd.play_sound(me | name)` and
+   `cmd.stop_sound(me | name)` become `ScriptCommand::PlaySound { target }` /
+   `StopSound { target }`, whose `apply` resolves the target like `despawn`'s and pushes
+   onto **one FIFO in `scripting/triggers.rs`** (100 lines): `QueuedSound::{Trigger { source,
+   binding }, Play { entity, emitter, position }, Stop { entity }}` under the one capacity,
+   so `stop_sound(me); trigger(me, "hit")` keeps its order. `submit` walks it in order: a
+   trigger is sent, a binding emitter's request is served there through `SoundSources`, a
+   path emitter's request is handed on in order to the pass. **A play request carries the
+   emitter and the entity's position as they were at apply**, so `play_sound(me); despawn(me)`
+   in one script still sounds: a one-shot whose entity is gone by the tail plays detached at
+   that position, untracked and counted in `detached_plays`; a loop on a gone entity is
+   refused — a loop belongs to a living owner, the recorded twin of the trigger rule.
+   **`commands.rs` is at 583 lines** and two variants with their arms cross 600: the
+   executor first moves `Target` and its resolution (`commands.rs:22-53` and the resolve
+   block at :261-296) into a new `scripting/target.rs` — a pure move, re-exported where it
+   was — and only then adds the commands. `rhai_bindings.rs` is at 539 (six `register_fn`s
+   fit), `runner.rs` at 597 (untouched), `game.rs` at 562 (the field, the construction and
+   the `build_context!` line fit). The script queue sits behind `physics` with the rest of
+   scripting; `SoundEmitters`, `ctx.emitters` and the tail's pass do not —
+   `check_features.sh`.
+6. **The editor side, placed where it fits.** `panel_renderer/asset_browser.rs` is at 598,
+   so the *arming* — `TileInteraction` and `tile_interaction`, which gain the `Sound`
+   press — moves to a new `panel_renderer/asset_browser/tile.rs` (child module of the file;
+   `render_tile`'s glyph arm becomes `AssetKind::Script | AssetKind::Sound`, the extension
+   in accent). The *drop target* is the inspector's sound slot: a new
+   `crates/editor/src/sound_field.rs`, the twin of `texture_field.rs`, showing the path and
+   taking `DragPayload::Sound { path }`; `drag_ghost.rs`'s Sound arm shares the Script arm's
+   name pill (one helper, two callers); `hierarchy/mod.rs:397`'s exhaustive match gains the
+   arm (a sound dropped on a row does nothing — a row drop that adds an emitter is left
+   out). **The inspector cannot author what the loader refuses**: cycling the kind to
+   Binding clears `spatial` and `looping`, and the Binding view hides their rows and the
+   `volume` row (the conductor owns a binding's dynamics; the loader keeps a binding's
+   `volume` as harmless data rather than refusing it); `volume` (0) and `max_distance`
+   (0.01) are hard floors in `physical_floors.rs`, shared with the command API's sanitizer
+   as every floor there is. `AssetKind::Sound` is **wav/mp3/ogg/flac — what `load_sound`
+   decodes**; `.mid` and `.sf2` are song kinds and come with K8's picker in batch 10, the
+   batch that needs them (decision 9's reuse is the WAV sample instrument).
+   `ComponentCategory::Audio` is appended to `ALL` (its length literal is 5) with the label
+   "Audio"; `stored_component/tests.rs`'s exhaustive dispatch test covers the popup row by
+   construction.
+
+Also: `looping` on a binding emitter is refused at load beside `spatial`, for the same
+reason (a binding plays a part; the conductor has no loop for it), as
+`SceneLoadError::ComponentError` naming the entity — no new error variant. Stopping a binding
+emitter needs **`SoundSources::end(entity, audio)`** (deactivate and forget, so the next
+trigger re-mints an epoch; about ten lines and a unit test in `sound_sources.rs`, 207
+lines). The playground's import keeps every asset entry whatever its extension
+(`archive.rs:305-352` validates sheets, scenes and scripts and stores the rest), so a sound
+imports with no change there, and the scene dry-run through `HeadlessAssets` runs the
+emitter's load-time checks too.
+
+Files: `crates/ecs/src/sound_emitter.rs` (decision 6's component: `SoundEmitter { sound:
+SoundRef, volume: f32, play_on_spawn: bool, looping: bool, spatial: Option<Spatial> }`,
+`SoundRef::{Path(String), Binding(String)}`, `Spatial { max_distance: f32 }` in world units;
+`Default` is a path emitter with an empty path, volume 1, nothing else set; registered as a
+builtin in `component_registry/mod.rs:330-356`; re-exported), `crates/audio/src/{sound.rs,
+manager/mod.rs, pan_source.rs}` (correction 1; `manager/mod.rs` is at 429 — the instance
+methods and the pending loops may not fit beside the device code: if they cross 600, a
+`manager/playback.rs` takes the instance table, the way `music.rs` takes the track),
+`crates/engine_core/src/assets/sound_library.rs` plus the field in `assets.rs` (correction
+2), `sound_emitters.rs` (correction 3, ≤ 450 lines with its unit tests; if the pass and the
+request handling push it over, `sound_emitters/update.rs` takes the pass), `game.rs`,
+`contexts.rs` (`emitters`, after `sources`), `game/frame_tail.rs` (correction 3's two call
+sites), `sound_sources.rs` (`end`), `scene_data.rs` (`ComponentData::SoundEmitter { sound,
+volume, play_on_spawn, looping, spatial }` — typed for the load-time checks and the
+serializer row, not for resolution, which is lazy: nothing in the loader touches audio),
+`scene_loader_components.rs` (515 lines: the arm with the checks — `spatial` or `looping` on
+a binding emitter → `ComponentError` naming the entity; `max_distance` below 0.01 floored to
+0.01; a non-finite or negative `volume` → `ComponentError`), `scene_serializer/components.rs`
+(the row), `scene_serializer/tests.rs` (the round trip), `scripting/{target.rs, commands.rs,
+triggers.rs, rhai_bindings.rs}` (correction 5), `crates/editor/src/{asset_browser.rs,
+drag_drop.rs, sound_field.rs, physical_floors.rs, stored_component/{mod.rs, category.rs},
+component_editors/sound_emitter.rs}` (the rows: a `cycle` between Path and Binding, the
+sound slot or a `string_edit` for the binding name, `volume` as a numeric row floored at 0,
+`play_on_spawn` and `looping` as `bool` rows, `spatial` as a `bool` row that reveals
+`max_distance` floored at 0.01 — `component_editors/grid_backdrop.rs` is the model),
+`crates/editor_integration/src/panel_renderer/{asset_browser.rs, asset_browser/tile.rs,
+drag_ghost.rs}`, `crates/editor/src/hierarchy/mod.rs` (the arm), `test_support.rs`
+(`GameHarness::sound_emitters()`). The example: `hello_world.scene.ron`'s `player` gains
+`SoundEmitter(sound: Path("assets/sounds/snd_jump.wav"), volume: 0.8)` and `platformer.rs`
+plays the jump through `ctx.emitters.play(player)` (the entity from
+`SceneInstance::get_entity("player")`) instead of its hand-loaded handle, which goes;
+`coin_1` gains a `play_on_spawn` `beep_e.wav` emitter with `spatial: Some(Spatial(max_distance:
+8.0))`, so the scene's first frame pans a beep by where the coin sits relative to the
+camera — the native listen check, Jesse's, and not a gate for K9. Docs: `crates/audio/CLAUDE.md`
+(the first paragraph's "no spatial audio … no audio component" is false after this batch;
+Files and Key Types for `pan_source.rs`, `PlaybackId`, `pan`, the pending loops beside
+pending music, the disabled-mode ledger), `crates/engine_core/CLAUDE.md` (file map and
+pitfall rows: the once-only warning, the after-the-hierarchy order, the time-scale gate),
+`crates/ecs/CLAUDE.md`, `crates/editor/CLAUDE.md:65` (the `AssetKind` list) and its
+component list, `crates/editor_integration/CLAUDE.md` (file map), `docs/SCRIPTING.md` § 4's
+Audio group (`play_sound`, `stop_sound`) and § Order (one queue with the triggers; a path
+emitter's request is served after the hierarchy; a one-shot outlives its entity, a loop does
+not), `training.md` (the scene RON example at :513 and `README.md:306` gain the emitter
+line; § Conductor Pattern gains the emitter paragraph: the fields, the public lookup,
+`ctx.emitters`, the after-the-hierarchy rule, the freeze).
+
+Tests, each named for its behaviour: `crates/engine_core/tests/sound_emitters.rs` through
+`GameHarness` (`--features test-support`; the harness's temp asset base receives a copy of
+`examples/assets/sounds/beep_e.wav`, the `song_triggers.rs` pattern, and the scene names it
+relative to that base): a scene naming a sound by path with `play_on_spawn` has played after
+the first frame with its mix recorded; a missing file is one warning and `failed_loads == 1`
+after ten frames, never a panic; a one-shot's entry is gone the frame after it ends and
+`plays` still counts it; `play` on a one-shot entity twice counts two starts (the jump);
+`play` on a running loop is one start; a looping emitter's entity destroyed in `update` is
+stopped and forgotten in that frame's tail; a looping emitter's component removed leaves
+the entity and stops the loop; a scripted `cmd.play_sound(me)` plays on the real path;
+`play_sound(me); despawn(me)` counts one detached play, the looping variant one refusal;
+`stop_sound` then `trigger` on one binding entity leaves the new activation live, and the
+reverse order ends it; nothing starts while `time_scale == 0` and the spawn sound fires on
+the first unfrozen frame; a world replacement clears every instance; two binding emitters
+on one slot — `stop_sound` on one deactivates its source alone (`sources.source_of(other)`
+still live, the song's snapshot still counting the other's notes), riding
+`tests/song_triggers.rs`'s fixture copy; `spatial` and `looping` on a binding emitter
+refused at load naming the entity; the serializer round trip. In `editor_integration`'s
+play-session tests: a `play_on_spawn` scene plays nothing in Editing, plays on Play's first
+frame, is cleared by Stop and stays silent after. In `editor`: the exhaustive dispatch test
+plus one asserting the Audio group's label and membership; cycling to Binding clears
+`spatial` and `looping`; the floors hold a typed `-1`. In `audio`: the adapter's pairs, the
+default play untouched, the six-channel passthrough, the pending loop across a failed
+enable, the disabled ledger (a loop playing until stopped, a one-shot ended at the next
+update). In `sound_emitters.rs`: `spatial_mix` at `max_distance`, at half of it, half to the
+right, with no camera, and at zero `max_distance`.
+
+**Gates:** standard; `check_wasm.sh`; `check_games.sh` (public items of `engine_core`, `ecs`
+and `audio` change). **Leaves out:** occlusion, a listener component (the main camera is
+the listener), a hierarchy-row drop that adds an emitter, pausing recorded instances with
+`time_scale` (a paused game keeps its loops), `.mid`/`.sf2` asset kinds (batch 10), a
+command-API semantic check beyond the floors (the loader names the entity), the composer.
 
 ## Batch 9 — K8a: the song document, the command API, persistence (#141)
 
