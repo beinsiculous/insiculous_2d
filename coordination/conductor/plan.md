@@ -1168,6 +1168,27 @@ command-API semantic check beyond the floors (the loader names the entity), the 
 
 ## Batch 9 — K8a: the song document, the command API, persistence (#141)
 
+**DONE 2026-10-21** (8929cd6). Landed as planned with
+four rulings made in flight. Jesse's, in the executor's session: `write_song_file` was added
+to `music_midi` beside `parse_song_file` (the editor has no RON writer; the sidecar's inverse
+belongs with its parser), and `EditorAction::{NewSong, OpenSong, CloseSong}` were plumbed
+through `dispatch_file_action` so the confirm flow's song arms have a caller (no key binding
+or menu label — batch 10's). `ImportSong` never landed: it has no path to carry until batch
+10's drop or picker, and `song open` of a `.mid` outside the song folders already opens as an
+import; `request_scene_replace` became `request_document_action`. The planner's, from the
+code rounds (`rebuttal-16.md`, `rebuttal-17.md`): **the prune waits for the pair** —
+correction 8's order (prune, then pair) deleted a removed instrument's sample while the old
+finals still named it, so a save now writes the new samples, the pair, the prune and
+`LICENSE`, the finals, then removes the pair, the pair being the commit point; Open Song
+targets an `untitled.mid` beside the open song's file (the `default_scene_path` precedent),
+never the open song's own file; a save target not under the asset base is refused; the
+play-session refusal answers a preview verb before "not available yet". The bundle measures
+11.83 MiB of 12 (+0.54 over batch 8), so batch 10 and 11 need a budget decision before
+batch 10 goes out. Carried as issues: #182 (two songs with one stem share one sample folder)
+and #183 (a saved song's own `.mid` and `.mid.ron` are named by no `LICENSE`, so a saved
+song does not pass the gate as it stands, against correction 1's claim; `assets/ai/music` is
+not scanned at all) — both into batch 10 with the sidebar's provenance field and Save As.
+
 **Carried from batch 6 (`review-9-claude.md` F5):** the dependency cache's key is the content fingerprint today, 24.5 ms a load on the cast bank against a 6.8 ms parse, so a composer preview that re-prepares on every edit pays it each time. Fix-up first, as correction 2 below shapes it.
 
 Executor: the Opus session. Reviewers: kimi, gemini (the API seam and the journal). Headless;
