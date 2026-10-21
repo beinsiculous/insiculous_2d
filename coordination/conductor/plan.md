@@ -939,7 +939,9 @@ example gains a `.rhai` script on one entity that triggers on a key through `cmd
 **Leaves out:** camera eligibility (a game policy, K6), K9, the editor's play-session
 flush (batch 11 calls `flush` from `song_preview`).
 
-## Batch 8 — K9: scene-authored audio — `SoundEmitter`, the sound tier, the asset kind (#174)
+## Batch 8 — K9: scene-authored audio — `SoundEmitter`, the sound tier, the asset kind (#174) — DONE 2026-10-21 (cf02197)
+
+**Landed as reviewed** (`rebuttal-13.md` and `rebuttal-14.md`, adjudicated under Jesse's delegation: kimi 4, gemini 5, codex 5 on the diff, then kimi 3 and gemini 5 on the planner's fixes), with the executor's placements accepted in `review-13-claude.md`: `manager/playback.rs` for the instance table, one held list for both disabled modes, `PanSource` yielding the input's own sample type with a gain of exactly one skipped, the entity named on every component error by prefixing at the caller. Planner hunks (`draft-8-fixes.diff` and two after it): the floors seam strips `spatial` and `looping` from a binding emitter (three reviewers; it overturns `rebuttal-12`'s floors-not-semantics line, the API's own contract being GUI parity); **the pass runs every frame with first sight alone gated on a live time scale** — a paused game's requests are served, not held to the cap (this amends the section's "its queued requests wait"), and a loop whose entity goes while paused stops; a binding stop in the spawn frame marks the entity seen; a one-shot released by a newer play, and a detached one, stay owned until they end so `clear` stops them; **`play(entity, world)`** carries the emitter and position so a Rust play-then-despawn sounds like a script's; a re-added emitter spawns again; `clear` forgets the play counts; the gesture test runs an `update` so it passes without a device. Rebutted: a rescan invalidation (neither tier has one — #180 filed), the borrow objection to `play`'s world, the detached mix at the origin, a stop consuming first sight. Jesse's listen check passed natively 2026-10-21 (the coin's beep panned right of centre, the jump on every press at its old level).
 
 Executor: the Opus session. Reviewers: kimi, gemini, codex (the popup, the inspector rows,
 the asset tile, the drag ghost). Size: about +2500 lines (up from +1900 on re-verification:
@@ -1006,7 +1008,8 @@ the instance API, the pending loops and the pan adapter of correction 1).
    playground freeze the engine that way outside Play (`editor_game/mod.rs:172-176`,
    `preview.rs:162-165`), so Editing records no first sight and starts nothing, Play's first
    frame is the first sight and the spawn sounds fire then, and a paused game keeps its
-   loops and starts nothing while its queued requests wait. The pass: an entity seen for the
+   loops and starts no spawn sound while its requests are still served (amended on landing:
+   the pass runs every frame, first sight alone gated). The pass: an entity seen for the
    first time with `play_on_spawn` plays; the requests drain; every playing spatial
    instance's mix is recomputed; an entry whose instance ended (`is_playing` false), whose
    entity no longer `validate_entity`s, **or whose entity no longer carries the component**
@@ -1113,7 +1116,7 @@ sound slot or a `string_edit` for the binding name, `volume` as a numeric row fl
 drag_ghost.rs}`, `crates/editor/src/hierarchy/mod.rs` (the arm), `test_support.rs`
 (`GameHarness::sound_emitters()`). The example: `hello_world.scene.ron`'s `player` gains
 `SoundEmitter(sound: Path("assets/sounds/snd_jump.wav"), volume: 0.8)` and `platformer.rs`
-plays the jump through `ctx.emitters.play(player)` (the entity from
+plays the jump through `ctx.emitters.play(player, ctx.world)` (the entity from
 `SceneInstance::get_entity("player")`) instead of its hand-loaded handle, which goes;
 `coin_1` gains a `play_on_spawn` `beep_e.wav` emitter with `spatial: Some(Spatial(max_distance:
 8.0))`, so the scene's first frame pans a beep by where the coin sits relative to the
