@@ -43,25 +43,15 @@ pub struct Song {
 
 impl Song {
     /// Parse every SoundFont the song names from `sound_fonts` (path → bytes, as the
-    /// sidecar names them), keep each sample it names from `samples` (path → decoded
-    /// audio, one per unique path) in its [`SampleBank`], and prepare the song. Each
-    /// part's track is a trigger track and is left out of the background. Validate the
-    /// sidecar first: an unresolvable part is refused here, not explained; a sample left
-    /// unsupplied is refused by [`Conductor::load`](super::Conductor::load).
+    /// sidecar names them), then build it as [`Song::with_sound_fonts`] does.
     pub fn new(
         file: SongFile,
         data: SongData,
         sound_fonts: &[(&str, &[u8])],
         samples: &[(&str, OwnedPcm)],
     ) -> Result<Self, ConductorError> {
-        let mut needed: BTreeSet<&str> = BTreeSet::from([file.soundfont.as_str()]);
-        for instrument in &file.instruments {
-            if let InstrumentSource::SoundFont { path, .. } = &instrument.source {
-                needed.insert(path);
-            }
-        }
-        let mut parsed = BTreeMap::new();
-        for path in needed {
+        let mut parsed = Vec::new();
+        for path in needed_sound_fonts(&file) {
             let bytes = sound_fonts
                 .iter()
                 .find(|(supplied, _)| *supplied == path)
@@ -69,13 +59,38 @@ impl Song {
                 .ok_or_else(|| ConductorError::SoundFontNotSupplied {
                     path: path.to_string(),
                 })?;
-            let sound_font = SoundFont::new(&mut Cursor::new(bytes)).map_err(|error| {
-                ConductorError::SoundFont {
+            parsed.push((path.to_string(), Arc::new(parse_sound_font(path, bytes)?)));
+        }
+        let named: Vec<(&str, Arc<SoundFont>)> = parsed
+            .iter()
+            .map(|(path, sound_font)| (path.as_str(), Arc::clone(sound_font)))
+            .collect();
+        Self::with_sound_fonts(file, data, &named, samples)
+    }
+
+    /// Build the song from SoundFonts already parsed (path → SoundFont, as the sidecar
+    /// names them; a loader's cache shares one parse between songs), and keep each sample
+    /// it names from `samples` (path → decoded audio, one per unique path) in its
+    /// [`SampleBank`]. Each part's track is a trigger track and is left out of the
+    /// background. Validate the sidecar first: an unresolvable part is refused here, not
+    /// explained; a sample left unsupplied is refused by
+    /// [`Conductor::load`](super::Conductor::load).
+    pub fn with_sound_fonts(
+        file: SongFile,
+        data: SongData,
+        sound_fonts: &[(&str, Arc<SoundFont>)],
+        samples: &[(&str, OwnedPcm)],
+    ) -> Result<Self, ConductorError> {
+        let mut parsed = BTreeMap::new();
+        for path in needed_sound_fonts(&file) {
+            let sound_font = sound_fonts
+                .iter()
+                .find(|(supplied, _)| *supplied == path)
+                .map(|(_, sound_font)| Arc::clone(sound_font))
+                .ok_or_else(|| ConductorError::SoundFontNotSupplied {
                     path: path.to_string(),
-                    reason: error.to_string(),
-                }
-            })?;
-            parsed.insert(path.to_string(), Arc::new(sound_font));
+                })?;
+            parsed.insert(path.to_string(), sound_font);
         }
 
         let mut trigger_tracks = BTreeSet::new();
@@ -154,6 +169,44 @@ impl Song {
     pub fn background_peak(&self) -> BackgroundPeak {
         self.background_peak
     }
+}
+
+/// Parse a SoundFont from its bytes; the error names `path`.
+pub fn parse_sound_font(path: &str, bytes: &[u8]) -> Result<SoundFont, ConductorError> {
+    SoundFont::new(&mut Cursor::new(bytes)).map_err(|error| ConductorError::SoundFont {
+        path: path.to_string(),
+        reason: error.to_string(),
+    })
+}
+
+/// The layering of every preset `sound_font` holds, keyed as the sidecar at `path` names
+/// them: what [`ResourceMetadata::preset_layering`](crate::ResourceMetadata) carries for
+/// it, the same count [`Song`] computes for its instruments.
+pub fn preset_layering(path: &str, sound_font: &SoundFont) -> BTreeMap<PresetKey, usize> {
+    sound_font
+        .get_presets()
+        .iter()
+        .enumerate()
+        .filter_map(|(index, preset)| {
+            let key = PresetKey {
+                soundfont: path.to_string(),
+                bank: u16::try_from(preset.get_bank_number()).ok()?,
+                preset: u8::try_from(preset.get_patch_number()).ok()?,
+            };
+            Some((key, layering(sound_font, index)))
+        })
+        .collect()
+}
+
+/// The SoundFonts a song plays: the background's and every SoundFont instrument's, once.
+fn needed_sound_fonts(file: &SongFile) -> BTreeSet<&str> {
+    let mut needed: BTreeSet<&str> = BTreeSet::from([file.soundfont.as_str()]);
+    for instrument in &file.instruments {
+        if let InstrumentSource::SoundFont { path, .. } = &instrument.source {
+            needed.insert(path);
+        }
+    }
+    needed
 }
 
 /// The preset at `bank:preset`, exactly.

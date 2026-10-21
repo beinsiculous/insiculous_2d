@@ -1,7 +1,8 @@
-//! Music playback and the volume buses — the second seam of
+//! Recorded music and the volume buses — the second seam of
 //! [`AudioManager`]: background-music lifecycle (play/stop/pause/resume)
 //! plus the master/SFX/music volume accessors that re-derive live sink
-//! volumes.
+//! volumes and hand the music and sfx gains to a playing song. Recorded
+//! music shares one slot with a song: playing either stops the other.
 
 use std::io::Cursor;
 use std::path::Path;
@@ -16,7 +17,7 @@ impl AudioManager {
     /// Play background music from a file, looping forever.
     ///
     /// Only one music track can play at a time. Playing new music
-    /// will stop the current track.
+    /// will stop the current track, and a song.
     pub fn play_music<P: AsRef<Path>>(&mut self, path: P) -> AudioResult<()> {
         self.play_music_with_volume(path, 1.0)
     }
@@ -41,9 +42,6 @@ impl AudioManager {
     /// [`AudioManager::enable_output`] can start it once a device connects
     /// (web: the first user gesture); the last request wins.
     fn start_music(&mut self, path: &Path, volume: f32, looping: bool) -> AudioResult<()> {
-        // Stop current music if any
-        self.stop_music();
-
         // Whole-file read through the VFS (works on web too; music files are
         // loaded eagerly like all audio — no streaming, a by-design limit
         // documented in this crate's CLAUDE.md).
@@ -53,11 +51,17 @@ impl AudioManager {
         let source = Decoder::new(Cursor::new(bytes))
             .map_err(|e| AudioError::DecodeError(format!("{}: {}", path.display(), e)))?;
 
+        // Only now, with the file read and decoded, is the current music stopped: a
+        // track that fails to load leaves what plays alone, as a song that fails to
+        // load does. The slot is shared, so a playing or pending song stops too.
+        self.stop_music();
+        self.stop_song();
+
         // Disabled mode: file was validated above, playback is a no-op.
         // Record the request AFTER validation so missing/corrupt files still
         // error and never leave a doomed pending entry behind.
         let Some(output) = &self.output else {
-            self.pending_music = Some(PendingMusic {
+            self.pending_music = Some(PendingMusic::Recorded {
                 path: path.to_path_buf(),
                 volume,
                 looping,
@@ -78,10 +82,13 @@ impl AudioManager {
 
     /// Stop the current background music.
     ///
-    /// Also clears any music request pending from disabled mode, so a
-    /// stopped track cannot resurrect when a device connects later.
+    /// Also clears a recorded track pending from disabled mode, so a
+    /// stopped track cannot resurrect when a device connects later. A song
+    /// is [`AudioManager::stop_song`]'s.
     pub fn stop_music(&mut self) {
-        self.pending_music = None;
+        if matches!(self.pending_music, Some(PendingMusic::Recorded { .. })) {
+            self.pending_music = None;
+        }
         if let Some(sink) = self.music_sink.take() {
             sink.stop();
         }
@@ -92,11 +99,18 @@ impl AudioManager {
     /// itself succeeded, and an `Err` from [`AudioManager::enable_output`]
     /// must mean "still disabled".
     pub(super) fn start_pending_music(&mut self) {
-        let Some(pending) = self.pending_music.take() else {
-            return;
-        };
-        if let Err(e) = self.start_music(&pending.path, pending.volume, pending.looping) {
-            log::warn!("Pending music failed to start: {e}");
+        match self.pending_music.take() {
+            None => {}
+            Some(PendingMusic::Recorded {
+                path,
+                volume,
+                looping,
+            }) => {
+                if let Err(e) = self.start_music(&path, volume, looping) {
+                    log::warn!("Pending music failed to start: {e}");
+                }
+            }
+            Some(PendingMusic::Song(ready)) => self.start_song(*ready),
         }
     }
 
@@ -164,6 +178,10 @@ impl AudioManager {
     /// Re-derive sink volumes for the music track, every live SFX instance
     /// and every caller-built source from `base * bus * master`.
     fn update_all_volumes(&mut self) {
+        self.songs.set_buses(self.music_volume, self.sfx_volume);
+        if let Some(sink) = self.songs.sink() {
+            sink.set_volume(effective_volume(1.0, 1.0, self.master_volume));
+        }
         if let Some(ref sink) = self.music_sink {
             sink.set_volume(effective_volume(self.music_base_volume, self.music_volume, self.master_volume));
         }

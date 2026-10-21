@@ -1,8 +1,9 @@
 //! Audio manager for loading and playing sounds.
 //!
-//! Split along the crate's two seams: this module owns the device/output
-//! connection and SFX playback; the `music` child module owns music
-//! playback and the volume buses. Tests live in the `tests` child module.
+//! Split along the crate's three seams: this module owns the device/output
+//! connection and SFX playback; the `music` child module owns recorded music
+//! and the volume buses; the `song` child module owns songs played by the
+//! conductor. Tests live in the `tests` child modules.
 
 use std::collections::HashMap;
 use std::io::Cursor;
@@ -17,9 +18,13 @@ use crate::error::{AudioError, AudioResult};
 use crate::sound::{Bus, SoundHandle, SoundSettings};
 
 mod music;
+pub(crate) mod song;
 
 #[cfg(test)]
 mod tests;
+
+use song::load::ReadySong;
+use song::SongDeck;
 
 /// Pure multiplication for a sound's effective playback volume.
 pub(crate) fn effective_volume(base: f32, bus: f32, master: f32) -> f32 {
@@ -56,14 +61,18 @@ struct ActiveSource {
 }
 
 /// Music requested while no output device was connected (web pre-gesture),
-/// replayed by [`AudioManager::enable_output`]. Stores the path, not the
+/// replayed by [`AudioManager::enable_output`] — one slot for both kinds, so the
+/// last request wins across them. A recorded track stores the path, not the
 /// bytes: the VFS re-read is cheap (an in-memory map on the web) and
 /// `Decoder::new` only parses headers, so no full decode happens at replay
-/// time.
-struct PendingMusic {
-    path: PathBuf,
-    volume: f32,
-    looping: bool,
+/// time. A song is kept built, so nothing can refuse it once the gesture comes.
+enum PendingMusic {
+    Recorded {
+        path: PathBuf,
+        volume: f32,
+        looping: bool,
+    },
+    Song(Box<ReadySong>),
 }
 
 /// Live connection to an audio output device.
@@ -83,10 +92,15 @@ pub(super) struct AudioOutput {
 /// - Background music playback (looping or one-shot)
 ///
 /// A manager can run in *disabled* mode (no audio device available): sounds
-/// still load and validate, playback calls succeed as no-ops. This keeps
-/// games runnable on headless machines and in CI.
+/// still load and validate, and sound and recorded-music playback calls succeed
+/// as no-ops. A song is the exception: a headless disabled manager plays it
+/// silently on a virtual clock advanced by `update()` (so `is_song_playing()`
+/// is `true` and its position moves), while a gesture-gated one holds it
+/// pending. This keeps games runnable on headless machines and in CI, and keeps
+/// a game's beat logic testable there.
 pub struct AudioManager {
-    /// Output device connection. `None` means disabled mode — playback no-ops.
+    /// Output device connection. `None` means disabled mode — sounds and
+    /// recorded music no-op, a song runs on the virtual clock.
     output: Option<AudioOutput>,
     /// Cached sound data by handle.
     sounds: HashMap<u32, SoundData>,
@@ -110,6 +124,12 @@ pub struct AudioManager {
     sfx_volume: f32,
     /// Volume for background music.
     music_volume: f32,
+    /// The song playing, and what outlives it.
+    songs: SongDeck,
+    /// Disabled until a user gesture connects a device (the web), rather than
+    /// running without one: a song requested now waits instead of playing on
+    /// the virtual clock.
+    awaits_gesture: bool,
 }
 
 impl AudioManager {
@@ -142,7 +162,7 @@ impl AudioManager {
         #[cfg(target_arch = "wasm32")]
         {
             log::info!("Web audio starts disabled; first user gesture upgrades it");
-            Self::disabled()
+            Self::awaiting_gesture()
         }
         #[cfg(not(target_arch = "wasm32"))]
         match Self::new() {
@@ -154,7 +174,17 @@ impl AudioManager {
         }
     }
 
-    /// Whether an output device is connected. `false` means playback no-ops.
+    /// A disabled manager that waits for a user gesture to connect a device, as
+    /// the web's does: a song requested before then is pending, not playing.
+    #[cfg(any(target_arch = "wasm32", test))]
+    pub(crate) fn awaiting_gesture() -> Self {
+        let mut manager = Self::disabled();
+        manager.awaits_gesture = true;
+        manager
+    }
+
+    /// Whether an output device is connected. `false` means sounds and recorded
+    /// music no-op; a song still runs on the virtual clock (see the type docs).
     #[must_use]
     pub fn is_enabled(&self) -> bool {
         self.output.is_some()
@@ -186,7 +216,9 @@ impl AudioManager {
             handle: stream_handle,
         });
         log::debug!("Audio output enabled");
+        self.awaits_gesture = false;
 
+        self.connect_song_output();
         self.start_pending_music();
 
         Ok(())
@@ -205,6 +237,8 @@ impl AudioManager {
             master_volume: 1.0,
             sfx_volume: 1.0,
             music_volume: 1.0,
+            songs: SongDeck::new(1.0, 1.0),
+            awaits_gesture: false,
         }
     }
 
@@ -367,13 +401,21 @@ impl AudioManager {
         });
     }
 
-    /// Clean up finished sound instances.
+    /// Clean up finished sound instances and advance the song.
     ///
-    /// Call this periodically (e.g., once per frame) to free resources
-    /// from sounds that have finished playing.
+    /// Call this once per frame: it frees the sinks of sounds that have finished,
+    /// retries song commands a full queue refused, notices a song whose output
+    /// died, latches the song's beat edges and, without a device, advances a
+    /// playing song by the wall time since the last call.
     pub fn update(&mut self) {
+        self.update_at(common::clock::Instant::now());
+    }
+
+    /// [`AudioManager::update`] at `now`, so a test drives the song's clock.
+    pub(crate) fn update_at(&mut self, now: common::clock::Instant) {
         self.active_sounds.retain(|active| !active.sink.empty());
         self.active_sources.retain(|active| !active.sink.empty());
+        self.update_song(now);
     }
 
     /// Unload a sound from the cache.

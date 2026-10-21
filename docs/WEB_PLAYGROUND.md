@@ -315,7 +315,7 @@ rather than felt.
 
 | number | what it covers | recorded |
 |---|---|---|
-| download size | `game_bg.wasm` of the playground bundle — the `wasm size:` line `scripts/build_wasm.sh` echoes. The only one of the four with a hard gate: `--kind playground` exits non-zero past `PLAYGROUND_SIZE_BUDGET_MIB` at the top of that script | 10.61 MiB (v2, 2026-09-12) |
+| download size | `game_bg.wasm` of the playground bundle — the `wasm size:` line `scripts/build_wasm.sh` echoes. The only one of the four with a hard gate: `--kind playground` exits non-zero past `PLAYGROUND_SIZE_BUDGET_MIB` at the top of that script | 10.61 MiB (v2, 2026-09-12); 11.11 MiB staged 2026-10-20, when the audio crate's song seam put rustysynth in every bundle (+0.50 MiB) |
 | time to an editable scene | navigation to the first keystroke an inspector field accepts | pending Jesse's measurement |
 | idle CPU | an editor tab left alone in Editing, after the idle throttle has engaged — the number the throttle exists to move | pending Jesse's measurement |
 | memory with a preview open | the editor tab plus a `?mode=preview` window on the same project, as one browser-task-manager reading | pending Jesse's measurement |

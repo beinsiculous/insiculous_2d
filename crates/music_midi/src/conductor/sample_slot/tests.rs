@@ -21,6 +21,7 @@ fn sample_slot(wav: &[u8], playback: SamplePlayback, live_voice_cap: usize) -> S
             output_rate: OUTPUT_RATE,
             live_voice_cap,
             fade_budget: SAMPLE_FADE_BUDGET,
+            voice_level: 1.0,
         },
     )
 }
@@ -145,7 +146,9 @@ fn a_mono_sample_plays_alike_on_both_channels_and_a_stereo_one_keeps_its_two() {
 #[test]
 fn a_one_shot_plays_through_its_note_off_and_a_gated_voice_fades_out_from_it() {
     let mut one_shot = sample_slot(SINE_48000_MONO, SamplePlayback::OneShot, SAMPLE_VOICE_CAP);
-    let ticket = one_shot.note_on(source(1), 60, LOUDEST);
+    let ticket = one_shot
+        .note_on(source(1), 60, LOUDEST)
+        .expect("room for a voice");
     render(&mut one_shot, 4_410);
     one_shot.note_off(ticket);
     assert!(
@@ -156,7 +159,9 @@ fn a_one_shot_plays_through_its_note_off_and_a_gated_voice_fades_out_from_it() {
     assert!((4_410.0 + rest as f64 - one_shot.duration_frames(60)).abs() <= 1.0);
 
     let mut gated = sample_slot(SINE_48000_MONO, SamplePlayback::Gated, SAMPLE_VOICE_CAP);
-    let ticket = gated.note_on(source(1), 60, LOUDEST);
+    let ticket = gated
+        .note_on(source(1), 60, LOUDEST)
+        .expect("room for a voice");
     render(&mut gated, 4_410);
     gated.note_off(ticket);
     assert!(!gated.is_sounding(ticket));
@@ -182,9 +187,13 @@ fn two_sources_on_one_sample_hold_voices_with_their_own_positions_and_note_offs(
     let (reference, _) = render(&mut alone, 20_000);
 
     let mut slot = sample_slot(SINE_48000_MONO, SamplePlayback::Gated, SAMPLE_VOICE_CAP);
-    let first = slot.note_on(source(1), 64, LOUDEST);
+    let first = slot
+        .note_on(source(1), 64, LOUDEST)
+        .expect("room for a voice");
     render(&mut slot, 1_000);
-    let second = slot.note_on(source(2), 64, LOUDEST);
+    let second = slot
+        .note_on(source(2), 64, LOUDEST)
+        .expect("room for a voice");
     slot.note_off(first);
     let (output, _) = render(&mut slot, 20_000);
 
@@ -225,32 +234,117 @@ fn every_forced_end_fades_without_a_step_steeper_than_the_sine_itself() {
             "{force_name}: the largest step is {step}"
         );
         assert!(
-            slot.counters().cuts == 0,
+            slot.counters().refusals == 0,
             "{force_name}: nothing was cut outright"
         );
     }
 }
 
 #[test]
-fn a_burst_past_the_live_cap_fades_the_oldest_and_never_holds_more_than_the_ceiling() {
+fn a_burst_past_the_ceiling_refuses_the_newest_notes_and_cuts_no_voice() {
     let mut slot = sample_slot(SINE_48000_MONO, SamplePlayback::OneShot, SAMPLE_VOICE_CAP);
 
-    for id in 0..64 {
-        slot.note_on(source(id), 60, LOUDEST);
-        assert!(slot.voice_count() <= SAMPLE_VOICE_CAP + SAMPLE_FADE_BUDGET);
-    }
+    let started = (0..64)
+        .filter(|id| slot.note_on(source(*id), 60, LOUDEST).is_some())
+        .count();
 
     let counters = slot.counters();
-    assert_eq!(slot.live_voice_count(), SAMPLE_VOICE_CAP);
     assert_eq!(slot.voice_ceiling(), 32);
-    assert_eq!(counters.peak_voices, 32);
+    assert_eq!(started, 32, "the ceiling takes thirty-two notes");
+    assert_eq!(slot.voice_count(), 32);
+    assert_eq!(slot.free_voices(), 0);
+    assert_eq!(slot.live_voice_count(), SAMPLE_VOICE_CAP);
     assert_eq!(
-        counters.steals, 48,
+        counters.steals, 16,
         "every note past the sixteenth fades one out"
     );
     assert_eq!(
-        counters.cuts, 32,
-        "every note past the thirty-second cuts a fading one"
+        counters.refusals, 32,
+        "every note past the thirty-second is refused"
+    );
+}
+
+#[test]
+fn a_sample_ending_at_full_scale_fades_to_silence_on_its_last_frame() {
+    let frames = 4_800;
+    let full_scale = OwnedPcm::new(48_000, 1, vec![1.0; frames]).expect("a valid sample");
+    let mut slot = SampleSlot::new(
+        SampleInstrument {
+            pcm: full_scale,
+            root_note: 60,
+            gain: 1.0,
+            playback: SamplePlayback::OneShot,
+        },
+        SampleShape {
+            output_rate: OUTPUT_RATE,
+            live_voice_cap: 1,
+            fade_budget: SAMPLE_FADE_BUDGET,
+            voice_level: 1.0,
+        },
+    );
+    slot.note_on(source(1), 60, LOUDEST)
+        .expect("room for a voice");
+    let length = slot.duration_frames(60).ceil() as usize;
+
+    let (output, _) = render(&mut slot, length + 10);
+
+    assert_eq!(slot.voice_count(), 0, "the voice ended");
+    let fade_frames = slot.fade_frames() as usize;
+    let ended = output.iter().rposition(|sample| *sample != 0.0).expect("it sounded");
+    assert!(
+        (ended + 1).abs_diff(length) <= 1,
+        "it ends where the sample does: {ended} of {length}"
+    );
+    assert!(output[ended - fade_frames] > 0.99, "unfaded until the last 5 ms");
+    assert!(
+        output[ended] < 2.0 / fade_frames as f32,
+        "its last frame is one ramp step from silence: {}",
+        output[ended]
+    );
+    let step = largest_step(&output);
+    assert!(
+        step < 2.0 / fade_frames as f32,
+        "nothing steeper than the ramp: {step}"
+    );
+}
+
+#[test]
+fn a_sample_shorter_than_the_fade_starts_at_full_level_and_still_lands_on_silence() {
+    // 2 ms at 48 kHz: shorter than the 5 ms fade, so its whole life is the ramp.
+    let frames = 96;
+    let full_scale = OwnedPcm::new(48_000, 1, vec![1.0; frames]).expect("a valid sample");
+    let mut slot = SampleSlot::new(
+        SampleInstrument {
+            pcm: full_scale,
+            root_note: 60,
+            gain: 1.0,
+            playback: SamplePlayback::OneShot,
+        },
+        SampleShape {
+            output_rate: OUTPUT_RATE,
+            live_voice_cap: 1,
+            fade_budget: SAMPLE_FADE_BUDGET,
+            voice_level: 1.0,
+        },
+    );
+    slot.note_on(source(1), 60, LOUDEST)
+        .expect("room for a voice");
+    let length = slot.duration_frames(60).ceil() as usize;
+
+    let (output, _) = render(&mut slot, length + 10);
+
+    assert_eq!(slot.voice_count(), 0, "the voice ended");
+    assert!(
+        output[0] > 0.98,
+        "the ramp is the sample's own length, so it starts at full level: {}",
+        output[0]
+    );
+    let ended = output.iter().rposition(|sample| *sample != 0.0).expect("it sounded");
+    assert!((ended + 1).abs_diff(length) <= 1, "it ends where the sample does");
+    assert!(
+        output[ended] < 2.0 / length as f32,
+        "its last frame is one ramp step from silence: {}",
+        output[ended]
     );
 }
 

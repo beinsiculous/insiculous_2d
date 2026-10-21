@@ -6,6 +6,9 @@
 //! - Audio resource management and caching
 //! - Sample instruments' audio: a WAV decoded once into the conductor's `OwnedPcm`
 //!   ([`load_sample_pcm`])
+//! - Songs: a MIDI file and its `.mid.ron` sidecar played by the conductor
+//!   ([`AudioManager::play_song`]), its background on the music bus and its
+//!   triggered instruments on the sfx bus, with beat queries and triggers
 //!
 //! # Example
 //! ```
@@ -41,12 +44,24 @@
 //! # }
 //! ```
 
+mod conductor_source;
 mod error;
 mod manager;
 mod sample_loader;
 mod sound;
+#[cfg(test)]
+mod test_support;
 
+pub use conductor_source::{
+    SourceReadings, LIMITER_ATTACK_SECONDS, LIMITER_RELEASE_SECONDS, LIMITER_THRESHOLD,
+};
 pub use error::{AudioError, AudioResult};
+pub use manager::song::load::{SongProblem, SONG_FILE_BYTE_LIMIT, SOUND_FONT_BYTE_LIMIT};
+pub use manager::song::{SongPosition, SongSnapshot, Subdivision};
 pub use manager::AudioManager;
+/// The conductor's song types, so a game names them through the audio crate alone.
+pub use music_midi::{
+    PositionSnapshot, Song, SongData, SongFile, SourceId, TransportState,
+};
 pub use sample_loader::{decode_sample_pcm, load_sample_pcm, SampleProblem, SAMPLE_BYTE_LIMIT};
 pub use sound::{Bus, SoundHandle, SoundSettings};

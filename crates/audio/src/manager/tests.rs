@@ -254,27 +254,30 @@ fn test_enable_output_keeps_handles_ids_buses_and_pending_music_whatever_the_out
 // === Pending music ===
 
 #[test]
-fn test_pending_music_keeps_only_the_last_request_until_stop_or_a_failed_load() -> AudioResult<()> {
+fn test_pending_music_keeps_only_the_last_request_until_stop_and_a_failed_load_leaves_it() -> AudioResult<()> {
     let first = write_temp_wav();
     let second = write_temp_wav();
     let mut manager = AudioManager::disabled();
 
     manager.play_music(first.path())?;
-    let pending = manager
-        .pending_music
-        .as_ref()
-        .expect("a disabled play_music records the request");
-    assert_eq!(pending.path, first.path());
-    assert_eq!(pending.volume, 1.0);
-    assert!(pending.looping, "play_music records a looping request");
+    let Some(PendingMusic::Recorded {
+        path,
+        volume,
+        looping,
+    }) = manager.pending_music.as_ref()
+    else {
+        panic!("a disabled play_music records the request");
+    };
+    assert_eq!(path, first.path());
+    assert_eq!(*volume, 1.0);
+    assert!(*looping, "play_music records a looping request");
 
     manager.play_music_with_volume(second.path(), 0.5)?;
-    let pending = manager
-        .pending_music
-        .as_ref()
-        .expect("the newer request is pending");
-    assert_eq!(pending.path, second.path(), "last request wins");
-    assert_eq!(pending.volume, 0.5);
+    let Some(PendingMusic::Recorded { path, volume, .. }) = manager.pending_music.as_ref() else {
+        panic!("the newer request is pending");
+    };
+    assert_eq!(path, second.path(), "last request wins");
+    assert_eq!(*volume, 0.5);
 
     manager.stop_music();
     assert!(
@@ -284,9 +287,13 @@ fn test_pending_music_keeps_only_the_last_request_until_stop_or_a_failed_load() 
 
     manager.play_music(first.path())?;
     assert!(manager.play_music(missing_path()).is_err());
-    assert!(
-        manager.pending_music.is_none(),
-        "a failed request leaves no doomed entry; like any new request it stopped the previous one"
+    let Some(PendingMusic::Recorded { path, .. }) = manager.pending_music.as_ref() else {
+        panic!("a failed request leaves the pending request it would have replaced");
+    };
+    assert_eq!(
+        path,
+        first.path(),
+        "nothing is replaced until the new track has loaded, as with a song"
     );
     Ok(())
 }

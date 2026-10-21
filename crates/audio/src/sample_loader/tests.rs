@@ -120,6 +120,38 @@ fn a_file_over_four_mebibytes_is_refused_before_it_is_decoded() {
     ));
 }
 
+/// A file the loader may not read but whose size it can see: refused for its size proves
+/// the size was checked before any read was tried.
+#[cfg(unix)]
+#[test]
+fn a_file_over_four_mebibytes_is_refused_by_its_size_before_it_is_read() {
+    use std::os::unix::fs::PermissionsExt;
+    let oversized = write_temp_file("oversized.wav", &pcm_wav(1, 44_100, 1));
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .open(&oversized.0)
+        .expect("the temporary file opens");
+    file.set_len(SAMPLE_BYTE_LIMIT as u64 + 1)
+        .expect("the file grows sparsely");
+    std::fs::set_permissions(&oversized.0, std::fs::Permissions::from_mode(0o000))
+        .expect("the file is made unreadable");
+    if std::fs::read(&oversized.0).is_ok() {
+        // Run as root, every file is readable; the order cannot be told apart.
+        return;
+    }
+
+    let error = load_sample_pcm(&oversized.0).expect_err("an oversized file");
+
+    assert!(
+        matches!(
+            &error,
+            AudioError::Sample { problem: SampleProblem::TooManyBytes { bytes, .. }, path }
+                if *bytes == SAMPLE_BYTE_LIMIT + 1 && path.ends_with("oversized.wav")
+        ),
+        "{error}"
+    );
+}
+
 #[test]
 fn a_stream_that_is_not_wav_is_refused_naming_wav_whatever_the_file_is_called() {
     let ogg_named_wav =

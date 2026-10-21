@@ -56,8 +56,9 @@ pub mod triggers;
 pub use commands::{CommandRejected, ConductorCommand, ConductorHandle};
 #[cfg(feature = "synth")]
 pub use conductor::{
-    BackgroundPeak, BusGains, Capacities, Conductor, ConductorConfig, InstrumentSlot, LoadReport,
-    LoadWarning, NoteTicket, SampleCounters, SampleSlot, Song,
+    parse_sound_font, preset_layering, BackgroundPeak, BusGains, Capacities, Conductor,
+    ConductorConfig, InstrumentSlot, LoadReport, LoadWarning, NoteTicket, SampleCounters,
+    SampleSlot, Song,
 };
 pub use error::{
     Collection, ConductorError, EditError, PcmError, SongError, SongFileError, SongFileProblem,
@@ -136,6 +137,12 @@ pub const SAMPLE_VOICE_CAP: usize = 16;
 /// fades a stolen voice per trigger; past the live cap plus this budget the oldest fading
 /// voice is cut outright, so voices never pile up.
 pub const SAMPLE_FADE_BUDGET: usize = 16;
+
+/// The level a sample voice plays at, before its instrument's gain and its velocity: a
+/// full-scale recording at gain 1.0 and velocity 127 peaks at a fifth of full scale, where
+/// one SoundFont note of the conductor's cast bank peaks (0.15 to 0.21 measured), so a
+/// sample instrument sits level with a preset and sixteen of them stay near full scale.
+pub const SAMPLE_VOICE_LEVEL: f32 = 0.2;
 
 /// How long a sample voice fades when its gated note ends or it is ended by force (a
 /// steal, a deactivation, a seek, a wrap, a pause, a stop), in seconds: long enough not

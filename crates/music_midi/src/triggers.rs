@@ -12,11 +12,12 @@
 //! through the background sequencer. A note shorter than a block sounds for one block.
 //!
 //! **What a trigger can meet,** each counted: a binding from another song or an ended
-//! source (stale); a song not playing, or no room for its notes (rejected, cursor
-//! unmoved); a stamp older than one block plus [`DEVICE_PERIOD_ALLOWANCE`] at the drain
-//! (late); an exhausted `Sequence` or a rest under `AtSongPosition` (silent). Its source
-//! is admitted only after every one of those checks, so a refused, late or silent trigger
-//! activates nothing and never evicts a live source from a full table.
+//! source (stale); a song not playing, or no room for its notes in the scheduler or
+//! under a sample instrument's voice ceiling (rejected, cursor unmoved); a stamp older
+//! than one block plus [`DEVICE_PERIOD_ALLOWANCE`] at the drain (late); an exhausted
+//! `Sequence` or a rest under `AtSongPosition` (silent). Its source is admitted only
+//! after every one of those checks, so a refused, late or silent trigger activates
+//! nothing and never evicts a live source from a full table.
 //!
 //! Nothing here allocates once the engine is built: the parts, the bindings, the source
 //! table and the scheduled events are sized at load.
@@ -51,7 +52,7 @@ pub struct BindingIndex(pub(crate) usize);
 /// recorder.
 pub(crate) trait TriggerSink {
     /// Start `key` for `source` on `slot`; the ticket ends that note. `None` when the
-    /// slot does not exist.
+    /// slot does not exist or refuses the note (a sample slot at its ceiling).
     fn note_on(
         &mut self,
         slot: usize,
@@ -61,6 +62,9 @@ pub(crate) trait TriggerSink {
     ) -> Option<NoteTicket>;
     fn note_off(&mut self, slot: usize, ticket: NoteTicket);
     fn is_sounding(&self, slot: usize, ticket: NoteTicket) -> bool;
+    /// How many notes `slot` takes now before refusing one: a sample slot's room under
+    /// its ceiling, unbounded for a synthesizer, which steals instead.
+    fn room(&self, slot: usize) -> usize;
     /// Release every note `source` holds on every slot.
     fn release_source(&mut self, source: SourceId);
 }
@@ -251,6 +255,10 @@ impl TriggerEngine {
         let unit = &units[selection.unit];
         let notes = sounding_notes(unit, selection.elapsed_ticks).count();
         let scheduled = matches!(placement, Placement::At { .. });
+        if !scheduled && notes > sink.room(slot) {
+            self.counters.rejected += 1;
+            return;
+        }
         let slot_cap = self.slot_caps.get(slot).copied().unwrap_or(0);
         if self
             .pending

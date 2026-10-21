@@ -1,8 +1,8 @@
 //! A sample instrument's audio: a WAV file turned into the conductor's [`OwnedPcm`].
 //!
 //! The file is read through `common::vfs`, so the same path works natively and on the
-//! web. Everything that can refuse it before decoding does: the byte limit first, then the
-//! RIFF header — WAV is the one format imported as a *pitched* sample, whatever the file
+//! web. Everything that can refuse it before decoding does: the byte limit first — by the
+//! file's size, before a byte of it is read — then the RIFF header — WAV is the one format imported as a *pitched* sample, whatever the file
 //! is named and whatever else rodio's decoder could read (recorded MP3 and OGG still play
 //! as ordinary sounds). The decoder's header is checked against the sample rate and
 //! channel limits, and the decode stops one frame past the length limit, so an oversized
@@ -49,7 +49,15 @@ pub fn load_sample_pcm(path: impl AsRef<Path>) -> AudioResult<OwnedPcm> {
         path: path.display().to_string(),
         problem,
     };
-    let bytes = common::vfs::read(path).map_err(|error| named(SampleProblem::Unreadable(error)))?;
+    let unreadable = |error| named(SampleProblem::Unreadable(error));
+    let size = common::vfs::file_size(path).map_err(unreadable)?;
+    if size > SAMPLE_BYTE_LIMIT as u64 {
+        return Err(named(SampleProblem::TooManyBytes {
+            bytes: usize::try_from(size).unwrap_or(usize::MAX),
+            limit: SAMPLE_BYTE_LIMIT,
+        }));
+    }
+    let bytes = common::vfs::read(path).map_err(unreadable)?;
     decode_sample_pcm(bytes).map_err(named)
 }
 

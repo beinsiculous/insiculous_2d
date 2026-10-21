@@ -1388,7 +1388,6 @@ dependencies = [
 name = "insiculous_2d"
 version = "0.1.0"
 dependencies = [
- "audio",
  "common",
  "ecs",
  "editor",
@@ -1400,7 +1399,6 @@ dependencies = [
  "log",
  "music_midi",
  "physics",
- "rodio",
  "ui",
  "winit",
 ]

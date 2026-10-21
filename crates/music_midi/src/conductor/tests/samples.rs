@@ -165,15 +165,15 @@ fn instruments_naming_one_sample_share_one_decoded_buffer() {
     assert!(first.shares_samples_with(&second));
 }
 
-/// The largest step the burst below may make, frozen from its measurement: 2.979, where
-/// sixteen voices mixing before any burst step 0.098. A burst past the live cap plus the
-/// fade budget cuts fading voices that have not yet faded at all — the one step a sample
-/// slot takes on purpose, bounding the voices instead of the click. The margin is the
-/// synthesizer storm's, half again the measurement.
-const BURST_STEP_THRESHOLD: f32 = 4.5;
+/// The largest step the burst below may make, frozen from its measurement: 0.055, sixteen
+/// voices attacking together while sixteen fade, each at the sample voice level (cutting
+/// fading voices at the ceiling, at full level, stepped 2.979). The ceiling refuses the
+/// newest triggers rather than cut a voice, so no step is taken on purpose. The margin is
+/// the synthesizer storm's, half again the measurement.
+const BURST_STEP_THRESHOLD: f32 = 0.083;
 
 #[test]
-fn a_burst_of_sixty_four_triggers_in_one_block_never_passes_the_ceiling_and_stays_finite() {
+fn a_burst_of_sixty_four_triggers_in_one_block_refuses_the_newest_at_the_ceiling_and_stays_finite() {
     let keys = [48, 55, 60, 67, 72].map(|key| (key, 100, QUARTER / 2));
     let song = trigger_song_with_samples(
         vec![("melody", melody(&keys))],
@@ -214,8 +214,18 @@ fn a_burst_of_sixty_four_triggers_in_one_block_never_passes_the_ceiling_and_stay
     let ceiling = SAMPLE_VOICE_CAP + SAMPLE_FADE_BUDGET;
     assert!(counters.peak_voices <= ceiling, "{counters:?}");
     assert!(most_voices <= ceiling as u64);
-    assert!(counters.cuts > 0, "the bursts reached the ceiling");
-    assert_eq!(stage.snapshot().accepted_triggers, 16 + 3 * 64);
+    assert_eq!(counters.refusals, 0, "the trigger was refused before the slot was asked");
+    assert_eq!(
+        stage.snapshot().accepted_triggers,
+        16 + 3 * 16,
+        "each burst fills the sixteen places a fade budget leaves"
+    );
+    assert_eq!(stage.snapshot().rejected_triggers, 3 * 48);
+    assert_eq!(
+        stage.conductor.part_cursor(0),
+        Some((16 + 3 * 16) % keys.len()),
+        "a refused trigger keeps the cursor"
+    );
     assert_eq!(stage.snapshot().non_finite_samples, 0);
     assert!(output.iter().all(|sample| sample.is_finite()));
     let step = output

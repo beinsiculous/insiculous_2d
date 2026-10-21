@@ -3,6 +3,9 @@
 use std::io;
 use thiserror::Error;
 
+use music_midi::CommandRejected;
+
+use crate::manager::song::load::SongProblem;
 use crate::sample_loader::SampleProblem;
 
 /// Errors that can occur in the audio system.
@@ -38,6 +41,28 @@ pub enum AudioError {
         path: String,
         problem: SampleProblem,
     },
+
+    /// A song that cannot be played: the song, the sidecar entry that names the file
+    /// at fault, and that file's path.
+    #[error("Song '{song}': {entry} '{path}' {problem}")]
+    Song {
+        song: String,
+        entry: String,
+        path: String,
+        problem: Box<SongProblem>,
+    },
+
+    /// A trigger naming an action the playing song does not bind.
+    #[error("Song '{song}' binds no action '{action}'")]
+    UnknownAction { song: String, action: String },
+
+    /// A song call that needs a playing song: none was started, or its output died.
+    #[error("No song is playing")]
+    SongNotPlaying,
+
+    /// The conductor's command queue refused a trigger.
+    #[error("The song refused the command: {0}")]
+    CommandRefused(CommandRejected),
 }
 
 /// Result type for audio operations.

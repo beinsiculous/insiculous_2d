@@ -50,6 +50,19 @@ pub fn read(path: &Path) -> io::Result<Vec<u8>> {
     }
 }
 
+/// A file's length in bytes, without reading it (native: its metadata; wasm: the length
+/// of the bytes in the map), so a loader can refuse an oversized file before it is read.
+pub fn file_size(path: &Path) -> io::Result<u64> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        std::fs::metadata(path).map(|metadata| metadata.len())
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        MEM_FS.with(|fs| fs.borrow().file_size(path))
+    }
+}
+
 /// Read a file as UTF-8 (native: `std::fs::read_to_string`; wasm: map).
 pub fn read_to_string(path: &Path) -> io::Result<String> {
     #[cfg(not(target_arch = "wasm32"))]
@@ -240,16 +253,17 @@ impl MemFs {
     /// Look up a file by the exact string its `Path` renders to.
     pub fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
         let key = path.to_string_lossy();
-        self.files.get(key.as_ref()).cloned().ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::NotFound,
-                format!(
-                    "vfs: '{}' not in the memory map — is it in manifest.json, and does the \
-                     preload base match GameConfig.asset_base_path?",
-                    path.display()
-                ),
-            )
-        })
+        self.files.get(key.as_ref()).cloned().ok_or_else(|| not_in_map(path))
+    }
+
+    /// The length of the file the exact string of `path` names, as [`MemFs::read`]
+    /// would find it.
+    pub fn file_size(&self, path: &Path) -> io::Result<u64> {
+        let key = path.to_string_lossy();
+        self.files
+            .get(key.as_ref())
+            .map(|bytes| bytes.len() as u64)
+            .ok_or_else(|| not_in_map(path))
     }
 
     /// Look up a UTF-8 file by the exact string its `Path` renders to.
@@ -315,6 +329,17 @@ impl MemFs {
         }
         self.files.retain(|key, _| *key != exact && !key.starts_with(&prefix_with_slash));
     }
+}
+
+fn not_in_map(path: &Path) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::NotFound,
+        format!(
+            "vfs: '{}' not in the memory map — is it in manifest.json, and does the \
+             preload base match GameConfig.asset_base_path?",
+            path.display()
+        ),
+    )
 }
 
 #[cfg(test)]

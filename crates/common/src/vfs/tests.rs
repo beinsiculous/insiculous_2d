@@ -69,6 +69,19 @@ fn test_mem_fs_write_and_read_round_trip() -> io::Result<()> {
 }
 
 #[test]
+fn test_mem_fs_file_size_is_the_stored_length_and_a_missing_file_is_not_found() {
+    let mut fs = MemFs::default();
+    let file_path = Path::new(BASE).join("music/theme.mid");
+    fs.insert(file_path.to_string_lossy().into_owned(), vec![0; 1234]);
+
+    assert_eq!(fs.file_size(&file_path).ok(), Some(1234));
+    assert_eq!(
+        fs.file_size(&Path::new(BASE).join("music/missing.mid")).map_err(|error| error.kind()),
+        Err(io::ErrorKind::NotFound)
+    );
+}
+
+#[test]
 fn test_mem_fs_list_files_recursive_and_sorted() {
     let mut fs = MemFs::default();
     fs.insert(format!("{BASE}/b.txt"), vec![1]);
@@ -157,6 +170,20 @@ fn test_vfs_native_write_and_read_round_trip() -> io::Result<()> {
 
     write(&path, b"updated")?;
     assert_eq!(read(&path)?, b"updated");
+    Ok(())
+}
+
+#[test]
+fn test_vfs_native_file_size_is_known_without_reading_and_a_missing_file_is_not_found() -> io::Result<()> {
+    let directory = TempDir::new("vfs_size")?;
+    let path = directory.path().join("sample.wav");
+    write(&path, &[7; 4096])?;
+
+    assert_eq!(file_size(&path)?, 4096);
+    assert_eq!(
+        file_size(&directory.path().join("missing.wav")).map_err(|error| error.kind()),
+        Err(io::ErrorKind::NotFound)
+    );
     Ok(())
 }
 

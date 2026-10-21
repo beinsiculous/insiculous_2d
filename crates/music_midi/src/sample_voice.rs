@@ -6,10 +6,12 @@
 //! plays twice as fast and lasts half as long. There is no time stretch and no
 //! interpolation filter: pitching up aliases.
 //!
-//! **Ending.** A voice ends at the last source frame it can interpolate towards, or at the
-//! end of a linear fade of [`SAMPLE_FADE_SECONDS`](crate::SAMPLE_FADE_SECONDS) once one is
-//! started — a gated note's end and every forced termination start the same fade, so
-//! nothing a voice does steps the output.
+//! **Ending.** Every end is a linear fade of
+//! [`SAMPLE_FADE_SECONDS`](crate::SAMPLE_FADE_SECONDS): a gated note's end, every forced
+//! termination, and the sample's own end — a voice within one fade of its last frame
+//! starts fading so it reaches silence on that frame, whatever level the recording ends
+//! at. That shorter ramp runs from full level over its own length, so a sample shorter
+//! than the fade is not quieter for it. Nothing a voice does steps the output.
 
 use crate::conductor::NoteTicket;
 use crate::pcm::OwnedPcm;
@@ -34,6 +36,10 @@ pub(crate) struct SampleVoice {
     gain: f32,
     /// Output frames left in the fade, once it has started.
     fade_remaining_frames: Option<u32>,
+    /// The fade's whole length in output frames: what `fade_remaining_frames` is a
+    /// fraction of. A fade started within one fade of the sample's end is shorter than
+    /// the slot's, and the ramp is its own length, so it starts at full level.
+    fade_length_frames: f32,
 }
 
 impl SampleVoice {
@@ -45,12 +51,20 @@ impl SampleVoice {
             step_frames,
             gain,
             fade_remaining_frames: None,
+            fade_length_frames: 1.0,
         }
     }
 
     /// Start fading over `fade_frames`; a voice already fading keeps its fade.
     pub(crate) fn fade(&mut self, fade_frames: u32) {
-        self.fade_remaining_frames.get_or_insert(fade_frames);
+        self.start_fade(fade_frames);
+    }
+
+    fn start_fade(&mut self, fade_frames: u32) {
+        if self.fade_remaining_frames.is_none() {
+            self.fade_remaining_frames = Some(fade_frames);
+            self.fade_length_frames = fade_frames.max(1) as f32;
+        }
     }
 
     pub(crate) fn is_fading(&self) -> bool {
@@ -70,16 +84,26 @@ impl SampleVoice {
         let channels = usize::from(pcm.channels());
         // The 1 ms floor guarantees two frames, so there is always one to step towards.
         let last_frame = pcm.frame_count() - 1;
-        let fade_length = fade_frames.max(1) as f32;
         for (left_out, right_out) in left.iter_mut().zip(right.iter_mut()) {
             let whole = self.position_frames as usize;
             if whole >= last_frame || self.fade_remaining_frames == Some(0) {
                 return false;
             }
+            if self.fade_remaining_frames.is_none() {
+                let frames_to_end = (last_frame as f64 - self.position_frames) / self.step_frames;
+                if frames_to_end <= f64::from(fade_frames) {
+                    // Started at the frames left rather than a whole fade, so the ramp
+                    // lands on silence at the last frame instead of being cut by it.
+                    if frames_to_end < 1.0 {
+                        return false;
+                    }
+                    self.start_fade(frames_to_end.floor() as u32);
+                }
+            }
             let fraction = (self.position_frames - whole as f64) as f32;
             let envelope = self
                 .fade_remaining_frames
-                .map_or(1.0, |remaining| remaining as f32 / fade_length);
+                .map_or(1.0, |remaining| remaining as f32 / self.fade_length_frames);
             let gain = self.gain * envelope;
             let here = whole * channels;
             let next = here + channels;

@@ -407,3 +407,32 @@ fn a_mix_that_is_not_finite_is_written_as_silence_and_counted() {
         2 * BLOCK_FRAMES as u64
     );
 }
+
+#[test]
+fn a_loaders_preset_layering_and_a_song_built_from_parsed_banks_agree_with_the_song_it_parses() {
+    let parsed = Arc::new(parse_sound_font(SINE_PATH, SINE_FONT).expect("the bank parses"));
+    let layering = preset_layering(SINE_PATH, &parsed);
+    let key = PresetKey {
+        soundfont: SINE_PATH.to_string(),
+        bank: 0,
+        preset: 0,
+    };
+    let midi = smf(&[vec![(0, tempo(500_000))]]);
+    let by_bytes = song(&midi, true, &[SINE_INSTRUMENT]);
+    let file = by_bytes.file().clone();
+    let (data, _) = SongData::from_smf(&midi).expect("the MIDI reads");
+
+    let by_parse = Song::with_sound_fonts(file, data, &[(SINE_PATH, Arc::clone(&parsed))], &[])
+        .expect("the song builds");
+
+    assert_eq!(layering.len(), 1, "the sine bank holds one preset");
+    assert_eq!(layering.get(&key).copied(), by_bytes.instrument_layering(&key));
+    assert_eq!(
+        by_parse.instrument_layering(&key),
+        by_bytes.instrument_layering(&key)
+    );
+    assert!(
+        Arc::ptr_eq(by_parse.sound_font(SINE_PATH).expect("its bank"), &parsed),
+        "the parsed bank is shared, not parsed again"
+    );
+}

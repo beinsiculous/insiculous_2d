@@ -167,10 +167,20 @@ pub(crate) enum Slot {
 }
 
 impl Slot {
-    fn note_on(&mut self, source: SourceId, key: u8, velocity: u8) -> NoteTicket {
+    /// `None` when a sample slot is at its ceiling; a synthesizer always takes the note,
+    /// stealing within its ledger.
+    fn note_on(&mut self, source: SourceId, key: u8, velocity: u8) -> Option<NoteTicket> {
         match self {
-            Slot::Synth(slot) => slot.note_on(source, key, velocity).ticket,
+            Slot::Synth(slot) => Some(slot.note_on(source, key, velocity).ticket),
             Slot::Sample(slot) => slot.note_on(source, key, velocity),
+        }
+    }
+
+    /// Note-ons the slot can take now without refusing one.
+    fn room(&self) -> usize {
+        match self {
+            Slot::Synth(_) => usize::MAX,
+            Slot::Sample(slot) => slot.free_voices(),
         }
     }
 
@@ -246,7 +256,11 @@ impl TriggerSink for SlotSink<'_> {
         key: u8,
         velocity: u8,
     ) -> Option<NoteTicket> {
-        Some(self.0.get_mut(slot)?.note_on(source, key, velocity))
+        self.0.get_mut(slot)?.note_on(source, key, velocity)
+    }
+
+    fn room(&self, slot: usize) -> usize {
+        self.0.get(slot).map_or(0, Slot::room)
     }
 
     fn note_off(&mut self, slot: usize, ticket: NoteTicket) {

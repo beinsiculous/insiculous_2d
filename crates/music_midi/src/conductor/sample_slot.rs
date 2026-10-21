@@ -11,9 +11,11 @@
 //!
 //! **Bounded twice.** At most `live_voice_cap` voices are live: a note-on past it fades
 //! the oldest live voice out. Fading voices are bounded too: at the live cap plus the fade
-//! budget the oldest fading voice is cut outright, so a burst of triggers inside one block
-//! never piles up voices. The voice list is allocated to that ceiling when the slot is
-//! built and never grows.
+//! budget the newest note-on is refused, so a burst of triggers inside one block never
+//! piles up voices and never cuts one mid-fade, which would click. The trigger engine
+//! asks for [`SampleSlot::free_voices`] first and refuses the whole trigger, cursor kept,
+//! like every other overflow. The voice list is allocated to that ceiling when the slot
+//! is built and never grows.
 //!
 //! **Forced termination** — a steal, a deactivation, a seek, a wrap, a pause, a stop —
 //! fades every voice it ends, one-shots included, over the same 5 ms as a gated note-off.
@@ -40,12 +42,14 @@ pub(crate) struct SampleInstrument {
     pub playback: SamplePlayback,
 }
 
-/// How one sample slot is built: the conductor's rate and the two voice bounds.
+/// How one sample slot is built: the conductor's rate, the two voice bounds, and the level
+/// every voice plays at before its instrument's gain and its velocity.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct SampleShape {
     pub output_rate: u32,
     pub live_voice_cap: usize,
     pub fade_budget: usize,
+    pub voice_level: f32,
 }
 
 /// Running totals.
@@ -54,8 +58,8 @@ pub struct SampleCounters {
     pub voices_started: u64,
     /// Live voices faded out to make room under the live cap.
     pub steals: u64,
-    /// Fading voices cut outright at the ceiling.
-    pub cuts: u64,
+    /// Note-ons refused at the ceiling: a scheduled note whose start found no room.
+    pub refusals: u64,
     /// The most voices, fading ones included, held at once.
     pub peak_voices: usize,
 }
@@ -67,6 +71,7 @@ pub struct SampleSlot {
     fade_frames: u32,
     live_voice_cap: usize,
     voice_ceiling: usize,
+    voice_level: f32,
     /// Oldest first; never longer than `voice_ceiling`.
     voices: Vec<SampleVoice>,
     next_ticket: u64,
@@ -84,14 +89,20 @@ impl SampleSlot {
             fade_frames: fade_frames.max(1),
             live_voice_cap,
             voice_ceiling,
+            voice_level: shape.voice_level,
             voices: Vec::with_capacity(voice_ceiling),
             next_ticket: 0,
             counters: SampleCounters::default(),
         }
     }
 
-    /// Start a voice at `key` for `source`; the ticket ends that voice.
-    pub fn note_on(&mut self, source: SourceId, key: u8, velocity: u8) -> NoteTicket {
+    /// Start a voice at `key` for `source`; the ticket ends that voice. `None` at the
+    /// ceiling: the newest note is refused, and no voice is cut.
+    pub fn note_on(&mut self, source: SourceId, key: u8, velocity: u8) -> Option<NoteTicket> {
+        if self.voices.len() >= self.voice_ceiling {
+            self.counters.refusals += 1;
+            return None;
+        }
         let ticket = NoteTicket::numbered(self.next_ticket);
         self.next_ticket += 1;
         if self.live_voice_count() >= self.live_voice_cap {
@@ -100,15 +111,6 @@ impl SampleSlot {
                 self.counters.steals += 1;
             }
         }
-        while self.voices.len() >= self.voice_ceiling {
-            let oldest_fading = self
-                .voices
-                .iter()
-                .position(SampleVoice::is_fading)
-                .unwrap_or(0);
-            self.voices.remove(oldest_fading);
-            self.counters.cuts += 1;
-        }
         let instrument = &self.instrument;
         let step = step_frames(
             instrument.root_note,
@@ -116,12 +118,12 @@ impl SampleSlot {
             instrument.pcm.sample_rate(),
             self.output_rate,
         );
-        let gain = instrument.gain * f32::from(velocity) / LOUDEST_VELOCITY;
+        let gain = self.voice_level * instrument.gain * f32::from(velocity) / LOUDEST_VELOCITY;
         self.voices
             .push(SampleVoice::new(source, ticket, step, gain));
         self.counters.voices_started += 1;
         self.counters.peak_voices = self.counters.peak_voices.max(self.voices.len());
-        ticket
+        Some(ticket)
     }
 
     /// End the voice `ticket` started: a gated voice fades, a one-shot plays on.
@@ -181,6 +183,11 @@ impl SampleSlot {
     /// Every voice still playing, fading ones included.
     pub fn voice_count(&self) -> usize {
         self.voices.len()
+    }
+
+    /// Note-ons the slot can take before the ceiling refuses one.
+    pub fn free_voices(&self) -> usize {
+        self.voice_ceiling.saturating_sub(self.voices.len())
     }
 
     /// The most voices the slot ever holds: the live cap plus the fade budget.

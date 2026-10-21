@@ -63,7 +63,8 @@ being ignored.
 | `instruments` | list of `Instrument` | empty | the instruments parts are played on |
 | `bindings` | list of `Binding` | empty | which action plays which part on which instrument |
 
-Paths are relative to the game's asset directory, as every other asset path is.
+Paths are relative to the game's asset directory, as every other asset path is (the
+audio manager resolves them against `set_asset_base`).
 
 ### `Part`
 
@@ -103,7 +104,10 @@ octave up half, an octave down twice. There is no time stretch and no filter, so
 **pitching up aliases**. Every note a bound part plays must lie within 24 semitones of the
 root (a key past that plays at 24). `gain` defaults to `1.0` and must be finite and at
 least zero; it scales the sample at velocity 127, and a note's velocity scales it
-linearly below that. Nothing limits the mix of many loud voices but the output itself.
+linearly below that. Every sample voice plays at a fifth of the recording's level before
+`gain`, so a full-scale recording at `gain: 1.0` sits level with one SoundFont note; raise
+`gain` for a quiet recording, not for a loud one. The output's limiter turns the whole mix
+down while many loud voices pass 0.9 of full scale, and lets it back up after.
 
 `playback` defaults to `OneShot`: the note-on starts the sample and it plays to its
 (pitch-scaled) end whatever the note's length, sounding all that time. `Gated` plays it
@@ -269,3 +273,16 @@ is released, every channel's program, bank, controllers and pitch bend return to
 they are at the start (tick 0's own events included), and the first beat plays again, so
 the loop never drifts by a fraction of an audio block. A seek rebuilds the channels the
 same way, and a note that began before the seek's destination is not played again.
+
+**What a game reads.** `ctx.audio.song_position()` gives the bar, the beat, the beat in
+the bar and the seconds of the **next block the conductor renders** — samples rendered,
+not yet at the speaker. It is where a scheduled trigger fires, so it runs up to 63 frames
+ahead of the frame playing, and `latency_samples` says how far beyond that the engine
+knows the sound to be: the frames of its current block the device has not yet taken. The
+device's own buffer — a device period natively, up to a 2048-frame pull in a browser —
+lies further still and is not reported, so a visual drawn on the position leads the sound
+by at least `latency_samples`. `ctx.audio.beat_crossed(Subdivision::Beat)` (or `Bar`,
+`Eighth`, `Sixteenth`, laid from each beat's start like a part's quantize) is true for one
+update when the song crossed that boundary since the update before — once, however many
+boundaries a long frame held. A loop wrap reports every subdivision, for the downbeat it
+lands on; a seek backwards reports none.

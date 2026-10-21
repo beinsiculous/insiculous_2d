@@ -22,8 +22,8 @@ the code's.
 - **The `synth` feature** (default on) owns rustysynth and everything that renders: the
   conductor, its commands, its published position, the sources, the triggers and the
   sample voices. The schema, the data model, `OwnedPcm` and the sequencer build and test
-  with `--no-default-features`, which is how the editor and the audio crate depend on the
-  crate.
+  with `--no-default-features`, which is how the editor depends on the crate; the audio
+  crate turns `synth` on, since the conductor plays there.
 - **The audio thread never allocates or parses.** `Song::new` parses the SoundFonts,
   keeps the decoded samples in its `SampleBank` and prepares the background score on the
   thread that builds it; `Conductor::load` builds the synthesizers and the sample slots
@@ -38,7 +38,7 @@ the code's.
 ## File Map
 - `lib.rs` — crate docs, re-exports, and the frozen capacities: 8 instrument slots, 15
   lanes and 24 sounding notes a slot, a 128-voice synthesizer pool, 16 live voices a
-  sample slot plus a fade budget of 16, the 5 ms sample fade, 8–96 kHz samples, a 64-frame
+  sample slot plus a fade budget of 16, a sample voice level of 0.2, the 5 ms sample fade, 8–96 kHz samples, a 64-frame
   block, 256 queued commands with 16 of them reserved for lifecycle and transport, 64
   commands drained a block (a full queue drains in 4 blocks, 5.8 ms at 44.1 kHz, after
   the drain gap), 512 scheduled events, 128 tracked sources, the 61 ms device-period
@@ -83,14 +83,16 @@ the code's.
   mix and the finite guard.
 - `conductor/config.rs` — `ConductorConfig`, `Capacities`, `BusGains`, and every check
   `Conductor::new` makes of them.
-- `conductor/song.rs` — `Song::new`: SoundFonts from bytes, the samples it names, trigger
-  tracks from the parts, the background score, instrument layering, the background's
-  peak voice count.
+- `conductor/song.rs` — `Song::new` (SoundFonts from bytes) and `Song::with_sound_fonts`
+  (SoundFonts already parsed, so a loader's cache shares one parse between songs): the
+  samples it names, trigger tracks from the parts, the background score, instrument
+  layering, the background's peak voice count; `parse_sound_font`, and
+  `preset_layering`, every preset's layering as `ResourceMetadata` carries it.
 - `sample_bank.rs` (`synth`) — `SampleBank`: each sample path the song names with its
   decoded audio, held once however many instruments name it.
 - `sample_voice.rs` (`synth`) — `SampleVoice`: one voice's position, pitch step (linear
   interpolation at `2^(semitones/12) × source_rate / output_rate`, ±24 semitones), gain
-  and fade; mono to both channels, stereo kept.
+  and fade — the sample's own end included; mono to both channels, stereo kept.
 - `conductor/background.rs` — `BackgroundPlayer`: two synthesizers taking turns as the
   sequencer's sink.
 - `conductor/slots.rs` — `InstrumentSlot`: one synthesizer per SoundFont instrument, lanes
@@ -98,7 +100,8 @@ the code's.
   trigger plays through, and `SlotSink`, the slots as the trigger engine's sink.
 - `conductor/sample_slot.rs` — `SampleSlot`: a sample instrument's voices, no lanes; the
   live cap (oldest live voice faded), the ceiling of the live cap plus the fade budget
-  (oldest fading voice cut), one-shot and gated note-offs, a `NoteTicket` per voice.
+  (the newest note-on refused, `free_voices` asked first), one-shot and gated note-offs,
+  a `NoteTicket` per voice.
 - `conductor/ledger.rs` — `VoiceLedger` (pure): sounding notes bounded exactly, lanes
   leased while sounding and stolen oldest-first, a `NoteTicket` for every note so a
   note-off ends that note and no other.
@@ -167,11 +170,11 @@ the code's.
 | The lifecycle reserve is accounting on one channel: the sender claims its place before `try_send` (and gives it back on failure), a trigger only below `capacity − reserve`, so two racing senders cannot both take the last place and a stop always fits | `src/conductor/tests/saturation.rs a_ten_thousand_trigger_storm_never_crowds_out_a_lifecycle_command_and_keeps_the_cursor` `src/conductor/tests/saturation.rs a_lifecycle_storm_past_the_queue_is_lost_by_none_once_the_host_retries` |
 | One channel keeps order: a trigger sent before a deactivation is drained, and plays, before it | `src/conductor/tests/saturation.rs a_consumer_stalled_ten_blocks_drains_triggers_before_the_deactivation_that_followed_them` |
 | A trigger is placed from its stamp, never from its drain, and one older than a block plus 61 ms when drained is dropped: a stalled consumer's backlog never bursts | `src/conductor/tests/saturation.rs two_hundred_triggers_queued_before_a_two_second_stall_never_sound` `src/triggers/tests.rs a_trigger_older_than_the_tolerance_is_dropped_and_its_cursor_kept` |
-| Choosing a unit and consuming it are two steps, so a refused trigger — its instrument's waiting note-ons at the sounding cap, or no room in the scheduler — never moves the cursor | `src/triggers/tests.rs past_the_instruments_cap_the_newest_scheduled_trigger_is_refused_and_its_cursor_kept` `src/triggers/tests.rs a_full_scheduler_refuses_the_newest_trigger_and_keeps_its_cursor` |
+| Choosing a unit and consuming it are two steps, so a refused trigger — its instrument's waiting note-ons at the sounding cap, no room in the scheduler, or a sample slot without room under its ceiling — never moves the cursor | `src/triggers/tests.rs past_the_instruments_cap_the_newest_scheduled_trigger_is_refused_and_its_cursor_kept` `src/triggers/tests.rs a_full_scheduler_refuses_the_newest_trigger_and_keeps_its_cursor` |
 | An epoch is one count across every source, so a flush can name a point in it; the floor outlives a load, so a straggler of a flushed epoch never activates on the next song | `src/sources/tests.rs a_flush_ends_only_sources_activated_before_its_epoch_and_refuses_those_epochs_after` `src/conductor/tests/saturation.rs a_flush_through_a_full_channel_spares_the_epoch_queued_behind_it_and_the_next_song_plays` |
 | Naming a newer activation of an id ends the older one; a deactivation of the older one arriving late never touches the newer | `src/sources/tests.rs a_recycled_id_supersedes_its_old_generation_which_never_revives` `src/sources/tests.rs a_late_deactivation_of_an_older_epoch_never_touches_the_newer_one` |
 | A full source table forgets a dead identity before it evicts the oldest live source; a forgotten one could be revived only by a trigger the host sends after deactivating it | `src/sources/tests.rs a_full_table_forgets_a_dead_identity_before_it_evicts_the_oldest_live_source` |
-| A binding index belongs to one song: commands still queued at a `load` are drained against the new song, so a host changing songs flushes and loads once the flush is drained | — none |
+| A binding index belongs to one song: commands still queued at a `load` are drained against the new song, so a host reusing one conductor flushes and loads once the flush is drained — the audio crate instead gives each song a conductor of its own | — none |
 | A trigger sounds on the first frame of a block, the slots' synthesizer grid; `load` restarts the block so that grid stays the conductor's | `src/conductor/tests/triggering.rs a_quantized_trigger_attacks_on_the_first_frame_of_the_block_holding_its_beat` |
 | Under a storm overflowing the pool, the synthesizer's stealer takes only tails: no energy is lost at a held note's pitch, and the largest step stays under the frozen 0.02 | `src/conductor/tests/saturation.rs a_storm_overflowing_the_pool_steps_under_the_frozen_threshold_and_cuts_no_sounding_note` `src/conductor/tests/saturation.rs one_lane_hammering_one_key_steps_under_the_threshold_and_hangs_nothing` |
 | `AtSongPosition` plays the unit that started last at or before its tick, what remains of it; when that unit has ended it is a rest, and an earlier, longer unit is not looked back for | `src/triggers/tests.rs at_song_position_plays_the_unit_sounding_through_a_tempo_change_and_nothing_in_a_rest` |
@@ -182,7 +185,9 @@ the code's.
 | Pitch is speed: a sample a fifth up lasts two thirds as long and an octave down twice as long, and the step carries the source-to-output rate ratio as well as the semitones | `src/conductor/sample_slot/tests.rs a_voice_lasts_its_pitch_scaled_length_two_thirds_a_fifth_up_and_double_an_octave_down` `src/conductor/sample_slot/tests.rs a_sample_from_either_source_rate_plays_its_written_pitch_at_the_root_a_fifth_up_and_an_octave_down` |
 | A key further than 24 semitones from the root plays at 24: the voice clamps what the sidecar's validation should already have refused | `src/conductor/sample_slot/tests.rs a_key_more_than_two_octaves_from_the_root_plays_at_two_octaves` |
 | A one-shot ignores its note-off and is sounding until its pitch-scaled end; a gated voice fades over 5 ms from it; every forced end (steal, deactivation, seek, wrap, pause, stop) fades a one-shot too | `src/conductor/sample_slot/tests.rs a_one_shot_plays_through_its_note_off_and_a_gated_voice_fades_out_from_it` `src/conductor/sample_slot/tests.rs every_forced_end_fades_without_a_step_steeper_than_the_sine_itself` `src/conductor/tests/samples.rs a_sample_and_a_preset_triggered_in_one_block_both_end_on_a_wrap_a_seek_a_pause_and_a_stop` |
-| Fading voices are bounded: past the live cap plus the fade budget the oldest fading voice is cut outright — the one step a sample slot takes on purpose, frozen at 4.5 under a 64-trigger burst (measured 2.979) | `src/conductor/sample_slot/tests.rs a_burst_past_the_live_cap_fades_the_oldest_and_never_holds_more_than_the_ceiling` `src/conductor/tests/samples.rs a_burst_of_sixty_four_triggers_in_one_block_never_passes_the_ceiling_and_stays_finite` |
+| Fading voices are bounded without a cut: at the live cap plus the fade budget the newest note is refused — the trigger engine asks the slot's room first and refuses the whole trigger, cursor kept, counted as rejected — so a burst never clicks; its largest step is frozen at 0.083 under a 64-trigger burst at the sample voice level (measured 0.055; cutting fading voices at full level stepped 2.979) | `src/conductor/sample_slot/tests.rs a_burst_past_the_ceiling_refuses_the_newest_notes_and_cuts_no_voice` `src/conductor/tests/samples.rs a_burst_of_sixty_four_triggers_in_one_block_refuses_the_newest_at_the_ceiling_and_stays_finite` |
+| A sample ends on the same 5 ms ramp as every other end: within one fade of its last frame a voice starts fading from the frames left, so a recording that stops at full scale reaches silence on its last frame instead of stepping. That shorter ramp is its own length, not a tail of the 5 ms one, or a sample shorter than the fade (or pitched up into it) would start quiet and pitch would set loudness | `src/conductor/sample_slot/tests.rs a_sample_ending_at_full_scale_fades_to_silence_on_its_last_frame` `src/conductor/sample_slot/tests.rs a_sample_shorter_than_the_fade_starts_at_full_level_and_still_lands_on_silence` |
+| A loader's preset layering and a song's are one count, and a song built from parsed banks shares them rather than parsing again | `src/conductor/tests.rs a_loaders_preset_layering_and_a_song_built_from_parsed_banks_agree_with_the_song_it_parses` |
 | Two sources on one sample hold voices of their own: a note-off names its voice's ticket, never the sample and key | `src/conductor/sample_slot/tests.rs two_sources_on_one_sample_hold_voices_with_their_own_positions_and_note_offs` |
 | A sample instrument is slot `n` like any instrument; its sample must be in the song's bank, or `load` refuses the song and the loaded one plays on | `src/conductor/tests/samples.rs a_song_whose_sample_was_not_supplied_is_refused_and_the_loaded_song_plays_on` |
 

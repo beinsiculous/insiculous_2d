@@ -75,11 +75,13 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
   - `components.rs` - RigidBody, Collider ECS components
   - `presets.rs` - Pre-configured physics presets for common scenarios
 
-- **crates/audio/** - Audio playback via rodio
-  - `lib.rs` - crate docs + re-exports
-  - `manager/mod.rs` - `AudioManager`: the device/output connection, the gesture-gated `enable_output`, sound loading and SFX playback, `play_source` (any rodio `Source` on a bus); `manager/music.rs` - background music (play/stop/pause/resume) and the master/SFX/music volume buses; `manager/tests.rs` - both seams' tests
-  - `sound.rs` - SoundHandle, SoundSettings; `error.rs` - AudioError
-  - `sample_loader.rs` - `load_sample_pcm`: a sample instrument's WAV through `common::vfs` and rodio's WAV decoder into `music_midi::OwnedPcm` — the byte limit and the RIFF header before decoding, the decode stopped one frame past 10 s
+- **crates/audio/** - Audio playback via rodio, in three seams: the device, recorded sound and music, the song (the only crate that names rodio)
+  - `lib.rs` - crate docs + re-exports, `music_midi`'s song types among them
+  - `manager/mod.rs` - `AudioManager`: the device/output connection, the gesture-gated `enable_output` (disabled is either gesture-gated, the web, or headless with a virtual song clock), sound loading and SFX playback, `play_source` (any rodio `Source` on a bus), the one `PendingMusic` slot a recorded track and a song share; `manager/music.rs` - recorded music (play/stop/pause/resume) and the master/SFX/music volume buses; `manager/tests.rs` - the first two seams' tests
+  - `manager/song.rs` + `manager/song/{load,edges}.rs` - songs: `play_song(path)` (the `.mid`, its `<path>.ron` sidecar, every SoundFont and sample loaded through `common::vfs` relative to `set_asset_base`, all checked before the playing song is touched; decoded files cached by content fingerprint), `play_song_in_memory`, transport, `song_position`, `beat_crossed(Subdivision)`, `trigger(action, source)`, `deactivate_source`, `stop_all_sources`; one conductor a song; commands a full queue refuses wait and go first from `update()`; tests in `manager/song/tests.rs` + `tests/loading.rs`
+  - `conductor_source.rs` - `ConductorSource`: the conductor as a rodio `Source`, one block per render at its own instant, the music and sfx gains from two atomics, the peak limiter after them (`conductor_source/limiter.rs`: a gain lowered ahead of a peak, the block its look-ahead)
+  - `sound.rs` - SoundHandle, SoundSettings, Bus; `error.rs` - AudioError
+  - `sample_loader.rs` - `load_sample_pcm`: a sample instrument's WAV through `common::vfs` and rodio's WAV decoder into `music_midi::OwnedPcm` — the byte limit by the file's size before reading, the RIFF header before decoding, the decode stopped one frame past 10 s
 
 - **crates/music_midi/** - The conductor's song core: no I/O, no rodio — bytes in, data out. See its `CLAUDE.md` for the file map and pitfalls, `docs/SONG_FORMAT.md` for the sidecar grammar
   - `song_file.rs` + `song_file/validate.rs` - **the `.mid.ron` song sidecar schema** (`SongFile` v1: parts, instruments, bindings; `parse_song_file`, `SongFile::validate` against the MIDI data and the loader's `ResourceMetadata`)
@@ -87,7 +89,7 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
   - `tempo_map.rs` - `TempoMap`: exact tick ↔ seconds ↔ sample ↔ bar across tempo and time-signature changes; integer beat-crossing counts
   - `pcm.rs` - `OwnedPcm`: a decoded sample, refused outside 8–96 kHz, mono or stereo, 1 ms–10 s, finite values (builds without `synth`)
   - `sequencer.rs` + `sequencer/{score,fold}.rs` - the background `Sequencer` (pure: the song clock, events on the synthesizer's block grain, the sample-exact loop seam, same-key coalescing), `BackgroundScore` (what export would write, minus trigger tracks), `ChannelStateFold` (the state a seek or wrap rebuilds)
-  - `conductor.rs` + `conductor/{config,song,background,slots,sample_slot,ledger}.rs` (`synth` feature) - `Conductor` (`new`/`load`/`render`/`render_at`, a bounded drain and the scheduled events at block boundaries, each block at its own instant, the bus mix and finite guard), `ConductorConfig`/`Capacities`, `Song` (SoundFonts parsed from bytes off the audio thread, its samples in a `SampleBank`), the two-synthesizer background player, `InstrumentSlot` and `SampleSlot` behind one `Slot`, the `VoiceLedger` and its `NoteTicket`s
+  - `conductor.rs` + `conductor/{config,song,background,slots,sample_slot,ledger}.rs` (`synth` feature) - `Conductor` (`new`/`load`/`render`/`render_at`, a bounded drain and the scheduled events at block boundaries, each block at its own instant, the bus mix and finite guard), `ConductorConfig`/`Capacities`, `Song` (SoundFonts parsed from bytes off the audio thread — or handed in parsed, `with_sound_fonts` — its samples in a `SampleBank`), the two-synthesizer background player, `InstrumentSlot` and `SampleSlot` behind one `Slot`, the `VoiceLedger` and its `NoteTicket`s
   - `sample_bank.rs` + `sample_voice.rs` (`synth` feature) - `SampleBank` (each sample the song names, decoded once), `SampleVoice` (linear-interpolation pitch at `2^(semitones/12) × source_rate / output_rate`, ±24 semitones, the 5 ms fade)
   - `commands.rs` + `position.rs` (`synth` feature) - `ConductorCommand` (transport, `Trigger`, `DeactivateSource`, `StopAllSources`) and the never-blocking `ConductorHandle` with its lifecycle reserve; `SharedPosition`, the atomics published once a block, trigger counters and the sample voice count included
   - `sources.rs` + `triggers.rs` + `triggers/{cursor,quantize}.rs` + `overflow.rs` (`synth` feature) - `SourceId` and the `SourceTable` (lazy activation, epochs, the flush floor); the trigger engine (bindings to parts and slots, one shared cursor per part, placement from the producer's stamp onto the beat grid); the bounded scheduled-event buffer and the rule that refuses a trigger whole
@@ -105,7 +107,7 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
   - `hello_world.rs` - Physics platformer with UI, audio, ECS, and scene graph
   - `editor_demo.rs` - Editor wrapping the platformer (`--features editor`, shares `hello_world/platformer.rs`)
   - `behavior_demo.rs` - Scene-driven behaviors
-  - `conductor_background.rs` - A MIDI fixture through the conductor on the music bus — by default the *Napolitan Dance* cast fixture with keys 1–4 triggering two parts on two instruments, and key 5 the left hand on a sample instrument with `--sample` — with render-cost, drain-gap, trigger-counter and sample-voice log lines
+  - `conductor_background.rs` - A MIDI fixture through `ctx.audio.play_song` (copied with its written sidecar into a temporary directory) — by default the *Napolitan Dance* cast fixture with keys 1–4 triggering two parts on two instruments through `ctx.audio.trigger`, key 5 the left hand on a sample instrument with `--sample`, M and S muting the music and sfx buses — with render-cost, drain-gap, trigger-counter, sample-voice and limiter log lines from `song_position` and `song_snapshot`
   - Real games live in `../games/` (pong, breakout, space_invaders, snake, asteroids) — see `PROJECT_ROADMAP.md`
 
 ## Coding Guidelines

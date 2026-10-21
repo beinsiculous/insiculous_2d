@@ -37,7 +37,7 @@ use crate::position::{PositionSnapshot, SharedPosition, TransportState};
 use crate::sequencer::{Sequencer, SequencerSink};
 use crate::song_file::{InstrumentSource, PresetKey};
 use crate::triggers::{DrainClock, EngineShape, Trigger, TriggerEngine};
-use crate::SAMPLE_FADE_BUDGET;
+use crate::{SAMPLE_FADE_BUDGET, SAMPLE_VOICE_LEVEL};
 
 mod background;
 mod config;
@@ -55,7 +55,7 @@ pub use sample_slot::{SampleCounters, SampleSlot};
 use sample_slot::{SampleInstrument, SampleShape};
 pub use slots::{InstrumentSlot, MAXIMUM_LANES};
 use slots::{Slot, SlotShape, SlotSink};
-pub use song::{BackgroundPeak, Song};
+pub use song::{parse_sound_font, preset_layering, BackgroundPeak, Song};
 
 /// Something a load let through that may still sound wrong.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -168,6 +168,7 @@ impl Conductor {
             output_rate: self.config.sample_rate,
             live_voice_cap: capacities.sample_voices,
             fade_budget: SAMPLE_FADE_BUDGET,
+            voice_level: SAMPLE_VOICE_LEVEL,
         };
         let mut slots = Vec::with_capacity(instruments.len());
         for instrument in instruments {

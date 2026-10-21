@@ -86,6 +86,10 @@ impl TriggerSink for Recorder {
         }
     }
 
+    fn room(&self, _slot: usize) -> usize {
+        usize::MAX
+    }
+
     fn is_sounding(&self, slot: usize, ticket: NoteTicket) -> bool {
         self.ledgers
             .get(slot)
