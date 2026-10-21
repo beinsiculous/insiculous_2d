@@ -856,7 +856,9 @@ preserves the current song, lifecycle under saturation through the public API. *
 standard; `check_wasm.sh`; `check_games.sh` (public items of `audio` changed). **Leaves
 out:** the host (next), the editor.
 
-## Batch 7 — K4b `engine_core`: the host owns sources, scripts trigger bindings (#63)
+## Batch 7 — K4b `engine_core`: the host owns sources, scripts trigger bindings (#63) — DONE 2026-10-21 (83f4eed)
+
+**Landed as reviewed** (`rebuttal-11.md`, adjudicated under Jesse's delegation: kimi 3 findings, 2 accepted; gemini 4, all rebutted on a misread asset base), with the executor's `SoundSources` as a runner field lent as `ctx.sources`, the scripted triggers queued in `scripting/triggers.rs` and submitted by the frame tail before the reconcile, the flush at the advanced epoch on a hierarchy reset, no host flush on a song change, the asset base seeded from the game's config, and the headless runner on the disabled manager. Planner hunks (`draft-7-fixes.diff`): `docs/SONG_FORMAT.md` names the runner-seeded asset base; the trigger queue is capped at `TRIGGER_QUEUE_CAPACITY` with a counted drop. Follow-up: #178 (the harness suite advances the virtual clock by sleeping). **Jesse's listen check passed natively 2026-10-21**: Left Shift walks the melody's shared cursor on the grid beside keys 1–4, M keeps the triggers, S keeps the background.
 
 Executor: the Opus session. Reviewers: kimi, gemini. Listen check: Jesse (the example gains a
 scripted trigger). Size: about +1800 lines.
