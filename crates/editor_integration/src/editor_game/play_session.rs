@@ -271,8 +271,11 @@ impl<G: Game> EditorGame<G> {
                             .show_error("A preview window is open — close it to Play here");
                         return false;
                     }
-                    self.save_preferences_now();
-                    self.start_play_session(world);
+                    // A dirty song — a never-saved one included — parks Play
+                    // behind its prompt; the dialog's choice begins it.
+                    if self.request_document_action(super::scene_confirm::PendingSceneAction::StartPlay) {
+                        self.begin_play(world);
+                    }
                 } else if self.editor.is_paused() {
                     self.resume_from_pause();
                 }
@@ -292,6 +295,12 @@ impl<G: Game> EditorGame<G> {
                 false
             }
         }
+    }
+
+    /// Enter a play session from Editing, the song's prompt (if any) answered.
+    pub(super) fn begin_play(&mut self, world: &mut ecs::World) {
+        self.save_preferences_now();
+        self.start_play_session(world);
     }
 
     /// While Playing WITH camera-follow armed, mirror the game's main-camera

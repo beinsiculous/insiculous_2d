@@ -9,6 +9,7 @@
 //! - [`game_impl`] — the `Game` trait impl: delegation and the frame's phases
 //! - [`menu_actions`] — menu bar rendering and action dispatch
 //! - [`scene_io`] — scene save/load/new
+//! - [`song_io`] — the song beside the scene: new/open/save/close and its API verbs
 //! - [`shortcuts`] — keyboard shortcuts and play state transitions
 //! - [`viewport_interaction`] — viewport picking and gizmo dragging
 
@@ -35,6 +36,7 @@ mod run_options;
 mod scene_confirm;
 mod scene_io;
 mod snapshot;
+mod song_io;
 mod stop_confirm;
 #[cfg(test)]
 mod stop_confirm_tests;
@@ -57,6 +59,8 @@ struct EditorGame<G: Game> {
     entity_counter: u32,
     /// Undo/redo command history for editor actions.
     command_history: editor::CommandHistory,
+    /// The composer's song: a second document with its own history and save watermark.
+    pub(super) song: Option<editor::SongDocument>,
     /// Live gizmo drag: start transforms/colliders for every selection root,
     /// captured when the drag begins (applied idempotently, committed as one
     /// undo entry on release, restored verbatim on Escape).
@@ -118,6 +122,7 @@ impl<G: Game> EditorGame<G> {
             world_snapshot: None,
             entity_counter: 0,
             command_history: editor::CommandHistory::new(),
+            song: None,
             gizmo_drag: None,
             clipboard: Vec::new(),
             physics_settings: None,
@@ -414,12 +419,16 @@ impl<G: Game> EditorGame<G> {
         ctx.clip_engine_ui(bounds);
     }
 
-    /// Mirror the dirty flag from its source of truth: a command was recorded
-    /// in the history ⇒ the scene changed. The single place the mirror is
-    /// written; it runs in `finish_frame` and after a save or scene reset, so
-    /// anything reading dirtiness earlier in a frame consults the history.
+    /// Mirror the dirty flags from their sources of truth: a command was
+    /// recorded in the history ⇒ the scene changed; the song's own history (or
+    /// a song never saved) ⇒ the song did. The single place the mirrors are
+    /// written; it runs in `finish_frame` and after a save or a document reset,
+    /// so anything reading dirtiness earlier in a frame consults the histories.
+    /// The host's two flags carry either document's edits, so the playground's
+    /// unsaved-work checks cover the song without a bridge change.
     pub(super) fn sync_dirty_mirror(&mut self) {
         let is_command_dirty = self.command_history.is_dirty();
+        let is_song_dirty = self.song.as_ref().is_some_and(editor::SongDocument::is_dirty);
         let is_persist_pending = self
             .persist_pending
             .as_ref()
@@ -427,11 +436,19 @@ impl<G: Game> EditorGame<G> {
             .unwrap_or(false);
         let dirty = is_command_dirty || is_persist_pending;
         self.editor.set_dirty(dirty);
+        self.editor.set_song_mirror(self.song.as_ref().map(|song| editor::SongMirror {
+            name: song
+                .path()
+                .and_then(|path| path.file_name())
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "Untitled song".to_string()),
+            dirty: is_song_dirty,
+        }));
         if let Some(flag) = &self.dirty_flag {
-            flag.store(dirty, std::sync::atomic::Ordering::Relaxed);
+            flag.store(dirty || is_song_dirty, std::sync::atomic::Ordering::Relaxed);
         }
         if let Some(flag) = &self.history_dirty_flag {
-            flag.store(is_command_dirty, std::sync::atomic::Ordering::Relaxed);
+            flag.store(is_command_dirty || is_song_dirty, std::sync::atomic::Ordering::Relaxed);
         }
     }
 }
@@ -458,6 +475,8 @@ mod scene_confirm_tests;
 mod scene_io_tests;
 #[cfg(test)]
 mod snapshot_tests;
+#[cfg(test)]
+mod song_io_tests;
 #[cfg(test)]
 mod shortcuts_tests;
 #[cfg(test)]

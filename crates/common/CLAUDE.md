@@ -7,7 +7,7 @@ straight from `glam`; there is no engine-owned math module.)
 
 ## File Map
 - `clock.rs` — import time types from here, never `std::time` directly (`std::time` panics on wasm; `Duration` stays std).
-- `vfs/` — asset and scene read/write/list seam (`read`, `write`, `list_files`, `remove_prefix`, `set_write_observer`); canonical key is joined path string `{asset_base}/{relative entry}`, with `list_dir_files` and `list_files` sorted on both native and wasm; `set_write_observer` (wasm-only, compiled under `cfg(test)` natively so its once-per-write contract is pinned) notifies the playground's persistence chains on every `write`; boot-phase `insert` never fires it.
+- `vfs/` — asset and scene read/write/list seam (`read`, `file_size`, `change_stamp`, `write`, `list_files`, `remove_prefix`, `set_write_observer`); `change_stamp` is a file's length and modified time natively and `None` on wasm, whose map keeps no clock, so a cache keyed by it falls back to content; canonical key is joined path string `{asset_base}/{relative entry}`, with `list_dir_files` and `list_files` sorted on both native and wasm; `set_write_observer` (wasm-only, compiled under `cfg(test)` natively so its once-per-write contract is pinned) notifies the playground's persistence chains on every `write`; boot-phase `insert` never fires it.
 - `color.rs` — `Color`: WCAG `luminance()` and `contrast_ratio()` back the editor theme's surface-ladder guard tests.
 - `camera.rs` — `Camera` and `CameraUniform` (view/projection uniform uploaded by renderer; defined here only to avoid cross-crate duplication).
 - `sheet_grid.rs` — `SheetGrid`: `from_uv_size` preserves non-reciprocal cell sizes for `ecs::Tilemap`, and `from_cell_size` truncates partial trailing cells.

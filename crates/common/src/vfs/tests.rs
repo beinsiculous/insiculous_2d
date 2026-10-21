@@ -281,3 +281,37 @@ fn test_memfs_key_story_bundled_edit_and_relative_miss() -> io::Result<()> {
     assert!(fs.read(relative_scenes_path).is_err());
     Ok(())
 }
+
+#[test]
+fn test_change_stamp_changes_when_the_bytes_change_and_a_missing_file_is_not_found() -> io::Result<()> {
+    let directory = TempDir::new("vfs_change_stamp")?;
+    let file_path = directory.path().join("music/bank.sf2");
+    write(&file_path, b"first")?;
+    let first = change_stamp(&file_path)?;
+    assert!(first.is_some(), "a native file has a modified time");
+    assert_eq!(change_stamp(&file_path)?, first, "an untouched file keeps its stamp");
+
+    write(&file_path, b"rewritten, longer")?;
+    let second = change_stamp(&file_path)?;
+    assert_ne!(second, first, "a rewrite at another length is a new stamp");
+    assert_eq!(second.map(|stamp| stamp.length_bytes), Some(17));
+
+    assert_eq!(
+        change_stamp(&directory.path().join("absent.wav")).map_err(|error| error.kind()),
+        Err(io::ErrorKind::NotFound)
+    );
+    Ok(())
+}
+
+#[test]
+fn test_mem_fs_keeps_no_change_stamp_and_a_missing_file_is_not_found() {
+    let mut fs = MemFs::default();
+    let file_path = Path::new(BASE).join("music/bank.sf2");
+    fs.insert(file_path.to_string_lossy().into_owned(), vec![1, 2, 3]);
+
+    assert_eq!(fs.change_stamp(&file_path).ok(), Some(None), "the map holds bytes only");
+    assert_eq!(
+        fs.change_stamp(&Path::new(BASE).join("music/absent.sf2")).map_err(|error| error.kind()),
+        Err(io::ErrorKind::NotFound)
+    );
+}

@@ -14,19 +14,26 @@
 //! which owns entity factories and the save choke point. Every path emits
 //! the same envelope via [`ok_response`]/[`error_response`].
 //!
+//! The `song …` verbs address the composer's song, a second document with
+//! its own history: its pure writes run through `SongDocument::apply`, the
+//! one path the composer's GUI uses too, and never touch `CommandHistory`.
+//!
 //! The protocol contract lives in `docs/EDITOR_COMMAND_API.md`.
 
 mod parse;
 mod query;
+mod song;
 pub mod specs;
 pub mod write;
 
 pub use parse::{parse_line, ARCHETYPES};
+pub use song::song_write_refusal;
 
 use ecs::{EntityId, World};
 
 use crate::play_state::EditorPlayState;
 use crate::selection::Selection;
+use crate::song::{SongDocument, SongEdit};
 
 /// Everything a query may read. Borrowed for one dispatch; queries never
 /// mutate (writes are Stage B and will route through `CommandHistory`).
@@ -34,9 +41,11 @@ pub struct QueryCtx<'a> {
     pub world: &'a World,
     pub selection: &'a Selection,
     pub scene_path: Option<&'a std::path::Path>,
-    /// From `CommandHistory::is_dirty()` — the dirty source of truth.
+    /// From `CommandHistory::is_dirty()` — the scene's dirty source of truth.
     pub dirty: bool,
     pub play_state: EditorPlayState,
+    /// The composer's song, when one is open.
+    pub song: Option<&'a SongDocument>,
 }
 
 /// How a request names an entity: by `Name` component (the stable,
@@ -59,11 +68,16 @@ pub enum Query {
     Describe { entity: EntityRef },
     /// Current selection (primary + all, insertion order).
     Selection,
-    /// Scene path, dirty state, entity count, play state.
+    /// Scene path, the scene's dirty state, the song's and either's, entity
+    /// count, play state.
     SceneInfo,
     /// Self-description: every verb with usage/example, plus the live
     /// component and archetype name lists.
     ListCommands,
+    /// The open song: its file, tracks, timing, state and selection.
+    Song,
+    /// Every note of the song, or of the track one part plays.
+    SongNotes { part: Option<String> },
 }
 
 /// One parsed request line.
@@ -107,6 +121,13 @@ pub enum PureWrite {
     BatchBegin { name: Option<String> },
     BatchEnd,
     BatchAbort,
+    /// One edit to the open song, through `SongDocument::apply`.
+    SongEdit(SongEdit),
+    /// Undo / redo the song's own history; the scene's is untouched.
+    SongUndo,
+    SongRedo,
+    /// Select exactly these notes of the song (empty = none). Not undoable.
+    SongSelect { notes: Vec<u64> },
 }
 
 /// Writes only the integration layer can perform.
@@ -117,6 +138,39 @@ pub enum HostedWrite {
     Create { archetype: crate::archetype::Archetype, name: Option<String>, position: Option<(f32, f32)> },
     /// Save the scene (through the mandatory save choke point).
     Save { path: Option<String> },
+    /// Replace the song with a new, never-saved one; refused over a dirty
+    /// song unless `discard`.
+    SongNew { discard: bool },
+    /// Open a song by its `.mid`; refused over a dirty song unless `discard`.
+    SongOpen { path: String, discard: bool },
+    /// Save the song (to its path, the given one, or the default for a
+    /// never-saved song).
+    SongSave { path: Option<String> },
+    /// Close the song; refused when it is dirty unless `discard`.
+    SongClose { discard: bool },
+    /// The song's preview transport and a simulated trigger: parsed so the
+    /// verb table is whole, refused until the preview exists.
+    SongPlay { from_beat: Option<f64> },
+    SongStop,
+    SongSeek { beat: f64 },
+    SongTrigger { binding: String },
+}
+
+impl HostedWrite {
+    /// Whether this is one of the `song …` verbs, which the song's host answers.
+    pub fn is_song(&self) -> bool {
+        match self {
+            HostedWrite::Create { .. } | HostedWrite::Save { .. } => false,
+            HostedWrite::SongNew { .. }
+            | HostedWrite::SongOpen { .. }
+            | HostedWrite::SongSave { .. }
+            | HostedWrite::SongClose { .. }
+            | HostedWrite::SongPlay { .. }
+            | HostedWrite::SongStop
+            | HostedWrite::SongSeek { .. }
+            | HostedWrite::SongTrigger { .. } => true,
+        }
+    }
 }
 
 /// A request that could not be answered.
@@ -221,5 +275,7 @@ pub fn entity_record(world: &World, entity: EntityId) -> serde_json::Value {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod song_tests;
 #[cfg(test)]
 mod write_tests;

@@ -51,3 +51,26 @@ fn test_history_dirty_flag_tracks_command_history_alone_not_the_combined_signal(
     assert!(!reads(&combined), "the combined flag catches up with the put");
     assert!(!reads(&history_only));
 }
+
+#[test]
+fn test_history_dirty_flag_carries_the_songs_edits_so_the_playground_sees_them() {
+    let mut editor = super::test_support::editor_game();
+    let combined = flag();
+    let history_only = flag();
+    editor.dirty_flag = Some(combined.clone());
+    editor.history_dirty_flag = Some(history_only.clone());
+
+    editor.sync_dirty_mirror();
+    assert!(!reads(&history_only), "a clean scene with no song");
+
+    editor.song = Some(editor::SongDocument::new_song().expect("a blank song"));
+    editor.sync_dirty_mirror();
+    assert!(reads(&history_only), "a never-saved song is unsaved work beside a clean scene");
+    assert!(reads(&combined));
+    assert!(!editor.editor.is_dirty(), "the scene's own mark stays clean");
+    assert!(editor.editor.is_song_dirty(), "the song carries its own");
+
+    editor.song = None;
+    editor.sync_dirty_mirror();
+    assert!(!reads(&history_only), "a closed song leaves nothing unsaved");
+}

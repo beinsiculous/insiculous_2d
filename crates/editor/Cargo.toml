@@ -13,6 +13,9 @@ ui = { path = "../ui" }
 input = { path = "../input" }
 renderer = { path = "../renderer" }
 physics = { path = "../physics" }
+# The song schema and data model without the synthesizer: the composer edits and saves a
+# song, it never renders one.
+music_midi = { path = "../music_midi", default-features = false }
 
 # External dependencies
 glam = { workspace = true }

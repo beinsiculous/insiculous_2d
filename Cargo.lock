@@ -881,6 +881,7 @@ dependencies = [
  "indexmap",
  "input",
  "log",
+ "music_midi",
  "physics",
  "renderer",
  "serde",

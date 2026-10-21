@@ -76,6 +76,21 @@ fn test_title_bar_names_the_scene_and_marks_unsaved_changes_with_a_star() {
 }
 
 #[test]
+fn test_title_bar_marks_the_scene_and_the_song_each_with_its_own_star() {
+    let mut ctx = EditorContext::new();
+    ctx.set_scene_path(Some(PathBuf::from("/scenes/test.ron")));
+    ctx.set_song_mirror(Some(SongMirror { name: "theme.mid".to_string(), dirty: true }));
+    assert_eq!(ctx.title_bar_text(), "test.ron · theme.mid* - Insiculous Editor");
+    assert!(ctx.is_song_dirty());
+    ctx.set_dirty(true);
+    ctx.set_song_mirror(Some(SongMirror { name: "theme.mid".to_string(), dirty: false }));
+    assert_eq!(ctx.title_bar_text(), "test.ron* · theme.mid - Insiculous Editor");
+    ctx.set_song_mirror(None);
+    assert_eq!(ctx.title_bar_text(), "test.ron* - Insiculous Editor", "no song, no second mark");
+    assert!(!ctx.is_song_dirty());
+}
+
+#[test]
 fn test_gizmo_sits_over_its_world_position_and_drags_map_screen_y_down_to_world_y_up() {
     let mut ctx = EditorContext::new();
     ctx.update_layout(Vec2::new(800.0, 600.0));

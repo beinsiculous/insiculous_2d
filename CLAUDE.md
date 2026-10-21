@@ -49,7 +49,8 @@ encode lessons already learned here — following them is cheaper than re-learni
 | Dynamic component tier (create/insert/extract/remove by name) | `crates/ecs/src/component_registry/` — builtins in the global-init closure; downstream crates call `ecs::register_components(\|r\| r.register::<T>())` at startup (physics via `engine_core::component_registration`, games in `main()`); the editor's `editor_component_registry!` is a TYPED WIDGET OVERLAY on top, its `stored_component/dynamic.rs` bridges the rest by name |
 | Scene RON schema (load) | `crates/engine_core/src/scene_data.rs` — `ComponentData` enum + `scene_loader.rs` |
 | `.sheet.ron` sidecar schema | `crates/engine_core/src/sheet_file.rs` — `SheetFile` + `parse_sheet_file` + `into_parts` (validation lives here too) |
-| `.mid.ron` song sidecar schema | `crates/music_midi/src/song_file.rs` — `SongFile` + `parse_song_file` + `SongFile::validate` (`song_file/validate.rs` holds every check); `docs/SONG_FORMAT.md` is the author's guide |
+| `.mid.ron` song sidecar schema | `crates/music_midi/src/song_file.rs` — `SongFile` + `parse_song_file` / `write_song_file` + `SongFile::validate` (`song_file/validate.rs` holds every check); `docs/SONG_FORMAT.md` is the author's guide |
+| Editor song mutation | `SongDocument::apply` in `crates/editor/src/song/` — the one path the composer's GUI and the command API's `song edit` both take; the song's own `SongHistory` |
 | Animation clip wire format | `ClipData` in `scene_data.rs` — ONE DTO shared by scene RON and `.sheet.ron` |
 | World → RON save | `crates/engine_core/src/scene_serializer/components.rs` — table behind `extract_components()` (the ONLY save pipeline) |
 | Inspector writeback / undo merge | `apply_component_edit()` in `crates/editor/src/component_editors.rs` (called by the registry-generated `edit_all_components`); `SetComponentCommand<T>` (one generic, twelve `Set*Command` aliases, `GIZMO_FIELD_HINT` for drags) in `crates/editor/src/commands/set_commands.rs` |
@@ -322,7 +323,7 @@ The `editor_integration` crate bridges `engine_core` and `editor` without circul
 **Dependency graph:**
 ```
 engine_core ──→ ecs, renderer, input, physics, audio, ui
-editor ──→ ecs, ui, input, renderer, physics, common      (NO engine_core dep)
+editor ──→ ecs, ui, input, renderer, physics, common, music_midi (no synth)  (NO engine_core dep)
 editor_integration ──→ editor, engine_core, ecs, ui, input, renderer, common
 insiculous_2d (root) ──→ editor_integration (optional, behind "editor" feature)
 ```

@@ -420,7 +420,7 @@ fn test_api_writes_are_refused_under_the_scene_dialog_too() {
     let entity = spawn_at(&mut world, Vec2::ZERO);
     let mut editor = dirty_editor(&mut world);
 
-    assert!(!editor.request_scene_replace(PendingSceneAction::NewScene), "the dialog parks");
+    assert!(!editor.request_document_action(PendingSceneAction::NewScene), "the dialog parks");
     let refused = api_line(&mut editor, &mut world, &format!("rename #{} Under", entity.value()));
     assert!(refused.contains("dialog is pending"), "got: {refused}");
     assert!(editor.confirm_dialog_consumes_key(KeyCode::Escape));

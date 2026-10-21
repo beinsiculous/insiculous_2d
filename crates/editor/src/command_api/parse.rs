@@ -23,14 +23,14 @@ const ARCHETYPE_COUNT: usize = Archetype::ALL.len();
 
 /// Every verb the parser accepts (queries + writes); `specs` mirrors this
 /// list for `commands` discovery — a drift test keeps them equal.
-pub(super) const VERBS: [&str; 16] = [
+pub(super) const VERBS: [&str; 17] = [
     "list", "describe", "selection", "scene", "commands",
     "set", "add", "remove", "rename", "create", "delete", "select",
-    "undo", "redo", "save", "batch",
+    "undo", "redo", "save", "batch", "song",
 ];
 
 /// Split a line into tokens; `"quoted strings"` become one token.
-fn tokens(line: &str) -> Result<Vec<String>, ApiError> {
+pub(super) fn tokens(line: &str) -> Result<Vec<String>, ApiError> {
     let mut out = Vec::new();
     let mut chars = line.chars().peekable();
     while let Some(&c) = chars.peek() {
@@ -65,7 +65,7 @@ fn tokens(line: &str) -> Result<Vec<String>, ApiError> {
 /// Split off the first `n` whitespace tokens (quote-aware) and return them
 /// with the untouched remainder of the line — how `set`/`add` carry raw
 /// JSON that must never meet the tokenizer.
-fn split_fixed_tokens(line: &str, n: usize) -> Result<(Vec<String>, &str), ApiError> {
+pub(super) fn split_fixed_tokens(line: &str, n: usize) -> Result<(Vec<String>, &str), ApiError> {
     let mut out = Vec::new();
     let mut rest = line;
     for _ in 0..n {
@@ -244,6 +244,7 @@ pub fn parse_line(line: &str) -> Result<Request, ApiError> {
     match first {
         "set" => return parse_set(line),
         "add" => return parse_add(line),
+        "song" => return super::song::parse(line),
         _ => {}
     }
 

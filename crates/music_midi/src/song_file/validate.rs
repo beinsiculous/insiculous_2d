@@ -26,8 +26,11 @@ const HIGHEST_PRESET: u8 = 127;
 const HIGHEST_BANK: u16 = 128;
 
 impl SongFile {
-    /// Everything checkable from the file alone. The version was checked before parsing.
-    pub(super) fn check_schema(&self) -> Result<(), SongFileProblem> {
+    /// Everything checkable from the file alone: the version, the background SoundFont's
+    /// path, empty or repeated names, a binding naming nothing, an instrument's numbers and
+    /// the instrument cap. Pure, so a composer runs it on the file an edit would produce
+    /// and never writes a sidecar [`parse_song_file`](super::parse_song_file) refuses.
+    pub fn check_schema(&self) -> Result<(), SongFileProblem> {
         if self.version != super::SONG_FILE_VERSION {
             return Err(SongFileProblem::UnsupportedVersion {
                 found: self.version,

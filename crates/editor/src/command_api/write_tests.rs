@@ -24,6 +24,7 @@ struct Rig {
     selection: Selection,
     batch: Option<ApiBatch>,
     play_state: EditorPlayState,
+    song: Option<crate::song::SongDocument>,
 }
 
 impl Rig {
@@ -34,6 +35,7 @@ impl Rig {
             selection: Selection::new(),
             batch: None,
             play_state: EditorPlayState::Editing,
+            song: None,
         }
     }
 
@@ -55,6 +57,7 @@ impl Rig {
             batch: &mut self.batch,
             // The rig's "resolver" issued only the built-in #white.
             texture_known: &|handle| handle == 0,
+            song: &mut self.song,
         };
         super::write::run(&write, &mut ctx)
     }
@@ -390,6 +393,7 @@ fn test_writes_refused_while_playing_and_allowed_while_paused() {
         scene_path: None,
         dirty: false,
         play_state: EditorPlayState::Editing,
+        song: None,
     };
     let response = super::dispatch_line("delete Player", &ctx).expect("response owed");
     assert!(response.contains("\"refused\""), "{response}");

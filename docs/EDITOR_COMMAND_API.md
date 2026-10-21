@@ -31,7 +31,7 @@ parse errors.
 | `list <filter>` | entities whose display name contains `<filter>` (case-insensitive) |
 | `describe <entity>` | one entity with all registry component values |
 | `selection` | current selection (primary + all, insertion order) |
-| `scene` | scene path, dirty state, entity count, play state |
+| `scene` | scene path, the scene's dirty state, the song's (`song_dirty`) and either's (`any_dirty`), entity count, play state |
 | `commands` | self-description: every verb (usage/example/summary/writes/undoable) plus the LIVE `settable`, `addable`, and `archetypes` name lists |
 
 Write verbs (Stage B — one undo entry each unless noted):
@@ -150,12 +150,115 @@ its key so the map stays total.
 ### `scene`
 
 ```json
-{"path":"assets/scenes/level.ron","dirty":false,"entity_count":12,"play_state":"editing"}
+{"path":"assets/scenes/level.ron","dirty":false,"song_dirty":true,"any_dirty":true,"entity_count":12,"play_state":"editing"}
 ```
 
-`path` is `null` for an unsaved new scene. `dirty` comes from the
-`CommandHistory` watermark (the same source as the title bar's `*`).
+`path` is `null` for an unsaved new scene. `dirty` is the scene's alone, from
+the `CommandHistory` watermark (the same source as the title bar's first `*`);
+`song_dirty` is the open song's (§ Songs — `false` with no song open), and
+`any_dirty` is either, which is what "is there unsaved work?" asks.
 `play_state` ∈ `editing` | `playing` | `paused`.
+
+## Songs
+
+The composer's song is a **second document** beside the scene: its own
+history, its own save watermark, its own selection. Every `song …` verb
+addresses it; none touches the scene's `CommandHistory`, and `undo` /
+`redo` never touch the song.
+
+| Request | Answer / effect |
+|---------|-----------------|
+| `song` | the open song (below), or `{"open": false}` |
+| `song notes [part]` | every note, or those of the track `part` plays: `{"notes":[{"id":3,"track":1,"tick":0,"key":60,"velocity":100,"duration_ticks":240}, ...]}` |
+| `song edit <json>` | one `SongEdit` (the REST OF THE LINE, never tokenized) through `SongDocument::apply`, the mutation path the composer's GUI uses — one entry on the song's history. Answers `{"command":"song edit","edit":"<variant>","added_notes":[<id>...],"dirty":<bool>}` |
+| `song undo` / `song redo` | the song's history only: `{"undid"/"redid": <variant>\|null}` |
+| `song select <note>...` / `song select none` | select exactly these notes by id — never on the undo stack (GUI parity) |
+| `song new [discard]` | a new, never-saved song (one tempo track, a `melody` track on channel 1, 120 BPM in 4/4, the background on `soundfonts/cast.sf2`) |
+| `song open <path> [discard]` | open a `.mid` (relative to the asset root), settling what an interrupted save left — the answer's `notes` say what was settled |
+| `song save [path]` | save to `path`, else the song's own path, else — never saved — `music/untitled.mid` (numbered when taken) |
+| `song close [discard]` | close the song |
+| `song play [beat]`, `song stop`, `song seek <beat>`, `song trigger <action>` | parsed, and `refused` until the composer's preview transport exists (Conductor batch 11) |
+
+**`song` answers:**
+
+```json
+{"open":true,"path":"assets/music/theme.mid","imported_from":null,"dirty":false,
+ "editable":true,"refused_reason":null,"ticks_per_quarter":480,
+ "soundfont":"soundfonts/cast.sf2","looping":true,
+ "tracks":[{"index":0,"name":null,"channel":null,"note_count":0},
+           {"index":1,"name":"melody","channel":1,"note_count":3}],
+ "parts":[...],"instruments":[...],"bindings":[...],
+ "tempo_changes":[{"tick":0,"microseconds_per_quarter":500000,"beats_per_minute":120.0}],
+ "time_signatures":[{"tick":0,"numerator":4,"denominator":4}],
+ "selection":[3],"pending_samples":[],"can_undo":true,"can_redo":false}
+```
+
+`channel` counts from 1, as musicians count (and as a type-0 file's
+`channel N` tracks are named). `parts`, `instruments` and `bindings` are
+the sidecar's entries as JSON, in `SongEdit`'s shapes. A song is `dirty`
+when its history moved past its last save **or it has never been saved**.
+`editable: false` is a MIDI file the editing model cannot represent (a
+track whose notes span channels); every `song edit` on it is `refused`
+with `refused_reason`, and it still opens and saves as it was.
+
+**`SongEdit`** is serde's externally tagged JSON. Notes are named by id
+(the `id` of `song notes`); parts, instruments and bindings by name:
+
+```json
+{"AddNote": {"track": 1, "tick": 0, "key": 60, "velocity": 100, "duration_ticks": 240}}
+{"DeleteNotes": {"notes": [3, 4]}}
+{"MoveNotes": {"notes": [3], "tick_delta": -120}}
+{"ResizeNotes": {"notes": [3], "duration_ticks": 480}}
+{"SetVelocity": {"notes": [3], "velocity": 90}}
+{"SetPitch": {"notes": [3], "key": 62}}
+{"AssignPart": {"notes": [3], "part": "lead"}}
+{"SetTempo": {"tick": 0, "microseconds_per_quarter": 400000}}
+{"SetTimeSignature": {"tick": 1920, "meter": {"numerator": 3, "denominator": 4}}}
+{"SetLoop": {"looping": false}}
+{"SetQuantize": {"part": "lead", "quantize": "Beat"}}
+{"SetPartMode": {"part": "lead", "mode": "Sequence"}}
+{"AddInstrument": {"instrument": {"name": "blip", "source": {"Sample": {"path": "sounds/blip.wav", "root_note": 60}},
+                                  "provenance": {"author": "2026 Jesse", "license": "MIT"}}}}
+{"SetInstrument": {"name": "organ", "instrument": {"name": "organ", "source": {"SoundFont": {"path": "soundfonts/cast.sf2", "bank": 0, "preset": 19}}}}}
+{"RemoveInstrument": {"name": "blip"}}
+{"SetBinding": {"binding": {"action": "jump", "part": "lead", "instrument": "organ"}}}
+{"RemoveBinding": {"action": "jump"}}
+{"AddPart": {"part": {"name": "lead", "track": {"Name": "melody"}, "mode": "Loop", "quantize": "Off"}}}
+{"RemovePart": {"name": "lead"}}
+{"Batch": [ {"SetPitch": {"notes": [3], "key": 62}}, {"SetPitch": {"notes": [4], "key": 65}} ]}
+```
+
+`SetTempo`'s `microseconds_per_quarter` and `SetTimeSignature`'s `meter`
+take `null` to remove the change on that tick. `Batch` is the song's
+composite: every member is checked before any lands, a refused member lands
+none of it, and the whole is one undo entry. An edit to the sidecar is
+checked by `SongFile::check_schema` on the file it would produce, so a ninth
+instrument, a repeated name or a binding naming nothing is `invalid` and the
+editor never holds a sidecar the loader refuses.
+
+Song semantics worth knowing:
+
+- **Guards**: every song write — the pure ones and `song new|open|save|close`
+  — is `refused` in **Playing and Paused** (stricter than scene writes: the
+  running game owns the music), while a dialog is pending, and **while a
+  scene batch is open** (that batch is one undo entry over world commands; a
+  song edit has no place in it — use `{"Batch": [...]}`).
+- **No silent loss**: `song new`, `song open` and `song close` on a dirty
+  song are `refused` unless the line ends in `discard` — the API has no
+  dialog. The editor's GUI asks Save / Discard / Cancel instead, and Play
+  over a dirty song asks Save / Play saved / Cancel (Save / Cancel for a song
+  never saved): a click on Play never discards.
+- **Separate watermarks**: saving the scene never marks the song clean, and
+  saving the song never marks the scene clean.
+- **Save is a journal** (`docs/SONG_FORMAT.md` § How the composer saves):
+  every `Sample` instrument needs `provenance` (author and license) or the
+  save is `refused`, naming the instrument and the field, and nothing is
+  written; samples are copied into `music/samples/<stem>/` with a `LICENSE`
+  naming each; the `.mid` and `.mid.ron` land through a `.new` pair that
+  `song open` recovers if the save was interrupted. A song saves only under
+  `music/` or `ai/music/` in the asset folder; a `.mid` opened from anywhere
+  else (or without a sidecar) is an import — `path` is `null` and its first
+  save is a save to a new path, the original never written.
 
 ## Stages (audit §9.6)
 

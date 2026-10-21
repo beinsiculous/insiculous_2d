@@ -8,17 +8,20 @@
 //! missing bank or an oversized file is an error naming the song, the sidecar entry and
 //! the path, and the song already playing plays on.
 //!
-//! **Decoded dependencies are cached by content.** A SoundFont's parse (and its presets'
-//! layering) and a sample's decode are kept per file under a fingerprint of the file's
-//! bytes, so a second load of unchanged files decodes nothing and a file changed at the
-//! same path is decoded again. The cache holds the current song's closure and the
-//! previous one's; anything else is dropped after every load.
+//! **Decoded dependencies are cached by path and kept fresh by change.** A SoundFont's
+//! parse (and its presets' layering) and a sample's decode are kept per file, with what
+//! says the file is still the one decoded: its [`ChangeStamp`] (length and modified time)
+//! where the filesystem keeps one, so a second load costs one metadata call and no read,
+//! and a fingerprint of its bytes where it does not (the web's map). Either way a file
+//! changed at the same path is decoded again. The cache holds the current song's closure
+//! and the previous one's; anything else is dropped after every load.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use common::vfs::ChangeStamp;
 use music_midi::rustysynth::SoundFont;
 use music_midi::{
     parse_song_file, preset_layering, Conductor, ConductorConfig, ConductorError, ConductorHandle,
@@ -132,8 +135,8 @@ fn read_limited(path: &Path, limit: usize) -> Result<Vec<u8>, SongProblem> {
     common::vfs::read(path).map_err(SongProblem::Unreadable)
 }
 
-/// FNV-1a over `bytes`: a content fingerprint, so an edited file at an unchanged path is
-/// told apart from the file the cache decoded.
+/// FNV-1a over `bytes`: a content fingerprint, so where no modified time is kept an
+/// edited file at an unchanged path is told apart from the file the cache decoded.
 fn fingerprint(bytes: &[u8]) -> u64 {
     const OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
     const PRIME: u64 = 0x0100_0000_01b3;
@@ -177,8 +180,25 @@ impl Dependencies {
     }
 }
 
+/// What says a cached file is still the file that was decoded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Freshness {
+    /// Its length and modified time, where the filesystem keeps them. A file rewritten
+    /// at the same length inside the modified-time granularity keeps its stamp.
+    Stamp(ChangeStamp),
+    /// A fingerprint of its bytes, where no modified time is kept.
+    Content(u64),
+}
+
+/// A probe's answer: the cached decode is still the file's, or the file must be decoded
+/// from these bytes and kept under this freshness.
+enum Probe {
+    Fresh,
+    Stale { bytes: Vec<u8>, freshness: Freshness },
+}
+
 struct CachedFile {
-    fingerprint: u64,
+    freshness: Freshness,
     decoded: Decoded,
 }
 
@@ -294,25 +314,57 @@ impl DependencyCache {
         Ok(loaded)
     }
 
-    /// The bytes at `path`, refused by size first, and their fingerprint.
-    fn read_fingerprinted(path: &Path, limit: usize) -> Result<(Vec<u8>, u64), SongProblem> {
+    /// Whether the decode cached for `path` is still the file's, given the file's
+    /// `stamp`: a matching stamp is fresh without a read; with no stamp the file is read,
+    /// refused by size first, and its fingerprint compared.
+    fn probe(
+        &self,
+        path: &Path,
+        stamp: Option<ChangeStamp>,
+        limit: usize,
+    ) -> Result<Probe, SongProblem> {
+        let cached = self.files.get(path).map(|cached| cached.freshness);
+        if let Some(stamp) = stamp {
+            if cached == Some(Freshness::Stamp(stamp)) {
+                return Ok(Probe::Fresh);
+            }
+            let bytes = read_limited(path, limit)?;
+            return Ok(Probe::Stale {
+                bytes,
+                freshness: Freshness::Stamp(stamp),
+            });
+        }
         let bytes = read_limited(path, limit)?;
-        let fingerprint = fingerprint(&bytes);
-        Ok((bytes, fingerprint))
+        let freshness = Freshness::Content(fingerprint(&bytes));
+        if cached == Some(freshness) {
+            return Ok(Probe::Fresh);
+        }
+        Ok(Probe::Stale { bytes, freshness })
     }
 
-    fn cached(&self, path: &Path, fingerprint: u64) -> Option<&Decoded> {
-        self.files
-            .get(path)
-            .filter(|cached| cached.fingerprint == fingerprint)
-            .map(|cached| &cached.decoded)
+    /// [`DependencyCache::probe`] with the file's stamp from `common::vfs`.
+    fn probe_file(&self, path: &Path, limit: usize) -> Result<Probe, SongProblem> {
+        let stamp = common::vfs::change_stamp(path).map_err(SongProblem::Unreadable)?;
+        self.probe(path, stamp, limit)
+    }
+
+    fn cached(&self, path: &Path) -> Option<&Decoded> {
+        self.files.get(path).map(|cached| &cached.decoded)
     }
 
     fn sound_font(&mut self, path: &Path) -> Result<(Arc<SoundFont>, PresetLayering), SongProblem> {
-        let (bytes, fingerprint) = Self::read_fingerprinted(path, SOUND_FONT_BYTE_LIMIT)?;
-        if let Some(Decoded::SoundFont { parsed, layering }) = self.cached(path, fingerprint) {
-            return Ok((Arc::clone(parsed), layering.clone()));
-        }
+        let (bytes, freshness) = match self.probe_file(path, SOUND_FONT_BYTE_LIMIT)? {
+            Probe::Stale { bytes, freshness } => (bytes, freshness),
+            Probe::Fresh => match self.cached(path) {
+                Some(Decoded::SoundFont { parsed, layering }) => {
+                    return Ok((Arc::clone(parsed), layering.clone()));
+                }
+                _ => {
+                    self.files.remove(path);
+                    return self.sound_font(path);
+                }
+            },
+        };
         let label = path.display().to_string();
         let parsed = Arc::new(music_midi::parse_sound_font(&label, &bytes)?);
         let layering: PresetLayering = preset_layering(&label, &parsed)
@@ -323,28 +375,86 @@ impl DependencyCache {
             parsed: Arc::clone(&parsed),
             layering: layering.clone(),
         };
-        self.insert(path, fingerprint, decoded);
+        self.insert(path, freshness, decoded);
         Ok((parsed, layering))
     }
 
     fn sample(&mut self, path: &Path) -> Result<OwnedPcm, SongProblem> {
-        let (bytes, fingerprint) = Self::read_fingerprinted(path, SAMPLE_BYTE_LIMIT)?;
-        if let Some(Decoded::Sample(pcm)) = self.cached(path, fingerprint) {
-            return Ok(pcm.clone());
-        }
+        let (bytes, freshness) = match self.probe_file(path, SAMPLE_BYTE_LIMIT)? {
+            Probe::Stale { bytes, freshness } => (bytes, freshness),
+            Probe::Fresh => match self.cached(path) {
+                Some(Decoded::Sample(pcm)) => return Ok(pcm.clone()),
+                _ => {
+                    self.files.remove(path);
+                    return self.sample(path);
+                }
+            },
+        };
         let pcm = decode_sample_pcm(bytes)?;
-        self.insert(path, fingerprint, Decoded::Sample(pcm.clone()));
+        self.insert(path, freshness, Decoded::Sample(pcm.clone()));
         Ok(pcm)
     }
 
-    fn insert(&mut self, path: &Path, fingerprint: u64, decoded: Decoded) {
+    fn insert(&mut self, path: &Path, freshness: Freshness, decoded: Decoded) {
         self.decodes += 1;
         self.files.insert(
             path.to_path_buf(),
-            CachedFile {
-                fingerprint,
-                decoded,
-            },
+            CachedFile { freshness, decoded },
         );
+    }
+}
+
+#[cfg(test)]
+mod freshness_tests {
+    use super::*;
+
+    /// A cache holding one decoded sample for `path`, kept fresh by `freshness`.
+    fn cache_holding(path: &Path, freshness: Freshness) -> DependencyCache {
+        let pcm = OwnedPcm::new(8_000, 1, vec![0.0; 80]).expect("a valid sample");
+        let mut cache = DependencyCache::default();
+        cache.insert(path, freshness, Decoded::Sample(pcm));
+        cache
+    }
+
+    #[test]
+    fn a_matching_stamp_is_fresh_without_reading_the_file() {
+        let stamp = ChangeStamp {
+            length_bytes: 4,
+            modified_nanoseconds: 7,
+        };
+        let path = Path::new("never/written.wav");
+        let cache = cache_holding(path, Freshness::Stamp(stamp));
+
+        let probe = cache.probe(path, Some(stamp), SAMPLE_BYTE_LIMIT);
+        assert!(matches!(probe, Ok(Probe::Fresh)), "a read of the missing file would fail");
+        let changed = ChangeStamp {
+            modified_nanoseconds: 8,
+            ..stamp
+        };
+        let probe = cache.probe(path, Some(changed), SAMPLE_BYTE_LIMIT);
+        assert!(matches!(probe, Err(SongProblem::Unreadable(_))), "a new stamp reads the file");
+    }
+
+    #[test]
+    fn without_a_stamp_a_file_is_kept_fresh_by_its_content() {
+        let path = std::env::temp_dir().join(format!(
+            "insiculous_audio_freshness_{}.wav",
+            std::process::id()
+        ));
+        std::fs::write(&path, b"first").expect("written");
+        let cache = cache_holding(&path, Freshness::Content(fingerprint(b"first")));
+
+        let unchanged = cache.probe(&path, None, SAMPLE_BYTE_LIMIT);
+        assert!(matches!(unchanged, Ok(Probe::Fresh)), "the same bytes are the cached decode");
+
+        std::fs::write(&path, b"other").expect("rewritten at the same length");
+        match cache.probe(&path, None, SAMPLE_BYTE_LIMIT) {
+            Ok(Probe::Stale { bytes, freshness }) => {
+                assert_eq!(bytes, b"other");
+                assert_eq!(freshness, Freshness::Content(fingerprint(b"other")));
+            }
+            _ => panic!("new bytes at the same path and length are decoded again"),
+        }
+        std::fs::remove_file(&path).ok();
     }
 }

@@ -63,6 +63,40 @@ pub fn file_size(path: &Path) -> io::Result<u64> {
     }
 }
 
+/// What a file's metadata says about its bytes: its length and when it was last
+/// modified, so a cache can tell a rewritten file from the one it decoded without
+/// reading either. A file rewritten at the same length inside the filesystem's
+/// modified-time granularity keeps its stamp.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChangeStamp {
+    pub length_bytes: u64,
+    pub modified_nanoseconds: u128,
+}
+
+/// A file's [`ChangeStamp`] (native: its metadata), or `None` where the target keeps no
+/// modified time (wasm, whose map holds bytes only, and a native filesystem that records
+/// none); a missing file is an error on both targets.
+pub fn change_stamp(path: &Path) -> io::Result<Option<ChangeStamp>> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let metadata = std::fs::metadata(path)?;
+        let Ok(modified) = metadata.modified() else {
+            return Ok(None);
+        };
+        let since_epoch = modified
+            .duration_since(crate::clock::UNIX_EPOCH)
+            .unwrap_or_default();
+        Ok(Some(ChangeStamp {
+            length_bytes: metadata.len(),
+            modified_nanoseconds: since_epoch.as_nanos(),
+        }))
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        MEM_FS.with(|fs| fs.borrow().change_stamp(path))
+    }
+}
+
 /// Read a file as UTF-8 (native: `std::fs::read_to_string`; wasm: map).
 pub fn read_to_string(path: &Path) -> io::Result<String> {
     #[cfg(not(target_arch = "wasm32"))]
@@ -264,6 +298,17 @@ impl MemFs {
             .get(key.as_ref())
             .map(|bytes| bytes.len() as u64)
             .ok_or_else(|| not_in_map(path))
+    }
+
+    /// The map keeps no modified time, so a file it holds has no [`ChangeStamp`]: a
+    /// caller tells its versions apart by content.
+    pub fn change_stamp(&self, path: &Path) -> io::Result<Option<ChangeStamp>> {
+        let key = path.to_string_lossy();
+        if self.files.contains_key(key.as_ref()) {
+            Ok(None)
+        } else {
+            Err(not_in_map(path))
+        }
     }
 
     /// Look up a UTF-8 file by the exact string its `Path` renders to.

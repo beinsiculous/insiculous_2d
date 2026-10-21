@@ -75,6 +75,7 @@ impl<G: Game> EditorGame<G> {
                         scene_path: self.editor.scene_path(),
                         dirty: self.command_history.is_dirty(),
                         play_state: self.editor.play_state(),
+                        song: self.song.as_ref(),
                     };
                     command_api::answer_query(&query, &ctx)
                 }
@@ -87,6 +88,7 @@ impl<G: Game> EditorGame<G> {
                         play_state,
                         batch: &mut self.api.batch,
                         texture_known: &texture_known,
+                        song: &mut self.song,
                     };
                     match command_api::write::run(&write, &mut ctx) {
                         Ok(data) => ok_response(data),
@@ -106,13 +108,17 @@ impl<G: Game> EditorGame<G> {
     }
 
     /// Hosted writes: entity creation (factories + viewport spawn position
-    /// live here) and scene save (the mandatory choke point).
+    /// live here), scene save (the mandatory choke point), and the song's
+    /// verbs (`song_io.rs`).
     fn run_hosted_write(
         &mut self,
         hosted: &HostedWrite,
         world: &mut ecs::World,
         texture_path_fn: &dyn Fn(u32) -> String,
     ) -> Result<serde_json::Value, ApiError> {
+        if hosted.is_song() {
+            return self.run_hosted_song_write(hosted);
+        }
         if self.editor.is_playing() {
             return Err(ApiError::Refused(
                 "writes are refused while Playing — pause or stop first".to_string(),
@@ -191,6 +197,7 @@ impl<G: Game> EditorGame<G> {
                     Err(e) => Err(ApiError::Refused(format!("save failed: {e}"))),
                 }
             }
+            song_write => self.run_hosted_song_write(song_write),
         }
     }
 

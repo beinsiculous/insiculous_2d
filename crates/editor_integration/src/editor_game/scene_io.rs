@@ -260,6 +260,41 @@ impl<G: Game> EditorGame<G> {
             .unwrap_or_else(|| self.resolve_asset_path(std::path::Path::new(crate::constants::DEFAULT_SCENE_PATH)))
     }
 
+    /// Where a never-saved song saves when no path is given: `music/untitled.mid`
+    /// under the asset base, numbered (`untitled_2.mid`, …) when that is taken —
+    /// the `default_scene_path` precedent, since no file picker exists.
+    pub(super) fn default_song_path(&self) -> PathBuf {
+        let mut number = 1;
+        loop {
+            let relative = match number {
+                1 => crate::constants::DEFAULT_SONG_PATH.to_string(),
+                _ => crate::constants::DEFAULT_SONG_PATH.replace(".mid", &format!("_{number}.mid")),
+            };
+            let candidate = self.resolve_asset_path(Path::new(&relative));
+            if common::vfs::file_size(&candidate).is_err() {
+                return candidate;
+            }
+            number += 1;
+        }
+    }
+
+    /// Where Open Song looks, until a file picker exists: an `untitled.mid` beside the open
+    /// song's file, else `music/untitled.mid` under the asset base — the
+    /// `default_scene_path` precedent. Never the open song's own file, which Open would
+    /// only reload under its history, and never numbered, unlike
+    /// [`Self::default_song_path`]: this names a file to read, that one a free file to write.
+    pub(super) fn song_path_to_open(&self) -> PathBuf {
+        let default_name = Path::new(crate::constants::DEFAULT_SONG_PATH)
+            .file_name()
+            .map(PathBuf::from)
+            .unwrap_or_default();
+        self.song
+            .as_ref()
+            .and_then(|song| song.path())
+            .and_then(|song_path| song_path.parent().map(|directory| directory.join(&default_name)))
+            .unwrap_or_else(|| self.resolve_asset_path(Path::new(crate::constants::DEFAULT_SONG_PATH)))
+    }
+
     /// Resolve a scene/asset path: an absolute path or one already prefixed
     /// with `asset_base` passes through unchanged; a relative path joins `asset_base`.
     pub(super) fn resolve_asset_path(&self, path: &std::path::Path) -> PathBuf {

@@ -21,14 +21,16 @@ pub enum ConfirmChoice {
     Cancel,
 }
 
-/// A three-button modal. Construct per frame (plain data) and call
+/// A modal of two or three buttons. Construct per frame (plain data) and call
 /// [`render`](Self::render) while the decision is pending.
 #[derive(Debug, Clone)]
 pub struct ConfirmDialog {
     pub title: String,
     pub message: String,
     pub confirm_label: String,
-    pub alt_label: String,
+    /// The alternative's label; `None` draws no alternative button, so the dialog can
+    /// never offer a choice that does not exist.
+    pub alt_label: Option<String>,
     pub cancel_label: String,
 }
 
@@ -45,7 +47,40 @@ impl ConfirmDialog {
             title: "Unsaved changes".to_string(),
             message: format!("Save the current scene before {action}?"),
             confirm_label: "Save".to_string(),
-            alt_label: "Discard".to_string(),
+            alt_label: Some("Discard".to_string()),
+            cancel_label: "Cancel".to_string(),
+        }
+    }
+
+    /// The unsaved-changes prompt for the song, a document of its own: Save / Discard /
+    /// Cancel.
+    pub fn unsaved_song(action: &str) -> Self {
+        Self {
+            title: "Unsaved song".to_string(),
+            message: format!("Save the current song before {action}?"),
+            confirm_label: "Save".to_string(),
+            alt_label: Some("Discard".to_string()),
+            cancel_label: "Cancel".to_string(),
+        }
+    }
+
+    /// The Play prompt over a dirty song. Play never offers to discard — a click on Play
+    /// must not destroy work — so the alternative plays the saved song, and only when a
+    /// saved file exists: a never-saved song is offered Save / Cancel.
+    pub fn play_with_unsaved_song(saved_exists: bool) -> Self {
+        let (message, alt_label) = if saved_exists {
+            (
+                "The song has unsaved edits. Save them before Play, or play the saved song?",
+                Some("Play saved".to_string()),
+            )
+        } else {
+            ("The song has never been saved. Save it before Play?", None)
+        };
+        Self {
+            title: "Unsaved song".to_string(),
+            message: message.to_string(),
+            confirm_label: "Save".to_string(),
+            alt_label,
             cancel_label: "Cancel".to_string(),
         }
     }
@@ -56,7 +91,7 @@ impl ConfirmDialog {
             title: "Edits made while paused".to_string(),
             message: format!("Keep the {count} edit(s) you made while paused?"),
             confirm_label: "Keep".to_string(),
-            alt_label: "Discard".to_string(),
+            alt_label: Some("Discard".to_string()),
             cancel_label: "Cancel".to_string(),
         }
     }
@@ -123,8 +158,10 @@ impl ConfirmDialog {
         if ui.button("confirm_dialog_confirm", &self.confirm_label, confirm) {
             choice = Some(ConfirmChoice::Confirm);
         }
-        if ui.button("confirm_dialog_alt", &self.alt_label, alt) {
-            choice = Some(ConfirmChoice::Alt);
+        if let Some(alt_label) = &self.alt_label {
+            if ui.button("confirm_dialog_alt", alt_label, alt) {
+                choice = Some(ConfirmChoice::Alt);
+            }
         }
         if ui.button("confirm_dialog_cancel", &self.cancel_label, cancel) {
             choice = Some(ConfirmChoice::Cancel);
@@ -157,6 +194,22 @@ mod tests {
         assert_eq!(click_at(confirm.center()), Some(ConfirmChoice::Confirm));
         assert_eq!(click_at(alt.center()), Some(ConfirmChoice::Alt));
         assert_eq!(click_at(cancel.center()), Some(ConfirmChoice::Cancel));
+    }
+
+    /// A never-saved song's Play prompt has no "Play saved": the alternative's place is
+    /// not a button, and a saved song's prompt offers it.
+    #[test]
+    fn test_play_saved_is_offered_only_when_a_saved_song_exists() {
+        let (_, alt, _) = ConfirmDialog::button_rects(WINDOW);
+        let theme = EditorTheme::default();
+        for (saved_exists, expected) in [(true, Some(ConfirmChoice::Alt)), (false, None)] {
+            let dialog = ConfirmDialog::play_with_unsaved_song(saved_exists);
+            assert_eq!(dialog.alt_label.is_some(), saved_exists);
+            let mut ui = UIContext::new();
+            let mut input = input::InputHandler::new();
+            let (_, choice) = click_through(&mut ui, &mut input, alt.center(), |ui| dialog.render(ui, WINDOW, &theme));
+            assert_eq!(choice, expected, "saved_exists {saved_exists}");
+        }
     }
 
     /// The scrim is not a choice, and while the dialog shows the whole

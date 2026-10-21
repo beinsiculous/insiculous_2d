@@ -9,6 +9,10 @@ use glam::Vec2;
 /// Default scene file path used until a file picker exists (Phase 2+).
 pub(crate) const DEFAULT_SCENE_PATH: &str = "scenes/scene.ron";
 
+/// Where a never-saved song saves, under the asset base, until a file picker exists;
+/// numbered when taken.
+pub(crate) const DEFAULT_SONG_PATH: &str = "music/untitled.mid";
+
 /// Editor preferences file (camera, grid, panel layout), saved on exit.
 pub(crate) const EDITOR_PREFS_PATH: &str = "editor_prefs.json";
 

@@ -20,6 +20,14 @@ use crate::{
     Toolbar,
 };
 
+/// What the editor chrome shows of the open song: its name (the file's, or "Untitled
+/// song") and whether it is dirty.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SongMirror {
+    pub name: String,
+    pub dirty: bool,
+}
+
 /// Editor-specific state that extends the game context.
 #[derive(Debug)]
 pub struct EditorContext {
@@ -65,6 +73,9 @@ pub struct EditorContext {
     is_dirty: bool,
     /// Current scene file path (None = untitled/new scene)
     scene_path: Option<std::path::PathBuf>,
+    /// The open song's name and dirty state, mirrored from its `SongDocument` once a frame
+    /// beside the scene's; `None` while no song is open.
+    song_mirror: Option<SongMirror>,
     /// Centralized design-system theme
     pub theme: EditorTheme,
     /// Status bar at the bottom of the editor
@@ -157,6 +168,7 @@ impl EditorContext {
             add_component_popup_open: false,
             is_dirty: false,
             scene_path: None,
+            song_mirror: None,
             theme,
             status_bar: StatusBar::new(),
             fonts: crate::fonts::EditorFonts::default(),
@@ -375,13 +387,31 @@ impl EditorContext {
             .unwrap_or_else(|| "Untitled".to_string())
     }
 
+    /// Mirror the open song (`None` once it closes): its display name and whether it
+    /// is dirty. Like [`Self::set_dirty`], a per-frame mirror of the song's own history.
+    pub fn set_song_mirror(&mut self, song: Option<SongMirror>) {
+        self.song_mirror = song;
+    }
+
+    /// Whether the open song has unsaved changes; `false` with no song open.
+    pub fn is_song_dirty(&self) -> bool {
+        self.song_mirror.as_ref().is_some_and(|song| song.dirty)
+    }
+
     /// Get the title bar text including dirty indicator.
     ///
-    /// Format: "filename.ron* - Insiculous Editor" (with * if dirty)
+    /// Format: "filename.ron* - Insiculous Editor" (with * if dirty), and with a song
+    /// open "filename.ron* · song.mid* - Insiculous Editor" — each document its own mark.
     pub fn title_bar_text(&self) -> String {
         let name = self.scene_display_name();
         let dirty_indicator = if self.is_dirty { "*" } else { "" };
-        format!("{}{} - Insiculous Editor", name, dirty_indicator)
+        match &self.song_mirror {
+            Some(song) => {
+                let song_indicator = if song.dirty { "*" } else { "" };
+                format!("{name}{dirty_indicator} · {}{song_indicator} - Insiculous Editor", song.name)
+            }
+            None => format!("{}{} - Insiculous Editor", name, dirty_indicator),
+        }
     }
 
     // ================== Layout Methods ==================

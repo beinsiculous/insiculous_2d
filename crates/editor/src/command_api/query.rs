@@ -42,6 +42,8 @@ pub(super) fn run(query: &Query, ctx: &QueryCtx<'_>) -> Result<Value, ApiError> 
         Query::Selection => Ok(selection(ctx)),
         Query::SceneInfo => Ok(scene_info(ctx)),
         Query::ListCommands => Ok(super::specs::commands_response()),
+        Query::Song => Ok(super::song::answer_song(ctx)),
+        Query::SongNotes { part } => super::song::answer_song_notes(ctx, part.as_deref()),
     }
 }
 
@@ -95,9 +97,12 @@ fn scene_info(ctx: &QueryCtx<'_>) -> Value {
         EditorPlayState::Playing => "playing",
         EditorPlayState::Paused => "paused",
     };
+    let song_dirty = ctx.song.is_some_and(|song| song.is_dirty());
     json!({
         "path": ctx.scene_path.map(|p| p.display().to_string()),
         "dirty": ctx.dirty,
+        "song_dirty": song_dirty,
+        "any_dirty": ctx.dirty || song_dirty,
         "entity_count": ctx.world.entities().len(),
         "play_state": play_state,
     })

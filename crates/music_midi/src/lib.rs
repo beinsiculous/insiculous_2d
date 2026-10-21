@@ -12,7 +12,8 @@
 //! - [`SongFile`] — the versioned sidecar: named parts over MIDI tracks, named
 //!   instruments, and bindings from game actions to a part played on an instrument.
 //!   [`parse_song_file`] checks what the text alone can show; [`SongFile::validate`]
-//!   checks it against the MIDI data and the loaded resources.
+//!   checks it against the MIDI data and the loaded resources; [`write_song_file`]
+//!   writes it back.
 //! - [`SongData`] — every track's events retained for export, notes grouped into
 //!   [`MusicalUnit`]s under stable [`NoteId`]s, and mutation helpers that return the
 //!   before-images an undo needs.
@@ -76,8 +77,9 @@ pub use song_data::{
     SongData, SongTrack, UnsupportedFeature, UnsupportedReport,
 };
 pub use song_file::{
-    parse_song_file, Binding, Instrument, InstrumentSource, Part, PartMode, PresetKey, Quantize,
-    ResourceMetadata, SamplePlayback, SongFile, TrackSelector, SONG_FILE_VERSION,
+    parse_song_file, write_song_file, Binding, Instrument, InstrumentSource, Part, PartMode,
+    PresetKey, Provenance, Quantize, ResourceMetadata, SamplePlayback, SongFile, TrackSelector,
+    SONG_FILE_VERSION,
 };
 #[cfg(feature = "synth")]
 pub use sources::SourceId;

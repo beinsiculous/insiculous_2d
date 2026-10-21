@@ -42,6 +42,8 @@ pub struct WriteCtx<'a> {
     /// `set`/`add` refuse a handle nothing can resolve on save — the
     /// editor crate cannot see the resolver, so the host answers by closure.
     pub texture_known: &'a dyn Fn(u32) -> bool,
+    /// The composer's song, which the `song …` writes edit.
+    pub song: &'a mut Option<crate::song::SongDocument>,
 }
 
 /// Record a command that has ALREADY been executed: append to the open
@@ -235,5 +237,9 @@ pub fn run(write: &PureWrite, ctx: &mut WriteCtx<'_>) -> Result<Value, ApiError>
         PureWrite::BatchBegin { name } => verbs::batch_begin(ctx, name.as_deref()),
         PureWrite::BatchEnd => verbs::batch_end(ctx),
         PureWrite::BatchAbort => verbs::batch_abort(ctx),
+        PureWrite::SongEdit(_)
+        | PureWrite::SongUndo
+        | PureWrite::SongRedo
+        | PureWrite::SongSelect { .. } => super::song::run_write(write, ctx),
     }
 }

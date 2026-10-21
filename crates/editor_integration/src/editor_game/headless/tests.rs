@@ -127,3 +127,34 @@ fn test_headless_assets_round_trip_references_verbatim() {
     assert_eq!(assets.texture_path(png.id), Some("sprites/deion_16.png"));
     assert_eq!(assets.texture_path(999), None);
 }
+
+#[test]
+fn test_the_headless_session_authors_saves_and_reopens_a_song() -> std::io::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let run = |script: &str| -> Vec<serde_json::Value> {
+        let mut out: Vec<u8> = Vec::new();
+        run_headless_editor_api(Some(dir.path().to_path_buf()), None, Cursor::new(script.to_string()), &mut out)
+            .expect("session runs to EOF");
+        String::from_utf8(out)
+            .expect("utf8")
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("one JSON line"))
+            .collect()
+    };
+    let responses = run(concat!(
+        "song new\n",
+        r#"song edit {"AddNote": {"track": 1, "tick": 0, "key": 60, "velocity": 100, "duration_ticks": 480}}"#,
+        "\nsong save music/theme.mid\n",
+        "scene\n",
+    ));
+    for (index, response) in responses.iter().enumerate() {
+        assert_eq!(response["ok"], true, "request {index}: {response}");
+    }
+    assert_eq!(responses[3]["data"]["song_dirty"], false);
+    assert!(dir.path().join("music/theme.mid.ron").exists());
+
+    let reopened = run("song open music/theme.mid\nsong notes\n");
+    assert_eq!(reopened[0]["data"]["dirty"], false, "{}", reopened[0]);
+    assert_eq!(reopened[1]["data"]["notes"][0]["key"], 60);
+    Ok(())
+}

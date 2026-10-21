@@ -464,3 +464,39 @@ fn the_percussion_channel_of_a_type_zero_file_is_selectable_as_a_part() {
     assert_eq!(percussion.note_count(), 110);
     assert_eq!(keys, [54].into(), "every note is the tambourine");
 }
+
+#[test]
+fn the_composers_two_fields_are_optional_on_read_and_written_back_by_write_song_file() {
+    let hand_written = parse(
+        r#"SongFile(version: 1, soundfont: "a.sf2",
+            instruments: [(name: "blip", source: Sample(path: "blip.wav", root_note: 60))])"#,
+    )
+    .expect("a sidecar without them still loads");
+    assert_eq!(hand_written.midi_fingerprint, None);
+    assert_eq!(hand_written.instruments[0].provenance, None);
+
+    let mut saved = hand_written;
+    saved.midi_fingerprint = Some(u64::MAX);
+    saved.instruments[0].provenance = Some(Provenance {
+        author: "2026 Jesse".to_string(),
+        license: "MIT".to_string(),
+    });
+    let written = write_song_file(LABEL, &saved).expect("writes");
+    assert!(written.contains("midi_fingerprint"), "{written}");
+    assert_eq!(parse(&written).expect("reads back"), saved);
+
+    let example = parse(documented_example()).expect("parses");
+    let unsaved = parse(&write_song_file(LABEL, &example).expect("writes")).expect("reads back");
+    assert_eq!(unsaved.midi_fingerprint, None, "an absent field is not written");
+}
+
+#[test]
+fn a_provenance_with_an_unknown_field_is_refused() {
+    let error = parse(
+        r#"SongFile(version: 1, soundfont: "a.sf2",
+            instruments: [(name: "blip", source: Sample(path: "blip.wav", root_note: 60),
+                provenance: Some((author: "a", license: "MIT", year: 2026)))])"#,
+    )
+    .expect_err("a misspelt provenance fails loud");
+    assert!(error.to_string().contains("year"), "{error}");
+}

@@ -18,6 +18,7 @@ fn ctx<'a>(world: &'a World, selection: &'a Selection) -> QueryCtx<'a> {
         scene_path: Some(std::path::Path::new("assets/scenes/level.ron")),
         dirty: false,
         play_state: EditorPlayState::Editing,
+        song: None,
     }
 }
 

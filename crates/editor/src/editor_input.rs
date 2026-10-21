@@ -95,6 +95,14 @@ pub enum EditorAction {
     /// Open a scene
     OpenScene,
 
+    // ---- Song file ----
+    /// Replace the song with a new one (prompting over a dirty song)
+    NewSong,
+    /// Open an `untitled.mid` beside the song's file (else `music/untitled.mid`), prompting over a dirty song
+    OpenSong,
+    /// Close the song (prompting over a dirty song)
+    CloseSong,
+
     // ---- View / play ----
     /// Toggle grid display
     ToggleGrid,
@@ -147,6 +155,9 @@ impl EditorAction {
                 | Self::Redo
                 | Self::NewScene
                 | Self::OpenScene
+                | Self::NewSong
+                | Self::OpenSong
+                | Self::CloseSong
         )
     }
 }

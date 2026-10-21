@@ -48,12 +48,16 @@ the code's.
   `SongFileError` = the file's label + a `SongFileProblem`, `Collection`, `PcmError`
   (decoded sample audio outside the limits, naming the limit), and `ConductorError` (a
   conductor that cannot be built or a song it cannot load).
-- `song_file.rs` — **the sidecar schema**: `SongFile` v1, `Part`, `TrackSelector`,
-  `PartMode`, `Quantize`, `Instrument`, `InstrumentSource`, `SamplePlayback`, `Binding`,
-  `ResourceMetadata`/`PresetKey`; `parse_song_file` (version probed first, unknown
-  fields refused); `SongFile::validate`; `Part::resolve_track`.
+- `song_file.rs` — **the sidecar schema**: `SongFile` v1 (with the composer's
+  `midi_fingerprint`, FNV-1a over the MIDI bytes it saved, optional on read), `Part`,
+  `TrackSelector`, `PartMode`, `Quantize`, `Instrument` (with an optional `Provenance {
+  author, license }`, which the composer requires of a sample before it saves),
+  `InstrumentSource`, `SamplePlayback`, `Binding`, `ResourceMetadata`/`PresetKey`;
+  `parse_song_file` (version probed first, unknown fields refused) and its inverse
+  `write_song_file`; `SongFile::validate`; `Part::resolve_track`.
 - `song_file/validate.rs` — every sidecar check: the schema checks `parse_song_file`
-  runs and the checks against `SongData` and `ResourceMetadata`.
+  runs (`SongFile::check_schema`, public, so the composer runs it on the file an edit
+  would produce) and the checks against `SongData` and `ResourceMetadata`.
 - `song_data.rs` — the data model: `SongData`, `SongTrack` (a selectable track),
   `MusicalUnit`, `Note`, `NoteId`, `NoteImage`, `RetainedEvent`, `UnsupportedReport`.
 - `song_data/flatten.rs` — `SongData::from_smf`: limits, type and division checks,
@@ -143,6 +147,7 @@ the code's.
 | A future sidecar must be refused for its version, not for the fields it added — the version is probed before the full parse | `src/song_file/tests.rs a_future_version_is_refused_for_its_version_not_its_new_fields` |
 | A shared track name is refused by `Name` and never by `Index` | `src/song_file/tests.rs a_shared_track_name_needs_the_index_escape_hatch_which_is_never_refused` |
 | The documented example must stay valid; the test reads it from `docs/SONG_FORMAT.md` | `src/song_file/tests.rs the_documented_example_parses_validates_and_round_trips` |
+| The composer's two fields are optional on read, so a sidecar written by hand loads unchanged, and `write_song_file` writes neither when absent | `src/song_file/tests.rs the_composers_two_fields_are_optional_on_read_and_written_back_by_write_song_file` |
 | midly's default `parallel` feature pulls rayon; the workspace pin turns default features off and keeps `std` | — none |
 | midly parses leniently: a track cut short reads as a shorter track instead of failing | — none |
 | Export normalizes track ends: every exported track closes with one EndOfTrack at its last event or the original end, so a track that had none (a lenient parse) gains one, and a tail of deleted notes leaves the original end in place — a song's length is authored, not derived | — none |

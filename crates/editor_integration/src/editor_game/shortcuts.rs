@@ -271,15 +271,26 @@ impl<G: Game> EditorGame<G> {
                 self.report_save_result(result);
             }
             A::NewScene => {
-                if self.request_scene_replace(super::scene_confirm::PendingSceneAction::NewScene) {
+                if self.request_document_action(super::scene_confirm::PendingSceneAction::NewScene) {
                     self.new_scene(ctx.world);
                 }
             }
             A::OpenScene => {
                 let path = self.default_scene_path();
                 let action = super::scene_confirm::PendingSceneAction::OpenScene(path);
-                if self.request_scene_replace(action.clone()) {
+                if self.request_document_action(action.clone()) {
                     self.perform_scene_action(ctx, action);
+                }
+            }
+            A::NewSong | A::OpenSong | A::CloseSong => {
+                use super::scene_confirm::PendingSceneAction as Pending;
+                let pending = match action {
+                    A::NewSong => Pending::NewSong,
+                    A::OpenSong => Pending::OpenSong(self.song_path_to_open()),
+                    _ => Pending::CloseSong,
+                };
+                if self.request_document_action(pending.clone()) {
+                    self.perform_song_action(pending, ctx.world);
                 }
             }
             A::Exit => ctx.request_exit(),
@@ -348,7 +359,14 @@ impl<G: Game> EditorGame<G> {
             | A::RenameSelected
             | A::CreateEntity(_) => self.dispatch_edit_action(action, shift, ctx),
 
-            A::Save | A::SaveAs | A::NewScene | A::OpenScene | A::Exit => {
+            A::Save
+            | A::SaveAs
+            | A::NewScene
+            | A::OpenScene
+            | A::NewSong
+            | A::OpenSong
+            | A::CloseSong
+            | A::Exit => {
                 self.dispatch_file_action(action, ctx);
             }
 

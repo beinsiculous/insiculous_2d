@@ -62,6 +62,7 @@ being ignored.
 | `parts` | list of `Part` | empty | the musical parts game actions play |
 | `instruments` | list of `Instrument` | empty | the instruments parts are played on |
 | `bindings` | list of `Binding` | empty | which action plays which part on which instrument |
+| `midi_fingerprint` | integer | absent | written by the composer's Save: FNV-1a (64-bit) over the MIDI file's bytes as it wrote them, so an interrupted save is told from a finished one (§ How the composer saves). Absent from a hand-written sidecar, which is taken as matching its MIDI file; never hand-edit it |
 
 Paths are relative to the game's asset directory, as every other asset path is (the
 audio manager resolves them against `set_asset_base`, which the engine's runner sets from
@@ -94,6 +95,13 @@ part shares has one timing policy.
 |---|---|---|
 | `name` | string | unique among instruments; bindings refer to it |
 | `source` | `SoundFont(…)` or `Sample(…)` | where its sound comes from |
+| `provenance` | `Some((author: "…", license: "…"))`, optional | who made a sample's recording and under which license |
+
+`provenance` is optional when a song loads, and **required of every `Sample` instrument
+before the composer saves**: Save refuses a sample without it, naming the instrument and
+the field, and writes the author and license of every sample the song references into the
+`LICENSE` beside them, so the audio provenance gate stays whole over the files the composer
+writes. A SoundFont preset needs none — its bank's own `LICENSE` covers it.
 
 `SoundFont(path: "…", bank: b, preset: p)` — a preset of a SoundFont, which need not be
 the background's. Banks run 0–127 for melodic presets, 128 for General MIDI percussion;
@@ -289,3 +297,36 @@ by at least `latency_samples`. `ctx.audio.beat_crossed(Subdivision::Beat)` (or `
 update when the song crossed that boundary since the update before — once, however many
 boundaries a long frame held. A loop wrap reports every subdivision, for the downbeat it
 lands on; a seek backwards reports none.
+
+## How the composer saves
+
+The editor's composer saves a song as `<stem>.mid` and `<stem>.mid.ron` under `music/` or
+`ai/music/` in the asset folder (an agent's first cut carries the `ai_` prefix until a
+human pass saves it into `music/` without it). Nothing on either target renames a file, so a
+save is a journal, and it refuses before its first write:
+
+1. **Refused, writing nothing:** a `Sample` instrument without `provenance` (or with an
+   empty author or license), a sidecar the schema check refuses, a sample that cannot be
+   read, a path outside the two song folders.
+2. **The new samples** are copied into `music/samples/<stem>/`, the song's own folder. A
+   name taken there by other bytes gets a content-hash suffix (`blip-1a2b3c4d.wav`), and
+   the instrument's `path` follows. A song never saved holds its samples itself until this
+   first save; nothing is staged on disk.
+3. **The pair:** `<stem>.mid.ron.new`, carrying `midi_fingerprint` of the MIDI bytes about
+   to be written, then `<stem>.mid.new`. From here an interruption reopens as the new song.
+4. **The prune:** every file in that folder the song no longer references is removed, and
+   its `LICENSE` rewritten with one stanza per referenced sample (`Files:`, `Copyright:`
+   the author, `License:`), so the provenance gate passes over what the composer wrote.
+   It waits for the pair, so the old song never loses a sample it still names. The song's
+   own `.mid` and `.mid.ron` still need a `LICENSE` naming them in `music/`, which a human
+   writes.
+5. **The finals:** `<stem>.mid`, then `<stem>.mid.ron`.
+6. **The pair is removed.**
+
+Opening a song settles whatever an interruption left: a `.new` pair whose MIDI matches its
+own fingerprint is the truth and finishes its save (whatever state the finals are in);
+otherwise finals that match each other stand, a leftover matching them is removed, a lone
+`.mid.new` that differs opens as an unsaved import (the finals untouched, so its work is
+not lost), and a lone `.mid.ron.new` is removed; finals that do not match each other with
+no valid pair are an error naming both files. A sidecar without `midi_fingerprint` — one a
+person wrote — always matches its MIDI file.

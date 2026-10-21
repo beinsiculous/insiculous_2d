@@ -13,13 +13,13 @@ use super::test_support::{dirty_editor, editor_game};
 fn test_scene_replace_proceeds_when_clean_parks_when_dirty_and_refuses_mid_session() {
     // Clean: no dialog, proceed now.
     let mut editor = editor_game();
-    assert!(editor.request_scene_replace(PendingSceneAction::NewScene));
+    assert!(editor.request_document_action(PendingSceneAction::NewScene));
     assert_eq!(editor.scene_confirm.pending_action, None);
 
     // Dirty: park the action until the user decides.
     let mut world = World::new();
     let mut editor = dirty_editor(&mut world);
-    assert!(!editor.request_scene_replace(PendingSceneAction::NewScene));
+    assert!(!editor.request_document_action(PendingSceneAction::NewScene));
     assert_eq!(editor.scene_confirm.pending_action, Some(PendingSceneAction::NewScene));
 
     // Entering Play drops the pending dialog (defensive — the blocked UI
@@ -29,7 +29,7 @@ fn test_scene_replace_proceeds_when_clean_parks_when_dirty_and_refuses_mid_sessi
 
     // Mid-session (Paused too): the play-session refusal wins — no dialog.
     editor.handle_play_action(PlayControlAction::Pause, &mut world);
-    assert!(!editor.request_scene_replace(PendingSceneAction::NewScene));
+    assert!(!editor.request_document_action(PendingSceneAction::NewScene));
     assert_eq!(editor.scene_confirm.pending_action, None);
     assert!(
         editor.editor.status_bar.message().is_some_and(|m| m.contains("stop Play")),
@@ -41,7 +41,7 @@ fn test_scene_replace_proceeds_when_clean_parks_when_dirty_and_refuses_mid_sessi
 fn test_dialog_swallows_keys_enter_queues_save_and_escape_cancels() {
     let mut world = World::new();
     let mut editor = dirty_editor(&mut world);
-    editor.request_scene_replace(PendingSceneAction::NewScene);
+    editor.request_document_action(PendingSceneAction::NewScene);
 
     // Every other editor key is swallowed while the dialog shows — Delete
     // or Ctrl+S acting under a modal would mutate state the user is being

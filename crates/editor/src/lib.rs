@@ -68,6 +68,7 @@ mod play_state;
 mod scroll;
 mod selection;
 mod selection_outline;
+pub mod song;
 mod sound_field;
 pub mod status_bar;
 pub mod stored_component;
@@ -96,6 +97,7 @@ pub use asset_browser::{fit_rect, scan_assets, AssetBrowserState, AssetEntry, As
 pub use behavior_editor::edit_behavior;
 pub use confirm_dialog::{ConfirmChoice, ConfirmDialog};
 pub use drag_drop::{DragDropState, DragPayload, DRAG_THRESHOLD};
+pub use song::{Gesture, SongDocument, SongEdit, SongEditError};
 pub use sound_field::edit_sound_field;
 pub use texture_field::{edit_texture_field, InspectorExtras};
 pub use collider_overlay::{
@@ -106,7 +108,7 @@ pub use component_editors::{
     apply_component_edit, edit_collider, edit_rigid_body, edit_sprite,
     edit_transform2d, ComponentEdit,
 };
-pub use context::EditorContext;
+pub use context::{EditorContext, SongMirror};
 pub use editor_preferences::{EditorPreferences, PanelPrefs};
 pub use dock::{panel_id_for_menu_label, DockArea, DockPanel, DockPosition, PanelId};
 pub use editable_inspector::{

@@ -16,7 +16,8 @@
 //!     ],
 //!     instruments: [
 //!         (name: "trumpet", source: SoundFont(path: "soundfonts/conductor_cast.sf2", bank: 0, preset: 56)),
-//!         (name: "blip", source: Sample(path: "music/samples/theme/blip.wav", root_note: 60, gain: 0.8, playback: OneShot)),
+//!         (name: "blip", source: Sample(path: "music/samples/theme/blip.wav", root_note: 60, gain: 0.8, playback: OneShot),
+//!             provenance: Some((author: "2026 Jesse", license: "MIT"))),
 //!     ],
 //!     bindings: [
 //!         // A game action plays a part on an instrument; both may be shared.
@@ -30,6 +31,10 @@
 //! fire, never in the background. Every other track is the background score, played with
 //! its own program, channel and controller events. A binding's instrument always wins
 //! over the track's own program.
+//!
+//! The composer writes a sidecar back with [`write_song_file`], adding `midi_fingerprint`
+//! (what its save journal checks the MIDI file against) and each sample instrument's
+//! `provenance`; both are optional on read, so a hand-written sidecar loads unchanged.
 //!
 //! Authored data fails loud. [`parse_song_file`] rejects what the text alone shows
 //! (an unknown version, unknown fields, empty or repeated names, a binding naming
@@ -72,6 +77,11 @@ pub struct SongFile {
     pub instruments: Vec<Instrument>,
     #[serde(default)]
     pub bindings: Vec<Binding>,
+    /// FNV-1a over the MIDI file's bytes as the composer last saved them, so a save
+    /// interrupted between its writes can be told from a finished one. Absent from a
+    /// hand-written sidecar, which is taken as matching its MIDI file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub midi_fingerprint: Option<u64>,
     /// What the loader learned from the SoundFonts and samples, for
     /// [`SongFile::validate`]. Never written to or read from the file.
     #[serde(skip)]
@@ -144,6 +154,20 @@ pub enum Quantize {
 pub struct Instrument {
     pub name: String,
     pub source: InstrumentSource,
+    /// Who made the recording and under which license. The composer requires it of a
+    /// `Sample` instrument before it saves; a SoundFont preset is covered by its bank's
+    /// own `LICENSE`. Loading never requires it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<Provenance>,
+}
+
+/// A recording's author and license, as the composer writes them into the `LICENSE`
+/// beside the song's samples.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Provenance {
+    pub author: String,
+    pub license: String,
 }
 
 /// Where an instrument's sound comes from.
@@ -238,6 +262,20 @@ pub fn parse_song_file(label: &str, ron_text: &str) -> Result<SongFile, SongFile
     let file: SongFile = ron::from_str(ron_text).map_err(malformed)?;
     file.check_schema().map_err(error)?;
     Ok(file)
+}
+
+/// Write a sidecar's text: the inverse of [`parse_song_file`], which reads it back to the
+/// same file (its `resources` excepted, which never reach the file). `label` names the
+/// file in the error.
+pub fn write_song_file(label: &str, file: &SongFile) -> Result<String, SongFileError> {
+    ron::ser::to_string_pretty(file, ron::ser::PrettyConfig::default()).map_err(|error| {
+        SongFileError {
+            label: label.to_string(),
+            problem: SongFileProblem::Malformed {
+                reason: error.to_string(),
+            },
+        }
+    })
 }
 
 impl SongFile {
