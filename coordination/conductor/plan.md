@@ -1168,64 +1168,211 @@ command-API semantic check beyond the floors (the loader names the entity), the 
 
 ## Batch 9 — K8a: the song document, the command API, persistence (#141)
 
-**Carried from batch 6 (`review-9-claude.md` F5):** the dependency cache's key is the content fingerprint today, 24.5 ms a load on the cast bank against a 6.8 ms parse, so a composer preview that re-prepares on every edit pays it each time. Fix-up first: natively the key is `(size, modified)` from the vfs's metadata, the byte hash only on wasm where the bytes are already in memory; `prepare_song` then costs the parse once.
+**Carried from batch 6 (`review-9-claude.md` F5):** the dependency cache's key is the content fingerprint today, 24.5 ms a load on the cast bank against a 6.8 ms parse, so a composer preview that re-prepares on every edit pays it each time. Fix-up first, as correction 2 below shapes it.
 
-Executor: the Opus session. Reviewers: kimi, gemini (the API seam). Headless; no screen.
-Size: about +2800 lines.
+Executor: the Opus session. Reviewers: kimi, gemini (the API seam and the journal). Headless;
+no screen, so codex sits out. Size: about +3400 lines (up from +2800 on re-verification and
+review: the two schema fields, the vfs seam, the confirm flow's second document, the journal's
+rules and the composite edit).
+
+**Re-verified against the tree 2026-10-21, after batch 8, and reviewed** (`review-15.md`,
+`review-15-gemini.md`, adjudicated in `rebuttal-15.md`: 16 findings, 14 accepted). The
+corrections to the first cut, each carrying what the round added:
+
+1. **`provenance` and `midi_fingerprint` do not exist.** `SongFile` has seven fields and
+   `Instrument` is `{ name, source }`, both under `#[serde(deny_unknown_fields)]`
+   (`music_midi/src/song_file.rs:60, 143`); decision 12's two fields are this batch's to
+   add, each `#[serde(default)]` so every sidecar on disk still loads and `validate.rs`
+   refuses nothing for them at load. `Provenance { author: String, license: String }` as
+   `provenance: Option<Provenance>` on `Instrument`: **Save requires it on every `Sample`
+   instrument** (a SoundFont preset is covered by the bank's own `LICENSE`), refusing with a
+   message that names the instrument and the field — `SetInstrument` carries it, and batch
+   10's sidebar surfaces it — and writes the song's sample directory's `LICENSE` in the
+   Debian copyright format `scripts/check_audio_provenance.sh` parses: one `Files: <path
+   relative to the LICENSE>` / `Copyright: <author>` / `License: <license>` stanza per sample,
+   the shape `examples/assets/sounds/LICENSE` shows, no globs, so a saved song passes the
+   gate as it stands. `midi_fingerprint: Option<u64>` on `SongFile`: FNV-1a over the `.mid`
+   bytes exactly as Save writes them (the audio crate's `fingerprint` is the model), the
+   journal's truth (correction 8). `docs/SONG_FORMAT.md` § The grammar gains both.
+   `SongFile::check_schema` (`validate.rs:30`, `pub(super)`) becomes `pub`: it is the pure
+   text-level check — the instrument cap, repeated or empty names, a binding naming nothing,
+   out-of-range numbers — that `SongDocument::apply` runs on the file an edit would produce
+   and refuses the edit on, and Save runs once more before any journal step, so the editor
+   can never write a sidecar `parse_song_file` would refuse (nine `AddInstrument`s stop at
+   the ninth). The batch touches `crates/music_midi` for the two fields, the visibility and
+   the doc only; decision 7's dependencies are untouched.
+2. **The cache fix-up needs a vfs seam.** `common::vfs` has `read`, `file_size`, `write`,
+   `list_files` and `remove_prefix` — no metadata call. The fix-up adds
+   `vfs::change_stamp(path) -> io::Result<Option<ChangeStamp>>` (`len` and the modified
+   time as nanoseconds, from `std::fs::metadata` natively; `None` on wasm, where the map
+   keeps no clock), and `DependencyCache` (`load.rs`, 350 lines; its map is by path,
+   `files: HashMap<PathBuf, CachedFile>` at :185, so the key below is the entry's
+   freshness, never its identity) keeps a file's entry fresh by its stamp when there is one
+   and by the content fingerprint otherwise, so a native load costs one metadata call, not a
+   hash of two megabytes. The documented pitfall: a file rewritten at the same length inside
+   the filesystem's modified-time granularity is not decoded again (ext4 counts nanoseconds;
+   FAT two seconds) — a thing the composer never does to a bank or a sample. The audio
+   guide's cache row changes its words and keeps its tests (`loading.rs`'s changed-file
+   case writes different bytes, so a new stamp); a unit test pins the fallback.
+   `crates/common` is public, so `check_games.sh` runs.
+3. **The confirm flow sees one document.** `PendingSceneAction` is a `pub(super)` enum of
+   `NewScene` and `OpenScene(PathBuf)` with a `phrase()`, `request_scene_replace` checks
+   `command_history.is_dirty()` alone, and `ConfirmDialog::unsaved_changes` says "the
+   current scene". The song's actions join the same machine, not a second one: the enum
+   gains `NewSong`, `OpenSong(PathBuf)`, `ImportSong(PathBuf)`, `CloseSong` and
+   `StartPlay`, each with its phrase and a `document()` (Scene or Song) that the request
+   reads to check the right dirtiness — a scene action never prompts for the song, since
+   opening another scene loses no song edit, the song being a second document — and the
+   router's Save branch saves the document the action names. Two constructors beside
+   `unsaved_changes`: `ConfirmDialog::unsaved_song(phrase)` (Save / Discard / Cancel) and
+   `ConfirmDialog::play_with_unsaved_song(saved_exists)` — Save / Play saved / Cancel when a
+   saved file exists (decision 12's narrowing, no Discard arm on Play), Save / Cancel when
+   none does, so "Play saved" never names a file that is not there. **A never-saved song is
+   dirty** (`SongDocument::is_dirty` is the history's watermark OR `path.is_none()`; the
+   watermark alone calls a fresh history clean), so `StartPlay` parks `handle_play_action
+   (Play)` (`play_session.rs`, 314 lines) behind the prompt for a new song too; its Save arm
+   writes to `default_song_path()` — `assets/music/untitled.mid`, numbered if taken, the
+   `default_scene_path` precedent (`scene_io.rs:256`) — since no file picker exists and
+   batch 10's Save As is pixels. "Play saved" proceeds with the song's file as saved; the
+   two-frame transition and the preview are batch 11's. `scene_confirm.rs` is 146 lines,
+   its tests 67.
+4. **The API's contexts see no song.** `QueryCtx { world, selection, scene_path, dirty,
+   play_state }` and `WriteCtx { world, history, selection, play_state, batch,
+   texture_known }` (`command_api/mod.rs:33`, `write/mod.rs:35`). `QueryCtx` gains `song:
+   Option<&SongDocument>` and `WriteCtx` gains `song: &mut Option<SongDocument>`; `Query`
+   gains `Song` and `SongNotes { part }`, and `SceneInfo`'s answer keeps `dirty` scene-only
+   and gains `song_dirty` and `any_dirty`, documented; `PureWrite` gains
+   `SongEdit(SongEdit)`, `SongUndo`, `SongRedo` and `SongSelect { notes }`, served in the
+   editor crate through `SongDocument::apply` — the one mutation path the parity table
+   holds the GUI to — and **every one of them is refused while a scene batch is open** (the
+   batch is a `MacroCommand` over world commands; a song write has no place in it, and an
+   undo inside it would void the batch's atomicity); `HostedWrite` gains `SongNew`,
+   `SongOpen { path }`, `SongSave { path }` and `SongClose`, routed by `run_hosted_write`
+   (`api.rs`, 253 lines) to `song_io.rs` the way `Save` reaches `save_scene_with`, and
+   **`SongNew`, `SongOpen` and `SongClose` refuse while the song is dirty** unless the line
+   carries `discard` (`song close discard`) — the API has no dialog, and a silent drop is
+   data loss; and `SongPlay { from_beat }`, `SongStop`, `SongSeek { beat }` and
+   `SongTrigger { binding }` parse now and are answered `Refused` naming batch 11, so the
+   verb table is whole and the drift test — `test_parser_verbs_match_docs` in `specs.rs`'s
+   own test module (`specs.rs:199-210`) — holds every row. A new `command_api/song.rs`
+   holds the `song …` parser arm and the two query answers, so `parse.rs` (283) and
+   `specs.rs` (211) gain only their rows.
+5. **The data model builds without the synthesizer, as the manifest promises.**
+   `music_midi` without `synth` exposes `song_data`, `song_file`, `tempo_map` and `error`:
+   `SongData::from_smf -> (SongData, UnsupportedReport)`, `UnsupportedReport::is_editable`
+   with `UnsupportedFeature: Display` (the one feature today is a mixed-channel track) —
+   `EditingPolicy::Refused { reason }` is that report's features joined — the edit helpers
+   `add_note(track, NewNote)`, `remove_notes`, `move_notes`, `resize_notes`, `set_velocity`,
+   `set_pitch`, `assign_part`, `restore_notes`, `set_tempo`/`remove_tempo`,
+   `set_time_signature`/`remove_time_signature`, each returning the before-image the
+   inverse needs, and `write_smf`. The sidecar's `Part { name, track: TrackSelector, mode:
+   PartMode, quantize: Quantize }`, `Instrument`, `Binding { action, part, instrument }` and
+   `SongFile.looping` are the targets of `SetPartMode`, `SetQuantize`, the instrument and
+   binding edits and `SetLoop`. **`SongEdit::Batch(Vec<SongEdit>)`** is one more variant: a
+   paste or a transposition of twenty notes is one entry, every member validated before any
+   applies and the inverses undone in reverse — the API's composite, since the scene batch
+   is closed to it. The editor's `Cargo.toml` line is `music_midi = { path =
+   "../music_midi", default-features = false }`; the workspace build unifies `synth` in
+   through `audio`, so `cargo test -p editor` alone is what proves the no-synth build and
+   belongs in the gates.
+6. **The journal's removal step uses what exists.** `vfs::remove_prefix` removes exactly
+   the path it is given on both targets (natively a file or a directory, a missing path
+   `Ok`; on wasm the key equal to the prefix and those under `prefix/`, `vfs/mod.rs:168-197,
+   324-331`), so the `.new` files are removed with it and no `remove_file` is added. The
+   web's write observer persists writes only (`playground/src/web_entry.rs:228`), so on the
+   web a removed `.new` lingers in the store until batch 11's transaction deletes it through
+   the persistence chain; correction 8's open-time rules are what keep that safe meanwhile,
+   and the report says so.
+7. **Sizes and placements.** `editor_game/mod.rs` 464 (the field and the mirror fit),
+   `context/mod.rs` 528 (`song_dirty` and the title fit), `commands/mod.rs` 555 —
+   `SongHistory` is its own file under `song/`, copying the watermark contract from
+   `commands/mod.rs:123-215` (`next_id` from 1, `saved_id`, `is_dirty = top_id !=
+   saved_id`, a merge reassigns the id and clears redo, `break_merge`, cap 100) and nothing
+   of the session floor; `commands/dirty_tests.rs` (108) is its tests' model;
+   `editor/src/lib.rs` (166) gains `pub mod song` and the exports; `headless.rs`'s
+   `run_headless_editor_api(asset_base, initial_scene, input, output)` answers `song` lines
+   through the same `answer_api_lines` with no new parameter.
+8. **The journal's rules, stated once.** Save, in order: refuse first (a `Sample`
+   instrument without provenance, a file `check_schema` would refuse) and write nothing;
+   write the song's samples into `assets/music/samples/<stem>/` (a never-saved song's
+   samples are held in the document — bytes and provenance — until its first Save, never
+   staged on disk; a same-named file with different bytes gets a content-hash suffix and
+   the instrument path follows); prune from `<stem>/` every file the song no longer
+   references and rewrite that directory's `LICENSE` with exactly the referenced samples'
+   stanzas — the directory is the song's own, so both are safe, and a shared directory is
+   never managed; write `<stem>.mid.ron.new` carrying the fingerprint of the bytes about to
+   be written, then `<stem>.mid.new`; write the final `.mid`, then the final `.mid.ron`;
+   remove the `.new` pair; `mark_saved`. **Open, in order:** a `.new` pair whose `.mid.new`
+   bytes match its `.mid.ron.new` fingerprint is the truth — it is recovered over the
+   finals whatever state they are in (a crash between the two final writes leaves them
+   mismatched, and the pair, removed last, is still there); otherwise, finals that match
+   each other (the final `.mid` against the final `.mid.ron`'s fingerprint) stand, and any
+   leftover is purged when it matches them and reported when it does not — a lone
+   `.mid.new` that differs from the final `.mid` is offered as an import (dirty, `path:
+   None`), a lone `.mid.ron.new` is removed; finals that do not match each other and no
+   valid pair is an error naming both files, never a silent load. The finals' fingerprint
+   decides a purge; the pair's own fingerprint decides a recovery — never the other way.
 
 Files (new): `crates/editor/src/song/{mod.rs, edit.rs, history.rs, io.rs, selection.rs}` and
-their tests (each ≤ 400 lines), `crates/editor/src/song/parity_tests.rs`,
-`crates/editor/src/command_api/song.rs` (+ rows in `specs.rs`, an arm in `parse.rs`),
-`crates/editor_integration/src/editor_game/song_io.rs` + `song_io_tests.rs`,
-`docs/EDITOR_COMMAND_API.md` § Songs. Touched: `editor_game/mod.rs` (the `song:
-Option<SongDocument>` field; `sync_dirty_mirror` :421-436 becomes scene-dirty OR song-dirty
-into `history_dirty_flag`, so `playground_is_dirty` aggregates the song with no bridge
-change), `editor_game/scene_confirm.rs` (`PendingSceneAction::{NewSong, OpenSong, ImportSong,
-CloseSong, StartPlay}`, `request_song_replace`, `ConfirmDialog::unsaved_song`), `api.rs`
-(routing), `editor/src/context/mod.rs` (a separate `song_dirty` mirror; `title_bar_text`
-shows both marks), `crates/editor/Cargo.toml` (+ `music_midi` by path with `default-features = false` — the
-schema and data model, no synth; an internal crate, within decision 7). The report measures
-the playground bundle delta against `PLAYGROUND_SIZE_BUDGET_MIB`.
+their tests (each ≤ 400 lines; `io.rs` holds the journal and `io/open.rs` the open-time
+rules if the two cross the ceiling together), `crates/editor/src/song/parity_tests.rs`,
+`crates/editor/src/command_api/song.rs` (+ rows in `specs.rs`, an arm in `parse.rs`, the
+variants in `mod.rs`), `crates/editor_integration/src/editor_game/song_io.rs` +
+`song_io_tests.rs`, `docs/EDITOR_COMMAND_API.md` § Songs. Touched: `editor_game/mod.rs`
+(the `song: Option<SongDocument>` field; `sync_dirty_mirror` :421-436 becomes scene-dirty OR
+song-dirty into `history_dirty_flag`, so `playground_is_dirty` aggregates the song with no
+bridge change), `editor_game/scene_confirm.rs` and `crates/editor/src/confirm_dialog.rs`
+(correction 3), `editor_game/play_session.rs` (`StartPlay` parked), `editor_game/scene_io.rs`
+(`default_song_path` beside `default_scene_path`), `api.rs` (routing and the `discard`
+word), `editor/src/context/mod.rs` (a separate `song_dirty` mirror; `title_bar_text` shows
+both marks), `crates/editor/Cargo.toml` (correction 5), `crates/music_midi/src/song_file.rs`,
+`song_file/validate.rs` and `docs/SONG_FORMAT.md` (correction 1), `crates/common/src/vfs/mod.rs`
+(correction 2), `crates/audio/src/manager/song/load.rs`, its guide row and `tests/loading.rs`
+(correction 2). The report measures the playground bundle delta against
+`PLAYGROUND_SIZE_BUDGET_MIB` (`scripts/build_wasm.sh:63`, 12 MiB; batch 6 measured 11.11).
 
 **Target shape.** Decision 12's `SongDocument { file: SongFile, data: SongData, history:
 SongHistory, path: Option<PathBuf>, imported_from: Option<PathBuf>, editing: EditingPolicy
-{ Full | Refused { reason } } }`; `SongEdit` enum (AddNote, DeleteNotes, MoveNotes,
-ResizeNotes, SetVelocity, SetPitch, AssignPart, SetTempo, SetTimeSignature, SetLoop,
-SetQuantize, SetPartMode, Add/Set/RemoveInstrument, Set/RemoveBinding, Add/RemovePart) with
-`try_merge` (same gesture: deltas sum, absolutes replace); `apply` validates (pitch 0..=127,
-velocity 1..=127, ticks ≥ 0, part exists, `Refused` rejects), calls the `music_midi`
-helpers, stores the inverse. Save (`io.rs`): copy new samples under `assets/music/samples/`
-(under `assets/music/samples/<song stem>/`, or `samples/_unsaved/` for a song never saved,
-remapped by Save or Save As; a same-named file with different bytes gets a content-hash
-suffix and the instrument path follows; each sample instrument's required `provenance {
-author, license }` is written into the directory's `LICENSE` in the same journal, and a
-missing one refuses the save), write `<stem>.mid.ron.new` (it carries `midi_fingerprint`)
-then `<stem>.mid.new`, write the finals, remove the `.new` pair; open first purges any
-leftover `.new` that matches the finals' fingerprint, recovers the pair only when both are
-present and the MIDI matches the fingerprint, otherwise the finals stand and the journal is
-dropped with a reported warning (a `.mid.ron.new` without its partner included), and an
-unmatched lone `.mid.new` is offered as an import; `mark_saved` only after the last step (on
-the web, after both finals are acknowledged — batch 11's transaction). An imported `.mid` outside the two home
-directories (`assets/music/`, `assets/ai/music/`) or without a sidecar opens with `path:
-None` and its first Save is a Save As into one of them; the original is never written. API verbs: `song` (query), `song notes [part]`, `song edit <json>` (a serde
-`SongEdit`), `song undo`/`song redo` (song-scoped), `song select`, hosted `song new|open|
-save|close`, and `song play|stop|seek|trigger` (enqueue intents; batch 11 drains them).
-Refused in Playing and Paused and while a dialog is pending; `song edit` inside an open
-scene batch is refused. **Tests:** watermark/merge/break (mirror `commands/dirty_tests.rs`),
-apply/inverse per variant, refusal matrix, tempdir round trip, interrupted save at each
-step recovers or leaves the finals intact (a matching leftover is purged, an unmatched lone
-`.mid.new` becomes an import, a lone `.mid.ron.new` is removed), imported original
-untouched, a sample without provenance refuses the save and one with it lands in the
-`LICENSE`, an unsaved song's staged sample is remapped by Save As, a save under
-`assets/ai/music/ai_x.mid` reopens and saves in place, scene save leaves the song dirty and
-vice versa, New/Open Song and Play park behind the prompt, the parity table (one row per
-`SongEdit` variant, GUI path versus API path, exhaustive match so a new variant without a
-row fails to compile; and an edit on a document whose `UnsupportedReport` is not editable
-is refused by both paths with the report's reason — the gate gemini's batch 2 review asked
-for lives here, not in the data model), headless `run_headless_editor_api` answering `song`
-lines.
-**Gates:** standard; `check_wasm.sh` (editor crates are in the wasm workspace).
-**Leaves out:** any pixel (batch 10), audio (batch 11), multi-song tabs, scripting access.
+{ Full | Refused { reason } }, pending_samples }`; `SongEdit` enum (AddNote, DeleteNotes,
+MoveNotes, ResizeNotes, SetVelocity, SetPitch, AssignPart, SetTempo, SetTimeSignature,
+SetLoop, SetQuantize, SetPartMode, Add/Set/RemoveInstrument, Set/RemoveBinding,
+Add/RemovePart, Batch) with `try_merge` (same gesture: deltas sum, absolutes replace);
+`apply` validates (pitch 0..=127, velocity 1..=127, ticks ≥ 0, part exists, `check_schema`
+on the resulting file, `Refused` rejects), calls the `music_midi` helpers, stores the
+inverse. Save and open are correction 8. An imported `.mid` outside the two home directories
+(`assets/music/`, `assets/ai/music/`) or without a sidecar opens with `path: None` and its
+first Save is a Save As into one of them; the original is never written. API verbs: `song`
+(query), `song notes [part]`, `song edit <json>` (a serde `SongEdit`), `song undo`/`song
+redo` (song-scoped), `song select`, hosted `song new|open|save|close` (`discard` to drop a
+dirty song), and `song play|stop|seek|trigger` (parsed, refused until batch 11). Refused in
+Playing and Paused and while a dialog is pending; every song write is refused inside an open
+scene batch. **Tests:** watermark/merge/break (mirror `commands/dirty_tests.rs`), a fresh
+never-saved document is dirty, apply/inverse per variant including `Batch` (all-or-nothing,
+one entry), `check_schema` refusing the ninth instrument at apply and at save, refusal
+matrix (play states, the pending dialog, the scene batch for every song write, the dirty
+song on `new|open|close` with and without `discard`), tempdir round trip, interrupted save
+at each step — after the pair lands with the finals untouched recovers; after the final
+`.mid` alone recovers; a matching leftover is purged; an unmatched lone `.mid.new` becomes
+an import and a lone `.mid.ron.new` is removed; mismatched finals with no pair is the named
+error — imported original untouched, a sample without provenance refuses the save naming
+the instrument and the field and writes nothing, one with it lands in the `LICENSE` whose
+`Files:` tokens are exactly the referenced samples' relative paths, a removed instrument's
+file is pruned and its stanza gone, a same-named sample with different bytes gets its
+suffix and the instrument path follows, a never-saved song's samples reach `<stem>/` on
+its first Save, a save under `assets/ai/music/ai_x.mid` reopens and saves in place, scene
+save leaves the song dirty and vice versa and `scene info` reports both, New/Open Song and
+Play park behind the prompt (Play's arms by `saved_exists`) and a scene action does not
+prompt for the song, the parity table (one row per `SongEdit` variant, GUI path versus API
+path, exhaustive match so a new variant without a row fails to compile; and an edit on a
+document whose `UnsupportedReport` is not editable is refused by both paths with the
+report's reason — the gate gemini's batch 2 review asked for lives here, not in the data
+model), headless `run_headless_editor_api` answering `song` lines, the stamp fallback and
+the cache kept fresh by it.
+**Gates:** standard; `cargo test -p editor` alone (the no-synth build); `check_wasm.sh`
+(editor crates are in the wasm workspace); `check_games.sh` (`common` is public);
+`check_audio_provenance.sh` run over a saved song's directory, in the report.
+**Leaves out:** any pixel (batch 10), audio (batch 11), multi-song tabs, scripting access,
+the web's deletion of a removed `.new` (batch 11), a native file dialog.
 
 ## Batch 10 — K8b: the piano roll, the note list, the sidebar (#141)
 
