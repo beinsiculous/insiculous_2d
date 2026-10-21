@@ -1,7 +1,7 @@
 //! Asset management system for the Insiculous 2D engine.
 //!
 //! Provides a unified interface for loading and managing game assets including
-//! textures, audio (future), and other resources.
+//! textures, sprite sheets, recorded sounds, and other resources.
 //!
 //! # Example
 //!
@@ -39,6 +39,7 @@ use crate::game_config::GameConfig;
 use renderer::wgpu::{Device, Queue};
 
 pub mod sheet_spec;
+mod sound_library;
 pub mod sprite_sheet;
 
 /// Asset loading errors
@@ -139,6 +140,8 @@ pub struct AssetManager {
     /// `.sheet.ron` reads, cached per texture path for the duration of a
     /// scene load (see [`sprite_sheet::SidecarCache`]).
     sidecar_cache: sprite_sheet::SidecarCache,
+    /// The sound tier: recorded sounds by path (see [`AssetManager::resolve_sound`]).
+    sound_library: sound_library::SoundLibrary,
 }
 
 impl AssetManager {
@@ -170,6 +173,7 @@ impl AssetManager {
             handle_to_path,
             loaded_by_path: HashMap::new(),
             sidecar_cache: sprite_sheet::SidecarCache::default(),
+            sound_library: sound_library::SoundLibrary::default(),
         }
     }
 
@@ -462,11 +466,13 @@ impl AssetManager {
 
     /// Set the base path for asset loading.
     ///
-    /// Also drops the path-deduplication cache: relative paths recorded
-    /// under the old base must not resolve to the old base's textures.
+    /// Also drops the path-deduplication cache and the sound tier's: relative
+    /// paths recorded under the old base must not resolve to the old base's
+    /// textures or sounds.
     pub fn set_base_path(&mut self, path: impl Into<String>) {
         self.config.base_path = path.into();
         self.loaded_by_path.clear();
+        self.sound_library.clear();
     }
 
     /// Get the current base path

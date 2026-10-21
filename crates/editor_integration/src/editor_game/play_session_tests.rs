@@ -302,3 +302,49 @@ fn test_resuming_closes_a_popup_and_a_rename_opened_while_paused() {
     assert!(!editor.editor.script_picker_open, "resume closed the script picker");
     assert_eq!(editor.editor.hierarchy.renaming(), None, "resume cancelled the rename");
 }
+
+/// The frame tail plays a scene's emitters only while the engine's time scale is live,
+/// and the editor holds it at zero outside Play: Editing records no first sight, Play's
+/// first frame is the spawn, and Stop's world replacement stops what played.
+#[test]
+fn test_a_spawn_sound_is_silent_in_editing_plays_on_play_and_is_cleared_by_stop() -> std::io::Result<()> {
+    use engine_core::prelude::GameConfig;
+    use engine_core::test_support::GameHarness;
+
+    const FRAME: f32 = 1.0 / 60.0;
+    let beep = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/assets/sounds/beep_e.wav");
+    let base = tempfile::tempdir()?;
+    std::fs::create_dir(base.path().join("sounds"))?;
+    std::fs::copy(beep, base.path().join("sounds/beep_e.wav"))?;
+    let config = GameConfig::new("Emitters in the editor")
+        .with_asset_base_path(base.path().to_string_lossy().to_string());
+    let mut harness = GameHarness::new(editor_game(), config);
+    harness.step(FRAME, &[]);
+    let hum = spawn_at(harness.world_mut(), Vec2::ZERO);
+    let emitter = ecs::SoundEmitter {
+        sound: ecs::SoundRef::Path("sounds/beep_e.wav".into()),
+        play_on_spawn: true,
+        looping: true,
+        ..ecs::SoundEmitter::default()
+    };
+    harness.world_mut().add_component(&hum, emitter).ok();
+
+    for _ in 0..3 {
+        harness.step(FRAME, &[]);
+    }
+    assert_eq!(harness.sound_emitters().plays(hum), 0, "Editing starts nothing");
+
+    harness.context(|editor, ctx| editor.handle_play_action(PlayControlAction::Play, ctx.world));
+    harness.step(FRAME, &[]);
+    let playback = harness.sound_emitters().playing(hum).expect("Play's first frame is the spawn");
+    assert!(harness.audio().is_playing(playback));
+
+    harness.context(|editor, ctx| editor.handle_play_action(PlayControlAction::Stop, ctx.world));
+    for _ in 0..3 {
+        harness.step(FRAME, &[]);
+    }
+    assert!(!harness.audio().is_playing(playback), "Stop's restore stopped the loop");
+    assert_eq!(harness.sound_emitters().playing(hum), None);
+    assert_eq!(harness.sound_emitters().plays(hum), 0, "the replacement forgets the count, and nothing started after it");
+    Ok(())
+}

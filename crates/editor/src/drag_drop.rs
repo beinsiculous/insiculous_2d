@@ -22,6 +22,9 @@ pub enum DragPayload {
     Texture { handle: u32, path: String },
     /// A script from the asset browser. `path` is the asset-relative path.
     Script { path: String },
+    /// A recorded sound from the asset browser. `path` is the asset-relative
+    /// path a `SoundEmitter` names.
+    Sound { path: String },
 }
 
 #[derive(Debug, Default)]

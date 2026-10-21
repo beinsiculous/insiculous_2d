@@ -181,6 +181,8 @@ pub(crate) struct GameRunner<G: Game> {
     /// The song sources the game triggers under, reconciled against the world in the
     /// frame tail.
     sound_sources: crate::sound_sources::SoundSources,
+    /// The scene's sound emitters: what plays, re-mixed and ended in the frame tail.
+    sound_emitters: crate::sound_emitters::SoundEmitters,
     /// Input handling
     input: InputHandler,
     /// Gamepad hardware backend (gilrs); disabled no-op when unavailable.
@@ -275,6 +277,7 @@ macro_rules! build_context {
             assets: $assets,
             audio: &mut $runner.audio_manager,
             sources: &mut $runner.sound_sources,
+            emitters: &mut $runner.sound_emitters,
             ui: &mut $runner.ui,
             delta_time: $delta_time,
             window_size: $window_size,
@@ -334,6 +337,7 @@ impl<G: Game> GameRunner<G> {
             asset_manager: None,
             audio_manager,
             sound_sources: crate::sound_sources::SoundSources::new(),
+            sound_emitters: crate::sound_emitters::SoundEmitters::new(),
             input: InputHandler::new(),
             gamepad_backend: crate::gamepad_backend::GamepadBackend::new_or_disabled(),
             player_input,

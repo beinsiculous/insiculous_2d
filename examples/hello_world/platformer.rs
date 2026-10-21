@@ -72,7 +72,6 @@ pub struct PlatformerGame {
     behaviors: BehaviorRunner,
     scene_instance: Option<SceneInstance>,
     actions: InputMapping<DemoAction>,
-    jump_sound: Option<SoundHandle>,
     music_playing: bool,
     volume: f32,
     show_ui: bool,
@@ -92,7 +91,6 @@ impl PlatformerGame {
             behaviors: BehaviorRunner::new(),
             scene_instance: None,
             actions: demo_actions(),
-            jump_sound: None,
             music_playing: false,
             volume: 1.0,
             show_ui: true,
@@ -216,18 +214,9 @@ impl PlatformerGame {
         }
     }
 
+    /// The jump sound and the first coin's beep are the scene's `SoundEmitter`s; only
+    /// the music is started from code.
     fn load_audio(&mut self, ctx: &mut GameContext) {
-        match ctx.audio.load_sound(Path::new(EXAMPLES_DIR).join("assets/sounds/snd_jump.wav")) {
-            Ok(handle) => {
-                self.jump_sound = Some(handle);
-                log::info!("Loaded jump sound effect");
-            }
-            Err(error) => {
-                log::info!("No jump sound loaded ({error}). Audio demo will show API usage.");
-                log::info!("To enable audio, add a WAV file at examples/assets/sounds/snd_jump.wav");
-            }
-        }
-
         match ctx.audio.play_music(Path::new(EXAMPLES_DIR).join("assets/sounds/music.ogg")) {
             Ok(()) => {
                 self.music_playing = true;
@@ -291,11 +280,8 @@ impl PlatformerGame {
         if ctx.players.just_activated(PlayerId::P1, GameAction::Action1, ctx.input)
             || ctx.players.just_activated(PlayerId::P2, GameAction::Action1, ctx.input)
         {
-            if let Some(jump_sound) = &self.jump_sound {
-                let settings = SoundSettings::new().with_volume(0.8).with_speed(1.0);
-                if let Err(error) = ctx.audio.play_with_settings(jump_sound, settings) {
-                    log::warn!("Failed to play jump sound: {}", error);
-                }
+            if let Some(player) = self.player_entity() {
+                ctx.emitters.play(player, ctx.world);
             }
         }
 

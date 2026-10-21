@@ -313,6 +313,8 @@ SceneData(
             name: Some("player"),
             prefab: Some("Player"),
             overrides: [Transform2D(position: (-200.0, 100.0))],
+            // A sound named by path, played by `ctx.emitters.play(player, ctx.world)`
+            components: [SoundEmitter(sound: Path("sounds/jump.wav"), volume: 0.8)],
         ),
     ],
 )

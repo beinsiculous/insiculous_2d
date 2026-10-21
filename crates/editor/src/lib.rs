@@ -68,6 +68,7 @@ mod play_state;
 mod scroll;
 mod selection;
 mod selection_outline;
+mod sound_field;
 pub mod status_bar;
 pub mod stored_component;
 mod text_field;
@@ -95,6 +96,7 @@ pub use asset_browser::{fit_rect, scan_assets, AssetBrowserState, AssetEntry, As
 pub use behavior_editor::edit_behavior;
 pub use confirm_dialog::{ConfirmChoice, ConfirmDialog};
 pub use drag_drop::{DragDropState, DragPayload, DRAG_THRESHOLD};
+pub use sound_field::edit_sound_field;
 pub use texture_field::{edit_texture_field, InspectorExtras};
 pub use collider_overlay::{
     collider_outline_segments, render_collider_overlay, ColliderOverlayColors,

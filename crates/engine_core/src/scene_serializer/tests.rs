@@ -527,3 +527,29 @@ fn grid_backdrop_round_trips_every_field_and_parses_bare() {
         Some(&ecs::GridBackdrop::default())
     );
 }
+
+#[test]
+fn a_sound_emitter_round_trips_both_kinds_and_a_bare_one_is_a_full_volume_path() {
+    let mut world = World::new();
+    let coin = world.create_entity();
+    let spatial_path = ecs::SoundEmitter {
+        sound: ecs::SoundRef::Path("sounds/beep_e.wav".into()),
+        volume: 0.8,
+        play_on_spawn: true,
+        looping: true,
+        spatial: Some(ecs::Spatial { max_distance: 8.0 }),
+    };
+    world.add_component(&coin, spatial_path.clone()).ok();
+    let drum = world.create_entity();
+    let binding = ecs::SoundEmitter { sound: ecs::SoundRef::Binding("hit".into()), volume: 0.5, ..Default::default() };
+    world.add_component(&drum, binding.clone()).ok();
+
+    let (loaded, instance) = roundtrip(&world);
+    let emitters: Vec<_> = instance.entities.iter().filter_map(|entity| loaded.get::<ecs::SoundEmitter>(*entity)).collect();
+    assert_eq!(emitters, vec![&spatial_path, &binding], "a binding's volume is kept as data");
+
+    let (bare_world, bare) = load_ron(
+        r#"SceneData(name: "s", entities: [EntityData(name: Some("coin"), components: [SoundEmitter()])])"#,
+    );
+    assert_eq!(bare_world.get::<ecs::SoundEmitter>(bare.entities[0]), Some(&ecs::SoundEmitter::default()));
+}

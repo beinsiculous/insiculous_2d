@@ -319,6 +319,23 @@ pub enum ComponentData {
         #[serde(default)]
         states: Vec<(String, ecs::ClipState)>,
     },
+    /// A sound named on the entity (`ecs::SoundEmitter`): a recorded file by path,
+    /// relative to the asset base like a texture, or a song binding by name. Typed for the
+    /// load-time checks — `spatial` or `looping` on a binding, a negative or non-finite
+    /// `volume` — and resolved lazily the first time it plays: nothing at load touches
+    /// audio.
+    SoundEmitter {
+        #[serde(default)]
+        sound: ecs::SoundRef,
+        #[serde(default = "default_volume")]
+        volume: f32,
+        #[serde(default)]
+        play_on_spawn: bool,
+        #[serde(default)]
+        looping: bool,
+        #[serde(default)]
+        spatial: Option<ecs::Spatial>,
+    },
     /// Screen-space text label (data-driven UI; `@key` text localizes)
     UiLabel {
         #[serde(default)]
@@ -453,6 +470,10 @@ fn default_tile_size() -> f32 {
 
 fn default_tilemap_depth() -> f32 {
     -1.0
+}
+
+fn default_volume() -> f32 {
+    1.0
 }
 
 fn default_true() -> bool {

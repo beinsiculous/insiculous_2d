@@ -488,6 +488,26 @@ fn register_commands(engine: &mut Engine) {
     engine.register_fn("trigger", |out: &mut ScriptCommandsHandle, binding: &str| {
         out.push(ScriptCommand::TriggerBinding { target: None, binding: binding.to_string() });
     });
+
+    // play_sound / stop_sound: the target's SoundEmitter, in one queue with the triggers.
+    engine.register_fn("play_sound", |out: &mut ScriptCommandsHandle, me: Rc<SelfView>| {
+        out.push(ScriptCommand::PlaySound { target: Target::Entity(me.entity) });
+    });
+    engine.register_fn("play_sound", |out: &mut ScriptCommandsHandle, name: &str| {
+        out.push(ScriptCommand::PlaySound { target: Target::Named(name.to_string()) });
+    });
+    engine.register_fn("play_sound", |out: &mut ScriptCommandsHandle, name: ImmutableString| {
+        out.push(ScriptCommand::PlaySound { target: Target::Named(name.to_string()) });
+    });
+    engine.register_fn("stop_sound", |out: &mut ScriptCommandsHandle, me: Rc<SelfView>| {
+        out.push(ScriptCommand::StopSound { target: Target::Entity(me.entity) });
+    });
+    engine.register_fn("stop_sound", |out: &mut ScriptCommandsHandle, name: &str| {
+        out.push(ScriptCommand::StopSound { target: Target::Named(name.to_string()) });
+    });
+    engine.register_fn("stop_sound", |out: &mut ScriptCommandsHandle, name: ImmutableString| {
+        out.push(ScriptCommand::StopSound { target: Target::Named(name.to_string()) });
+    });
 }
 
 /// Rhai integers are `i64` and the blackboard stores `i32`: a value that does not fit is

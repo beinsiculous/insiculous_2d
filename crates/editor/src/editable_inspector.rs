@@ -340,6 +340,19 @@ impl<'a> EditableInspector<'a> {
         result
     }
 
+    /// Add a sound slot field: shows a recorded sound's path and takes a
+    /// sound dropped from the asset browser.
+    pub fn sound(&mut self, label: &str, path: &str, drag_drop: &mut crate::DragDropState) -> EditResult<String> {
+        if self.is_quiet() {
+            self.quiet_row(label, path, self.style.row_height);
+            return EditResult::Unchanged;
+        }
+        let (_, layout) = self.next_field();
+        let result = crate::edit_sound_field(self.ui, label, path, drag_drop, layout, self.style);
+        self.advance(self.style.row_height);
+        result
+    }
+
     /// Add an editable f32 field (soft range: scrub/arrows clamp, typing
     /// may exceed).
     pub fn f32(&mut self, label: &str, value: f32, range: RangeInclusive<f32>) -> EditResult<f32> {

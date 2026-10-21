@@ -1,7 +1,7 @@
 //! Commands emitted by scripts and applied at the end of each update phase.
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::rc::Rc;
 
 use glam::{Vec2, Vec4};
@@ -10,45 +10,14 @@ use common::Transform2D;
 use ecs::blackboard::Blackboard;
 use ecs::clip_state_machine::ClipStateMachine;
 use ecs::script::ScriptValue;
-use ecs::sprite_components::{Name, Sprite, SpriteAnimation};
+use ecs::sprite_components::{Sprite, SpriteAnimation};
 use ecs::ui_components::UiLabel;
-use ecs::{EntityId, World};
+use ecs::{EntityId, SoundEmitter, World};
 use physics::{PhysicsSystem, RigidBody, RigidBodyType};
 
-use super::view::SelfView;
-
-/// Target of a script command: an explicit entity ID or a resolved name.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Target {
-    /// Target by explicit entity ID.
-    Entity(EntityId),
-    /// Target by entity name component.
-    Named(String),
-}
-
-impl From<&SelfView> for Target {
-    fn from(me: &SelfView) -> Self {
-        Target::Entity(me.entity)
-    }
-}
-
-impl From<EntityId> for Target {
-    fn from(id: EntityId) -> Self {
-        Target::Entity(id)
-    }
-}
-
-impl From<&str> for Target {
-    fn from(name: &str) -> Self {
-        Target::Named(name.to_string())
-    }
-}
-
-impl From<String> for Target {
-    fn from(name: String) -> Self {
-        Target::Named(name)
-    }
-}
+pub use super::target::Target;
+use super::target::TargetResolver;
+use super::triggers::QueuedSound;
 
 /// One deferred command emitted by a script.
 #[derive(Debug, Clone)]
@@ -76,6 +45,10 @@ pub enum ScriptCommand {
     Despawn { target: Target },
     /// Play a song binding for the target's source, or the game's with no target.
     TriggerBinding { target: Option<Target>, binding: String },
+    /// Play the target's `SoundEmitter`.
+    PlaySound { target: Target },
+    /// Stop the target's `SoundEmitter`.
+    StopSound { target: Target },
 }
 
 /// Buffer of commands returned by scripts.
@@ -238,8 +211,20 @@ impl ScriptCommands {
         self.commands.push(ScriptCommand::TriggerBinding { target: None, binding: binding.into() });
     }
 
-    /// Apply commands to the world and physics systems by kind order. Triggers resolve
-    /// their target here and wait in `triggers` for the frame tail, which holds the audio.
+    /// Play the target's `SoundEmitter` once this frame's commands are done; a one-shot
+    /// still sounds if the entity despawns this frame, a loop does not.
+    pub fn play_sound(&mut self, target: impl Into<Target>) {
+        self.commands.push(ScriptCommand::PlaySound { target: target.into() });
+    }
+
+    /// Stop the target's `SoundEmitter`, in order with this frame's triggers.
+    pub fn stop_sound(&mut self, target: impl Into<Target>) {
+        self.commands.push(ScriptCommand::StopSound { target: target.into() });
+    }
+
+    /// Apply commands to the world and physics systems by kind order. Sound requests —
+    /// triggers, emitter plays and stops — resolve their target here and wait in one
+    /// queue, `triggers`, for the frame tail, which holds the audio.
     pub fn apply(
         self,
         world: &mut World,
@@ -248,52 +233,8 @@ impl ScriptCommands {
         errors: &mut super::runner::ScriptErrors,
         triggers: &mut super::triggers::TriggerQueue,
     ) {
-        let mut name_to_entities: HashMap<String, Vec<EntityId>> = HashMap::new();
-        for entity in world.entities() {
-            if let Some(name) = world.get::<Name>(entity) {
-                name_to_entities
-                    .entry(name.as_str().to_string())
-                    .or_default()
-                    .push(entity);
-            }
-        }
-
-        let mut resolve_target = |target: &Target| -> Option<EntityId> {
-            match target {
-                Target::Entity(id) => {
-                    if world.validate_entity(id).is_ok() {
-                        Some(*id)
-                    } else {
-                        None
-                    }
-                }
-                Target::Named(name) => match name_to_entities.get(name) {
-                    None => {
-                        // The name is the dedupe key: one report per missing name per Play.
-                        errors.push(super::runner::ScriptError {
-                            file: name.clone(),
-                            line: 0,
-                            kind: super::runner::ScriptErrorKind::MissingTarget,
-                            message: format!("Target entity named '{name}' not found"),
-                        });
-                        None
-                    }
-                    Some(matches) if matches.len() > 1 => {
-                        errors.push(super::runner::ScriptError {
-                            file: name.clone(),
-                            line: 0,
-                            kind: super::runner::ScriptErrorKind::AmbiguousTarget,
-                            message: format!(
-                                "Target entity named '{name}' is ambiguous ({} entities match)",
-                                matches.len()
-                            ),
-                        });
-                        None
-                    }
-                    Some(matches) => Some(matches[0]),
-                },
-            }
-        };
+        let resolver = TargetResolver::new(world);
+        let mut resolve_target = |target: &Target| resolver.resolve(world, target, errors);
 
         let mut resets: Vec<(EntityId, Vec2)> = Vec::new();
         let mut positions: Vec<(EntityId, Vec2)> = Vec::new();
@@ -390,11 +331,25 @@ impl ScriptCommands {
                     }
                 }
                 ScriptCommand::TriggerBinding { target: None, binding } => {
-                    triggers.push(None, binding);
+                    triggers.push(QueuedSound::Trigger { source: None, binding });
                 }
                 ScriptCommand::TriggerBinding { target: Some(target), binding } => {
                     if let Some(entity) = resolve_target(&target) {
-                        triggers.push(Some(entity), binding);
+                        triggers.push(QueuedSound::Trigger { source: Some(entity), binding });
+                    }
+                }
+                ScriptCommand::PlaySound { target } => {
+                    if let Some(entity) = resolve_target(&target) {
+                        triggers.push(QueuedSound::Play {
+                            entity,
+                            emitter: world.get::<SoundEmitter>(entity).cloned(),
+                            position: crate::sound_emitters::emitter_position(world, entity),
+                        });
+                    }
+                }
+                ScriptCommand::StopSound { target } => {
+                    if let Some(entity) = resolve_target(&target) {
+                        triggers.push(QueuedSound::Stop { entity });
                     }
                 }
             }

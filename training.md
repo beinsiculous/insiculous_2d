@@ -12,9 +12,11 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
   - `game_loop_manager.rs` - Game loop timing and frame delta management (the only frame timer)
   - `render_manager.rs` / `window_manager.rs` - Focused managers (renderer lifecycle, window creation)
   - `contexts.rs` - `GameContext` / `RenderContext` passed to Game methods
-  - `sound_sources.rs` - `SoundSources` (`ctx.sources`): the `SourceId` an entity, the game or the menu triggers a song binding under, the host-wide activation epoch, the reconcile and the flush the frame tail runs
+  - `sound_sources.rs` - `SoundSources` (`ctx.sources`): the `SourceId` an entity, the game or the menu triggers a song binding under, the host-wide activation epoch, the reconcile, `end` and the flush the frame tail runs
+  - `sound_emitters.rs` - `SoundEmitters` (`ctx.emitters`): the scene's `SoundEmitter`s played, re-mixed from the main camera (`spatial_mix`) and ended by the frame tail after the hierarchy (a spawn sound only while the time scale is live)
   - `assets.rs` - Asset loading and caching (tracks handle→path for scene save)
   - `assets/sprite_sheet.rs` - `AssetManager::load_sprite_sheet` (PNG + sidecar → `SpriteSheet`), `SidecarCache` (one sidecar read per path per scene load, cleared at the top of every load)
+  - `assets/sound_library.rs` - the sound tier: `AssetManager::resolve_sound` (a recorded sound by path, loaded once, a failed path warned once and remembered, both cleared by `set_base_path`)
   - `sheet_file.rs` - **the `.sheet.ron` schema** (`SheetFile` v1, `parse_sheet_file`, `into_parts`, `sidecar_path_for`); all sidecar validation lives here
   - `texture_filter_serde.rs` - shared serde bridge for `TextureFilter` (renderer stays serde-free); used by `GameConfig.texture_filter` and `SheetFile.filter`
   - `scene.rs` / `scene_loader.rs` / `scene_data.rs` / `scene_serializer.rs` - Scene lifecycle, RON load, schema, World→RON save (the ONLY save pipeline)
@@ -50,6 +52,7 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
   - `query.rs` - Type-safe query types (Single, Pair, Triple)
   - `hierarchy.rs` / `hierarchy_extension.rs` / `hierarchy_system.rs` - Parent/child links, `WorldHierarchyExt`, transform propagation
   - `sprite_components.rs` - Sprite, Transform2D, Camera, plus `AnimationClip` + `SpriteAnimation` (named clips over a `SheetGrid`); `sprite_system.rs` - `SpriteAnimationSystem` advances clips and writes `Sprite.tex_region` (driven from engine_core's `frame_tail.rs`)
+  - `sound_emitter.rs` - `SoundEmitter` (a sound named on an entity: `SoundRef::Path` or `SoundRef::Binding`, volume, play-on-spawn, looping, `Spatial`), data only — engine_core's `sound_emitters.rs` plays it
   - `behavior.rs` - Scene-driven `Behavior` enum + `BehaviorState` (incl. `CameraFollow`)
   - `tilemap.rs` - `Tilemap` component (row-major tile grid over a tileset; `sprite_instances()` yields plain per-tile data)
   - `state_machine.rs` - `StateMachine` FSM component
@@ -81,7 +84,9 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
   - `manager/mod.rs` - `AudioManager`: the device/output connection, the gesture-gated `enable_output` (disabled is either gesture-gated, the web, or headless with a virtual song clock), sound loading and SFX playback, `play_source` (any rodio `Source` on a bus), the one `PendingMusic` slot a recorded track and a song share; `manager/music.rs` - recorded music (play/stop/pause/resume) and the master/SFX/music volume buses; `manager/tests.rs` - the first two seams' tests
   - `manager/song.rs` + `manager/song/{load,edges}.rs` - songs: `play_song(path)` (the `.mid`, its `<path>.ron` sidecar, every SoundFont and sample loaded through `common::vfs` relative to `set_asset_base`, all checked before the playing song is touched; decoded files cached by content fingerprint), `play_song_in_memory`, transport, `song_position`, `beat_crossed(Subdivision)`, `trigger(action, source)`, `deactivate_source`, `stop_all_sources`; one conductor a song; commands a full queue refuses wait and go first from `update()`; tests in `manager/song/tests.rs` + `tests/loading.rs`
   - `conductor_source.rs` - `ConductorSource`: the conductor as a rodio `Source`, one block per render at its own instant, the music and sfx gains from two atomics, the peak limiter after them (`conductor_source/limiter.rs`: a gain lowered ahead of a peak, the block its look-ahead)
-  - `sound.rs` - SoundHandle, SoundSettings, Bus; `error.rs` - AudioError
+  - `manager/playback.rs` - each playing instance on its own: `stop_playback`, `set_playback_mix` (volume and pan), `is_playing`, and what a disabled manager holds (a loop until stopped, started by `enable_output`; a one-shot until the next `update`)
+  - `pan_source.rs` - `PanSource`: a recorded sound's live stereo pan from an atomic, unity at centre
+  - `sound.rs` - SoundHandle, PlaybackId, SoundSettings (volume, speed, looping, pan), Bus; `error.rs` - AudioError
   - `sample_loader.rs` - `load_sample_pcm`: a sample instrument's WAV through `common::vfs` and rodio's WAV decoder into `music_midi::OwnedPcm` — the byte limit by the file's size before reading, the RIFF header before decoding, the decode stopped one frame past 10 s
 
 - **crates/music_midi/** - The conductor's song core: no I/O, no rodio — bytes in, data out. See its `CLAUDE.md` for the file map and pitfalls, `docs/SONG_FORMAT.md` for the sidecar grammar
@@ -520,6 +525,8 @@ SceneData(
             name: Some("player"),
             prefab: Some("Player"),
             overrides: [Transform2D(position: (-200.0, 100.0))],
+            // A sound named by path, played by `ctx.emitters.play(player, ctx.world)`
+            components: [SoundEmitter(sound: Path("sounds/jump.wav"), volume: 0.8)],
         ),
     ],
 )
@@ -914,7 +921,7 @@ impl Game for MyGame {
 
 **Files:** `engine_core/src/scripting/`, `ecs/src/blackboard.rs`, `docs/SCRIPTING.md`
 
-### Conductor Pattern (songs, triggers and sources)
+### Conductor Pattern (songs, triggers, sources and scene sounds)
 A song is a MIDI file and its `.mid.ron` sidecar (`docs/SONG_FORMAT.md`): a background
 score that plays by itself, and bindings — named actions that play a part on an
 instrument when the game triggers them, on the beat grid.
@@ -955,8 +962,45 @@ fn on_brick_hit(&mut self, ctx: &mut GameContext, brick: EntityId) {
   every source instead and drops that frame's triggers; a song change flushes nothing,
   and a live entity keeps its source into the next song.
 
-**Files:** `engine_core/src/sound_sources.rs`, `engine_core/src/scripting/triggers.rs`,
-`engine_core/src/game/frame_tail.rs`, `audio/src/manager/song.rs`
+**Scene sounds.** A scene names a sound on an entity with a `SoundEmitter`:
+
+```ron
+SoundEmitter(
+    sound: Path("sounds/beep.wav"),   // a recorded file, relative to the asset base;
+                                      // or Binding("hit"), a binding of the playing song
+    volume: 0.8,                      // a recorded sound's level (a binding's is the song's)
+    play_on_spawn: true,              // play the first frame the engine runs with it
+    looping: false,                   // a recorded loop plays until stopped or its entity goes
+    spatial: Some(Spatial(max_distance: 8.0)),  // level and pan from the main camera
+)
+```
+
+- **Game code plays it through `ctx.emitters`**: `play(entity)` and `stop(entity)` queue a
+  request; `playing`, `plays`, `last_mix`, `failed_loads` and `refused` read what the
+  engine did. A one-shot played again starts another instance (every jump is heard); a
+  loop already running is left alone. Scripts have `cmd.play_sound` and `cmd.stop_sound`
+  (`docs/SCRIPTING.md` § 4).
+- **The pass runs in the frame tail after the transform hierarchy**, so a child emitter
+  is heard from where its parent put it this frame, and **only while `time_scale` is
+  not zero**: the editor freezes the engine outside Play that way, so a scene's spawn
+  sounds fire on Play's first frame, and a paused game starts nothing while its loops
+  play on. An emitter whose entity is gone, or whose component was removed, is stopped
+  in that frame's tail; a world replaced wholesale stops them all.
+- **Spatial is 2D and in world units**: the gain falls from `volume` at the camera to
+  silence at `max_distance`, and the pan is the emitter's offset to the side over
+  `max_distance` (`spatial_mix`). The main camera is the listener; there is no
+  occlusion. A binding is never spatial and never loops — the scene loader refuses
+  either, naming the entity.
+- **The handle lookup is public**: `ctx.assets.resolve_sound(path, ctx.audio)` loads a
+  recorded sound once by its path and serves the handle after; a path that fails is
+  warned about once and remembered. Play the handle through `ctx.audio`, whose
+  `play_with_settings` returns a `PlaybackId` to stop (`stop_playback`) or re-mix
+  (`set_playback_mix`, volume and pan) that instance alone.
+
+**Files:** `engine_core/src/sound_sources.rs`, `engine_core/src/sound_emitters.rs`,
+`engine_core/src/assets/sound_library.rs`, `engine_core/src/scripting/triggers.rs`,
+`engine_core/src/game/frame_tail.rs`, `ecs/src/sound_emitter.rs`, `audio/src/manager/song.rs`,
+`audio/src/manager/playback.rs`, `audio/src/pan_source.rs`
 
 ## Current Known Limitations
 

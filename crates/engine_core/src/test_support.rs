@@ -260,6 +260,12 @@ impl<G: Game> GameHarness<G> {
         self.runner.sound_sources()
     }
 
+    /// The scene's sound emitters as the frame tail left them: what plays, how many
+    /// times each entity started, the mix last sent, and what was refused.
+    pub fn sound_emitters(&self) -> &crate::sound_emitters::SoundEmitters {
+        self.runner.sound_emitters()
+    }
+
     pub fn scores(&self) -> &Scores {
         self.runner.scores()
     }

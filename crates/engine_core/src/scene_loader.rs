@@ -12,6 +12,7 @@ use ecs::{EntityId, World, WorldHierarchyExt};
 use crate::texture_ref::TextureResolver;
 use crate::scene_data::{EntityData, PhysicsSettings, PrefabData, SceneData, SceneLoadError};
 use crate::scene_override::OverrideData;
+use crate::scene_loader_merge::{entity_label, naming_entity};
 
 /// Result of loading a scene
 #[derive(Debug)]
@@ -77,7 +78,7 @@ impl SceneInstance {
         for component in &merged {
             if let Err(e) = SceneLoader::add_component_to_entity(entity_id, component, world, assets) {
                 world.remove_entity(&entity_id).ok();
-                return Err(e);
+                return Err(naming_entity(e, &format!("a spawned '{prefab_name}'")));
             }
         }
         Ok(entity_id)
@@ -276,7 +277,8 @@ impl SceneLoader {
 
         // Apply all components to the entity
         for component in &merged_components {
-            Self::add_component_to_entity(entity_id, component, world, assets)?;
+            Self::add_component_to_entity(entity_id, component, world, assets)
+                .map_err(|error| naming_entity(error, &entity_label(entity_data)))?;
         }
 
         Ok(entity_id)

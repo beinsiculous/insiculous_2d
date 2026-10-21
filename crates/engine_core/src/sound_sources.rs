@@ -113,6 +113,15 @@ impl SoundSources {
         });
     }
 
+    /// End `entity`'s activation now and forget it, so its next trigger activates anew
+    /// under a new epoch — a binding emitter's stop. A no-op for an entity with no live
+    /// source; a deactivation the manager cannot send yet waits in the manager.
+    pub fn end(&mut self, entity: EntityId, audio: &mut AudioManager) {
+        if let Some(source) = self.entries.remove(&Owner::Entity(entity)) {
+            audio.deactivate_source(source);
+        }
+    }
+
     /// End every activation, for a world replaced wholesale, and forget every source: the
     /// game and the menu re-mint on their next call. Returns the flush's epoch, the floor
     /// below which the conductor refuses every activation.
@@ -154,6 +163,24 @@ mod tests {
         assert_eq!(sources.source_of(bat), None, "the reconcile forgets a despawned entity");
         let ball = world.create_entity();
         assert!(sources.entity(ball).epoch > first.epoch, "every activation takes a new epoch");
+    }
+
+    #[test]
+    fn ending_a_live_entity_forgets_its_source_and_its_next_trigger_takes_a_new_epoch() {
+        let mut world = World::new();
+        let mut audio = AudioManager::disabled();
+        let mut sources = SoundSources::new();
+        let (drum, bell) = (world.create_entity(), world.create_entity());
+        let first = sources.entity(drum);
+        let other = sources.entity(bell);
+
+        sources.end(drum, &mut audio);
+        assert_eq!(sources.source_of(drum), None, "the entity lives on, its activation does not");
+        assert_eq!(sources.source_of(bell), Some(other), "only that entity's source ends");
+        let second = sources.entity(drum);
+        assert!(second.epoch > first.epoch, "the next trigger re-mints");
+        assert_eq!((second.id, second.generation), (first.id, first.generation));
+        sources.end(world.create_entity(), &mut audio);
     }
 
     #[test]

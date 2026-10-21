@@ -1,9 +1,11 @@
 //! Audio manager for loading and playing sounds.
 //!
 //! Split along the crate's three seams: this module owns the device/output
-//! connection and SFX playback; the `music` child module owns recorded music
-//! and the volume buses; the `song` child module owns songs played by the
-//! conductor. Tests live in the `tests` child modules.
+//! connection and SFX playback; the `playback` child module owns each playing
+//! instance of a sound (stopped, re-mixed or held while disabled on its own);
+//! the `music` child module owns recorded music and the volume buses; the `song`
+//! child module owns songs played by the conductor. Tests live in the `tests`
+//! child modules.
 
 use std::collections::HashMap;
 use std::io::Cursor;
@@ -15,14 +17,17 @@ use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
 use common::clamp_volume;
 
 use crate::error::{AudioError, AudioResult};
-use crate::sound::{Bus, SoundHandle, SoundSettings};
+use crate::pan_source::{PanLevel, PanSource};
+use crate::sound::{Bus, PlaybackId, SoundHandle, SoundSettings};
 
 mod music;
+mod playback;
 pub(crate) mod song;
 
 #[cfg(test)]
 mod tests;
 
+use playback::HeldPlayback;
 use song::load::ReadySong;
 use song::SongDeck;
 
@@ -46,11 +51,15 @@ struct SoundData {
 /// Active sound playback instance.
 struct ActiveSound {
     sink: Sink,
+    /// Which playback this is (used by [`AudioManager::stop_playback`]).
+    playback: PlaybackId,
     /// Which loaded sound this instance plays (used by [`AudioManager::stop`]).
     handle: SoundHandle,
     /// The per-sound volume from `SoundSettings`, kept so bus volume changes
     /// (`set_sfx_volume` / `set_master_volume`) can re-derive the sink volume.
     base_volume: f32,
+    /// The pan the playing source reads once a frame.
+    pan: Arc<PanLevel>,
 }
 
 /// A caller-built source playing under a bus (see [`AudioManager::play_source`]).
@@ -109,6 +118,11 @@ pub struct AudioManager {
     next_sound_id: u32,
     /// Currently active sound instances.
     active_sounds: Vec<ActiveSound>,
+    /// Next playback id to hand out; manager-local like `next_sound_id`.
+    next_playback_id: u64,
+    /// Playbacks requested while disabled: a loop waits for a device (and reports
+    /// playing until stopped), a one-shot is reported ended at the next `update`.
+    held_playbacks: Vec<HeldPlayback>,
     /// Caller-built sources still playing.
     active_sources: Vec<ActiveSource>,
     /// Current background music sink.
@@ -220,6 +234,7 @@ impl AudioManager {
 
         self.connect_song_output();
         self.start_pending_music();
+        self.start_held_loops();
 
         Ok(())
     }
@@ -230,6 +245,8 @@ impl AudioManager {
             sounds: HashMap::new(),
             next_sound_id: 1,
             active_sounds: Vec::new(),
+            next_playback_id: 1,
+            held_playbacks: Vec::new(),
             active_sources: Vec::new(),
             music_sink: None,
             pending_music: None,
@@ -292,23 +309,48 @@ impl AudioManager {
     }
 
     /// Play a sound with default settings.
-    pub fn play(&mut self, handle: SoundHandle) -> AudioResult<()> {
+    pub fn play(&mut self, handle: SoundHandle) -> AudioResult<PlaybackId> {
         self.play_with_settings(&handle, SoundSettings::default())
     }
 
-    /// Play a sound with custom settings.
+    /// Play a sound with custom settings, returning the playback so it can be stopped,
+    /// re-mixed and asked about on its own.
     ///
-    /// Volume is clamped to 0.0..=1.0 and speed floored at 0.1 here, so
-    /// directly-set `SoundSettings` fields cannot bypass the valid ranges.
+    /// Volume is clamped to 0.0..=1.0, speed floored at 0.1 and pan clamped to
+    /// −1.0..=1.0 at the point of use, so directly-set `SoundSettings` fields cannot
+    /// bypass the valid ranges. A disabled manager still validates the handle and mints
+    /// the playback: a loop is held until a device connects (see
+    /// [`AudioManager::is_playing`]), a one-shot ends at the next `update`.
     pub fn play_with_settings(
         &mut self,
         handle: &SoundHandle,
         settings: SoundSettings,
-    ) -> AudioResult<()> {
-        let sound_data = self.sounds.get(&handle.id)
-            .ok_or(AudioError::InvalidHandle(handle.id))?;
+    ) -> AudioResult<PlaybackId> {
+        if !self.sounds.contains_key(&handle.id) {
+            return Err(AudioError::InvalidHandle(handle.id));
+        }
+        let playback = PlaybackId { id: self.next_playback_id };
+        self.next_playback_id += 1;
+        let held = HeldPlayback {
+            playback,
+            handle: *handle,
+            pan: Arc::new(PanLevel::new(settings.pan)),
+            settings,
+        };
+        if self.output.is_none() {
+            self.held_playbacks.push(held);
+        } else {
+            self.start_playback(held)?;
+        }
+        Ok(playback)
+    }
 
-        // Disabled mode: handle was validated above, playback is a no-op.
+    /// Decode `held`'s sound and start it on the device. The pan wraps the repeat, never
+    /// the reverse: rodio's repeat buffers its input's samples, and a pan inside it would
+    /// freeze at the first pass's value.
+    fn start_playback(&mut self, held: HeldPlayback) -> AudioResult<()> {
+        let sound_data = self.sounds.get(&held.handle.id)
+            .ok_or(AudioError::InvalidHandle(held.handle.id))?;
         let Some(output) = &self.output else {
             return Ok(());
         };
@@ -318,16 +360,22 @@ impl AudioManager {
         let source = Decoder::new(cursor)
             .map_err(|e| AudioError::DecodeError(e.to_string()))?;
 
-        // Clamp at point of use: SoundSettings fields are public, so builder
-        // clamps can be bypassed.
-        let base_volume = clamp_volume(settings.volume);
-        let sink = self.start_sink(output, source, base_volume, self.sfx_volume, settings.looping)?;
-        sink.set_speed(clamp_speed(settings.speed));
+        let base_volume = clamp_volume(held.settings.volume);
+        let pan = Arc::clone(&held.pan);
+        let sink = if held.settings.looping {
+            let looped = PanSource::new(source.repeat_infinite(), pan);
+            self.start_sink(output, looped, base_volume, self.sfx_volume, false)?
+        } else {
+            self.start_sink(output, PanSource::new(source, pan), base_volume, self.sfx_volume, false)?
+        };
+        sink.set_speed(clamp_speed(held.settings.speed));
 
         self.active_sounds.push(ActiveSound {
             sink,
-            handle: *handle,
+            playback: held.playback,
+            handle: held.handle,
             base_volume,
+            pan: held.pan,
         });
 
         Ok(())
@@ -386,7 +434,8 @@ impl AudioManager {
         Ok(sink)
     }
 
-    /// Stop all currently playing instances of the given sound.
+    /// Stop all currently playing instances of the given sound, a loop held while
+    /// disabled included.
     ///
     /// Instances of other sounds and the music track are unaffected.
     /// Unknown handles or handles with no active instances are a no-op.
@@ -399,6 +448,7 @@ impl AudioManager {
                 true
             }
         });
+        self.held_playbacks.retain(|held| held.handle != handle);
     }
 
     /// Clean up finished sound instances and advance the song.
@@ -414,6 +464,7 @@ impl AudioManager {
     /// [`AudioManager::update`] at `now`, so a test drives the song's clock.
     pub(crate) fn update_at(&mut self, now: common::clock::Instant) {
         self.active_sounds.retain(|active| !active.sink.empty());
+        self.held_playbacks.retain(|held| held.settings.looping);
         self.active_sources.retain(|active| !active.sink.empty());
         self.update_song(now);
     }

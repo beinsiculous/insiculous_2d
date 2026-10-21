@@ -135,16 +135,23 @@ Commands queue deferred actions executed cleanly at the end of the phase:
   - `cmd.set_blackboard_str(key, str)`
 - **Lifecycle**:
   - `cmd.despawn(target)`
-- **Audio** (a song's bindings — the song's sidecar names them, `docs/SONG_FORMAT.md`):
+- **Audio** (a song's bindings — the song's sidecar names them, `docs/SONG_FORMAT.md` —
+  and the scene's `SoundEmitter`s):
   - `cmd.trigger(me, binding)` or `cmd.trigger(name, binding)`: play the binding for that
     entity's own source, so its notes end when the entity does
   - `cmd.trigger(binding)`: play it for the game's source, for a sound that must outlive
     its entity (a brick's explosion)
+  - `cmd.play_sound(target)`: play the target's `SoundEmitter` — its recorded sound, or
+    its binding on the entity's source. A one-shot played on an entity the same hook
+    despawns still sounds, where the entity was; a loop on it is refused
+  - `cmd.stop_sound(target)`: stop the target's `SoundEmitter` — its recorded instance, or
+    its binding's source, so the binding's next play activates anew
 
-  A trigger is best-effort: with no song playing, a binding the song lacks, or a full
-  queue, it is dropped and counted (`ctx.sources.refused_triggers()`), never a script
-  error. A name that matches no entity is reported as a missing target, as for any
-  command.
+  A trigger or a sound is best-effort: with no song playing, a binding the song lacks,
+  a file that will not load, an entity without an emitter or a full queue, it is
+  dropped and counted (`ctx.sources.refused_triggers()`, `ctx.emitters.refused()`,
+  `ctx.emitters.failed_loads()`), never a script error. A name that matches no entity
+  is reported as a missing target, as for any command.
 
 `target` can be `me`, an entity ID, or an entity's name string.
 
@@ -173,6 +180,15 @@ engine's frame tail — `SpriteAnimationSystem`, the lifetime pass, and
   must ring on. In the frame a world is replaced wholesale (a snapshot restore, a
   scene load), every source is flushed and that frame's triggers are dropped:
   they belong to the old world.
+- **`play_sound` and `stop_sound` share the triggers' queue**, so
+  `cmd.stop_sound(me); cmd.trigger(me, "hit")` keeps its order: a binding emitter's
+  play or stop is served there, with the triggers. A recorded emitter's is handed on,
+  in order, to the emitter pass, which runs after the transform hierarchy (a child
+  emitter is heard from where its parent put it this frame) and only while the time
+  scale is live — a paused game starts no spawn sound; its requests are served and its loops play
+  on. The pass forgets an emitter whose sound ended, whose entity is gone or no longer
+  carries the component: a one-shot outlives its entity, a loop does not. A world
+  replaced wholesale stops every emitter with the sources' flush.
 
 ---
 

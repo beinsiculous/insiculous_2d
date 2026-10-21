@@ -6,6 +6,10 @@ use physics::components::{Collider, ColliderShape};
 pub const SCALE_FLOOR: f32 = 0.01;
 pub const COLLIDER_EXTENT_FLOOR: f32 = 0.5;
 pub const CAPSULE_HALF_HEIGHT_FLOOR: f32 = 0.0;
+/// A sound's level: below silence means nothing.
+pub const VOLUME_FLOOR: f32 = 0.0;
+/// A spatial sound's reach: zero would divide its attenuation by zero.
+pub const MAX_DISTANCE_FLOOR: f32 = ecs::Spatial::MIN_MAX_DISTANCE;
 
 /// Clamp Transform2D scale above the physical floor.
 pub fn clamp_transform(transform: &mut common::Transform2D) {
@@ -15,6 +19,21 @@ pub fn clamp_transform(transform: &mut common::Transform2D) {
 /// Clamp Sprite scale above the physical floor.
 pub fn clamp_sprite(sprite: &mut ecs::sprite_components::Sprite) {
     sprite.scale = sprite.scale.max(Vec2::splat(SCALE_FLOOR));
+}
+
+/// Clamp a SoundEmitter's volume and spatial reach above their floors (`max` keeps the
+/// floor for a NaN as well), and hold a binding emitter to what the scene loader accepts:
+/// never spatial, never looping. The inspector's kind cycle and the command API's writes
+/// both pass through here, so neither can save a scene the loader refuses.
+pub fn clamp_sound_emitter(emitter: &mut ecs::SoundEmitter) {
+    emitter.volume = emitter.volume.max(VOLUME_FLOOR);
+    if emitter.sound.is_binding() {
+        emitter.spatial = None;
+        emitter.looping = false;
+    }
+    if let Some(spatial) = emitter.spatial.as_mut() {
+        spatial.max_distance = spatial.max_distance.max(MAX_DISTANCE_FLOOR);
+    }
 }
 
 /// Clamp Collider shape dimensions above physical minimums (zero-extent breaks physics).
@@ -72,6 +91,30 @@ mod tests {
         s.scale = Vec2::new(0.0, -1.0);
         clamp_sprite(&mut s);
         assert_eq!(s.scale, Vec2::splat(SCALE_FLOOR));
+    }
+
+    #[test]
+    fn test_clamp_sound_emitter_holds_a_typed_minus_one_at_the_floors() {
+        let mut emitter = ecs::SoundEmitter {
+            volume: -1.0,
+            spatial: Some(ecs::Spatial { max_distance: -1.0 }),
+            ..Default::default()
+        };
+        clamp_sound_emitter(&mut emitter);
+        assert_eq!(emitter.volume, VOLUME_FLOOR);
+        assert_eq!(emitter.spatial, Some(ecs::Spatial { max_distance: MAX_DISTANCE_FLOOR }));
+    }
+
+    #[test]
+    fn test_clamp_sound_emitter_strips_what_a_binding_cannot_have() {
+        let mut emitter = ecs::SoundEmitter {
+            sound: ecs::SoundRef::Binding("hit".into()),
+            looping: true,
+            spatial: Some(ecs::Spatial { max_distance: 8.0 }),
+            ..Default::default()
+        };
+        clamp_sound_emitter(&mut emitter);
+        assert!(!emitter.looping && emitter.spatial.is_none(), "an API write cannot save what the loader refuses");
     }
 
     #[test]

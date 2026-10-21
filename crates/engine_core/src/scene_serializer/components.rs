@@ -54,6 +54,10 @@ pub(super) fn concrete_components() -> Vec<ConcreteComponent> {
             registry_name: "ClipStateMachine",
             extract: extract_clip_state_machine,
         },
+        ConcreteComponent {
+            registry_name: "SoundEmitter",
+            extract: extract_sound_emitter,
+        },
     ];
 
     #[cfg(feature = "physics")]
@@ -178,6 +182,20 @@ fn extract_tilemap(
         tiles: tilemap.tiles.clone(),
         tile_uv_size: (tilemap.tile_uv_size.x, tilemap.tile_uv_size.y),
         depth: tilemap.depth,
+    })
+}
+
+fn extract_sound_emitter(
+    world: &World,
+    entity: EntityId,
+    _texture_path_fn: &dyn Fn(u32) -> String,
+) -> Option<ComponentData> {
+    world.get::<ecs::SoundEmitter>(entity).map(|emitter| ComponentData::SoundEmitter {
+        sound: emitter.sound.clone(),
+        volume: emitter.volume,
+        play_on_spawn: emitter.play_on_spawn,
+        looping: emitter.looping,
+        spatial: emitter.spatial,
     })
 }
 

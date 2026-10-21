@@ -2,7 +2,7 @@
 //! components' serde and inspector metadata.
 
 use ecs::sprite_components::*;
-use ecs::{ClipStateMachine, ComponentMeta, GridBackdrop, UiButton, UiLabel, UiPanel};
+use ecs::{ClipStateMachine, ComponentMeta, GridBackdrop, SoundEmitter, UiButton, UiLabel, UiPanel};
 
 /// A 4x2 sheet carrying a looping 2-frame "walk" and a one-shot 3-frame
 /// "hit" — the two shapes every playback test needs.
@@ -211,7 +211,7 @@ fn test_sprite_deserializes_omitted_region_and_visibility_to_full_and_visible() 
 #[test]
 fn test_component_meta_field_order_matches_the_inspector() {
     // The inspector renders fields in this order, so the order is the contract.
-    let expected: [(&str, &[&str]); 9] = [
+    let expected: [(&str, &[&str]); 10] = [
         (Transform2D::type_name(), &["position", "rotation", "scale"]),
         (
             Sprite::type_name(),
@@ -243,6 +243,10 @@ fn test_component_meta_field_order_matches_the_inspector() {
             ClipStateMachine::type_name(),
             &["initial", "states", "machine", "applied"],
         ),
+        (
+            SoundEmitter::type_name(),
+            &["sound", "volume", "play_on_spawn", "looping", "spatial"],
+        ),
     ];
     let actual = [
         (Transform2D::type_name(), Transform2D::field_names()),
@@ -254,6 +258,7 @@ fn test_component_meta_field_order_matches_the_inspector() {
         (UiButton::type_name(), UiButton::field_names()),
         (GridBackdrop::type_name(), GridBackdrop::field_names()),
         (ClipStateMachine::type_name(), ClipStateMachine::field_names()),
+        (SoundEmitter::type_name(), SoundEmitter::field_names()),
     ];
 
     assert_eq!(actual, expected);
@@ -261,7 +266,7 @@ fn test_component_meta_field_order_matches_the_inspector() {
         actual.map(|(name, _)| name),
         [
             "Transform2D", "Sprite", "Camera", "SpriteAnimation", "UiLabel", "UiPanel", "UiButton",
-            "GridBackdrop", "ClipStateMachine",
+            "GridBackdrop", "ClipStateMachine", "SoundEmitter",
         ],
         "the registry keys on these names"
     );

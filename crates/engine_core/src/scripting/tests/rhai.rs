@@ -11,6 +11,7 @@ use ecs::{EntityId, Name};
 
 use crate::scripting::param_header::parse_param_header;
 use crate::scripting::runner::{ScriptErrorKind, ScriptRunner};
+use crate::scripting::triggers::QueuedSound;
 
 use super::{test_inputs, test_world};
 
@@ -551,9 +552,12 @@ fn trigger_queues_a_binding_for_me_a_named_entity_or_the_game_and_reports_a_miss
 
     runner.update(&mut world, &input, &players, 1.0 / 60.0, &[], None);
     let queued: Vec<(Option<EntityId>, String)> = runner
-        .take_triggers()
+        .take_sounds()
         .into_iter()
-        .map(|trigger| (trigger.source, trigger.binding))
+        .filter_map(|sound| match sound {
+            QueuedSound::Trigger { source, binding } => Some((source, binding)),
+            _ => None,
+        })
         .collect();
     assert_eq!(
         queued,
@@ -563,7 +567,7 @@ fn trigger_queues_a_binding_for_me_a_named_entity_or_the_game_and_reports_a_miss
             (None, "score".to_string()),
         ]
     );
-    assert!(runner.take_triggers().is_empty(), "taking empties the queue");
+    assert!(runner.take_sounds().is_empty(), "taking empties the queue");
     assert_eq!(runner.errors().len(), 1);
     assert_eq!(runner.errors()[0].kind, ScriptErrorKind::MissingTarget);
 }

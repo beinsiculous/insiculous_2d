@@ -20,6 +20,9 @@ pub enum AssetKind {
     Scene,
     /// A script file (.rhai or .rs)
     Script,
+    /// A recorded sound the audio manager decodes (wav/mp3/ogg/flac), dropped
+    /// on a `SoundEmitter`'s sound slot
+    Sound,
 }
 
 /// One file found under the asset root.
@@ -93,6 +96,7 @@ fn kind_for_extension(ext: &str) -> Option<AssetKind> {
         "png" | "jpg" | "jpeg" | "bmp" => Some(AssetKind::Image),
         "ron" => Some(AssetKind::Scene),
         "rhai" | "rs" => Some(AssetKind::Script),
+        "wav" | "mp3" | "ogg" | "flac" => Some(AssetKind::Sound),
         _ => None,
     }
 }
@@ -186,6 +190,8 @@ mod tests {
             "scenes/level1.scene.ron",
             "scripts/paddle.rhai",
             "scripts/main.rs",
+            "sounds/jump.WAV",
+            "music/theme.ogg",
             "fonts/font.ttf",
             "notes.txt",
         ] {
@@ -207,8 +213,10 @@ mod tests {
                 ("level1.scene.ron", AssetKind::Scene, "scenes/level1.scene.ron"),
                 ("main.rs", AssetKind::Script, "scripts/main.rs"),
                 ("paddle.rhai", AssetKind::Script, "scripts/paddle.rhai"),
+                ("jump.WAV", AssetKind::Sound, "sounds/jump.WAV"),
+                ("theme.ogg", AssetKind::Sound, "music/theme.ogg"),
             ],
-            "images first by name, then scenes, then scripts; nested files have forward-slash relative paths; txt is ignored"
+            "images first by name, then scenes, then scripts, then sounds; nested files have forward-slash relative paths; txt is ignored"
         );
         assert!(
             scan_assets(Path::new("/definitely/not/a/real/dir")).is_empty(),
@@ -223,6 +231,8 @@ mod tests {
         assert_eq!(kind_for_extension("RS"), Some(AssetKind::Script));
         assert_eq!(kind_for_extension("png"), Some(AssetKind::Image));
         assert_eq!(kind_for_extension("ron"), Some(AssetKind::Scene));
+        assert_eq!(kind_for_extension("FLAC"), Some(AssetKind::Sound));
+        assert_eq!(kind_for_extension("mid"), None, "a song is not a recorded sound");
         assert_eq!(kind_for_extension("txt"), None);
     }
 

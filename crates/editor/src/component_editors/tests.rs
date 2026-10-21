@@ -9,7 +9,7 @@ use glam::Vec2;
 use input::prelude::KeyCode;
 use physics::components::{Collider, ColliderShape, RigidBody, RigidBodyType};
 
-use super::{apply_component_edit, edit_collider, edit_entity_tag, edit_rigid_body, ComponentEdit};
+use super::{apply_component_edit, edit_collider, edit_entity_tag, edit_rigid_body, edit_sound_emitter, ComponentEdit};
 use crate::commands::{CommandHistory, SetTransformCommand};
 use crate::edit_behavior;
 use crate::test_support::{click_through, extras, frame, setup_entity};
@@ -141,6 +141,30 @@ fn test_cycle_rows_step_the_variant_and_carry_collider_dimensions() {
         ColliderShape::compound(vec![collider.shape.clone()]),
         "the wrapped-to compound holds the shape being left behind"
     );
+}
+
+#[test]
+fn test_cycling_a_spatial_loop_to_a_binding_clears_what_a_binding_cannot_have() {
+    let mut ui = ui::UIContext::new();
+    let mut input = input::InputHandler::new();
+    let mut drag_drop = DragDropState::new();
+    let mut inspector_state = crate::InspectorState::default();
+    let style = EditableFieldStyle::default();
+    let emitter = ecs::SoundEmitter {
+        sound: ecs::SoundRef::Path("sounds/engine.wav".into()),
+        looping: true,
+        spatial: Some(ecs::Spatial { max_distance: 8.0 }),
+        ..ecs::SoundEmitter::default()
+    };
+
+    let (_, release) = click_through(&mut ui, &mut input, first_row().next_btn_center, |ui| {
+        let mut inspector = EditableInspector::new(ui, &style, ORIGIN.x, ORIGIN.y);
+        edit_sound_emitter(&mut inspector, &emitter, &mut extras(&mut drag_drop, &mut inspector_state))
+    });
+    let edit = release.expect("release frame cycles the kind");
+    assert_eq!(edit.field_hint, "sound");
+    assert_eq!(edit.new_value.sound, ecs::SoundRef::Binding(String::new()));
+    assert_eq!((edit.new_value.looping, edit.new_value.spatial), (false, None), "the loader would refuse either");
 }
 
 #[test]

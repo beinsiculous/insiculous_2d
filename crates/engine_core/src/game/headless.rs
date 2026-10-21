@@ -124,6 +124,10 @@ impl<G: Game> GameRunner<G> {
         &self.sound_sources
     }
 
+    pub(crate) fn sound_emitters(&self) -> &crate::sound_emitters::SoundEmitters {
+        &self.sound_emitters
+    }
+
     pub(crate) fn achievements(&self) -> &AchievementManager {
         &self.achievements
     }

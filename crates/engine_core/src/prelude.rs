@@ -87,6 +87,7 @@ pub use renderer::line_pipeline::LineVertex;
 
 // Re-export audio types
 pub use audio::{AudioManager, Bus, SoundHandle, SoundSettings, SourceId};
+pub use crate::sound_emitters::SoundEmitters;
 pub use crate::sound_sources::SoundSources;
 
 // Re-export UI types (UIRect and UIColor are aliases to common types for backwards compatibility)

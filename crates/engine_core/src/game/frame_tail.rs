@@ -1,6 +1,6 @@
 //! GameRunner's post-update frame tail: everything the engine does after
 //! the game's `update()` returns — particle stepping, the world systems,
-//! the song sources, transform propagation, line forwarding, scene-defined UI
+//! the song sources, transform propagation, the sound emitters, line forwarding, scene-defined UI
 //! elements, achievement toasts, and locale-font capture.
 //!
 //! Child module of `game` (like `render`) so it can reach the runner's
@@ -45,6 +45,12 @@ impl<G: Game> GameRunner<G> {
     /// the delta: a paused game and the editor's frozen Editing state still propagate, so a
     /// parented entity moved by hand follows its parent before the frame draws. The song
     /// sources settle between the two, once this frame's despawns are done.
+    ///
+    /// The sound emitters run after the hierarchy, so a child emitter is placed by this
+    /// frame's `GlobalTransform2D`, every frame — a loop whose entity goes while paused
+    /// still stops — with first sight recorded only while the time scale is live: the
+    /// editor freezes the engine outside Play with a zero scale, and a scene's spawn
+    /// sounds must wait for Play's first frame.
     fn step_simulations(&mut self, delta_time: f32) {
         let scaled_delta = delta_time * self.time_scale;
 
@@ -57,6 +63,15 @@ impl<G: Game> GameRunner<G> {
         step_world_systems(&mut self.scene.world, scaled_delta);
         self.settle_sound_sources();
         self.transform_hierarchy.update(&mut self.scene.world, scaled_delta);
+        if let Some(assets) = self.asset_manager.as_mut() {
+            self.sound_emitters.update(
+                &self.scene.world,
+                assets,
+                &mut self.audio_manager,
+                &mut self.sound_sources,
+                self.time_scale != 0.0,
+            );
+        }
 
         // Each grid's vertices go to the layer it asked for: over-sprites
         // grids in front of the game's own lines so its wireframes stay on
@@ -71,20 +86,28 @@ impl<G: Game> GameRunner<G> {
         self.render_manager.set_lines(&self.lines, &self.behind_lines);
     }
 
-    /// Submit the triggers scripts queued this frame, then end the source of every entity
-    /// that is gone — so an entity that triggers and despawns in one frame plays its note
-    /// and has it released here. A world replaced wholesale (the hierarchy reset is filed,
-    /// read before the hierarchy consumes it) flushes every source instead, and this
-    /// frame's triggers, which belong to the old world, are dropped.
+    /// Submit the sounds scripts queued this frame — triggers, and emitter plays and stops
+    /// in one order — then end the source of every entity that is gone, so an entity that
+    /// triggers and despawns in one frame plays its note and has it released here. A world
+    /// replaced wholesale (the hierarchy reset is filed, read before the hierarchy consumes
+    /// it) flushes every source and clears every emitter instead, whatever the time scale,
+    /// and this frame's requests, which belong to the old world, are dropped.
     fn settle_sound_sources(&mut self) {
         #[cfg(feature = "physics")]
-        let triggers = self.scripts.take_triggers();
+        let sounds = self.scripts.take_sounds();
         if self.scene.world.has_resource::<ecs::TransformHierarchyReset>() {
             self.sound_sources.flush(&mut self.audio_manager);
+            self.sound_emitters.clear(&mut self.audio_manager);
             return;
         }
         #[cfg(feature = "physics")]
-        crate::scripting::triggers::submit(triggers, &mut self.sound_sources, &mut self.audio_manager);
+        crate::scripting::triggers::submit(
+            sounds,
+            &self.scene.world,
+            &mut self.sound_sources,
+            &mut self.sound_emitters,
+            &mut self.audio_manager,
+        );
         self.sound_sources.reconcile(&self.scene.world, &mut self.audio_manager);
     }
 

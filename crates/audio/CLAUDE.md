@@ -4,16 +4,26 @@ Audio playback via rodio, in three seams: **the device** (the output connection,
 web gesture gate and the master/sfx/music buses), **recorded sound and music** (sound
 effects and one recorded music track, decoded from files), and **the song** (a MIDI file
 and its `.mid.ron` sidecar played by `music_midi`'s conductor, with triggers and beat
-queries). This is the only crate that names rodio. **No spatial audio lives in this
-crate, and no audio component lives anywhere**: a game plays sound from its own code
-through `ctx.audio`. Scene-authored audio (a sound component, spatial playback) is the
-Conductor milestone's feature.
+queries). This is the only crate that names rodio. Each play of a recorded sound is an
+instance (`PlaybackId`) that can be stopped and re-mixed — volume and a live stereo pan —
+on its own. **The crate knows no scene and no space**: the scene's `SoundEmitter`
+(`ecs`) and its spatial mix — distance attenuation and pan from the main camera — live in
+`engine_core`'s `sound_emitters.rs`, which plays through this crate's instance API.
 
 ## Files
 - `manager/mod.rs` — **the device**: `AudioManager`, its output (`enable_output`, the
-  disabled and gesture-gated modes), sound loading and SFX playback, `play_source` (any
-  rodio `Source` on a bus), `update`/`update_at`, and the `PendingMusic` slot both kinds
-  of music share.
+  disabled and gesture-gated modes), sound loading and SFX playback (`play_with_settings`
+  mints the `PlaybackId`), `play_source` (any rodio `Source` on a bus), `update`/`update_at`,
+  and the `PendingMusic` slot both kinds of music share.
+- `manager/playback.rs` — **each playing instance**: `stop_playback`, `set_playback_mix`
+  (base volume under the sfx bus and master, and the pan), `is_playing`, and the playbacks
+  a disabled manager holds (`HeldPlayback`): a loop until it is stopped, started by
+  `enable_output` beside pending music; a one-shot until the next `update`.
+- `pan_source.rs` — `PanSource`, a recorded sound's live stereo pan: the pan read from a
+  `PanLevel` (an f32 bit pattern in an atomic, the bus gains' idiom) once a frame; mono
+  doubled, stereo panned channel by channel, more channels passed through; **unity at
+  centre** (`left = min(1, 1 − pan)`, `right = min(1, 1 + pan)`), so a centred play is
+  sample for sample what it was without the adapter.
 - `manager/music.rs` — **recorded music** (play/stop/pause/resume) and the volume buses
   (`update_all_volumes`, which also hands the music and sfx gains to a playing song).
 - `manager/song.rs` — **the song**: `play_song`, `prepare_song`, `play_song_in_memory`,
@@ -36,7 +46,8 @@ Conductor milestone's feature.
   rendered block is its look-ahead) and let back up after, so nothing passes
   `LIMITER_THRESHOLD` (0.9); `LIMITER_ATTACK_SECONDS` (1 ms), `LIMITER_RELEASE_SECONDS`
   (80 ms).
-- `sound.rs` — `SoundHandle` (Copy id), `SoundSettings` (builder: volume/speed/looping), `Bus`.
+- `sound.rs` — `SoundHandle` (Copy id), `PlaybackId` (one playback, Copy, never reused),
+  `SoundSettings` (builder: volume/speed/looping/pan), `Bus`.
 - `sample_loader.rs` — `load_sample_pcm(path)` / `decode_sample_pcm(bytes)`: a sample
   instrument's WAV, refused by its size before it is read, read through `common::vfs` and
   decoded with rodio's WAV decoder into `music_midi::OwnedPcm`; `SampleProblem`,
@@ -50,6 +61,9 @@ Conductor milestone's feature.
 | `_stream: OutputStream` on `AudioManager` must be kept alive; dropping it kills all audio playback | — none |
 | `AudioManager` on wasm32 must start disabled because browsers gate audio behind a user gesture, enabling on first user interaction | `src/manager/tests.rs test_enable_output_keeps_handles_ids_buses_and_pending_music_whatever_the_outcome` |
 | Clamping volume and speed at point of use: `SoundSettings` fields are public, so out-of-range volume or speed must be clamped before reaching sinks | `src/manager/tests.rs test_sound_settings_clamp_volume_to_unit_range_and_floor_speed_at_a_tenth` |
+| A pan inside rodio's `repeat_infinite` freezes at the first pass's value, because the repeat buffers its input's samples: a looping play wraps the repeat in the pan, never the reverse | — none |
+| One contract with or without a device: a disabled manager mints a `PlaybackId` and reports a loop playing until it is stopped and a one-shot ended at the next `update`; before the web's gesture a loop is held, survives a failed `enable_output`, starts on a good one with the mix set while it waited, and a one-shot from before the gesture is dropped | `src/manager/tests.rs without_a_device_a_loop_plays_until_stopped_and_a_one_shot_ends_at_the_next_update` `src/manager/tests.rs a_loop_played_before_the_gesture_is_held_through_a_failed_enable_and_starts_on_a_good_one` |
+| A centred pan passes every sample untouched — a default play is what it was before the pan existed — and a pan out of range is clamped, a non-finite one centred | `src/pan_source.rs a_centred_play_passes_every_sample_untouched` `src/pan_source.rs a_pan_beyond_the_range_is_clamped_and_a_non_finite_one_centred` |
 | Unloaded sound handle must be rejected and its ID never recycled | `src/manager/tests.rs test_unloaded_handle_is_rejected_and_its_id_is_never_recycled` |
 | Missing audio files produce IO errors while corrupt data produces decode errors naming the file | `src/manager/tests.rs test_missing_files_are_io_errors_and_undecodable_data_is_a_decode_error_naming_the_file` |
 | A sample file's byte limit is checked by its size before it is read, the decoder's rate and channels before its samples, and the decode stops one frame past 10 s, so nothing oversized is read or built only to be refused | `src/sample_loader/tests.rs a_file_over_four_mebibytes_is_refused_by_its_size_before_it_is_read` `src/sample_loader/tests.rs a_file_over_four_mebibytes_is_refused_before_it_is_decoded` `src/sample_loader/tests.rs a_wav_outside_the_sample_limits_is_refused_naming_the_limit` |
@@ -106,8 +120,19 @@ Conductor milestone's feature.
 - Clamping happens at point of use (`clamp_volume` 0..=1, `clamp_speed` floor
   0.1) because `SoundSettings` fields are public.
 - `play(handle)` / `unload(handle)` take `SoundHandle` by value (Copy);
-  `play_with_settings(&handle, settings)` keeps a reference (external callers).
-- `stop(handle)` stops all active instances of one sound. Unknown handles are a no-op.
+  `play_with_settings(&handle, settings)` keeps a reference (external callers). Both
+  return the instance's `PlaybackId`, minted in disabled mode too.
+- `stop(handle)` stops all active instances of one sound, a held loop included. Unknown
+  handles are a no-op. `stop_playback(id)` stops one instance; `set_playback_mix(id,
+  volume, pan)` re-derives its sink volume as `update_all_volumes` does and writes its
+  pan; `is_playing(id)` is true until its sound ends (`update` frees it) or it is stopped.
+- **Disabled mode keeps a ledger** (`held_playbacks`): a loop reports playing until
+  stopped and starts from `enable_output` exactly as pending music does — its handle,
+  settings and pan kept, the mix set while held carried over; a one-shot reports ended at
+  the next `update`, and one played before the web's gesture never starts.
+- **Pan** (`SoundSettings::pan`, `with_pan`, default 0) is live: the playing source reads
+  it once a frame. Clamped to −1..=1 where it is read, like volume; recorded music and
+  `play_source` are not panned.
 - Music: `play_music` / `play_music_with_volume` loop forever. No crossfade.
 - **Songs.** `play_song(path)` reads `path` and `<path>.ron`; the sidecar's
   SoundFont and sample paths are relative to `set_asset_base` (the game's asset
@@ -147,8 +172,8 @@ Conductor milestone's feature.
   so audio can stay silent until reload. Accepted #8 scope cut.
 - **A song's position runs ahead of the sound by the device's buffer**, which
   rodio does not report; `latency_samples` counts only the engine's own block.
-- Future-enhancement ideas (streaming, ECS spatial bridge, crossfade, DSP,
-  generic buses, occlusion) are roadmap material, not debt.
+- Future-enhancement ideas (streaming, crossfade, DSP, generic buses, occlusion) are
+  roadmap material, not debt.
 
 Open debt lives on the Studio Board (`tech-debt` label); this crate currently
 has none.

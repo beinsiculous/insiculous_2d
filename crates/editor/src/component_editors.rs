@@ -14,6 +14,8 @@
 /// The `GridBackdrop` editor, a child module for file size.
 pub mod grid_backdrop;
 pub use grid_backdrop::edit_grid_backdrop;
+pub mod sound_emitter;
+pub use sound_emitter::edit_sound_emitter;
 
 use ecs::sprite_components::Sprite;
 use common::Transform2D;

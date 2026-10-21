@@ -298,6 +298,80 @@ fn test_pending_music_keeps_only_the_last_request_until_stop_and_a_failed_load_l
     Ok(())
 }
 
+// === Playback instances ===
+
+#[test]
+fn without_a_device_a_loop_plays_until_stopped_and_a_one_shot_ends_at_the_next_update() -> AudioResult<()> {
+    let mut manager = AudioManager::disabled();
+    let handle = manager.load_sound_from_bytes(tiny_wav())?;
+    let looping = manager.play_with_settings(&handle, SoundSettings::new().with_looping(true))?;
+    let one_shot = manager.play(handle)?;
+    assert_ne!(looping, one_shot, "every play is its own playback");
+    assert!(manager.is_playing(looping) && manager.is_playing(one_shot));
+
+    manager.update();
+    assert!(!manager.is_playing(one_shot), "a one-shot ends at the next update");
+    manager.update();
+    manager.set_playback_mix(looping, 0.5, -0.5);
+    assert!(manager.is_playing(looping), "a loop plays on until it is stopped");
+
+    manager.stop_playback(looping);
+    manager.stop_playback(one_shot);
+    assert!(!manager.is_playing(looping), "stop ends that playback");
+    let after = manager.play(handle)?;
+    assert!(after.id() > looping.id(), "playback ids are never reused");
+    Ok(())
+}
+
+#[test]
+fn a_loop_played_before_the_gesture_is_held_through_a_failed_enable_and_starts_on_a_good_one(
+) -> AudioResult<()> {
+    let mut manager = AudioManager::awaiting_gesture();
+    let handle = manager.load_sound_from_bytes(tiny_wav())?;
+    let looping = manager.play_with_settings(&handle, SoundSettings::new().with_looping(true))?;
+    let one_shot = manager.play(handle)?;
+    manager.set_playback_mix(looping, 0.25, 0.5);
+
+    match manager.enable_output() {
+        Ok(()) => {
+            assert!(manager.is_playing(looping), "the held loop started on the device");
+            assert!(manager.held_playbacks.is_empty(), "nothing is held once a device is up");
+            assert_eq!(manager.active_sounds[0].base_volume, 0.25, "the mix set while held carried over");
+            assert!(!manager.is_playing(one_shot), "a one-shot from before the gesture is dropped");
+        }
+        Err(_) => {
+            assert!(manager.is_playing(looping), "a failed enable keeps the loop held");
+            assert_eq!(manager.held_playbacks[0].settings.volume, 0.25);
+        }
+    }
+    manager.update();
+    assert!(!manager.is_playing(one_shot), "a held one-shot ends at the next update, whichever branch ran");
+    manager.stop_playback(looping);
+    assert!(!manager.is_playing(looping), "a stop drops a held loop and stops a started one");
+    assert!(manager.held_playbacks.is_empty() && manager.active_sounds.is_empty());
+    Ok(())
+}
+
+/// Needs a live device; passes vacuously without one, like the bus test below.
+#[test]
+fn stopping_one_playback_leaves_the_other_instances_of_its_sound_playing() -> AudioResult<()> {
+    let mut manager = AudioManager::disabled();
+    if manager.enable_output().is_err() {
+        return Ok(());
+    }
+    let handle = manager.load_sound_from_bytes(tiny_wav())?;
+    let looping = SoundSettings::new().with_looping(true);
+    let first = manager.play_with_settings(&handle, looping.clone())?;
+    let second = manager.play_with_settings(&handle, looping)?;
+
+    manager.stop_playback(first);
+    assert!(!manager.is_playing(first));
+    assert!(manager.is_playing(second), "the other instance plays on");
+    manager.stop(handle);
+    assert!(!manager.is_playing(second));
+    Ok(())
+}
+
 // === Typed load errors ===
 
 #[test]
@@ -420,6 +494,7 @@ fn test_bus_volumes_multiply_into_every_live_sink_and_reapply_on_change() -> Aud
         volume: 2.0,
         speed: 0.0,
         looping: false,
+        pan: 0.0,
     };
     manager.play_with_settings(&handle, settings)?;
     manager.play_music_with_volume(music.path(), 0.5)?;

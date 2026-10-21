@@ -77,11 +77,20 @@ impl SceneLoader {
     }
 }
 
-fn entity_label(entity: &EntityData) -> String {
+pub(crate) fn entity_label(entity: &EntityData) -> String {
     match (&entity.name, &entity.prefab) {
         (Some(name), _) => format!("entity '{name}'"),
         (None, Some(prefab)) => format!("an unnamed instance of prefab '{prefab}'"),
         (None, None) => "an unnamed entity".to_string(),
+    }
+}
+
+/// A component error raised while an entity's components attach, prefixed with the
+/// entity it belongs to; every other error passes as it is.
+pub(crate) fn naming_entity(error: SceneLoadError, entity: &str) -> SceneLoadError {
+    match error {
+        SceneLoadError::ComponentError(problem) => SceneLoadError::ComponentError(format!("{entity}, {problem}")),
+        other => other,
     }
 }
 

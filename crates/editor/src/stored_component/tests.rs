@@ -38,6 +38,7 @@ fn entity_with_every_registry_type(world: &mut World) -> EntityId {
     world.add_component(&entity, ecs::script::Scripts::default()).ok();
     world.add_component(&entity, ecs::GridBackdrop::default()).ok();
     world.add_component(&entity, ClipStateMachine::default()).ok();
+    world.add_component(&entity, ecs::SoundEmitter::default()).ok();
     entity
 }
 
@@ -160,6 +161,16 @@ fn test_component_kind_dispatch_adds_captures_removes_and_lists_every_kind() {
         0,
         "a fully stripped entity captures nothing"
     );
+}
+
+#[test]
+fn test_the_add_component_popup_offers_the_sound_emitter_alone_under_audio() {
+    let audio: Vec<(ComponentCategory, Vec<ComponentKind>)> = categorized_components()
+        .into_iter()
+        .filter(|(category, _)| category.label() == "Audio")
+        .collect();
+    assert_eq!(audio, vec![(ComponentCategory::Audio, vec![ComponentKind::SoundEmitter])]);
+    assert_eq!(ComponentCategory::ALL.last(), Some(&ComponentCategory::Audio), "the last group");
 }
 
 #[test]

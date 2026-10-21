@@ -10,6 +10,7 @@ use ecs::behavior::{Behavior, BehaviorState, EntityTag};
 use ecs::clip_state_machine::ClipStateMachine;
 use ecs::grid_backdrop::GridBackdrop;
 use ecs::hierarchy::GlobalTransform2D;
+use ecs::sound_emitter::SoundEmitter;
 use ecs::sprite_components::{Name, Sprite, SpriteAnimation};
 use ecs::tilemap::Tilemap;
 use ecs::ui_components::{UiButton, UiLabel, UiPanel};
@@ -23,7 +24,7 @@ use crate::behavior_editor::edit_behavior;
 use crate::commands::{CommandHistory, RemoveComponentCommand};
 use crate::component_editors::{
     edit_collider, edit_entity_tag, edit_grid_backdrop, edit_name,
-    edit_rigid_body, edit_sprite, edit_transform2d,
+    edit_rigid_body, edit_sound_emitter, edit_sprite, edit_transform2d,
 };
 use crate::script_editor::edit_scripts;
 use crate::ui_component_editors::{edit_ui_button, edit_ui_label, edit_ui_panel};
@@ -507,6 +508,7 @@ editor_component_registry! {
         UiLabel         => UiLabel : Ui { edit edit_ui_label },
         UiPanel         => UiPanel : Ui { edit edit_ui_panel },
         UiButton        => UiButton : Ui { edit edit_ui_button },
+        SoundEmitter    => SoundEmitter : Audio { edit edit_sound_emitter },
     ],
 }
 

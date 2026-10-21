@@ -7,6 +7,7 @@ pub mod registry;
 pub mod rhai_backend;
 pub mod rhai_bindings;
 pub mod runner;
+pub mod target;
 pub mod triggers;
 pub mod view;
 
@@ -20,5 +21,5 @@ pub use registry::{ParamSpec, ScriptBehavior, ScriptDescriptor, ScriptRegistry};
 pub use rhai_backend::{RhaiBackend, RhaiCompiledScript};
 pub use rhai_bindings::create_rhai_engine;
 pub use runner::{ScriptError, ScriptErrorKind, ScriptErrors, ScriptRunner};
-pub use triggers::{QueuedTrigger, TriggerQueue};
+pub use triggers::{QueuedSound, TriggerQueue};
 pub use view::{EntityState, ScriptCollision, ScriptView, SelfView};

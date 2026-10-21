@@ -62,6 +62,13 @@
                     tex_region: (0.0, 0.0, 1.0, 1.0),
                     visible: true,
                 ),
+                SoundEmitter(
+                    sound: Path("assets/sounds/snd_jump.wav"),
+                    volume: 0.8,
+                    play_on_spawn: false,
+                    looping: false,
+                    spatial: None,
+                ),
                 RigidBody(
                     body_type: Dynamic,
                     velocity: (0.0, 0.0),
@@ -609,6 +616,15 @@
                     emissive: 0.4,
                     tex_region: (0.0, 0.0, 1.0, 1.0),
                     visible: true,
+                ),
+                SoundEmitter(
+                    sound: Path("assets/sounds/beep_e.wav"),
+                    volume: 1.0,
+                    play_on_spawn: true,
+                    looping: false,
+                    spatial: Some((
+                        max_distance: 8.0,
+                    )),
                 ),
                 Behavior(Collectible(
                     score_value: 10,

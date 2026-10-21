@@ -127,6 +127,11 @@ SceneData(
             overrides: [
                 Transform2D(position: (-200.0, 100.0)),
             ],
+            // The jump sound, named by path; the game plays it with
+            // `ctx.emitters.play(player, ctx.world)` on every jump.
+            components: [
+                SoundEmitter(sound: Path("assets/sounds/snd_jump.wav"), volume: 0.8),
+            ],
             // Child entities using inline children syntax (demonstrates hierarchy)
             children: [
                 // Player indicator - marker above the player that follows it
@@ -274,10 +279,19 @@ SceneData(
         ),
 
         // Coins along the route (collected on touch, +10 score each)
+        // The first coin beeps once as the scene starts, panned and attenuated
+        // by where it sits relative to the camera (eight world units of reach).
         EntityData(
             name: Some("coin_1"),
             prefab: Some("Coin"),
             overrides: [ Transform2D(position: (100.0, 20.0), scale: (0.3, 0.3), rotation: 0.785) ],
+            components: [
+                SoundEmitter(
+                    sound: Path("assets/sounds/beep_e.wav"),
+                    play_on_spawn: true,
+                    spatial: Some(Spatial(max_distance: 8.0)),
+                ),
+            ],
         ),
         EntityData(
             name: Some("coin_2"),

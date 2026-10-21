@@ -56,7 +56,8 @@ Write semantics worth knowing:
   play session (Paused included) and while a batch is open.
 - **Sanitation**: non-finite numbers anywhere in a JSON value are
   `invalid`; the same hard physical floors the GUI enforces apply
-  (collider extents/radius, scale, audio volume/pitch). Texture handles
+  (collider extents/radius, scale, a `SoundEmitter`'s volume and
+  `max_distance`). Texture handles
   (`Sprite.texture_handle`, `Tilemap.tileset` — one id space) must have
   been issued by the session's resolver, or the write is `invalid`:
   handle 0 is always `#white`; anything else comes from a texture the

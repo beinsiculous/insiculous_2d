@@ -354,6 +354,9 @@ fn global() -> &'static RwLock<ComponentRegistry> {
         // Animation state as scene data — persisted through its concrete
         // ComponentData::ClipStateMachine wire arm.
         registry.register::<crate::clip_state_machine::ClipStateMachine>();
+        // A sound named on an entity — persisted through its concrete
+        // ComponentData::SoundEmitter wire arm.
+        registry.register::<crate::sound_emitter::SoundEmitter>();
 
         RwLock::new(registry)
     })

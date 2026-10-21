@@ -68,6 +68,11 @@ pub struct GameContext<'a> {
     /// `game()` for a sound that outlives its cause, `menu()` for the menus. The frame
     /// tail ends a despawned entity's source, so a game never deactivates one by hand.
     pub sources: &'a mut crate::sound_sources::SoundSources,
+    /// The scene's sound emitters: `ctx.emitters.play(entity, ctx.world)` and
+    /// `stop(entity)` ask the frame tail to play or stop the entity's `SoundEmitter` after
+    /// the hierarchy (a spawn sound only while the time scale is live); `playing`, `plays`
+    /// and `last_mix` read what it did.
+    pub emitters: &'a mut crate::sound_emitters::SoundEmitters,
     /// UI context for immediate-mode UI
     pub ui: &'a mut UIContext,
     /// Delta time since last frame in seconds

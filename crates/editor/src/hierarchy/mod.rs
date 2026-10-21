@@ -394,7 +394,9 @@ impl HierarchyPanel {
                 DragPayload::Script { path } => {
                     *ctx.script_dropped = Some((entity, path));
                 }
-                DragPayload::Texture { .. } => {}
+                // A texture or a sound dropped on a row assigns nothing: each has its
+                // inspector slot.
+                DragPayload::Texture { .. } | DragPayload::Sound { .. } => {}
             }
         }
 

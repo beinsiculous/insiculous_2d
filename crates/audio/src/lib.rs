@@ -1,7 +1,8 @@
 //! Audio system for the insiculous_2d game engine.
 //!
 //! This crate provides audio playback functionality including:
-//! - Sound effect playback with volume and speed control
+//! - Sound effect playback with volume, speed and a stereo pan, each playback an
+//!   instance ([`PlaybackId`]) that can be stopped and re-mixed on its own
 //! - Background music playback (looping or one-shot)
 //! - Audio resource management and caching
 //! - Sample instruments' audio: a WAV decoded once into the conductor's `OwnedPcm`
@@ -47,6 +48,7 @@
 mod conductor_source;
 mod error;
 mod manager;
+mod pan_source;
 mod sample_loader;
 mod sound;
 #[cfg(test)]
@@ -64,4 +66,4 @@ pub use music_midi::{
     PositionSnapshot, Song, SongData, SongFile, SourceId, TransportState,
 };
 pub use sample_loader::{decode_sample_pcm, load_sample_pcm, SampleProblem, SAMPLE_BYTE_LIMIT};
-pub use sound::{Bus, SoundHandle, SoundSettings};
+pub use sound::{Bus, PlaybackId, SoundHandle, SoundSettings};

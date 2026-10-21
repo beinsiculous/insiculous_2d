@@ -38,6 +38,7 @@ impl SceneLoader {
             ComponentData::GridBackdrop { .. } => "GridBackdrop",
             ComponentData::SpriteAnimation { .. } => "SpriteAnimation",
             ComponentData::ClipStateMachine { .. } => "ClipStateMachine",
+            ComponentData::SoundEmitter { .. } => "SoundEmitter",
             ComponentData::RigidBody { .. } => "RigidBody",
             ComponentData::Collider { .. } => "Collider",
             ComponentData::UiLabel { .. } => "UiLabel",
@@ -193,6 +194,23 @@ impl SceneLoader {
                 let machine = ecs::ClipStateMachine::new(initial.clone(), states.clone());
                 warn_if_stateless(&machine, entity_id);
                 Self::add_component_logged(world, entity_id, machine);
+            }
+
+            ComponentData::SoundEmitter {
+                sound,
+                volume,
+                play_on_spawn,
+                looping,
+                spatial,
+            } => {
+                let emitter = checked_sound_emitter(ecs::SoundEmitter {
+                    sound: sound.clone(),
+                    volume: *volume,
+                    play_on_spawn: *play_on_spawn,
+                    looping: *looping,
+                    spatial: *spatial,
+                })?;
+                Self::add_component_logged(world, entity_id, emitter);
             }
 
             #[cfg(feature = "physics")]
@@ -448,6 +466,31 @@ fn build_scripts(
     );
     world.insert_resource(pending);
     scripts
+}
+
+/// A scene's `SoundEmitter` as the engine will play it, or why it cannot be: a binding
+/// plays a part on the beat grid, so it neither follows the camera nor loops, and a
+/// volume must be a level. `max_distance` is floored rather than refused, as the
+/// inspector floors it; a binding's `volume` is kept as harmless data. The caller names
+/// the entity.
+fn checked_sound_emitter(mut emitter: ecs::SoundEmitter) -> Result<ecs::SoundEmitter, SceneLoadError> {
+    let refuse = |problem: &str| {
+        Err(SceneLoadError::ComponentError(format!("component 'SoundEmitter': {problem}")))
+    };
+    if emitter.sound.is_binding() && emitter.spatial.is_some() {
+        return refuse("a binding emitter cannot be spatial: the song's voices are musical, not positional");
+    }
+    if emitter.sound.is_binding() && emitter.looping {
+        return refuse("a binding emitter cannot loop: the binding plays its part, and the song has no loop for it");
+    }
+    if !emitter.volume.is_finite() || emitter.volume < 0.0 {
+        return refuse(&format!("volume {} is not a level of 0 or more", emitter.volume));
+    }
+    if let Some(spatial) = emitter.spatial.as_mut() {
+        // `max` keeps the floor when the authored value is NaN.
+        spatial.max_distance = spatial.max_distance.max(ecs::Spatial::MIN_MAX_DISTANCE);
+    }
+    Ok(emitter)
 }
 
 /// Deserialize and attach a dynamic component through the global ECS component registry.

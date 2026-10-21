@@ -11,15 +11,15 @@ use std::path::Path;
 use glam::Vec2;
 
 use editor::layout::PADDING;
-use editor::{
-    fit_rect, scan_assets, AssetKind, CommandHistory, DragDropState, DragPayload, EditorContext,
-    EditorTheme,
-};
+use editor::{fit_rect, scan_assets, AssetKind, CommandHistory, EditorContext};
 use engine_core::contexts::GameContext;
 use engine_core::AssetManager;
 use renderer::texture::TextureHandle;
 
 use crate::entity_ops;
+
+mod tile;
+use tile::tile_interaction;
 
 /// Thumbnail tile edge in pixels.
 const TILE_SIZE: f32 = 72.0;
@@ -289,7 +289,7 @@ fn render_tile(
                 theme.accent_cyan,
             );
         }
-        (AssetKind::Script, _) => {
+        (AssetKind::Script | AssetKind::Sound, _) => {
             let extension = std::path::Path::new(&entry.name)
                 .extension()
                 .and_then(|ext| ext.to_str())
@@ -328,58 +328,6 @@ fn tile_label(name: &str, measure: impl Fn(&str) -> f32) -> String {
     editor::ellipsize(name, TILE_SIZE, measure)
 }
 
-/// What one tile did this frame.
-struct TileInteraction {
-    /// A press-and-release that did not turn into a drag.
-    clicked: bool,
-}
-
-/// Press arms a drag (images and .rhai scripts); a plain click selects the tile.
-fn tile_interaction(
-    ui: &mut ui::UIContext,
-    drag_drop: &mut DragDropState,
-    theme: &EditorTheme,
-    entry: &editor::AssetEntry,
-    index: usize,
-    slot: common::Rect,
-    mouse_pos: Vec2,
-) -> TileInteraction {
-    let slot_ui = ui::Rect::new(slot.x, slot.y, slot.width, slot.height);
-    let result = ui.interact(ui::WidgetId::from_str_index("asset_tile", index), slot_ui, true);
-    let hovered = slot_ui.contains(mouse_pos);
-    if hovered {
-        ui.rect_border(slot_ui, theme.hover_fill, 1.5, 4.0);
-    }
-    // The label under the tile is ellipsized to the tile's width, so resting
-    // on it is how the full relative path is read.
-    ui.tooltip(slot_ui, &entry.relative_path);
-
-    if let (AssetKind::Image, Some(handle)) = (entry.kind, entry.texture_handle) {
-        if result.state == ui::WidgetState::Active && ui.mouse_just_pressed() {
-            drag_drop.arm(
-                DragPayload::Texture { handle, path: entry.relative_path.clone() },
-                mouse_pos,
-            );
-        }
-    } else if entry.kind == AssetKind::Script
-        && std::path::Path::new(&entry.relative_path)
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("rhai"))
-        && result.state == ui::WidgetState::Active
-        && ui.mouse_just_pressed()
-    {
-        drag_drop.arm(
-            DragPayload::Script { path: entry.relative_path.clone() },
-            mouse_pos,
-        );
-    }
-
-    TileInteraction {
-        clicked: result.clicked && !drag_drop.suppresses_click(),
-    }
-}
-
 /// Assign the selected tile's texture to the primary selection, as one undo
 /// entry. The header's button is disabled unless this can succeed, so the
 /// refusals below are the safety net, not the usual path.
@@ -415,7 +363,7 @@ mod tests {
     use super::*;
 
     use ecs::{Sprite, World};
-    use editor::AssetEntry;
+    use editor::{AssetEntry, DragDropState, DragPayload, EditorTheme};
 
     /// One image entry with a loaded thumbnail, ready to be selected.
     fn image_entry(name: &str, handle: u32) -> AssetEntry {
@@ -515,6 +463,35 @@ mod tests {
             })
             .collect();
         assert_eq!(words, vec!["sprites/hero.png".to_string()]);
+    }
+
+    #[test]
+    fn test_a_press_on_a_sound_tile_arms_a_drag_of_its_path() {
+        let theme = EditorTheme::default();
+        let entry = AssetEntry {
+            name: "jump.wav".to_string(),
+            relative_path: "sounds/jump.wav".to_string(),
+            kind: AssetKind::Sound,
+            texture_handle: None,
+            load_failed: false,
+        };
+        let slot = common::Rect::new(40.0, 40.0, TILE_SIZE, TILE_SIZE + TILE_LABEL_HEIGHT);
+        let pointer = Vec2::new(slot.x + TILE_SIZE * 0.5, slot.y + TILE_SIZE * 0.5);
+        let mut ui = ui::UIContext::new();
+        let mut input = input::InputHandler::new();
+        let mut drag_drop = DragDropState::new();
+        input.mouse_mut().update_position(pointer.x, pointer.y);
+        input.mouse_mut().handle_button_press(input::prelude::MouseButton::Left);
+
+        ui.begin_frame_dt(&input, Vec2::new(800.0, 600.0), 0.016);
+        tile_interaction(&mut ui, &mut drag_drop, &theme, &entry, 0, slot, pointer);
+        ui.end_frame();
+        drag_drop.begin_frame(pointer + Vec2::new(20.0, 0.0), true, false);
+
+        assert_eq!(
+            drag_drop.dragging_payload(),
+            Some(&DragPayload::Sound { path: "sounds/jump.wav".to_string() })
+        );
     }
 
     #[test]
