@@ -265,16 +265,21 @@ Menus use the same song's slowest phrase through the `menu` binding (K6's standa
    is capacity accounting, not a second channel: an `AtomicUsize` in-flight counter the
    producer increments on send and the consumer decrements on drain; a trigger is admitted
    while `in_flight < capacity − lifecycle_reserve`, a lifecycle command while `in_flight <
-   capacity`. A deactivation the host cannot send this frame stays pending in
-   `SoundSources` and is retried next frame, so a stalled consumer never loses one; order
+   capacity`. A deactivation that fails admission stays pending in the manager
+   (`pending_lifecycle`, batch 6) and is retried from `update()` before any trigger, so a
+   stalled consumer never loses one and the host forgets the entry the moment it asks; order
    does not matter for it because it names an epoch and touches only that epoch's voices.
    Transport commands (pause, resume, stop, seek) that fail admission stay pending in the
    manager and are retried from `update()` before any trigger is admitted. World replacement
-   or a song change flushes `SoundSources` and sends `StopAllSources { flush_epoch }` through
+   flushes `SoundSources` and sends `StopAllSources { flush_epoch }` through
    the reserve — it kills only sources activated before that epoch, and while pending it is
    retried from `update()` before any trigger is admitted, like transport — so the next
    trigger from a still-valid entity re-activates it under a new epoch and survives the
-   flush (kimi's round-2 and round-3 cases). **Every `Trigger` carries the producer's
+   flush (kimi's round-2 and round-3 cases). *Amended after batch 6 (kimi's batch 7 plan
+   review, F2):* a song change needs **no host flush** — each song has its own conductor
+   and source table, the manager re-sends the standing floor to the new conductor, and a
+   live entity keeps its `SourceId` and activates lazily in the new song on its next
+   trigger. **Every `Trigger` carries the producer's
    `common::clock` instant**; the consumer drops a trigger older than the late tolerance and
    counts it (a suspended tab's backlog never replays as a burst), and quantization measures
    lateness from that stamp, not from the drain, so a frame of transport latency is not
@@ -309,10 +314,17 @@ Menus use the same song's slowest phrase through the `menu` binding (K6's standa
 4. **One music slot, last request wins across kinds.** `play_song` stops recorded music and
    `play_music` stops a song; a song requested before the gesture is `pending_song`,
    mirrored on `pending_music` (one `PendingMusic` enum with two variants, not two fields).
+   *Amended by batch 6:* **one conductor per song**, built on the game thread with its own
+   source and sink (the audio thread never loads); **nothing is replaced until the new
+   request has loaded**, recorded track or song (a failing load leaves what plays alone;
+   H7's older rule for the recorded path is superseded); and each kind's stop clears its
+   own playing and pending state — `stop_music` never touches a song, `stop_song` never a
+   track — the guide carrying the stop-both line.
 5. **Sample instruments decode in `crates/audio`, render in `music_midi`.** The WAV loader
    uses the rodio `Decoder` already in the crate and yields `OwnedPcm { sample_rate,
    channels, frames: Arc<[f32]> }`; `music_midi` never decodes. Limits (K1 proposes, K7
-   freezes; K1 enforced them before allocation): ≥ 1 ms and ≤ 10 s decoded, 8–96 kHz, mono
+   freezes; K1 enforced them before allocation; the loader's byte limits are 48 MiB for a
+   SoundFont and 256 KiB for a MIDI file, set by batch 6 after the 2 MB waiver): ≥ 1 ms and ≤ 10 s decoded, 8–96 kHz, mono
    or stereo, finite samples only, and **±24
    semitones from the root** (validated in `SongFile`, clamped in `SampleVoice`; the
    composer's root-note field says pitching up aliases, since the resampler has no filter). Resampling
@@ -781,7 +793,9 @@ without touching the loaded song, combined sample + SoundFont transport, output 
 and click-free on steal (max sample-to-sample delta bounded). **Gates:** standard;
 `check_wasm.sh`. **Leaves out:** time stretch, multisample maps, the picker (K8).
 
-## Batch 6 — K4a `crates/audio`: the song manager and the conductor source (#63)
+## Batch 6 — K4a `crates/audio`: the song manager and the conductor source (#63) — DONE 2026-10-20 (51704ed)
+
+**Landed as reviewed** (`rebuttal-9.md`), with the executor's decisions accepted in `review-9-claude.md`: **one conductor per song** (decision 4 amended — the conductor lives on the audio thread, so loading a second song into it would need a lock or an allocation there; each song gets its own conductor, source and sink, the flush floor carried as the new conductor's first command, the sink swap a hard cut like `play_music`'s); `SOUND_FONT_BYTE_LIMIT` 48 MiB and `SONG_FILE_BYTE_LIMIT` 256 KiB (decision 5 amended); `AudioManager::set_asset_base` for the sidecar's relative paths (batch 7 wires it); the dependency cache keyed by a content fingerprint (24.5 ms a load on the cast bank — batch 9's fix-up); `SAMPLE_VOICE_LEVEL = 0.2` and a look-ahead gain limiter (threshold 0.9, attack 1 ms, release 80 ms) from Jesse's first listen round; `latency_samples` counts only the engine's own block. Planner hunks (`draft-6-fixes.diff`): **the recorded path reads and decodes before it stops anything** — one rule for both kinds, nothing replaced until the new request has loaded, inverting H7's documented choice with Jesse's confirmation; a sample shorter than the fade ramps from full level over its own length; the disabled-mode docs name the song's virtual clock; the playground bundle measured at 11.11 MiB (+0.50 MiB for rustysynth and the song seam) under its 12 MiB gate. Carried: the stop-both idiom to batch 7's guide; the cache key to batch 9; the level note to batch 10; the per-game bundle measurement to batch 12; the engine's key repeats reaching `on_key_pressed` filed as #177. Jesse's listen check passed natively.
 
 Executor: the Opus session. Reviewers: kimi, gemini. Listen check: Jesse. Size: about +2000 lines.
 
@@ -844,28 +858,84 @@ out:** the host (next), the editor.
 
 ## Batch 7 — K4b `engine_core`: the host owns sources, scripts trigger bindings (#63)
 
-Executor: the Opus session. Reviewers: kimi, gemini. Size: about +1800 lines.
+Executor: the Opus session. Reviewers: kimi, gemini. Listen check: Jesse (the example gains a
+scripted trigger). Size: about +1800 lines.
 
-Files: `crates/engine_core/src/sound_sources.rs` (+ tests; `SoundSources` resource:
-`EntityId → SourceId` with generations, `reconcile(world, audio)` deactivating sources whose
-entity no longer validates — run in the frame tail after despawns and before command
-submission, and on world replacement/reset; a deactivation whose send fails stays pending
-and is retried next frame; flushed on a song change; epochs allocated from **one host-wide
-counter** (decision 2), the flush epoch being its value at the flush; a `Menu` source and a **game-owned
-`SourceId::game()`** independent of the world and never deactivated by reconciliation — a
-sound that must outlive its entity, a brick's explosion, is triggered on it, which is the
-game's arrangement choice under K3's "fade owned voices" rule),
-`frame_tail.rs` hook, `scripting/commands.rs` (`ScriptCommand::TriggerBinding { target,
-binding }`), `rhai_bindings.rs` (`cmd.trigger(me, "hit")`), `runner.rs` (same-frame **trigger** commands
-collected and sorted by `(entity id, enqueue order)` before submission — every other command
-keeps today's instance order, and `docs/SCRIPTING.md` says so — tested on the real path),
-`contexts.rs` (nothing new: `ctx.audio` already carries the manager), `docs/SCRIPTING.md`,
-`training.md` § Conductor (first cut; K5 completes it). Integration tests in
-`crates/engine_core/tests/`: script-trigger then `cmd.despawn` with no second cleanup call,
-direct Rust `destroy_entity`, world reset, stable same-frame ordering, Music/SFX gains
-independent, recorded SFX unchanged beside a song, `play_music` → `play_song` with live
-entities still triggering, a rejected deactivation followed by re-entry before the retry. **Gates:** standard; `check_wasm.sh`;
-`check_games.sh --test`. **Leaves out:** camera eligibility (a game policy, K6), K9.
+**Re-verified against the tree 2026-10-20, after batch 6.** Three corrections to the first
+cut: the engine never calls the script runner — a game steps it from `ctx.scripts`
+(`early_update` / `update`, game-template's `gameplay.rs:20-29`) and the runner applies each
+phase's commands itself (`ScriptCommands::apply(world, physics, delta_time, errors)` from
+`runner.rs:502`), so a trigger command cannot reach `ctx.audio` there; the runner already
+walks its instances in `BTreeMap<(EntityId, usize)>` order, so same-frame order is
+structural, not a sort to add; and `World::clear` keeps resources, `EntityId`s are never
+recycled, and the editor's snapshot restore revives an id's exact generation
+(`create_entity_with_id`), so the reset hook must be an explicit flush, not a scan.
+
+Files: `crates/engine_core/src/sound_sources.rs` (+ tests; **`SoundSources`, a runner
+field lent to the context as `ctx.sources`**, the way `scripts` is — not a world resource:
+the frame tail needs it beside `audio_manager` while it walks the world — holding
+`EntityId → SourceId { id: entity id, generation: entity generation, epoch }` with **one
+host-wide epoch counter** (decision 2): `entity(id) -> SourceId` returns the live entry or
+mints one with the next epoch (a re-entry is a new epoch); `game() -> SourceId` and
+`menu() -> SourceId` are two fixed ids above any entity's (`EntityId`s are monotonic
+`u64`s from zero; the top two values are the host's), **entries in the same table** that
+validation never reconciles away: they too hold the live entry or mint one with the next
+epoch, so a flush, which forgets every entry, re-mints them on their next call — never a
+fresh epoch per call, which would release the previous activation's notes and break a
+shared-cursor walk (kimi F1); a sound that must outlive its entity, a brick's explosion,
+is triggered on `game()`, the game's arrangement choice under K3's "fade owned voices" rule; `reconcile(world, audio)` sends
+`deactivate_source` for every entry whose entity no longer `validate_entity`s and forgets
+the entry — the manager itself keeps a refused lifecycle send and retries it from
+`update()` (`pending_lifecycle`), so the host holds no retry queue; `flush(audio)` advances
+the counter and sends `stop_all_sources` at the **advanced** value, so an epoch minted this
+frame falls below the floor (the table refuses epochs strictly below it — kimi F4), then
+forgets every entry; `refused_triggers: u64` counts every trigger the manager refused
+(`CommandRefused`, `SongNotPlaying`, `UnknownAction`), readable by tests, since the
+conductor's `rejected_triggers` sees only what reached it (kimi F5); the epoch counter is
+the `u32` the `SourceId` carries and never rewinds — 2^32 activations is 49 days at a
+thousand a second, documented as the bound, not guarded), `game.rs` (the field, `build_context!`, and **`audio_manager.set_asset_base
+(config.asset_base())` right after construction** — batch 6's loader resolves sidecar paths
+against it, and no game calls it; `GameRunner::headless` goes through `new`, so the harness
+gets it too), `contexts.rs` (`sources`), `game/frame_tail.rs` (after `step_world_systems`
+and before the hierarchy, in this order: **if `TransformHierarchyReset` is filed — read with
+`has_resource` before `TransformHierarchySystem::update`, which consumes the marker —
+`flush` first and drop this frame's queued triggers, which belong to the old world; else
+submit the scripted triggers queued this frame, then `reconcile`**, so an entity a script
+triggers and despawns in one frame plays its note and has it released by the reconcile —
+the documented rule; a trigger the manager refuses is dropped, counted and logged at debug
+(rate-limited), never a script error — a sound is best-effort), `scripting/commands.rs` (`ScriptCommand::TriggerBinding { target:
+Option<Target>, binding }`; `apply` cannot reach audio, so **a new `scripting/triggers.rs`**
+holds the queue the runner fills as it applies — `runner.rs` is at 594 lines — in the order
+applied: `(EntityId, enqueue order)` by construction, which a test on the real path pins;
+**the scripting module and `ctx.scripts` sit behind the `physics` feature** (`game.rs:263,
+286`), so the queue, the command and the verbs are gated with them while `SoundSources`,
+`ctx.sources`, the reconcile and the flush are not — a game built without scripting still
+reconciles; `check_features.sh` holds it — kimi F6),
+`rhai_bindings.rs` (`cmd.trigger(me, "hit")`, `cmd.trigger("name", "hit")` and
+`cmd.trigger("hit")` — the last on the game-owned source; three `register_fn`s like
+`despawn`'s), `test_support.rs` (`GameHarness::audio()` and `audio_mut()`, so a test reads
+`song_snapshot().conductor.accepted_triggers` and the live-source state), `docs/SCRIPTING.md`
+(an **Audio** group in the command list, and § Order gains where a trigger is submitted),
+`training.md` § Conductor (first cut, after § Script Pattern; K5 completes it) — stating
+`play_song`/`play_music` as one slot, that **`stop_music` and `stop_song` each stop their
+own kind, pending included** (the stop-both line, kimi's batch 6 F2), the virtual clock
+headless, `ctx.sources` and the three source kinds. Integration tests in
+`crates/engine_core/tests/` through `GameHarness` (`--features test-support`, a headless
+manager playing the song on the virtual clock, the song and the sidecar written to a
+tempdir the harness's `GameConfig` names as its asset base): a script triggers then
+`cmd.despawn`s with no second cleanup call and the source is gone by the next frame;
+direct Rust `destroy_entity`; a world replacement through `request_transform_hierarchy_reset`
+flushes; stable same-frame order across two entities and two instances; Music and SFX gains
+independent; recorded SFX unchanged beside a song; `play_music` → `play_song` with live
+entities still triggering — the same `SourceId`, admitted into the new song's table (no
+host flush on a song change, decision 3 as amended); a flush then a `menu()` trigger,
+admitted under a re-minted epoch; a trigger queued in the frame of a world replacement
+never sounds in the new world; a refused deactivation (the queue filled by a
+storm) followed by re-entry before the retry — the older generation never revives. The
+example gains a `.rhai` script on one entity that triggers on a key through `cmd.trigger`
+(the listen check). **Gates:** standard; `check_wasm.sh`; `check_games.sh --test`.
+**Leaves out:** camera eligibility (a game policy, K6), K9, the editor's play-session
+flush (batch 11 calls `flush` from `song_preview`).
 
 ## Batch 8 — K9: scene-authored audio — `SoundEmitter`, the sound tier, the asset kind (#174)
 
@@ -896,6 +966,8 @@ looping emitter's entity destroyed and its sink gone next frame.
 listener component (the main camera is the listener), the composer.
 
 ## Batch 9 — K8a: the song document, the command API, persistence (#141)
+
+**Carried from batch 6 (`review-9-claude.md` F5):** the dependency cache's key is the content fingerprint today, 24.5 ms a load on the cast bank against a 6.8 ms parse, so a composer preview that re-prepares on every edit pays it each time. Fix-up first: natively the key is `(size, modified)` from the vfs's metadata, the byte hash only on wasm where the bytes are already in memory; `prepare_song` then costs the parse once.
 
 Executor: the Opus session. Reviewers: kimi, gemini (the API seam). Headless; no screen.
 Size: about +2800 lines.
@@ -955,6 +1027,8 @@ lines.
 **Leaves out:** any pixel (batch 10), audio (batch 11), multi-song tabs, scripting access.
 
 ## Batch 10 — K8b: the piano roll, the note list, the sidebar (#141)
+
+**Carried from batch 6 (F4):** a sample voice plays at `SAMPLE_VOICE_LEVEL` (0.2) before its gain, so the sidebar's root-note and gain fields say "gain 1.0 plays a sample near one SoundFont note" beside the pitch-changes-duration note.
 
 Executor: the Opus session. Reviewers: kimi, gemini, codex (every screen). Size: about
 +3000 lines.
@@ -1049,6 +1123,8 @@ recording, a native file dialog, Exit prompting (filed as its own issue — it p
 nothing today, scene included).
 
 ## Batch 12 — K5: the Pong demo, the two-enemy example scene, the web proof (#64)
+
+**Carried from batch 6 (F6, kimi F1):** the audio crate puts rustysynth and the song seam in every wasm bundle — the playground grew 0.50 MiB to 11.11 MiB under its 12 MiB gate. This batch measures every game's `game_bg.wasm` before and after against the per-game audio budget K2 froze, in the scorecard; a `song` feature on `audio` is the lever if a number says so, decided on the number.
 
 Executor: the Opus session (the song itself is sequenced in the composer by the executor and
 lands under `assets/ai/music/ai_tong.mid` until Jesse's pass promotes it). Reviewers: kimi,
