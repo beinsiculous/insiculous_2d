@@ -812,8 +812,14 @@ position alone, and a seqlock is added only if a consumer needs two fields toget
 Files: `crates/audio/src/manager/song.rs` (`play_song(path)` and `play_song_in_memory(Arc<Song>)`
 — the composer's preview — `stop_song`, `pause_song`, `resume_song`, `seek_song(beat)`,
 `is_song_playing`, `song_position() -> Option<SongPosition { bar, beat, beat_in_bar,
-seconds, latency_samples }>`, `beat_crossed(Subdivision)`, `trigger(binding: &str, source:
-SourceId)`, `activate_source`, `deactivate_source`), `manager/song/load.rs`
+seconds, latency_samples }>`, `beat_crossed(Subdivision)`, `trigger(action: &str, source:
+SourceId)` — the action resolved to a `BindingIndex` on the game thread through
+`Song::binding_index`, cached per loaded song, the stamp taken there — `deactivate_source`,
+`stop_all_sources` (there is no activate call: the first trigger activates, decision 2);
+`PendingMusic` becomes an enum over the recorded track and a song, one field, last request
+wins across kinds; `crates/audio/Cargo.toml` turns `music_midi`'s default `synth` feature
+on (rustysynth compiles for wasm, K1 proved it); `manager/mod.rs` is 387 lines and
+`music.rs` 181, so the song manager is its own file from the start), `manager/song/load.rs`
 (the dependency closure through `common::vfs`: `.mid`, `.mid.ron`, every SoundFont and
 sample, validated in full — disabled mode included, byte limits before parsing — before
 the current playback is replaced; decoded *dependency files* (SF2, WAV) are cached by each
@@ -823,7 +829,11 @@ changed file at the same path is a different key and a second `play_song` of unc
 does not decode again; a game may prewarm at `init`), `conductor_source.rs` (the rodio `Source`, decision 3), `manager/song/tests.rs`;
 `manager/music.rs` learns the shared slot (decision 4); `lib.rs` re-exports the public
 `music_midi` types; `crates/audio/CLAUDE.md` rewritten (the "no spatial, no component" line
-goes in batch 8). Tests: pending/start/last-wins across both kinds, volume per bus (music 0
+goes in batch 8); `examples/conductor_background.rs` drops its hand-made adapter, loader
+calls and `Song::new` for `ctx.audio.play_song(path)` / `trigger` / `song_position`, and the
+root `[dev-dependencies] rodio` goes with it (`audio` stays, the manager is there);
+`crates/common/src/vfs/mod.rs` gains `file_size` for the size-before-read fix-up (internal,
+both targets, with a test beside `read`'s). Tests: pending/start/last-wins across both kinds, volume per bus (music 0
 keeps triggers audible, sfx 0 mutes them, the clock runs at both), beat boundaries by
 integer counting, the disabled-mode virtual clock advancing `beat_crossed` under `update()`,
 one crossing at most per `update()` across a many-beat gap, pending transport commands
