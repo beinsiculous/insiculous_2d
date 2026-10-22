@@ -1709,54 +1709,391 @@ native file dialog.
 
 ## Batch 11 — K8c: transport, Play interplay, the web bridge, the accessibility pass (#141)
 
-Executor: the Opus session. Reviewers: kimi, gemini (the bridge seam), codex (the transport
-and the keyboard walk). Listen check and keyboard walk: Jesse, native and browser. Size:
-about +2500 lines, plus a small `insiculous_web` half reviewed from
-`insiculous_web/review/conductor/`.
+Executor: the Opus session. Reviewers: kimi, gemini (the bridge and persistence seam), codex
+(the transport and the keyboard walk). Listen check and keyboard walk: Jesse, native and
+browser. Size: about +3400 lines (up from +2500 on re-verification: #182 and #183 absorbed,
+the store's FIFO and removals, the file input, the two audio hunks), plus a small
+`insiculous_web` half reviewed from `insiculous_web/review/conductor/`.
 
-Files (new): `editor_integration/src/editor_game/song_preview.rs` + tests (`SongPreview {
-state, intents: Vec<SongAudioIntent>, generation }`, `SongAudioIntent::{LoadAndPlay { song:
-Arc<Song>, from_beat }, Stop, Seek, Trigger { binding }, PauseGameplay, ResumeGameplay,
-StopAll}`; `song_request` pure, `apply_song_intents(audio)` drained in `finish_frame`; "play from
-beat" is `Play` then `Seek(tick)` in one block — the conductor applies them in order, so no
-`PlayFrom` command is added),
-`crates/playground/src/bridge.rs` `playground_write_file_bytes(path, bytes)` (same
-`validate_bridge_path` guard, an allowlist of `assets/music/` and `assets/ai/music/`,
-persisted by the vfs observer), the site's second file input beside the zip import
-(`insiculous_web/src/scripts/playground-embed.ts`). Touched: `play_session.rs`
-(Play is a two-frame transition: the request frame loads and validates the saved song's
-dependency closure and drains the preview's stop in `finish_frame`; the session — snapshot,
-`init` — starts the next frame, so a game's `play_song` in `init` is never clobbered; a
-failure keeps the preview and shows the error;
-pause → `PauseGameplay`; resume → `ResumeGameplay`; `stop_with_paused_edits` → `StopAll`
-after the restore), `editor_game/mod.rs:380-383` (idle throttle off while previewing; the
-playhead redraws from `audio.song_position()`), `snapshot.rs` (`SceneSnapshot.live_files`
-carrying the unsaved song's MIDI bytes and sidecar text), `archive.rs` (export splices every
-live file and drops `*.new`; import validates `.mid.ron` by parse and `.mid` by header, a
-sidecar without its `.mid` is `InvalidSong`; the export carries the live, unsaved song as
-it carries the live scene, stated in the README the archive writes), `docs/WEB_PLAYGROUND.md`
-§ Acceptance (the composer rows) and § Export (the live-state sentence). `live_files` also
-carries any unsaved sample's bytes at its archive path under the song's sample directory, so
-an export before the first save is a complete closure. On the web a `SongSaveTransaction`
-(polled in `finish_frame`) removes the `.new` pair and fires `mark_saved` only once the
-persistence chain reports both finals `Idle`, with a timeout and an error terminal (report,
-finals-or-journal consistent, dirty with the reason) and save-while-saving refused on the
-status bar; the saved indicator rides `save_status`. Accessibility: every control labelled, units in text ("120 BPM", "4/4",
-"1/16"), the focus ring in every area, keyboard transport; blockers filed as issues, never
-claimed. **Tests:** intent sequences for Play/Pause/Resume/Stop and preview-before-Play,
-throttle state while previewing, the snapshot carries song bytes and leaves history and
-path alone, export replaces saved song bytes and drops `.new`, import rejects a bad
-fingerprint, `playground_is_dirty` reads song-only dirtiness, the memory store rejecting a
-put at each boundary of the transaction and a reload between boundaries recovers or reports
-and never leaves a mismatched pair, preview → edit → save → Play hears the new bytes, export
-before first save with an external sample imports into an empty project, a missing sample
-after each Play-prompt option keeps the preview, the game's `init` song is playing after the
-two-frame transition, a transaction that never acknowledges ends in its error terminal.
-**Gates:** standard;
-`check_wasm.sh`; the site's `npm run verify` for its half; the manual keyboard and listen
-check, documented in the report. **Leaves out:** live mutation of a running score, MIDI
-recording, a native file dialog, Exit prompting (filed as its own issue — it prompts for
-nothing today, scene included).
+**Rulings (2026-10-22):** (a) **Ctrl+S saves the song while the composer holds the keyboard —
+accepted by Jesse** ("Ctrl+S being a save hotkey, that's functionality I approve"; correction
+8); (b) a song's own provenance is required at Save, legacy songs included (correction 7) and
+(d) a song saved in a subfolder or under `ai/music` gets a new sample folder while
+`music/<stem>.mid` keeps today's (correction 6) stand as proposed — Jesse sent the section to
+commit with them in it. The former ruling (c), the web's durable order, is withdrawn: round 25
+made the store's operations one FIFO, so the durable order is the write order.
+
+**Re-verified against the tree 2026-10-22, after batch 10 (9e045cc), and reviewed in rounds
+24 to 28** (`review-24*.md` … `review-28*.md`, adjudicated in `rebuttal-24.md` …
+`rebuttal-28.md`; settled by Jesse after the fifth round, 2026-10-22). What earlier batches already landed, so this batch builds on it and does
+not redo it: the audio side of the preview is whole — `AudioManager::{prepare_song(label,
+file, data) -> Arc<Song>, play_song_in_memory, play_song(path), stop_song, pause_song,
+resume_song, seek_song(beat: u64), trigger(action, source), is_song_playing, song_position()
+-> Option<SongPosition { bar, beat, beat_in_bar, seconds, latency_samples }>}`
+(`audio/src/manager/song.rs:224-466`), reachable from `editor_integration` as
+`engine_core::prelude::AudioManager`; `is_song_playing` false and `song_position` `None`
+while a song waits for the web's first gesture (`song.rs:407-415`); the conductor drains
+every queued command before a block renders (`conductor.rs:431-437`);
+`SoundSources::flush(audio) -> u32` (`sound_sources.rs:128`); the hosted verbs `SongPlay {
+from_beat: Option<f64> }`, `SongStop`, `SongSeek { beat: f64 }`, `SongTrigger { binding }`
+parse and are refused by `preview_verb` (`song_io.rs:228`) with the sentence
+`PREVIEW_REFUSAL` (`composer/mod.rs:54`, six uses in `editor`), the transport's Play and Stop
+drawn disabled with it (`transport.rs:57-64`), `ComposerAction::PreviewRefused`,
+`EditorAction::SongPlayStop` denied while Playing (`editor_input.rs:172`) and dispatched to
+`refuse_preview` (`composer_keys.rs:320,394`), the sidebar's Trigger buttons drawn disabled
+(`sidebar/blocks.rs:267`, the literal `false`) and its Sample block's author and license
+fields with the "needed before Save" mark (`blocks.rs:231-234`); `position_text(tempo_map,
+tick)` (`composer/mod.rs:197`) and `status_text` (`transport.rs:4`);
+`TempoMap::tick_at_seconds` (`tempo_map.rs:174`); a song with no path is dirty
+(`song/mod.rs:162-164`), so Play over a never-saved or edited song parks behind
+`PendingSceneAction::StartPlay` (`scene_confirm.rs:34`) and a session only ever starts over a
+saved song or none; `begin_play` reached from `handle_play_action` (`play_session.rs:280`)
+and from the dialog's answer (`scene_confirm.rs:189,230`); `song_generation` bumped by
+new/open/close; `SceneSnapshot { scene_entry, ron }` (`editor_game/snapshot.rs:20`),
+`export_snapshot(root, manifest, scene_entry, scene_ron)` and `import_project`
+(`playground/src/archive.rs:105,214`); a reload seeding MemFs from the store directly, never
+through `import_project` (`web_entry.rs:203`); `validate_bridge_path` and
+`playground_write_file` (`bridge.rs:55,148`); the command API's double-quoted tokens
+(`parse.rs:32-46`); a `.mid` with no sidecar already opening as an import
+(`open.rs:203-215`); the loader's `SOUND_FONT_BYTE_LIMIT` of 48 MiB (`load.rs`);
+`GameHarness` driving `EditorGame` with a real disabled `AudioManager` on the virtual clock
+(`play_session_tests.rs:317-355`: `harness.audio()`, `sound_sources()`, `context()`); the
+history-only dirty flag already carrying the song (`history_dirty_tests.rs`, batch 9), so
+`playground_is_dirty` needs no change and no new test; the idle throttle engaging only after
+half a second with no input, on the web alone (`app_handler.rs:23,110,125`). Corrections
+after reading the tree and two rounds:
+
+1. **The preview is intents, drained once a frame.** New
+   `editor_integration/src/editor_game/song_preview.rs` (+ `song_preview_tests.rs`):
+   `SongPreview { state: PreviewState::{Stopped, Playing, Paused}, generation: u64,
+   pending_play: Option<PendingPlay>, position_seen: bool, intents: Vec<SongAudioIntent> }`
+   and `SongAudioIntent::{PlayDocument { from_tick: u64 }, Stop, Seek { beat: u64 }, Trigger
+   { binding: String }, PlaySaved(PathBuf), PauseSession, ResumeSession, StopAll }`. The
+   composer's Play, Stop, Space, the hosted `song play|stop|seek|trigger` and the Trigger
+   buttons push intents through pure methods on `EditorGame` taking `&mut World` (the
+   headless suite drives them); `apply_song_intents(ctx.audio, ctx.sources) -> DrainReport`
+   drains the vector in `finish_frame`, after `update_inner_game`. `PlayDocument` is
+   `prepare_song(label, song.file().clone(), song.data().clone())` then
+   `play_song_in_memory_at(song, from_tick)` — **a new function in `crates/audio`**, the tick
+   carried by the ready song so `start_song` sends `Seek(tick)` before `Play` whether the
+   song starts now or after the web's first gesture (two sends from the editor could straddle
+   a block boundary, and before the gesture `seek_song` is a no-op: `song_transport`,
+   `song.rs:387`). The conductor cannot honour that today — `Play` seeks to tick zero
+   (`conductor.rs:357-361`) and `Seek` while `Stopped` has no arm (`:381-391`) — so
+   **`music_midi` gains one semantic**: `Seek` while `Stopped` records a start tick, `Play`
+   starts there (zero when none) and clears it; a conductor test pins it, and its guide notes
+   the change (the senders today — `seek_song`, `song.rs:372`, and the example's K key —
+   both seek a playing song). The transport's
+   Play starts at the roll cursor's tick (`RollCursor.tick`); the API's `from_beat` converts
+   through `tick_at_beat`. `play_song_in_memory` becomes the `at(…, 0)` case, with a test in
+   `audio` that a song started at tick 7680 publishes no position before it. A `Seek` while
+   `song_position()` is still `None` (the pending window) re-issues `PlayDocument {
+   from_tick }` at the beat's tick — the pending song replaced by itself at the new place;
+   Pause and Resume in that window are refused on the status bar, as triggers are, because
+   `pause_song`/`resume_song` are no-ops without a playback (`song.rs:387-399`) and the
+   state would part from the sound. A
+   `prepare_song` error goes to the status bar and the state stays `Stopped`. `seek_song`
+   takes a whole beat, so the API's `from_beat`/`beat` is `Invalid` unless finite, whole and
+   not negative — "whole beats counted from zero"; the spec row and
+   `docs/EDITOR_COMMAND_API.md:180` say so (that row loses its "refused until batch 11").
+   The preview's triggers use `ctx.sources.menu()`. **The playhead:** each frame while
+   `Playing`, the host writes `ComposerState.playhead_tick: Option<u64>` from
+   `tempo_map.tick_at_seconds((seconds - latency_samples as f64 /
+   f64::from(SONG_SAMPLE_RATE)).max(0.0))` — both operands cast before the division, and
+   `SONG_SAMPLE_RATE` becomes a `pub` of `audio` (the second audio hunk; it is `pub(crate)`
+   today) and `AudioManager::song_ended() -> bool` (`SharedPosition::has_ended`,
+   `position.rs:129`) the third; the web's device buffer beyond `latency_samples` is unknowable, so the acceptance
+   row expects a small residual lead there — guarded by `if let`: while `song_position()` is `None` the status says "Playing ·
+   waiting for the first click". The roll draws it as a vertical line in a new `playhead`
+   theme token with two contrast rows (against the roll's background and against the selected
+   note's fill); the status text says "Playing · bar 2 · beat 3 · 120 BPM · 4/4"; Stop clears
+   it to `None` and `status_text` says tick 0 again. **The preview's state follows the
+   song**: once `song_position()` has read `Some` in this preview (`position_seen`), an
+   `is_song_playing()` of false ends the preview: `Stopped` with the playhead cleared and no
+   stop command sent — silently when `song_ended()` is true, with "playback stopped early" on
+   the status bar when it is not (a device glitch, a suspended context); the poll runs only
+   while Editing; before
+   the first `Some` the poll asks `audio.is_enabled()`: not enabled is the gesture-pending
+   window and the preview stays `Playing`; enabled with no position means the output died
+   (`song_output` returns `Gone`, `song.rs:310-322`) and the preview goes `Stopped` with
+   "the song could not reach the device" on the status bar. The
+   preview also stops — with a `Stop` pushed — when the song is closed, replaced or
+   re-opened under it (`song_generation` moved) and on any mutation of the document —
+   `SongDocument::apply`, and `undo`/`redo`, which apply their entries directly
+   (`song/mod.rs:189,209`), through the host's `song_history_step`: the prepared score is the
+   old document, and live mutation is out by #141; the status bar says
+   "preview stopped by the edit" once. `set_idle_throttle_ok` (`editor_game/mod.rs:400`, not
+   :380) gains `&& !self.song_preview.is_audible()` — `Playing` with `position_seen` — so a
+   song waiting for the gesture does not hold the page at full rate; the pending-play frame
+   follows a click and is never throttled. `PREVIEW_REFUSAL`,
+   `ComposerAction::PreviewRefused`, `refuse_preview` and `preview_verb` are deleted with
+   their greps; `ComposerAction::{PreviewPlayStop, PreviewTrigger(usize)}` replace the first,
+   the Trigger buttons are enabled while the preview is audible (`position_seen`; a trigger
+   on a gesture-pending song is a silent `Ok` the conductor never hears, `song.rs:467-475`)
+   and refused on the status bar otherwise, Play and Stop are enabled always, Stop doing nothing while `Stopped`.
+2. **Play with a song open plays the saved file; the editor stops only what it started.**
+   Nothing in the editor's hosts plays a song today — `ProjectHost` has no song verb and a
+   wrapped game's `init` ran at editor startup — so the session's music is the editor's to
+   start. `begin_play` (`play_session.rs:302`) becomes the one choke point and **arms**
+   `PendingPlay { song: Option<PathBuf> }` instead of starting the session; both its callers
+   — `handle_play_action(Play)` and the dialog's `perform_song_action(StartPlay)`, the
+   Save-then-play branch included — go through it. The request frame's drain flushes the
+   sources and, with a song open (saved by construction: a pathless song is dirty and
+   parks), runs `play_song(path)` with `SongDocument::path()` as is (already asset-joined):
+   the file's whole closure is loaded and validated before the playing song is touched
+   (`load.rs`), the one music slot means the saved song replaces the preview with no separate
+   stop, and the load may take the time a first SoundFont decode takes (cached by change stamp
+   after). The drain's report says whether that play succeeded: on failure `PendingPlay` is
+   dropped, the preview kept and the error shown; on success — or with no song open, when
+   Play touches no music and a wrapped game's own song plays on — the next frame's
+   `prepare_frame` starts the session (`start_play_session`), so a game's first `update` sees
+   the song playing. **While armed**, Stop drops `PendingPlay` and pushes `StopAll`; Pause is
+   a no-op. Pause in a session pushes `PauseSession` (`pause_song`), Resume `ResumeSession`
+   (`resume_song`); `stop_with_paused_edits` pushes `StopAll` after the restore, defined
+   once: the flush, and `stop_song` only if this Play started a song — a wrapped game's own
+   music is the game's; the preview comes back `Stopped` with its playhead at 0, and the
+   user's transport Play hears the document again. `begin_play` parks the preview — `Stopped`,
+   playhead cleared, no sound command, the slot being taken — and while `PendingPlay` is
+   armed, preview intents pushed in that frame are dropped and the drain runs the session's
+   play last, so the saved song — never the in-memory one — is what the session hears. **The
+   slot's contract, stated:** with a song open in the composer the session's music is the
+   editor's, and Stop stops the slot whatever a wrapped game did to it; with no song open Stop
+   touches no music. A wrapped game that plays music in its `update` takes the one slot from
+   the saved song — "Play hears the saved song" holds on `ProjectHost`, where the acceptance
+   runs, and until a game's code touches music otherwise. The existing harness test
+   `test_a_spawn_sound_is_silent_in_editing_plays_on_play_and_is_cleared_by_stop`
+   (`play_session_tests.rs:317`) steps twice after Play — the spawn is the frame after Play's
+   request — and its pitfall row says so. Scope of `play_session.rs` (324): the arm, the
+   cancel and the three pushes; the transition's logic lives in `song_preview.rs`. The hosted
+   preview verbs stay refused in Playing and Paused by `song_write_refusal`, as every song
+   write is.
+3. **The web import is a write, not a staging area.** `stage_sample` and `pending_samples`
+   (`song/mod.rs:99,260`) have four sites — `plan_save` (`io.rs:235`), the `song` query's
+   `"pending_samples"` key (`command_api/song.rs:191`), its doc example
+   (`EDITOR_COMMAND_API.md:193`) and `io_tests.rs` — and no caller outside tests; all four
+   go, the key leaving the payload. A `Sample` path is written by three things, each with
+   its bytes on disk or refused: the asset-browser drop (an asset in the project), the
+   sidebar's path field (a typed path, refused at Save by the existing "a sample that cannot
+   be read" rule when wrong) and the web upload below (written before the instrument exists;
+   a test uploads, assigns and saves in one session). The site's file input writes bytes
+   into the project through `playground_write_file_bytes(path, bytes)` (`bridge.rs`, the
+   `validate_bridge_path` guard; the name refused before anything is written unless it
+   matches `[A-Za-z0-9._-]+` (no whitespace: the provenance gate splits `Files:` on it,
+   `check_audio_provenance.sh:28-31`, and `place_sample` already writes `_` for it) and, for a
+   `.mid`, `editor::song::saveable_song_path` (the one rule Save uses, correction 6), tested
+   with a quote, a space, a non-ASCII letter and a `__`; the whole file refused by size before any decode — the loader's own limits, all `pub` in
+   `audio` (`SONG_FILE_BYTE_LIMIT` 256 KiB, `SAMPLE_BYTE_LIMIT` 4 MiB, `SOUND_FONT_BYTE_LIMIT`
+   48 MiB; `lib.rs:61,68`), the refusal naming the limit — then validated by the loader that
+   will read it before anything is written, in a new `playground/src/upload.rs` — a `.mid` by `SongData::from_smf`, a `.wav`
+   by `audio::decode_sample_pcm` (`audio/src/lib.rs:68`; `audio` joins the playground's
+   dependencies, a workspace path as `music_midi` does), an `.sf2` by `music_midi::parse_sound_font`, anything else refused naming the three, an empty, a three-byte and a header-only file of each kind tested — and the destination
+   fixed by kind: `assets/music/<name>` for a song, `assets/music/imports/<name>` for a
+   sample, `assets/soundfonts/<name>` for a SoundFont), persisted by the vfs observer like
+   every write. A taken name is replaced after the page's confirm, the pattern of the zip
+   import's discard prompt (`playground-embed.ts:413`); the confirm names every song whose
+   sidecar references the path (`playground_sample_references(path)`, a scan of `*.mid.ron`
+   under the two home folders with the recursive `vfs::list_files`) and, for a `.mid` with a
+   sidecar beside it, says that song's bindings and instruments will be lost; a replaced
+   `.mid` is refused while that path is the open document (the confirm says to close the song
+   first); otherwise the bridge call removes its `.mid.ron` and its `.new` pair **first** and
+   writes the MIDI **last**, so every durable prefix opens — the old MIDI as an import, then
+   the new. `insiculous_web` reads no `pending_samples` key (grepped). The page then dispatches
+   `song open "music/<name>"` — quoted, the tokenizer's rule — for a song, and announces a
+   sample or SoundFont as imported and reachable from Assets after Rescan. The `_unsaved`
+   sentence of decision 12 goes; `SONG_FORMAT.md` § How the composer saves step 2 loses "A
+   song never saved holds its samples itself". `bridge.rs` is 541: the two exports are its
+   only new lines. On the site: `src/components/PlaygroundToolbar.astro` gains the labelled
+   input (`accept=".mid,.wav,.sf2"`) beside the zip import, the handler in a new
+   `src/scripts/playground-import-file.ts` (the pattern of `playground-scripts-panel.ts`;
+   `playground-embed.ts` is 529 and gains the interface lines and the wiring only), one store
+   mutation at a time as the zip import does.
+4. **The web persists in write order and removes what a save removes.** `ProjectStore` has
+   no per-file delete (`store.rs:58-90`) and `vfs::remove_prefix` on wasm drops MemFs keys
+   silently (`vfs/mod.rs:202`; the observer is write-only), so today the `.new` pair and
+   every pruned sample stay in IndexedDB until the project is replaced; and the chains run
+   one put per path concurrently, so a save's pair and finals land in no defined order. In
+   place of the `SongSaveTransaction`, two changes to `Chains`. **One operation at a time, in
+   write order:** `Chains` keeps a FIFO of store operations — puts and removals — and issues
+   the next when the previous completes. **No coalescing:** every write is its own entry
+   (a path written twice is two puts, in order; `Queued` now means "more entries behind this
+   path's in-flight one"), so the durable sequence at any completion is a prefix of the
+   write sequence — the states a native crash leaves, which the open-time rules (batch 9's correction 8:
+   `open.rs`, `SONG_FORMAT.md` § How the composer saves) were written for. A path written behind its own *pending* removal cancels the removal; a
+   write behind an *issued* removal waits for its result; the chain reads its base revision when an
+   operation **issues**, never when it is enqueued.
+   **Failure is head-of-line:** an operation that fails (Backend/Unavailable) strands the
+   head, nothing behind it issues, `is_pending()` stays true, `save_status` reads Failed
+   naming the path, and the head is retried on `visibilitychange` as a Stranded put is today
+   (`reissue_stranded`) **and on the next enqueue** — a new write is evidence the tab is
+   alive — the page's Save button (`playground_dispatch('save')`, `playground-embed.ts:301`)
+   being the manual retry the Failed reason names — so a save whose final failed never reaches its removals, and a
+   failed removal is neither dropped nor waited on in silence. A Conflicted head blocks the
+   FIFO too: the existing banner says to export and reload. A project replace awaits `drain_then_epoch` — the FIFO's drain lets the head finish and
+   issues nothing more (`persist/mod.rs:501-515`, `bridge.rs:411`) — then navigates to the
+   imported project (`playground-embed.ts:428`), and the boot builds a fresh `Chains`, so no
+   queue survives it. Saves serialise more round trips than today's concurrent puts; the
+   report measures a sample-heavy save's indicator time in Firefox. Tombstones grow only with
+   distinct pruned names (the journal pair's paths are reused by every save); a compaction
+   pass is a filed follow-up. **Removals:**
+   `ProjectStore::remove_file(slug, path, base_revision) -> Fut<Result<(), StoreError>>` on
+   the trait and its three stores (`directory.rs`, `memory.rs`, `indexed_db/mod.rs`): **a
+   tombstone, not a delete** — the record stays with `deleted: true`, empty bytes and
+   revision + 1 (`StoredFile` gains `deleted`, serde default false), `load_project` returns tombstones too — `seed` records their revisions and `web_entry` inserts
+   no tombstone's bytes into MemFs — and a put over one needs its revision like any put, so revisions stay monotonic
+   across delete and recreate and a stale tab's removal is stale by revision; base revision
+   zero on an absent record is `Ok`; a newer revision — another tab rewrote the file — is
+   `StaleRevision`, on which the removal is **dropped with a log line** and the FIFO moves on,
+   the other tab's write winning, never Conflicted over a journal file; `common::vfs::set_remove_observer(fn(&Path))`, the write
+   observer's twin, fired once per dropped key by `MemFs::remove_prefix` on wasm and by
+   nothing natively; `Chains::on_vfs_remove(path)` in a new `persist/queue.rs` — the FIFO and the removals
+   both, `persist/mod.rs` (586) gaining only the calls — enqueuing the removal — nothing for a path with no chain, one never loaded or written
+   (`seed` gives every loaded file a chain, `persist/mod.rs:131-137`); `is_pending()` is true while any operation is queued, in flight or
+   stranded at the head, so the indicator says saving and the unload prompt fires. `mark_saved` fires as
+   natively — the bytes are in MemFs, which is what Export reads. `WEB_PLAYGROUND.md`
+   § Persistence gains the FIFO sentence. **Tests** (`persist/tests/chains.rs`, hand polled):
+   two paths written in order land in that order and never overlap in flight; a path
+   written twice lands twice in order; a removal behind a put waits for it and lands as a
+   tombstone one revision up, which a later put over the path must name; a write behind a pending removal cancels it; a write
+   behind an issued removal waits and lands at revision one; a removal of a never-persisted
+   path enqueues nothing and of an absent record is `Ok`; a removal from a tab that loaded an
+   older revision is dropped and the recreated file survives; a stranded head retries on the
+   next enqueue; save, re-seed, save lands (the journal paths' tombstones carry their
+   revisions); remove, re-seed, recreate lands; a stale removal is dropped and the
+   FIFO moves on; a failed final strands the head, its removals never issue, `save_status`
+   is Failed, and the retry lands the rest in order; a re-seed from the memory store after
+   each completed operation of two overlapping saves — the second arriving while the first
+   pair's MIDI is in flight — opens a song the open-time rules accept, the latest whose pair
+   landed; a replaced upload's three operations in order leave an openable project at every
+   boundary.
+5. **Export and import.** `SceneSnapshot` gains `live_files: Vec<(String, Vec<u8>)>`: the
+   open song's MIDI bytes and sidecar text at its archive path (`default_song_path` when
+   never saved), rendered by a `SongDocument::rendered_files()` lifted from `plan_save`
+   (`io.rs:256-264`) so the two never diverge — the bytes as the document holds them, no
+   provenance refusal and no sample relocation, the fingerprint set; the snapshot still
+   leaves history, path and the saved mark alone. `export_snapshot` takes the live files,
+   splices each over the stored entry or adds it, and drops **only the open song's own
+   `.new` pair** (its live files replace them); every other `.new` travels, so an
+   interrupted save of another song keeps its recovery in the backup. The README the archive
+   writes says the live scene and the live song travel. `import_project` step 14: every
+   `*.mid.ron` parses as `SongFile` (`music_midi` joins `playground/Cargo.toml` as the editor
+   has it, `default-features = false`), every `*.mid` opens with `MThd`, and a **final**
+   sidecar without its `.mid` is `ArchiveError::InvalidSong(String)` — the archive refused
+   whole, as a bad scene refuses it today (§ Failure contract); `*.mid.new` and `*.mid.ron.new` are checked the same way but a failure **drops the file
+   with a note** instead of refusing the archive — a journal leftover is recovery data, not
+   the project — paired or not, and the survivors are settled by the open-time rules when the
+   song is next opened. `docs/WEB_PLAYGROUND.md`
+   § Validation rows 14–15, § Export the live-song sentence, § Acceptance three composer
+   rows (the preview plays after the first gesture and never before; Play hears the saved
+   song and Stop returns the preview; a `.wav` imported, auditioned, saved, exported and
+   re-imported plays).
+6. **#182 — one sample folder per song, flat, in the song's home.** The sample directory
+   is `<home>/samples/<flat>/`, where `<home>` is the song's home directory (`music` or
+   `ai/music`) and `<flat>` is its path relative to that home, extension dropped, every `/`
+   replaced by `__`: `music/theme.mid` → `music/samples/theme/` (today's layout, unchanged),
+   `ai/music/theme.mid` → `ai/music/samples/theme/`, `music/a/theme.mid` →
+   `music/samples/a__theme/`, `music/ai/theme.mid` → `music/samples/ai__theme/` — injective
+   within a home, and no song's folder can contain another's (`plan_save`,
+   `io.rs:226,253`; `SAMPLE_DIRECTORY` becomes a function of the home). **Ownership is
+   written:** the **sample folder's** `LICENSE` header carries `Source: <the song's path
+   relative to the asset base>`; a save into a folder whose header names another song is
+   refused naming both songs; a folder with no header (the legacy layout) is adopted only
+   when its name is the song's own stem and refused otherwise. **The path rule**, one `pub fn
+   saveable_song_path(path) -> Result<(), String>` in `song/io.rs` that Save and the web
+   upload both call: no component of the song's path may start or end with `_`, no `__` and no whitespace
+   may appear, and the path may not lie under `<home>/samples/` (a song there would sit inside
+   another song's prune, which lists recursively) — then `__` is an unambiguous separator (`music/a_/b.mid` and
+   `music/a/_b.mid` are refused, not merged), and the gate can name the files; the refusal
+   names Save As to a compliant path as the way out. A flat `music/<stem>.mid` is
+   grandfathered whatever its stem holds short of whitespace (the gate cannot name a spaced
+   file; Save As is the way out), its folder being stem-keyed with no encoding involved; the
+   web upload holds new files to the full rule, which `SONG_FORMAT.md` says — and the collision that leaves is stated: a new song whose encoded name equals
+   an existing folder it does not own (`music/x/y.mid` beside a legacy `music/x__y.mid`) is
+   refused naming the owner, Save As elsewhere the way out, tested in both save orders. *Ruling (d):* songs in subfolders and under `ai/music` move to new
+   folders on their next save, the old folder left behind with its `LICENSE` still naming its
+   files; `music/<stem>.mid` keeps its folder. `SONG_FORMAT.md` step 2 says so; tests save
+   `music/theme.mid`, `ai/music/theme.mid` and `music/ai/theme.mid` with one sample each and
+   reopen all three with every sample on disk, a save into another song's folder is refused,
+   a legacy folder is adopted by its own song and refused to another, `music/a_/b.mid` is
+   refused by the path rule and a flat `music/x__y.mid` is not.
+7. **#183 — the song names its own files.** `SongFile.provenance: Option<Provenance>`
+   (`#[serde(default)]`, the sample's type at `song_file.rs:168`; the schema and the
+   grammar in `SONG_FORMAT.md`), surfaced in the sidebar's Song section as author and license
+   fields with the "needed before Save" mark, shown from the moment a song without it opens;
+   the fields are one `SongEdit::SetProvenance { provenance }` through `apply`, so `song
+   edit` sets it over the API, undo covers it, and `EDITOR_COMMAND_API.md` names the edit
+   beside the refusal.
+   *Ruling (b):* required at Save like a sample's — a song saved before this field exists
+   refuses its next save until both are filled; when that refusal answers the Play dialog's
+   Save, the error shows, the composer's Song section opens and the author field is focused
+   (the Save As pattern), so the way out is on screen. Save maintains the **home folder's** shared
+   `LICENSE` (`music/LICENSE` or `ai/music/LICENSE`, the one the gate reads for the song's own
+   two files — not the sample folder's of correction 6) stanza by stanza — the stanza matched by the song's `.mid` path alone (a legacy
+   one-file stanza matches too) and rewritten to name both files, never another song's — in
+   `io/samples.rs`'s idiom; `SONG_FORMAT.md` step 4 loses "which a human writes".
+   `check_audio_provenance.sh` scans `*/assets/ai/music` too (which covers
+   `ai/music/samples`). Tests: two songs saved into one folder keep each other's stanzas; a
+   legacy one-file stanza is rewritten, not duplicated; a saved song's folder passes the
+   gate's rule (the stanza text pinned against the gate's `Files:` grammar).
+8. **Ctrl+S follows the focused document — *ruling (a)*.** Batch 10 sent every Ctrl chord
+   the composer's table lacks to the scene. Undo already belongs to the focused document
+   (#141); Save should too: while the composer holds the keyboard — the ownership undo uses, `composer_key_route`
+   answering `KeyRoute::Composer` under batch 10's `settle_composer` rules; a focused text
+   field anywhere owns Ctrl+S as it owns every key today — Ctrl+S is `SaveSong` and
+   Ctrl+Shift+S is `SaveSongAs` (the path field focused), both through
+   `dispatch_song_action`; the status bar names the document saved ("Song saved ·
+   music/theme.mid"); a menu click keeps the rule the menu names. If Jesse keeps batch
+   10's rule instead, this correction is struck and nothing else moves.
+9. **Sizes and placements.** `composer_keys.rs` 542, `bridge.rs` 541, `shortcuts.rs` 509,
+   `editor_game/mod.rs` 502, `persist/mod.rs` 586, `playground-embed.ts` 529: each gains a
+   handful of lines at most, every new thing goes where the corrections above put it
+   (`song_preview.rs`, `upload.rs`, `persist/queue.rs`, `playground-import-file.ts`).
+   `crates/music_midi` is touched for the schema field, `SetProvenance`'s data and the
+   conductor's start tick only; `crates/audio` for the three hunks correction 1 names and nothing else (the playground gains it as a dependency, for `decode_sample_pcm`); `crates/engine_core` is not touched; `common::vfs` gains the remove
+   observer.
+
+Files (new): `editor_integration/src/editor_game/song_preview.rs` + tests,
+`playground/src/upload.rs`, `playground/src/persist/queue.rs`, the site's
+`src/scripts/playground-import-file.ts`. Touched: `play_session.rs`, `editor_game/mod.rs`
+(the field, the drain call, the throttle), `composer_keys.rs` (the actions' dispatch),
+`song_io.rs` (the hosted preview verbs answered), `scene_confirm.rs` (nothing but what
+`begin_play`'s new meaning forces), `editor_game/snapshot.rs`, `song/mod.rs`, `song/io.rs`,
+`song/io/samples.rs`, `composer/{mod,transport,state,piano_roll}.rs`,
+`composer/sidebar/blocks.rs`, `theme/mod.rs` + `theme/tests.rs`, `command_api/{mod,specs,
+song}.rs`, `audio/src/manager/song.rs` + `lib.rs` (the three hunks),
+`playground/src/{bridge,archive,store}.rs`, `store/{directory,memory}.rs`,
+`store/indexed_db/mod.rs`, `persist/mod.rs`, `common/src/vfs/mod.rs`,
+`music_midi/src/song_file.rs` + `validate.rs`, `scripts/check_audio_provenance.sh`,
+`docs/{WEB_PLAYGROUND,SONG_FORMAT,EDITOR_COMMAND_API}.md`, the crate guides
+(`editor`, `editor_integration`, `playground`, `audio`, `common`), and on the site
+`PlaygroundToolbar.astro` and `playground-embed.ts`. Accessibility: every new control
+labelled, units in text ("120 BPM", "4/4"), the playhead never colour-only (the status text
+carries its position), the focus ring in every area, keyboard transport; blockers filed as
+issues, never claimed. **Tests:** intent sequences for Play/Pause/Resume/Stop and
+preview-before-Play (pure, on `EditorGame` with `&mut World`); under `GameHarness`: a preview
+is playing after Play on the transport and the saved song after the two-frame transition —
+through `handle_play_action` and through the dirty prompt's "Play saved" — Stop while armed
+drops the pending play, Pause holds `song_position`, Stop returns the preview `Stopped` and
+flushes the sources, a missing sample in the saved file keeps the preview, shows the error
+and starts no session, a preview reaching its end reads `Stopped`, Play before
+`enable_output` on a gesture-gated manager stays `Playing` with its Trigger buttons disabled
+and the throttle allowed, an edit and an undo under a playing preview each stop it; the throttle state while previewing; a song replaced under a playing preview stops
+it; the snapshot carries song bytes and leaves history and path alone; export replaces saved
+song bytes and drops only the open song's pair; import rejects a final sidecar without its
+`.mid` and a `.mid` without `MThd` and accepts a lone `.mid.ron.new`; `upload.rs`'s three
+kinds, its refusals, its names, its truncated and header-only files and a `__` song name; the FIFO and removal tests of
+correction 4; the five tests of correction 6 and the three of correction 7; a fractional,
+negative or non-finite beat on the API is `Invalid`; the audio crate's start tick and the
+conductor's `Seek` while `Stopped`; Pause while gesture-pending is refused; a replace of the
+open song's path is refused; a space in a song name is refused and a `.wav` with one lands
+under `_`; a song path under `samples/` is refused; each upload kind is refused by size
+before decode; a truncated `.new` in an archive is dropped with a note; `song edit` sets the
+song's provenance; the preview is parked by Play and says "stopped early" on a dead output.
+**Gates:** standard; `check_wasm.sh`; `check_games.sh` (public items of `audio` move);
+`check_audio_provenance.sh` with its new pattern; the site's `npm run verify` for its half;
+the bundle's size line (budget 16 MiB); the manual keyboard and listen check, documented in
+the report. **Leaves out:** live mutation of a running score, MIDI recording, a native file
+dialog, Exit prompting (filed as its own issue — it prompts for nothing today, scene
+included), #184's screenshots (Jesse's capture, dispatched by the planner).
 
 ## Batch 12 — K5: the Pong demo, the two-enemy example scene, the web proof (#64)
 
