@@ -1,12 +1,12 @@
 //! The song's hosted half: new, open, save and close; the `song new|open|save|close`
-//! API verbs that reach them; and the refusals of the preview verbs, whose transport does
-//! not exist yet.
+//! API verbs that reach them; and the preview's `song play|stop|seek|trigger`, which push
+//! the preview's intents (`song_preview.rs`).
 //!
 //! A song is a second document beside the scene. Its writes are refused for the whole play
 //! session, and New, Open and Close never silently drop a dirty song: the GUI asks through
 //! the confirm machine (`scene_confirm.rs`), and the API, which has no dialog, refuses unless
 //! the line ends in `discard`. A preview verb is a song write too, so the play-session and
-//! scene-batch refusal answers it before "not available yet" does.
+//! scene-batch refusal answers it first.
 
 use std::path::{Path, PathBuf};
 
@@ -69,7 +69,8 @@ impl<G: Game> EditorGame<G> {
             .map_err(|error| error.to_string())?;
         self.sync_dirty_mirror();
         self.editor.composer.rescan_songs(&self.asset_base);
-        self.editor.status_bar.show_message("Song saved");
+        let shown = self.asset_relative(&target);
+        self.editor.status_bar.show_message(format!("Song saved · {shown}"));
         log::info!("Song saved to: {}", target.display());
         Ok(target)
     }
@@ -146,12 +147,6 @@ impl<G: Game> EditorGame<G> {
         {
             return Err(refusal);
         }
-        if let Some(verb) = preview_verb(hosted) {
-            return Err(ApiError::Refused(format!(
-                "song {verb} is not available yet: the composer's preview transport arrives \
-                 in Conductor batch 11"
-            )));
-        }
         let dirty = self.song.as_ref().is_some_and(SongDocument::is_dirty);
         let dirty_refusal = |verb: &str| {
             ApiError::Refused(format!(
@@ -210,6 +205,33 @@ impl<G: Game> EditorGame<G> {
                 self.close_song();
                 Ok(serde_json::json!({ "song": "closed" }))
             }
+            HostedWrite::SongPlay { from_beat } => {
+                let from_tick = match (from_beat, self.song.as_ref()) {
+                    (Some(beat), Some(song)) => song.data().tempo_map().tick_at_beat(*beat),
+                    _ => 0,
+                };
+                self.preview_play(from_tick).map_err(ApiError::Refused)?;
+                Ok(serde_json::json!({ "preview": "playing", "from_tick": from_tick }))
+            }
+            HostedWrite::SongStop => {
+                self.preview_stop();
+                Ok(serde_json::json!({ "preview": "stopped" }))
+            }
+            HostedWrite::SongSeek { beat } => {
+                self.preview_seek(*beat).map_err(ApiError::Refused)?;
+                Ok(serde_json::json!({ "preview": "playing", "beat": beat }))
+            }
+            HostedWrite::SongTrigger { binding } => {
+                let bound = self
+                    .song
+                    .as_ref()
+                    .is_some_and(|song| song.file().bindings.iter().any(|known| known.action == *binding));
+                if !bound {
+                    return Err(ApiError::NotFound(format!("no binding has the action '{binding}'")));
+                }
+                self.preview_trigger(binding).map_err(ApiError::Refused)?;
+                Ok(serde_json::json!({ "triggered": binding }))
+            }
             other => Err(ApiError::Invalid(format!(
                 "{other:?} is not a hosted song write"
             ))),
@@ -222,20 +244,4 @@ pub(super) fn song_files_exist(target: &Path) -> bool {
     let mut sidecar = target.as_os_str().to_owned();
     sidecar.push(".ron");
     common::vfs::file_size(target).is_ok() || common::vfs::file_size(Path::new(&sidecar)).is_ok()
-}
-
-/// The preview verb a hosted write is, if it is one.
-fn preview_verb(hosted: &HostedWrite) -> Option<&'static str> {
-    match hosted {
-        HostedWrite::SongPlay { .. } => Some("play"),
-        HostedWrite::SongStop => Some("stop"),
-        HostedWrite::SongSeek { .. } => Some("seek"),
-        HostedWrite::SongTrigger { .. } => Some("trigger"),
-        HostedWrite::Create { .. }
-        | HostedWrite::Save { .. }
-        | HostedWrite::SongNew { .. }
-        | HostedWrite::SongOpen { .. }
-        | HostedWrite::SongSave { .. }
-        | HostedWrite::SongClose { .. } => None,
-    }
 }

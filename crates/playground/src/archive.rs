@@ -49,6 +49,9 @@ pub enum ArchiveError {
     InvalidScene { entry: String, reason: String },
     /// A `.rhai` script failed the syntax or header check.
     InvalidScript { entry: String, reason: String },
+    /// A song's final file is not what it says: a sidecar that does not parse or has no
+    /// `.mid` beside it, a `.mid` that is not MIDI.
+    InvalidSong(String),
     /// Input/output error while reading or writing archive bytes.
     Io(String),
 }
@@ -79,6 +82,7 @@ impl std::fmt::Display for ArchiveError {
             Self::InvalidScript { entry, reason } => {
                 write!(formatter, "invalid script in '{entry}': {reason}")
             }
+            Self::InvalidSong(reason) => write!(formatter, "invalid song file {reason}"),
             Self::Io(error) => write!(formatter, "io error: {error}"),
         }
     }
@@ -97,32 +101,46 @@ pub fn export_project(
     write_archive(collect_asset_entries(project_root)?, manifest)
 }
 
-/// Export the open project with the live scene in place of the one on disk.
+/// Export the open project with the live scene in place of the one on disk, and the open
+/// song's live files (`live_files`, each at its archive entry) in place of its saved ones.
 ///
-/// Only the entry at `scene_entry` is replaced; every other file is carried
-/// over unchanged. The export is a project backup, so dropping the other
-/// scenes would lose authored work the visitor never previewed.
+/// Only those entries are replaced, and only the open song's own journal pair is dropped —
+/// its live files are newer than anything the pair holds; every other file is carried over
+/// unchanged, another song's interrupted save included. The export is a project backup, so
+/// dropping anything else would lose authored work the visitor never previewed.
 pub fn export_snapshot(
     project_root: &Path,
     manifest: &ProjectManifest,
     scene_entry: &str,
     scene_ron: &str,
+    live_files: &[(String, Vec<u8>)],
 ) -> Result<Vec<u8>, ArchiveError> {
     if !crate::bridge::relative_path_is_safe(scene_entry)
         || !scene_entry.starts_with("assets/scenes/")
     {
         return Err(ArchiveError::OutsideProject(scene_entry.to_string()));
     }
+    if let Some((entry, _)) = live_files.iter().find(|(entry, _)| {
+        !crate::bridge::relative_path_is_safe(entry) || !entry.starts_with("assets/")
+    }) {
+        return Err(ArchiveError::OutsideProject(entry.clone()));
+    }
 
     let mut entries = collect_asset_entries(project_root)?;
-    let live_bytes = scene_ron.as_bytes().to_vec();
-    match entries.iter_mut().find(|(entry_path, _)| entry_path == scene_entry) {
-        Some((_, bytes)) => *bytes = live_bytes,
-        None => {
-            entries.push((scene_entry.to_string(), live_bytes));
-            entries.sort_by(|(first, _), (second, _)| first.cmp(second));
+    let journal: HashSet<String> = live_files
+        .iter()
+        .map(|(entry, _)| format!("{entry}.new"))
+        .collect();
+    entries.retain(|(entry_path, _)| !journal.contains(entry_path));
+    let live = std::iter::once((scene_entry.to_string(), scene_ron.as_bytes().to_vec()))
+        .chain(live_files.iter().cloned());
+    for (live_entry, live_bytes) in live {
+        match entries.iter_mut().find(|(entry_path, _)| *entry_path == live_entry) {
+            Some((_, bytes)) => *bytes = live_bytes,
+            None => entries.push((live_entry, live_bytes)),
         }
     }
+    entries.sort_by(|(first, _), (second, _)| first.cmp(second));
     write_archive(entries, manifest)
 }
 
@@ -184,7 +202,7 @@ fn write_archive(
         .map_err(|error| ArchiveError::Io(error.to_string()))?;
 
     let readme_content = format!(
-        "# {}\n\nExported project archive for the Insiculous Web Playground.\n\nSee https://github.com/beinsiculous/insiculous_2d/blob/main/docs/WEB_PLAYGROUND.md for documentation on the project structure and editor usage.\nSee https://github.com/beinsiculous/insiculous_2d/blob/main/docs/SCRIPTING.md for the scripting API.\nTake it local: https://github.com/beinsiculous/game-template is a game whose gameplay is this archive; clone it (or press Use this template), unzip this archive over the clone, and `cargo run`.\n",
+        "# {}\n\nExported project archive for the Insiculous Web Playground. The scene and the song open in the editor travel as the editor showed them, unsaved edits included.\n\nSee https://github.com/beinsiculous/insiculous_2d/blob/main/docs/WEB_PLAYGROUND.md for documentation on the project structure and editor usage.\nSee https://github.com/beinsiculous/insiculous_2d/blob/main/docs/SCRIPTING.md for the scripting API.\nTake it local: https://github.com/beinsiculous/game-template is a game whose gameplay is this archive; clone it (or press Use this template), unzip this archive over the clone, and `cargo run`.\n",
         manifest.title
     );
     zip_writer
@@ -353,6 +371,10 @@ pub fn import_project(
         }
     }
 
+    for note in songs::check_song_entries(&mut asset_entries)? {
+        log::warn!("import: {note}");
+    }
+
     let stored_files = asset_entries
         .into_iter()
         .map(|(path, file_data)| StoredFile {
@@ -361,6 +383,7 @@ pub fn import_project(
             bytes: file_data,
             revision: 1,
             bundle_version: bundle_version.to_string(),
+            deleted: false,
         })
         .collect();
 
@@ -375,5 +398,8 @@ pub fn import_project(
     Ok((final_manifest, stored_files))
 }
 
+mod songs;
+#[cfg(test)]
+mod song_tests;
 #[cfg(test)]
 mod tests;

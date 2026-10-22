@@ -389,3 +389,72 @@ fn an_unknown_action_is_an_error_naming_it_and_no_song_is_its_own() {
     assert!(error.to_string().contains("'jump'"), "{error}");
     assert!(error.to_string().contains("song.mid"), "{error}");
 }
+
+/// A headless manager whose sidecar paths resolve in `assets`, with the song's two files
+/// read back as the composer holds them.
+fn song_in_memory(assets: &AssetDirectory, looping: bool) -> (AudioManager, Arc<Song>) {
+    let mut manager = AudioManager::disabled();
+    manager.set_asset_base(assets.path());
+    let text = sidecar(None).replacen("parts:", &format!("looping: {looping},\nparts:"), 1);
+    let path = assets.write_song("song", &song_midi(true), &text);
+    let (file, data) = load::read_song_files(&path).expect("the song reads");
+    let song = manager
+        .prepare_song("song", file, data)
+        .expect("the song builds");
+    (manager, song)
+}
+
+#[test]
+fn a_song_started_part_way_publishes_no_position_before_its_start() {
+    let assets = AssetDirectory::new();
+    let (mut manager, song) = song_in_memory(&assets, true);
+    let start_beat = u64::from(SONG_BEATS) / 2;
+    let start_tick = start_beat * u64::from(QUARTER);
+    manager
+        .play_song_in_memory_at(song, start_tick)
+        .expect("the conductor loads it");
+    let start = Instant::now();
+
+    for step in 1..=20 {
+        manager.update_at(start + seconds(0.005 * f64::from(step)));
+        let published = snapshot(&manager);
+        if published.blocks_rendered == 0 {
+            continue;
+        }
+        assert!(
+            published.tick >= start_tick,
+            "step {step} published tick {} before {start_tick}",
+            published.tick
+        );
+        let position = manager.song_position().expect("playing");
+        assert!(position.beat >= start_beat, "{position:?}");
+    }
+    assert!(snapshot(&manager).blocks_rendered > 0, "the clock moved");
+}
+
+#[test]
+fn a_song_played_to_its_end_has_ended_and_one_stopped_or_looping_has_not() {
+    let assets = AssetDirectory::new();
+    let (mut manager, song) = song_in_memory(&assets, false);
+    assert!(!manager.song_ended(), "no song has not ended");
+    manager
+        .play_song_in_memory(Arc::clone(&song))
+        .expect("the conductor loads it");
+    let start = Instant::now();
+    let beyond_the_end = f64::from(SONG_BEATS) / 10.0 + 0.5;
+    for step in 1..=4 {
+        manager.update_at(start + seconds(beyond_the_end * f64::from(step) / 4.0));
+    }
+    assert!(!manager.is_song_playing());
+    assert!(manager.song_ended(), "played to its end");
+
+    manager.stop_song();
+    assert!(!manager.song_ended(), "a stopped song is gone, not ended");
+
+    let (mut looping, song) = song_in_memory(&assets, true);
+    looping.play_song_in_memory(song).expect("loads");
+    for step in 1..=4 {
+        looping.update_at(start + seconds(beyond_the_end * f64::from(step) / 4.0));
+    }
+    assert!(looping.is_song_playing() && !looping.song_ended(), "a loop never ends");
+}

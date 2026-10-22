@@ -44,18 +44,16 @@ mod edges;
 pub(crate) mod load;
 #[cfg(test)]
 mod tests;
+mod virtual_clock;
 
 use edges::BeatEdges;
 pub use edges::Subdivision;
 use load::{read_song_files, Closure, DependencyCache, ReadySong};
+use virtual_clock::{duration_of, frames_in, LONGEST_VIRTUAL_STEP};
 
-/// The rate every song's conductor renders at; the device's mixer resamples it.
-pub(crate) const SONG_SAMPLE_RATE: u32 = 44_100;
-
-/// The longest wall time one `update()` advances a song with no device: a longer gap —
-/// a debugger pause, a stalled test — advances this much, as a device resuming from where
-/// it rendered would not catch up either.
-const LONGEST_VIRTUAL_STEP: Duration = Duration::from_secs(1);
+/// The rate every song's conductor renders at; the device's mixer resamples it. A
+/// position's `latency_samples` count at this rate.
+pub const SONG_SAMPLE_RATE: u32 = 44_100;
 
 /// Where a playing song is, read from what its conductor last published.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -184,19 +182,6 @@ impl SongPlayback {
     }
 }
 
-/// Whole frames at the song sample rate in `duration`.
-fn frames_in(duration: Duration) -> u64 {
-    (duration.as_nanos() * u128::from(SONG_SAMPLE_RATE) / NANOSECONDS_PER_SECOND) as u64
-}
-
-/// How long `frames` frames last at the song sample rate, rounded down.
-fn duration_of(frames: u64) -> Duration {
-    let nanoseconds = u128::from(frames) * NANOSECONDS_PER_SECOND / u128::from(SONG_SAMPLE_RATE);
-    Duration::from_nanos(u64::try_from(nanoseconds).unwrap_or(u64::MAX))
-}
-
-const NANOSECONDS_PER_SECOND: u128 = 1_000_000_000;
-
 /// The action → binding table of `song`, built once so a trigger never searches.
 fn binding_table(song: &Song) -> HashMap<String, BindingIndex> {
     song.file()
@@ -244,7 +229,14 @@ impl AudioManager {
 
     /// Play a song built in memory, as [`AudioManager::play_song`] plays a file.
     pub fn play_song_in_memory(&mut self, song: Arc<Song>) -> AudioResult<()> {
-        let ready = ReadySong::new("the song in memory", song)?;
+        self.play_song_in_memory_at(song, 0)
+    }
+
+    /// [`AudioManager::play_song_in_memory`] from `tick`: its first block plays there,
+    /// whether the song starts now or after the web's first gesture.
+    pub fn play_song_in_memory_at(&mut self, song: Arc<Song>, tick: u64) -> AudioResult<()> {
+        let mut ready = ReadySong::new("the song in memory", song)?;
+        ready.start_tick = tick;
         self.install_song(ready);
         Ok(())
     }
@@ -280,6 +272,7 @@ impl AudioManager {
             song,
             conductor,
             handle,
+            start_tick,
         } = ready;
         let meters = Arc::new(SourceMeters::default());
         let source = ConductorSource::new(
@@ -299,6 +292,10 @@ impl AudioManager {
             pending_lifecycle: VecDeque::new(),
             edges: BeatEdges::default(),
         };
+        // A seek while stopped is where the play starts, in whichever block it lands.
+        if start_tick > 0 {
+            playback.send_lifecycle(ConductorCommand::Seek(start_tick));
+        }
         playback.send_lifecycle(ConductorCommand::Play);
         if let Some(flush_epoch) = self.songs.flush_floor {
             playback.send_lifecycle(ConductorCommand::StopAllSources { flush_epoch });
@@ -412,6 +409,16 @@ impl AudioManager {
                 && playback.requested == TransportState::Playing
                 && !playback.handle.position().has_ended()
         })
+    }
+
+    /// Whether the song played to its end without looping: what tells a song that
+    /// finished from one whose output died. `false` without a song.
+    #[must_use]
+    pub fn song_ended(&self) -> bool {
+        self.songs
+            .playback
+            .as_ref()
+            .is_some_and(|playback| playback.handle.position().has_ended())
     }
 
     /// Where the song is, or `None` without a song, while one waits for the first

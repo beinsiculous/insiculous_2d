@@ -239,11 +239,10 @@ fn the_hosted_song_verbs_parse_with_their_discard_word() {
     );
     assert_eq!(
         hosted("song play 4"),
-        HostedWrite::SongPlay {
-            from_beat: Some(4.0)
-        }
+        HostedWrite::SongPlay { from_beat: Some(4) }
     );
-    assert_eq!(hosted("song seek 2.5"), HostedWrite::SongSeek { beat: 2.5 });
+    assert_eq!(hosted("song seek 2"), HostedWrite::SongSeek { beat: 2 });
+    assert_eq!(hosted("song seek 2.0"), HostedWrite::SongSeek { beat: 2 });
     assert_eq!(
         hosted("song trigger jump"),
         HostedWrite::SongTrigger {
@@ -259,11 +258,44 @@ fn the_hosted_song_verbs_parse_with_their_discard_word() {
         "song edit",
         r#"song edit {"Explode": {}}"#,
         "song seek",
-        "song seek -1",
+        "song seek two",
         "song frobnicate",
         "song save a discard",
         "song save a b",
     ] {
         assert!(matches!(parse_line(bad), Err(ApiError::Parse(_))), "{bad}");
     }
+}
+
+#[test]
+fn a_fractional_negative_or_non_finite_beat_is_invalid() {
+    for bad in [
+        "song seek 2.5",
+        "song seek -1",
+        "song seek inf",
+        "song seek NaN",
+        "song play 0.5",
+        "song play -0.5",
+    ] {
+        assert!(matches!(parse_line(bad), Err(ApiError::Invalid(_))), "{bad}");
+    }
+}
+
+#[test]
+fn song_edit_sets_the_songs_provenance_and_undo_takes_it_back() {
+    let mut song = Some(melody());
+    let set = run(
+        r#"song edit {"SetProvenance": {"provenance": {"author": "2026 Jesse", "license": "MIT"}}}"#,
+        &mut song,
+        EditorPlayState::Editing,
+        false,
+    )
+    .expect("lands");
+    assert_eq!(set["edit"], "SetProvenance");
+    let state = query("song", song.as_ref());
+    assert_eq!(state["data"]["provenance"]["author"], "2026 Jesse");
+    assert_eq!(state["data"]["provenance"]["license"], "MIT");
+
+    run("song undo", &mut song, EditorPlayState::Editing, false).expect("undoes");
+    assert_eq!(query("song", song.as_ref())["data"]["provenance"], Value::Null);
 }

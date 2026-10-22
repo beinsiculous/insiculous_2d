@@ -13,7 +13,8 @@ mod actions;
 pub use actions::action_for_menu_label;
 
 /// Menu dropdown layout constants. The row height and the item padding are
-/// the shared layout tokens; only the width is the menu's own.
+/// the shared layout tokens; only the width is the menu's own, and the
+/// narrowest it gets — an item whose label and shortcut need more widens it.
 const DROPDOWN_WIDTH: f32 = 200.0;
 
 /// A single menu item (can be an action or separator).
@@ -112,6 +113,8 @@ pub struct Menu {
     pub open: bool,
     /// Menu bounds (set during render)
     pub bounds: Rect,
+    /// The dropdown's width, measured from its items when it opens.
+    pub dropdown_width: f32,
 }
 
 impl Menu {
@@ -122,6 +125,7 @@ impl Menu {
             items: Vec::new(),
             open: false,
             bounds: Rect::default(),
+            dropdown_width: DROPDOWN_WIDTH,
         }
     }
 
@@ -362,6 +366,7 @@ impl MenuBar {
     /// closes the menu; an item click returns its label.
     fn render_open_dropdown(&mut self, ui: &mut UIContext, theme: &EditorTheme) -> Option<String> {
         let open_index = self.open_menu?;
+        self.menus[open_index].dropdown_width = Self::measured_width(ui, &self.menus[open_index], theme);
         let menu = &self.menus[open_index];
         let dropdown_bounds = Self::dropdown_bounds(menu, menu.bounds);
 
@@ -390,9 +395,27 @@ impl MenuBar {
         Rect::new(
             anchor.x,
             anchor.y + anchor.height,
-            DROPDOWN_WIDTH,
+            menu.dropdown_width,
             dropdown_height,
         )
+    }
+
+        /// The width at which every item's centred label clears its shortcut, drawn at the
+    /// row's right edge: twice the shortcut and its gaps, either side of the label; a label
+    /// with no shortcut needs its own width and the padding.
+    fn measured_width(ui: &UIContext, menu: &Menu, theme: &EditorTheme) -> f32 {
+        menu.items
+            .iter()
+            .filter_map(|item| match item {
+                MenuItem::Action { label, shortcut: Some(shortcut), .. } => {
+                    let label_width = ui.measure_text(label).x;
+                    let shortcut_width = ui.measure_text_styled(shortcut, theme.fonts.small).x;
+                    Some(label_width + 2.0 * (shortcut_width + 2.0 * PADDING) + 8.0)
+                }
+                MenuItem::Action { label, shortcut: None, .. } => Some(ui.measure_text(label).x + 2.0 * PADDING),
+                _ => None,
+            })
+            .fold(DROPDOWN_WIDTH, f32::max)
     }
 
     /// Whether a mouse press at `mouse` should close the open dropdown.
@@ -445,13 +468,23 @@ impl MenuBar {
                         );
                     }
 
-                    // Draw shortcut if present
                     if let Some(shortcut) = shortcut {
-                        let shortcut_pos = Vec2::new(
-                            item_bounds.x + item_bounds.width - PADDING - shortcut.len() as f32 * 6.0,
-                            item_bounds.center().y,
+                        // In the row's box, not at a guessed width from a baseline: a raised,
+                        // misplaced hint ran into the label it belongs to.
+                        let shortcut_bounds = Rect::new(
+                            item_bounds.x,
+                            item_bounds.y,
+                            item_bounds.width - PADDING,
+                            item_bounds.height,
                         );
-                        ui.label_styled(shortcut, shortcut_pos, theme.shortcut_hint, theme.fonts.small);
+                        ui.label_in_bounds_styled(
+                            shortcut,
+                            shortcut_bounds,
+                            ui::TextAlign::Right,
+                            theme.shortcut_hint,
+                            theme.fonts.small,
+                            0.0,
+                        );
                     }
 
                     y += ROW_HEIGHT;

@@ -9,7 +9,9 @@ use music_midi::midly::num::{u15, u28, u4, u7};
 use music_midi::midly::{
     Format, Header, MetaMessage, MidiMessage, Smf, Timing, TrackEvent, TrackEventKind,
 };
-use music_midi::{Binding, Instrument, InstrumentSource, Part, PartMode, Quantize, TrackSelector};
+use music_midi::{
+    Binding, Instrument, InstrumentSource, Part, PartMode, Provenance, Quantize, TrackSelector,
+};
 
 use super::test_support::{exported, melody, note_numbers};
 use super::{default_song_file, Gesture, Meter, SongDocument, SongEdit};
@@ -19,7 +21,7 @@ use crate::commands::CommandHistory;
 use crate::play_state::EditorPlayState;
 use crate::selection::Selection;
 
-const VARIANT_COUNT: usize = 20;
+const VARIANT_COUNT: usize = 21;
 
 /// Every variant's place in the table. Exhaustive on purpose: a new variant fails to
 /// compile here until it has a row.
@@ -44,7 +46,8 @@ fn variant_index(edit: &SongEdit) -> usize {
         SongEdit::RemoveBinding { .. } => 16,
         SongEdit::AddPart { .. } => 17,
         SongEdit::RemovePart { .. } => 18,
-        SongEdit::Batch(_) => 19,
+        SongEdit::SetProvenance { .. } => 19,
+        SongEdit::Batch(_) => 20,
     }
 }
 
@@ -172,6 +175,12 @@ fn rows(first_note: u64) -> Vec<SongEdit> {
         SongEdit::AddPart { part: part("bass") },
         SongEdit::RemovePart {
             name: "spare part".to_string(),
+        },
+        SongEdit::SetProvenance {
+            provenance: Provenance {
+                author: "2026 M".to_string(),
+                license: "CC-BY-4.0".to_string(),
+            },
         },
         SongEdit::Batch(vec![
             SongEdit::SetLoop { looping: false },

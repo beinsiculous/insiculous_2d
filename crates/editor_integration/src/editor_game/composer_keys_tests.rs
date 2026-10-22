@@ -16,6 +16,7 @@ use super::test_support::{
     timing_only_song, DummyGame,
 };
 use super::EditorGame;
+use super::test_support::press_play;
 
 const PLAIN: Modifiers = Modifiers { ctrl: false, shift: false };
 
@@ -45,7 +46,8 @@ fn composer_keys_never_reach_the_game_while_it_is_focused_and_do_once_it_is_not(
         (KeyCode::Space, PLAIN, KeyRoute::Composer(ComposerKeyAction::PreviewToggle)),
         (KeyCode::KeyG, PLAIN, KeyRoute::Consumed),
         (KeyCode::KeyK, ctrl, KeyRoute::Consumed),
-        (KeyCode::KeyS, ctrl, KeyRoute::Editor { action: EditorAction::Save, shift: false }),
+        (KeyCode::KeyS, ctrl, KeyRoute::Editor { action: EditorAction::SaveSong, shift: false }),
+        (KeyCode::KeyS, Modifiers { ctrl: true, shift: true }, KeyRoute::Editor { action: EditorAction::SaveSongAs, shift: true }),
     ];
     for (key, modifiers, route) in cases {
         assert_eq!(editor.route_editor_key(key, false, modifiers), route, "{key:?} while focused");
@@ -53,6 +55,11 @@ fn composer_keys_never_reach_the_game_while_it_is_focused_and_do_once_it_is_not(
     editor.run_composer_key(ComposerKeyAction::Escape);
     assert_eq!(editor.editor.composer.focus, ComposerFocus::None);
     assert_eq!(editor.route_editor_key(KeyCode::KeyK, false, PLAIN), KeyRoute::ForwardToGame, "once unfocused");
+    assert_eq!(
+        editor.route_editor_key(KeyCode::KeyS, false, ctrl),
+        KeyRoute::Editor { action: EditorAction::Save, shift: false },
+        "Ctrl+S is the scene's once the composer lets go"
+    );
     assert_eq!(
         editor.route_editor_key(KeyCode::ArrowLeft, false, PLAIN),
         KeyRoute::Editor { action: EditorAction::NudgeLeft, shift: false }
@@ -122,7 +129,7 @@ fn playing_and_paused_refuse_every_composer_mutation_and_clear_the_keyboard() {
     let first = track_notes(editor.song.as_ref().expect("a song"), 1)[0];
     let entries = editor.song.as_ref().map(|song| song.history().undo_count());
 
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
     for state in ["Playing", "Paused"] {
         assert_eq!(editor.editor.composer.focus, ComposerFocus::None, "{state}: session entry clears the focus");
         assert_eq!(
@@ -139,8 +146,7 @@ fn playing_and_paused_refuse_every_composer_mutation_and_clear_the_keyboard() {
                 ComposerAction::Edit(SongEdit::SetLoop { looping: false }),
                 drop,
                 ComposerAction::BeginDrag { notes: vec![first.id], point: editor::composer::RollPoint { tick: 0, key: 60 } },
-            ],
-            &mut world,
+            ]
         );
         editor.run_composer_key(ComposerKeyAction::Activate);
         editor.run_composer_key(ComposerKeyAction::Undo);
@@ -157,7 +163,6 @@ fn playing_and_paused_refuse_every_composer_mutation_and_clear_the_keyboard() {
 #[test]
 fn the_song_opens_on_its_note_track_enter_adds_there_and_a_switch_clears_the_selection() {
     let folder = folder();
-    let mut world = World::new();
     let mut editor = composer_session(folder.path(), second_track_holds_the_notes());
     assert_eq!(editor.editor.composer.active_track, Some(2), "the lead, not the empty pad");
     editor.editor.composer.cursor = editor::composer::RollCursor { tick: 960, key: 74 };
@@ -168,10 +173,10 @@ fn the_song_opens_on_its_note_track_enter_adds_there_and_a_switch_clears_the_sel
     assert!(song.selection().contains(lead[1].id), "and selected the new note");
     assert_eq!(editor.editor.composer.cursor.tick, 1200, "the cursor moved past it");
 
-    editor.run_composer_actions(vec![ComposerAction::SetActiveTrack(1)], &mut world);
+    editor.run_composer_actions(vec![ComposerAction::SetActiveTrack(1)]);
     assert_eq!(editor.editor.composer.active_track, Some(1));
     assert!(editor.song.as_ref().is_some_and(|song| song.selection().is_empty()), "no hidden note stays selected");
-    editor.run_composer_actions(vec![ComposerAction::SetActiveTrack(0)], &mut world);
+    editor.run_composer_actions(vec![ComposerAction::SetActiveTrack(0)]);
     assert_eq!(editor.editor.composer.active_track, Some(1), "the timing track is never shown");
 
     let mut timing = composer_session(folder.path(), timing_only_song());
@@ -197,7 +202,7 @@ fn save_as_onto_another_song_parks_cancel_keeps_both_and_overwrite_completes_in_
         assert_eq!(editor.scene_confirm.pending_action, Some(parked.clone()), "{final_file}: another song");
         assert_eq!(editor.scene_confirm.pending_choice, None, "the same Enter does not answer the prompt");
 
-        editor.resolve_song_choice(parked.clone(), ConfirmChoice::Cancel, &mut world);
+        editor.resolve_song_choice(parked.clone(), ConfirmChoice::Cancel);
         assert_eq!(common::vfs::read(&folder.path().join(final_file)).ok(), Some(b"another song".to_vec()));
         assert!(editor.song.as_ref().is_some_and(|song| song.path().is_none() && song.is_dirty()), "the song unmoved");
 
@@ -206,9 +211,9 @@ fn save_as_onto_another_song_parks_cancel_keeps_both_and_overwrite_completes_in_
         assert!(refused["error"]["message"].as_str().is_some_and(|message| message.contains("overwrite")));
 
         editor.save_song_from_field(target);
-        editor.resolve_song_choice(parked, ConfirmChoice::Confirm, &mut world);
+        editor.resolve_song_choice(parked, ConfirmChoice::Confirm);
         assert_eq!(editor.scene_confirm.pending_action, None, "one click closes the prompt");
-        assert_eq!(status(&editor), "Song saved");
+        assert_eq!(status(&editor), format!("Song saved · {target}"), "the status bar names the document");
         let song = editor.song.as_ref().expect("a song");
         assert_eq!(song.path(), Some(folder.path().join(target).as_path()));
         let written = common::vfs::read(&folder.path().join(target)).expect("the .mid");
@@ -220,7 +225,7 @@ fn save_as_onto_another_song_parks_cancel_keeps_both_and_overwrite_completes_in_
     // The song's own file spelt another way is still its own: no prompt.
     editor.save_song_from_field("music/./other.mid");
     assert_eq!(editor.scene_confirm.pending_action, None, "music/./other.mid is the open song's file");
-    assert_eq!(status(&editor), "Song saved");
+    assert_eq!(status(&editor), "Song saved · music/other.mid");
 }
 
 /// The Songs list and the transport are walked with no song open — Open Song… is how
@@ -228,12 +233,11 @@ fn save_as_onto_another_song_parks_cancel_keeps_both_and_overwrite_completes_in_
 #[test]
 fn the_songs_list_and_the_transport_are_walked_by_the_arrows_with_no_song_open() {
     let folder = folder();
-    let mut world = World::new();
     let mut editor = composer_session(folder.path(), melody_song());
     editor.song = None;
     editor.song_generation += 1;
     editor.follow_song();
-    editor.dispatch_song_action(EditorAction::OpenSong, &mut world);
+    editor.dispatch_song_action(EditorAction::OpenSong);
     assert_eq!(editor.editor.composer.focus, ComposerFocus::Sidebar);
     // The render counts the controls; headless, the count is the three rows a list shows.
     editor.editor.composer.sidebar_control_count = 3;
@@ -259,11 +263,10 @@ fn the_songs_list_and_the_transport_are_walked_by_the_arrows_with_no_song_open()
 #[test]
 fn a_number_fields_first_frame_opens_an_entry_its_later_frames_continue_it_and_an_edit_after_is_another() {
     let folder = folder();
-    let mut world = World::new();
     let mut editor = composer_session(folder.path(), melody_song());
     let wav = DragPayload::Sound { path: "sounds/kick.wav".to_string() };
     let add = drop_action(editor.song.as_ref(), &wav);
-    editor.run_composer_actions(vec![add], &mut world);
+    editor.run_composer_actions(vec![add]);
     // This crate names no instrument type: the edit is built in the API's JSON grammar.
     let instrument_json = |editor: &EditorGame<DummyGame>| -> serde_json::Value {
         let instrument = &editor.song.as_ref().expect("a song").file().instruments[0];
@@ -282,10 +285,10 @@ fn a_number_fields_first_frame_opens_an_entry_its_later_frames_continue_it_and_a
 
     let frame = |editor: &EditorGame<DummyGame>, gain: f32, first: bool| ComposerAction::FieldEdit { edit: kick(editor, gain), first };
     let first_gesture = vec![frame(&editor, 1.5, true), frame(&editor, 2.0, false)];
-    editor.run_composer_actions(first_gesture, &mut world);
+    editor.run_composer_actions(first_gesture);
     // A second gesture while the first was never closed by a commit: its first frame seals it.
-    editor.run_composer_actions(vec![frame(&editor, 3.0, true)], &mut world);
-    editor.run_composer_actions(vec![ComposerAction::Edit(kick(&editor, 3.5))], &mut world);
+    editor.run_composer_actions(vec![frame(&editor, 3.0, true)]);
+    editor.run_composer_actions(vec![ComposerAction::Edit(kick(&editor, 3.5))]);
     assert_eq!(gain_of(&editor), 3.5);
 
     editor.run_composer_key(ComposerKeyAction::Undo);
@@ -317,12 +320,11 @@ fn the_path_fields_enter_saves_there_an_outside_path_is_refused_and_an_orphan_si
 #[test]
 fn a_songs_row_parks_behind_the_dirty_prompt_and_a_failed_open_after_discard_keeps_the_song() {
     let folder = folder();
-    let mut world = World::new();
     let mut editor = composer_session(folder.path(), melody_song());
-    editor.run_composer_actions(vec![ComposerAction::OpenSong("music/missing.mid".to_string())], &mut world);
+    editor.run_composer_actions(vec![ComposerAction::OpenSong("music/missing.mid".to_string())]);
     let parked = PendingSceneAction::OpenSong(folder.path().join("music/missing.mid"));
     assert_eq!(editor.scene_confirm.pending_action, Some(parked.clone()), "the unsaved song asks first");
-    editor.resolve_song_choice(parked, ConfirmChoice::Alt, &mut world);
+    editor.resolve_song_choice(parked, ConfirmChoice::Alt);
     assert_eq!(note_count(&editor), 3, "the failed open kept the song it would have replaced");
     assert!(status(&editor).contains("Song open failed"), "{}", status(&editor));
 }
@@ -330,14 +332,13 @@ fn a_songs_row_parks_behind_the_dirty_prompt_and_a_failed_open_after_discard_kee
 #[test]
 fn each_drop_lands_its_instrument_or_its_open_and_an_mp3_is_refused_naming_wav() {
     let folder = folder();
-    let mut world = World::new();
     let mut editor = composer_session(folder.path(), melody_song());
     for path in ["sounds/kick.wav", "sounds/kick.wav"] {
         let drop = drop_action(editor.song.as_ref(), &DragPayload::Sound { path: path.to_string() });
-        editor.run_composer_actions(vec![drop], &mut world);
+        editor.run_composer_actions(vec![drop]);
     }
     let drop = drop_action(editor.song.as_ref(), &DragPayload::SoundFont { path: "soundfonts/organ.sf2".to_string() });
-    editor.run_composer_actions(vec![drop], &mut world);
+    editor.run_composer_actions(vec![drop]);
     let names: Vec<String> = editor
         .song
         .as_ref()
@@ -346,28 +347,16 @@ fn each_drop_lands_its_instrument_or_its_open_and_an_mp3_is_refused_naming_wav()
     assert_eq!(names, ["kick", "kick_2", "organ"]);
 
     let mp3 = drop_action(editor.song.as_ref(), &DragPayload::Sound { path: "music/loop.mp3".to_string() });
-    editor.run_composer_actions(vec![mp3], &mut world);
+    editor.run_composer_actions(vec![mp3]);
     assert!(status(&editor).contains("WAV"), "{}", status(&editor));
 
     let song = drop_action(editor.song.as_ref(), &DragPayload::Song { path: "music/theme.mid".to_string() });
-    editor.run_composer_actions(vec![song], &mut world);
+    editor.run_composer_actions(vec![song]);
     assert_eq!(
         editor.scene_confirm.pending_action,
         Some(PendingSceneAction::OpenSong(folder.path().join("music/theme.mid"))),
         "a dropped song opens through the dirty prompt like any open"
     );
-}
-
-#[test]
-fn the_preview_controls_and_space_refuse_naming_the_batch_that_builds_them() {
-    let folder = folder();
-    let mut world = World::new();
-    let mut editor = composer_session(folder.path(), melody_song());
-    editor.run_composer_actions(vec![ComposerAction::PreviewRefused], &mut world);
-    assert!(status(&editor).contains("batch 11"), "{}", status(&editor));
-    editor.editor.status_bar.show_message("cleared");
-    editor.run_composer_key(ComposerKeyAction::PreviewToggle);
-    assert!(status(&editor).contains("batch 11"), "Space too: {}", status(&editor));
 }
 
 #[test]

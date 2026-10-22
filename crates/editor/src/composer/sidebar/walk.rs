@@ -30,7 +30,7 @@ pub(in crate::composer) struct SidebarWalk<'a> {
     request: Option<ControlRequest>,
     read_only: bool,
     reveal: bool,
-    /// The cursor's control's top, from the content's top, once drawn.
+    /// The cursor's control's top, from the scroll origin, once drawn.
     cursor_top: Option<f32>,
     /// The row placed last, which [`SidebarWalk::tooltip`] explains.
     last_row: Rect,
@@ -86,6 +86,11 @@ impl<'a> SidebarWalk<'a> {
         }
     }
 
+    /// The index the next control drawn will take.
+    pub fn next_control(&self) -> usize {
+        self.control
+    }
+
     pub fn push(&mut self, action: ComposerAction) {
         self.actions.push(action);
     }
@@ -109,10 +114,15 @@ impl<'a> SidebarWalk<'a> {
         row.y >= self.area.y && row.bottom() <= self.area.bottom()
     }
 
+    /// Text wrapped at word boundaries onto as many rows as the sidebar's width needs: a
+    /// note cut at the edge would drop the very words that say what to do.
     fn text_row(&mut self, text: &str, color: ui::Color, font_size: f32) {
-        let row = self.row(ROW_HEIGHT - 4.0);
-        if row.bottom() >= self.area.y && row.y <= self.area.bottom() {
-            self.ui.label_in_bounds_styled(text, row, ui::TextAlign::Left, color, font_size, 0.0);
+        let width = (self.area.width - 2.0 * INSET).max(0.0);
+        for line in wrap_to_width(text, width, |candidate| self.ui.measure_text_styled(candidate, font_size).x) {
+            let row = self.row(ROW_HEIGHT - 4.0);
+            if row.bottom() >= self.area.y && row.y <= self.area.bottom() {
+                self.ui.label_in_bounds_styled(&line, row, ui::TextAlign::Left, color, font_size, 0.0);
+            }
         }
     }
 
@@ -143,7 +153,10 @@ impl<'a> SidebarWalk<'a> {
         self.control += 1;
         let at_cursor = index == self.cursor;
         if at_cursor {
-            self.cursor_top = Some(row.y - self.top);
+            // From the scroll origin, the top inset included: measured from the first row
+            // instead, a revealed bottom row lands an inset short of fully inside, and a row
+            // not wholly inside is neither ringed nor clickable.
+            self.cursor_top = Some(row.y - self.top + INSET);
         }
         let activated = at_cursor && self.request == Some(ControlRequest::ActivateSidebar);
         (self.focused && at_cursor, activated)
@@ -251,5 +264,35 @@ impl<'a> SidebarWalk<'a> {
             reveal_top: if self.reveal { self.cursor_top } else { None },
             field_gesture: self.field_gesture.filter(|_| self.gesture_live),
         }
+    }
+}
+
+/// `text` broken at spaces into lines no wider than `width` by `measure`; a single word wider
+/// than `width` keeps a line of its own rather than being cut.
+fn wrap_to_width(text: &str, width: f32, measure: impl Fn(&str) -> f32) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    let mut current = String::new();
+    for word in text.split(' ') {
+        let candidate = if current.is_empty() { word.to_string() } else { format!("{current} {word}") };
+        if current.is_empty() || measure(&candidate) <= width {
+            current = candidate;
+        } else {
+            lines.push(std::mem::replace(&mut current, word.to_string()));
+        }
+    }
+    lines.push(current);
+    lines
+}
+
+#[cfg(test)]
+mod tests {
+    use super::wrap_to_width;
+
+    #[test]
+    fn a_note_wraps_at_spaces_to_the_width_and_a_long_word_keeps_its_own_line() {
+        let measure = |text: &str| text.chars().count() as f32;
+        assert_eq!(wrap_to_width("one two three", 7.0, measure), ["one two", "three"]);
+        assert_eq!(wrap_to_width("short", 40.0, measure), ["short"]);
+        assert_eq!(wrap_to_width("a extraordinarily b", 5.0, measure), ["a", "extraordinarily", "b"]);
     }
 }

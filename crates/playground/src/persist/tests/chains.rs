@@ -2,13 +2,13 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::task::{Context, Waker};
 
-use super::{test_manifest, GatedStore};
+use super::{pong_chains, settle, store_another_tabs_file, stored_bytes, test_manifest, write_project_file, GatedStore};
 use crate::persist::{Chains, PathState, SaveState, SaveStatus};
 use crate::store::memory::MemoryStore;
-use crate::store::{ProjectStore, StoredFile, StoreError};
+use crate::store::{ProjectStore, StoredFile};
 
 #[test]
-fn test_take_started_puts_moves_the_future_and_keeps_the_state() {
+fn test_take_started_operation_moves_the_future_and_keeps_the_state() {
     let memory = MemoryStore::new();
     let mut chains = Chains::new(
         "pong".to_string(),
@@ -23,17 +23,16 @@ fn test_take_started_puts_moves_the_future_and_keeps_the_state() {
     chains.on_vfs_write(path, b"test content").unwrap();
     assert_eq!(chains.path_state("scenes/main.ron"), PathState::InFlight);
 
-    let mut started = chains.take_started_puts();
-    assert_eq!(started.len(), 1);
-    let (taken_path, future) = started.pop().unwrap();
+    let (taken_path, future) = chains.take_started_operation().unwrap();
     assert_eq!(taken_path, "scenes/main.ron");
+    assert!(chains.take_started_operation().is_none(), "one operation runs at a time");
 
     // Chain is still InFlight while future is taken
     assert_eq!(chains.path_state("scenes/main.ron"), PathState::InFlight);
 
     let result = pollster::block_on(future);
     assert_eq!(result, Ok(1));
-    chains.handle_put_completion(&taken_path, result);
+    chains.handle_completion(&taken_path, result);
 
     assert_eq!(chains.path_state("scenes/main.ron"), PathState::Idle);
     assert_eq!(chains.base_revision("scenes/main.ron"), 1);
@@ -69,13 +68,13 @@ fn test_two_puts_chain_with_gated_store() {
 
     // 3. Release gate and poll
     gated.release();
-    assert!(chains.poll_all(&mut context));
+    assert!(chains.poll_head(&mut context));
     // First put finished (rev 1), second put automatically started (InFlight)
     assert_eq!(chains.path_state("scenes/main.ron"), PathState::InFlight);
     assert_eq!(chains.base_revision("scenes/main.ron"), 1);
 
     // 4. Poll again for second put completion
-    assert!(chains.poll_all(&mut context));
+    assert!(chains.poll_head(&mut context));
     assert_eq!(chains.path_state("scenes/main.ron"), PathState::Idle);
     assert_eq!(chains.base_revision("scenes/main.ron"), 2);
     assert!(!pending_flag.load(Ordering::Relaxed));
@@ -106,6 +105,7 @@ fn test_seed_then_save_advances_revision_without_conflict() {
         bytes: b"loaded_rev_3".to_vec(),
         revision: 3,
         bundle_version: "v1".to_string(),
+        deleted: false,
     }];
     pollster::block_on(async {
         memory.replace_project("pong", seeded.clone(), test_manifest("pong")).await.unwrap();
@@ -118,7 +118,7 @@ fn test_seed_then_save_advances_revision_without_conflict() {
 
     let waker = Waker::noop();
     let mut context = Context::from_waker(waker);
-    chains.poll_all(&mut context);
+    chains.poll_head(&mut context);
 
     assert_eq!(chains.base_revision("scenes/main.ron"), 4);
     assert_eq!(chains.path_state("scenes/main.ron"), PathState::Idle);
@@ -153,69 +153,82 @@ fn test_writes_during_a_drain_are_refused_until_the_epoch_is_restored() {
 #[test]
 fn test_conflicted_path_never_reissued() {
     let memory = MemoryStore::new();
-    let mut chains = Chains::new(
-        "pong".to_string(),
-        "/projects/pong".to_string(),
-        "v1".to_string(),
-        test_manifest("pong"),
-        Arc::new(memory),
-        None,
-    );
+    let mut chains = pong_chains(Arc::new(memory.clone()));
+    store_another_tabs_file(&memory, "a.txt", 2);
 
-    // Simulate stale revision error
-    chains.chains.insert("a.txt".to_string(), crate::persist::PathChain::new("a.txt".to_string(), 0));
-    chains.handle_put_completion("a.txt", Err(StoreError::StaleRevision { stored: 2, base: 0 }));
+    write_project_file(&mut chains, "a.txt", b"mine");
+    settle(&mut chains);
     assert_eq!(chains.path_state("a.txt"), PathState::Conflicted);
 
-    // Reissue stranded must not touch conflicted path
     chains.reissue_stranded();
     assert_eq!(chains.path_state("a.txt"), PathState::Conflicted);
+    write_project_file(&mut chains, "a.txt", b"mine again");
+    settle(&mut chains);
+    assert_eq!(chains.path_state("a.txt"), PathState::Conflicted);
+    assert_eq!(stored_bytes(&memory, "a.txt"), Some(b"other tab".to_vec()), "no put reached the store");
 }
 
 #[test]
-fn test_drain_with_inflight_and_queued_completes_both_and_refuses_new_writes() {
+fn test_drain_finishes_the_queue_written_before_it_and_refuses_new_writes() {
     let memory = MemoryStore::new();
     let gated = GatedStore::new(memory.clone());
-    let mut chains = Chains::new(
-        "pong".to_string(),
-        "/projects/pong".to_string(),
-        "v1".to_string(),
-        test_manifest("pong"),
-        Arc::new(gated.clone()),
-        None,
-    );
-    let waker = Waker::noop();
-    let mut context = Context::from_waker(waker);
+    let mut chains = pong_chains(Arc::new(gated.clone()));
 
     gated.pause();
-    let path = std::path::Path::new("/projects/pong/scenes/main.ron");
-    chains.on_vfs_write(path, b"v1").unwrap();
-    assert_eq!(chains.path_state("scenes/main.ron"), PathState::InFlight);
-
-    chains.on_vfs_write(path, b"v2").unwrap();
+    write_project_file(&mut chains, "scenes/main.ron", b"v1");
+    write_project_file(&mut chains, "scenes/main.ron", b"v2");
     assert_eq!(chains.path_state("scenes/main.ron"), PathState::Queued);
 
     chains.start_drain();
-
-    let new_path = std::path::Path::new("/projects/pong/scenes/other.ron");
-    let write_error = chains.on_vfs_write(new_path, b"v3").unwrap_err();
+    let write_error = chains
+        .on_vfs_write(std::path::Path::new("/projects/pong/scenes/other.ron"), b"v3")
+        .unwrap_err();
     assert!(write_error.contains("project is being replaced"));
     assert_eq!(chains.path_state("scenes/other.ron"), PathState::Idle);
+    assert!(chains.has_active(), "the drain waits while anything written before it is left");
 
     gated.release();
-    while chains.has_active() {
-        chains.poll_all(&mut context);
-    }
-
-    assert_eq!(chains.path_state("scenes/main.ron"), PathState::Idle);
+    settle(&mut chains);
+    assert!(!chains.has_active());
+    assert_eq!(chains.path_state("scenes/main.ron"), PathState::Idle, "v2 landed before the drain ended");
     assert_eq!(chains.base_revision("scenes/main.ron"), 2);
+    assert_eq!(stored_bytes(&memory, "scenes/main.ron"), Some(b"v2".to_vec()));
 
-    pollster::block_on(async {
-        let loaded = memory.load_project("pong").await.unwrap();
-        assert_eq!(loaded.len(), 1);
-        assert_eq!(loaded[0].bytes, b"v2");
-        assert_eq!(loaded[0].revision, 2);
-    });
+    chains.restore_epoch();
+    assert!(!chains.is_pending());
+}
+
+#[test]
+fn test_a_drain_retries_a_stranded_head_once_and_a_second_failure_leaves_it_stranded_not_active() {
+    let memory = MemoryStore::new();
+    let gated = GatedStore::new(memory.clone());
+    let mut chains = pong_chains(Arc::new(gated.clone()));
+
+    gated.set_fail_next_operation(true);
+    write_project_file(&mut chains, "scenes/main.ron", b"v1");
+    settle(&mut chains);
+    assert_eq!(chains.path_state("scenes/main.ron"), PathState::Stranded);
+
+    // The switch is the visitor acting, so the stranded head is tried again; the store is back.
+    chains.start_drain();
+    assert!(chains.has_active(), "the stranded head was retried");
+    settle(&mut chains);
+    assert!(!chains.has_active());
+    assert_eq!(stored_bytes(&memory, "scenes/main.ron"), Some(b"v1".to_vec()));
+    chains.restore_epoch();
+
+    gated.set_fail_next_operation(true);
+    write_project_file(&mut chains, "scenes/main.ron", b"v2");
+    settle(&mut chains);
+    assert_eq!(chains.path_state("scenes/main.ron"), PathState::Stranded);
+
+    // The store is still down: the retry fails and the switch goes on without it.
+    gated.set_fail_next_operation(true);
+    chains.start_drain();
+    settle(&mut chains);
+        assert!(!chains.has_active(), "a head stranded again is not active: the drain reads it as stranded and refuses");
+    assert_eq!(chains.path_state("scenes/main.ron"), PathState::Stranded);
+    assert_eq!(stored_bytes(&memory, "scenes/main.ron"), Some(b"v1".to_vec()));
 }
 
 #[test]
@@ -244,109 +257,60 @@ fn test_first_time_put_born_during_drain_is_refused() {
 }
 
 #[test]
-fn test_fail_first_put_with_queued_starts_second_put_at_once() {
+fn test_a_failed_put_strands_the_head_and_the_put_behind_it_waits_for_the_retry() {
     let memory = MemoryStore::new();
     let gated = GatedStore::new(memory.clone());
-    let mut chains = Chains::new(
-        "pong".to_string(),
-        "/projects/pong".to_string(),
-        "v1".to_string(),
-        test_manifest("pong"),
-        Arc::new(gated.clone()),
-        None,
-    );
-    let waker = Waker::noop();
-    let mut context = Context::from_waker(waker);
+    let mut chains = pong_chains(Arc::new(gated.clone()));
 
     gated.pause();
-    gated.set_fail_next_put(true);
-
-    let path = std::path::Path::new("/projects/pong/file.txt");
-    chains.on_vfs_write(path, b"v1").unwrap();
-    assert_eq!(chains.path_state("file.txt"), PathState::InFlight);
-    assert_eq!(chains.base_revision("file.txt"), 0);
-
-    chains.on_vfs_write(path, b"v2").unwrap();
-    assert_eq!(chains.path_state("file.txt"), PathState::Queued);
-
+    gated.set_fail_next_operation(true);
+    write_project_file(&mut chains, "file.txt", b"v1");
+    write_project_file(&mut chains, "file.txt", b"v2");
     gated.release();
-    // Poll to complete v1 (which fails) and trigger v2
-    assert!(chains.poll_all(&mut context));
+    settle(&mut chains);
 
-    // After completion, path is InFlight with v2 at same base 0
-    assert_eq!(chains.path_state("file.txt"), PathState::InFlight);
-    assert_eq!(chains.base_revision("file.txt"), 0);
+    assert_eq!(chains.path_state("file.txt"), PathState::Stranded);
+    assert!(chains.is_pending(), "a stranded head keeps the unload prompt armed");
+    assert_eq!(stored_bytes(&memory, "file.txt"), None, "v2 never overtook the failed v1");
 
-    // Poll to complete v2 (which succeeds)
-    assert!(chains.poll_all(&mut context));
+    chains.reissue_stranded();
+    let waker = Waker::noop();
+    let mut context = Context::from_waker(waker);
+    assert!(chains.poll_head(&mut context));
+    assert_eq!(stored_bytes(&memory, "file.txt"), Some(b"v1".to_vec()), "v1 lands first");
+    settle(&mut chains);
     assert_eq!(chains.path_state("file.txt"), PathState::Idle);
-    assert_eq!(chains.base_revision("file.txt"), 1);
-
-    pollster::block_on(async {
-        let loaded = memory.load_project("pong").await.unwrap();
-        assert_eq!(loaded.len(), 1);
-        assert_eq!(loaded[0].bytes, b"v2");
-        assert_eq!(loaded[0].revision, 1);
-    });
+    assert_eq!(chains.base_revision("file.txt"), 2);
+    assert_eq!(stored_bytes(&memory, "file.txt"), Some(b"v2".to_vec()));
 }
 
 #[test]
-fn test_stranded_reissued_with_newest_bytes_and_inflight_queued_untouched() {
+fn test_a_stranded_head_retries_on_the_next_write_and_lands_before_it() {
     let memory = MemoryStore::new();
     let gated = GatedStore::new(memory.clone());
-    let mut chains = Chains::new(
-        "pong".to_string(),
-        "/projects/pong".to_string(),
-        "v1".to_string(),
-        test_manifest("pong"),
-        Arc::new(gated.clone()),
-        None,
-    );
-    let waker = Waker::noop();
-    let mut context = Context::from_waker(waker);
+    let mut chains = pong_chains(Arc::new(gated.clone()));
 
-    // Make stranded path: single put fails with Backend
-    gated.pause();
-    gated.set_fail_next_put(true);
-    let stranded_path = std::path::Path::new("/projects/pong/stranded.txt");
-    chains.on_vfs_write(stranded_path, b"stranded_bytes").unwrap();
-    gated.release();
-    chains.poll_all(&mut context);
+    gated.set_fail_next_operation(true);
+    write_project_file(&mut chains, "stranded.txt", b"stranded_bytes");
+    settle(&mut chains);
     assert_eq!(chains.path_state("stranded.txt"), PathState::Stranded);
 
-    // Make busy path: in-flight + queued
+    // The next write is evidence the tab is alive: the head is issued again at once,
+    // with the new write queued behind it.
     gated.pause();
-    let busy_path = std::path::Path::new("/projects/pong/busy.txt");
-    chains.on_vfs_write(busy_path, b"busy_v1").unwrap();
-    chains.on_vfs_write(busy_path, b"busy_v2").unwrap();
-    assert_eq!(chains.path_state("busy.txt"), PathState::Queued);
-
-    // Call reissue_stranded
-    chains.reissue_stranded();
-
-    // Stranded path became InFlight
+    write_project_file(&mut chains, "busy.txt", b"busy");
     assert_eq!(chains.path_state("stranded.txt"), PathState::InFlight);
-    // Busy path is still Queued, untouched
     assert_eq!(chains.path_state("busy.txt"), PathState::Queued);
 
     gated.release();
-    while chains.has_active() {
-        chains.poll_all(&mut context);
-    }
-
-    assert_eq!(chains.path_state("stranded.txt"), PathState::Idle);
-    assert_eq!(chains.path_state("busy.txt"), PathState::Idle);
-
-    pollster::block_on(async {
-        let loaded = memory.load_project("pong").await.unwrap();
-        let stranded_file = loaded.iter().find(|file| file.path == "stranded.txt").unwrap();
-        assert_eq!(stranded_file.bytes, b"stranded_bytes");
-        assert_eq!(stranded_file.revision, 1);
-
-        let busy_file = loaded.iter().find(|file| file.path == "busy.txt").unwrap();
-        assert_eq!(busy_file.bytes, b"busy_v2");
-        assert_eq!(busy_file.revision, 2);
-    });
+    let waker = Waker::noop();
+    let mut context = Context::from_waker(waker);
+    assert!(chains.poll_head(&mut context));
+    assert_eq!(stored_bytes(&memory, "stranded.txt"), Some(b"stranded_bytes".to_vec()));
+    assert_eq!(stored_bytes(&memory, "busy.txt"), None, "the retried head lands first");
+    settle(&mut chains);
+    assert_eq!(stored_bytes(&memory, "busy.txt"), Some(b"busy".to_vec()));
+    assert!(!chains.is_pending());
 }
 
 #[test]
@@ -375,7 +339,7 @@ fn test_put_resolving_after_drain_timeout_updates_base_without_conflict() {
 
     // Now gate releases and put resolves Ok(1)
     gated.release();
-    chains.poll_all(&mut context);
+    chains.poll_head(&mut context);
 
     assert_eq!(chains.path_state("scene.ron"), PathState::Idle);
     assert_eq!(chains.base_revision("scene.ron"), 1);
@@ -401,7 +365,7 @@ fn test_write_under_a_sibling_slug_sharing_the_root_prefix_is_ignored() {
 }
 
 #[test]
-fn test_stranded_path_is_not_reissued_during_drain_and_is_again_after_restore_epoch() {
+fn test_a_stranded_head_is_retried_by_the_drain_once_not_by_visibility_during_it_and_again_after_restore() {
     let memory = MemoryStore::new();
     let gated = GatedStore::new(memory);
     let mut chains = Chains::new(
@@ -415,57 +379,48 @@ fn test_stranded_path_is_not_reissued_during_drain_and_is_again_after_restore_ep
     let waker = Waker::noop();
     let mut context = Context::from_waker(waker);
 
-    // Make stranded path: single put fails with Backend
     gated.pause();
-    gated.set_fail_next_put(true);
+    gated.set_fail_next_operation(true);
     let stranded_path = std::path::Path::new("/projects/pong/stranded.txt");
     chains.on_vfs_write(stranded_path, b"stranded_bytes").unwrap();
     gated.release();
-    chains.poll_all(&mut context);
+    chains.poll_head(&mut context);
     assert_eq!(chains.path_state("stranded.txt"), PathState::Stranded);
 
-    // Start drain: draining becomes true
+    // The drain's own retry, which fails again here, so the head is stranded under the drain.
+    gated.set_fail_next_operation(true);
     chains.start_drain();
+    assert_eq!(chains.path_state("stranded.txt"), PathState::InFlight, "the drain retried it once");
+    chains.poll_head(&mut context);
+    assert_eq!(chains.path_state("stranded.txt"), PathState::Stranded);
 
-    // Reissue while draining: must NOT reissue
+    // A visibility change during the drain must not retry it: the switch is going ahead.
     chains.reissue_stranded();
     assert_eq!(chains.path_state("stranded.txt"), PathState::Stranded);
 
-    // Restore epoch: draining becomes false
     chains.restore_epoch();
-
-    // Reissue after restore_epoch: stranded path becomes InFlight
+    gated.pause();
     chains.reissue_stranded();
     assert_eq!(chains.path_state("stranded.txt"), PathState::InFlight);
 }
 
 #[test]
-fn test_conflicted_paths_returns_sorted_conflicted_paths() {
+fn test_a_conflicted_put_holds_the_queue_and_names_its_path() {
     let memory = MemoryStore::new();
-    let mut chains = Chains::new(
-        "pong".to_string(),
-        "/projects/pong".to_string(),
-        "v1".to_string(),
-        test_manifest("pong"),
-        Arc::new(memory),
-        None,
-    );
+    let mut chains = pong_chains(Arc::new(memory.clone()));
+    store_another_tabs_file(&memory, "z.ron", 1);
 
-    assert_eq!(chains.conflicted_paths(), Vec::<String>::new());
+    write_project_file(&mut chains, "z.ron", b"mine");
+    write_project_file(&mut chains, "a.txt", b"behind the conflict");
+    settle(&mut chains);
 
-    // Two paths conflict the way production does: a put completes with StaleRevision.
-    for path in ["scenes/b.scene.ron", "scenes/a.scene.ron"] {
-        chains.chains.insert(
-            path.to_string(),
-            super::super::PathChain::new(path.to_string(), 1),
-        );
-        chains.handle_put_completion(path, Err(StoreError::StaleRevision { stored: 2, base: 1 }));
-        assert_eq!(chains.path_state(path), PathState::Conflicted);
-    }
-
+    assert_eq!(chains.conflicted_paths(), vec!["z.ron".to_string()]);
+    assert_eq!(chains.path_state("a.txt"), PathState::Queued, "nothing issues behind a conflict");
+    assert!(chains.is_pending());
+    assert_eq!(stored_bytes(&memory, "a.txt"), None);
     assert_eq!(
-        chains.conflicted_paths(),
-        vec!["scenes/a.scene.ron".to_string(), "scenes/b.scene.ron".to_string()]
+        chains.save_status(false),
+        SaveStatus { state: SaveState::Failed, reason: "conflicted: z.ron".to_string() }
     );
 }
 
@@ -509,76 +464,26 @@ fn test_save_status_walks_the_four_states_and_the_dirty_flag() {
     // Both puts land: the flag is alone again.
     gated.release();
     while chains.has_active() {
-        chains.poll_all(&mut context);
+        chains.poll_head(&mut context);
     }
     assert_eq!(chains.save_status(false).state, SaveState::Saved);
     assert_eq!(chains.save_status(true).state, SaveState::Unsaved);
 
     // A backend failure strands the newest bytes: failed, naming that path.
     gated.pause();
-    gated.set_fail_next_put(true);
+    gated.set_fail_next_operation(true);
     chains.on_vfs_write(path, b"edit 3").unwrap();
     gated.release();
-    chains.poll_all(&mut context);
+    chains.poll_head(&mut context);
     assert_eq!(chains.path_state("scenes/main.ron"), PathState::Stranded);
     assert_eq!(
         chains.save_status(false),
-        SaveStatus { state: SaveState::Failed, reason: "stranded: scenes/main.ron".to_string() }
+        SaveStatus {
+            state: SaveState::Failed,
+            reason: "stranded: scenes/main.ron; press Save to retry".to_string(),
+        }
     );
     assert_eq!(chains.save_status(true).state, SaveState::Failed);
 }
 
-#[test]
-fn test_save_status_names_a_conflicted_path_ahead_of_a_stranded_one() {
-    let memory = MemoryStore::new();
-    let gated = GatedStore::new(memory.clone());
-    let mut chains = Chains::new(
-        "pong".to_string(),
-        "/projects/pong".to_string(),
-        "v1".to_string(),
-        test_manifest("pong"),
-        Arc::new(gated.clone()),
-        None,
-    );
-    let waker = Waker::noop();
-    let mut context = Context::from_waker(waker);
 
-    // Two stranded paths, written out of order so the accessor has to sort them.
-    for name in ["b.txt", "a.txt"] {
-        gated.pause();
-        gated.set_fail_next_put(true);
-        let path = std::path::Path::new("/projects/pong").join(name);
-        chains.on_vfs_write(&path, b"stranded").unwrap();
-        gated.release();
-        chains.poll_all(&mut context);
-    }
-    assert_eq!(chains.stranded_paths(), vec!["a.txt".to_string(), "b.txt".to_string()]);
-
-    // z.ron conflicts: another tab saved it, so the store is at revision 1 while this
-    // tab's chain still believes 0.
-    pollster::block_on(async {
-        memory
-            .replace_project(
-                "pong",
-                vec![StoredFile {
-                    project: "pong".to_string(),
-                    path: "z.ron".to_string(),
-                    bytes: b"other tab".to_vec(),
-                    revision: 1,
-                    bundle_version: "v1".to_string(),
-                }],
-                test_manifest("pong"),
-            )
-            .await
-            .unwrap();
-    });
-    chains.on_vfs_write(std::path::Path::new("/projects/pong/z.ron"), b"mine").unwrap();
-    chains.poll_all(&mut context);
-    assert_eq!(chains.path_state("z.ron"), PathState::Conflicted);
-
-    // "a.txt" sorts first, and the reason names the conflict anyway.
-    assert_eq!(
-        chains.save_status(false),
-        SaveStatus { state: SaveState::Failed, reason: "conflicted: z.ron".to_string() }
-    );
-}

@@ -18,14 +18,16 @@ pub type SourceCheckFn = fn(&str) -> Result<(), String>;
 pub type ScriptErrorsFn = Rc<dyn Fn() -> Vec<String>>;
 
 /// The hooks the web entry installs: the syntax check a `.rhai` write runs, the reader of
-/// the runner's error list, the editor's snapshot mailbox, and the flag that reserves the
-/// simulation for a preview window. All `None` until `set_hooks` runs.
+/// the runner's error list, the editor's snapshot mailbox, the flag that reserves the
+/// simulation for a preview window, and the open song's `.mid`, which an import may not
+/// replace. All `None` until `set_hooks` runs.
 #[derive(Default)]
 pub struct Hooks {
     pub source_check: Option<SourceCheckFn>,
     pub script_errors: Option<ScriptErrorsFn>,
     pub scene_snapshot: Option<std::sync::Arc<editor_integration::SceneSnapshotRequest>>,
     pub preview_open: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    pub open_song: Option<std::sync::Arc<std::sync::Mutex<Option<PathBuf>>>>,
 }
 
 thread_local! {
@@ -165,6 +167,30 @@ pub fn playground_write_file(path: String, text: String) -> Result<(), JsValue> 
         .map_err(|error| JsValue::from_str(&format!("failed to write file: {error}")))?;
 
     Ok(())
+}
+
+/// Import a song, a sample or a SoundFont the page read from disk (`crate::upload`), as
+/// the JSON of an `UploadOutcome`: a taken name answers unwritten unless `replace`.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn playground_write_file_bytes(name: String, bytes: Vec<u8>, replace: bool) -> Result<String, JsValue> {
+    let project_root = CURRENT_PROJECT_ROOT.with(|root_cell| root_cell.borrow().clone())
+        .ok_or_else(|| JsValue::from_str("no active project root"))?;
+    let open_song = HOOKS.with(|hooks_cell| hooks_cell.borrow().open_song.clone())
+        .and_then(|mirror| mirror.lock().ok().and_then(|open_song| open_song.clone()));
+    let outcome = crate::upload::import_file(&project_root, &name, &bytes, open_song.as_deref(), replace)
+        .map_err(|error| JsValue::from_str(&error))?;
+    serde_json::to_string(&outcome).map_err(|error| JsValue::from_str(&error.to_string()))
+}
+
+/// Every song whose sidecar names the file at `path` (project-relative), by its `.mid`.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn playground_sample_references(path: String) -> Result<Vec<String>, JsValue> {
+    let project_root = CURRENT_PROJECT_ROOT.with(|root_cell| root_cell.borrow().clone())
+        .ok_or_else(|| JsValue::from_str("no active project root"))?;
+    validate_bridge_path(&project_root, &path).map_err(|error| JsValue::from_str(&error))?;
+    Ok(crate::upload::songs_referencing(&project_root, &path))
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -324,6 +350,7 @@ async fn live_scene(generation: u64) -> Result<(String, Vec<u8>), String> {
         &manifest,
         &snapshot.scene_entry,
         &snapshot.ron,
+        &snapshot.live_files,
     )
     .map_err(|error| error.to_string())?;
 
@@ -413,7 +440,8 @@ pub fn playground_import_zip(bytes: Vec<u8>) -> js_sys::Promise {
 
         let slug = manifest.slug.clone();
         if let Err(store_error) = store.replace_project(&slug, files, manifest).await {
-            crate::persist::with_active_chains(|chains| chains.restore_epoch());
+                        crate::persist::with_active_chains(|chains| chains.restore_epoch());
+            crate::persist::drive_started_operations();
             return Err(JsValue::from_str(&store_error.to_string()));
         }
 

@@ -1,15 +1,16 @@
 //! The sidebar: the Songs list opened from the keyboard (Open Song…) with the open song's
 //! row inert, the path field's Enter as a save and its blur as nothing — and Save Song As…
-//! bringing the field into view before focusing it — and a sample instrument's
-//! provenance: the mark while it is missing, the whole instrument in the one edit an
-//! author field commits, and a scrub of a number field landing every frame.
+//! bringing the field into view before focusing it — a sample instrument's provenance and
+//! the song's own: the mark while it is missing, the one edit an author field commits, a
+//! refused save's request focusing the song's Author; a binding's Trigger live only while
+//! the preview sounds; and a scrub of a number field landing every frame.
 
 use glam::Vec2;
 use input::prelude::KeyCode;
 use music_midi::InstrumentSource;
 use ui::{DrawCommand, Rect, UIContext};
 
-use super::sidebar::{path_field_id, render_sidebar, SidebarContext, ROW_HEIGHT};
+use super::sidebar::{path_field_id, render_sidebar, song_author_field_id, SidebarContext, ROW_HEIGHT};
 use super::state::{ComposerFocus, ComposerState, ControlRequest, SidebarSection};
 use super::test_support::melody;
 use super::{drop_action, ComposerAction};
@@ -28,6 +29,7 @@ fn context<'a>(song: Option<&'a SongDocument>, enter_pressed: bool, song_path: O
         enter_pressed,
         default_path: "music/untitled.mid",
         song_path,
+        preview_audible: false,
     }
 }
 
@@ -275,4 +277,218 @@ fn a_number_fields_gesture_opens_discrete_continues_while_live_and_closes_on_rel
     state.sidebar_section = SidebarSection::Instruments;
     let after = sample_fields(&type_key(&mut ui, &mut input, KeyCode::ArrowUp, |ui| draw(ui, &mut state)));
     assert!(after.2, "the next nudge is a gesture of its own: {after:?}");
+}
+
+#[test]
+fn a_song_without_its_own_provenance_shows_the_mark_and_its_author_commits_one_set_provenance() {
+    let mut song = melody();
+    song.apply(
+        SongEdit::SetProvenance {
+            provenance: music_midi::Provenance { author: String::new(), license: "MIT".to_string() },
+        },
+        Gesture::Discrete,
+    )
+    .expect("an empty author is an edit like any other");
+    let theme = EditorTheme::default();
+    let mut state = sidebar_state();
+    let mut ui = UIContext::new();
+    let mut input = input::InputHandler::new();
+    let draw = |ui: &mut UIContext, state: &mut ComposerState, enter: bool| {
+        render_sidebar(ui, &theme, state, SIDEBAR, None, &context(Some(&song), enter, None))
+    };
+
+    frame(&mut ui, &input, |ui| draw(ui, &mut state, false));
+    assert!(drawn_text(&ui).contains("Song author and license: needed before Save"), "a song with no author says so");
+
+    state.request = Some(ControlRequest::FocusSongAuthor);
+    frame(&mut ui, &input, |ui| draw(ui, &mut state, false));
+    assert!(ui.is_focused(song_author_field_id()), "a refused save's request focuses the Author");
+    assert_eq!(state.sidebar_control, 1, "the cursor is on the Author row");
+    type_key(&mut ui, &mut input, KeyCode::KeyJ, |ui| draw(ui, &mut state, false));
+    let committed = type_key(&mut ui, &mut input, KeyCode::Enter, |ui| draw(ui, &mut state, true));
+    assert_eq!(
+        committed,
+        vec![ComposerAction::Edit(SongEdit::SetProvenance {
+            provenance: music_midi::Provenance { author: "j".to_string(), license: "MIT".to_string() },
+        })],
+        "the license rides along unchanged"
+    );
+}
+
+#[test]
+fn a_bindings_trigger_is_live_only_while_the_preview_sounds_and_enter_still_reaches_the_host() {
+    let song = song_with_a_binding();
+    let theme = EditorTheme::default();
+    let mut ui = UIContext::new();
+    let mut input = input::InputHandler::new();
+    for audible in [true, false] {
+        let mut state = sidebar_state();
+        state.sidebar_section = SidebarSection::Bindings;
+        let mut sidebar = context(Some(&song), false, None);
+        sidebar.preview_audible = audible;
+        frame(&mut ui, &input, |ui| render_sidebar(ui, &theme, &mut state, SIDEBAR, Some(TABS), &sidebar));
+        let trigger = label_position(&ui, "Trigger jump");
+        let (pressed, released) = click_through(&mut ui, &mut input, trigger, |ui| {
+            render_sidebar(ui, &theme, &mut state, SIDEBAR, Some(TABS), &sidebar)
+        });
+        let clicked: Vec<ComposerAction> = pressed.into_iter().chain(released).collect();
+        let expected = if audible { vec![ComposerAction::PreviewTrigger(0)] } else { Vec::new() };
+        assert_eq!(clicked, expected, "a click reaches a live Trigger only (audible: {audible})");
+
+        state.sidebar_control = 0;
+        state.request = Some(ControlRequest::ActivateSidebar);
+        let entered = frame(&mut ui, &input, |ui| render_sidebar(ui, &theme, &mut state, SIDEBAR, Some(TABS), &sidebar));
+        assert_eq!(entered, vec![ComposerAction::PreviewTrigger(0)], "Enter reaches the host, which says why when it is not live");
+    }
+}
+
+/// Every text the last frame drew, joined by spaces as a reader would run the lines together.
+fn drawn_text(ui: &UIContext) -> String {
+    ui.draw_list()
+        .commands()
+        .iter()
+        .filter_map(|command| match command {
+            DrawCommand::TextPlaceholder { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[test]
+fn every_note_wraps_inside_a_narrow_sidebar_so_none_is_cut_at_its_edge() {
+    let song = SongDocument::new_song().expect("a blank song");
+    let theme = EditorTheme::default();
+    let mut state = sidebar_state();
+    let mut ui = UIContext::new();
+    let input = input::InputHandler::new();
+    let narrow = Rect { x: 0.0, y: 0.0, width: 180.0, height: 2000.0 };
+    frame(&mut ui, &input, |ui| render_sidebar(ui, &theme, &mut state, narrow, None, &context(Some(&song), false, None)));
+
+    assert!(drawn_text(&ui).contains("Song author and license: needed before Save"));
+    assert!(drawn_text(&ui).contains("Enter saves here (Save Song As…); under music/ or ai/music/"));
+    for command in ui.draw_list().commands() {
+        if let DrawCommand::TextPlaceholder { text, position, .. } = command {
+            let right = position.x + ui.measure_text_styled(text, theme.fonts.small).x;
+            let single_word = !text.contains(' ');
+            assert!(right <= narrow.width || single_word, "'{text}' runs to {right} past {}", narrow.width);
+        }
+    }
+}
+
+#[test]
+fn walking_down_to_the_last_control_of_a_short_sidebar_rings_it_wholly_inside() {
+    let song = melody();
+    let theme = EditorTheme::default();
+    let mut state = sidebar_state();
+    let mut ui = UIContext::new();
+    let input = input::InputHandler::new();
+    let short = Rect { x: 0.0, y: 0.0, width: 300.0, height: 120.0 };
+    let draw = |ui: &mut UIContext, state: &mut ComposerState| {
+        render_sidebar(ui, &theme, state, short, None, &context(Some(&song), false, None))
+    };
+    frame(&mut ui, &input, |ui| draw(ui, &mut state));
+
+    for control in 1..state.sidebar_control_count {
+        state.sidebar_control = control;
+        state.reveal_control = true;
+        frame(&mut ui, &input, |ui| draw(ui, &mut state));
+        frame(&mut ui, &input, |ui| draw(ui, &mut state));
+        let ring = ui.draw_list().commands().iter().find_map(|command| match command {
+            DrawCommand::RectBorder { bounds, color, .. } if *color == theme.focus_ring => Some(*bounds),
+            _ => None,
+        });
+        let ring = ring.unwrap_or_else(|| panic!("control {control} has no ring once revealed"));
+        assert!(ring.y >= short.y && ring.bottom() <= short.bottom(), "control {control}'s ring {ring:?} is not inside");
+    }
+}
+
+#[test]
+fn a_provenance_field_committed_with_its_own_value_is_no_edit() {
+    let song = melody();
+    let theme = EditorTheme::default();
+    let mut state = sidebar_state();
+    let mut ui = UIContext::new();
+    let mut input = input::InputHandler::new();
+    let draw = |ui: &mut UIContext, state: &mut ComposerState, enter: bool| {
+        render_sidebar(ui, &theme, state, SIDEBAR, None, &context(Some(&song), enter, None))
+    };
+    state.request = Some(ControlRequest::FocusSongAuthor);
+    frame(&mut ui, &input, |ui| draw(ui, &mut state, false));
+    assert!(ui.is_focused(song_author_field_id()));
+    let committed = type_key(&mut ui, &mut input, KeyCode::Enter, |ui| draw(ui, &mut state, true));
+    assert_eq!(committed, Vec::new(), "Enter on an untouched Author changes nothing");
+}
+
+/// The melody with a part on its melody track, a SoundFont instrument and a binding.
+fn song_with_a_binding() -> SongDocument {
+    let mut song = melody();
+    for edit in [
+        SongEdit::AddPart {
+            part: music_midi::Part {
+                name: "lead".to_string(),
+                track: music_midi::TrackSelector::Index(1),
+                mode: music_midi::PartMode::Loop,
+                quantize: music_midi::Quantize::Off,
+            },
+        },
+        SongEdit::AddInstrument {
+            instrument: music_midi::Instrument {
+                name: "organ".to_string(),
+                source: InstrumentSource::SoundFont { path: "soundfonts/cast.sf2".to_string(), bank: 0, preset: 19 },
+                provenance: None,
+            },
+        },
+        SongEdit::SetBinding {
+            binding: music_midi::Binding { action: "jump".to_string(), part: "lead".to_string(), instrument: "organ".to_string() },
+        },
+    ] {
+        song.apply(edit, Gesture::Discrete).expect("the fixture builds");
+    }
+    song
+}
+
+#[test]
+fn left_and_right_at_the_full_width_move_the_cursor_to_each_sections_first_control_and_wrap() {
+    let song = song_with_a_binding();
+    let theme = EditorTheme::default();
+    let mut state = sidebar_state();
+    let mut ui = UIContext::new();
+    let input = input::InputHandler::new();
+    let draw = |ui: &mut UIContext, state: &mut ComposerState| {
+        render_sidebar(ui, &theme, state, SIDEBAR, None, &context(Some(&song), false, None))
+    };
+    frame(&mut ui, &input, |ui| draw(ui, &mut state));
+    let starts = state.sidebar_section_starts.clone();
+    assert_eq!(starts.len(), 4, "every section is drawn: {starts:?}");
+    let start_of = |section: SidebarSection| starts.iter().find(|(drawn, _)| *drawn == section).map(|(_, start)| *start);
+
+    for section in [SidebarSection::Parts, SidebarSection::Instruments, SidebarSection::Bindings, SidebarSection::Song] {
+        state.step_sidebar_section(true);
+        frame(&mut ui, &input, |ui| draw(ui, &mut state));
+        assert_eq!((state.sidebar_section, Some(state.sidebar_control)), (section, start_of(section)));
+    }
+    state.step_sidebar_section(false);
+    assert_eq!(Some(state.sidebar_control), start_of(SidebarSection::Bindings), "Left from the top wraps to the last section");
+    frame(&mut ui, &input, |ui| draw(ui, &mut state));
+    let ring = ui.draw_list().commands().iter().find_map(|command| match command {
+        DrawCommand::RectBorder { bounds, color, .. } if *color == theme.focus_ring => Some(*bounds),
+        _ => None,
+    });
+    let trigger = label_position(&ui, "Trigger jump");
+    assert!(ring.is_some_and(|ring| ring.contains(trigger)), "the ring is on the Bindings section's first control");
+}
+
+#[test]
+fn left_and_right_behind_tabs_change_the_tab_and_put_the_cursor_at_its_top() {
+    let song = song_with_a_binding();
+    let theme = EditorTheme::default();
+    let mut state = sidebar_state();
+    let mut ui = UIContext::new();
+    let input = input::InputHandler::new();
+    frame(&mut ui, &input, |ui| render_sidebar(ui, &theme, &mut state, SIDEBAR, Some(TABS), &context(Some(&song), false, None)));
+    assert_eq!(state.sidebar_section_starts.len(), 1, "one section behind the tabs");
+    state.sidebar_control = 3;
+    state.step_sidebar_section(false);
+    assert_eq!((state.sidebar_section, state.sidebar_control), (SidebarSection::Bindings, 0));
 }

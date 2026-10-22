@@ -28,6 +28,8 @@ mod sidebar_tests;
 mod state_tests;
 #[cfg(test)]
 mod test_support;
+#[cfg(test)]
+mod transport_tests;
 
 use std::collections::BTreeSet;
 
@@ -49,10 +51,6 @@ pub use state::{ComposerFocus, ComposerState, ControlRequest, RollCursor, Sideba
 pub const LAST_WRITABLE_TICK: u64 = 0x0FFF_FFFF;
 /// MIDI's highest key.
 pub const HIGHEST_KEY: u8 = 127;
-
-/// What the preview transport's controls and every trigger say until the preview exists.
-pub const PREVIEW_REFUSAL: &str =
-    "the composer's preview transport arrives in Conductor batch 11";
 
 /// A position in the roll under the pointer: a tick and a key, either outside the song's
 /// range when the pointer is, so a drag's delta can be measured past the edges.
@@ -83,8 +81,11 @@ pub enum ComposerAction {
     OpenSong(String),
     /// Save to the path the field holds, as typed (the path field's Enter).
     SaveSongTo(String),
-    /// A preview control was pressed; the transport refuses it until the preview exists.
-    PreviewRefused,
+    /// Start the song preview from the roll's cursor, or stop it: the transport's Play
+    /// while it is stopped, its Stop while it plays.
+    PreviewPlayStop,
+    /// Play the binding at this index of the sidecar's bindings, as its action would.
+    PreviewTrigger(usize),
     /// Tell the user why something was not done, on the status bar.
     Refused(String),
 }

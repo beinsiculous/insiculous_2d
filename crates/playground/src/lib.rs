@@ -6,6 +6,7 @@ pub mod persist;
 pub mod preview;
 pub mod projects;
 pub mod store;
+pub mod upload;
 
 #[cfg(target_arch = "wasm32")]
 pub mod preview_entry;

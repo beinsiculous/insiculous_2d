@@ -177,7 +177,10 @@ addresses it; none touches the scene's `CommandHistory`, and `undo` /
 | `song open <path> [discard]` | open a `.mid` (relative to the asset root), settling what an interrupted save left — the answer's `notes` say what was settled |
 | `song save [path [overwrite]]` | save to `path`, else the song's own path, else — never saved — `music/untitled.mid` (numbered while its `.mid` or its `.mid.ron` is taken). A `path` whose `.mid` or `.mid.ron` exists and is not the song's own file is another song: `refused` unless the line ends in `overwrite` (its own word — it replaces that song's files, where `discard` drops this song's edits); the composer's path field asks Overwrite / Cancel instead |
 | `song close [discard]` | close the song |
-| `song play [beat]`, `song stop`, `song seek <beat>`, `song trigger <action>` | parsed, and `refused` until the composer's preview transport exists (Conductor batch 11) |
+| `song play [beat]` | play the song as the document holds it — the composer's preview — from a whole beat counted from zero (from the top without one): `{"preview":"playing","from_tick":<tick>}`. `refused` with no song open; a beat that is fractional, negative or not finite is `invalid`. It is heard on the next frame (before the web's first click it waits, and the composer says so) |
+| `song stop` | stop the preview: `{"preview":"stopped"}`; nothing while it is stopped |
+| `song seek <beat>` | move the playing preview to a whole beat; `refused` while it is stopped (`song play <beat>` starts there) |
+| `song trigger <action>` | play the binding's part on its instrument as the game's action would: `{"triggered":"<action>"}`. `not_found` for an action no binding has; `refused` until the preview is heard |
 
 **`song` answers:**
 
@@ -190,7 +193,8 @@ addresses it; none touches the scene's `CommandHistory`, and `undo` /
  "parts":[...],"instruments":[...],"bindings":[...],
  "tempo_changes":[{"tick":0,"microseconds_per_quarter":500000,"beats_per_minute":120.0}],
  "time_signatures":[{"tick":0,"numerator":4,"denominator":4}],
- "selection":[3],"pending_samples":[],"can_undo":true,"can_redo":false}
+ "provenance":{"author":"2026 Jesse","license":"CC-BY-4.0"},
+ "selection":[3],"can_undo":true,"can_redo":false}
 ```
 
 `channel` counts from 1, as musicians count (and as a type-0 file's
@@ -225,6 +229,7 @@ with `refused_reason`, and it still opens and saves as it was.
 {"RemoveBinding": {"action": "jump"}}
 {"AddPart": {"part": {"name": "lead", "track": {"Name": "melody"}, "mode": "Loop", "quantize": "Off"}}}
 {"RemovePart": {"name": "lead"}}
+{"SetProvenance": {"provenance": {"author": "2026 Jesse", "license": "CC-BY-4.0"}}}
 {"Batch": [ {"SetPitch": {"notes": [3], "key": 62}}, {"SetPitch": {"notes": [4], "key": 65}} ]}
 ```
 
@@ -251,10 +256,15 @@ Song semantics worth knowing:
 - **Separate watermarks**: saving the scene never marks the song clean, and
   saving the song never marks the scene clean.
 - **Save is a journal** (`docs/SONG_FORMAT.md` § How the composer saves):
-  every `Sample` instrument needs `provenance` (author and license) or the
-  save is `refused`, naming the instrument and the field, and nothing is
-  written; samples are copied into `music/samples/<stem>/` with a `LICENSE`
-  naming each; the `.mid` and `.mid.ron` land through a `.new` pair that
+  the song needs its own `provenance` (author and license — set it with
+  `{"SetProvenance": …}`, which undo covers like any edit) and so does every
+  `Sample` instrument, or the save is `refused`, naming the song or the
+  instrument and the field, and nothing is written; the path is held to the
+  rule that file describes (no component starting or ending with `_`, no
+  `__`, no whitespace, nothing under a home's `samples/`); samples are copied
+  into the song's own folder (`music/samples/<stem>/` for a song directly in
+  `music/`) with a `LICENSE` naming each and the song that owns the folder,
+  and the home folder's `LICENSE` gets the song's own stanza; the `.mid` and `.mid.ron` land through a `.new` pair that
   `song open` recovers if the save was interrupted. A song saves only under
   `music/` or `ai/music/` in the asset folder; a `.mid` opened from anywhere
   else (or without a sidecar) is an import — `path` is `null` and its first

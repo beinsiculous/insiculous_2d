@@ -12,6 +12,7 @@ use glam::Vec2;
 use super::snapshot::{SceneSnapshot, SceneSnapshotRequest};
 use super::test_support::{editor_game, DummyGame};
 use super::EditorGame;
+use super::test_support::press_play;
 
 const SCENE: &str = r#"SceneData(
     name: "live",
@@ -157,7 +158,7 @@ fn test_scene_snapshot_is_refused_mid_session() -> std::io::Result<()> {
     let mut world = World::new();
     let (mut editor, _) = loaded_session(directory.path(), &mut world)?;
 
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
     assert!(editor.editor.is_playing(), "fixture: the session is Playing");
     assert!(
         editor.scene_snapshot(&world, &test_texture_path).is_err(),
@@ -181,7 +182,7 @@ fn test_play_is_refused_while_a_preview_window_is_open() -> std::io::Result<()> 
     let preview_open = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
     editor.preview_open = Some(preview_open.clone());
 
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
 
     assert!(editor.editor.is_editing(), "Play is refused while the preview holds the scene");
     assert_eq!(
@@ -190,7 +191,7 @@ fn test_play_is_refused_while_a_preview_window_is_open() -> std::io::Result<()> 
     );
 
     preview_open.store(false, std::sync::atomic::Ordering::Relaxed);
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
     assert!(editor.editor.is_playing(), "Play works once the preview released the scene");
     Ok(())
 }
@@ -211,7 +212,7 @@ fn test_snapshot_request_refuses_a_second_generation_while_one_is_pending_and_dr
     // The editor answers the generation it took before the cancel landed.
     request.answer(
         1,
-        Ok(SceneSnapshot { scene_entry: "assets/scenes/a.scene.ron".to_string(), ron: String::new() }),
+        Ok(SceneSnapshot { scene_entry: "assets/scenes/a.scene.ron".to_string(), ron: String::new(), live_files: Vec::new() }),
     );
 
     assert!(request.file(2), "the cancel freed the slot");
@@ -220,7 +221,7 @@ fn test_snapshot_request_refuses_a_second_generation_while_one_is_pending_and_dr
 
     request.answer(
         2,
-        Ok(SceneSnapshot { scene_entry: "assets/scenes/b.scene.ron".to_string(), ron: String::new() }),
+        Ok(SceneSnapshot { scene_entry: "assets/scenes/b.scene.ron".to_string(), ron: String::new(), live_files: Vec::new() }),
     );
     let answered = second.outcome().expect("generation 2 has its own answer").expect("it succeeded");
     assert_eq!(answered.scene_entry, "assets/scenes/b.scene.ron");
@@ -238,7 +239,7 @@ fn test_every_subscriber_of_one_generation_reads_its_answer_and_a_later_filing_d
 
     request.answer(
         7,
-        Ok(SceneSnapshot { scene_entry: "assets/scenes/a.scene.ron".to_string(), ron: "live".to_string() }),
+        Ok(SceneSnapshot { scene_entry: "assets/scenes/a.scene.ron".to_string(), ron: "live".to_string(), live_files: Vec::new() }),
     );
 
     let first_read = launch.outcome().expect("the launch reads the answer").expect("it succeeded");
@@ -265,5 +266,31 @@ fn test_snapshot_refuses_a_scene_outside_the_asset_base() -> std::io::Result<()>
         .scene_snapshot(&world, &test_texture_path)
         .expect_err("a scene outside the base has no archive entry");
     assert!(error.to_string().contains("outside the project"), "{error}");
+    Ok(())
+}
+
+#[test]
+fn test_scene_snapshot_carries_the_open_songs_live_files_and_leaves_its_history_and_path_alone(
+) -> std::io::Result<()> {
+    let directory = tempfile::tempdir()?;
+    let mut world = World::new();
+    let (mut editor, _) = loaded_session(directory.path(), &mut world)?;
+    let snapshot = editor.scene_snapshot(&world, &test_texture_path).expect("serializes");
+    assert!(snapshot.live_files.is_empty(), "no song open, no song files");
+
+    editor.song = Some(super::test_support::melody_song());
+    let history_before = editor.song.as_ref().map(|song| song.history().undo_count());
+    let snapshot = editor.scene_snapshot(&world, &test_texture_path).expect("serializes");
+
+    let entries: Vec<&str> = snapshot.live_files.iter().map(|(entry, _)| entry.as_str()).collect();
+    assert_eq!(entries, ["assets/music/untitled.mid", "assets/music/untitled.mid.ron"], "a never-saved song at the default path");
+    let song = editor.song.as_ref().expect("a song");
+    assert_eq!(snapshot.live_files[0].1, song.data().write_smf().expect("exports"), "the bytes as the document holds them");
+    let sidecar = String::from_utf8(snapshot.live_files[1].1.clone()).expect("text");
+    assert!(sidecar.contains("midi_fingerprint"), "rendered as a save renders it: {sidecar}");
+    assert_eq!(song.path(), None, "the snapshot saves nothing");
+    assert!(song.is_dirty());
+    assert_eq!(Some(song.history().undo_count()), history_before);
+    assert!(!directory.path().join("assets/music").exists(), "and writes nothing");
     Ok(())
 }

@@ -144,13 +144,15 @@ fn test_the_headless_session_authors_saves_and_reopens_a_song() -> std::io::Resu
     let responses = run(concat!(
         "song new\n",
         r#"song edit {"AddNote": {"track": 1, "tick": 0, "key": 60, "velocity": 100, "duration_ticks": 480}}"#,
+        "\n",
+        r#"song edit {"SetProvenance": {"provenance": {"author": "2026 Jesse", "license": "MIT"}}}"#,
         "\nsong save music/theme.mid\n",
         "scene\n",
     ));
     for (index, response) in responses.iter().enumerate() {
         assert_eq!(response["ok"], true, "request {index}: {response}");
     }
-    assert_eq!(responses[3]["data"]["song_dirty"], false);
+    assert_eq!(responses[4]["data"]["song_dirty"], false);
     assert!(dir.path().join("music/theme.mid.ron").exists());
 
     let reopened = run("song open music/theme.mid\nsong notes\n");

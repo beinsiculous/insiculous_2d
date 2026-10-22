@@ -1,7 +1,8 @@
-//! The live scene as RON, without saving it.
+//! The live scene as RON, and the open song's two files, without saving either.
 //!
 //! The preview window needs the world the visitor is looking at, unsaved
-//! edits included, while the editor keeps owning the file. The request is a
+//! edits included, while the editor keeps owning the file; an Export carries
+//! the song as the composer holds it the same way. The request is a
 //! mailbox because the two sides run on different clocks: a JavaScript
 //! caller files a generation and polls, and the editor answers on its next
 //! frame.
@@ -15,11 +16,15 @@ use super::scene_io::SceneIoError;
 use super::EditorGame;
 
 /// The live world serialized for the preview, and the archive entry whose
-/// bytes it replaces.
+/// bytes it replaces; the open song's files beside it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SceneSnapshot {
     pub scene_entry: String,
     pub ron: String,
+    /// The open song's MIDI bytes and sidecar text as the document holds them, each at
+    /// its archive entry — the song's own path, or the default a never-saved song would
+    /// take. Empty with no song open.
+    pub live_files: Vec<(String, Vec<u8>)>,
 }
 
 /// How one generation of a snapshot request ends. Every subscriber holds
@@ -192,8 +197,27 @@ impl<G: Game> EditorGame<G> {
         );
         let ron = engine_core::scene_serializer::serialize_to_ron(&scene_data)
             .map_err(SceneIoError::Write)?;
+        let live_files = self.live_song_files()?;
 
-        Ok(SceneSnapshot { scene_entry, ron })
+        Ok(SceneSnapshot { scene_entry, ron, live_files })
+    }
+
+    /// The open song's two files at their archive entries, rendered as a save renders
+    /// them; nothing is refused or moved, and the document's path and history stay.
+    fn live_song_files(&self) -> Result<Vec<(String, Vec<u8>)>, SceneIoError> {
+        let Some(song) = self.song.as_ref() else {
+            return Ok(Vec::new());
+        };
+        let midi_path = song
+            .path()
+            .map(std::path::Path::to_path_buf)
+            .unwrap_or_else(|| self.default_song_path());
+        let (midi_bytes, sidecar_text) = song
+            .rendered_files()
+            .map_err(|error| SceneIoError::Write(error.to_string()))?;
+        let midi_entry = self.scene_entry_for(&midi_path)?;
+        let sidecar_entry = format!("{midi_entry}.ron");
+        Ok(vec![(midi_entry, midi_bytes), (sidecar_entry, sidecar_text.into_bytes())])
     }
 
     /// The archive entry the scene at `path` occupies: its location under

@@ -11,7 +11,6 @@
 
 use std::path::Path;
 
-use editor::command_api::{ApiError, HostedWrite};
 use editor::composer::{
     self, piano_roll::sixteenth_ticks, ComposerAction, ComposerFocus, ComposerKeyAction,
     ComposerKeyRoute, ComposerState, ControlRequest, Direction, SidebarSection,
@@ -172,7 +171,7 @@ impl<G: Game> EditorGame<G> {
                     song.select(notes);
                 }
             }
-            ComposerKeyAction::PreviewToggle => self.refuse_preview(),
+            ComposerKeyAction::PreviewToggle => self.preview_play_stop(),
         }
     }
 
@@ -315,16 +314,6 @@ impl<G: Game> EditorGame<G> {
         }
     }
 
-    /// The preview's transport and a binding's Trigger go through the hosted
-    /// `song play` path, which refuses them until the preview exists.
-    fn refuse_preview(&mut self) {
-        if let Err(ApiError::Refused(message) | ApiError::Invalid(message)) =
-            self.run_hosted_song_write(&HostedWrite::SongPlay { from_beat: None })
-        {
-            self.editor.status_bar.show_error(message);
-        }
-    }
-
     /// The song's undo, for the composer's Ctrl+Z and for Edit → Undo while it holds the
     /// keyboard; the status bar names the document.
     pub(super) fn undo_song_with_feedback(&mut self) {
@@ -361,11 +350,11 @@ impl<G: Game> EditorGame<G> {
     }
 
     /// The File menu's song items, `FocusComposer` and the preview toggle.
-    pub(super) fn dispatch_song_action(&mut self, action: EditorAction, world: &mut ecs::World) {
+    pub(super) fn dispatch_song_action(&mut self, action: EditorAction) {
         match action {
             EditorAction::NewSong => {
                 if self.request_document_action(PendingSceneAction::NewSong) {
-                    self.perform_song_action(PendingSceneAction::NewSong, world);
+                    self.perform_song_action(PendingSceneAction::NewSong);
                 }
                 self.show_composer(ComposerFocus::PianoRoll);
             }
@@ -377,7 +366,11 @@ impl<G: Game> EditorGame<G> {
             }
             EditorAction::SaveSong => {
                 let result = self.save_song(None).map(drop);
+                let refused = result.is_err();
                 self.report_song_failure("Song save", result);
+                if refused {
+                    self.reveal_missing_song_provenance();
+                }
             }
             EditorAction::SaveSongAs if self.song.is_some() => {
                 self.editor.composer.sidebar_section = SidebarSection::Song;
@@ -387,11 +380,11 @@ impl<G: Game> EditorGame<G> {
             EditorAction::SaveSongAs => self.editor.status_bar.show_error("No song is open to save"),
             EditorAction::CloseSong => {
                 if self.request_document_action(PendingSceneAction::CloseSong) {
-                    self.perform_song_action(PendingSceneAction::CloseSong, world);
+                    self.perform_song_action(PendingSceneAction::CloseSong);
                 }
             }
             EditorAction::FocusComposer => self.show_composer(ComposerFocus::PianoRoll),
-            EditorAction::SongPlayStop => self.refuse_preview(),
+            EditorAction::SongPlayStop => self.preview_play_stop(),
             other => log::error!("{other:?} is not a song action"),
         }
     }
@@ -416,14 +409,15 @@ impl<G: Game> EditorGame<G> {
             enter_pressed,
             default_path: &default_path,
             song_path: song_path.as_deref(),
+            preview_audible: self.song_preview.is_audible(),
         };
         let output = render_composer(&mut self.editor, ctx.ui, bounds, &view);
-        self.run_composer_actions(output.actions, ctx.world);
+        self.run_composer_actions(output.actions);
         self.update_composer_drag(output.pointer, ctx.ui.mouse_down());
     }
 
     /// Run what the composer's render asked for, in order.
-    pub(super) fn run_composer_actions(&mut self, actions: Vec<ComposerAction>, world: &mut ecs::World) {
+    pub(super) fn run_composer_actions(&mut self, actions: Vec<ComposerAction>) {
         for action in actions {
             match action {
                 ComposerAction::Focus(area) if self.composer_write_refusal().is_none() => {
@@ -451,12 +445,13 @@ impl<G: Game> EditorGame<G> {
                 ComposerAction::OpenSong(relative) => {
                     let pending = PendingSceneAction::OpenSong(self.resolve_asset_path(Path::new(&relative)));
                     if self.request_document_action(pending.clone()) {
-                        self.perform_song_action(pending, world);
+                        self.perform_song_action(pending);
                     }
                     self.show_composer(ComposerFocus::Sidebar);
                 }
                 ComposerAction::SaveSongTo(typed) => self.save_song_from_field(&typed),
-                ComposerAction::PreviewRefused => self.refuse_preview(),
+                ComposerAction::PreviewPlayStop => self.preview_play_stop(),
+                ComposerAction::PreviewTrigger(index) => self.preview_trigger_binding(index),
                 ComposerAction::Refused(message) => self.editor.status_bar.show_error(message),
             }
         }
@@ -474,11 +469,12 @@ impl<G: Game> EditorGame<G> {
         let target = self.resolve_asset_path(Path::new(typed));
         if let Err(error) = self.save_song(Some(target)) {
             self.editor.status_bar.show_error(format!("Song save failed: {error}"));
+            self.reveal_missing_song_provenance();
         }
     }
 
     /// `path` relative to the asset folder with `/` separators, as the composer shows it.
-    fn asset_relative(&self, path: &Path) -> String {
+    pub(super) fn asset_relative(&self, path: &Path) -> String {
         let relative = path.strip_prefix(&self.asset_base).unwrap_or(path);
         relative
             .components()
@@ -501,14 +497,7 @@ fn move_control_cursor(state: &mut ComposerState, direction: Direction) -> bool 
             state.sidebar_control = (state.sidebar_control + 1).min(state.sidebar_control_count.saturating_sub(1));
         }
         (ComposerFocus::Sidebar, Direction::Left | Direction::Right) => {
-            let sections = SidebarSection::ALL;
-            let index = sections.iter().position(|section| *section == state.sidebar_section).unwrap_or(0);
-            let next = match direction {
-                Direction::Left => (index + sections.len() - 1) % sections.len(),
-                _ => (index + 1) % sections.len(),
-            };
-            state.sidebar_section = sections[next];
-            state.sidebar_control = 0;
+            state.step_sidebar_section(direction == Direction::Right);
         }
         _ => return false,
     }

@@ -13,6 +13,7 @@ fn test_directory_store_put_load_round_trip() {
             bytes: b"scene_content".to_vec(),
             revision: 0,
             bundle_version: "v1".to_string(),
+            deleted: false,
         };
 
         let new_revision = store.put(file, 0, &manifest).await.unwrap();
@@ -37,6 +38,7 @@ fn test_directory_store_stale_base_refused_and_bytes_untouched() {
             bytes: b"original".to_vec(),
             revision: 0,
             bundle_version: "v1".to_string(),
+            deleted: false,
         };
         store.put(file, 0, &manifest).await.unwrap();
 
@@ -46,6 +48,7 @@ fn test_directory_store_stale_base_refused_and_bytes_untouched() {
             bytes: b"corrupted".to_vec(),
             revision: 0,
             bundle_version: "v1".to_string(),
+            deleted: false,
         };
         let error = store.put(stale, 0, &manifest).await.unwrap_err();
         assert_eq!(error, StoreError::StaleRevision { stored: 1, base: 0 });
@@ -72,6 +75,7 @@ fn test_two_writers_racing_from_same_base_exactly_one_wins() {
                 bytes: b"writer 1".to_vec(),
                 revision: 0,
                 bundle_version: "v1".to_string(),
+                deleted: false,
             };
             first_store.put(file, 0, &first_manifest).await
         })
@@ -85,6 +89,7 @@ fn test_two_writers_racing_from_same_base_exactly_one_wins() {
                 bytes: b"writer 2".to_vec(),
                 revision: 0,
                 bundle_version: "v1".to_string(),
+                deleted: false,
             };
             second_store.put(file, 0, &second_manifest).await
         })
@@ -108,6 +113,7 @@ fn test_sweep_orphans_removes_non_bundled_manifestless_slugs() {
             bytes: b"pong".to_vec(),
             revision: 0,
             bundle_version: "v1".to_string(),
+            deleted: false,
         };
         store.put(file_pong, 0, &manifest).await.unwrap();
 
@@ -117,6 +123,7 @@ fn test_sweep_orphans_removes_non_bundled_manifestless_slugs() {
             bytes: b"orphan".to_vec(),
             revision: 0,
             bundle_version: "v1".to_string(),
+            deleted: false,
         };
         let empty_manifest = ProjectManifest {
             slug: "orphan".to_string(),

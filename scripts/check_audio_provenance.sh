@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# The audio provenance gate: every file under an `assets/music`, `assets/soundfonts` or
-# `assets/sounds` directory, or under a crate's top-level `fixtures/` directory
+# The audio provenance gate: every file under an `assets/music`, `assets/ai/music`,
+# `assets/soundfonts` or `assets/sounds` directory, or under a crate's top-level `fixtures/` directory
 # (`crates/<crate>/fixtures/`), is named in a LICENSE in the Debian copyright format
 # (https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/), as
 # `crates/editor/assets/fonts/LICENSE` is. A composition and a given recording or MIDI file
@@ -53,7 +53,7 @@ while IFS= read -r audio_directory; do
     done < <(find "$audio_directory" -type f ! -name LICENSE | sort)
 done < <(
     find . \( -path ./.git -o -path ./scripts/tests -o -name target -o -name dist -o -name node_modules \) -prune \
-        -o -type d \( -path '*/assets/music' -o -path '*/assets/soundfonts' -o -path '*/assets/sounds' \
+        -o -type d \( -path '*/assets/music' -o -path '*/assets/ai/music' -o -path '*/assets/soundfonts' -o -path '*/assets/sounds' \
         -o -regex '\./crates/[^/]+/fixtures' \) -print | sort
 )
 

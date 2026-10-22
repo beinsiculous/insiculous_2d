@@ -388,3 +388,32 @@ fn resuming_on_a_sample_carrying_a_state_change_sounds_as_a_seek_to_it_does() {
         "the resume folds the volume change on its own sample, as the seek does",
     );
 }
+
+#[test]
+fn a_seek_while_stopped_is_where_the_next_play_starts_and_only_that_play() {
+    let mut stage = Stage::new(
+        one_part_song(&[(A4, 100, QUARTER)], "Off", true, QUARTER * 32),
+        ConductorConfig::new(SAMPLE_RATE),
+    );
+    stage.send(ConductorCommand::Seek(3_000));
+    stage.render(BLOCK_FRAMES);
+    assert_eq!(stage.snapshot().transport, TransportState::Stopped);
+
+    stage.send(ConductorCommand::Play);
+    stage.render(BLOCK_FRAMES);
+    let destination = stage.sample_at_tick(3_000);
+    assert_eq!(
+        stage.snapshot().sample_position,
+        destination + BLOCK_FRAMES as u64,
+        "the first block played from the recorded tick"
+    );
+
+    stage.send(ConductorCommand::Stop);
+    stage.send(ConductorCommand::Play);
+    stage.render(BLOCK_FRAMES);
+    assert_eq!(
+        stage.snapshot().sample_position,
+        BLOCK_FRAMES as u64,
+        "the start tick is spent by the play it started"
+    );
+}

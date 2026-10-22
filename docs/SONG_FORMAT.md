@@ -62,6 +62,7 @@ being ignored.
 | `parts` | list of `Part` | empty | the musical parts game actions play |
 | `instruments` | list of `Instrument` | empty | the instruments parts are played on |
 | `bindings` | list of `Binding` | empty | which action plays which part on which instrument |
+| `provenance` | `(author: "…", license: "…")` | absent | who wrote the song and under which license; the composer's Save requires both and writes them into the home folder's `LICENSE` stanza for the song's two files (§ How the composer saves). Loading never requires it |
 | `midi_fingerprint` | integer | absent | written by the composer's Save: FNV-1a (64-bit) over the MIDI file's bytes as it wrote them, so an interrupted save is told from a finished one (§ How the composer saves). Absent from a hand-written sidecar, which is taken as matching its MIDI file; never hand-edit it |
 
 Paths are relative to the game's asset directory, as every other asset path is (the
@@ -305,21 +306,46 @@ The editor's composer saves a song as `<stem>.mid` and `<stem>.mid.ron` under `m
 human pass saves it into `music/` without it). Nothing on either target renames a file, so a
 save is a journal, and it refuses before its first write:
 
-1. **Refused, writing nothing:** a `Sample` instrument without `provenance` (or with an
-   empty author or license), a sidecar the schema check refuses, a sample that cannot be
-   read, a path outside the two song folders.
-2. **The new samples** are copied into `music/samples/<stem>/`, the song's own folder. A
-   name taken there by other bytes gets a content-hash suffix (`blip-1a2b3c4d.wav`), and
-   the instrument's `path` follows. A song never saved holds its samples itself until this
-   first save; nothing is staged on disk.
+1. **Refused, writing nothing:** a path outside the two song folders or against the path
+   rule below; a song without its own `provenance`, or a `Sample` instrument without one
+   (or either with an empty author or license); a sidecar the schema check refuses; a
+   sample that cannot be read; a sample folder another song owns.
+2. **The new samples** are copied into the song's own folder, `<home>/samples/<flat>/`:
+   `<home>` is `music` or `ai/music`, and `<flat>` is the song's path under it with the
+   extension dropped and every `/` written `__` — `music/theme.mid` → `music/samples/theme/`,
+   `ai/music/theme.mid` → `ai/music/samples/theme/`, `music/a/theme.mid` →
+   `music/samples/a__theme/`. A name taken there by other bytes gets a content-hash suffix
+   (`blip-1a2b3c4d.wav`), and the instrument's `path` follows. The folder's `LICENSE`
+   names its owner in a `Source:` header; a save into a folder whose `Source:` names
+   another song is refused naming both, and a folder from before owners were named is
+   adopted only by the song whose stem is its name. A song in a subfolder or under
+   `ai/music` saved before this layout moves to its new folder on its next save, the old
+   folder left behind with its `LICENSE` still naming its files; `music/<stem>.mid` keeps
+   the folder it had.
+
+   **The path rule**, which keeps `__` unambiguous and every file nameable by the
+   provenance gate (it splits a `Files:` field on whitespace): no component of a song's
+   path starts or ends with `_`, none holds `__` or whitespace, and no song lies under
+   `<home>/samples/` (another song's folder, which a save prunes). The refusal names
+   Save As to a path that keeps the rule as the way out. A file directly in its home
+   (`music/<stem>.mid`) keeps the looser rule it was saved under, whitespace excepted,
+   since its folder is keyed by its stem alone; new files the web playground imports are
+   held to the full rule. One collision is left, and refused: a new song whose flattened
+   name is an existing folder it does not own (`music/x/y.mid` beside an older
+   `music/x__y.mid`) — Save As elsewhere.
 3. **The pair:** `<stem>.mid.ron.new`, carrying `midi_fingerprint` of the MIDI bytes about
    to be written, then `<stem>.mid.new`. From here an interruption reopens as the new song.
 4. **The prune:** every file in that folder the song no longer references is removed, and
    its `LICENSE` rewritten with one stanza per referenced sample (`Files:`, `Copyright:`
    the author, `License:`), so the provenance gate passes over what the composer wrote.
-   It waits for the pair, so the old song never loses a sample it still names. The song's
-   own `.mid` and `.mid.ron` still need a `LICENSE` naming them in `music/`, which a human
-   writes.
+   It waits for the pair, so the old song never loses a sample it still names. Then the
+   home folder's `LICENSE` (`music/LICENSE` or `ai/music/LICENSE`) gets the song's own
+   stanza from its `provenance`, naming its `.mid` and `.mid.ron`: the stanza is found by
+   the `.mid` path alone (a stanza naming only the `.mid` is rewritten, not duplicated),
+      a stanza naming another song's files as well keeps them, and every other stanza is
+   left as it is. The song's own stanza is rewritten whole, so a field added to it by hand
+   (a `Comment:`) is lost — put it in a stanza of its own. It is written only when it
+   changed.
 5. **The finals:** `<stem>.mid`, then `<stem>.mid.ron`.
 6. **The pair is removed.**
 

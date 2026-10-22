@@ -56,15 +56,26 @@ impl AssetFolder {
     }
 }
 
-/// A new song holding three notes on its melody track, at ticks 0, 480 and 960.
+/// A new song holding three notes on its melody track, at ticks 0, 480 and 960, with the
+/// author and license Save requires — set as an opened song carries them, not as an edit,
+/// so the history holds the three notes alone.
 pub(super) fn melody() -> SongDocument {
     let mut document = SongDocument::new_song().expect("a blank song");
+    document.file.provenance = Some(song_provenance());
     for (tick, key) in [(0, 60), (480, 64), (960, 67)] {
         document
             .apply(add_note(tick, key), Gesture::Discrete)
             .expect("the note lands");
     }
     document
+}
+
+/// The song's own author and license in every fixture.
+pub(super) fn song_provenance() -> Provenance {
+    Provenance {
+        author: "2026 Jesse".to_string(),
+        license: "CC-BY-4.0".to_string(),
+    }
 }
 
 /// An eighth note on the melody track (track 1 of a new song).

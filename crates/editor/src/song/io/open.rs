@@ -14,8 +14,9 @@
 //!
 //! The finals' fingerprint decides a purge; the pair's own fingerprint decides a recovery —
 //! never the other way. A `.mid` outside the song folders, or without a sidecar, opens as
-//! an import and none of its neighbours is touched. On the web a removed `.new` lingers in
-//! the project store until the store persists deletions; these rules keep that safe.
+//! an import and none of its neighbours is touched. On the web the project store persists
+//! every write and removal in the order they were made, so a reload finds a state a native
+//! crash could leave, which these rules settle the same way.
 
 use std::io;
 use std::path::{Path, PathBuf};

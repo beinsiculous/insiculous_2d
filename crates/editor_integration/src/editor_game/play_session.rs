@@ -4,7 +4,12 @@ use editor::world_snapshot::WorldSnapshot;
 use editor::{EditorPlayState, PlayControlAction};
 use engine_core::Game;
 
+use super::song_preview::SongAudioIntent;
 use super::EditorGame;
+
+/// Why the session's Pause and Resume are refused while its song waits for the first click:
+/// the manager has no playback to pause, so the session would part from its sound.
+const SONG_WAITS_REFUSAL: &str = "The song is waiting for the first click — pause or resume once it plays";
 
 /// What Stop did with the edits recorded since the Play boundary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -26,8 +31,8 @@ pub(super) enum PausedEdits {
 
 impl<G: Game> EditorGame<G> {
     /// Start a new play session: capture world snapshot, save editing camera,
-    /// switch to Playing state.
-    fn start_play_session(&mut self, world: &mut ecs::World) {
+    /// switch to Playing state. Reached only from the armed Play's next frame.
+    pub(super) fn start_play_session(&mut self, world: &mut ecs::World) {
         // Cancel any in-progress gizmo drag (state only — the
         // world already holds the dragged values; Play snapshots
         // them and Stop restores)
@@ -114,6 +119,11 @@ impl<G: Game> EditorGame<G> {
     }
 
     fn resume_from_pause(&mut self) {
+        if self.song_preview.session_song_waits() {
+            self.editor.status_bar.show_error(SONG_WAITS_REFUSAL);
+            return;
+        }
+        self.song_preview.push(SongAudioIntent::ResumeSession);
         // Resuming under a live modal would run the simulation the dialog
         // is asking about, and a queued Keep would then restore it.
         self.stop_confirm.pending = false;
@@ -137,6 +147,11 @@ impl<G: Game> EditorGame<G> {
 
     fn pause(&mut self) {
         if self.editor.is_playing() {
+            if self.song_preview.session_song_waits() {
+                self.editor.status_bar.show_error(SONG_WAITS_REFUSAL);
+                return;
+            }
+            self.song_preview.push(SongAudioIntent::PauseSession);
             self.editor.set_play_state(EditorPlayState::Paused);
             log::info!("Paused");
         }
@@ -219,6 +234,7 @@ impl<G: Game> EditorGame<G> {
             }
         }
         self.editor.set_play_state(EditorPlayState::Editing);
+        self.song_preview.push(SongAudioIntent::StopAll);
         StopOutcome { kept, dropped }
     }
 
@@ -275,7 +291,7 @@ impl<G: Game> EditorGame<G> {
                     // A dirty song — a never-saved one included — parks Play
                     // behind its prompt; the dialog's choice begins it.
                     if self.request_document_action(super::scene_confirm::PendingSceneAction::StartPlay) {
-                        self.begin_play(world);
+                        self.begin_play();
                     }
                 } else if self.editor.is_paused() {
                     self.resume_from_pause();
@@ -287,6 +303,9 @@ impl<G: Game> EditorGame<G> {
                 false
             }
             PlayControlAction::Stop => {
+                if self.cancel_armed_play() {
+                    return false;
+                }
                 let stopped = self.request_stop(world);
                 self.save_preferences_now();
                 stopped
@@ -298,10 +317,11 @@ impl<G: Game> EditorGame<G> {
         }
     }
 
-    /// Enter a play session from Editing, the song's prompt (if any) answered.
-    pub(super) fn begin_play(&mut self, world: &mut ecs::World) {
+    /// Enter a play session from Editing, the song's prompt (if any) answered: armed, so
+    /// this frame's drain plays the saved song and the next frame starts the session.
+    pub(super) fn begin_play(&mut self) {
         self.save_preferences_now();
-        self.start_play_session(world);
+        self.arm_play();
     }
 
     /// While Playing WITH camera-follow armed, mirror the game's main-camera

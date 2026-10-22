@@ -10,6 +10,7 @@ use engine_core::test_support::test_texture_path;
 use glam::Vec2;
 
 use super::test_support::{dirty_editor, editor_game, position, spawn_at};
+use super::test_support::press_play;
 
 /// A script drag armed before Play must not survive the transition: the
 /// asset browser refuses to arm one while Playing and the viewport refuses
@@ -28,7 +29,7 @@ fn test_play_cancels_an_in_flight_asset_drag() {
     editor.editor.drag_drop.begin_frame(Vec2::new(20.0, 20.0), true, false);
     assert!(editor.editor.drag_drop.dragging_payload().is_some(), "the drag is in flight before Play");
 
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
     editor.editor.drag_drop.begin_frame(Vec2::new(30.0, 30.0), false, true);
     assert!(editor.editor.drag_drop.dragging_payload().is_none(), "Play cancels the drag");
     assert!(
@@ -47,14 +48,14 @@ fn test_play_pause_resume_stop_cycle_captures_one_snapshot() {
     let mut world = World::new();
     spawn_at(&mut world, Vec2::ZERO);
 
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
     assert!(editor.editor.is_playing());
     assert!(editor.world_snapshot.is_some(), "Play captures the snapshot");
 
     editor.handle_play_action(PlayControlAction::Pause, &mut world);
     assert!(editor.editor.is_paused());
 
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
     assert!(editor.editor.is_playing());
 
     let stopped = editor.handle_play_action(PlayControlAction::Stop, &mut world);
@@ -69,14 +70,14 @@ fn test_stop_restores_the_authored_world_and_resume_never_recaptures() {
     let mut world = World::new();
     let entity = spawn_at(&mut world, Vec2::new(10.0, 20.0));
 
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
 
     // Mutate mid-simulation, pause, resume, mutate again, stop.
     if let Some(t) = world.get_mut::<common::Transform2D>(entity) {
         t.position = Vec2::new(500.0, 500.0);
     }
     editor.handle_play_action(PlayControlAction::Pause, &mut world);
-    editor.handle_play_action(PlayControlAction::Play, &mut world); // resume
+    press_play(&mut editor, &mut world); // resume
     if let Some(t) = world.get_mut::<common::Transform2D>(entity) {
         t.position = Vec2::new(999.0, 999.0);
     }
@@ -95,7 +96,7 @@ fn test_stop_resets_the_transform_propagation_baseline() {
     let mut world = World::new();
     let entity = spawn_at(&mut world, Vec2::new(10.0, 20.0));
 
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
     assert!(
         !world.has_resource::<ecs::TransformHierarchyReset>(),
         "Play keeps the world, so it keeps the baselines"
@@ -120,7 +121,7 @@ fn test_save_is_refused_mid_session_and_allowed_after_stop() -> std::io::Result<
     for (label, pause) in [("Playing", false), ("Paused", true)] {
         let mut world = World::new();
         let mut editor = dirty_editor(&mut world);
-        editor.handle_play_action(PlayControlAction::Play, &mut world);
+        press_play(&mut editor, &mut world);
         if pause {
             editor.handle_play_action(PlayControlAction::Pause, &mut world);
         }
@@ -137,7 +138,7 @@ fn test_save_is_refused_mid_session_and_allowed_after_stop() -> std::io::Result<
 
     let mut world = World::new();
     let mut editor = dirty_editor(&mut world);
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
     editor.handle_play_action(PlayControlAction::Stop, &mut world);
     let path = dir.path().join("after_stop.ron");
     let result = editor.save_scene_with(&mut world, &test_texture_path, path.clone());
@@ -157,7 +158,7 @@ fn test_scene_replacement_is_refused_mid_session() {
     let entity = spawn_at(&mut world, Vec2::new(1.0, 2.0));
     assert_eq!(editor.scene_replace_refusal(), None, "Editing allows new/open");
 
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
     assert!(editor.scene_replace_refusal().is_some(), "Playing refuses new/open");
     editor.handle_play_action(PlayControlAction::Pause, &mut world);
     assert!(editor.scene_replace_refusal().is_some(), "Paused refuses new/open");
@@ -183,7 +184,7 @@ fn test_play_warns_about_uncapturable_components_and_stop_reports_the_drop() {
     let mut editor = editor_game();
     let mut world = World::new();
     spawn_at(&mut world, Vec2::ZERO);
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
     assert_eq!(editor.editor.status_bar.message(), None);
 
     // An unregistered component cannot be snapshotted: warn on Play...
@@ -191,7 +192,7 @@ fn test_play_warns_about_uncapturable_components_and_stop_reports_the_drop() {
     let mut world = World::new();
     let entity = world.create_entity();
     world.add_component(&entity, CustomBrain).ok();
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
     assert!(
         editor.editor.status_bar.message().is_some_and(|m| m.contains("lost on Stop")),
         "entering Play must warn about the coming loss"
@@ -216,11 +217,11 @@ fn test_scene_authored_ui_is_hidden_outside_play() {
     let mut world = World::new();
     world.insert_resource(engine_core::UiElementsHidden);
 
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
     assert!(!world.has_resource::<engine_core::UiElementsHidden>(), "Play reveals scene UI");
 
     editor.handle_play_action(PlayControlAction::Pause, &mut world);
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
     assert!(!world.has_resource::<engine_core::UiElementsHidden>(), "resume keeps it visible");
 
     editor.handle_play_action(PlayControlAction::Stop, &mut world);
@@ -234,7 +235,7 @@ fn test_stop_requests_a_grid_backdrop_reset() {
     let mut editor = editor_game();
     let mut world = World::new();
 
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
     assert!(!world.has_resource::<engine_core::grid::GridBackdropReset>(), "Play requests nothing");
 
     editor.handle_play_action(PlayControlAction::Stop, &mut world);
@@ -293,14 +294,14 @@ fn test_resuming_closes_a_popup_and_a_rename_opened_while_paused() {
     let mut world = World::new();
     let entity = spawn_at(&mut world, Vec2::ZERO);
 
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
     editor.handle_play_action(PlayControlAction::Pause, &mut world);
     editor.editor.toggle_add_component_popup();
     editor.editor.script_picker_open = true;
     editor.editor.hierarchy.begin_rename(entity);
     assert!(editor.editor.is_add_component_popup_open(), "the popup opened while Paused");
 
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
 
     assert!(editor.editor.is_playing(), "resumed");
     assert!(!editor.editor.is_add_component_popup_open(), "resume closed the add-component popup");
@@ -309,8 +310,9 @@ fn test_resuming_closes_a_popup_and_a_rename_opened_while_paused() {
 }
 
 /// The frame tail plays a scene's emitters only while the engine's time scale is live,
-/// and the editor holds it at zero outside Play: Editing records no first sight, Play's
-/// first frame is the spawn, and Stop's world replacement stops what played.
+/// and the editor holds it at zero outside Play: Editing records no first sight, the
+/// session's first frame — the one after Play's request, whose drain played the saved song
+/// — is the spawn, and Stop's world replacement stops what played.
 #[test]
 fn test_a_spawn_sound_is_silent_in_editing_plays_on_play_and_is_cleared_by_stop() -> std::io::Result<()> {
     use engine_core::prelude::GameConfig;
@@ -341,7 +343,9 @@ fn test_a_spawn_sound_is_silent_in_editing_plays_on_play_and_is_cleared_by_stop(
 
     harness.context(|editor, ctx| editor.handle_play_action(PlayControlAction::Play, ctx.world));
     harness.step(FRAME, &[]);
-    let playback = harness.sound_emitters().playing(hum).expect("Play's first frame is the spawn");
+    assert_eq!(harness.sound_emitters().plays(hum), 0, "the request frame runs no session yet");
+    harness.step(FRAME, &[]);
+    let playback = harness.sound_emitters().playing(hum).expect("the session's first frame is the spawn");
     assert!(harness.audio().is_playing(playback));
 
     harness.context(|editor, ctx| editor.handle_play_action(PlayControlAction::Stop, ctx.world));

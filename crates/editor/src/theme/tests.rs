@@ -131,8 +131,8 @@ fn test_roles_that_must_read_apart_do() {
 
 /// The piano roll's marks hold the non-text contrast bar (3:1) over everything they sit
 /// on: a note over the well and over a black-key row, a selected note's border over the
-/// note and the well, the playhead over the well; the black-key rows read as a step off
-/// the well without competing with a note.
+/// note and the well, the playhead over the well, the black-key rows and the note it
+/// crosses; the black-key rows read as a step off the well without competing with a note.
 #[test]
 fn test_the_piano_rolls_marks_read_over_the_roll() {
     let theme = EditorTheme::default();
@@ -143,6 +143,7 @@ fn test_the_piano_rolls_marks_read_over_the_roll() {
         ("note_selected_border/surface_0", theme.note_selected_border, theme.surface_0),
         ("playhead/surface_0", theme.playhead, theme.surface_0),
         ("playhead/key_black", theme.playhead, theme.key_black),
+        ("playhead/note_fill", theme.playhead, theme.note_fill),
     ];
     for (name, mark, ground) in at_least_three {
         let ratio = mark.contrast_ratio(ground);

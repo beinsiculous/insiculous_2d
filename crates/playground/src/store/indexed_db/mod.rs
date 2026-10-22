@@ -346,6 +346,72 @@ impl ProjectStore for IndexedDbStore {
         Box::pin(future)
     }
 
+    fn remove_file(&self, project_slug: &str, path: &str, base_revision: u64) -> Fut<Result<(), StoreError>> {
+        let transaction = match self.transaction(&[STORE_FILES], IdbTransactionMode::Readwrite) {
+            Ok(transaction) => transaction,
+            Err(error) => return Box::pin(async move { Err(error) }),
+        };
+
+        let (result_cell, future) = IdbTransactionFuture::new(&transaction);
+        let files_store = match transaction.object_store(STORE_FILES) {
+            Ok(store) => store,
+            Err(error) => return Box::pin(async move { Err(StoreError::Backend(format!("{error:?}"))) }),
+        };
+
+        let key = js_sys::Array::new();
+        key.push(&JsValue::from_str(project_slug));
+        key.push(&JsValue::from_str(path));
+        let get_request = match files_store.get(&key) {
+            Ok(request) => request,
+            Err(error) => return Box::pin(async move { Err(StoreError::Backend(format!("{error:?}"))) }),
+        };
+
+        let result_cell_clone = result_cell.clone();
+        let callback_cell: CallbackCell = Rc::new(RefCell::new(None));
+        let callback_clone = callback_cell.clone();
+        let callback = Closure::wrap(Box::new(move |event: Event| {
+            let finish = |outcome: Result<(), StoreError>| {
+                *result_cell_clone.borrow_mut() = Some(outcome);
+                let _ = callback_clone.borrow_mut().take();
+            };
+            let (target, result) = match extract_request_target_and_result(&event) {
+                Ok(pair) => pair,
+                Err(error) => {
+                    let _ = transaction.abort();
+                    finish(Err(error));
+                    return;
+                }
+            };
+            let stored = if result.is_null() || result.is_undefined() {
+                None
+            } else {
+                from_javascript_value::<StoredFile>(&result).ok()
+            };
+            let stored_revision = stored.as_ref().map_or(0, |file| file.revision);
+            if stored_revision != base_revision {
+                let _ = target.transaction().map(|transaction| transaction.abort());
+                finish(Err(StoreError::StaleRevision {
+                    stored: stored_revision,
+                    base: base_revision,
+                }));
+                return;
+            }
+            // An absent record at revision zero is already gone; nothing to write.
+            if let Some(mut tombstone) = stored {
+                tombstone.bytes.clear();
+                tombstone.deleted = true;
+                tombstone.revision = base_revision + 1;
+                if let Ok(javascript_file) = to_javascript_value(&tombstone) {
+                    let _ = files_store.put(&javascript_file);
+                }
+            }
+            finish(Ok(()));
+        }) as Box<dyn FnMut(Event)>);
+
+        attach_request_callback(&get_request, &callback_cell, callback);
+        Box::pin(future)
+    }
+
     fn replace_project(
         &self,
         project_slug: &str,

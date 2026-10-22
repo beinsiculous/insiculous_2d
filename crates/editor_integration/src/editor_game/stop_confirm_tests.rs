@@ -13,10 +13,11 @@ use winit::keyboard::KeyCode;
 use super::play_session::PausedEdits;
 use super::scene_confirm::PendingSceneAction;
 use super::test_support::{api_line, assert_ok, dirty_editor, editor_game, position, spawn_at};
+use super::test_support::press_play;
 
 /// Play, then Pause, on a session whose world already holds `entity`.
 fn play_then_pause<G: engine_core::Game>(editor: &mut super::EditorGame<G>, world: &mut World) {
-    editor.handle_play_action(PlayControlAction::Play, world);
+    press_play(editor, world);
     editor.handle_play_action(PlayControlAction::Pause, world);
 }
 
@@ -40,12 +41,12 @@ fn test_stop_with_paused_edits_freezes_the_game_and_parks_the_dialog() {
     let entity = spawn_at(&mut world, Vec2::ZERO);
     let mut editor = editor_game();
 
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
     editor.handle_play_action(PlayControlAction::Pause, &mut world);
     assert_ok(&api_line(&mut editor, &mut world, &format!("rename #{} Edited", entity.value())));
     // Resume and Stop from Playing: the dialog parks the session Paused so
     // it is never a modal over a running simulation.
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
 
     assert!(!editor.handle_play_action(PlayControlAction::Stop, &mut world));
     assert!(editor.stop_confirm.pending, "the dialog is up");
@@ -252,7 +253,7 @@ fn test_play_while_the_stop_dialog_is_pending_cancels_the_dialog() {
 
     // Play from Paused RESUMES: a queued Keep would restore a session the
     // user has just put back in motion.
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
     assert!(!editor.stop_confirm.pending);
     assert!(editor.editor.is_playing());
     assert_eq!(editor.command_history.session_entry_count(), 1, "the session is intact");
@@ -317,7 +318,7 @@ fn test_rebase_drops_a_paused_creation_the_simulation_destroyed() {
         .find(|&&candidate| candidate != authored)
         .expect("the created entity");
     // Resume, and let the simulation destroy it.
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
     world.remove_entity(&doomed).ok();
 
     editor.handle_play_action(PlayControlAction::Stop, &mut world);

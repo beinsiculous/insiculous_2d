@@ -39,6 +39,7 @@ mod scene_confirm;
 mod scene_io;
 mod snapshot;
 mod song_io;
+mod song_preview;
 mod stop_confirm;
 #[cfg(test)]
 mod stop_confirm_tests;
@@ -66,6 +67,8 @@ struct EditorGame<G: Game> {
     /// Bumped each time the song is created, opened or closed, so the composer's state
     /// resets instead of pointing into a song that is gone.
     pub(super) song_generation: u64,
+    /// The song preview and the session's music: intents drained once a frame.
+    pub(super) song_preview: song_preview::SongPreview,
     /// A live drag in the composer's roll: owned here, not by the panel's render, so every
     /// way the composer loses focus can drop it.
     composer_drag: Option<composer_drag::ComposerDrag>,
@@ -119,6 +122,8 @@ struct EditorGame<G: Game> {
     /// Set while a preview window holds the simulation. Play here is refused
     /// so two simulations of one scene never run at once.
     pub(super) preview_open: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    /// The open song's `.mid` for a wasm host, when the web bridge installed one.
+    pub(super) open_song_mirror: Option<std::sync::Arc<std::sync::Mutex<Option<std::path::PathBuf>>>>,
 }
 
 impl<G: Game> EditorGame<G> {
@@ -132,6 +137,7 @@ impl<G: Game> EditorGame<G> {
             command_history: editor::CommandHistory::new(),
             song: None,
             song_generation: 0,
+            song_preview: song_preview::SongPreview::default(),
             composer_drag: None,
             gizmo_drag: None,
             clipboard: Vec::new(),
@@ -158,6 +164,7 @@ impl<G: Game> EditorGame<G> {
             script_error_watermark: 0,
             scene_snapshot: None,
             preview_open: None,
+            open_song_mirror: None,
         }
     }
 
@@ -344,6 +351,8 @@ impl<G: Game> EditorGame<G> {
     /// before handlers mutate it, update transform hierarchy, sync viewport
     /// camera from main camera if playing, and update layout.
     fn prepare_frame(&mut self, ctx: &mut GameContext) {
+        // First, so the session's first frame runs at the game's own time scale.
+        self.start_armed_play(ctx.world);
         // Freeze engine-side time unless we're Playing. Set before the
         // inner game runs so a Playing game's own write to `time_scale`
         // (a pause menu, say) is the value that survives the frame.
@@ -392,15 +401,13 @@ impl<G: Game> EditorGame<G> {
     /// Complete the frame: sync dirty mirror, render status bar, publish
     /// window title on change, and clip engine UI to the scene viewport.
     fn finish_frame(&mut self, ctx: &mut GameContext) {
+        self.apply_song_intents(ctx.audio, ctx.sources);
         // Nothing on screen moves outside a play session: `prepare_frame`
         // already froze engine time, so no particle or sprite animation is
         // live in Editing or Paused and a still window can stop asking for
-        // frames. A future feature that animates something outside Playing
-        // has to clear this itself.
-        ctx.set_idle_throttle_ok(matches!(
-            self.editor.play_state(),
-            EditorPlayState::Editing | EditorPlayState::Paused
-        ));
+        // frames — except a sounding preview, whose playhead moves. A song
+        // waiting for the web's first click does not hold the page awake.
+        ctx.set_idle_throttle_ok(self.idle_throttle_allowed());
 
         self.sync_dirty_mirror();
         self.save_preferences_if_changed(ctx.delta_time);
@@ -434,6 +441,13 @@ impl<G: Game> EditorGame<G> {
         ctx.clip_engine_ui(bounds);
     }
 
+    /// Whether the engine may skip frames while the window sits idle: outside a running
+    /// session, unless the preview is sounding — its playhead moves.
+    pub(super) fn idle_throttle_allowed(&self) -> bool {
+        matches!(self.editor.play_state(), EditorPlayState::Editing | EditorPlayState::Paused)
+            && !self.song_preview.is_audible()
+    }
+
     /// Mirror the dirty flags from their sources of truth: a command was
     /// recorded in the history ⇒ the scene changed; the song's own history (or
     /// a song never saved) ⇒ the song did. The single place the mirrors are
@@ -464,6 +478,9 @@ impl<G: Game> EditorGame<G> {
         }
         if let Some(flag) = &self.history_dirty_flag {
             flag.store(is_command_dirty || is_song_dirty, std::sync::atomic::Ordering::Relaxed);
+        }
+        if let Some(Ok(mut open_song)) = self.open_song_mirror.as_ref().map(|mirror| mirror.lock()) {
+            *open_song = self.song.as_ref().and_then(editor::SongDocument::path).map(std::path::Path::to_path_buf);
         }
     }
 }
@@ -496,6 +513,10 @@ mod scene_io_tests;
 mod snapshot_tests;
 #[cfg(test)]
 mod song_io_tests;
+#[cfg(test)]
+mod song_preview_session_tests;
+#[cfg(test)]
+mod song_preview_tests;
 #[cfg(test)]
 mod shortcuts_tests;
 #[cfg(test)]

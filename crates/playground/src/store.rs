@@ -27,6 +27,10 @@ pub struct StoredFile {
     pub revision: u64,
     /// Bundle version string under which this file was written.
     pub bundle_version: String,
+    /// A removed file is kept as a tombstone — empty bytes, one revision up — so a put
+    /// that recreates it still names a revision, and a stale tab's removal stays stale.
+    #[serde(default)]
+    pub deleted: bool,
 }
 
 /// Errors returned by persistence operations.
@@ -56,7 +60,8 @@ impl std::error::Error for StoreError {}
 
 /// Contract for playground project storage.
 pub trait ProjectStore {
-    /// Load all stored files belonging to the given project slug.
+    /// Load all stored files belonging to the given project slug, tombstones included,
+    /// so the chains learn every revision the store holds.
     fn load_project(&self, slug: &str) -> Fut<Result<Vec<StoredFile>, StoreError>>;
 
     /// Compare-and-swap write of a single file.
@@ -70,6 +75,14 @@ pub trait ProjectStore {
         base_revision: u64,
         manifest: &ProjectManifest,
     ) -> Fut<Result<u64, StoreError>>;
+
+    /// Compare-and-swap removal of a single file, written as a tombstone.
+    ///
+    /// Refuses with [`StoreError::StaleRevision`] unless the stored revision equals
+    /// `base_revision`; on success the record stays, marked deleted with empty bytes
+    /// at revision `base_revision + 1`. A record that is absent with `base_revision`
+    /// zero is already gone: `Ok`, and nothing is written.
+    fn remove_file(&self, slug: &str, path: &str, base_revision: u64) -> Fut<Result<(), StoreError>>;
 
     /// Atomically replace all files and manifest for a project.
     fn replace_project(

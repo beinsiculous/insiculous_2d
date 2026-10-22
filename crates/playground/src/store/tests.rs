@@ -28,6 +28,7 @@ pub async fn run_store_contract_suite(store: &dyn ProjectStore) {
         bytes: b"alpha v1".to_vec(),
         revision: 0,
         bundle_version: "v1".to_string(),
+        deleted: false,
     };
     let revision = store.put(file_alpha, 0, &alpha_manifest).await.expect("put succeeds");
     assert_eq!(revision, 1);
@@ -49,6 +50,7 @@ pub async fn run_store_contract_suite(store: &dyn ProjectStore) {
         bytes: b"alpha conflict".to_vec(),
         revision: 0,
         bundle_version: "v1".to_string(),
+        deleted: false,
     };
     let stale_error = store.put(stale_file, 0, &alpha_manifest).await.expect_err("stale base refused");
     assert_eq!(stale_error, StoreError::StaleRevision { stored: 1, base: 0 });
@@ -65,6 +67,7 @@ pub async fn run_store_contract_suite(store: &dyn ProjectStore) {
         bytes: b"beta original".to_vec(),
         revision: 0,
         bundle_version: "v1".to_string(),
+        deleted: false,
     };
     store.put(file_beta, 0, &beta_manifest).await.expect("beta put succeeds");
 
@@ -75,6 +78,7 @@ pub async fn run_store_contract_suite(store: &dyn ProjectStore) {
         bytes: b"alpha replaced".to_vec(),
         revision: 10,
         bundle_version: "v1".to_string(),
+        deleted: false,
     };
     let mut new_alpha_manifest = alpha_manifest.clone();
     new_alpha_manifest.title = "Alpha Replaced".to_string();
@@ -102,6 +106,57 @@ pub async fn run_store_contract_suite(store: &dyn ProjectStore) {
     store.sweep_orphans(&["bundled_slug".to_string()]).await.expect("sweep succeeds");
     let beta_kept = store.load_project("beta").await.expect("beta kept");
     assert_eq!(beta_kept.len(), 1);
+
+    run_removal_contract(store).await;
+}
+
+/// A removal is a tombstone one revision up that `load_project` still returns, so a
+/// put recreating the file names that revision and a stale removal stays stale.
+async fn run_removal_contract(store: &dyn ProjectStore) {
+    let manifest = dummy_manifest("gamma");
+    let file = |bytes: &[u8]| StoredFile {
+        project: "gamma".to_string(),
+        path: "music/theme.mid.new".to_string(),
+        bytes: bytes.to_vec(),
+        revision: 0,
+        bundle_version: "v1".to_string(),
+        deleted: false,
+    };
+
+    assert_eq!(
+        store.remove_file("gamma", "music/never.wav", 0).await,
+        Ok(()),
+        "an absent record at revision zero is already gone"
+    );
+    assert_eq!(
+        store.remove_file("gamma", "music/never.wav", 3).await,
+        Err(StoreError::StaleRevision { stored: 0, base: 3 })
+    );
+    assert!(store.load_project("gamma").await.expect("load").is_empty(), "nothing was written");
+
+    store.put(file(b"journal"), 0, &manifest).await.expect("first put");
+    assert_eq!(
+        store.remove_file("gamma", "music/theme.mid.new", 0).await,
+        Err(StoreError::StaleRevision { stored: 1, base: 0 }),
+        "a removal from a tab that never saw revision 1 is stale"
+    );
+    store.remove_file("gamma", "music/theme.mid.new", 1).await.expect("removal at the stored revision");
+
+    let loaded = store.load_project("gamma").await.expect("load");
+    assert_eq!(loaded.len(), 1, "the tombstone is returned with its revision");
+    assert!(loaded[0].deleted);
+    assert!(loaded[0].bytes.is_empty());
+    assert_eq!(loaded[0].revision, 2);
+
+    assert_eq!(
+        store.put(file(b"again"), 0, &manifest).await,
+        Err(StoreError::StaleRevision { stored: 2, base: 0 }),
+        "a recreate must name the tombstone's revision"
+    );
+    assert_eq!(store.put(file(b"again"), 2, &manifest).await, Ok(3));
+    let recreated = store.load_project("gamma").await.expect("load");
+    assert!(!recreated[0].deleted);
+    assert_eq!(recreated[0].bytes, b"again");
 }
 
 #[test]
@@ -149,6 +204,7 @@ fn test_directory_store_first_put_upserts_manifest_and_sweep_orphans_keeps_files
             bytes: b"demo".to_vec(),
             revision: 0,
             bundle_version: "v1".to_string(),
+            deleted: false,
         };
 
         let revision = store.put(file, 0, &bundled_manifest).await.expect("put succeeds");

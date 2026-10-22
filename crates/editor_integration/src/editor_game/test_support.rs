@@ -21,6 +21,24 @@ impl Game for DummyGame {
     fn update(&mut self, _ctx: &mut GameContext) {}
 }
 
+/// Press Play and carry it through the two frames it takes — the drain that plays the
+/// saved song on a headless manager, the next frame's start — so a test reads the session
+/// Play began. Resume, and a Play refused or parked behind a prompt, pass through it alike.
+pub(super) fn press_play<G: Game>(editor: &mut EditorGame<G>, world: &mut World) {
+    editor.handle_play_action(editor::PlayControlAction::Play, world);
+    complete_play(editor, world);
+}
+
+/// The two frames an armed Play waits for, on a headless manager: what the dirty
+/// prompt's answer leaves to the frame after it.
+pub(super) fn complete_play<G: Game>(editor: &mut EditorGame<G>, world: &mut World) {
+    let mut audio = engine_core::prelude::AudioManager::disabled();
+    audio.set_asset_base(&editor.asset_base);
+    let mut sources = engine_core::prelude::SoundSources::default();
+    editor.apply_song_intents(&mut audio, &mut sources);
+    editor.start_armed_play(world);
+}
+
 /// A fresh editor session wrapping [`DummyGame`], in the Editing state.
 pub(super) fn editor_game() -> EditorGame<DummyGame> {
     static SLOT_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -139,12 +157,36 @@ pub(super) fn ui_frame(
 /// A new song holding three eighths on its melody track (track 1): C4 at tick 0, E4 at
 /// 480 and G4 at 960.
 pub(super) fn melody_song() -> editor::SongDocument {
-    let mut song = editor::SongDocument::new_song().expect("a blank song");
+    let mut song = signed_song();
     for (tick, key) in [(0, 60), (480, 64), (960, 67)] {
         let note = editor::SongEdit::AddNote { track: 1, tick, key, velocity: 100, duration_ticks: 240 };
         song.apply(note, editor::Gesture::Discrete).expect("the note lands");
     }
     song
+}
+
+/// The music crate's one-preset sine bank, under the name a new song plays its background
+/// on, so a song saved in `folder` plays.
+pub(super) fn stock_sound_font(folder: &std::path::Path) {
+    const SINE_FONT: &[u8] = include_bytes!("../../../music_midi/fixtures/sine.sf2");
+    common::vfs::write(&folder.join(editor::song::DEFAULT_SOUND_FONT_PATH), SINE_FONT).expect("the bank is written");
+}
+
+/// A new song carrying the author and license Save requires: one `SetProvenance` entry.
+pub(super) fn signed_song() -> editor::SongDocument {
+    let mut song = editor::SongDocument::new_song().expect("a blank song");
+    let provenance = fixture_provenance();
+    song.apply(editor::SongEdit::SetProvenance { provenance }, editor::Gesture::Discrete)
+        .expect("the provenance lands");
+    song
+}
+
+/// The author and license every fixture song is signed with.
+pub(super) fn fixture_provenance() -> editor::song::Provenance {
+    editor::song::Provenance {
+        author: "2026 Jesse".to_string(),
+        license: "CC-BY-4.0".to_string(),
+    }
 }
 
 /// One MIDI track chunk around `events` (each already a delta and an event).
@@ -196,6 +238,7 @@ pub(super) fn timing_only_song() -> editor::SongDocument {
 pub(super) fn composer_session(folder: &std::path::Path, song: editor::SongDocument) -> EditorGame<DummyGame> {
     let mut editor = editor_game();
     editor.asset_base = folder.to_path_buf();
+    stock_sound_font(folder);
     editor.song = Some(song);
     editor.follow_song();
     editor.editor.dock_area.set_bounds(ui::Rect::new(0.0, 24.0, 1280.0, 672.0));

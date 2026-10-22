@@ -117,11 +117,17 @@ pub(super) fn parse(line: &str) -> Result<Request, ApiError> {
     }
 }
 
-fn parse_beat(word: &str) -> Result<f64, ApiError> {
-    word.parse::<f64>()
-        .ok()
-        .filter(|beat| beat.is_finite() && *beat >= 0.0)
-        .ok_or_else(|| ApiError::Parse(format!("\"{word}\" is not a beat (a number from 0)")))
+/// A whole beat counted from zero: the preview moves to the start of a beat, never inside one.
+fn parse_beat(word: &str) -> Result<u64, ApiError> {
+    let beat = word.parse::<f64>().map_err(|_| {
+        ApiError::Parse(format!("\"{word}\" is not a beat (a whole number from 0)"))
+    })?;
+    if !beat.is_finite() || beat < 0.0 || beat.fract() != 0.0 {
+        return Err(ApiError::Invalid(format!(
+            "\"{word}\" is not a beat: beats are whole numbers counted from zero"
+        )));
+    }
+    Ok(beat as u64)
 }
 
 /// The `song` query: the open song's file, tracks, timing, state and selection, or
@@ -187,8 +193,8 @@ pub(super) fn answer_song(ctx: &QueryCtx<'_>) -> Value {
         "bindings": serde_json::to_value(&file.bindings).unwrap_or(Value::Null),
         "tempo_changes": tempo_changes,
         "time_signatures": time_signatures,
+        "provenance": serde_json::to_value(&file.provenance).unwrap_or(Value::Null),
         "selection": song.selection().notes().map(|note| note.number()).collect::<Vec<_>>(),
-        "pending_samples": song.pending_samples().keys().collect::<Vec<_>>(),
         "can_undo": song.history().can_undo(),
         "can_redo": song.history().can_redo(),
     })

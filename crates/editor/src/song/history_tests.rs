@@ -37,6 +37,7 @@ fn a_new_song_is_dirty_until_its_first_save_though_its_history_is_clean() {
         "a song that was never saved has nothing on disk"
     );
 
+    document.file.provenance = Some(super::test_support::song_provenance());
     document
         .save(&folder.path("music/untitled.mid"), folder.base())
         .expect("saves");

@@ -93,6 +93,12 @@ impl<G: Game> EditorGame<G> {
         if let Some(route) = self.composer_key_route(key, modifiers) {
             return route;
         }
+        // Save follows the focused document as undo does; a menu item keeps the rule it names.
+        let action = match action {
+            Some(EditorAction::Save) if self.composer_holds_focus() => Some(EditorAction::SaveSong),
+            Some(EditorAction::SaveAs) if self.composer_holds_focus() => Some(EditorAction::SaveSongAs),
+            other => other,
+        };
 
         // While Playing the raw key belongs to the game — editor actions
         // are deliberately NOT dispatched here.
@@ -293,7 +299,7 @@ impl<G: Game> EditorGame<G> {
                 }
             }
             A::NewSong | A::OpenSong | A::SaveSong | A::SaveSongAs | A::CloseSong => {
-                self.dispatch_song_action(action, ctx.world);
+                self.dispatch_song_action(action);
             }
             A::Exit => ctx.request_exit(),
             other => log::error!("{other:?} is not a file action"),
@@ -374,7 +380,7 @@ impl<G: Game> EditorGame<G> {
                 self.dispatch_file_action(action, ctx);
             }
 
-            A::FocusComposer | A::SongPlayStop => self.dispatch_song_action(action, ctx.world),
+            A::FocusComposer | A::SongPlayStop => self.dispatch_song_action(action),
 
             A::ZoomIn
             | A::ZoomOut

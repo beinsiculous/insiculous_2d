@@ -68,6 +68,8 @@ pub(crate) struct ReadySong {
     pub song: Arc<Song>,
     pub conductor: Conductor,
     pub handle: ConductorHandle,
+    /// The tick the song's first block plays from.
+    pub start_tick: u64,
 }
 
 impl ReadySong {
@@ -85,6 +87,7 @@ impl ReadySong {
             song,
             conductor,
             handle,
+            start_tick: 0,
         })
     }
 }

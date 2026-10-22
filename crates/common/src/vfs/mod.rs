@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 #[cfg(any(target_arch = "wasm32", test))]
 thread_local! {
     static WRITE_OBSERVER: std::cell::Cell<Option<fn(&Path)>> = const { std::cell::Cell::new(None) };
+    static REMOVE_OBSERVER: std::cell::Cell<Option<fn(&Path)>> = const { std::cell::Cell::new(None) };
 }
 
 /// Set a callback invoked whenever [`write`] completes on wasm.
@@ -32,6 +33,24 @@ pub fn set_write_observer(observer: fn(&Path)) {
 #[cfg(any(target_arch = "wasm32", test))]
 fn notify_write_observer(path: &Path) {
     WRITE_OBSERVER.with(|slot| {
+        if let Some(observer) = slot.get() {
+            observer(path);
+        }
+    });
+}
+
+/// Set a callback invoked once for every key [`remove_prefix`] drops on wasm — the
+/// write observer's twin, so a persisted copy of the map can drop the file too.
+///
+/// Nothing calls it natively: the filesystem is the only copy there.
+#[cfg(any(target_arch = "wasm32", test))]
+pub fn set_remove_observer(observer: fn(&Path)) {
+    REMOVE_OBSERVER.with(|slot| slot.set(Some(observer)));
+}
+
+#[cfg(target_arch = "wasm32")]
+fn notify_remove_observer(path: &Path) {
+    REMOVE_OBSERVER.with(|slot| {
         if let Some(observer) = slot.get() {
             observer(path);
         }
@@ -195,7 +214,8 @@ pub fn list_files(dir: &Path) -> io::Result<Vec<PathBuf>> {
 
 /// Remove everything at and under `prefix`: a directory and its contents, or a
 /// single file at exactly that path (native: `remove_dir_all` / `remove_file`;
-/// wasm: `MemFs::remove_prefix`, which also drops a key equal to the prefix).
+/// wasm: `MemFs::remove_prefix`, which also drops a key equal to the prefix, and the
+/// remove observer is told of each key dropped).
 ///
 /// Used as the "replace this project" primitive. A missing prefix reports
 /// `Ok(())`; an empty prefix is an error on every target.
@@ -218,7 +238,11 @@ pub fn remove_prefix(prefix: &Path) -> io::Result<()> {
     }
     #[cfg(target_arch = "wasm32")]
     {
-        MEM_FS.with(|fs| fs.borrow_mut().remove_prefix(prefix));
+        // The observer runs after the map's borrow ends, so it may read the map.
+        let dropped = MEM_FS.with(|fs| fs.borrow_mut().remove_prefix(prefix));
+        for path in &dropped {
+            notify_remove_observer(path);
+        }
         Ok(())
     }
 }
@@ -365,14 +389,23 @@ impl MemFs {
     }
 
     /// Drop everything whose key begins with `prefix` (interpreted as a directory boundary)
-    /// or exactly matches `prefix`.
-    pub fn remove_prefix(&mut self, prefix: &Path) {
+    /// or exactly matches `prefix`, and return the keys dropped, sorted.
+    pub fn remove_prefix(&mut self, prefix: &Path) -> Vec<PathBuf> {
         let exact = prefix.to_string_lossy().into_owned();
         let mut prefix_with_slash = exact.clone();
         if !prefix_with_slash.is_empty() && !prefix_with_slash.ends_with('/') {
             prefix_with_slash.push('/');
         }
-        self.files.retain(|key, _| *key != exact && !key.starts_with(&prefix_with_slash));
+        let mut dropped = Vec::new();
+        self.files.retain(|key, _| {
+            let removed = *key == exact || key.starts_with(&prefix_with_slash);
+            if removed {
+                dropped.push(PathBuf::from(key));
+            }
+            !removed
+        });
+        dropped.sort();
+        dropped
     }
 }
 

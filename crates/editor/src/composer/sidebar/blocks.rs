@@ -11,7 +11,7 @@ use ui::{FloatFieldOpts, WidgetId};
 
 use super::walk::SidebarWalk;
 use crate::composer::state::selectable_tracks;
-use crate::composer::{note_name, track_label, unique_name, ComposerAction, PREVIEW_REFUSAL};
+use crate::composer::{note_name, track_label, unique_name, ComposerAction};
 use crate::song::{SongDocument, SongEdit};
 
 /// `docs/SONG_FORMAT.md` § Modes asks the composer to show this beside a Loop part.
@@ -247,27 +247,31 @@ fn sample_fields(
         };
         return Some((with_source(instrument, source(root_note, gain, flipped)), Landing::Edit));
     }
-    if author.is_none() && license.is_none() {
-        return None;
-    }
-    let provenance = Provenance {
-        author: author.unwrap_or(provenance.author),
-        license: license.unwrap_or(provenance.license),
+    let committed = Provenance {
+        author: author.unwrap_or_else(|| provenance.author.clone()),
+        license: license.unwrap_or_else(|| provenance.license.clone()),
     };
-    Some((Instrument { provenance: Some(provenance), ..instrument.clone() }, Landing::Edit))
+    // A field committed with its own value is no edit, as the song's are not.
+    (committed != provenance).then(|| (Instrument { provenance: Some(committed), ..instrument.clone() }, Landing::Edit))
 }
 
-pub(super) fn bindings(walk: &mut SidebarWalk, song: &SongDocument) {
+/// Each binding with its Trigger, which plays the binding's part as its action would — heard
+/// only while the preview sounds; pressed otherwise, the host says why.
+pub(super) fn bindings(walk: &mut SidebarWalk, song: &SongDocument, preview_audible: bool) {
     walk.heading("Bindings");
     if song.file().bindings.is_empty() {
         walk.note("No bindings: a binding names a game action");
     }
     for (index, binding) in song.file().bindings.iter().enumerate() {
         walk.note(&format!("{} → part {} on {}", binding.action, binding.part, binding.instrument));
-        if walk.button(id("composer_binding_trigger", index), &format!("Trigger {}", binding.action), false) {
-            walk.push(ComposerAction::PreviewRefused);
+        if walk.button(id("composer_binding_trigger", index), &format!("Trigger {}", binding.action), preview_audible) {
+            walk.push(ComposerAction::PreviewTrigger(index));
         }
-        walk.tooltip(PREVIEW_REFUSAL);
+        walk.tooltip(if preview_audible {
+            "Play this binding's part as its action would"
+        } else {
+            "Triggers sound while the song plays: press Play first"
+        });
         if walk.button(id("composer_binding_remove", index), &format!("Remove binding {}", binding.action), true) {
             walk.push(ComposerAction::Edit(SongEdit::RemoveBinding { action: binding.action.clone() }));
         }

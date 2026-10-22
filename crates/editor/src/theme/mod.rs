@@ -166,7 +166,8 @@ pub struct EditorTheme {
     pub note_selected_border: Color,
     /// The rows of the black keys, a step off the roll's well.
     pub key_black: Color,
-    /// The preview's playhead line across the roll.
+    /// The preview's playhead line across the roll — ≥3:1 against the well, the black-key
+    /// rows and a note's fill, so it reads where it crosses a note too.
     pub playhead: Color,
 
     // ── Typography ──────────────────────────────────────────────
@@ -292,11 +293,12 @@ impl Default for EditorTheme {
             selection_outline: Color::new(1.0, 0.55, 0.15, 1.0),
 
             // Composer — the selected border is warm where the fill is blue, and the
-            // playhead magenta, apart from every play-state and selection tone
+            // playhead a pale pink, light enough to cross a note and apart from every
+            // play-state and selection tone
             note_fill: Color::from_hex(0x3a7bd5),
             note_selected_border: Color::from_hex(0xffe066),
             key_black: Color::from_hex(0x222222),
-            playhead: Color::from_hex(0xff5fd2),
+            playhead: Color::from_hex(0xffd6f6),
         }
     }
 }

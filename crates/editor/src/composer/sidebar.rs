@@ -4,13 +4,16 @@
 //! No file picker exists, so the sidebar is the picker. The path field is Save As's input:
 //! its Enter saves there (the host refuses a path outside the song folders and asks before
 //! replacing another song), and when it loses focus without one it shows the song's path
-//! again. The Songs list is every `.mid` under `music/` and `ai/music/`; a click opens one,
-//! asking first over unsaved edits. Every control is a row the arrows reach and Enter acts
-//! on; each instrument edit is one `SetInstrument` carrying the whole instrument.
+//! again. The song's own Author and License follow it — Save needs both, and the mark says
+//! so from the moment a song without them opens; each commit is one `SetProvenance`. The
+//! Songs list is every `.mid` under `music/` and `ai/music/`; a click opens one, asking
+//! first over unsaved edits. Every control is a row the arrows reach and Enter acts on;
+//! each instrument edit is one `SetInstrument` carrying the whole instrument.
 
 mod blocks;
 mod walk;
 
+use music_midi::Provenance;
 use ui::{Rect, UIContext, WidgetId};
 
 use super::state::{ComposerState, ControlRequest, SidebarSection};
@@ -26,6 +29,15 @@ pub fn path_field_id() -> WidgetId {
     WidgetId::hashed("composer_song_path")
 }
 
+/// The song's Author field, which a save refused for the song's provenance puts the
+/// keyboard in.
+pub fn song_author_field_id() -> WidgetId {
+    WidgetId::hashed("composer_song_author")
+}
+
+/// The Author field's place among the sidebar's controls: right below the path field.
+const SONG_AUTHOR_CONTROL: usize = 1;
+
 /// What the sidebar reads besides its state.
 pub struct SidebarContext<'a> {
     pub song: Option<&'a SongDocument>,
@@ -37,6 +49,8 @@ pub struct SidebarContext<'a> {
     pub default_path: &'a str,
     /// The song's own path, asset-relative, once it has one.
     pub song_path: Option<&'a str>,
+    /// Whether the song preview is sounding, so a binding's Trigger reaches the conductor.
+    pub preview_audible: bool,
 }
 
 /// Draw the sections the mode shows — all of them when `section_tabs` is `None`, else the
@@ -58,19 +72,21 @@ pub fn render_sidebar(
         Some(
             ControlRequest::ActivateSidebar
             | ControlRequest::FocusPathField
+            | ControlRequest::FocusSongAuthor
             | ControlRequest::FocusSongsList,
         ) => state.request.take(),
         _ => None,
     };
     let focus_path_field = request == Some(ControlRequest::FocusPathField) && !context.read_only;
-    if focus_path_field {
-        // The field is the Song section's first control, at the content's top. A sidebar
-        // showing another section, or scrolled past it, would focus a row the walk never
-        // draws, and a focused field nothing renders owns the keyboard with nothing to
-        // receive it.
+    let focus_author = request == Some(ControlRequest::FocusSongAuthor) && !context.read_only && context.song.is_some();
+    if focus_path_field || focus_author {
+        // Both fields are among the Song section's first controls, at the content's top. A
+        // sidebar showing another section, or scrolled past them, would focus a row the
+        // walk never draws, and a focused field nothing renders owns the keyboard with
+        // nothing to receive it.
         state.sidebar_section = SidebarSection::Song;
         state.sidebar_scroll.scroll_to(0.0);
-        state.sidebar_control = 0;
+        state.sidebar_control = if focus_author { SONG_AUTHOR_CONTROL } else { 0 };
     }
     if request == Some(ControlRequest::FocusSongsList) {
         state.sidebar_section = SidebarSection::Song;
@@ -83,20 +99,29 @@ pub fn render_sidebar(
         let path = context.song_path.unwrap_or(context.default_path).to_string();
         walk.ui.focus_text_input(path_field_id(), &path);
     }
+    if let (true, Some(song)) = (focus_author, context.song) {
+        let author = song.file().provenance.as_ref().map(|provenance| provenance.author.clone()).unwrap_or_default();
+        walk.ui.focus_text_input(song_author_field_id(), &author);
+    }
     let sections: Vec<SidebarSection> = match section_tabs {
         Some(_) => vec![state.sidebar_section],
         None => SidebarSection::ALL.to_vec(),
     };
+    let mut section_starts = Vec::with_capacity(sections.len());
     for section in sections {
+        if section == SidebarSection::Song || context.song.is_some() {
+            section_starts.push((section, walk.next_control()));
+        }
         match (section, context.song) {
             (SidebarSection::Song, _) => song_section(&mut walk, state, context),
             (_, None) => {}
             (SidebarSection::Parts, Some(song)) => blocks::parts(&mut walk, song, state.active_track),
             (SidebarSection::Instruments, Some(song)) => blocks::instruments(&mut walk, song),
-            (SidebarSection::Bindings, Some(song)) => blocks::bindings(&mut walk, song),
+            (SidebarSection::Bindings, Some(song)) => blocks::bindings(&mut walk, song, context.preview_audible),
         }
     }
     let end = walk.finish(&mut actions);
+    state.sidebar_section_starts = section_starts;
     if let Some(top) = end.reveal_top {
         let offset = state.sidebar_scroll.offset();
         if top < offset {
@@ -139,7 +164,8 @@ fn render_section_tabs(
     actions
 }
 
-/// The song's name and state, the path field, the Loop switch and the Songs list.
+/// The song's name and state, the path field, its author and license, the Loop switch and
+/// the Songs list.
 fn song_section(walk: &mut SidebarWalk, state: &ComposerState, context: &SidebarContext) {
     match context.song {
         Some(song) => {
@@ -153,6 +179,7 @@ fn song_section(walk: &mut SidebarWalk, state: &ComposerState, context: &Sidebar
                 }
             }
             walk.note("Enter saves here (Save Song As…); under music/ or ai/music/");
+            song_provenance_fields(walk, song);
             let looping = song.file().looping;
             let label = if looping { "Song loops: on" } else { "Song loops: off" };
             if walk.button(WidgetId::hashed("composer_song_loop"), label, true) {
@@ -179,5 +206,31 @@ fn song_section(walk: &mut SidebarWalk, state: &ComposerState, context: &Sidebar
         if pressed && !is_open && !context.read_only {
             walk.push(ComposerAction::OpenSong(path.clone()));
         }
+    }
+}
+
+/// The song's own author and license, as a sample instrument's are: each commit is one
+/// `SetProvenance`, and the mark shows while either is empty.
+fn song_provenance_fields(walk: &mut SidebarWalk, song: &SongDocument) {
+    let provenance = song.file().provenance.clone().unwrap_or(Provenance {
+        author: String::new(),
+        license: String::new(),
+    });
+    let author = walk.field(song_author_field_id(), "Author", &provenance.author);
+    let license = walk.field(WidgetId::hashed("composer_song_license"), "License", &provenance.license);
+    if provenance.author.trim().is_empty() || provenance.license.trim().is_empty() {
+        walk.warning("Song author and license: needed before Save");
+    }
+    if author.is_none() && license.is_none() {
+        return;
+    }
+    let committed = Provenance {
+        author: author.unwrap_or_else(|| provenance.author.clone()),
+        license: license.unwrap_or_else(|| provenance.license.clone()),
+    };
+    // A field left as it was — Enter on it, or a press away — commits its own value back,
+    // which is no edit: it would dirty the song and stop a playing preview for nothing.
+    if committed != provenance {
+        walk.push(ComposerAction::Edit(SongEdit::SetProvenance { provenance: committed }));
     }
 }

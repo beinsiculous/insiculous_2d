@@ -37,7 +37,8 @@ fn reopen(folder: &AssetFolder) -> Result<super::OpenedSong, SongOpenError> {
 fn a_save_interrupted_at_any_step_reopens_as_the_old_song_or_the_new_one() {
     // The save of a song without samples makes seven writes and removals: the pair (sidecar,
     // then MIDI), the empty sample folder's removal, the finals (MIDI, then sidecar), and the
-    // pair's two removals. The pair is the commit point, so from the second on it is the new song.
+    // pair's two removals — the home folder's LICENSE already names the song, so it is not
+    // written again. The pair is the commit point, so from the second on it is the new song.
     for operations in 0..=7 {
         let folder = AssetFolder::new();
         let (old, mut document) = old_and_new(&folder);
@@ -71,7 +72,7 @@ fn a_save_interrupted_at_any_step_reopens_as_the_old_song_or_the_new_one() {
         let left: Vec<String> = folder.files_under("music");
         assert_eq!(
             left,
-            ["theme.mid", "theme.mid.ron"],
+            ["LICENSE", "theme.mid", "theme.mid.ron"],
             "after {operations}: settled to the finals"
         );
     }
@@ -88,8 +89,8 @@ fn a_pair_landed_with_the_finals_untouched_is_recovered() {
         .expect_err("stopped before the finals");
     assert_eq!(
         folder.files_under("music").len(),
-        4,
-        "the pair beside the old finals"
+        5,
+        "the pair beside the old finals and the LICENSE"
     );
 
     let opened = reopen(&folder).expect("recovers");
@@ -123,7 +124,10 @@ fn a_leftover_matching_the_finals_is_purged() {
 
     let opened = reopen(&folder).expect("opens");
     assert_eq!(exported(&opened.document), old);
-    assert_eq!(folder.files_under("music"), ["theme.mid", "theme.mid.ron"]);
+    assert_eq!(
+        folder.files_under("music"),
+        ["LICENSE", "theme.mid", "theme.mid.ron"]
+    );
     assert_eq!(opened.notes.len(), 1, "{:?}", opened.notes);
 }
 
@@ -158,7 +162,10 @@ fn a_lone_sidecar_new_is_removed_and_the_finals_open() {
 
     let opened = reopen(&folder).expect("opens");
     assert_eq!(exported(&opened.document), old);
-    assert_eq!(folder.files_under("music"), ["theme.mid", "theme.mid.ron"]);
+    assert_eq!(
+        folder.files_under("music"),
+        ["LICENSE", "theme.mid", "theme.mid.ron"]
+    );
 }
 
 #[test]

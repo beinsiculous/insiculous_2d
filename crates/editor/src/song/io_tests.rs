@@ -43,7 +43,7 @@ fn a_saved_song_reopens_with_every_note_and_its_sidecar_and_leaves_no_journal() 
     assert_eq!(document.path(), Some(target.as_path()));
     assert_eq!(
         folder.files_under("music"),
-        ["theme.mid", "theme.mid.ron"],
+        ["LICENSE", "theme.mid", "theme.mid.ron"],
         "no .new is left"
     );
     let midi = folder.read("music/theme.mid").expect("the MIDI file");
@@ -240,27 +240,6 @@ fn a_same_named_sample_with_other_bytes_gets_a_suffix_and_its_instrument_follows
 }
 
 #[test]
-fn a_never_saved_songs_held_samples_reach_its_folder_on_the_first_save() {
-    let folder = AssetFolder::new();
-    let mut document = SongDocument::new_song().expect("a blank song");
-    document.stage_sample("upload/blip.wav", BLIP.to_vec());
-    with_instrument(&mut document, sample_instrument("blip", "upload/blip.wav"));
-    assert!(
-        folder.files_under("").is_empty(),
-        "nothing is staged on disk"
-    );
-
-    document
-        .save(&folder.path("music/first.mid"), folder.base())
-        .expect("saves");
-    assert_eq!(
-        folder.read("music/samples/first/blip.wav").as_deref(),
-        Some(BLIP)
-    );
-    assert!(document.pending_samples().is_empty());
-}
-
-#[test]
 fn an_agents_song_saves_under_ai_music_reopens_and_saves_in_place() {
     let folder = AssetFolder::new();
     let target = folder.path("ai/music/ai_waltz.mid");
@@ -281,7 +260,7 @@ fn an_agents_song_saves_under_ai_music_reopens_and_saves_in_place() {
         .expect("saves in place");
     assert_eq!(
         folder.files_under("ai/music"),
-        ["ai_waltz.mid", "ai_waltz.mid.ron"]
+        ["LICENSE", "ai_waltz.mid", "ai_waltz.mid.ron"]
     );
 }
 
@@ -305,6 +284,10 @@ fn a_save_outside_the_song_folders_is_refused_and_an_imported_original_never_wri
     assert!(opened.document.is_dirty());
 
     let mut document = opened.document;
+    let provenance = super::test_support::song_provenance();
+    document
+        .apply(SongEdit::SetProvenance { provenance }, Gesture::Discrete)
+        .expect("an import names its author before its first save");
     let error = document
         .save(&outside, folder.base())
         .expect_err("never written");

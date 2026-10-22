@@ -111,8 +111,7 @@ fn undo_a_track_switch_and_the_api_wait_for_a_live_drag() {
     editor.run_composer_key(ComposerKeyAction::Undo);
     assert_eq!(undo_count(&editor), entries, "Ctrl+Z mid-drag undoes nothing");
     assert_eq!(editor.editor.status_bar.message(), Some("Finish or Escape the drag first"));
-    let mut world = ecs::World::new();
-    editor.run_composer_actions(vec![ComposerAction::SetActiveTrack(0)], &mut world);
+    editor.run_composer_actions(vec![ComposerAction::SetActiveTrack(0)]);
     assert_eq!(editor.editor.composer.active_track, Some(1), "no track switch mid-drag");
     assert!(editor.take_api_lines().is_empty(), "no API line lands between a drag's frames");
 

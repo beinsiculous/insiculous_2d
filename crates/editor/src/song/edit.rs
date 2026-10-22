@@ -10,7 +10,8 @@
 use std::collections::{BTreeSet, HashMap};
 
 use music_midi::{
-    Binding, EditError, Instrument, NoteId, Part, PartMode, Quantize, SongData, SongFileProblem,
+    Binding, EditError, Instrument, NoteId, Part, PartMode, Provenance, Quantize, SongData,
+    SongFileProblem,
 };
 use serde::{Deserialize, Serialize};
 
@@ -108,6 +109,11 @@ pub enum SongEdit {
     RemovePart {
         name: String,
     },
+    /// Who wrote the song and under which license: what Save requires of it, and writes
+    /// into the home folder's `LICENSE`.
+    SetProvenance {
+        provenance: Provenance,
+    },
     /// Several edits as one undo entry: every member is checked before any lands, and a
     /// refused member changes nothing.
     Batch(Vec<SongEdit>),
@@ -169,6 +175,7 @@ impl SongEdit {
             SongEdit::RemoveBinding { .. } => "RemoveBinding",
             SongEdit::AddPart { .. } => "AddPart",
             SongEdit::RemovePart { .. } => "RemovePart",
+            SongEdit::SetProvenance { .. } => "SetProvenance",
             SongEdit::Batch(_) => "Batch",
         }
     }
@@ -219,7 +226,8 @@ impl SongEdit {
                     tick: next_tick, ..
                 },
             ) if tick == next_tick => Some(next.clone()),
-            (E::SetLoop { .. }, E::SetLoop { .. }) => Some(next.clone()),
+            (E::SetLoop { .. }, E::SetLoop { .. })
+            | (E::SetProvenance { .. }, E::SetProvenance { .. }) => Some(next.clone()),
             (
                 E::SetQuantize { part, .. },
                 E::SetQuantize {

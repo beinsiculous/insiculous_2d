@@ -120,7 +120,7 @@ Database `beinsiculous.playground`, version 1, two object stores:
 
 | store | key | record |
 |---|---|---|
-| `files` | `[project, path]` | `StoredFile { project, path (project-relative), bytes, revision, bundle_version }` |
+| `files` | `[project, path]` | `StoredFile { project, path (project-relative), bytes, revision, bundle_version, deleted }` — `deleted` (default false) marks a tombstone |
 | `projects` | `slug` | `ProjectManifest { slug, title, bundle_version, content_hash, origin: bundled \| saved \| imported }` |
 
 `ProjectStore` (`store.rs`) has three implementations: `IndexedDbStore` (the web),
@@ -133,7 +133,10 @@ revision, refuses with `StaleRevision { stored, base }` unless it equals the cal
 `base_revision` (an absent record accepts only 0), else writes `base_revision + 1` and
 returns it. A get-then-put across two transactions is forbidden: another tab can commit
 between them, and the second write would silently overwrite it. `put` also upserts the
-slug's manifest when the store has none (origin `saved`). `replace_project` and
+slug's manifest when the store has none (origin `saved`). `remove_file` is the same
+compare-and-swap and writes a tombstone — the record kept, `deleted`, empty bytes, one
+revision up — so a put that recreates the file names that revision; an absent record at
+base 0 is `Ok` with nothing written (§ Persistence). `replace_project` and
 `remove_project` are one transaction each across both stores, the manifest written last as
 the commit marker. `sweep_orphans(bundled)` at boot removes files whose slug has neither a
 manifest nor a bundled entry (an interrupted import); the open project's own
@@ -144,31 +147,68 @@ manifest-less files are removed at boot too, and the bundled files load instead.
 synchronously inside the previous request's `onsuccess` — never after an `await`, when the
 transaction is already inactive.
 
-## Persistence: one chain per path
+## Persistence: one queue, in write order
 
 `persist::Chains` is target-agnostic and owns no executor. Natively the tests hand-poll its
-futures; on wasm the layer around it spawns each started put and feeds the result back.
-The vfs write observer (`common::vfs::set_write_observer`, wasm-only) fires once per
-`vfs::write`; the boot-phase `vfs::insert` never fires it, so seeding is not a save.
+head; on wasm the layer around it spawns the started operation and feeds the result back,
+and the result issues the next. The vfs write observer (`common::vfs::set_write_observer`,
+wasm-only) fires once per `vfs::write`; the boot-phase `vfs::insert` never fires it, so
+seeding is not a save. Its twin, `set_remove_observer`, fires once for every key
+`vfs::remove_prefix` drops (on wasm only; natively the filesystem is the only copy), so a
+save's removed journal pair and pruned samples leave the store too.
 
-Path states: **idle** · **in flight** (a put running) · **queued** (a put running and newer
-bytes waiting; only the newest bytes are kept) · **stranded** (the last put failed with
-`Backend`/`Unavailable`; the newest bytes are held and the banner "not saved to this
-browser — export your project" stands) · **conflicted** (`StaleRevision`: another tab saved
+**One operation at a time, in write order** (`persist/queue.rs`). Every write is a put and
+every removal a tombstone, each its own entry in one FIFO; nothing coalesces, and the next
+issues only when the one before it completes. So whatever the store holds when any
+operation lands is a prefix of the write sequence — the states a native crash leaves, which
+the song's open-time rules (`SONG_FORMAT.md` § How the composer saves) settle: a save's pair
+lands before its finals, and a removal after every put written ahead of it. The base
+revision is read when an operation issues, never when it is queued. A write behind its own
+path's removal waits for it, queued or issued, and lands one revision above the tombstone —
+a removal cancelled would leave the store out of write order. A save makes one store round
+trip per file, in sequence.
+
+**Removals are tombstones.** `remove_file(slug, path, base_revision)` keeps the record,
+marked `deleted` with empty bytes, one revision up, so revisions stay monotonic across a
+delete and a recreate; `load_project` returns tombstones, `seed` records their revisions,
+and the boot puts no tombstone's bytes in MemFs and drops its path, the bundled copy with
+it. A removal of a path this tab never loaded
+or wrote queues nothing; one that finds a newer revision — another tab rewrote the file —
+is dropped with a log line and the queue moves on, the other tab's write winning, never a
+conflict. Tombstones grow only with distinct removed names (the journal pair's two paths
+are reused by every save).
+
+Path states: **idle** · **in flight** (this path's operation is the one running) · **queued**
+(more of this path's operations wait, behind its own or another path's) · **stranded** (its
+operation failed with `Backend`/`Unavailable`; the banner "not saved to this browser —
+export your project" stands) · **conflicted** (a put met `StaleRevision`: another tab saved
 first; never retried; the banner names the file and says to export before reloading). A
 write to a conflicted path issues no put — `MemFs` keeps the bytes for the export.
 
-Two predicates: `is_pending()` is "any path not idle" and feeds the editor's dirty title
-(through `EditorRunOptions.persist_pending`), `playground_is_dirty` and the `beforeunload`
-warning; `has_active()` is "in flight or queued" and is what a drain awaits — a stranded or
-conflicted path must never block a switch. `drain_then_epoch()` bumps the write epoch, THEN
-awaits every active chain, bounded at 5 s; a write during a drain is refused ("project is
-being replaced — save again after the reload") and the message goes on the banner.
+**Failure is head-of-line.** A stranded or conflicted operation holds the head and nothing
+behind it issues, so a save whose final failed never reaches its removals. A stranded head
+is retried on `visibilitychange`→hidden and on the next write — a new write is evidence the
+tab is alive, which makes the page's Save button the manual retry the failure reason names
+("stranded: <path>; press Save to retry").
 
-Listeners: `visibilitychange`→hidden re-issues stranded paths; `beforeunload` sets the
-warning while anything is pending. There is no `pagehide` handler: a queued put cannot be
-issued before the in-flight one resolves without breaking the CAS, and IndexedDB commits
-the in-flight transaction on its own.
+Two predicates: `is_pending()` is "anything queued, in flight or holding the head" and
+feeds the editor's dirty title (through `EditorRunOptions.persist_pending`),
+`playground_is_dirty` and the `beforeunload` warning; `has_active()` is "the head is in
+flight" and is what a drain awaits. `drain_then_epoch()` retries a stranded head once (the
+switch is the visitor acting, as a write is), bumps the write epoch, THEN awaits everything
+written before it, bounded at 5 s (a timeout restores the epoch and drives the head again).
+A head stranded when the wait ends — the retry failed, or an operation failed under the
+drain — refuses the switch naming the path ("… is not saved to this browser — export your
+project, then try again"): the page would navigate away from that write and everything
+queued behind it. A conflicted head never blocks a switch: its banner asks for the reload.
+A write during a drain is refused ("project is being replaced — save again after
+the reload") and the message goes on the banner. The page navigates after a replace, and
+the boot builds a fresh `Chains`, so no queue survives it.
+
+Listeners: `visibilitychange`→hidden re-issues a stranded head; `beforeunload` sets the
+warning while anything is pending. There is no `pagehide` handler: an operation cannot be
+issued before the one ahead of it resolves without breaking the write order, and IndexedDB
+commits the in-flight transaction on its own.
 
 ## The bridge (`bridge.rs`, Stage D)
 
@@ -192,9 +232,11 @@ The command channel is a 1024-line FIFO; responses come back in order.
 | `playground_set_preview_open(open)` | `→ void` | while true, in-editor Play is refused with "A preview window is open — close it to Play here". The page clears it on `preview-failed`, `preview-closed`, or a window it finds closed — never on silence |
 | `playground_import_zip(bytes)` | `→ Promise<string>` | validates, drains, replaces the project in the store, resolves with the slug; the PAGE then sets `?project=<slug>` and reloads — REQUIRED, same slug or not, as for switch and reset: the drain leaves writes refused until the reload |
 | `playground_read_file_bytes(path)` | `→ Result<Uint8Array>` | project-relative binary read through `vfs::read` |
+| `playground_write_file_bytes(name, bytes, replace)` | `→ Result<string>` | imports one song, sample or SoundFont by its file name (`upload.rs`), answering the JSON `{written, kind, destination, referenced_by, sidecar_lost}`. The name must match `[A-Za-z0-9._-]+` (a sample's or a SoundFont's whitespace becomes `_`; a song's name is held to the song path rule, `docs/SONG_FORMAT.md` § How the composer saves); the file is refused by its size against its loader's limit (`MIDI_BYTE_LIMIT` 1 MiB, `SAMPLE_BYTE_LIMIT` 4 MiB, `SOUND_FONT_BYTE_LIMIT` 48 MiB) and then by the loader itself before anything is written. A `.mid` lands in `assets/music/`, a `.wav` in `assets/music/imports/`, an `.sf2` in `assets/soundfonts/`. A taken name answers `written: false` unless `replace`; a replaced `.mid` is refused while it is the composer's open song, and otherwise loses its `.mid.ron` and its journal pair before the MIDI is written |
+| `playground_sample_references(path)` | `→ Result<string[]>` | every song under `music/` and `ai/music/` whose sidecar names the file at `path`, by its `.mid` |
 | `playground_conflicted_paths()` | `→ string[]` | sorted project-relative paths currently in conflicted state |
 | `playground_script_errors()` | `→ string[]` | runtime errors recorded by `ScriptRunner` during the current Play session |
-| `playground_save_state()` | `→ string` | `{"state": "unsaved" \| "saving" \| "saved" \| "failed", "reason": ""}`: a conflicted or stranded path is `failed` with `reason` naming the first such path in sorted order — **conflicted outranks stranded**, a conflict being terminal while a stranded path retries on `visibilitychange` — an in-flight or queued put is `saving`, a dirty command history is `unsaved`, and neither is `saved` |
+| `playground_save_state()` | `→ string` | `{"state": "unsaved" \| "saving" \| "saved" \| "failed", "reason": ""}`: a conflicted or stranded path is `failed` with `reason` naming the first such path in sorted order — **conflicted outranks stranded**, a conflict being terminal while a stranded path retries on `visibilitychange`, on the next write and at a switch — an in-flight or queued put is `saving`, a dirty command history is `unsaved`, and neither is `saved` |
 
 The engine cannot swap a running project; every switch is a page reload with the query
 string naming the slug. An unknown `?project=` redirects to the first bundled project.
@@ -246,7 +288,11 @@ takes the viewport), after Stop, and on exit. Nothing is written during Play or 
 
 `playground_export_zip()` is a Promise, and the scene it carries is the live world, not
 the file on disk: the acceptance test is "exports their work", and the saved scene would
-drop the very edit the visitor previewed. For the same reason it is refused during Play or
+drop the very edit the visitor previewed. The song open in the composer travels the same
+way: its MIDI file and sidecar as the document holds them, at the song's own path or the
+default a never-saved song would take, over the saved ones — and its own `.new` journal
+pair is left out, the live files being newer. Every other song's journal pair travels, so
+an interrupted save of another song keeps its recovery in the backup. For the same reason it is refused during Play or
 Pause — stop first. Projects export and import as standard zip
 archives (`<slug>.zip`). This is the layout
 [the template repo](https://github.com/beinsiculous/game-template) conforms to, and it goes
@@ -280,6 +326,8 @@ On import, the archive is validated in order before touching any persistence sto
 11. Every `*.sheet.ron` runs through `engine_core::sheet_file::parse_sheet_file`.
 12. Every `*.scene.ron` runs through `SceneLoader::parse` followed by dry-run instantiation via `SceneLoader::instantiate(&data, &mut World::new(), &mut HeadlessAssets::new())`.
 13. Every `*.rhai` runs through `engine_core::scripting::check_source` for param header and Rhai syntax validation.
+14. Every final `*.mid.ron` parses as a song sidecar (`music_midi::parse_song_file`) and has its `.mid` beside it in the archive, and every final `*.mid` opens with `MThd`; either failing refuses the archive (`ArchiveError::InvalidSong`).
+15. A `*.mid.new` or `*.mid.ron.new` is checked the same way, its pair not required, but one that fails is left out with a note in the console instead of refusing the archive: a journal leftover is recovery data, settled by the song's open-time rules the next time it is opened.
 
 ### Failure contract
 
@@ -303,6 +351,9 @@ shortcuts, its own scroll and its own zoom.
 | Audio activation | Load a project with sound and wait: the page starts silent. The first click or key press enables audio, and a preview window's sounds play from then on |
 | Resize | Drag the browser window and open and close a panel. The canvas re-lays out, and the pointer still maps to the same world point — click a sprite where it is drawn, not where it was |
 | Zoom | Browser page zoom (Ctrl/Cmd with `+`/`-`, and Ctrl/Cmd with the wheel), then the editor's own wheel zoom over the viewport. The canvas stays aligned under the pointer, and a gentle trackpad scroll does not compound into a hard zoom |
+| The song preview after the first gesture | Open a project, File → New Song, and before clicking anything send `song play` from the command input: the transport says "Playing · waiting for the first click" and nothing sounds. Click the canvas: the song is heard, the playhead moves, and Space (with the composer focused) stops it. The playhead may lead the sound by the browser's own output buffer, which the engine cannot measure |
+| Play hears the saved song | Save the song, play the preview, then press scene Play: the saved song plays as the game's music from the session's first frame. Stop: the music stops, and the transport's Play hears the document again |
+| An imported sample travels | Import a `.wav` with "Import a song, sample or SoundFont", Rescan Assets, drop it on the composer, give it and the song an author and a license, press Trigger while the preview plays, Save, reload the page and reopen the song: the sample plays. Export, import the archive back, and it still plays |
 | Typing stays in its field | With a script open in Scripts, and with an inspector text field focused, type Delete, Ctrl/Cmd+Z, letters and spaces. The scene does not change: no entity is deleted, no tool shortcut fires, no undo runs |
 
 ## Budget

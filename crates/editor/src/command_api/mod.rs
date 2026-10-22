@@ -149,11 +149,11 @@ pub enum HostedWrite {
     SongSave { path: Option<String>, overwrite: bool },
     /// Close the song; refused when it is dirty unless `discard`.
     SongClose { discard: bool },
-    /// The song's preview transport and a simulated trigger: parsed so the
-    /// verb table is whole, refused until the preview exists.
-    SongPlay { from_beat: Option<f64> },
+    /// The song preview's transport, from a whole beat counted from zero, and a
+    /// simulated trigger of a binding's action.
+    SongPlay { from_beat: Option<u64> },
     SongStop,
-    SongSeek { beat: f64 },
+    SongSeek { beat: u64 },
     SongTrigger { binding: String },
 }
 

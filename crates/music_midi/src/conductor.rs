@@ -92,6 +92,9 @@ pub struct Conductor {
     transport: TransportState,
     /// Where `Resume` continues from while paused.
     resume_sample: u64,
+    /// Where the next `Play` starts, set by a `Seek` while stopped: a host that wants a
+    /// song to start part way sends both at once, and they may straddle a block boundary.
+    start_tick: Option<u64>,
     slot_left: Vec<f32>,
     slot_right: Vec<f32>,
     scratch_left: Vec<f32>,
@@ -119,6 +122,7 @@ impl Conductor {
             loaded: None,
             transport: TransportState::Stopped,
             resume_sample: 0,
+            start_tick: None,
             slot_left: block(),
             slot_right: block(),
             scratch_left: block(),
@@ -272,6 +276,7 @@ impl Conductor {
         });
         self.transport = TransportState::Stopped;
         self.resume_sample = 0;
+        self.start_tick = None;
         self.frames_into_block = 0;
         self.publish();
         Ok(report)
@@ -355,9 +360,10 @@ impl Conductor {
         };
         match command {
             ConductorCommand::Play => {
+                let tick = self.start_tick.take().unwrap_or(0);
                 loaded.release_slots();
-                loaded.sequencer.seek_to_tick(0, &mut loaded.background);
-                loaded.triggers.restart_at(0, &loaded.song);
+                loaded.sequencer.seek_to_tick(tick, &mut loaded.background);
+                loaded.triggers.restart_at(tick, &loaded.song);
                 self.transport = TransportState::Playing;
             }
             ConductorCommand::Stop => {
@@ -391,7 +397,7 @@ impl Conductor {
                     self.resume_sample = loaded.sequencer.position_sample();
                     loaded.triggers.restart_at(tick, &loaded.song);
                 }
-                TransportState::Stopped => {}
+                TransportState::Stopped => self.start_tick = Some(tick),
             },
             ConductorCommand::SetLooping(looping) => loaded.sequencer.set_looping(looping),
             ConductorCommand::Trigger {

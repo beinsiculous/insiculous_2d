@@ -20,7 +20,7 @@ use engine_core::prelude::{GameConfig, SceneLoader};
 use engine_core::web::{init_web_logging, preload_assets, query_param, set_boot_status};
 use wasm_bindgen::prelude::*;
 
-use crate::persist::{drive_started_puts, install_listeners, set_active_chains, set_dom_banner, with_active_chains, Chains};
+use crate::persist::{drive_started_operations, install_listeners, set_active_chains, set_dom_banner, with_active_chains, Chains};
 use crate::projects::{project_asset_base, project_root, ProjectManifest, ProjectOrigin};
 use crate::store::indexed_db::IndexedDbStore;
 use crate::store::memory::MemoryStore;
@@ -198,9 +198,16 @@ async fn run_playground() -> Result<(), String> {
         }
         Vec::new()
     } else {
-        for file in &stored_files {
+                for file in &stored_files {
             let vfs_path = format!("{root_string}/{}", file.path);
-            common::vfs::insert(vfs_path, file.bytes.clone());
+            if file.deleted {
+                // A tombstone keeps a removed file's revision for the chains and no bytes,
+                // and unseats the bundled copy the preload put here; the observers are not
+                // installed yet, so nothing is queued.
+                let _ = common::vfs::remove_prefix(std::path::Path::new(&vfs_path));
+            } else {
+                common::vfs::insert(vfs_path, file.bytes.clone());
+            }
         }
         stored_files
     };
@@ -224,7 +231,7 @@ async fn run_playground() -> Result<(), String> {
     chains.seed(&stored_files_for_chains);
     set_active_chains(chains);
 
-    // Install VFS write observer to feed chains
+    // The VFS write and remove observers feed the chains
     common::vfs::set_write_observer(|path| {
         let bytes = common::vfs::read(path).unwrap_or_default();
         let write_result = with_active_chains(|chains| {
@@ -234,7 +241,11 @@ async fn run_playground() -> Result<(), String> {
             log::warn!("{error_message}");
             set_dom_banner(&error_message);
         }
-        drive_started_puts();
+        drive_started_operations();
+    });
+    common::vfs::set_remove_observer(|path| {
+        with_active_chains(|chains| chains.on_vfs_remove(path));
+        drive_started_operations();
     });
 
     install_listeners();
@@ -248,6 +259,7 @@ async fn run_playground() -> Result<(), String> {
     let errors_for_hooks = Arc::clone(&script_errors_mirror);
     let scene_snapshot = Arc::new(editor_integration::SceneSnapshotRequest::default());
     let preview_open = Arc::new(AtomicBool::new(false));
+    let open_song = Arc::new(Mutex::new(None));
     let hooks = crate::bridge::Hooks {
         source_check: Some(|source: &str| {
             engine_core::scripting::check_source(source).map_err(|e| e.to_string())
@@ -260,6 +272,7 @@ async fn run_playground() -> Result<(), String> {
         })),
         scene_snapshot: Some(Arc::clone(&scene_snapshot)),
         preview_open: Some(Arc::clone(&preview_open)),
+        open_song: Some(Arc::clone(&open_song)),
     };
     crate::bridge::set_hooks(hooks);
 
@@ -286,6 +299,7 @@ async fn run_playground() -> Result<(), String> {
         script_errors: Some(script_errors_mirror),
         scene_snapshot: Some(scene_snapshot),
         preview_open: Some(preview_open),
+        open_song: Some(open_song),
     };
 
     let config = GameConfig::new("Insiculous Playground")

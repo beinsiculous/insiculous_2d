@@ -7,6 +7,7 @@ use editor::PlayControlAction;
 use glam::Vec2;
 
 use super::test_support::editor_game;
+use super::test_support::press_play;
 
 #[test]
 fn test_time_scale_is_frozen_while_not_playing() {
@@ -18,7 +19,7 @@ fn test_time_scale_is_frozen_while_not_playing() {
     assert_eq!(editor.editor_time_scale(1.0), 0.0);
 
     // Play hands the game back the value it was running at.
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
     assert_eq!(editor.editor_time_scale(0.0), 1.0);
     // From then on the game owns it — a game that pauses itself stays paused.
     assert_eq!(editor.editor_time_scale(0.0), 0.0);
@@ -27,7 +28,7 @@ fn test_time_scale_is_frozen_while_not_playing() {
     // Paused counts as not playing: frozen again, and the game's 0.5 is held.
     editor.handle_play_action(PlayControlAction::Pause, &mut world);
     assert_eq!(editor.editor_time_scale(0.5), 0.0);
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
     assert_eq!(editor.editor_time_scale(0.0), 0.5);
 }
 
@@ -76,7 +77,7 @@ fn test_particles_and_animations_do_not_advance_while_editing() {
     );
 
     // Play: the same frames now move both.
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
     let playing_scale = editor.editor_time_scale(1.0);
     step_frames(&mut world, &mut particles, playing_scale);
     assert!(particles.alive_count() > 0, "particles emit once Playing");
@@ -223,7 +224,7 @@ fn test_lie_detector_fires_once_at_frame_60_and_stays_silent_when_runner_ran() {
     let entity = world.create_entity();
     world.add_component(&entity, ecs::script::Scripts(vec![ecs::script::ScriptRef::new("patrol")])).unwrap();
 
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
 
     let idle_scripts = engine_core::scripting::ScriptRunner::new();
     // Advance 59 frames: no lie detector error yet

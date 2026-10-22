@@ -129,26 +129,36 @@ impl StatusBar {
         );
 
         let padding = crate::layout::PADDING;
+        let font_size = theme.fonts.small;
+        let measure = |text: &str| ui.measure_text_styled(text, font_size).x;
 
-        // Left section: status message
         let status_text = self.message.as_deref().unwrap_or("Ready");
         let status_color = if self.message_persistent {
             theme.error_red
         } else {
             theme.text_secondary
         };
-        ui.label_in_bounds_styled(status_text, bar, ui::TextAlign::Left, status_color, theme.fonts.small, padding);
-
-        // Center section: runtime stats
         let stats_text = format!(
             "Objects: {} | FPS: {:.0}",
             self.stats.entity_count,
             self.stats.fps,
         );
-        ui.label_in_bounds_styled(&stats_text, bar, ui::TextAlign::Center, theme.text_muted, theme.fonts.small, padding);
-
-        // Right section: version
-        ui.label_in_bounds_styled(&self.version, bar, ui::TextAlign::Right, theme.accent_cyan, theme.fonts.small, padding);
+        // The message has the room up to the version: an error cut short loses the words
+        // that say what to do, so the stats step aside while a long one shows, and only a
+        // message longer than that is shortened, its whole text kept as the tooltip.
+        let message_room = (bar.width - measure(&self.version) - 4.0 * padding).max(0.0);
+        let shown = crate::row_layout::ellipsize(status_text, message_room, measure);
+        let stats_left = bar.center().x - measure(&stats_text) / 2.0;
+        let stats_fit = padding + measure(&shown) + padding <= stats_left;
+        let message_bounds = Rect::new(bar.x, bar.y, message_room + padding, bar.height);
+        ui.label_in_bounds_styled(&shown, message_bounds, ui::TextAlign::Left, status_color, font_size, padding);
+        if shown != status_text {
+            ui.tooltip(message_bounds, status_text);
+        }
+        if stats_fit {
+            ui.label_in_bounds_styled(&stats_text, bar, ui::TextAlign::Center, theme.text_muted, font_size, padding);
+        }
+        ui.label_in_bounds_styled(&self.version, bar, ui::TextAlign::Right, theme.accent_cyan, font_size, padding);
 
         bar
     }
@@ -187,5 +197,40 @@ mod tests {
         bar.show_message("Next");
         bar.update(MESSAGE_TIMEOUT);
         assert_eq!(bar.message(), None, "clearing an error does not leave persistence sticky");
+    }
+
+    /// The texts a frame drew, for the layout tests below.
+    fn drawn(ui: &UIContext) -> Vec<String> {
+        ui.draw_list()
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                ui::DrawCommand::TextPlaceholder { text, .. } => Some(text.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// A long message keeps its words: the stats step aside for it rather than draw over
+    /// it, and a short one leaves them where they were.
+    #[test]
+    fn test_a_long_message_moves_the_stats_aside_and_a_short_one_keeps_them() {
+        let theme = EditorTheme::default();
+        let input = input::InputHandler::new();
+        let window = Vec2::new(1280.0, 720.0);
+        for (message, stats_drawn) in [
+            ("Saved", true),
+            ("Song save failed: the song has no provenance: a song needs its author and license before it is saved", false),
+        ] {
+            let mut bar = StatusBar::new();
+            bar.show_error(message);
+            let mut ui = UIContext::new();
+            ui.begin_frame(&input, window);
+            bar.render(&mut ui, window, &theme);
+            let texts = drawn(&ui);
+            ui.end_frame();
+            assert!(texts.iter().any(|text| text == message), "the whole message is drawn: {texts:?}");
+            assert_eq!(texts.iter().any(|text| text.starts_with("Objects:")), stats_drawn, "{message}");
+        }
     }
 }

@@ -6,7 +6,7 @@ use zip::{CompressionMethod, ZipWriter};
 use super::*;
 use crate::projects::{ProjectManifest, ProjectOrigin};
 
-fn valid_manifest_ron(slug: &str) -> String {
+pub(super) fn valid_manifest_ron(slug: &str) -> String {
     let manifest = ProjectManifest {
         slug: slug.to_string(),
         title: "Test".to_string(),
@@ -17,7 +17,7 @@ fn valid_manifest_ron(slug: &str) -> String {
     ron::ser::to_string_pretty(&manifest, ron::ser::PrettyConfig::default()).unwrap()
 }
 
-fn create_test_zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
+pub(super) fn create_test_zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
     let mut buffer = Cursor::new(Vec::new());
     let mut writer = ZipWriter::new(&mut buffer);
     let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
@@ -302,7 +302,7 @@ fn test_import_project_refuses_archive_exceeding_decompressed_cap() {
 }
 
 /// A two-scene project on disk, and the manifest that describes it.
-fn two_scene_project(root: &std::path::Path) -> ProjectManifest {
+pub(super) fn two_scene_project(root: &std::path::Path) -> ProjectManifest {
     let scenes = root.join("assets/scenes");
     std::fs::create_dir_all(&scenes).unwrap();
     std::fs::write(
@@ -334,7 +334,7 @@ fn test_export_snapshot_carries_only_the_live_scene_and_reimports() {
     let live = r#"SceneData(name: "main", entities: [EntityData(name: Some("live"), components: [])])"#;
 
     let zip_bytes =
-        export_snapshot(root, &manifest, "assets/scenes/main.scene.ron", live).unwrap();
+        export_snapshot(root, &manifest, "assets/scenes/main.scene.ron", live, &[]).unwrap();
     let (_, stored_files) = import_project(&zip_bytes, "v1").unwrap();
 
     let scene_of = |path: &str| {
@@ -364,7 +364,7 @@ fn test_export_snapshot_keeps_every_other_scene() {
     let live = r#"SceneData(name: "main", entities: [])"#;
 
     let zip_bytes =
-        export_snapshot(root, &manifest, "assets/scenes/main.scene.ron", live).unwrap();
+        export_snapshot(root, &manifest, "assets/scenes/main.scene.ron", live, &[]).unwrap();
     let (_, stored_files) = import_project(&zip_bytes, "v1").unwrap();
 
     let mut paths: Vec<String> = stored_files.iter().map(|file| file.path.clone()).collect();
@@ -386,7 +386,7 @@ fn test_export_snapshot_refuses_a_scene_entry_outside_assets_scenes() {
     let live = r#"SceneData(name: "main", entities: [])"#;
 
     for entry in ["assets/images/x.png", "../escaped.scene.ron", "project.ron", ""] {
-        let result = export_snapshot(root, &manifest, entry, live);
+        let result = export_snapshot(root, &manifest, entry, live, &[]);
         assert!(
             matches!(result, Err(ArchiveError::OutsideProject(_))),
             "'{entry}' must be refused, got {result:?}"

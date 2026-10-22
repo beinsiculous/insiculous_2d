@@ -127,6 +127,7 @@ impl SongEdit {
         use SongEdit as E;
         match self {
             E::SetLoop { looping } => file.looping = *looping,
+            E::SetProvenance { provenance } => file.provenance = Some(provenance.clone()),
             E::SetQuantize { part, quantize } => part_named(file, part)?.quantize = *quantize,
             E::SetPartMode { part, mode } => part_named(file, part)?.mode = *mode,
             E::AddInstrument { instrument } => file.instruments.push(instrument.clone()),

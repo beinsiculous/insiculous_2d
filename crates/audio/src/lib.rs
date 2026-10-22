@@ -59,7 +59,7 @@ pub use conductor_source::{
 };
 pub use error::{AudioError, AudioResult};
 pub use manager::song::load::{SongProblem, SONG_FILE_BYTE_LIMIT, SOUND_FONT_BYTE_LIMIT};
-pub use manager::song::{SongPosition, SongSnapshot, Subdivision};
+pub use manager::song::{SongPosition, SongSnapshot, Subdivision, SONG_SAMPLE_RATE};
 pub use manager::AudioManager;
 /// The conductor's song types, so a game names them through the audio crate alone.
 pub use music_midi::{

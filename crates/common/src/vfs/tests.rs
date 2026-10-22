@@ -108,8 +108,16 @@ fn test_mem_fs_remove_prefix_leaves_siblings() {
     fs.insert(format!("{BASE}/project1/scripts/main.rhai"), vec![2]);
     fs.insert(format!("{BASE}/project2/scene.ron"), vec![3]);
 
-    fs.remove_prefix(Path::new(&format!("{BASE}/project1")));
+    let dropped = fs.remove_prefix(Path::new(&format!("{BASE}/project1")));
 
+    assert_eq!(
+        dropped,
+        vec![
+            PathBuf::from(format!("{BASE}/project1/scene.ron")),
+            PathBuf::from(format!("{BASE}/project1/scripts/main.rhai")),
+        ],
+        "each dropped key is reported once, so the remove observer fires once per file"
+    );
     assert!(fs.list_files(Path::new(&format!("{BASE}/project1"))).is_empty());
     let remaining = fs.list_files(Path::new(&format!("{BASE}/project2")));
     assert_eq!(remaining, vec![PathBuf::from(format!("{BASE}/project2/scene.ron"))]);
@@ -314,4 +322,29 @@ fn test_mem_fs_keeps_no_change_stamp_and_a_missing_file_is_not_found() {
         fs.change_stamp(&Path::new(BASE).join("music/absent.sf2")).map_err(|error| error.kind()),
         Err(io::ErrorKind::NotFound)
     );
+}
+
+#[test]
+fn test_native_remove_prefix_never_notifies_the_remove_observer() -> io::Result<()> {
+    use std::cell::Cell;
+    thread_local! {
+        static REMOVE_COUNT: Cell<usize> = const { Cell::new(0) };
+    }
+    fn on_remove(_path: &Path) {
+        REMOVE_COUNT.with(|count| count.set(count.get() + 1));
+    }
+    set_remove_observer(on_remove);
+
+    let directory = TempDir::new("vfs_remove_notify")?;
+    let path = directory.path().join("removed.txt");
+    write_string(&path, "gone")?;
+    remove_prefix(&path)?;
+
+    assert!(read(&path).is_err(), "the file is removed from disk");
+    assert_eq!(
+        REMOVE_COUNT.with(Cell::get),
+        0,
+        "the filesystem is the only copy natively, so nothing is told of a removal"
+    );
+    Ok(())
 }

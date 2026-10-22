@@ -38,6 +38,17 @@ impl DirectoryStore {
     }
 }
 
+/// The record stored at `file_path`, tombstone or not, or `None` when nothing is.
+fn read_stored(file_path: &Path) -> Result<Option<StoredFile>, StoreError> {
+    if !file_path.exists() {
+        return Ok(None);
+    }
+    let content = fs::read_to_string(file_path).map_err(|error| StoreError::Backend(error.to_string()))?;
+    serde_json::from_str(&content)
+        .map(Some)
+        .map_err(|error| StoreError::Backend(error.to_string()))
+}
+
 struct ProjectLock {
     lock_file: PathBuf,
 }
@@ -106,20 +117,10 @@ impl ProjectStore for DirectoryStore {
         Box::pin(async move {
             let _lock = ProjectLock::acquire(&project_directory)?;
 
-            if file_path.exists() {
-                let content = fs::read_to_string(&file_path)
-                    .map_err(|error| StoreError::Backend(error.to_string()))?;
-                let existing: StoredFile = serde_json::from_str(&content)
-                    .map_err(|error| StoreError::Backend(error.to_string()))?;
-                if existing.revision != base_revision {
-                    return Err(StoreError::StaleRevision {
-                        stored: existing.revision,
-                        base: base_revision,
-                    });
-                }
-            } else if base_revision != 0 {
+            let stored_revision = read_stored(&file_path)?.map_or(0, |existing| existing.revision);
+            if stored_revision != base_revision {
                 return Err(StoreError::StaleRevision {
-                    stored: 0,
+                    stored: stored_revision,
                     base: base_revision,
                 });
             }
@@ -142,6 +143,33 @@ impl ProjectStore for DirectoryStore {
                 .map_err(|error| StoreError::Backend(error.to_string()))?;
             fs::write(&file_path, json_content).map_err(|error| StoreError::Backend(error.to_string()))?;
             Ok(new_revision)
+        })
+    }
+
+    fn remove_file(&self, slug: &str, path: &str, base_revision: u64) -> Fut<Result<(), StoreError>> {
+        let project_directory = self.project_directory(slug);
+        let file_path = self.file_path(slug, path);
+        Box::pin(async move {
+            let _lock = ProjectLock::acquire(&project_directory)?;
+            let Some(mut existing) = read_stored(&file_path)? else {
+                return if base_revision == 0 {
+                    Ok(())
+                } else {
+                    Err(StoreError::StaleRevision { stored: 0, base: base_revision })
+                };
+            };
+            if existing.revision != base_revision {
+                return Err(StoreError::StaleRevision {
+                    stored: existing.revision,
+                    base: base_revision,
+                });
+            }
+            existing.bytes.clear();
+            existing.deleted = true;
+            existing.revision = base_revision + 1;
+            let json_content = serde_json::to_string_pretty(&existing)
+                .map_err(|error| StoreError::Backend(error.to_string()))?;
+            fs::write(&file_path, json_content).map_err(|error| StoreError::Backend(error.to_string()))
         })
     }
 

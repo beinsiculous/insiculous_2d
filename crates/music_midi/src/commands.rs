@@ -22,9 +22,11 @@ use crate::triggers::BindingIndex;
 /// A command. Every one takes effect at the start of a rendered block.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConductorCommand {
-    /// Play the song from its beginning, whatever it was doing.
+    /// Play the song from its beginning, or from the tick a `Seek` while stopped
+    /// recorded, whatever it was doing.
     Play,
-    /// Release every note and stop the clock; the next `Play` starts from the top.
+    /// Release every note and stop the clock; the next `Play` starts from the top unless
+    /// a `Seek` moves it.
     Stop,
     /// Release every note, drop every scheduled one and hold the clock where it is;
     /// triggers are refused until `Resume`. Ignored unless playing.
@@ -34,8 +36,9 @@ pub enum ConductorCommand {
     /// Ignored unless paused.
     Resume,
     /// Move to a tick, rebuilding the channels there and releasing every triggered note.
-    /// While paused it moves the point `Resume` continues from; while stopped it has no
-    /// effect, since `Play` starts at the top.
+    /// While paused it moves the point `Resume` continues from; while stopped it records
+    /// where the next `Play` starts, so a host starting a song part way sends `Seek` then
+    /// `Play` and the pair holds even when a block boundary falls between them.
     Seek(u64),
     /// Loop at the song's end, or stop there; takes effect at the next seam.
     SetLooping(bool),

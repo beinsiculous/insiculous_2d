@@ -145,3 +145,43 @@ fn test_every_enabled_action_item_maps_through_action_for_menu_label() {
         }
     }
 }
+
+/// A shortcut is drawn inside its row and right of its label, however long the two are:
+/// "Save As..." and "Ctrl+Shift+S" used to run into each other.
+#[test]
+fn test_every_shortcut_sits_right_of_its_label_inside_the_dropdown() {
+    let theme = EditorTheme::default();
+    let mut bar = MenuBar::editor_default();
+    bar.layout_titles(WINDOW.x);
+    bar.open_menu = Some(0);
+    let mut ui = UIContext::new();
+    let input = input::InputHandler::new();
+    ui.begin_frame(&input, WINDOW);
+    bar.render(&mut ui, WINDOW.x, &theme);
+    ui.end_frame();
+
+    let dropdown = MenuBar::dropdown_bounds(&bar.menus[0], bar.menus[0].bounds);
+    let drawn: Vec<(String, f32, f32)> = ui
+        .draw_list()
+        .commands()
+        .iter()
+        .filter_map(|command| match command {
+            ui::DrawCommand::TextPlaceholder { text, position, font_size, .. } => {
+                Some((text.clone(), position.x, position.x + ui.measure_text_styled(text, *font_size).x))
+            }
+            _ => None,
+        })
+        .collect();
+    let mut checked = 0;
+    for item in &bar.menus[0].items {
+        let MenuItem::Action { label, shortcut: Some(shortcut), .. } = item else {
+            continue;
+        };
+        let (_, _, label_right) = drawn.iter().find(|(text, _, _)| text == label).expect("the label");
+        let (_, shortcut_left, shortcut_right) = drawn.iter().find(|(text, _, _)| text == shortcut).expect("the shortcut");
+        assert!(label_right < shortcut_left, "{label} ends at {label_right}, {shortcut} starts at {shortcut_left}");
+        assert!(*shortcut_right <= dropdown.right(), "{shortcut} runs past the dropdown");
+        checked += 1;
+    }
+    assert!(checked >= 4, "the File menu's shortcuts were all checked");
+}

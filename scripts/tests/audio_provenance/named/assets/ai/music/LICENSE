@@ -1,0 +1,6 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Comment: A gate fixture: an agent's song folder, named like any other.
+
+Files: ai_waltz.mid
+Copyright: 2026 the fixture
+License: CC0-1.0

@@ -126,6 +126,9 @@ pub enum ControlRequest {
     ActivateSidebar,
     /// Put the keyboard in the song's path field (Save Song As…).
     FocusPathField,
+    /// Put the keyboard in the song's Author field: a save refused for the song's own
+    /// provenance shows where it is filled.
+    FocusSongAuthor,
     /// Put the sidebar's cursor on the Songs list's first row (Open Song…).
     FocusSongsList,
 }
@@ -165,6 +168,9 @@ pub struct ComposerState {
     pub reveal_control: bool,
     /// The one sidebar section shown below the full width.
     pub sidebar_section: SidebarSection,
+    /// Each section the sidebar drew last frame with the index of its first control, in
+    /// order: every section at the full width, the tabs' one below it.
+    pub sidebar_section_starts: Vec<(SidebarSection, usize)>,
     /// The sidebar number field whose gesture is open: its later frames continue the song
     /// entry its first frame opened. Closed by the field's commit, by its losing focus with
     /// no scrub running, and by a frame that does not draw it.
@@ -176,6 +182,12 @@ pub struct ComposerState {
     pub songs: Vec<String>,
     /// Whether `songs` is current; cleared when the panel closes, so opening it rescans.
     pub songs_scanned: bool,
+    /// Whether the host's song preview is playing, written by the host each frame: the
+    /// transport's Play and Stop act on it.
+    pub preview_playing: bool,
+    /// The tick the preview is sounding, written by the host each frame while it plays;
+    /// `None` while stopped and while a song waits for the web's first click.
+    pub playhead_tick: Option<u64>,
 }
 
 impl Default for ComposerState {
@@ -203,11 +215,14 @@ impl Default for ComposerState {
             sidebar_control_count: 0,
             reveal_control: false,
             sidebar_section: SidebarSection::Song,
+            sidebar_section_starts: Vec::new(),
             field_gesture: None,
             tabs_area: ComposerFocus::PianoRoll,
             request: None,
             songs: Vec::new(),
             songs_scanned: false,
+            preview_playing: false,
+            playhead_tick: None,
         }
     }
 }
@@ -236,6 +251,38 @@ impl ComposerState {
     pub fn clear_focus(&mut self) {
         self.focus = ComposerFocus::None;
         self.request = None;
+    }
+
+    /// Left and Right in the sidebar: the next section, or the one before, wrapping. With
+    /// every section drawn the cursor moves to that section's first control — a section
+    /// with none is passed over — and behind tabs the tab changes and the cursor goes to its
+    /// top.
+    pub fn step_sidebar_section(&mut self, forward: bool) {
+        let all_drawn = self.sidebar_section_starts.len() > 1;
+        if !all_drawn {
+            let sections = SidebarSection::ALL;
+            let index = sections.iter().position(|section| *section == self.sidebar_section).unwrap_or(0);
+            let next = (if forward { index + 1 } else { index + sections.len() - 1 }) % sections.len();
+            self.sidebar_section = sections[next];
+            self.sidebar_control = 0;
+            return;
+        }
+        // Each drawn section with at least one control, and where its controls begin.
+        let starts = &self.sidebar_section_starts;
+        let mut stops: Vec<(SidebarSection, usize)> = Vec::new();
+        for (index, (section, start)) in starts.iter().enumerate() {
+            let end = starts.get(index + 1).map_or(self.sidebar_control_count, |(_, next)| *next);
+            if *start < end {
+                stops.push((*section, *start));
+            }
+        }
+        let Some(current) = stops.iter().rposition(|(_, start)| *start <= self.sidebar_control) else {
+            return;
+        };
+        let next = (if forward { current + 1 } else { current + stops.len() - 1 }) % stops.len();
+        let (section, start) = stops[next];
+        self.sidebar_section = section;
+        self.sidebar_control = start;
     }
 
     /// Give `area` the keyboard and, below the compact width, show it.

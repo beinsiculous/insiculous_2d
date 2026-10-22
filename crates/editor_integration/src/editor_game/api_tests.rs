@@ -9,6 +9,7 @@ use editor::PlayControlAction;
 
 use super::play_session::PausedEdits;
 use super::test_support::{api_line, assert_ok, editor_game, press_mouse, ui_frame};
+use super::test_support::press_play;
 
 #[test]
 fn test_answer_api_lines_answers_each_non_blank_line_in_order_from_live_state() {
@@ -118,7 +119,7 @@ fn test_api_save_routes_through_the_choke_point() -> std::io::Result<()> {
     assert!(!editor.command_history.is_dirty(), "save marks the watermark");
 
     // A play session (Paused counts) is refused by the same choke point.
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
     editor.handle_play_action(PlayControlAction::Pause, &mut world);
     let refused = api_line(&mut editor, &mut world, &format!("save {}", dir.path().join("nope.ron").display()));
     assert!(refused.contains("\"refused\""), "{refused}");
@@ -130,7 +131,7 @@ fn test_hosted_writes_are_refused_while_playing_but_queries_answer() {
     let mut editor = editor_game();
     let mut world = World::new();
     assert_ok(&api_line(&mut editor, &mut world, "create empty Marker"));
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
 
     // Hosted (create) and pure (rename) writes both see the play state —
     // integration alone plumbs it into `WriteCtx`.
@@ -174,7 +175,7 @@ fn test_play_commits_an_open_batch_as_one_entry_and_stop_hands_a_paused_one_to_t
     assert_ok(&api_line(&mut editor, &mut world, "create empty A"));
     assert_ok(&api_line(&mut editor, &mut world, "create empty B"));
     assert!(!editor.command_history.can_undo(), "batched commands are held aside");
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
     assert!(editor.api.batch.is_none(), "Play commits the open batch");
     editor.handle_play_action(PlayControlAction::Stop, &mut world);
     assert!(editor.command_history.undo(&mut world), "the batch is one undo entry");
@@ -185,7 +186,7 @@ fn test_play_commits_an_open_batch_as_one_entry_and_stop_hands_a_paused_one_to_t
     // held outside the history: Stop commits it INTO the session so the
     // Keep/Discard dialog counts it and decides its fate with the rest.
     assert_ok(&api_line(&mut editor, &mut world, "create empty Marker"));
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
     editor.handle_play_action(PlayControlAction::Pause, &mut world);
     assert_ok(&api_line(&mut editor, &mut world, "batch begin paused-edits"));
     assert_ok(&api_line(&mut editor, &mut world, "create empty Ghost"));

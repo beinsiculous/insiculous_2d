@@ -324,7 +324,7 @@ The `editor_integration` crate bridges `engine_core` and `editor` without circul
 ```
 engine_core ──→ ecs, renderer, input, physics, audio, ui
 editor ──→ ecs, ui, input, renderer, physics, common, music_midi (no synth)  (NO engine_core dep)
-editor_integration ──→ editor, engine_core, ecs, ui, input, renderer, common
+editor_integration ──→ editor, engine_core, ecs, ui, input, renderer, common, audio
 insiculous_2d (root) ──→ editor_integration (optional, behind "editor" feature)
 ```
 

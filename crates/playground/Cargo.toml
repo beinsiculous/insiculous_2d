@@ -8,8 +8,15 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 editor_integration = { path = "../editor_integration" }
+# The path rule Save holds a song's name to, which an imported song is held to as well.
+editor = { path = "../editor" }
 engine_core = { path = "../engine_core" }
 common = { path = "../common" }
+# The loaders an imported song, sample or SoundFont is checked by before it is written:
+# `decode_sample_pcm` and the byte limits, `SongData::from_smf`, `parse_song_file` and
+# `parse_sound_font` (the conductor's, so the `synth` default stays on, as `audio` has it).
+audio = { path = "../audio" }
+music_midi = { path = "../music_midi" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 log = { workspace = true }

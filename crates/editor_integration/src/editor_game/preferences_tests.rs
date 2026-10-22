@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use glam::Vec2;
 use super::test_support::editor_game;
-use editor::PlayControlAction;
+use super::test_support::press_play;
 
 struct TempSlot(PathBuf);
 impl TempSlot {
@@ -53,7 +53,7 @@ fn test_preferences_settle_after_half_second_and_skipped_during_play() {
 
     // 5. Stable half second during Play writes nothing.
     let mut world = ecs::World::new();
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
     assert!(editor.editor.is_playing());
 
     // Change camera during play:
@@ -77,7 +77,7 @@ fn test_play_transition_writes_immediately_with_editing_camera() {
 
     // Entering play mode writes immediately without waiting for settle.
     let mut world = ecs::World::new();
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
     let written = engine_core::save_store::read(&editor.prefs_slot).unwrap().expect("written on play");
     assert!(written.contains("77"), "must capture editing camera before play session starts");
 }

@@ -35,6 +35,9 @@ pub struct EditorRunOptions {
     pub scene_snapshot: Option<Arc<super::SceneSnapshotRequest>>,
     /// Raised while a preview window owns the simulation.
     pub preview_open: Option<Arc<AtomicBool>>,
+    /// The open song's `.mid`, written by `sync_dirty_mirror`, so a host's file import can
+    /// refuse to replace the song the composer holds.
+    pub open_song: Option<Arc<Mutex<Option<PathBuf>>>>,
 }
 
 /// Run a game with the full editor UI overlay.
@@ -75,6 +78,7 @@ pub fn run_game_with_editor_opts<G: Game>(
     editor_game.script_errors = options.script_errors;
     editor_game.scene_snapshot = options.scene_snapshot;
     editor_game.preview_open = options.preview_open;
+    editor_game.open_song_mirror = options.open_song;
     engine_core::run_game(editor_game, config)
 }
 

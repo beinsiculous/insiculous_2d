@@ -27,11 +27,14 @@ on its own. **The crate knows no scene and no space**: the scene's `SoundEmitter
 - `manager/music.rs` — **recorded music** (play/stop/pause/resume) and the volume buses
   (`update_all_volumes`, which also hands the music and sfx gains to a playing song).
 - `manager/song.rs` — **the song**: `play_song`, `prepare_song`, `play_song_in_memory`,
-  `stop_song`, `pause_song`, `resume_song`, `seek_song(beat)`, `set_song_looping`,
-  `is_song_playing`, `song_position`, `song_snapshot`, `beat_crossed`, `trigger`,
-  `deactivate_source`, `stop_all_sources`, `set_asset_base`; `SongPosition`,
-  `SongSnapshot`; the playback state, the commands waiting for room, the virtual clock,
-  the dead-output path.
+  `play_song_in_memory_at(song, tick)`, `stop_song`, `pause_song`, `resume_song`,
+  `seek_song(beat)`, `set_song_looping`, `is_song_playing`, `song_ended`, `song_position`,
+  `song_snapshot`, `beat_crossed`, `trigger`, `deactivate_source`, `stop_all_sources`,
+  `set_asset_base`; `SongPosition`, `SongSnapshot`, `SONG_SAMPLE_RATE` (what a position's
+  `latency_samples` count at); the playback state, the commands waiting for room, the
+  virtual clock, the dead-output path.
+- `manager/song/virtual_clock.rs` — the arithmetic of a song with no device: wall time to
+  whole frames, the remainder carried, `LONGEST_VIRTUAL_STEP`.
 - `manager/song/load.rs` — a song's dependency closure through `common::vfs` (the `.mid`,
   the `.mid.ron`, every SoundFont and sample, each refused by size before it is read),
   `ResourceMetadata` filled in, validation, the conductor built; `DependencyCache`
@@ -75,6 +78,8 @@ on its own. **The crate knows no scene and no space**: the scene's `SoundEmitter
 | A disabled manager is one of two things: gesture-gated (the web) holds a song pending, headless (tests, `GameHarness`, no device) plays it on a virtual clock advanced by `update()`'s wall time, capped at one second an update | `src/manager/song/tests.rs without_a_device_a_playing_song_advances_by_the_wall_time_between_updates` |
 | Beat edges are counted on the published sample by integer boundaries and latched once an update: a long gap reports one crossing, not a flood; a wrap reports its downbeat, a seek back nothing | `src/manager/song/tests.rs beat_edges_count_every_boundary_once_and_a_ten_beat_gap_reports_one_crossing` `src/manager/song/tests.rs a_loop_wrap_reports_its_downbeat_and_a_seek_back_reports_nothing` |
 | Transport, deactivations and flushes a full queue refuses wait in the manager and go first, in order, from `update()`; a trigger is refused while one waits, so it never overtakes them | `src/manager/song/tests.rs transport_a_full_queue_refuses_waits_and_is_sent_in_order_before_any_trigger` `src/manager/song/tests.rs ten_thousand_triggers_never_lose_a_deactivation_a_flush_or_a_pause` |
+| A song started part way (`play_song_in_memory_at`) carries its tick in the ready song, and `start_song` sends `Seek` before `Play`, so it starts there whether it starts now or after the web's gesture and never publishes a position before it | `src/manager/song/tests.rs a_song_started_part_way_publishes_no_position_before_its_start` |
+| `is_song_playing` is false for a song that ended, a paused one and a dead one alike; `song_ended` is what tells the end of a song that does not loop from an output that died | `src/manager/song/tests.rs a_song_played_to_its_end_has_ended_and_one_stopped_or_looping_has_not` |
 | Each song gets a conductor of its own, built on the game thread, so a song change neither allocates on the audio thread nor lets an old binding index reach the new song; the flush floor is the one thing carried, sent after `Play` | `src/manager/song/tests.rs a_song_change_carries_the_flush_and_the_next_trigger_reactivates_under_a_new_epoch` |
 | A song's whole closure is loaded and checked before the playing song is touched, in disabled mode too; every refusal names the song, the sidecar entry and the path | `src/manager/song/tests/loading.rs a_missing_sample_a_missing_bank_or_an_oversized_file_is_refused_and_the_song_plays_on` `src/manager/song/tests/loading.rs a_missing_sidecar_is_refused_naming_it_without_touching_recorded_music` |
 | The recorded path keeps the same rule: `play_music` reads and decodes before it stops anything, so a missing or undecodable track leaves a playing or pending song (and the playing track) alone | `src/manager/song/tests/loading.rs a_recorded_track_that_fails_to_load_leaves_a_playing_or_pending_song_alone` |

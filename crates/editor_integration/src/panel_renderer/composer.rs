@@ -27,6 +27,8 @@ pub(crate) struct ComposerView<'a> {
     /// Where a never-saved song saves, and the song's own file, both asset-relative.
     pub default_path: &'a str,
     pub song_path: Option<&'a str>,
+    /// The song preview is sounding, so a binding's Trigger reaches the conductor.
+    pub preview_audible: bool,
 }
 
 /// What the composer's render asked for this frame.
@@ -72,7 +74,7 @@ fn render_body(editor: &mut EditorContext, ui: &mut UIContext, bounds: Rect, vie
     let state = &mut editor.composer;
 
     match view.song {
-        Some(song) => output.actions.extend(transport::render_transport(ui, theme, state, composer_layout.transport, song)),
+        Some(song) => output.actions.extend(transport::render_transport(ui, theme, state, composer_layout.transport, song, view.read_only)),
         None => {
             ui.rect(composer_layout.transport, theme.surface_2);
             ui.label_in_bounds_styled(
@@ -111,6 +113,7 @@ fn render_body(editor: &mut EditorContext, ui: &mut UIContext, bounds: Rect, vie
             enter_pressed: view.enter_pressed,
             default_path: view.default_path,
             song_path: view.song_path,
+            preview_audible: view.preview_audible,
         };
         output
             .actions
@@ -202,6 +205,7 @@ mod tests {
             enter_pressed: false,
             default_path: "music/untitled.mid",
             song_path: None,
+            preview_audible: false,
         }
     }
 

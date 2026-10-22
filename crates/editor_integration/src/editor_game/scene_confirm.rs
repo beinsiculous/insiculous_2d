@@ -132,7 +132,7 @@ impl<G: Game> EditorGame<G> {
         let choice = dialog.render(ctx.ui, ctx.window_size, &self.editor.theme).or(key_choice);
         if action.document() == Document::Song {
             if let Some(choice) = choice {
-                self.resolve_song_choice(action, choice, ctx.world);
+                self.resolve_song_choice(action, choice);
             }
             return;
         }
@@ -174,7 +174,6 @@ impl<G: Game> EditorGame<G> {
         &mut self,
         action: PendingSceneAction,
         choice: ConfirmChoice,
-        world: &mut ecs::World,
     ) {
         if let (PendingSceneAction::OverwriteSong(path), ConfirmChoice::Confirm) = (&action, choice) {
             match self.save_song_to(path.clone()) {
@@ -187,11 +186,16 @@ impl<G: Game> EditorGame<G> {
             ConfirmChoice::Confirm => match self.save_song(None) {
                 Ok(_) => {
                     self.scene_confirm.pending_action = None;
-                    self.perform_song_action(action, world);
+                    self.perform_song_action(action);
                 }
                 Err(error) => {
                     self.editor.status_bar.show_error(format!("Song save failed: {error}"));
                     log::error!("Song save before {} failed: {error}", action.phrase());
+                    if self.song_lacks_provenance() {
+                        // The way out is two fields the dialog would cover.
+                        self.scene_confirm.pending_action = None;
+                        self.reveal_missing_song_provenance();
+                    }
                 }
             },
             ConfirmChoice::Alt => {
@@ -203,7 +207,7 @@ impl<G: Game> EditorGame<G> {
                     return;
                 }
                 self.scene_confirm.pending_action = None;
-                self.perform_song_action(action, world);
+                self.perform_song_action(action);
             }
             ConfirmChoice::Cancel => {
                 self.scene_confirm.pending_action = None;
@@ -213,7 +217,7 @@ impl<G: Game> EditorGame<G> {
     }
 
     /// Execute a (now confirmed) song action, or Play.
-    pub(super) fn perform_song_action(&mut self, action: PendingSceneAction, world: &mut ecs::World) {
+    pub(super) fn perform_song_action(&mut self, action: PendingSceneAction) {
         match action {
             PendingSceneAction::NewSong => self.new_song(),
             PendingSceneAction::OpenSong(path) => {
@@ -227,7 +231,7 @@ impl<G: Game> EditorGame<G> {
                 self.report_song_failure("Song open", result);
             }
             PendingSceneAction::CloseSong => self.close_song(),
-            PendingSceneAction::StartPlay => self.begin_play(world),
+            PendingSceneAction::StartPlay => self.begin_play(),
             PendingSceneAction::OverwriteSong(path) => {
                 let result = self.save_song_to(path).map(drop);
                 self.report_song_failure("Song save", result);
@@ -245,7 +249,7 @@ impl<G: Game> EditorGame<G> {
             PendingSceneAction::OpenScene(path) => {
                 self.load_scene_with_feedback(ctx.world, ctx.assets, &path);
             }
-            song_action => self.perform_song_action(song_action, ctx.world),
+            song_action => self.perform_song_action(song_action),
         }
     }
 

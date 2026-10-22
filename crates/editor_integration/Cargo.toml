@@ -6,6 +6,8 @@ description = "Editor integration layer for insiculous_2d - wraps Game with edit
 
 [dependencies]
 # Internal crates
+# The song types and the conductor's sample rate the preview's playhead converts by.
+audio = { path = "../audio" }
 common = { path = "../common" }
 ecs = { path = "../ecs" }
 editor = { path = "../editor" }

@@ -194,13 +194,16 @@ pub fn render_piano_roll(
             .map(|(_, bounds)| *bounds);
         ui.rect_border(under_cursor.unwrap_or(cursor_rect), theme.focus_ring, 2.0, 0.0);
     }
-    let playhead_x = geometry.tick_to_x(0);
-    ui.line(
-        Vec2::new(playhead_x, geometry.grid.y),
-        Vec2::new(playhead_x, geometry.grid.bottom()),
-        theme.playhead,
-        2.0,
-    );
+    // The transport's text says the same place, so the line is never the playhead's only mark.
+    if let Some(tick) = state.playhead_tick {
+        let playhead_x = geometry.tick_to_x(tick);
+        ui.line(
+            Vec2::new(playhead_x, geometry.grid.y),
+            Vec2::new(playhead_x, geometry.grid.bottom()),
+            theme.playhead,
+            2.0,
+        );
+    }
     ui.pop_clip_rect();
 
     let mouse = ui.mouse_pos();

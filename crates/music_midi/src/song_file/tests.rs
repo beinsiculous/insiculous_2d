@@ -466,13 +466,14 @@ fn the_percussion_channel_of_a_type_zero_file_is_selectable_as_a_part() {
 }
 
 #[test]
-fn the_composers_two_fields_are_optional_on_read_and_written_back_by_write_song_file() {
+fn the_composers_three_fields_are_optional_on_read_and_written_back_by_write_song_file() {
     let hand_written = parse(
         r#"SongFile(version: 1, soundfont: "a.sf2",
             instruments: [(name: "blip", source: Sample(path: "blip.wav", root_note: 60))])"#,
     )
     .expect("a sidecar without them still loads");
     assert_eq!(hand_written.midi_fingerprint, None);
+    assert_eq!(hand_written.provenance, None);
     assert_eq!(hand_written.instruments[0].provenance, None);
 
     let mut saved = hand_written;
@@ -481,13 +482,19 @@ fn the_composers_two_fields_are_optional_on_read_and_written_back_by_write_song_
         author: "2026 Jesse".to_string(),
         license: "MIT".to_string(),
     });
+    saved.provenance = Some(Provenance {
+        author: "2026 M".to_string(),
+        license: "CC-BY-4.0".to_string(),
+    });
     let written = write_song_file(LABEL, &saved).expect("writes");
     assert!(written.contains("midi_fingerprint"), "{written}");
+    assert!(written.contains("2026 M"), "{written}");
     assert_eq!(parse(&written).expect("reads back"), saved);
 
     let example = parse(documented_example()).expect("parses");
     let unsaved = parse(&write_song_file(LABEL, &example).expect("writes")).expect("reads back");
     assert_eq!(unsaved.midi_fingerprint, None, "an absent field is not written");
+    assert_eq!(unsaved.provenance, None, "an absent field is not written");
 }
 
 #[test]

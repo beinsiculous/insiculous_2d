@@ -8,6 +8,7 @@ use winit::keyboard::KeyCode;
 
 use super::scene_confirm::PendingSceneAction;
 use super::test_support::{dirty_editor, editor_game};
+use super::test_support::press_play;
 
 #[test]
 fn test_scene_replace_proceeds_when_clean_parks_when_dirty_and_refuses_mid_session() {
@@ -24,7 +25,7 @@ fn test_scene_replace_proceeds_when_clean_parks_when_dirty_and_refuses_mid_sessi
 
     // Entering Play drops the pending dialog (defensive — the blocked UI
     // cannot reach Play, but a stale action must never fire after Stop).
-    editor.handle_play_action(PlayControlAction::Play, &mut world);
+    press_play(&mut editor, &mut world);
     assert_eq!(editor.scene_confirm.pending_action, None);
 
     // Mid-session (Paused too): the play-session refusal wins — no dialog.

@@ -84,6 +84,31 @@ impl ProjectStore for MemoryStore {
         })
     }
 
+    fn remove_file(&self, slug: &str, path: &str, base_revision: u64) -> Fut<Result<(), StoreError>> {
+        let state = self.state.clone();
+        let key = (slug.to_string(), path.to_string());
+        Box::pin(async move {
+            let mut guard = state.lock().map_err(|error| StoreError::Backend(error.to_string()))?;
+            let Some(existing) = guard.files.get_mut(&key) else {
+                return if base_revision == 0 {
+                    Ok(())
+                } else {
+                    Err(StoreError::StaleRevision { stored: 0, base: base_revision })
+                };
+            };
+            if existing.revision != base_revision {
+                return Err(StoreError::StaleRevision {
+                    stored: existing.revision,
+                    base: base_revision,
+                });
+            }
+            existing.bytes.clear();
+            existing.deleted = true;
+            existing.revision = base_revision + 1;
+            Ok(())
+        })
+    }
+
     fn replace_project(
         &self,
         slug: &str,

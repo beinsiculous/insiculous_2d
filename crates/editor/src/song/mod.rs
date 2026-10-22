@@ -17,6 +17,8 @@ mod selection;
 #[cfg(test)]
 mod edit_tests;
 #[cfg(test)]
+mod folder_tests;
+#[cfg(test)]
 mod history_tests;
 #[cfg(test)]
 mod io_tests;
@@ -27,7 +29,6 @@ mod parity_tests;
 #[cfg(test)]
 mod test_support;
 
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use music_midi::midly::num::{u15, u24, u28, u4, u7};
@@ -42,9 +43,13 @@ use music_midi::{
 pub use edit::{Meter, SongEdit, SongEditError};
 pub use history::{Gesture, SongHistory};
 pub use io::{
-    midi_fingerprint, OpenedSong, SongOpenError, SongSaveError, HOME_DIRECTORIES, SAMPLE_DIRECTORY,
+    midi_fingerprint, sample_directory, saveable_song_path, OpenedSong, SongOpenError,
+    SongSaveError, HOME_DIRECTORIES,
 };
 pub use selection::SongSelection;
+/// The author and license `SongEdit::SetProvenance` carries, re-exported so a host names it
+/// with no song crate of its own.
+pub use music_midi::Provenance;
 
 /// The SoundFont a new or sidecar-less song plays its background on: the bank every game
 /// copies in, by its path under the asset folder.
@@ -94,9 +99,6 @@ pub struct SongDocument {
     /// The file it was imported from, which no save ever writes.
     imported_from: Option<PathBuf>,
     editing: EditingPolicy,
-    /// Sample bytes the song holds until its first save puts them beside it, by the path
-    /// its instrument names them by.
-    pending_samples: BTreeMap<String, Vec<u8>>,
 }
 
 impl SongDocument {
@@ -118,7 +120,6 @@ impl SongDocument {
             path: None,
             imported_from: None,
             editing: EditingPolicy::from_report(&report),
-            pending_samples: BTreeMap::new(),
         })
     }
 
@@ -150,11 +151,6 @@ impl SongDocument {
 
     pub fn editing(&self) -> &EditingPolicy {
         &self.editing
-    }
-
-    /// The samples held until the song's first save, by the path their instrument names.
-    pub fn pending_samples(&self) -> &BTreeMap<String, Vec<u8>> {
-        &self.pending_samples
     }
 
     /// Whether the song has edits no save holds: its history past the watermark, or no
@@ -253,13 +249,6 @@ impl SongDocument {
             .ok()
             .and_then(|ids| ids.first().copied())
     }
-
-    /// Hold a sample's bytes until the next save writes them beside the song, under the
-    /// path a `Sample` instrument names (an imported file's own path, or any name). Not an
-    /// edit: the instrument that names it is.
-    pub fn stage_sample(&mut self, path: impl Into<String>, bytes: Vec<u8>) {
-        self.pending_samples.insert(path.into(), bytes);
-    }
 }
 
 /// A sidecar with no parts, instruments or bindings, playing its background on
@@ -272,6 +261,7 @@ pub fn default_song_file() -> SongFile {
         parts: Vec::new(),
         instruments: Vec::new(),
         bindings: Vec::new(),
+        provenance: None,
         midi_fingerprint: None,
         resources: Default::default(),
     }

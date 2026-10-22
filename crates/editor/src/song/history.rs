@@ -91,6 +91,13 @@ impl SongHistory {
         self.undo_stack.len()
     }
 
+    /// Which state of the song the history stands at: it changes with every edit, merge,
+    /// undo and redo, and returns to a value only with the song it named — what a host that
+    /// prepared the song from the document compares to know the document moved under it.
+    pub fn revision(&self) -> u64 {
+        self.top_id()
+    }
+
     fn top_id(&self) -> u64 {
         self.undo_stack.back().map(|entry| entry.id).unwrap_or(0)
     }
