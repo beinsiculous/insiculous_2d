@@ -1750,7 +1750,7 @@ against 16 MiB. Filed: #186 (Stop while the session's song waits for the first c
 dialog over a running session), #187 (the composer reaches no accessibility tree), #188 (no
 control adds a binding), #189 (the Firefox save-time measurement), #190 (tombstone compaction),
 #191 (the playground's browser-only checks), #192 (Exit prompting); #112 and #184 commented.
-#141 stays open for Jesse's listen check (`report-11.md` § For Jesse), #184's screenshots and
+Jesse's native listen check passed 2026-10-22; #141 stays open for #184's screenshots and
 the K5 scene (batch 12).
 
 Executor: the Opus session. Reviewers: kimi, gemini (the bridge and persistence seam), codex
@@ -2141,27 +2141,787 @@ included), #184's screenshots (Jesse's capture, dispatched by the planner).
 
 ## Batch 12 — K5: the Pong demo, the two-enemy example scene, the web proof (#64)
 
-**Carried from batch 6 (F6, kimi F1):** the audio crate puts rustysynth and the song seam in every wasm bundle — the playground grew 0.50 MiB to 11.11 MiB under its 12 MiB gate. This batch measures every game's `game_bg.wasm` before and after against the per-game audio budget K2 froze, in the scorecard; a `song` feature on `audio` is the lever if a number says so, decided on the number.
+**Re-verified 2026-10-22 against the tree at edc1509** (engine), `games/pong` 4cb0d5c and
+`insiculous_web` 5375ebc, after batch 11 landed; **v14, settled after plan rounds 31 to 43** (kimi 7 + 7 + 6 + 5 + 7 + 5 + 8 + 8 + 6 + 8 + 8 + 9 + 7, gemini 7 + 7 + 7 + 7 + 8 + 7 + 6 + 7 + 8 + 8 + 8 + 8 + 7, codex 4 + 3 + 3 + 4 + 3 + 2 + 2 + 2
++ 3 + 3 + 3 + 3 + 3; `rebuttal-31.md` … `rebuttal-43.md`; **the preloader's retry, designed over rounds 36 to 41, is out of this batch
+and filed as #196**) and Jesse's playtest of the batch 11 composer in
+`editor_demo` (correction 10). Ten corrections to the section as it stood since the plan
+settled; each names what the tree says.
 
-Executor: the Opus session (the song itself is sequenced in the composer by the executor and
-lands under `assets/ai/music/ai_tong.mid` until Jesse's pass promotes it). Reviewers: kimi,
-gemini, codex (the beat pulse and the editor screenshots). Listen check: Jesse, native and
-browser.
+Executor: the Opus session, in three checkouts — `games/pong` (the game), `insiculous_2d` (the
+example, `training.md`), `insiculous_web` (the deployed bundles and the game's page) — with one
+report. Reviewers: kimi (everything), gemini (the example's harness and the web bundles), codex
+(the beat pulse, the composer screenshots, the pause jam). Listen check: Jesse, native and in
+Firefox and Chromium. Size: about +1,300 lines across the three repos plus the assets (a song,
+its sidecar, a 2 MiB SoundFont subset, a scene, a sine bank); the game's diff is reviewed
+from `games/pong/review/conductor/`, the engine's and the site's from
+`insiculous_2d/review/conductor/`, each reviewer dispatched from the repo it reads (the fence
+is per checkout).
 
-Files: `games/pong/{assets/ai/music/ai_tong.mid, ai_tong.mid.ron, assets/soundfonts/
-tong.sf2 + LICENSE, src/audio.rs, src/gameplay/scoring.rs, src/ui.rs (pause jam), src/
-effects.rs (beat pulse)}`; `insiculous_2d/examples/conductor_demo.rs` +
-`examples/assets/scenes/conductor_demo.scene.ron` (two enemy kinds — a SoundFont preset and
-the imported sample — one shared melody, visibility eligibility, despawn and re-entry,
-dense activity, pause input); `training.md` § Conductor completed; `PROJECT_ROADMAP.md`
-row K. Pong: paddle hits and scoring are bindings over one part of the *Toreador Song*'s
-refrain; the pause menu jams a `Sequence` part on the `menu` binding; a beat-driven pulse
-on the grill flare; the recorded-SFX fallback path stays when no song is active. Web: the
-exported project runs in the browser with requested-before-gesture startup. **Gates:**
-standard; `check_wasm.sh`; `check_games.sh --test`; Pong's own tests and clippy; bundle
-size against #127; the browser stress run of decision 2's worst case on the demo scene,
-repeated from batch 1's method, before any K6 batch starts; screenshots of the authoring;
-the listen check. **Leaves out:** the other five games.
+**Carried from batch 6 (F6, kimi F1):** the audio crate puts rustysynth and the song seam in
+every wasm bundle. This batch measures Tong's `game_bg.wasm` and its editor bundle before and
+after, against the per-game audio budget (≤ 24 MiB downloaded: bank ≤ 22, songs ≤ 256 KiB,
+samples ≤ 2 MiB; ≤ 50 MiB loaded — plan § SoundFont), in the scorecard; a `song` feature on
+`audio` is the lever: **filed as a follow-up if v7's `game_bg.wasm` exceeds 10 MiB** (6.73 today;
+the wasm budget that binds is the playground's 16 MiB, not a game's), else the measurement is
+informational and the carried finding closes on the number.
+
+### Correction 1 — Tong has no sound today, so there is nothing to preserve or to fall back to
+
+#64 and the old section speak of a pause-menu jam to *preserve*, a recorded-SFX *fallback* and
+beeps that must not *double-play*. The tree has none of it: `games/pong/assets/` holds `fonts`,
+`locales` and `sprites`; `grep -rn "audio\|play_sound\|beep" src` finds nothing but the pause
+menu's labels; the `beep_e.wav` in `dist/games/pong/v2/` is the pre-Tong bundle, not a source
+file. The Tong re-skin (2026-09-15) shipped silent. So: the jam, the hits and the pulse are
+**new**, nothing is gated behind a binding replacing a beep, and **ruling (e), proposed: no
+recorded fallback** — when `play_song` fails at `init` the game logs the error once, every
+trigger is refused and counted (`ctx.sources.refused_triggers()`), and Tong is as silent as it
+is today. A fallback would mean authoring a hit sound this batch has no source for.
+
+### Correction 2 — the bank is Tong's own subset, committed, about 2 MiB
+
+The spike's `cast.sf2` is 32.6 MiB and uncommitted (`coordination/conductor/spike/assets/`,
+rebuilt by its `prepare_assets.sh`): over the 22 MiB bank budget and over Cloudflare's 25 MiB
+per-file limit, which `insiculous_web/scripts/postbuild-check.mjs` enforces. Tong ships
+`games/pong/assets/soundfonts/tong.sf2`: FluidR3 GM presets **0:56 Trumpet (226 KiB), 0:57
+Trombone (438 KiB), 0:47 Timpani (1,361 KiB)** — about 2 MiB of sample data by
+`scripts/subset_soundfont.py --sizes` on the cast bank — plus any program the sequenced song
+uses beyond them (the subset rule, plan § SoundFont). **No strings** (0:48 alone is 5.5 MiB —
+the accompaniment is trombone chords over the timpani's march, a brass band's Toreador, decided
+upfront rather than by a mid-batch re-voicing: round 38 modelled the 7.3 MiB bank's boot
+increment at 9–10 s against an 8 s gate, and a fallback that re-sequences the song after the
+screenshots is a batch within a batch) and no kit (the Standard kit is 10.6 MiB and the
+subsetter cuts by preset, not key range). `games/pong/scripts/prepare_soundfont.sh`
+mirrors the spike's script: FluidR3_GM.sf2 by path or by `apt download fluid-soundfont-gm=3.1-5.3`,
+the sha256 pinned (when `apt download` cannot find the pinned version the script **fetches the
+same package from snapshot.debian.org itself**, a real branch, and the sha256 check after it is
+what proves the file is the same), the presets listed once, `subset_soundfont.py` run, the `LICENSE` written
+beside the bank in the spike's exact shape (Upstream, Source with the bank's sha256, `Files:
+tong.sf2`, the preset list, the output's sha256, MIT). **The subset is committed** (ruling (h),
+proposed: a 2 MiB binary in the game repo, as the synced PNGs are; the spike's bank was not
+committed because it was tens of megabytes). Downloaded: `game_bg.wasm` 6.73 MiB today
+(`insiculous_web/public/games/tong/v6/`) + the bank + the song, under 24. Boot: every asset is
+prefetched (`engine_core::web::preload_assets` fetches the manifest's every entry before the
+first frame), so the bank adds its size to the boot — under 2 s at 10 Mbit/s; the report
+records the measured increment (correction 6) and the fetch-after-first-frame lever is #194. The provenance gate walks `assets/soundfonts`
+already.
+
+### Correction 3 — the song is sequenced through the composer's API, checked, then saved by it
+
+`games/pong/assets/ai/music/ai_tong.mid` and `ai_tong.mid.ron`: Bizet's *Toreador Song*
+refrain (Carmen, 1875; public domain) in a short arrangement the executor sequences **in the
+composer** — the editor on the pong project (`cargo run --bin editor --features editor -- .`
+from `games/pong`, or the game with `--features editor`) driven through `--api` lines (`song
+new`, `song edit {"AddNote": …}`, `{"SetTempo": …}`, `{"AddPart": …}`, `{"AddInstrument": …}`,
+`{"SetBinding": …}` (the edit that adds or replaces a binding — there is no `AddBinding`),
+`{"SetProvenance": …}`, `song save ai/music/ai_tong.mid`; `docs/EDITOR_COMMAND_API.md` § song),
+so Save writes the sidecar, the fingerprint and the `LICENSE` stanza in
+`assets/ai/music/LICENSE` — the authoring workflow #64 asks to prove, and the one
+`training.md` describes (correction 7). **Before `song save`, the document is checked against
+the intended shape**, not trusted: the `song` answer (parts, instruments, bindings,
+`tempo_changes`, `provenance`) and `song notes <part>` per track (note counts, the first and
+last tick) are compared with the shape below and quoted in the report; a refused edit is
+visible in its answer (`refused_reason`) and is fixed before the save. The composer's panel is
+on screen while the API runs, which is where the screenshots come from (correction 8). Shape,
+which the executor tunes by ear and declares in the report:
+
+- **sixteen bars** in F major at about 120 BPM (32 s a loop), looping **at a phrase boundary —
+  the wrap releases every triggered note and restarts the `Loop` cursors at the first unit
+  (`SONG_FORMAT.md` § Modes), so the refrain realigns with the accompaniment every loop and a
+  hit sounding across the seam is cut there; the engine's contract since K3 (a cursor that
+  outlived the wrap would walk the tune against a chord it was not written over). Sixteen bars
+  is why: a rally of a hit every two seconds walks a sixteen-unit refrain in the time one loop
+  takes, so the tune is heard whole far more often than it is cut; the jam's counter-line is
+  shorter and restarts with the loop as a menu's music may**; the background is the refrain's
+  accompaniment — trombone chords and the timpani's march — on their own tracks, **which the
+  composer must first be able to make**: `song new` gives a tempo track and one `melody` track
+  (`crates/editor/src/song/mod.rs:270-303`), `AddNote` refuses a track index past the last
+  (`music_midi/src/song_data/edit.rs:275-288`), and no edit, verb or control adds a track —
+  multi-track songs enter only by import today. So this batch adds **`SongEdit::AddTrack {
+  name, channel, program }`** over a new **`SongData::add_track`** (a `SongTrack` with no source
+  track, no units, its name and channel, **and one `RetainedEvent` at tick 0: the channel's
+  `ProgramChange { program }`** — the background player reads programs from the MIDI, so a track
+  with none plays on the bank's first preset whatever the arrangement meant, and a channel
+  event is also what `flatten.rs` derives the track's channel from on reopen, so an empty track
+  saved and reopened keeps its channel; `write_smf` writes the name, the program change and the
+  notes; `check_track` accepts it), undoable (**the inverse removes the track with whatever notes it holds**, their before-images
+  restoring them on redo — an inverse that left a filled track would desynchronise the history
+  from the document; `RemoveTrack` as a user's edit is not this batch's), **the channel the next
+  free one, counted 1 to 16 at the API and the GUI as the type-0 names count them (`channel N`
+  from 1) and stored and written 0 to 15 as MIDI does — the conversion at the edit's boundary,
+  once — skipping 10** (General MIDI's percussion channel, which rustysynth and the kit treat as
+  the drum bank — a track that wants it names it), **refused with "no channel
+  is free" when none is, and an API-supplied channel refused when it is outside 1–16 or already
+  occupied — occupancy counted over every track's channel and every retained channel event
+  (a controller or program change an imported track carries on a channel its notes do not use
+  would otherwise reach the new track's voice)**
+  (two tracks on one channel would write two program changes to one channel and the last would
+  win for both); inside a `Batch`, members are undone in reverse order, so a batch of
+  `[AddTrack, AddPart on it, AddNote on it]` undoes the note, the part and then the track —
+  tested; **on a type-0 document the edit is refused** ("this song is a single-track MIDI file;
+  its channels are its tracks") — a type-0 file's selectable tracks are rebuilt from its channels
+  in channel order on reopen (`flatten.rs channel_tracks`), so an added physical track has no
+  place in it, and the composer's songs are type 1 from `song new`; tested on an imported type-0
+  fixture; the Add-track row takes the name and the program (a number field, General MIDI's
+  0–127, the trombone 57 and the timpani 47 the accompaniment needs),
+  the API's edit table and `EDITOR_COMMAND_API.md` gaining the line, the Parts section gaining
+  an "Add track" row (a name field and a program number field, Enter committing both as one
+  edit on the next free channel), with
+  tests in `song/edit_tests.rs` and the parity test (`every_variant_lands_the_same_through_the_gui_…`)
+  covering the variant, and an export-and-reimport test for a song with an added track in
+  `music_midi`, plus one for **an empty added track saved and reopened keeping its channel and
+  program**; the executor also reads the exported MIDI's program changes back (`song notes` and
+  the sidecar say nothing of programs) and quotes them. The example's song (correction 5) needs it too;
+- track `refrain`: the melody, the **one shared part** (`mode: Loop`, **`quantize: Off`** — a
+  hit sounds within one block of the paddle contact; an `Eighth` grid at 120 BPM would hold a
+  note up to 250 ms after the burst, and the player's rhythm is the point), played by two
+  bindings: `hit` on the trumpet and `goal` on the timpani — the trombone carries the
+  accompaniment — so a goal continues the tune where the hits left it, one cursor — **the
+  goal's note is whatever unit the rally left the cursor on**, a sixteenth or a held quarter;
+  that is what #64's one shared part means, and the unit plays whole on the game's source
+  however short (the arrangement may write the refrain in even notes if the ear prefers it);
+- track `jam`: a counter-line over the same bars, a **`Loop` part (`quantize: Off`)** on the
+  `menu` binding, on the trumpet — **ruling (i), proposed**: #64's "Sequence jam" names a jam
+  Pong never had (correction 1), and a `Sequence` part is exhausted after its last unit until
+  the song loops (`docs/SONG_FORMAT.md` § Modes), which on a four-to-eight-unit counter-line
+  is a menu that goes quiet after a few presses for up to the loop's length; `Sequence` stays
+  demonstrated by `music_midi`'s tests and the format doc, not by the pause menu;
+- `soundfont: "soundfonts/tong.sf2"`, `provenance: (author: "Georges Bizet, 1875; sequenced
+  by the Opus executor for Be Insiculous, 2026", license: "CC0-1.0")`, no sample instrument
+  (the sample case is the example's, correction 5).
+
+The sidecar is the composer's output, never hand-edited after; `music_tests.rs` asserts its
+structure (correction 4). The file sits under `ai/music` because an agent sequenced it (plan
+§ Rulings); Jesse's pass promotes it to `music/` later, outside this batch.
+
+### Correction 4 — the game's code: one module, three moments, a pulse
+
+- **`src/music.rs`** (new, under 250 lines): `Music { refused_seen: u64, frame_times:
+  FrameRing }` on `PongGame` (a 300-frame ring of `delta_time`, for the p95 the browser check
+  quotes); `start(ctx)` called at the end of `init` (`src/lib.rs`),
+  `ctx.audio.play_song(format!("{}/ai/music/ai_tong.mid", ctx.assets.base_path()))` with the
+  failure logged once (correction 1); `hit(ctx, tong)` → `ctx.sources.trigger(ctx.audio,
+  "hit", ctx.sources.entity(tong))` — **sent whatever song holds the slot**: an audition in the editor bundle may bind `hit` and
+  `goal` itself, which is the point of auditioning an arrangement in the game, and one that does
+  not refuses each as `UnknownAction`, counted by the manager (`refused_triggers`) at no cost
+  worth a gate; the pulse follows whatever song plays; `goal(ctx)` → `ctx.sources.trigger(ctx.audio, "goal",
+  ctx.sources.game())` (the game's source, so the goal's unit plays whole whatever the ball
+  does next); `telemetry(ctx)` — every five seconds a `conductor=on` line, the shape
+  `examples/conductor_background.rs:302` prints, **at `info` only when asked** (the web page's
+  `?telemetry=1`, read through `engine_core::web::query_param`; natively `TONG_TELEMETRY=1`),
+  and at `debug` otherwise, so a shipped demo does not fill the console for the life of the
+  game (the web logger is fixed at `Info`, `web/mod.rs:242`), through **`SongSnapshot::log_line(&self)
+  -> String` added to `crates/audio/src/manager/song.rs`** (the example formats its own today;
+  it switches to the helper, so the two never drift), with the ring's
+  p95 and mean frame time **and the game's own counts — `hits`, `goals`, `jam_units`, `pulsed`,
+  `refused` — appended by the game**, so the browser checks that judge the jam and the pulse have
+  a counter beside the ear; the telemetry the browser checks read. The source's two maxima
+  (`SourceReadings.render_nanoseconds_longest`, `drain_gap_nanoseconds_longest`,
+  `conductor_source.rs:74-75`) are cumulative `fetch_max` atomics, so a hitch during the boot
+  would sit in every later line: **`AudioManager::take_song_maxima(&mut self) -> SongMaxima`**
+  **swaps zero into both and returns what they held** (`AtomicU64::swap`, so a value the audio
+  thread writes concurrently lands in the window just taken or the next one — with one edge: a
+  `fetch_max` that read the old maximum just before the swap compares against it and may drop a
+  smaller spike in that microsecond; the gate reads many windows, and the edge is stated, not
+  closed). Every
+  telemetry line prints what it takes, so each line is its own window; **`init` takes once when
+  the title screen is up**, discarding the boot's maxima, so the first match's line is not the
+  boot's; the stress gate reads the maximum over every line printed after the first match
+  start. The counters are not reset. `init` ends with `log::info!("tong: init complete")`, the
+  console line the boot measurement ends on (correction 6). The engine hunks this batch makes
+  are four — `song_label`, `take_song_maxima`, `log_line`, the prelude's `Subdivision` — the
+  track edit of correction 3, and the example's manifest lines; `jam(ctx)` → `"menu"` on
+  `ctx.sources.menu()`; `pulse(ctx)` (below); `restart(ctx)`, called
+  from `gameplay/flow.rs start_game` (:65), **decides by the slot's identity**, read through
+  **`AudioManager::song_label(&self) -> Option<&str>`** — the label the playing or pending song
+  was requested with (`SongPlayback.label`, the path's display for `play_song`; an accessor added
+  to `crates/audio/src/manager/song.rs`, since `song_position()` says a song plays but never
+  which), **`None` for a playback that has ended or whose output died, `Some` for a paused one** (ended
+  and dead are the filter — a preview that played to its end leaves `songs.playback` in place
+  with `has_ended()` true, since nothing reaps it, and that is "no song" to the game; a paused
+  song is a live song another caller holds, and `restart` leaves it alone, since `install_song`
+  stops what plays before it installs): **no song** (a composer preview that ended took the slot and left it,
+  or the output died) → `play_song` of the same joined path `start` used (the asset base and
+  `SONG_PATH`; a bare relative path would miss on the web), the game's re-arm — **retried at every match start**: a request that fails on a missing file fails before any
+  parse and costs nothing worth avoiding, and a bank that appears later (natively, between
+  matches) is heard at the next match; the first failure is logged at `error`, the later ones at
+  `debug` (`Music.failures` counts them), which is what correction 1's "logged once" means; **Tong's own song** (the label
+  **equals, compared as `Path`s, the joined path `start` requested** — the whole path, never a
+  suffix, so `remixes/ai/music/ai_tong.mid` is another song; the composer's saved song is
+  requested by its resolved path under the same asset base, so a save at Tong's path compares
+  equal) → `seek_song(0)` and a telemetry line printed from `take_song_maxima()`
+  (below), so every match begins at the top of the arrangement — the melody's cursor too: "a
+  loop wrap, a seek and `Play` release every triggered note and drop every scheduled one; `Loop`
+  and `Sequence` cursors restart at the first unit at or after the new position"
+  (`SONG_FORMAT.md` § Modes), so the first hit of a match is the refrain's first unit; **another song** → nothing — in the editor bundle the
+  composer's saved song is the session's music by batch 11's slot contract, and a match that
+  replaced it would defeat the audition K8 exists for. A song the composer saved **at Tong's
+  own path** (`ai/music/ai_tong.mid`, an `overwrite` away) is Tong's song by definition and is
+  sought to the top at a match start as Tong's is — the one path, one file, one rule. The song is requested at `init` and plays
+  through the menus; the start of the first match seeks it. Constants (`SONG_PATH`,
+  the binding names) in `src/constants.rs`.
+- **Hits** in `gameplay/scoring.rs spawn_paddle_hit_visuals` (:167), beside the burst and the
+  ripple, one trigger per `(ball, side)` with the tong of `side` as the source
+  (`self.playfield.paddle(side)` or the two fields) — **two balls hitting in one frame are two
+  hits and two units**, as they are two bursts; Insane's speed step is not a second hit;
+  **goals** in `score_ball` (:192) beside the explosion.
+- **The pause jam** in `gameplay/mod.rs update_gameplay` (:48–66), after `pause.update`
+  has returned `Idle` with the menu still active: the game reads **`MenuInput::read(ctx.input)`
+  itself** — the same reader the menu navigates by, `pub up` and `pub down` just-pressed from
+  W/S, the arrows, a d-pad or a stick crossing, with no key repeat — and `up || down` calls
+  `jam`: one unit a move, confirm and Cancel nothing, **the open frame nothing** — `pause.update`
+  returns `Idle` on the frame it opens with no `Opened` variant, so the game latches the
+  transition itself (a `was_paused` bool: the jam reads nothing on a frame where the menu became
+  active, which also covers W or S pressed on the same frame as Escape) — **and the mouse
+  nothing** — `PauseMenu`
+  moves its selection to the hovered row every frame the pointer rests on one
+  (`pause.rs:152-154`), so a jam keyed to the selection would fire from pointer noise and on
+  every reopen under a resting pointer; keyed to the navigation input it cannot. No engine
+  getter is needed, and `Music` keeps no menu baseline. **Ruling (f), proposed: the song
+  plays on under the pause menu.** The game's pause is `ctx.time_scale = 0` (the world and the
+  emitters freeze; `training.md` § Conductor); the song has its own `pause_song`, which this
+  game never calls — the jam needs the background under it, and a paused song drops triggers
+  (§ Modes). The pause hint line (`pause.hint` in both locale files) gains "· move to jam" —
+  one key each in `en.ron` and `pirate.ron`; `locale_files_have_matching_keys` holds them
+  together.
+- **The beat pulse** — `Music::pulse` each gameplay frame, **Serving and Playing while not
+  paused** (`Subdivision` reaches the game through **`engine_core::prelude`, which gains the
+  re-export** beside `AudioManager` and `SourceId` at `prelude.rs:89` — the one engine hunk
+  the game needs; today the prelude names neither it nor any song type):
+  `if ctx.audio.beat_crossed(Subdivision::Bar) { the full hit ripple under each grill }
+  else if ctx.audio.beat_crossed(Subdivision::Beat) { a quarter of it }` — the bar line is a beat
+  line too, so the bar is tested first and the two never stack; `ripple_grid` at (`±GRILL_X`,
+  the grill's y). Not while paused: `GridBackdropSystem::update` discards the frame's impulses
+  when its delta is zero (`grid/backdrop_system.rs:81-89`, "a frozen grid must not bank them for
+  later"), so a pulse queued under the pause menu is wasted at best. The backdrop grid is the
+  one visual that reads "pulse" without touching the art (every art sprite is white at emissive
+  0; the grill's `score` clip is a goal's flare and stays that). `beat_crossed` is latched once
+    an `update`, so a long frame is one pulse, not a flood. Codex judges the look from stills
+  (correction 8) and **the timing is judged live** — the ripple against the heard timpani —
+  by the executor on the session display (noted in the report) and by Jesse in the listen
+  check; the ripple leads the heard beat by the output buffer (up to 61 ms on the web), which
+  is the output-latency compensation follow-up batch 16 files, not this batch's; a different
+  strength is a constant.
+- **No volume control is added**: Tong has no settings menu, so "music at 0 keeps the hits,
+  SFX at 0 keeps the song" (plan § Verification) is shown on the example's M and S keys
+  (correction 5), and the engine's own tests hold the buses. The game's `Music` reads
+  `refused_triggers()` once a second into a `log::debug!` line, the crowd counter a player
+  never sees.
+- **Tests** (`src/music_tests.rs`, `GameHarness` as `title_screen_tests.rs` builds it, the
+  asset base the repo's own `assets/`, so the committed song and bank are what loads):
+    - **the sidecar's structure**, parsed from the committed file with `music_midi::parse_song_file`
+    (`music_midi` becomes pong's second dev-dependency, a workspace path like the engine's,
+    for this test alone — `engine_core`'s prelude exports no sidecar parser; `Cargo.toml` is in
+    the touched list):
+    `hit` and `goal` name one part, that part is `Loop` with `quantize: Off`, `menu` names a
+    `Loop` part, `provenance` is set — the shape the aggregate counters cannot see (a sidecar
+    that gave each binding its own part would pass every trigger count);
+  - the song plays after `init` (`harness.audio().song_snapshot()` is `Some`, `blocks_rendered`
+    moves across frames with 3 ms between them, as `crates/engine_core/tests/song_triggers.rs
+    settle` does);
+      - a paddle hit in a frame is one accepted trigger (`conductor.accepted_triggers` +1) and
+    the conductor's `live_sources` rises to one; **an entity's activation lives until `end`, its
+    despawn or a flush** (`sound_sources.rs` module doc: "every later trigger reuses it"), so
+    `source_of(tong)` is `Some` from the first hit to the match's end and a second hit adds no
+    source; a goal is one more accepted trigger and one more live source (the game's), and its
+    count survives the ball's respawn — `source_of(ball)` is `None` because the ball never
+    triggers, which is not asserted as if it were a contract; two hits in one frame from two
+    balls are two;
+    - the pause jam, the `PauseMenu` driven through `harness.step` with key and mouse events:
+    opening the menu jams nothing; one move jams one unit; confirm and Cancel none; a pointer
+    resting on, or swept across, the rows jams nothing while the selection follows it; the
+    menu left on row 1, resumed and reopened under that pointer jams nothing;
+    - a frame on a beat queues the grill ripples (a `pulsed` counter on `Music`, since the
+    frame tail drains the `GridImpulses` resource), and none while paused;
+    - `restart` by identity: with no song in the slot `start_game` requests Tong's (the label
+    becomes `SONG_PATH`); with Tong's own, it seeks (the position reads the top); with another
+    song playing (the harness plays the sine fixture's song first) `start_game` leaves it — the
+    label is unchanged and `accepted_triggers` of Tong's bindings do not move; **with another
+    song that played to its end** (a non-looping fixture song run past its length on the virtual
+    clock) `start_game` requests Tong's, since an ended playback is no song;
+        - a missing bank — a scratch directory under `std::env::temp_dir()` named by the process id
+    and the test, removed by a guard struct's `Drop` on success and on panic alike (pong adds
+    no `tempfile`), holding **`assets/` without `soundfonts/`** — `sprites/`, `fonts/`, `locales/` and
+    `ai/music/` as symbolic links to the repository's own directories — **absolute targets**,
+    `CARGO_MANIFEST_DIR` joined, since a relative target would resolve under the scratch
+    directory and dangle (`std::os::unix::fs::symlink`; **the test is `cfg(unix)`** —
+    `std::fs::copy` copies no directory, and the gates run on Linux), nothing duplicated — the list is every directory `init` reads (`load_sheet`'s `expect` panics
+    on a missing PNG, `lib.rs:58-62`), and the test's assertion that the song failure was reached
+    is what proves the list complete — leaves the game running, silent, `Music.song_failed` set and every hit counted as skipped
+    (the log line is written once, but the test asserts the flag and the counts — the harness
+    captures no logs, and no test infrastructure is built to).
+- **In the editor bundle the song runs until a composer preview takes the slot** (and a song
+  the composer saved at Tong's own path with no `hit` binding makes every hit a counted refusal
+  for that session — the one-path-one-file rule's consequence, stated):
+  `/playground/tong/` opens the game in the editor with no composer song open, so Stop touches
+  no music (batch 11's slot contract) and the song plays through Editing and across Stop; a
+  visitor who opens the composer and previews a song replaces it in the one slot (the engine
+  guarantees no continuity there); when that preview ends — stopped, or played to its end, which
+  leaves an ended playback the game reads as no song — the next match start requests Tong's
+  song again, and while the composer's saved song plays as the session's music a match leaves
+  it alone (the audition) — **Tong's triggers are sent whatever song holds the slot**: an
+  arrangement that binds `hit` and `goal` is heard through the rally (the audition), one that
+  does not refuses them, counted; the pulse follows that song's beats. A session whose saved song failed to load (correction 10) starts
+  silent when a preview held the slot, and otherwise with whatever already played — Tong's own
+  song, requested at `init`, in the common case; its first match start then re-requests or seeks
+  by the identity rule, and the game's own music plays through Editing as it always has — Stop
+  stops the editor's songs, never the game's. An unsaved song cannot reach Play —
+  the dirty prompt asks for Save or Cancel — so a preview never sounds under a session. That is the contract, stated here so codex's screenshot round has its answer; the
+  report notes it under the browser checks, with a preview-then-Play check in the bundle.
+- **`CLAUDE.md`** (pong) gains a "Music" section: the song's files, the three bindings, the
+  jam, the pulse, the no-fallback rule, the bank's script and budget line, one sentence on the
+  committed binary (it stays in the history whatever replaces it; the `apt download` path is
+  Debian's, the script's `--bank <path>` is everyone else's, the sha256s are the provenance),
+  the version bump this batch makes (correction 6). The `review/conductor/` directory in pong
+  holds the game's reviews; the one report is the engine's.
+
+### Correction 5 — the two-enemy demo is an example with its own tests, and it gates its triggers itself
+
+`examples/conductor_demo.rs` + `examples/conductor_demo/enemies.rs` (the pure rules, shared the
+way `hello_world/platformer.rs` is), **its asset base `examples/assets/` — unlike the other
+examples, whose base is `examples/`** — so the sidecar's `soundfonts/sine.sf2` and
+`music/samples/ai_demo/ping.wav` resolve, and `init` logs at `error` and shows "song: failed —
+…" on its HUD line when `play_song` fails, so a wrong base names itself at first run;
+registered in `Cargo.toml` as `[[example]] name =
+"conductor_demo"` **with `test = true`**, so its inline `#[cfg(test)]` tests run under `cargo
+test --workspace` (the existing examples set no `test`, the default `false`; this is the first
+tested example). Assets, each with a `LICENSE` the gate reads:
+`examples/assets/scenes/conductor_demo.scene.ron`; `examples/assets/music/ai_demo.mid` +
+`.mid.ron` (a two-bar melody and a drone, sequenced through the composer's API as the song
+is, checked the same way, saved under `music/` with `ai_` in the name since the folder is the
+example's); `examples/assets/soundfonts/sine.sf2` (a copy of `crates/music_midi/fixtures/sine.sf2`,
+the fixture `LICENSE` entry carried); `examples/assets/music/samples/ai_demo/ping.wav` (a copy of
+`fixtures/sine_48000_mono.wav`, 48 kHz mono, root note 60 — **the imported sample**, placed
+where a save places it so the sidecar's `Sample(path: "music/samples/ai_demo/ping.wav", …)`
+resolves). The scene and the demo's `Game`:
+
+- two enemy kinds, `Hummer` (a SoundFont instrument, the sine bank's one preset) and
+    `Pinger` (the sample instrument, `playback: OneShot`), each an entity with a `#solid` sprite
+  and a `Name` — **two bindings (`hum`, `ping`), one shared part** (`melody`, `Loop`,
+  **`quantize: Off`**: an attack sounds when it is minted; a grid would gather two kinds' attacks
+  onto one line as a dyad), so the kinds alternate through one tune, never two melody tracks
+  and never a synthesizer per entity (the slot is per instrument);
+- **the demo mints every trigger itself, and only for an eligible enemy**: `enemies.rs` holds
+  each enemy's cadence — **in game time, not frames, on one clock**: the demo's `Game` keeps
+  one `clock` advanced by `ctx.delta_time * ctx.time_scale`, and an enemy of period `p` and
+  phase `φ` attacks when `floor((clock − φ) / p)` (an `i64`, negative before the phase is
+  reached) has grown past the index it holds (`attack_due(clock, period, phase, last_index)
+  -> Option<i64>`), **its index initialised at spawn to the current value (no clamp — a clamp made the first
+  spawn and a respawn behave differently) and advanced every frame whether or not the enemy is
+  eligible** (eligibility gates the mint, never the clock, so an enemy back from ten periods
+  off-screen attacks at its kind's next slot, not on its first eligible frame; tested) — so a
+  spawned or respawned enemy waits for its kind's next slot rather than attacking on its first
+  frame; at the scene's start `Pinger` (half a period on) attacks at half a period and `Hummer`
+  (phase 0) at one, then they alternate — which of the two leads is not a contract — at
+  most once a frame (a slow frame mints one attack, never a burst); `Hummer` at phase 0 and `Pinger` half a period
+  on, so the two alternate at any frame rate and **a respawned enemy joins the shared clock at
+  its kind's phase**, never phase-locked to the other kind — and the eligibility rule
+  (`eligible(position, camera, window) -> bool`, the game's policy — K3 #62: "game/host camera
+  policy supplies on-screen eligibility"; a binding is never spatial, the scene loader refuses
+  it), and the `Game`'s `update` calls `ctx.sources.trigger(ctx.audio, binding,
+  ctx.sources.entity(enemy))` for each enemy whose attack falls this frame **and** who is
+  eligible. No cadence script and no `SoundEmitter(Binding(…))`: a scripted `cmd.play_sound`
+  reaches the conductor before the game can gate it, and an `emitters.stop` after the fact
+    only ends the source — the trigger was accepted and the shared cursor moved (round 31,
+  codex F1 / kimi F1). **Leaving the view ends the enemy's source** on the frame of the
+  transition — `was_eligible && !eligible`, an edge, never every off-screen frame
+  (`ctx.sources.end(enemy, ctx.audio)`: its pending and sounding notes stop — the policy for
+  a note already accepted), so an off-screen enemy neither sounds nor advances the melody,
+  the frame it leaves included; on re-entry its next attack activates it anew. **A hitch may
+  land both kinds in one frame**: a frame from 0.9 s to 1.6 s makes both cadences due and
+  both attack, two notes at once — permitted and tested as the stated policy; alternation is
+  the ordinary frame's property, not a guarantee across a skipped interval;
+- despawn and re-entry: the D key despawns the nearest enemy mid-note (its source ends in that
+    frame's tail, `training.md` § the same-frame rule) and R respawns the kind; dense activity,
+  **three workloads**: `--stress spread` spawns 48 enemies at a one-second period with phases
+  spread over the second (48 attempts a second, sustained) and `--stress burst` the same 48 at
+  phase 0 (48 attempts on one frame, every second) — **every stress enemy is placed on a grid
+  inside the camera's view**, so eligibility passes all of them, and each log line prints the
+  eligible attempts of its window beside the conductor's counts, so the report quotes attempted
+  against accepted and rejected — both **measurements**, printing
+  `conductor=on` log lines as `conductor_background.rs` prints them (attempted, accepted,
+  rejected and late triggers, render cost, the longest drain gap, voices) every five seconds,
+  so the report quotes measured rates; and **`--stress saturate`, the refusal shape**:
+  40 `Pinger`s attacking on one frame, every second — the sample slot holds 16 live voices plus
+  a fade budget of 16 and refuses the newest note whole past that ceiling, counted as rejected
+  (`music_midi/CLAUDE.md`, "Fading voices are bounded without a cut"); the exact bound (the
+  newest refused at the ceiling, no voice cut) is **`music_midi`'s existing test**
+  `a_burst_of_sixty_four_triggers_in_one_block_refuses_the_newest_at_the_ceiling_and_stays_finite`,
+  so the demo **asserts nothing about the count** — forty submissions from one game frame
+  may straddle a block drain when the game thread is descheduled, and a run on a loaded machine
+  may reject none — and `saturate` is a measurement whose rejections the report quotes; `quantize: Off` takes the immediate-start path, so the instrument's
+  24-pending limit is not what this exercises, and the SoundFont slot past 24 sounding
+  releases its oldest rather than refusing (§ Modes);
+- **pause input**: Space is the game's pause (`ctx.time_scale = 0`: no attack is minted, the
+  song plays on); P is the song's pause (`ctx.audio.pause_song`: the clock holds, triggers are
+  dropped, the game runs on) — the pause distinction `training.md` gains; M and S mute the
+  music and sfx buses (the melody under the song at 0, the song under the hits at 0).
+
+Tests in the example (`GameHarness` over the demo's `Game`, the scene loaded from
+`examples/assets`): both kinds play the one part in turn (`accepted_triggers` and the
+sidecar's structure, as the game's tests assert it); an enemy outside the view mints nothing
+(`accepted_triggers` unchanged across its attack frames) and its source is ended on the
+frame it leaves (`source_of` `None`, a sounding note included), then activated again by its
+first attack after re-entry (`source_of` `Some`); a despawn mid-note ends its source that
+frame (`source_of` `None` after the tail); the three stress shapes run without a panic and a despawn's end
+still lands under each (their counts are measured, not asserted; the ceiling's bound is
+`music_midi`'s test); a respawned enemy's first attack falls on its kind's phase, not the other's; a hitch frame (one `step` of 0.7 s) lands both kinds' attacks in one frame; the game's pause mints nothing while `blocks_rendered` advances; the
+song's pause drops a trigger as **`rejected_triggers` +1** (a trigger under a song that is not
+playing is rejected with its cursor kept, `triggers.rs:223`; `stale` is another song's binding
+or an ended source, `late` an old stamp). The demo's `Game` is under 600 lines
+with `enemies.rs` beside it.
+
+### Correction 6 — the web proof is Tong's two bundles and its page, on new versions, with a boot threshold
+
+Both bundle versions are four-place contracts (`games/pong/src/web_entry.rs` names the lists):
+the game goes **v6 → v7** (`ASSET_BASE = "/games/tong/v7/assets"`, `scripts/build_wasm.sh
+../games/pong tong --version v7`, `insiculous_web/src/content/games/tong.md` `wasm:
+'/games/tong/v7/game.js'`, `insiculous_web/public/games/tong/v7/`) and the editor bundle **v5 →
+v6** (`EDITOR_ASSET_BASE = "/playground/pong/v6/assets"`, `--kind editor --version v6`,
+`editor: '/playground/pong/v6/game.js'`, `public/playground/pong/v6/`), because the assets
+changed (the bank and the song travel in both; `--kind editor` copies the game's whole
+`assets/` — "the game's own assets are the bundle", `build_wasm.sh:105`). **`/playground/tong/`
+is that editor bundle**, the game compiled with `--features editor` over its own assets — not
+the playground's bundled `pong` *project* (`crates/playground/assets/projects/pong/`, 52 KiB of
+scripts and two images, served at `/playground/`), which is untouched; the 16 MiB playground
+budget is not in play. The old version directories stay until the deploy, as every bump has
+left them. The site half is the two `public/` trees plus the content line; `npm run verify`
+there, whose postbuild check holds every file under 25 MiB.
+
+**The bank is a boot dependency, as every asset is**: `engine_core::web::preload_assets`
+fetches the manifest's every entry before the first frame and `web_entry.rs start` aborts the
+boot on any fetch failure with "Failed to load assets: …" on the page — a bank the network
+drops is that failure, not a silent game (the silent path, correction 1, is a bank that loads
+but a song that fails). Nothing in this batch makes an asset optional. **The boot threshold,
+pinned before the work starts, is the bank's own cost**: on the built site served by `npm run
+preview` (real files and sizes, not the dev server), in Firefox and Chromium with DevTools
+network throttling at 10 Mbit/s **and CPU throttling at 4× slowdown** (the SF2 parse and the
+wasm compile are main-thread work a network profile does not see), the executor measures from
+navigation to the title screen: **the baseline is v7's own code built without its music** — `build_wasm.sh` over a copy of the
+game directory **placed beside it in `games/` as `games/pong-baseline/`** (the engine is a
+relative path dependency, `../../insiculous_2d/…`, so the copy must sit where pong sits; `target/`,
+`dist/` and `review/` left out of the copy; deleted after the measurement) whose `assets/` lacks
+`soundfonts/` and `ai/music/`, **built as version `v99`** with its `web_entry.rs` constants set
+to `/games/tong/v99/assets` — `build_wasm.sh:114-135` pins the constant to the version, so the
+two arms get two versions and **one `npm run preview` root serves both** — `astro preview`
+serves the built `dist/`, not `public/`, and `v7` is not in `public/` until the checks pass, so
+after `npm run build` the harness copies **both arms** from the game's `dist/` into
+`insiculous_web/dist/games/tong/{v7,v99}/` and, since the game's page is Astro's from `tong.md`
+and names one bundle, copies `dist/games/tong/index.html` beside each as the arm's host page with
+its `game.js` path rewritten (never into `public/`; a second ad-hoc server would
+serve the wasm as `application/octet-stream`, which the browser refuses); every cold run uses a
+fresh `--user-data-dir` with `--no-first-run --no-default-browser-check` (Chromium's code cache
+would skip the wasm compile, and a fresh profile's welcome dialog would take the focus), **the
+cache disabled for the cold arm and enabled for the warm**, and a sanity check that each arm's
+warm median is at or under its cold; the harness asserts per run that `v99`'s `manifest.json`
+lists no `soundfonts/` entry and `v7`'s does, and that `v99` logs the one `play_song` failure line **at `error` level** (correction 1's
+"logged once" is this line: `Tong's song could not play: <error>`; the web logger shows `info`
+and above) — so both arms carry
+the `tong: init complete` marker and differ by the bank and the song alone (the deployed v6 has
+no marker to end on); each cold (cache cleared) and warm, **five
+interleaved pairs (baseline, v7, baseline, v7, …) with nothing else running on the machine, the
+median of each arm**, so drift on the shared display hits both arms alike;
+plus `/playground/tong/` v6 cold once (the editor bundle boots the editor and the bank;
+recorded, no threshold; **its stopwatch ends on the same `tong: init complete` line** — `EditorGame::init` runs the
+wrapped game's `init` at boot (`game_impl.rs:34`), not at Play, so the line is logged there too
+and the bank's parse is inside the measured interval); the `v7` and `v99` copies under `dist/` and the `games/pong-baseline/` copy are removed by a
+shell `trap … EXIT` around the measurement, never staged, and a copy already present when the
+batch starts stops the batch. **The 8 s line is a threshold with no fallback branch**: the bank is the brass-and-timpani
+subset from the start (correction 2), so if v7's cold median exceeds the baseline's by more than
+8 s in Chromium the cost is the parse's and the serial preload's; **the bundles are still built
+and staged, the report flags the exceedance in its first lines, and Jesse decides before the
+deploy push whether v7 goes out or waits for #194** — nothing is re-sequenced mid-batch. The CDP harness also asserts that the match's telemetry shows `accepted_triggers`
+rising, so a song that failed to load (which ruling (e) keeps silent) cannot pass the browser
+check unnoticed. The numbers go in the report and the
+scorecard; a whole-page cold boot at 10 Mbit/s is 8 s on its own (6.7 MiB of wasm), which is
+why the gate is the increment. **The measurement ends on the console line `tong: init
+complete`** (correction 4), before the startup cards, which are a constant; `Page.loadEventFired`
+fires long before the wasm has compiled and is not the signal. **The dry run also measures the
+bank's own cost before v7 is built**: `tong.sf2`'s native load (the dependency cache's log line
+on `play_song`) — the deployed v6 has no marker to time a boot on, so its boot is not part of
+the dry run; the baseline arm is the comparison. `preload_assets` fetches the manifest's entries one after another, so a real user
+pays a round trip per entry that the `npm run preview` host does not show — the measured
+number is the localhost number, and the report says so. **Ruling (k), proposed: the bank is a
+boot dependency until #194** — a fetch that fails fails the boot with "Failed to load assets",
+as a sprite's does, where v6 had no bank to fail; the report and the scorecard name it. The preloader is **unchanged by this batch**: it has no retry and no deadline today — a
+transient drop fails the boot at once, a stall holds the loading screen — and giving it both is
+an engine-wide change every game inherits, with its own browser failure-path test and its own
+ruling on the connections the pages support; rounds 36 to 41 designed it here and round 41
+took it out as **#196**, its own batch. So ruling (k) is plain: the bank is one more asset a
+dropped fetch can fail the boot on, as a sprite's always could.
+
+**The browser method, dry-run on today's v6 before any bundle is built**: the two browsers
+open on the session's display (`:1`, where batch 11's XTEST driver worked), keys reach them
+through the same XTEST driver; Chromium is launched with `--remote-debugging-port`, and the
+same DevTools Protocol session that sets the throttling (`Network.emulateNetworkConditions` at
+10 Mbit/s **with `latency: 100` ms**, so the serial per-entry round trips the preloader pays
+are in the number, `Emulation.setCPUThrottlingRate` 4, `Network.setCacheDisabled` for a cold
+run) **reads the console through `Runtime.consoleAPICalled`** — the `tong: init complete` line
+that ends the stopwatch and the `conductor=on` lines — rather than the process's stderr; Firefox runs with the pref
+`devtools.console.stdout.content=true`, so its console lands in its stdout, and its throttling
+is the Network panel's by hand with the CPU rate not available — **the throttled gate is
+Chromium's; Firefox records unthrottled cold and warm boots, and a Firefox increment over 8 s
+is flagged in the report without gating**, since its wasm compile and SF2 parse differ. **The
+CDP order matters**: Chromium opens on `about:blank`, the script attaches, enables `Network`
+and `Emulation`, sets the throttling and disables the cache, and only then sends
+`Page.navigate` to the bundle — a browser launched on the bundle's URL fetches the wasm at
+full speed before the script connects.
+**Every browser run begins with a click on the canvas** — in Chromium through the protocol
+itself (`DOM.getBoxModel` on the canvas, `Input.dispatchMouseEvent` at its centre), in Firefox
+XTEST's mouse on the window brought to the front, as batch 11 pressed the toolbar; a page
+navigated by the protocol holds no focus on the canvas — which is also the activation gesture — the engine's "Web audio enabled after user gesture" console line and the
+song's start after it are the requested-before-gesture proof. The dry run is that click, one
+key reaching the v6 title menu and one console line captured in each browser, quoted in the
+report; a method that does not reach that point stops the batch before
+the bundles are built. **The first gesture is a key, a click or a touch** (`engine_core::web
+is_activation_gesture`): a player on a gamepad alone hears nothing until one — the engine's
+standing web limitation since H7, filed as its own issue, not this batch's; the browser checks
+use a key.
+
+Browser checks, in Firefox and Chromium, **each a pass or a fail with a consequence**: a
+functional check that fails (the song not heard after the gesture, a rally's hits not walking
+the refrain, the jam silent, the pulse off the beat, the stress run over its gap criterion, the
+preview-then-Play check, the SoundFont row) **stops the `--sync` into `insiculous_web/public/`**
+— the bundles stay in the game's `dist/`, the report is INCOMPLETE naming the check, and the
+planner and Jesse decide; nothing broken reaches the site's tree on a line in a report. The
+checks, recorded in the report: **requested-before-gesture
+startup** — the song is requested in `init` before any gesture and sounds on the first click
+or key (the engine's first-gesture hook, batch 6's `PendingMusic`), with the title screen's
+first menu press being that gesture; a rally's hits walk the refrain; the pause menu jams; the
+pulse lands on the beat; the boot times above; `/playground/tong/` opens the game in the
+editor with the song playing on Play, and in it File → New Song shows the SoundFont row listing
+`tong.sf2` with no missing-bank warning (the row's wasm path, `vfs::list_files` over the
+preloaded keys, exercised once on the real base string), and a song saved at `ai/music/
+ai_tong.mid` there then Play and a match start reads the position at the top (the identity rule
+on the two labels the editor and the game form, exercised once where both exist). **The browser stress run** (plan § Verification "before
+any K6 batch starts"): batch 1's method — a two-minute run, frame time and underruns from the
+`conductor=on` lines, one seek (a match restart) and one loop wrap — **on Tong's own v7
+bundle in Insiculous mode with both balls** (ruling (g), proposed), **passing when no two consecutive telemetry windows show a drain gap over 92 ms — twice the
+browser's 2048-frame pull, 46 ms, which is the backend's own floor (K1 measured 60.7 ms as the
+longest gap of a healthy idle run, `K1_SPIKE.md:167`, so 61 ms would fail healthy audio on one
+timer coarsening) — and the render cost stays under a block's duration over the run** (K1's
+criterion in its own words, `K1_SPIKE.md:173-177`: no sustained underrun; the 61 ms
+`DEVICE_PERIOD_ALLOWANCE` is the trigger's late tolerance, not a render budget) — read from **Tong's own `conductor=on` lines** (correction 4's telemetry — **every measurement
+URL carries `?telemetry=1`**, or the lines are `debug` and the web logger drops them; **zero
+lines after the click is a FAIL with the console transcript attached, never a reduction over an
+empty set**; every line prints the maxima it takes, each line its own window, so the gate is
+**the maximum over every line printed after the first match start**, reduced by the harness,
+never the last line alone; **the throttling is reset before the stress run** —
+`Emulation.setCPUThrottlingRate` 1, `Network.emulateNetworkConditions` off — since the boot
+gate's 4× slowdown is not the stress run's condition; **and `blocks_rendered` must advance in
+every window of the run**, since a stalled audio thread renders no block, records no gap and
+swaps out zeros — a window without new blocks is a FAIL as an empty transcript is; the warm-up
+is the song's first blocks after the activation click, so **the driver waits two telemetry
+windows after the click before it starts the match**) — the longest gap and the game's windowed
+p95 frame time quoted; **the XTEST driver restarts
+the match at every game over** (a two-ball Insiculous match ends in about thirty seconds, and a
+game-over screen measures nothing), each restart being one of the run's seeks: the realistic worst case
+a game produces, where the K1 spike already proved decision 2's synthetic worst case in both
+browsers (K1_SPIKE.md § 4, PASS). The demo's `--stress` is the synthetic case natively, with
+the same log lines.
+
+### Correction 7 — `training.md` § Conductor is completed, the roadmap row waits for batch 16
+
+`training.md` § Conductor Pattern (77 lines today, the song, the sources, the same-frame
+rule, scene sounds) gains #64's eight subjects as short paragraphs, each pointing at the doc
+that holds the detail: **the authoring workflow** (the composer, File → New Song, the API's
+`song` verbs, Save's journal and `LICENSE`, `ai/music` for an agent's first cut); **shared-part
+modes** (`Loop`, `Sequence`, `AtSongPosition` in two lines each, the harmony caveat); **custom
+instrument import** (a `.wav` dropped on the composer or imported on the web, `Sample(…)`, the
+provenance it needs, `music/samples/<flat>/`); **source eligibility and lifecycle** (the three
+sources, on-screen eligibility being the game's policy, despawn ending the source, re-entry
+reactivating it); **crowd limits** (the 24 pending and 24 sounding per instrument, the 512
+scheduled events, refused-whole triggers, the counters); **volume behaviour** (the music and
+sfx buses: the background on music, every trigger on sfx, each alone at 0 keeps the other);
+**beat timing** (`beat_crossed`'s once-an-update latch, the `latency_samples` a position
+carries, the up-to-61 ms browser period); **pause distinctions** (the game's `time_scale`
+pause against the song's `pause_song`, triggers dropped while the song is paused). The
+Conductor Pattern's file list gains the example. `PROJECT_ROADMAP.md` row K and `CLAUDE.md`'s
+"K1 gates all of Conductor" line are **batch 16's** (close-out), not this batch's — the old
+section named the row; it moves. `CLAUDE.md`'s examples list and `training.md`'s directory map
+name `conductor_demo`.
+
+### Correction 8 — the screenshots are captured by the executor, and serve #184 too
+
+Batch 11's executor captured the composer with `ffmpeg x11grab` on the session's display after
+driving it with XTEST (report-11 § 11), so "no capture tool" no longer holds. This batch
+delivers **three PNGs under `review/conductor/`** (engine): the composer at the full width with
+the Tong song open and the preview playing (the playhead on the roll, the transport's
+"Playing · bar …" text), the Song section with the provenance fields filled, and the compact
+layout with the tabs — the same three #184 asks for, on the song this batch authors. Codex
+reviews them with `--image` in the code round; **the executor also copies the three PNGs and the pulse stills to
+`coordination/conductor/screenshots/batch-12/`**, a tracked directory the batch's commit carries,
+so the evidence outlives `review/` (gitignored and cleaned) and #184 points at tracked paths — and #184 closes with the batch's commit if codex raises nothing the screen alone
+shows, else its findings are the next batch's rows. The pulse is shown by **two or three PNG stills of a rally** at a pulse's peak and at rest
+(the grid's lines under a grill displaced and flat), never a video: `review/` is gitignored
+so nothing is committed either way, and a still pair is what codex can judge.
+
+### Correction 9 — sizes, placements, gates
+
+Files near the ceiling: none in `games/pong` (`types.rs` 472, `spawning.rs` 415, `jaw.rs` 407,
+`scoring.rs` 386 gains about ten lines); the engine's `training.md` is prose. New files:
+`games/pong/src/{music.rs, music_tests.rs}`, `games/pong/scripts/prepare_soundfont.sh`,
+`games/pong/assets/{ai/music/ai_tong.mid, ai_tong.mid.ron, ai/music/LICENSE, soundfonts/tong.sf2,
+soundfonts/LICENSE}`; `examples/conductor_demo.rs`, `examples/conductor_demo/enemies.rs`,
+`examples/assets/{scenes/conductor_demo.scene.ron, music/ai_demo.mid, music/ai_demo.mid.ron,
+music/LICENSE, music/samples/ai_demo/ping.wav, music/samples/ai_demo/LICENSE, soundfonts/sine.sf2,
+soundfonts/LICENSE}`. Touched: pong `Cargo.toml` (the `music_midi` dev-dependency), `src/{lib,constants,types}.rs`,
+`gameplay/{mod,scoring,flow}.rs`, `web_entry.rs`, `assets/locales/{en,pirate}.ron`, `CLAUDE.md`;
+engine `Cargo.toml` (the `[[example]]` and **a `[dev-dependencies]` section — the root crate
+has none today — with `engine_core = { path = "crates/engine_core", features = ["test-support"]
+}`**: the example's test target compiles in the root crate, and `engine_core::test_support` is
+gated on that feature, `engine_core/src/lib.rs:77-78`; examples build with the dev-dependencies, so `cargo run
+--example conductor_demo` carries the feature too — which is harmless, `test-support` gating an
+additive module and nothing else),
+`crates/engine_core/src/prelude.rs` (the `Subdivision` re-export), `crates/audio/src/manager/
+song.rs` (`song_label`, `take_song_maxima`, `SongSnapshot::log_line`),
+`coordination/conductor/screenshots/batch-12/` (new, the PNGs), `docs/EDITOR_COMMAND_API.md` (the `song new` row no longer names `soundfonts/cast.sf2`,
+the `AddTrack` and `SetSoundFont` lines, the `status` query),
+`crates/editor/src/song/{mod,edit}.rs` and `edit/apply.rs` (`AddTrack`, `SetSoundFont`),
+`crates/music_midi/src/song_data.rs` and `song_data/{edit,export}.rs` (`add_track`),
+`crates/editor/src/composer/sidebar/blocks.rs` (the Add-track row), `crates/editor/src/{status_bar.rs,
+theme/mod.rs, theme/tests.rs, command_api/mod.rs}` and `crates/editor_integration/src/editor_game/{song_io, song_preview}.rs`
+with their tests and the composer's Song section (correction 10), `docs/EDITOR_COMMAND_API.md`,
+`examples/soundfonts/{sine.sf2, LICENSE}`, `scripts/check_audio_provenance.sh` (the
+`examples/soundfonts` pattern), `examples/conductor_background.rs` (uses `log_line`), `training.md`, `CLAUDE.md`; site
+`src/content/games/tong.md`, `public/games/tong/v7/`, `public/playground/pong/v6/`.
+
+**Gates:** in `insiculous_2d` the standard set (`cargo test --workspace` with the example's
+tests in it — an example with `test = true` is built as a test and its unit tests run under a
+plain `cargo test` — the Cargo reference, "Configuring a target", the `test` field: "Examples
+are built by `cargo test` by default to ensure they continue to compile, but they are not
+tested by default. Setting `test = true` for an example will also build it as a test and run
+any unit tests"; and its `main` draws no dead-code warning under the test harness, as no
+binary's does; a function the test build does not reach is exercised by a test or reorganised,
+never `#[allow]`ed — the report quotes the `conductor_demo` test lines as the proof — both clippy runs, `check_wasm.sh`, `check_games.sh --test`, `check_guide_tests.sh`,
+`check_features.sh`, `check_audio_provenance.sh` — which now also finds `examples/assets/music`
+and `soundfonts` — the comment-tag grep, the 600-line check); in `games/pong` `cargo test`,
+`cargo clippy --all-targets` with and without `--features editor`, **`../../insiculous_2d/
+scripts/check_audio_provenance.sh "$PWD"`** from the game's directory — with no argument the
+script walks the engine root (`check_audio_provenance.sh:19-23`), so the root is passed; the
+executor breaks pong's `soundfonts/LICENSE` once to see the gate fail, restores it, and quotes
+both runs in the report — the two `build_wasm.sh` runs with their `wasm size:` lines and the
+bank's size in the report; in
+`insiculous_web` `npm run verify`. The report carries the browser checks of correction 6 and
+the screenshots' paths. **Leaves out:** a volume control in Tong, the recorded fallback (ruling
+(e)), the fetch-after-first-frame lever (filed; the re-voicing is this batch's lever), a
+`Sequence` part in Tong (ruling (i)), the roadmap row (batch 16), the other five games (K6), intensity layers and harmony generation (the milestone's
+exclusions), Jesse's promotion of `ai_tong` to `music/`.
+
+### Correction 10 — Jesse's playtest: a song that cannot load must not block Play, and a new song needs a bank it can find
+
+Jesse's playtest of batch 11 (2026-10-22, `cargo run --example editor_demo --features editor`):
+a new song made in the composer did not play on the transport's Play or Space, and the
+editor's Play never started the game. The cause is in the tree: `editor_demo`'s asset base is
+`examples/` (`EXAMPLES_DIR`), a new song's sidecar names `soundfonts/cast.sf2`
+(`crates/editor/src/song/mod.rs:56 DEFAULT_SOUND_FONT_PATH`), and `examples/soundfonts/` does
+not exist — so `prepare_song` failed ("Song preview could not play: …" in red on the status
+bar) and, once the song was saved (`examples/music/untitled.mid` with its sidecar and the
+`LICENSE` stanza, all correct), the saved file failed to load at Play and **the armed Play was
+dropped** ("Play could not start the song: …"), as batch 11's contract said it should
+(`song_preview.rs play_armed_song`, the pitfall row "a saved song that fails to load keeps the
+preview Play parked, says why, and starts no session"). Reviewed five rounds and still a trap:
+the editor's Play was hostage to the song's bank. Five changes, all in this batch (the last two from the second half of the report: the errors
+were there, in red, unreadable to a red-green colourblind player and uncopyable — #195):
+
+1. **A song that fails to load no longer blocks Play.** `play_armed_song`'s `Err` arm marks the
+   pending Play `ready` all the same, **stops the preview's song first when the preview holds
+   the slot** (`play_song` refuses before it touches the playing song, so a sounding preview
+   would otherwise play on under a session that owns nothing — `audio.stop_song()`, the slot
+   `Nobody`), so the next frame starts the session — **and what it hears depends on who held the slot**,
+   which at that moment is one of two (Play is armed only from Editing, which the editor's Stop
+   reaches with the slot `Nobody`, so `Session` is not a state this arm sees): a sounding preview
+   is stopped, so the session is silent; and when the editor holds nothing (`Nobody`) whatever
+   the game itself requested at `init`, Tong's own song in the editor bundle, keeps playing, since
+   Stop stops the editor's songs and never the game's. The error
+   stays on the status bar ("Play could not start the song: …; the game runs without it"); the
+   parked preview stays parked and silent; two tests, one per holder. The test
+   `a_saved_song_missing_a_sample_keeps_the_preview_shows_the_error_and_starts_no_session`
+      becomes `…_shows_the_error_and_starts_the_session_without_music`, a second test starts from
+   a sounding preview and asserts silence (`is_song_playing()` false) through Play and Stop, and
+   the pitfall row in `editor_integration/CLAUDE.md` says so. Stop while that session runs
+   flushes the sources and touches no slot.
+2. **A new song's bank is one the project has, and the bank can be changed.** `new_song`
+   (`song_io.rs`) sets the sidecar's
+   `soundfont` to the first `.sf2` under `<asset base>/soundfonts/` in sorted order — listed
+   through **`common::vfs::list_files`**, each path stripped of the asset base so the sidecar
+   holds `soundfonts/x.sf2` as every sidecar path is, the seam
+   that reads the directory natively and the preloaded `MemFs` keys on wasm (never
+   `std::fs::read_dir`) — and to `DEFAULT_SOUND_FONT_PATH` only when there is none. The
+   composer's Song section gains a **"SoundFont: soundfonts/x.sf2" row** that cycles through
+   the project's `.sf2`s as the Loop switch cycles — **drawn disabled, naming the sidecar's path,
+   while the project has none** (no cycle over an empty list, no modulo by zero), the warning
+   below it saying how to add one — each click one **`SongEdit::SetSoundFont {
+   path }`** (a new variant: `apply` sets `file.soundfont`, `try_merge` replaces like `SetLoop`,
+   the API's edit table and `EDITOR_COMMAND_API.md` gain the line, undo covers it), and a
+   warning row — the sidebar's `walk.warning`, as the provenance mark — "No SoundFont at
+   soundfonts/cast.sf2 — put an .sf2 under soundfonts/ and pick it on the SoundFont row" (how a
+   file gets there is the host's: the asset folder natively, the file input on the playground
+   app, and nothing on the read-only editor bundle, where the warning cannot show because the
+   bundle's bank is preloaded)  whenever the sidecar's `soundfont` resolves to no
+   file under the asset base, from the moment the song exists; a drop of an `.sf2` on the
+   composer adds an instrument (`composer::drop_action`) and does not change the background
+   bank, which is why the row exists; **the row checks the file's existence and nothing of its
+   contents** — the editor crate carries no synthesizer and cannot read a bank's preset list, so
+   a bank lacking an instrument's preset fails the next preview with the loader's error naming
+   the instrument and the preset (prefixed, amber and logged by item 4), and the Instruments
+   section shows each instrument's bank and program beside it — and the row lists what `vfs::list_files` finds — on the
+   web the preloaded keys and every file the page imported, since `playground_write_file_bytes`
+   writes into `MemFs`; natively **real files only** (`list_files` skips symbolic links,
+   `vfs/mod.rs:194-196`), and when the directory holds entries but no listed bank the warning
+   says "banks must be files, not links". Tests: a project with `soundfonts/a.sf2` and `soundfonts/b.sf2` gives a new song
+   `a.sf2`; one with none gives the default and the warning; the row's click sets `b.sf2` as
+   one undoable edit; the warning clears when the named file appears (a rescan) or the row
+   picks one that exists.
+3. **`editor_demo` gets a bank**: `examples/soundfonts/sine.sf2` (the fixture's sine bank, a
+   copy, with its `LICENSE` entry carried) under the example's asset base, so File → New Song
+   in the editor demo previews and plays out of the box; the conductor demo's own copy under
+   `examples/assets/soundfonts/` (correction 5) serves its different base. The provenance gate
+   scans `*/assets/soundfonts`, which `examples/soundfonts` is not, so **the gate's `find`
+   gains `-o -path './examples/soundfonts'`** (one line, with a fixture pair under
+   `scripts/tests/audio_provenance/` as batch 11 added for `ai/music`), so the bank is held to
+   the same `LICENSE` as every other.
+
+4. **An error on the status bar is marked by more than its colour, holds, and is logged.** Jesse
+   could hardly read the two errors above — red text (`theme.error_red`, `0xff4444`) on the
+   dark bar, which a red-green colourblind reader sees as dark, and the error told from an
+   ordinary message by colour alone (WCAG 1.4.1). `StatusBar::show_error` prefixes the shown
+   text with "Error: " (the prefix is drawn, not stored, so callers and tests keep their words),
+   the status bar's error text takes a **new token `status_error`**, an amber at ≥ 4.5:1 on
+   `surface_0` and `surface_1` with a guard test beside the surface ladder's (`theme/tests.rs`)
+   — `error_red` itself is untouched: it is also the invalid field border (`theme/mod.rs:380`),
+   the palette's `error_color` (:339) and the asset browser's failed-load tint, and a music
+   batch recolours none of them — and `show_error` logs the message at `error`
+   level so the terminal (native) and the console (web) carry it; **an error is not displaced by the engine's own notices** — the automatic messages that land
+   a frame after Play — the session start's snapshot warning (`play_session.rs:70`) and the API
+   batch's "API batch committed by Play" (`play_session.rs:96`) — go through a `show_notice` that
+   leaves a persistent error in place (tested with an open API batch); every message a user's own
+   action produces (a save, a selection, a tool) replaces the error as it always has, so no
+   feedback is ever suppressed and the load error survives the frame that would have erased it. Codex judges the colour.
+5. **The message can be read back.** The command API gains the `status` query — `{"message":
+   "…", "error": true}` or `{"message": null}`, the message run through the same formatter that
+   draws it, prefix included — so an `--api` session, an agent or the playground's command input
+   reads the text the bar shows; `docs/EDITOR_COMMAND_API.md`
+   gains the row. Copying to the OS clipboard is a dependency decision and stays in #195, which the
+   planner edits at the batch's close to reference this query and keep only the clipboard and
+   the live-region halves.
+
+Until the batch lands, Jesse's session works with the spike's bank copied in:
+`cp coordination/conductor/spike/assets/soundfonts/cast.sf2 examples/soundfonts/` (34 MiB,
+untracked, never committed).
+
+**Rulings for Jesse** (sent with the section unless he says otherwise): (e) no recorded
+fallback in Tong; (f) the song plays on under the pause menu, the jam over it; (g) the browser
+stress run is Tong's own bundle in Insiculous mode, the synthetic case staying K1's; (h) the
+Toreador presets — trumpet, trombone and timpani, no strings — a committed bank of about 2 MiB
+in the game repo, the accompaniment a brass band's; (i) the hits and the jam
+on `quantize: Off`, the jam a `Loop` part — #64's "Sequence jam" exhausts in a few presses;
+(j) a song that fails to load no longer blocks the editor's Play — the session starts without
+the editor's music (a sounding preview stopped; whatever the game itself plays, its own song in
+the editor bundle, plays on) with the error on the status bar (correction 10, reversing batch
+11's reviewed contract); (k)
+the bank is a boot dependency on the web until #194 — a dropped fetch fails the boot as any
+asset's does today, and the preloader's retry is #196's batch, not this one's.
 
 ## Batches 13–15 — K6: the six games, in pairs (#65)
 
