@@ -21,8 +21,12 @@ pub enum AssetKind {
     /// A script file (.rhai or .rs)
     Script,
     /// A recorded sound the audio manager decodes (wav/mp3/ogg/flac), dropped
-    /// on a `SoundEmitter`'s sound slot
+    /// on a `SoundEmitter`'s sound slot — or a `.wav` on the composer, as a sample
     Sound,
+    /// A song's MIDI file (.mid), dropped on the composer to open it
+    Song,
+    /// A SoundFont bank (.sf2), dropped on the composer as an instrument
+    SoundFont,
 }
 
 /// One file found under the asset root.
@@ -97,6 +101,8 @@ fn kind_for_extension(ext: &str) -> Option<AssetKind> {
         "ron" => Some(AssetKind::Scene),
         "rhai" | "rs" => Some(AssetKind::Script),
         "wav" | "mp3" | "ogg" | "flac" => Some(AssetKind::Sound),
+        "mid" => Some(AssetKind::Song),
+        "sf2" => Some(AssetKind::SoundFont),
         _ => None,
     }
 }
@@ -232,7 +238,8 @@ mod tests {
         assert_eq!(kind_for_extension("png"), Some(AssetKind::Image));
         assert_eq!(kind_for_extension("ron"), Some(AssetKind::Scene));
         assert_eq!(kind_for_extension("FLAC"), Some(AssetKind::Sound));
-        assert_eq!(kind_for_extension("mid"), None, "a song is not a recorded sound");
+        assert_eq!(kind_for_extension("mid"), Some(AssetKind::Song), "a song is listed as a song, not a recorded sound");
+        assert_eq!(kind_for_extension("SF2"), Some(AssetKind::SoundFont));
         assert_eq!(kind_for_extension("txt"), None);
     }
 

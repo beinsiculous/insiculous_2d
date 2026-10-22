@@ -203,13 +203,13 @@ impl<G: Game> EditorGame<G> {
 
     /// Drain up to `MAX_LINES_PER_FRAME` lines from the API channel.
     ///
-    /// Empty while a gizmo drag is live — requests stay queued and are
-    /// answered the next eligible frame, so an API read can never observe
-    /// (or later, mutate) mid-drag state. The cap keeps a piped flood from
+    /// Empty while a gizmo or a composer drag is live — requests stay queued and
+    /// are answered the next eligible frame, so an API line can never observe
+    /// mid-drag state or land an edit between a drag's frames. The cap keeps a piped flood from
     /// stalling the frame; the rest stays queued for later frames.
     pub(super) fn take_api_lines(&mut self) -> Vec<String> {
         const MAX_LINES_PER_FRAME: usize = 256;
-        if self.editor.gizmo_has_priority() {
+        if self.editor.gizmo_has_priority() || self.composer_drag.is_some() {
             return Vec::new();
         }
         let Some(receiver) = &self.api.receiver else {

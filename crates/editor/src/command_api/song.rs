@@ -87,7 +87,16 @@ pub(super) fn parse(line: &str) -> Result<Request, ApiError> {
         (Some("close"), []) => hosted(HostedWrite::SongClose { discard }),
         (Some("save"), [] | [_]) if !discard => hosted(HostedWrite::SongSave {
             path: arguments.first().cloned(),
+            overwrite: false,
         }),
+        // Its own word, not `discard`: it replaces another song's files rather than
+        // dropping this one's edits.
+        (Some("save"), [path, word]) if !discard && word == "overwrite" => {
+            hosted(HostedWrite::SongSave {
+                path: Some(path.clone()),
+                overwrite: true,
+            })
+        }
         (Some("play"), [] | [_]) if !discard => hosted(HostedWrite::SongPlay {
             from_beat: arguments.first().map(|beat| parse_beat(beat)).transpose()?,
         }),
@@ -101,7 +110,7 @@ pub(super) fn parse(line: &str) -> Result<Request, ApiError> {
         _ => Err(ApiError::Parse(
             "usage: song | song notes [part] | song edit <json> | song undo | song redo | \
              song select <note>…|none | song new [discard] | song open <path> [discard] | \
-             song save [path] | song close [discard] | song play [beat] | song stop | \
+             song save [path [overwrite]] | song close [discard] | song play [beat] | song stop | \
              song seek <beat> | song trigger <action>"
                 .to_string(),
         )),

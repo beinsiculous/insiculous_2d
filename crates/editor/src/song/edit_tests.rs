@@ -326,6 +326,82 @@ fn a_gesture_merges_deltas_by_summing_and_absolute_values_by_replacing() {
 }
 
 #[test]
+fn a_held_nudge_merges_its_batches_member_by_member_into_one_entry() {
+    let nudge = |tick_delta, key| {
+        SongEdit::Batch(vec![
+            SongEdit::MoveNotes {
+                notes: vec![1, 2],
+                tick_delta,
+            },
+            SongEdit::SetPitch {
+                notes: vec![1],
+                key,
+            },
+        ])
+    };
+    assert_eq!(
+        nudge(120, 61).try_merge(&nudge(120, 62)),
+        Some(nudge(240, 62)),
+        "the move's deltas sum and the pitch replaces"
+    );
+    let move_only = SongEdit::Batch(vec![SongEdit::MoveNotes {
+        notes: vec![1, 2],
+        tick_delta: 120,
+    }]);
+    assert_eq!(
+        nudge(120, 61).try_merge(&move_only),
+        None,
+        "batches of different lengths are two gestures"
+    );
+    let pitch_first = SongEdit::Batch(vec![
+        SongEdit::SetPitch {
+            notes: vec![1],
+            key: 62,
+        },
+        SongEdit::MoveNotes {
+            notes: vec![1, 2],
+            tick_delta: 120,
+        },
+    ]);
+    assert_eq!(
+        nudge(120, 61).try_merge(&pitch_first),
+        None,
+        "one pair that refuses refuses the batch"
+    );
+
+    let mut document = melody();
+    let notes = note_numbers(&document);
+    let shift = |tick_delta| {
+        SongEdit::Batch(vec![SongEdit::MoveNotes {
+            notes: notes.clone(),
+            tick_delta,
+        }])
+    };
+    let entries = document.history().undo_count();
+    for _ in 0..3 {
+        document
+            .apply(shift(120), Gesture::Continuing)
+            .expect("the nudge lands");
+    }
+    assert_eq!(
+        document.history().undo_count(),
+        entries + 1,
+        "a held key is one entry"
+    );
+    document.undo().expect("the nudge undoes");
+    assert_eq!(
+        note_numbers(&document)
+            .iter()
+            .filter_map(|number| document.note_id(*number))
+            .filter_map(|id| document.data().note_image(id))
+            .map(|image| image.tick)
+            .collect::<Vec<_>>(),
+        vec![0, 480, 960],
+        "one undo puts every note back where the hold began"
+    );
+}
+
+#[test]
 fn tempo_and_meter_edits_land_on_their_tick_and_undo_to_what_was_there() {
     let mut document = melody();
     let tempo = |microseconds_per_quarter| SongEdit::SetTempo {

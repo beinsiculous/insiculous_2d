@@ -56,7 +56,42 @@ fn test_default_layout_docks_hierarchy_left_inspector_right_scene_center_assets_
             (PanelId::INSPECTOR, DockPosition::Right),
             (PanelId::SCENE_VIEW, DockPosition::Center),
             (PanelId::ASSET_BROWSER, DockPosition::Bottom),
+            (PanelId::COMPOSER, DockPosition::Bottom),
         ]
+    );
+}
+
+#[test]
+fn test_the_composer_starts_hidden_stacks_above_assets_and_an_old_prefs_file_leaves_it_hidden() {
+    let mut ctx = EditorContext::new();
+    let composer = |ctx: &EditorContext| ctx.dock_area.get_panel(PanelId::COMPOSER).cloned().expect("the composer panel");
+    assert!(!composer(&ctx).visible, "hidden until a song or View → Composer asks for it");
+
+    ctx.dock_area.set_bounds(ui::Rect::new(0.0, 0.0, 1280.0, 720.0));
+    assert_eq!(
+        crate::menu::action_for_menu_label("Composer"),
+        Some(crate::EditorAction::TogglePanel(PanelId::COMPOSER)),
+        "View → Composer is a panel toggle"
+    );
+    ctx.dock_area.toggle_panel_visible(PanelId::COMPOSER);
+    let assets = ctx.dock_area.get_panel(PanelId::ASSET_BROWSER).expect("assets").content_bounds();
+    let shown = composer(&ctx).content_bounds();
+    assert!(shown.height > 0.0 && shown.bottom() <= assets.y, "the composer sits above Assets");
+
+    // A prefs file written before the composer existed: rows for the old panels only.
+    let old_prefs = crate::EditorPreferences {
+        panels: vec![crate::PanelPrefs { id: PanelId::ASSET_BROWSER.0, visible: true, collapsed: false, size: 180.0 }],
+        ..Default::default()
+    };
+    let mut fresh = EditorContext::new();
+    old_prefs.apply_panels(&mut fresh.dock_area);
+    assert!(!composer(&fresh).visible, "a file without the composer's row leaves it hidden");
+
+    let mut saved = crate::EditorPreferences::default();
+    saved.capture_panels(&ctx.dock_area);
+    assert!(
+        saved.panels.iter().any(|panel| panel.id == PanelId::COMPOSER.0 && panel.visible),
+        "and a shown composer is written back"
     );
 }
 

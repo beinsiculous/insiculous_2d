@@ -184,6 +184,12 @@ impl MenuBar {
                 MenuItem::action_with_shortcut("Save", "Ctrl+S"),
                 MenuItem::action_with_shortcut("Save As...", "Ctrl+Shift+S"),
                 MenuItem::separator(),
+                MenuItem::action("New Song"),
+                MenuItem::action("Open Song..."),
+                MenuItem::action("Save Song"),
+                MenuItem::action("Save Song As..."),
+                MenuItem::action("Close Song"),
+                MenuItem::separator(),
                 MenuItem::action("Exit"),
             ]),
         );
@@ -211,6 +217,7 @@ impl MenuBar {
                 MenuItem::action("Inspector"),
                 MenuItem::action("Hierarchy"),
                 MenuItem::action("Asset Browser"),
+                MenuItem::action("Composer"),
                 MenuItem::action("Console").with_enabled(false),
                 MenuItem::separator(),
                 MenuItem::action_with_shortcut("Toggle Grid", "G"),
@@ -239,6 +246,12 @@ impl MenuBar {
         bar.add_menu(Menu::new("Entity").with_items(entity_items));
 
         bar
+    }
+
+    /// Whether a dropdown is open: a click on it is chrome, which leaves the composer's
+    /// keyboard focus where it was.
+    pub fn is_open(&self) -> bool {
+        self.open_menu.is_some()
     }
 
     /// Add a menu to the menu bar.

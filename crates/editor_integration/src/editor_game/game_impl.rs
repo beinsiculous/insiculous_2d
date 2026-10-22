@@ -79,6 +79,9 @@ impl<G: Game> Game for EditorGame<G> {
         let window_size = ctx.window_size;
         self.prepare_frame(ctx);
         self.render_early_overlays(ctx);
+        // Before the menu bar handles this frame's press: an open dropdown is chrome and
+        // keeps the composer's keyboard, which the dropdown closing would hide.
+        self.settle_composer(ctx.ui);
         // After the confirm dialogs, which own the frame while they are up,
         // and before every other widget: a blocking rect is consulted at
         // each widget's own interact call, so the popup's rect has to exist
@@ -137,8 +140,9 @@ impl<G: Game> Game for EditorGame<G> {
 
     fn on_key_released(&mut self, key: KeyCode, ctx: &mut GameContext) {
         // Seal the arrow-nudge merge window: consecutive repeats of a held
-        // arrow merged into one NudgeCommand; releasing the key closes that
-        // entry so the next hold starts a fresh undo step.
+        // arrow merged into one NudgeCommand (or one composer nudge batch);
+        // releasing the key closes that entry so the next hold starts a fresh
+        // undo step.
         if !self.editor.is_playing()
             && matches!(
                 key,
@@ -146,6 +150,9 @@ impl<G: Game> Game for EditorGame<G> {
             )
         {
             self.command_history.break_merge();
+            if let Some(song) = self.song.as_mut() {
+                song.break_merge();
+            }
         }
         self.inner.on_key_released(key, ctx);
     }

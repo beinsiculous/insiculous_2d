@@ -175,7 +175,7 @@ addresses it; none touches the scene's `CommandHistory`, and `undo` /
 | `song select <note>...` / `song select none` | select exactly these notes by id — never on the undo stack (GUI parity) |
 | `song new [discard]` | a new, never-saved song (one tempo track, a `melody` track on channel 1, 120 BPM in 4/4, the background on `soundfonts/cast.sf2`) |
 | `song open <path> [discard]` | open a `.mid` (relative to the asset root), settling what an interrupted save left — the answer's `notes` say what was settled |
-| `song save [path]` | save to `path`, else the song's own path, else — never saved — `music/untitled.mid` (numbered when taken) |
+| `song save [path [overwrite]]` | save to `path`, else the song's own path, else — never saved — `music/untitled.mid` (numbered while its `.mid` or its `.mid.ron` is taken). A `path` whose `.mid` or `.mid.ron` exists and is not the song's own file is another song: `refused` unless the line ends in `overwrite` (its own word — it replaces that song's files, where `discard` drops this song's edits); the composer's path field asks Overwrite / Cancel instead |
 | `song close [discard]` | close the song |
 | `song play [beat]`, `song stop`, `song seek <beat>`, `song trigger <action>` | parsed, and `refused` until the composer's preview transport exists (Conductor batch 11) |
 

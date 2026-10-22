@@ -63,6 +63,7 @@ fn render_panel_body(
         PanelId::ASSET_BROWSER => {
             asset_browser::render_asset_browser(editor, ctx, bounds, command_history)
         }
+        PanelId::COMPOSER => log::error!("the composer renders through its host, which holds the song"),
         _ => render_default(ctx, content_x, y),
     }
 }
@@ -408,6 +409,7 @@ fn render_default(ctx: &mut GameContext, content_x: f32, y: f32) {
 mod add_component_popup;
 mod asset_browser;
 pub(crate) mod color_editor;
+pub(crate) mod composer;
 mod drag_ghost;
 mod inspector;
 #[cfg(test)]

@@ -179,7 +179,10 @@ impl SongDocument {
     }
 
     /// Undo the edit on top; `Ok(None)` when there is none, else the undone edit's name.
+    /// Either step ends the gesture on top: a continuing edit after it would otherwise
+    /// merge into the older entry that surfaces, whose own gesture ended long ago.
     pub fn undo(&mut self) -> Result<Option<&'static str>, SongEditError> {
+        self.history.break_merge();
         let Some(entry) = self.history.pop_undo() else {
             return Ok(None);
         };
@@ -199,6 +202,7 @@ impl SongDocument {
 
     /// Redo the last undone edit; `Ok(None)` when there is none, else its name.
     pub fn redo(&mut self) -> Result<Option<&'static str>, SongEditError> {
+        self.history.break_merge();
         let Some(entry) = self.history.pop_redo() else {
             return Ok(None);
         };
@@ -230,6 +234,17 @@ impl SongDocument {
         };
         self.selection.replace(notes);
         Ok(())
+    }
+
+    /// Select exactly these notes by id, the composer's vocabulary; an id the song no longer
+    /// holds is left out, and an empty set clears the selection.
+    pub fn select(&mut self, notes: impl IntoIterator<Item = NoteId>) {
+        let data = &self.data;
+        self.selection.replace(
+            notes
+                .into_iter()
+                .filter(|note| data.note_image(*note).is_some()),
+        );
     }
 
     /// The note with this number, if the song holds it.

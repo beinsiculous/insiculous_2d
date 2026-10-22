@@ -219,7 +219,20 @@ fn the_hosted_song_verbs_parse_with_their_discard_word() {
             discard: true
         }
     );
-    assert_eq!(hosted("song save"), HostedWrite::SongSave { path: None });
+    assert_eq!(
+        hosted("song save"),
+        HostedWrite::SongSave {
+            path: None,
+            overwrite: false
+        }
+    );
+    assert_eq!(
+        hosted("song save music/theme.mid overwrite"),
+        HostedWrite::SongSave {
+            path: Some("music/theme.mid".to_string()),
+            overwrite: true
+        }
+    );
     assert_eq!(
         hosted("song close discard"),
         HostedWrite::SongClose { discard: true }
@@ -249,6 +262,7 @@ fn the_hosted_song_verbs_parse_with_their_discard_word() {
         "song seek -1",
         "song frobnicate",
         "song save a discard",
+        "song save a b",
     ] {
         assert!(matches!(parse_line(bad), Err(ApiError::Parse(_))), "{bad}");
     }

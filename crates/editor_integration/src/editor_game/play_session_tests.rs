@@ -252,6 +252,11 @@ fn test_menu_actions_disallowed_while_playing_match_allowed_while_playing() {
                     label.as_str(),
                     "New Scene"
                         | "Open Scene..."
+                        | "New Song"
+                        | "Open Song..."
+                        | "Save Song"
+                        | "Save Song As..."
+                        | "Close Song"
                         | "Cut"
                         | "Copy"
                         | "Paste"

@@ -135,3 +135,70 @@ pub(super) fn ui_frame(
     body(ui);
     ui.end_frame();
 }
+
+/// A new song holding three eighths on its melody track (track 1): C4 at tick 0, E4 at
+/// 480 and G4 at 960.
+pub(super) fn melody_song() -> editor::SongDocument {
+    let mut song = editor::SongDocument::new_song().expect("a blank song");
+    for (tick, key) in [(0, 60), (480, 64), (960, 67)] {
+        let note = editor::SongEdit::AddNote { track: 1, tick, key, velocity: 100, duration_ticks: 240 };
+        song.apply(note, editor::Gesture::Discrete).expect("the note lands");
+    }
+    song
+}
+
+/// One MIDI track chunk around `events` (each already a delta and an event).
+fn track_chunk(events: &[u8]) -> Vec<u8> {
+    let mut chunk = b"MTrk".to_vec();
+    chunk.extend_from_slice(&(events.len() as u32).to_be_bytes());
+    chunk.extend_from_slice(events);
+    chunk
+}
+
+/// A type-1 file at 480 ticks a quarter: the timing track, then each of `tracks`.
+fn type_one_file(tracks: &[&[u8]]) -> Vec<u8> {
+    const TIMING: &[u8] = &[
+        0x00, 0xFF, 0x51, 0x03, 0x07, 0xA1, 0x20, // 120 BPM
+        0x00, 0xFF, 0x58, 0x04, 0x04, 0x02, 0x18, 0x08, // 4/4
+        0x00, 0xFF, 0x2F, 0x00,
+    ];
+    let mut bytes = b"MThd".to_vec();
+    bytes.extend_from_slice(&[0, 0, 0, 6, 0, 1, 0, tracks.len() as u8 + 1, 0x01, 0xE0]);
+    bytes.extend(track_chunk(TIMING));
+    for track in tracks {
+        bytes.extend(track_chunk(track));
+    }
+    bytes
+}
+
+/// A song whose first track with a channel (`pad`, track 1) is empty and whose second
+/// (`lead`, track 2) holds one C5.
+pub(super) fn second_track_holds_the_notes() -> editor::SongDocument {
+    const PAD: &[u8] = &[0x00, 0xFF, 0x03, 0x03, b'p', b'a', b'd', 0x00, 0xC0, 0x00, 0x00, 0xFF, 0x2F, 0x00];
+    const LEAD: &[u8] = &[
+        0x00, 0xFF, 0x03, 0x04, b'l', b'e', b'a', b'd', 0x00, 0xC1, 0x00,
+        0x00, 0x91, 0x48, 0x5A, // C5 on, channel 2
+        0x83, 0x60, 0x81, 0x48, 0x00, // off a quarter later
+        0x00, 0xFF, 0x2F, 0x00,
+    ];
+    let bytes = type_one_file(&[PAD, LEAD]);
+    editor::SongDocument::from_smf(&bytes, editor::song::default_song_file()).expect("the fixture reads")
+}
+
+/// A song of one track holding timing alone: nowhere a note could land.
+pub(super) fn timing_only_song() -> editor::SongDocument {
+    let bytes = type_one_file(&[]);
+    editor::SongDocument::from_smf(&bytes, editor::song::default_song_file()).expect("the fixture reads")
+}
+
+/// A session whose asset base is `folder`, holding `song`, with the composer shown in a
+/// 1280 × 720 dock and its piano roll holding the keyboard.
+pub(super) fn composer_session(folder: &std::path::Path, song: editor::SongDocument) -> EditorGame<DummyGame> {
+    let mut editor = editor_game();
+    editor.asset_base = folder.to_path_buf();
+    editor.song = Some(song);
+    editor.follow_song();
+    editor.editor.dock_area.set_bounds(ui::Rect::new(0.0, 24.0, 1280.0, 672.0));
+    editor.show_composer(editor::composer::ComposerFocus::PianoRoll);
+    editor
+}

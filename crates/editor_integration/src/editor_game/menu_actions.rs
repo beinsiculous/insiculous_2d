@@ -13,7 +13,7 @@ use super::EditorGame;
 impl<G: Game> EditorGame<G> {
     /// Sync View-menu check indicators with the current editor state.
     fn sync_view_menu_checks(&mut self) {
-        for label in ["Inspector", "Hierarchy", "Asset Browser"] {
+        for label in ["Inspector", "Hierarchy", "Asset Browser", "Composer"] {
             if let Some(id) = editor::panel_id_for_menu_label(label) {
                 let visible = self
                     .editor

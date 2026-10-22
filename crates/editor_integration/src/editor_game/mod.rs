@@ -25,6 +25,8 @@ use crate::constants::EDITOR_PREFS_PATH;
 use crate::panel_renderer;
 
 mod api;
+mod composer_drag;
+mod composer_keys;
 mod game_impl;
 mod gizmo_drag;
 pub mod headless;
@@ -61,6 +63,12 @@ struct EditorGame<G: Game> {
     command_history: editor::CommandHistory,
     /// The composer's song: a second document with its own history and save watermark.
     pub(super) song: Option<editor::SongDocument>,
+    /// Bumped each time the song is created, opened or closed, so the composer's state
+    /// resets instead of pointing into a song that is gone.
+    pub(super) song_generation: u64,
+    /// A live drag in the composer's roll: owned here, not by the panel's render, so every
+    /// way the composer loses focus can drop it.
+    composer_drag: Option<composer_drag::ComposerDrag>,
     /// Live gizmo drag: start transforms/colliders for every selection root,
     /// captured when the drag begins (applied idempotently, committed as one
     /// undo entry on release, restored verbatim on Escape).
@@ -123,6 +131,8 @@ impl<G: Game> EditorGame<G> {
             entity_counter: 0,
             command_history: editor::CommandHistory::new(),
             song: None,
+            song_generation: 0,
+            composer_drag: None,
             gizmo_drag: None,
             clipboard: Vec::new(),
             physics_settings: None,
@@ -269,14 +279,19 @@ impl<G: Game> EditorGame<G> {
 
         for (panel_id, bounds) in content_areas {
             ctx.ui.push_clip_rect(ui::Rect::new(bounds.x, bounds.y, bounds.width, bounds.height));
-            panel_renderer::render_panel_content(
-                &mut self.editor,
-                ctx,
-                panel_id,
-                bounds,
-                &mut self.command_history,
-                pickables,
-            );
+            // The composer renders through its host, which holds the song and the drag.
+            if panel_id == editor::PanelId::COMPOSER {
+                self.render_composer_panel(ctx, bounds);
+            } else {
+                panel_renderer::render_panel_content(
+                    &mut self.editor,
+                    ctx,
+                    panel_id,
+                    bounds,
+                    &mut self.command_history,
+                    pickables,
+                );
+            }
             ctx.ui.pop_clip_rect();
         }
 
@@ -461,6 +476,10 @@ mod tests;
 mod api_tests;
 #[cfg(test)]
 mod camera_follow_tests;
+#[cfg(test)]
+mod composer_drag_tests;
+#[cfg(test)]
+mod composer_keys_tests;
 #[cfg(test)]
 mod gizmo_drag_tests;
 #[cfg(test)]

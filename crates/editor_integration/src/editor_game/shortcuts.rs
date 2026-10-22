@@ -18,6 +18,8 @@ pub(super) enum KeyRoute {
     PlayControl(PlayControlAction),
     ForwardToGame,
     Editor { action: EditorAction, shift: bool },
+    /// A row of the composer's key table, while the composer holds the keyboard.
+    Composer(editor::composer::ComposerKeyAction),
 }
 
 impl<G: Game> EditorGame<G> {
@@ -86,6 +88,12 @@ impl<G: Game> EditorGame<G> {
             return KeyRoute::Consumed;
         }
 
+        // The composer holding the keyboard decides first, Escape included; a play
+        // session clears its focus, so the controls above and the game below keep theirs.
+        if let Some(route) = self.composer_key_route(key, modifiers) {
+            return route;
+        }
+
         // While Playing the raw key belongs to the game — editor actions
         // are deliberately NOT dispatched here.
         if self.editor.is_playing() {
@@ -123,14 +131,15 @@ impl<G: Game> EditorGame<G> {
             KeyRoute::Editor { action, shift } => {
                 self.dispatch_editor_action(action, shift, ctx);
             }
+            KeyRoute::Composer(action) => self.run_composer_key(action),
         }
     }
 
-    /// Whether a gizmo drag is live, telling the user to finish or Escape it
-    /// first: a transform- or existence-mutating action landing mid-drag
-    /// would be silently swallowed by the drag's start→final commit.
-    fn refuse_during_drag(&mut self) -> bool {
-        let drag_live = self.gizmo_drag.is_some();
+    /// Whether a gizmo or a composer drag is live, telling the user to finish or
+    /// Escape it first: a transform- or existence-mutating action — or any history
+    /// operation — landing mid-drag would be swallowed by the drag's one commit.
+    pub(super) fn refuse_during_drag(&mut self) -> bool {
+        let drag_live = self.gizmo_drag.is_some() || self.composer_drag.is_some();
         if drag_live {
             self.editor
                 .status_bar
@@ -182,6 +191,7 @@ impl<G: Game> EditorGame<G> {
     }
 
     fn reset_layout_with_feedback(&mut self) {
+        self.leave_composer();
         self.editor.reset_layout();
         self.editor.status_bar.show_message("Layout reset to defaults");
     }
@@ -282,16 +292,8 @@ impl<G: Game> EditorGame<G> {
                     self.perform_scene_action(ctx, action);
                 }
             }
-            A::NewSong | A::OpenSong | A::CloseSong => {
-                use super::scene_confirm::PendingSceneAction as Pending;
-                let pending = match action {
-                    A::NewSong => Pending::NewSong,
-                    A::OpenSong => Pending::OpenSong(self.song_path_to_open()),
-                    _ => Pending::CloseSong,
-                };
-                if self.request_document_action(pending.clone()) {
-                    self.perform_song_action(pending, ctx.world);
-                }
+            A::NewSong | A::OpenSong | A::SaveSong | A::SaveSongAs | A::CloseSong => {
+                self.dispatch_song_action(action, ctx.world);
             }
             A::Exit => ctx.request_exit(),
             other => log::error!("{other:?} is not a file action"),
@@ -365,10 +367,14 @@ impl<G: Game> EditorGame<G> {
             | A::OpenScene
             | A::NewSong
             | A::OpenSong
+            | A::SaveSong
+            | A::SaveSongAs
             | A::CloseSong
             | A::Exit => {
                 self.dispatch_file_action(action, ctx);
             }
+
+            A::FocusComposer | A::SongPlayStop => self.dispatch_song_action(action, ctx.world),
 
             A::ZoomIn
             | A::ZoomOut
@@ -405,8 +411,12 @@ impl<G: Game> EditorGame<G> {
     }
 
     /// Undo the top entry and name it on the status bar ("Undo: Delete
-    /// Entity") — Edit → Undo and Ctrl+Z share this, so both report it.
+    /// Entity") — Edit → Undo and Ctrl+Z share this, so both report it. While the
+    /// composer holds the keyboard the focused document is the song.
     pub(super) fn undo_with_feedback(&mut self, world: &mut ecs::World) {
+        if self.composer_holds_focus() {
+            return self.undo_song_with_feedback();
+        }
         if let Some(message) = self.play_boundary_refusal("Undo") {
             self.editor.status_bar.show_message(message);
             return;
@@ -433,6 +443,9 @@ impl<G: Game> EditorGame<G> {
 
     /// Redo counterpart of [`Self::undo_with_feedback`].
     pub(super) fn redo_with_feedback(&mut self, world: &mut ecs::World) {
+        if self.composer_holds_focus() {
+            return self.redo_song_with_feedback();
+        }
         if let Some(message) = self.play_boundary_refusal("Redo") {
             self.editor.status_bar.show_message(message);
             return;
@@ -446,10 +459,13 @@ impl<G: Game> EditorGame<G> {
     }
 
     /// Escape: cancel the most specific live thing, exactly one per press —
-    /// a gizmo drag, else a marquee, else the selection. The toolbar's open
+    /// a composer drag, else a gizmo drag, else a marquee, else the selection. The toolbar's open
     /// overflow menu is closed before this, in [`Self::route_editor_key`],
     /// because it must close while Playing too and Playing never reaches here.
     pub(super) fn cancel_cascade(&mut self, world: &mut ecs::World) {
+        if self.drop_composer_drag() {
+            return;
+        }
         if self.editor.inspector_state.close_color_editor() {
             return;
         }

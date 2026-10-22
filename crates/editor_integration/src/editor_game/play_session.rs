@@ -127,6 +127,7 @@ impl<G: Game> EditorGame<G> {
     /// here: a popup's sliders would write into the live world, and a
     /// rename field keeps focus and eats the game's keys.
     fn enter_playing(&mut self) {
+        self.leave_composer();
         self.editor.set_play_state(EditorPlayState::Playing);
         self.editor.close_add_component_popup();
         self.editor.script_picker_open = false;

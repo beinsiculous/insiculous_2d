@@ -32,6 +32,8 @@ pub(super) enum PendingSceneAction {
     CloseSong,
     /// Play over a dirty song: the game must not start against a song it lacks.
     StartPlay,
+    /// A Save As onto another song's file, waiting for Overwrite or Cancel.
+    OverwriteSong(PathBuf),
 }
 
 /// The document whose edits an action would lose.
@@ -51,6 +53,7 @@ impl PendingSceneAction {
             PendingSceneAction::OpenSong(_) => "opening another song",
             PendingSceneAction::CloseSong => "closing it",
             PendingSceneAction::StartPlay => "Play",
+            PendingSceneAction::OverwriteSong(_) => "replacing another song",
         }
     }
 
@@ -60,7 +63,8 @@ impl PendingSceneAction {
             PendingSceneAction::NewSong
             | PendingSceneAction::OpenSong(_)
             | PendingSceneAction::CloseSong
-            | PendingSceneAction::StartPlay => Document::Song,
+            | PendingSceneAction::StartPlay
+            | PendingSceneAction::OverwriteSong(_) => Document::Song,
         }
     }
 }
@@ -118,6 +122,7 @@ impl<G: Game> EditorGame<G> {
         ctx.ui.clear_text_focus();
         let dialog = match (&action, action.document()) {
             (PendingSceneAction::StartPlay, _) => ConfirmDialog::play_with_unsaved_song(self.song_saved_exists()),
+            (PendingSceneAction::OverwriteSong(path), _) => ConfirmDialog::overwrite_song(path),
             (_, Document::Song) => ConfirmDialog::unsaved_song(action.phrase()),
             (_, Document::Scene) => ConfirmDialog::unsaved_changes(action.phrase()),
         };
@@ -162,14 +167,22 @@ impl<G: Game> EditorGame<G> {
     /// Route the choice made on a song's prompt: Save saves the song (a failed
     /// save keeps the dialog, as the scene's does) and proceeds; Discard — or,
     /// on Play, "Play saved" — proceeds keeping nothing but the saved file;
-    /// Cancel leaves everything as it was. World-only, so the headless suite
-    /// drives it.
+    /// Cancel leaves everything as it was. The overwrite prompt's Overwrite is
+    /// the save it parked, completed in one click past the check that parked
+    /// it. World-only, so the headless suite drives it.
     pub(super) fn resolve_song_choice(
         &mut self,
         action: PendingSceneAction,
         choice: ConfirmChoice,
         world: &mut ecs::World,
     ) {
+        if let (PendingSceneAction::OverwriteSong(path), ConfirmChoice::Confirm) = (&action, choice) {
+            match self.save_song_to(path.clone()) {
+                Ok(_) => self.scene_confirm.pending_action = None,
+                Err(error) => self.editor.status_bar.show_error(format!("Song save failed: {error}")),
+            }
+            return;
+        }
         match choice {
             ConfirmChoice::Confirm => match self.save_song(None) {
                 Ok(_) => {
@@ -182,9 +195,11 @@ impl<G: Game> EditorGame<G> {
                 }
             },
             ConfirmChoice::Alt => {
-                // A never-saved song's Play prompt draws no alternative; this
-                // guards a choice arriving some other way.
-                if action == PendingSceneAction::StartPlay && !self.song_saved_exists() {
+                // The overwrite prompt and a never-saved song's Play prompt draw no
+                // alternative; this guards a choice arriving some other way.
+                let no_such_arm = matches!(action, PendingSceneAction::OverwriteSong(_))
+                    || (action == PendingSceneAction::StartPlay && !self.song_saved_exists());
+                if no_such_arm {
                     return;
                 }
                 self.scene_confirm.pending_action = None;
@@ -213,6 +228,10 @@ impl<G: Game> EditorGame<G> {
             }
             PendingSceneAction::CloseSong => self.close_song(),
             PendingSceneAction::StartPlay => self.begin_play(world),
+            PendingSceneAction::OverwriteSong(path) => {
+                let result = self.save_song_to(path).map(drop);
+                self.report_song_failure("Song save", result);
+            }
             PendingSceneAction::NewScene | PendingSceneAction::OpenScene(_) => {
                 log::error!("{action:?} is a scene action, routed by the scene's Save branch");
             }

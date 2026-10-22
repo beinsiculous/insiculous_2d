@@ -14,6 +14,7 @@ use editor::command_api::{song_write_refusal, ApiError, HostedWrite};
 use editor::SongDocument;
 use engine_core::Game;
 
+use super::scene_confirm::PendingSceneAction;
 use super::EditorGame;
 
 impl<G: Game> EditorGame<G> {
@@ -33,23 +34,53 @@ impl<G: Game> EditorGame<G> {
     }
 
     /// Save the song to `path`, else to its own path, else — never saved — to
-    /// [`Self::default_song_path`]. Returns where it saved.
-    pub(super) fn save_song(&mut self, path: Option<PathBuf>) -> Result<PathBuf, String> {
+    /// [`Self::default_song_path`]. Returns where it saved, or `None` when `path` is another
+    /// song's file: the save is parked behind the overwrite prompt instead. With no `path`
+    /// it never parks — the song's own file and the default's free name are no other song's.
+    pub(super) fn save_song(&mut self, path: Option<PathBuf>) -> Result<Option<PathBuf>, String> {
         if let Some(refusal) = self.song_change_refusal() {
             return Err(refusal.to_string());
         }
-        let default_path = self.default_song_path();
+        let own_path = self
+            .song
+            .as_ref()
+            .ok_or("no song is open")?
+            .path()
+            .map(Path::to_path_buf);
+        if let Some(target) = path.as_ref().filter(|target| self.is_another_songs_file(target)) {
+            self.scene_confirm.pending_action = Some(PendingSceneAction::OverwriteSong(target.clone()));
+            return Ok(None);
+        }
+        let target = path
+            .or(own_path)
+            .unwrap_or_else(|| self.default_song_path());
+        self.save_song_to(target).map(Some)
+    }
+
+    /// Save the song to exactly `target`, whatever is there: the overwrite prompt's
+    /// Overwrite and the API's `overwrite` come here past the check `save_song` makes.
+    pub(super) fn save_song_to(&mut self, target: PathBuf) -> Result<PathBuf, String> {
+        if let Some(refusal) = self.song_change_refusal() {
+            return Err(refusal.to_string());
+        }
         let asset_base = self.asset_base.clone();
         let song = self.song.as_mut().ok_or("no song is open")?;
-        let target = path
-            .or_else(|| song.path().map(Path::to_path_buf))
-            .unwrap_or(default_path);
         song.save(&target, &asset_base)
             .map_err(|error| error.to_string())?;
         self.sync_dirty_mirror();
+        self.editor.composer.rescan_songs(&self.asset_base);
         self.editor.status_bar.show_message("Song saved");
         log::info!("Song saved to: {}", target.display());
         Ok(target)
+    }
+
+    /// Whether `target`'s `.mid` or `.mid.ron` exists and is not the open song's own file:
+    /// another song, which a save there would replace. The two paths are compared by
+    /// their components, so a typed `music/./theme.mid` is still the song's own file.
+    pub(super) fn is_another_songs_file(&self, target: &Path) -> bool {
+        let own = self.song.as_ref().and_then(SongDocument::path);
+        let own_file = own.is_some_and(|own| own.components().eq(target.components()));
+        !own_file && song_files_exist(target)
     }
 
     /// Replace the song with a new, never-saved one.
@@ -57,6 +88,9 @@ impl<G: Game> EditorGame<G> {
         match SongDocument::new_song() {
             Ok(song) => {
                 self.song = Some(song);
+                self.song_generation += 1;
+                self.follow_song();
+                self.editor.composer.rescan_songs(&self.asset_base);
                 self.editor.status_bar.show_message("New song");
             }
             Err(error) => self
@@ -73,6 +107,9 @@ impl<G: Game> EditorGame<G> {
         let opened =
             SongDocument::open(path, &self.asset_base).map_err(|error| error.to_string())?;
         self.song = Some(opened.document);
+        self.song_generation += 1;
+        self.follow_song();
+        self.editor.composer.rescan_songs(&self.asset_base);
         self.sync_dirty_mirror();
         match opened.notes.first() {
             Some(note) => self.editor.status_bar.show_error(note.clone()),
@@ -83,6 +120,8 @@ impl<G: Game> EditorGame<G> {
 
     pub(super) fn close_song(&mut self) {
         self.song = None;
+        self.song_generation += 1;
+        self.follow_song();
         self.sync_dirty_mirror();
         self.editor.status_bar.show_message("Song closed");
     }
@@ -142,13 +181,26 @@ impl<G: Game> EditorGame<G> {
                     "notes": notes,
                 }))
             }
-            HostedWrite::SongSave { path } => {
+            HostedWrite::SongSave { path, overwrite } => {
                 let path = path
                     .as_ref()
                     .map(|path| self.resolve_asset_path(Path::new(path)));
-                let saved = self
-                    .save_song(path)
-                    .map_err(|error| ApiError::Refused(format!("song save failed: {error}")))?;
+                if let Some(target) = path.as_ref().filter(|target| self.is_another_songs_file(target)) {
+                    if !overwrite {
+                        return Err(ApiError::Refused(format!(
+                            "{} is another song — end the line with `overwrite` \
+                             (`song save <path> overwrite`) to replace it",
+                            target.display()
+                        )));
+                    }
+                }
+                let saved = match path {
+                    Some(target) => self.save_song_to(target),
+                    None => self
+                        .save_song(None)
+                        .and_then(|saved| saved.ok_or_else(|| "the save was parked".to_string())),
+                }
+                .map_err(|error| ApiError::Refused(format!("song save failed: {error}")))?;
                 Ok(serde_json::json!({ "saved": saved.display().to_string() }))
             }
             HostedWrite::SongClose { discard } => {
@@ -163,6 +215,13 @@ impl<G: Game> EditorGame<G> {
             ))),
         }
     }
+}
+
+/// Whether a song's `.mid` or its `.mid.ron` exists at `target`.
+pub(super) fn song_files_exist(target: &Path) -> bool {
+    let mut sidecar = target.as_os_str().to_owned();
+    sidecar.push(".ron");
+    common::vfs::file_size(target).is_ok() || common::vfs::file_size(Path::new(&sidecar)).is_ok()
 }
 
 /// The preview verb a hosted write is, if it is one.

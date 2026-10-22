@@ -144,8 +144,9 @@ pub enum HostedWrite {
     /// Open a song by its `.mid`; refused over a dirty song unless `discard`.
     SongOpen { path: String, discard: bool },
     /// Save the song (to its path, the given one, or the default for a
-    /// never-saved song).
-    SongSave { path: Option<String> },
+    /// never-saved song). A given path holding another song is refused unless
+    /// `overwrite`.
+    SongSave { path: Option<String>, overwrite: bool },
     /// Close the song; refused when it is dirty unless `discard`.
     SongClose { discard: bool },
     /// The song's preview transport and a simulated trigger: parsed so the

@@ -41,6 +41,7 @@ pub mod color_editor_popup;
 pub mod color_hex;
 mod drag_drop;
 pub mod commands;
+pub mod composer;
 mod component_editors;
 mod composite_rows;
 mod context;

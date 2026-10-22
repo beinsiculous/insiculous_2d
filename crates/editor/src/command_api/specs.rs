@@ -191,9 +191,9 @@ pub fn command_docs() -> &'static [CommandDoc] {
         },
         CommandDoc {
             id: "song",
-            usage: "song new [discard] | song open <path> [discard] | song save [path] | song close [discard]",
+            usage: "song new [discard] | song open <path> [discard] | song save [path [overwrite]] | song close [discard]",
             example: "song open music/theme.mid",
-            summary: "Replace, open, save or close the song. New, open and close refuse a dirty song unless the line ends in `discard`; save journals the .mid and .mid.ron and writes the samples' LICENSE.",
+            summary: "Replace, open, save or close the song. New, open and close refuse a dirty song unless the line ends in `discard`; save to a path holding another song is refused unless the line ends in `overwrite`; save journals the .mid and .mid.ron and writes the samples' LICENSE.",
             writes: true,
             undoable: false,
         },

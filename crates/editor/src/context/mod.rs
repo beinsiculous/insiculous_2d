@@ -104,6 +104,8 @@ pub struct EditorContext {
     /// Inspector view state: collapsed sections, open Advanced
     /// disclosures, and the colour editor's target.
     pub inspector_state: crate::InspectorState,
+    /// The composer panel's view state: its focus, track, scrolls and songs list.
+    pub composer: crate::composer::ComposerState,
 }
 
 impl Default for EditorContext {
@@ -138,6 +140,14 @@ fn default_dock_area() -> DockArea {
             .with_min_size(100.0)
             .with_hint("This project's files; drag one into the scene to use it."),
     );
+    // After Assets, so the first layout pass stacks it above Assets on the bottom edge;
+    // hidden until a song or View → Composer asks for it.
+    let mut composer = DockPanel::new(PanelId::COMPOSER, "Composer", DockPosition::Bottom)
+        .with_size(260.0)
+        .with_min_size(200.0)
+        .with_hint("The song: its piano roll, its notes as text, and its parts and instruments.");
+    composer.visible = false;
+    dock_area.add_panel(composer);
     dock_area
 }
 
@@ -181,6 +191,7 @@ impl EditorContext {
             script_catalog: Vec::new(),
             script_picker_open: false,
             inspector_state: crate::InspectorState::default(),
+            composer: crate::composer::ComposerState::default(),
         };
         // Run the tool→gizmo mapping once so startup state is consistent
         // whatever the defaults are (today both are Move/Translate).

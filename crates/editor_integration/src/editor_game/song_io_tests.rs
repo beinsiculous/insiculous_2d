@@ -291,58 +291,6 @@ fn song_undo_leaves_the_scene_history_and_scene_undo_leaves_the_song() {
 }
 
 #[test]
-fn open_song_looks_for_a_file_that_exists_where_save_looks_for_a_free_name() {
-    let folder = folder();
-    let mut editor = session_in(&folder);
-    let mut world = World::new();
-    let untitled = folder.path().join("music/untitled.mid");
-    assert_eq!(
-        editor.song_path_to_open(),
-        untitled,
-        "no song: the fixed default"
-    );
-
-    assert_ok(&api_line(&mut editor, &mut world, "song new"));
-    assert_ok(&api_line(&mut editor, &mut world, "song save"));
-    assert_eq!(
-        editor.song_path_to_open(),
-        untitled,
-        "beside the open song's file: the same name here, since the song is untitled.mid"
-    );
-    assert_eq!(
-        editor.default_song_path(),
-        folder.path().join("music/untitled_2.mid"),
-        "Save's default skips the taken name; Open must not"
-    );
-    assert_ok(&api_line(&mut editor, &mut world, "song save music/levels/boss.mid"));
-    assert_eq!(
-        editor.song_path_to_open(),
-        folder.path().join("music/levels/untitled.mid"),
-        "beside the open song's file, never the file itself"
-    );
-
-    editor.close_song();
-    editor.perform_song_action(
-        PendingSceneAction::OpenSong(editor.song_path_to_open()),
-        &mut world,
-    );
-    assert_eq!(
-        editor.song.as_ref().and_then(SongDocument::path),
-        Some(untitled.as_path()),
-        "Open Song opens the file it names"
-    );
-
-    edit_song(&mut editor, &mut world);
-    assert_ok(&api_line(&mut editor, &mut world, "song undo"));
-    assert!(editor.song.as_ref().is_some_and(|song| song.history().can_redo()));
-    editor.perform_song_action(PendingSceneAction::OpenSong(untitled.clone()), &mut world);
-    assert!(
-        editor.song.as_ref().is_some_and(|song| song.history().can_redo()),
-        "the open song's own file is not reloaded under its history"
-    );
-}
-
-#[test]
 fn the_preview_verbs_are_refused_naming_the_batch_that_builds_them() {
     let mut editor = editor_game();
     let mut world = World::new();

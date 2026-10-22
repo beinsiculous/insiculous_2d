@@ -1,6 +1,7 @@
 //! The song's own save watermark, copying the scene history's contract: undoing back to
 //! the saved edit reads clean; a merge into the saved edit reassigns its id so no
-//! position reads clean again; a merge clears the redo stack; `break_merge` ends a
+//! position reads clean again; an undo or a redo seals the gesture on top, so the next
+//! continuing edit never merges into the older entry that surfaces; `break_merge` ends a
 //! gesture. And one thing the scene's watermark never says: a song never saved is dirty.
 
 use super::test_support::{add_note, melody, note_numbers, AssetFolder};
@@ -88,8 +89,11 @@ fn merging_into_the_saved_edit_reassigns_its_id_so_no_position_reads_clean() {
     assert_eq!(document.history().undo_count(), 4, "one entry: the merge");
 }
 
+/// An undo surfaces an older entry whose gesture ended long ago; a continuing edit after
+/// it — a field still focused, a key still held — must not merge into that entry, or one
+/// undo would take back both and the undone edit's redo would vanish under a merge.
 #[test]
-fn a_merge_clears_the_redo_stack() {
+fn an_undo_seals_the_gesture_on_top_so_the_next_continuing_edit_is_its_own_entry() {
     let mut document = melody();
     let [first, second, _] = note_numbers(&document)[..] else {
         panic!("three notes");
@@ -106,19 +110,17 @@ fn a_merge_clears_the_redo_stack() {
 
     document
         .apply(move_notes(&[first], 5), Gesture::Continuing)
-        .expect("merges into the first move");
-    assert!(!document.history().can_redo(), "a merge is a new mutation");
+        .expect("moves the first again");
+    assert!(!document.history().can_redo(), "a new entry clears the redo stack");
     let tick = |document: &SongDocument, number| {
         let id = document.note_id(number).expect("the note");
         document.data().note_image(id).map(|image| image.tick)
     };
-    assert_eq!(tick(&document, first), Some(15), "the deltas summed");
-    document.undo().expect("undoes the merged move");
-    assert_eq!(
-        tick(&document, first),
-        Some(0),
-        "one undo takes back the whole gesture"
-    );
+    assert_eq!(tick(&document, first), Some(15));
+    document.undo().expect("undoes the move after the undo");
+    assert_eq!(tick(&document, first), Some(10), "only the edit after the undo, not the older gesture");
+    document.undo().expect("undoes the older gesture");
+    assert_eq!(tick(&document, first), Some(0));
 }
 
 #[test]

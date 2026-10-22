@@ -116,10 +116,41 @@ fn test_roles_that_must_read_apart_do() {
         ("collider_sensor/selected", theme.collider_sensor, theme.collider_selected),
         ("button/hovered", ui_theme.button.background, ui_theme.button.background_hovered),
         ("button disabled/pressed", ui_theme.button.background_disabled, ui_theme.button.background_pressed),
+        ("note_fill/note_selected_border", theme.note_fill, theme.note_selected_border),
+        ("note_fill/selection_fill", theme.note_fill, theme.selection_fill),
+        ("note_selected_border/warn_yellow", theme.note_selected_border, theme.warn_yellow),
+        ("key_black/surface_0", theme.key_black, theme.surface_0),
+        ("playhead/selection_outline", theme.playhead, theme.selection_outline),
+        ("playhead/error_red", theme.playhead, theme.error_red),
+        ("playhead/note_fill", theme.playhead, theme.note_fill),
     ];
     for (name, a, b) in pairs {
         assert_ne!(a, b, "{name} must be visually distinct");
     }
+}
+
+/// The piano roll's marks hold the non-text contrast bar (3:1) over everything they sit
+/// on: a note over the well and over a black-key row, a selected note's border over the
+/// note and the well, the playhead over the well; the black-key rows read as a step off
+/// the well without competing with a note.
+#[test]
+fn test_the_piano_rolls_marks_read_over_the_roll() {
+    let theme = EditorTheme::default();
+    let at_least_three = [
+        ("note_fill/surface_0", theme.note_fill, theme.surface_0),
+        ("note_fill/key_black", theme.note_fill, theme.key_black),
+        ("note_selected_border/note_fill", theme.note_selected_border, theme.note_fill),
+        ("note_selected_border/surface_0", theme.note_selected_border, theme.surface_0),
+        ("playhead/surface_0", theme.playhead, theme.surface_0),
+        ("playhead/key_black", theme.playhead, theme.key_black),
+    ];
+    for (name, mark, ground) in at_least_three {
+        let ratio = mark.contrast_ratio(ground);
+        assert!(ratio >= 3.0, "{name}: {ratio:.2} < 3.0");
+    }
+    let rows = theme.key_black.contrast_ratio(theme.surface_0);
+    assert!(rows >= 1.2, "black-key rows vs the well: {rows:.2}");
+    assert!(theme.key_black.luminance() > theme.surface_0.luminance());
 }
 
 /// Helper to composite color `c` over `base` with `base + (c - base) * c.a`.

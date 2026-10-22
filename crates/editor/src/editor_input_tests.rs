@@ -38,6 +38,7 @@ fn test_every_default_chord_resolves_to_its_action() {
         (KeyCode::F5, false, false, A::PlayResume),
         (KeyCode::KeyP, true, false, A::TogglePlayPause),
         (KeyCode::KeyP, true, true, A::StopPlay),
+        (KeyCode::KeyM, true, true, A::FocusComposer),
         // Any-mods bindings fire whatever is held.
         (KeyCode::Escape, false, false, A::Cancel),
         (KeyCode::Escape, true, true, A::Cancel),
@@ -128,4 +129,26 @@ fn test_modifiers_read_detects_left_and_right_ctrl_and_shift() {
     input.keyboard_mut().handle_key_release(KeyCode::ShiftLeft);
     input.keyboard_mut().handle_key_press(KeyCode::ShiftRight);
     assert_eq!(Modifiers::read(&input), Modifiers { ctrl: false, shift: true });
+}
+
+/// The song's actions are refused for the whole play session, as the song is: the song
+/// cannot change under a running game, and focusing the composer would take the arrows
+/// from it.
+#[test]
+fn test_every_song_action_is_denied_while_playing() {
+    for action in [
+        A::NewSong,
+        A::OpenSong,
+        A::SaveSong,
+        A::SaveSongAs,
+        A::CloseSong,
+        A::FocusComposer,
+        A::SongPlayStop,
+    ] {
+        assert!(!action.allowed_while_playing(), "{action:?}");
+    }
+    assert!(
+        A::TogglePanel(crate::PanelId::COMPOSER).allowed_while_playing(),
+        "showing the composer is a view change"
+    );
 }

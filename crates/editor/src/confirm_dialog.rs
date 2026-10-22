@@ -85,6 +85,23 @@ impl ConfirmDialog {
         }
     }
 
+    /// The prompt before a Save As replaces another song's file: Overwrite / Cancel, with
+    /// no alternative — there is nothing else to do with that path. The message names the
+    /// sample folder: the save prunes it to this song's samples, as it would its own.
+    pub fn overwrite_song(path: &std::path::Path) -> Self {
+        let name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path.display().to_string());
+        Self {
+            title: "Replace song".to_string(),
+            message: format!("{name} is another song. Replace its .mid, .mid.ron and sample folder with this one's?"),
+            confirm_label: "Overwrite".to_string(),
+            alt_label: None,
+            cancel_label: "Cancel".to_string(),
+        }
+    }
+
     /// The Stop prompt for edits recorded while the session was paused.
     pub fn keep_paused_edits(count: usize) -> Self {
         Self {
@@ -194,6 +211,18 @@ mod tests {
         assert_eq!(click_at(confirm.center()), Some(ConfirmChoice::Confirm));
         assert_eq!(click_at(alt.center()), Some(ConfirmChoice::Alt));
         assert_eq!(click_at(cancel.center()), Some(ConfirmChoice::Cancel));
+    }
+
+    /// The overwrite prompt offers Overwrite and Cancel and no third button: there is
+    /// nothing else to do with another song's path. It names the sample folder, which the
+    /// save prunes to this song's samples — the other song's audio goes with its files.
+    #[test]
+    fn test_the_overwrite_prompt_names_the_file_and_its_sample_folder_and_offers_no_alternative() {
+        let dialog = ConfirmDialog::overwrite_song(std::path::Path::new("/project/music/theme.mid"));
+        assert_eq!(dialog.confirm_label, "Overwrite");
+        assert_eq!(dialog.alt_label, None);
+        assert!(dialog.message.contains("theme.mid"), "{}", dialog.message);
+        assert!(dialog.message.contains("sample folder"), "{}", dialog.message);
     }
 
     /// A never-saved song's Play prompt has no "Play saved": the alternative's place is

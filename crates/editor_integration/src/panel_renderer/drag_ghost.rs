@@ -1,4 +1,4 @@
-//! The drag ghost: the thumbnail, or the script's or sound's name, that follows the cursor
+//! The drag ghost: the thumbnail, or the file name where there is none, that follows the cursor
 //! while an asset drag is in flight, on the DragGhost band above every
 //! other overlay. The drag itself is armed in the asset browser and taken
 //! by the viewport and the hierarchy; this file only draws it.
@@ -20,8 +20,14 @@ pub(crate) fn render_drag_ghost(editor: &mut EditorContext, ctx: &mut GameContex
             ctx.ui.image(ghost, handle, ui::Color::new(1.0, 1.0, 1.0, 0.8));
             ctx.ui.end_overlay();
         }
-        // A script and a sound have no thumbnail: the ghost is their file name.
-        Some(DragPayload::Script { path } | DragPayload::Sound { path }) => {
+        // A script, a sound, a song and a SoundFont have no thumbnail: the ghost is the
+        // file name.
+        Some(
+            DragPayload::Script { path }
+            | DragPayload::Sound { path }
+            | DragPayload::Song { path }
+            | DragPayload::SoundFont { path },
+        ) => {
             let file_name = std::path::Path::new(path)
                 .file_name()
                 .and_then(|name| name.to_str())

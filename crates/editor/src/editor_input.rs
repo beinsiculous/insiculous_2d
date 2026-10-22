@@ -98,10 +98,18 @@ pub enum EditorAction {
     // ---- Song file ----
     /// Replace the song with a new one (prompting over a dirty song)
     NewSong,
-    /// Open an `untitled.mid` beside the song's file (else `music/untitled.mid`), prompting over a dirty song
+    /// Show the composer with its Songs list focused, where a click opens a song
     OpenSong,
+    /// Save the song to its own file (a never-saved song to the default)
+    SaveSong,
+    /// Show the composer with its path field focused, whose Enter saves there
+    SaveSongAs,
     /// Close the song (prompting over a dirty song)
     CloseSong,
+    /// Show the composer and give its piano roll the keyboard
+    FocusComposer,
+    /// Start or stop the song's preview
+    SongPlayStop,
 
     // ---- View / play ----
     /// Toggle grid display
@@ -157,7 +165,11 @@ impl EditorAction {
                 | Self::OpenScene
                 | Self::NewSong
                 | Self::OpenSong
+                | Self::SaveSong
+                | Self::SaveSongAs
                 | Self::CloseSong
+                | Self::FocusComposer
+                | Self::SongPlayStop
         )
     }
 }
@@ -333,6 +345,7 @@ impl EditorInputMapping {
         self.bind(SaveAs, B::ctrl_shift(KeyCode::KeyS));
         self.bind(NewScene, B::ctrl(KeyCode::KeyN));
         self.bind(OpenScene, B::ctrl(KeyCode::KeyO));
+        self.bind(FocusComposer, B::ctrl_shift(KeyCode::KeyM));
 
         // View / play
         self.bind(ToggleGrid, B::key(KeyCode::KeyG));

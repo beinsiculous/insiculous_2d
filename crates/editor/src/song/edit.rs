@@ -238,6 +238,16 @@ impl SongEdit {
                     name: next_name, ..
                 },
             ) if name == next_name && instrument.name == *name => Some(next.clone()),
+            // A composer nudge is a batch per key press (a move, then a pitch per starting
+            // key): a held key's batches merge member by member, or not at all.
+            (E::Batch(members), E::Batch(next_members)) if members.len() == next_members.len() => {
+                members
+                    .iter()
+                    .zip(next_members)
+                    .map(|(member, next_member)| member.try_merge(next_member))
+                    .collect::<Option<Vec<_>>>()
+                    .map(E::Batch)
+            }
             _ => None,
         }
     }

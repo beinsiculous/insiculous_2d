@@ -11,7 +11,8 @@ pub(super) struct TileInteraction {
     pub(super) clicked: bool,
 }
 
-/// Press arms a drag (images, .rhai scripts and sounds); a plain click selects the tile.
+/// Press arms a drag (images, .rhai scripts, sounds, songs and SoundFonts); a plain click
+/// selects the tile.
 pub(super) fn tile_interaction(
     ui: &mut ui::UIContext,
     drag_drop: &mut DragDropState,
@@ -55,6 +56,16 @@ pub(super) fn tile_interaction(
         && ui.mouse_just_pressed()
     {
         drag_drop.arm(DragPayload::Sound { path: entry.relative_path.clone() }, mouse_pos);
+    } else if matches!(entry.kind, AssetKind::Song | AssetKind::SoundFont)
+        && result.state == ui::WidgetState::Active
+        && ui.mouse_just_pressed()
+    {
+        let path = entry.relative_path.clone();
+        let payload = match entry.kind {
+            AssetKind::Song => DragPayload::Song { path },
+            _ => DragPayload::SoundFont { path },
+        };
+        drag_drop.arm(payload, mouse_pos);
     }
 
     TileInteraction {

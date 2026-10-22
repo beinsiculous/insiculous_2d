@@ -396,7 +396,10 @@ impl HierarchyPanel {
                 }
                 // A texture or a sound dropped on a row assigns nothing: each has its
                 // inspector slot.
-                DragPayload::Texture { .. } | DragPayload::Sound { .. } => {}
+                DragPayload::Texture { .. }
+                | DragPayload::Sound { .. }
+                | DragPayload::Song { .. }
+                | DragPayload::SoundFont { .. } => {}
             }
         }
 

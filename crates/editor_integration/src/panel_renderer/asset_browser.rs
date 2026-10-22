@@ -73,6 +73,8 @@ pub(crate) fn refresh_assets(
 ) {
     let entries = scan_assets(Path::new(assets.base_path()));
     editor.asset_browser.apply_scan(entries);
+    // The composer's Songs list is a view of the same folders, so Rescan refreshes it too.
+    editor.composer.songs_scanned = false;
     editor.script_catalog = super::script_catalog::build_script_catalog(
         &editor.asset_browser.entries,
         registry,
@@ -289,7 +291,7 @@ fn render_tile(
                 theme.accent_cyan,
             );
         }
-        (AssetKind::Script | AssetKind::Sound, _) => {
+        (AssetKind::Script | AssetKind::Sound | AssetKind::Song | AssetKind::SoundFont, _) => {
             let extension = std::path::Path::new(&entry.name)
                 .extension()
                 .and_then(|ext| ext.to_str())
@@ -466,32 +468,36 @@ mod tests {
     }
 
     #[test]
-    fn test_a_press_on_a_sound_tile_arms_a_drag_of_its_path() {
+    fn test_a_press_on_a_sound_a_song_or_a_soundfont_tile_arms_a_drag_of_its_path() {
         let theme = EditorTheme::default();
-        let entry = AssetEntry {
-            name: "jump.wav".to_string(),
-            relative_path: "sounds/jump.wav".to_string(),
-            kind: AssetKind::Sound,
-            texture_handle: None,
-            load_failed: false,
-        };
-        let slot = common::Rect::new(40.0, 40.0, TILE_SIZE, TILE_SIZE + TILE_LABEL_HEIGHT);
-        let pointer = Vec2::new(slot.x + TILE_SIZE * 0.5, slot.y + TILE_SIZE * 0.5);
-        let mut ui = ui::UIContext::new();
-        let mut input = input::InputHandler::new();
-        let mut drag_drop = DragDropState::new();
-        input.mouse_mut().update_position(pointer.x, pointer.y);
-        input.mouse_mut().handle_button_press(input::prelude::MouseButton::Left);
+        let cases = [
+            (AssetKind::Sound, "sounds/jump.wav", DragPayload::Sound { path: "sounds/jump.wav".to_string() }),
+            (AssetKind::Song, "music/theme.mid", DragPayload::Song { path: "music/theme.mid".to_string() }),
+            (AssetKind::SoundFont, "soundfonts/cast.sf2", DragPayload::SoundFont { path: "soundfonts/cast.sf2".to_string() }),
+        ];
+        for (kind, path, payload) in cases {
+            let entry = AssetEntry {
+                name: path.rsplit('/').next().unwrap_or(path).to_string(),
+                relative_path: path.to_string(),
+                kind,
+                texture_handle: None,
+                load_failed: false,
+            };
+            let slot = common::Rect::new(40.0, 40.0, TILE_SIZE, TILE_SIZE + TILE_LABEL_HEIGHT);
+            let pointer = Vec2::new(slot.x + TILE_SIZE * 0.5, slot.y + TILE_SIZE * 0.5);
+            let mut ui = ui::UIContext::new();
+            let mut input = input::InputHandler::new();
+            let mut drag_drop = DragDropState::new();
+            input.mouse_mut().update_position(pointer.x, pointer.y);
+            input.mouse_mut().handle_button_press(input::prelude::MouseButton::Left);
 
-        ui.begin_frame_dt(&input, Vec2::new(800.0, 600.0), 0.016);
-        tile_interaction(&mut ui, &mut drag_drop, &theme, &entry, 0, slot, pointer);
-        ui.end_frame();
-        drag_drop.begin_frame(pointer + Vec2::new(20.0, 0.0), true, false);
+            ui.begin_frame_dt(&input, Vec2::new(800.0, 600.0), 0.016);
+            tile_interaction(&mut ui, &mut drag_drop, &theme, &entry, 0, slot, pointer);
+            ui.end_frame();
+            drag_drop.begin_frame(pointer + Vec2::new(20.0, 0.0), true, false);
 
-        assert_eq!(
-            drag_drop.dragging_payload(),
-            Some(&DragPayload::Sound { path: "sounds/jump.wav".to_string() })
-        );
+            assert_eq!(drag_drop.dragging_payload(), Some(&payload), "{kind:?}");
+        }
     }
 
     #[test]
