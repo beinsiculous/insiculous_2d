@@ -1395,7 +1395,32 @@ the cache kept fresh by it.
 **Leaves out:** any pixel (batch 10), audio (batch 11), multi-song tabs, scripting access,
 the web's deletion of a removed `.new` (batch 11), a native file dialog.
 
-## Batch 10 — K8b: the piano roll, the note list, the sidebar (#141)
+## Batch 10 — K8b: the piano roll, the note list, the sidebar (#141) — DONE 2026-10-22 (9e045cc)
+
+**DONE 2026-10-22** (9e045cc). Landed as planned by the Opus executor (`report-10.md`,
++4961/−174 before fixes), with three placements the executor moved and declared:
+`composer_drag.rs` in `editor_game/` (its owner is `EditorGame`), the panel rendered by a
+host branch in `render_panels` (the song is the host's), the key-release seal in
+`game_impl.rs`; `sidebar/walk.rs` and `sidebar/blocks.rs` split out to keep the sidebar
+under 400; an "Add a part for the shown track" button the section had not listed (a new song
+could gain no binding without it); and one decision to look at — a Ctrl chord the composer's
+table lacks (Ctrl+S, Ctrl+C/V/X/D) goes on to the editor and acts on the scene. Three code
+rounds (`rebuttal-21.md`, `-22.md`, `-23.md`): the planner's fixes brought Save Song As…'s
+field into view before focusing it (a focused undrawn field owned the keyboard), made
+scrubbed number fields land (the ui's scrub release reports the input value), walked the
+Songs list with no song open, named the sample folder in the overwrite prompt, and compared
+the song's own path by components; round 22 then found the field gesture's seal leaking
+(keyboard nudges never raise the ui's commit, an undrawn row never commits, and the ui's
+one-shot latch was shared with the inspector), so the sidebar's walk now owns the gesture —
+`FieldEdit { edit, first }`, the first frame sealing whatever was open, closed on the field's
+commit, on focus loss with no scrub, and on an undrawn frame — and no ui flag is read; round
+23 found the song's `undo`/`redo` leaving the merge open (a continuing edit after an undo
+merged into the older entry), fixed in `SongDocument` for every path, and the SoundFont
+fields folding into one edit again — those two landed without a fourth round. Gemini's first
+run produced nothing (its output limit on the 6,122-line diff); its retry's four findings
+were all rebutted. Bundle 11.94 MiB of 16. Carried as issues: #184 (the three screenshots,
+never captured — the screen is unreviewed) and #185 (the ui's edit-commit latch and a
+per-widget scrub query); #182 and #183 go on to batch 11 as planned.
 
 **Carried from batch 6 (F4):** a sample voice plays at `SAMPLE_VOICE_LEVEL` (0.2,
 `music_midi/src/lib.rs:147`) before its gain, so the sidebar's root-note and gain fields say
