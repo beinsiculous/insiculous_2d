@@ -1397,48 +1397,290 @@ the web's deletion of a removed `.new` (batch 11), a native file dialog.
 
 ## Batch 10 — K8b: the piano roll, the note list, the sidebar (#141)
 
-**Carried from batch 6 (F4):** a sample voice plays at `SAMPLE_VOICE_LEVEL` (0.2) before its gain, so the sidebar's root-note and gain fields say "gain 1.0 plays a sample near one SoundFont note" beside the pitch-changes-duration note.
+**Carried from batch 6 (F4):** a sample voice plays at `SAMPLE_VOICE_LEVEL` (0.2,
+`music_midi/src/lib.rs:147`) before its gain, so the sidebar's root-note and gain fields say
+"gain 1.0 plays a sample near one SoundFont note" beside the pitch-changes-duration note.
 
 Executor: the Opus session. Reviewers: kimi, gemini, codex (every screen). Size: about
-+3000 lines.
++3800 lines (up from +3000 on re-verification and two plan rounds: the songs list and the
+path field that stand in for a file picker, the two asset kinds the drop site needs, the
+overwrite prompt, the drag transaction, the read-only session, the active track).
 
-Files (new): `crates/editor/src/composer/{mod.rs, layout.rs, keys.rs, piano_roll.rs,
-note_list.rs, sidebar.rs, transport.rs}` + tests, `crates/editor_integration/src/panel_renderer/
-composer.rs` + `composer_drag.rs`, theme tokens `note_fill`, `note_selected_border`,
-`key_black`, `playhead` with contrast guard tests. Touched: `editor/src/dock/mod.rs`
-(`PanelId::COMPOSER = PanelId(5)`, CONSOLE left alone), `context/mod.rs` (Bottom, hidden by
-default, size 260, min 200; `ComposerState` beside `asset_browser`), `menu/mod.rs` +
-`menu/actions.rs` (View → Composer; File → New/Open/Save/Save Song As…),
-`editor_input.rs` (`EditorAction::{NewSong, OpenSong, SaveSong, SaveSongAs, FocusComposer,
-SongPlayStop}`, all but `FocusComposer` denied while Playing), `editor_game/shortcuts.rs`
-(`KeyRoute::Composer` after the keyboard-owned gate, Escape first in the cancel cascade,
-key-release seals a nudge), `editor_game/mod.rs:265` (dispatch branch for the composer
-panel).
+**Re-verified against the tree 2026-10-21, after batch 9, and reviewed in three rounds**
+(`review-18*.md`, `review-19*.md`, `review-20*.md`, adjudicated in `rebuttal-18.md`,
+`rebuttal-19.md` and `rebuttal-20.md`). What batch 9 already landed, so
+this batch builds on it and does not redo it: `EditorAction::{NewSong, OpenSong, CloseSong}`
+(`editor_input.rs:98-104`, denied while Playing, dispatched in `shortcuts.rs:284-294`
+through `request_document_action` → `perform_song_action`); the confirm machine's song arms
+(`PendingSceneAction::{NewSong, OpenSong, CloseSong, StartPlay}`, `ConfirmDialog::unsaved_song`
+and `play_with_unsaved_song`); `EditorGame.song`, `save_song(Option<PathBuf>)`, `new_song`,
+`open_song`, `close_song` (`song_io.rs`); `SongMirror` and the two-mark title;
+`SongDocument::{apply(edit, Gesture), undo, redo, break_merge, select_notes(&[u64]),
+note_id, stage_sample, import, open, save}` with `Gesture::{Discrete, Continuing}`
+(`song/mod.rs`, `song/history.rs`); the song's sidecar reads through `file()`, the notes
+through `data().tracks()[i].units()` and the timing through `data().tempo_changes()` /
+`time_signatures()` / `ticks_per_quarter()`, exactly as `command_api/song.rs` reads them.
+The corrections to the first cut:
+
+1. **No file picker exists, so the sidebar is the picker.** Batch 9 left out the native
+   dialog, and Open Song today targets a placeholder (`song_path_to_open`: an `untitled.mid`
+   beside the open song). The sidebar's song header gains a **Songs** list — every `.mid`
+   under `music/` and `ai/music/`, found through `vfs::list_files` and rescanned when the
+   panel opens and on the asset browser's Rescan — whose click runs
+   `request_document_action(OpenSong(path))`; and a **path field** (the song's path, or the
+   `music/untitled.mid` default for a never-saved song) whose Enter runs
+   `save_song(Some(path))`, a refusal (outside the song folders, not a `.mid`) landing on the
+   status bar. **A target whose `.mid` or `.mid.ron` exists and is not the song's own file
+   is another song**: the save parks as `PendingSceneAction::OverwriteSong(path)` behind
+   `ConfirmDialog::overwrite_song(path)` (Overwrite / Cancel — `alt_label: None`), and the
+   API's `song save <path>` refuses it unless the line ends in `overwrite` (the
+   `discard` precedent, its own word because it replaces a file, not edits); Cancel leaves
+   the document's path and dirtiness alone. Only the path field and the API reach this
+   prompt: the confirm dialog's own Save branch calls `save_song(None)`, which targets the
+   song's own file or `default_song_path()`'s *free* name (`scene_io.rs:263-277`), so it
+   never overwrites and never nests a second prompt — `default_song_path`'s probe covers
+   both finals (today it asks for the `.mid` only, `scene_io.rs:266-279`, so an orphan
+   `untitled.mid.ron` would have been overwritten); "inside the song folders" is anywhere
+   under `music/` or `ai/music/`, subfolders included, the same rule for the list and the
+   field. **The Overwrite arm saves through an internal `save_song_to(path)` that skips the
+   existence check** (as `resolve_song_choice` bypasses the dirty gate), so one click
+   completes the save; its test is "Overwrite replaces the file, closes the prompt, one
+   Song saved". The field is Save As's input only:
+   File → Save Song saves to the document's path whatever the field holds, and the field
+   shows the document's path again when it loses focus. Each Songs row shows its
+   folder-qualified path (`music/theme.mid`, `ai/music/theme.mid`), never a bare name; the
+   open song's own row is marked "open" and is not a click target.
+   File → New Song and Open Song… (and a `.mid` drop) make the panel visible and focus it,
+   so the composer is found the first time a song exists. The Songs list covers both home
+   folders;
+   opening and saving under `ai/music/` is batch 9's behaviour and license-agnostic here
+   (#183's "unscanned" is the provenance gate's script, not this list). A missing folder is
+   an empty list (`vfs::list_files` is `NotFound` on a missing directory natively,
+   `vfs/mod.rs:162`; map it as `VfsStore::list_files` does, `song/io.rs:114`); the scan
+   lives in `ComposerState.songs` and runs on panel open, on Rescan and after every song
+   save, new and open, never per frame.
+   File gains New Song, Open Song… (focuses the composer and its Songs list),
+   Save Song, Save Song As… (focuses the path field), Close Song; the labels map in
+   `menu/actions.rs` (36 lines) and the two new actions are `EditorAction::{SaveSong,
+   SaveSongAs}`. `song_path_to_open` and its test go with the placeholder they served;
+   `OpenSong` becomes the focus action. No new chords for the song verbs — the menu is
+   enough, and the chord table (Ctrl+Shift only, `editor_input.rs:7`) is crowded;
+   `FocusComposer` is Ctrl+Shift+M, which nothing binds today.
+2. **The drop site needs two asset kinds.** The asset browser lists no `.mid` or `.sf2`
+   (`asset_browser.rs:99`: `kind_for_extension("mid")` is `None`, pinned at :235), so nothing
+   can be dragged from it. `AssetKind` gains `Song` (`.mid`) and `SoundFont` (`.sf2`), each
+   with a tile (`panel_renderer/asset_browser/tile.rs` arms the payload) and
+   `DragPayload::{Song, SoundFont}` (`drag_drop.rs:18`). Dropped on the composer: a
+   `Sound` payload whose path ends in `.wav` adds
+   `Instrument { name: <stem>, source: Sample { path, root_note: 60, gain: 1.0, OneShot },
+   provenance: None }` — the path is the asset's own (Save copies it into `<stem>/`,
+   `plan_save` reads it from the asset base; `stage_sample` is for bytes from outside the
+   asset folder, batch 11's file input); `.mp3`/`.ogg`/`.flac` are refused on the status bar
+   naming WAV as the pitched-sample format (a tooltip needs a hover the drop does not
+   give); a `SoundFont` payload adds `Instrument { SoundFont { path, bank: 0, preset: 0 } }`;
+   a `Song` payload runs `request_document_action(OpenSong(path))`. A dropped sample's or
+   SoundFont's instrument name is the file stem, suffixed `_2`, `_3`… while the song
+   already has that name (`check_schema` refuses repeated names, so the drop may not create
+   one).
+3. **The instrument block edits what the source holds.** `Instrument.provenance` (author,
+   license) is required of a `Sample` at Save (batch 9), so a Sample's block shows path,
+   root note, gain, one-shot, author and license, with a "needed before Save" mark while
+   author or license is empty; a SoundFont's block shows path, bank and preset (numeric
+   fields, the sidecar's ranges — a dropped `.sf2` is not trapped on preset 0). Every
+   instrument edit is one `SetInstrument` carrying the whole instrument, and every part,
+   instrument and binding block carries a remove button (`RemovePart`, `RemoveInstrument`,
+   `RemoveBinding` exist), so an accidental drop never traps a save. The song's own
+   provenance and the shared `music/LICENSE` are #183, batch 11's.
+4. **Selection by id, and the active track.** `SongDocument::select_notes` takes note
+   numbers (the API's vocabulary); the roll holds `NoteId`s, and `SongSelection::notes()`
+   yields `NoteId`s (`selection.rs:20`), so the document gains
+   `select(impl IntoIterator<Item = NoteId>)` beside it — both replace the selection; a
+   Ctrl+click toggles by reading the selection *as it was before the press* (a press with
+   Ctrl held never runs the plain click-select) and selecting the new set; Ctrl+A selects
+   every note of the active track. **The roll and the list show one track:**
+   `ComposerState.active_track`, the first track holding a note when a song opens (else the
+   first track that is not the tempo track; a tempo-only file has none — the roll says
+   "this song has no note track" and Enter/Insert are refused on the status bar), chosen
+   from a selector in the transport ("Track 1 · melody", cycling over the tracks whose
+   `channel()` is `Some` — the timing track of a type-1 file has none and is never
+   selectable, and a note never lands on it) and by clicking a part in the sidebar (the
+   track it resolves to); **switching the active track clears the selection**, so no key
+   ever edits a note the roll is not showing, and is refused while a drag is live;
+   Enter/Insert add to it. A format-1 file whose track 0 holds only timing therefore never opens on a blank
+   roll.
+5. **The dock.** `PanelId::COMPOSER = PanelId(5)` (CONSOLE is 4, `dock/mod.rs:32-40`);
+   `DockPanel::new(COMPOSER, "Composer", Bottom).with_size(260.0).with_min_size(200.0)
+   .with_hint(…)` with `visible` set `false` after construction (there is no builder for it);
+   the first layout pass takes panels in order, so the composer stacks above Assets on the
+   bottom edge (`dock/mod.rs:427-436`), and with both open at the 720 px minimum the scene
+   view keeps about 200 px — collapsing Assets is the user's move, the View menu the way.
+   `panel_id_for_menu_label` gains `"Composer"` (so View → Composer is a `TogglePanel`),
+   `apply_panels` skips an id with no pref so an old `editor_prefs.json` leaves it hidden,
+   `capture_panels` persists it.
+6. **Placements by size.** `context/mod.rs` is 558 lines: `ComposerState` (focus, scroll
+   states, zoom, the drag in flight, the songs list) lives in `composer/state.rs` and the
+   context gains one field; `panel_renderer/mod.rs` (524) gains one dispatch arm;
+   `shortcuts.rs` (493) gains the `KeyRoute::Composer` variant and one call into
+   `editor_game/composer_keys.rs`, which holds the key table; `editor_game/mod.rs` (483)
+   the one-line branch; `editor_input.rs` (478) the five variants and their deny rows.
+7. **Keys, and the play session.** `route_editor_key(key, keyboard_owned, modifiers)`
+   (`shortcuts.rs:35`) checks the dialog, then `keyboard_owned`, then resolves the chord
+   table and intercepts the play controls (:58-93); the composer check sits after those
+   interceptions and before the Playing forward: a `ComposerFocus` other than `None`
+   returns `KeyRoute::Composer` and the composer's table decides, Escape first (it is also
+   the first step of `cancel_cascade`). **The composer is read-only for the whole play
+   session**, Playing and Paused, as the inspector's live mode is: entering a session
+   clears `ComposerFocus` and drops any drag, a click in the panel takes no focus while
+   one runs, and every mutation — a key, a drag frame, a sidebar field, a drop, undo and
+   redo — passes one `composer_write_refusal` (the host's `song_change_refusal`,
+   `song_io.rs:21`) before it reaches `SongDocument`, drawing its fields the read-only way.
+   So Stop and the play keys always reach the controls, and keys reach the game. **Undo and
+   redo belong to the focused document** (#141's rule): Ctrl+Z, Ctrl+Shift+Z, Ctrl+Y and
+   Edit → Undo/Redo call the song's `undo`/`redo` while the composer holds focus and the
+   scene's otherwise, the status bar naming which ("Undid MoveNotes (song)"); the chords
+   are rows of the composer's table, not a fall-through to the scene's. **Focus is
+   explicit:** `ComposerFocus` is cleared by a click outside the composer panel, by hiding
+   or collapsing the panel, by Reset Layout, by session entry and by Escape — each of
+   which also drops a live drag, the drag's owner being `EditorGame`, not the panel's
+   render; a menu click does not clear it (the menu is chrome), so Edit → Undo after a
+   click in the roll undoes the song and after a click in the scene undoes the scene. A
+   composer text field (the path, an author, a license) owns the keyboard like any field:
+   Ctrl+Z in it does nothing, as in the inspector, and Edit → Undo blurs it and undoes the
+   song. `FocusComposer` is denied while Playing with the rest (the panel is read-only for
+   the session, so focus would buy nothing and would take the arrows from the game). Undo, redo and every history
+   operation are refused while a roll drag is live ("Finish or Escape the drag first", the
+   scene's `refuse_during_drag` precedent, `shortcuts.rs:132`), and `drain_api_requests`
+   skips the frame while a composer drag is live as it does for a gizmo drag
+   (`api.rs:231`), so no edit lands between a drag's frames. Space is `Pan`
+   (`KeyAnyMods`, `editor_input.rs:291`) everywhere else; with the composer focused it is
+   the preview toggle. Tab/Shift+Tab: the ui's traversal runs only for a focused text field
+   (`ui/src/context/traversal_tests.rs`), so with none focused the composer owns Tab.
+8. **The transport before the audio.** Space and the transport's Play/Stop raise
+   `EditorAction::SongPlayStop`, and a binding row's Trigger button raises a trigger; both
+   go through the hosted `song play|stop|trigger` path, which refuses them until batch 11
+   (`run_hosted_song_write`, "the composer's preview transport arrives in Conductor batch
+   11"); the transport draws Play, Stop and Trigger disabled with that sentence as their
+   tooltip and the playhead stays at tick 0. Batch 11 enables them and nothing else moves.
+9. **Geometry sources.** `TempoMap` and `TimeSignature` are no-synth exports
+   (`music_midi/src/lib.rs:86`, `tempo_map.rs:63,136`); `beat_lines` takes the song's whole
+   time-signature list (a song may change meter; `edit_tests.rs:368` has two), so every bar
+   line after a change lands on its own tick; `grid_segments` (`grid.rs:157`) is the LOD
+   model for it; `ScrollState` (`scroll.rs:36`) the two scroll states;
+   the roll draws with `ui.rect`, `rect_border` and `line` (there is no `lines` plural;
+   `ui/src/context/mod.rs:326-351`) under `push_clip_rect` (:359), as `render_grid_overlay`
+   does. `focus_ring` exists (`theme/mod.rs:32`, guarded by
+   `test_focus_ring_reads_over_every_surface_and_reaches_the_widget`); the four new tokens
+   join `test_roles_that_must_read_apart_do` (`theme/tests.rs:102`).
+10. **A drag is a preview; release is the one entry; Escape drops the preview.** The
+    gizmo's model (`gizmo_drag.rs`: capture on press, idempotent apply, one entry on
+    release, restored verbatim on Escape), without touching the document until release:
+    on press the drag captures the dragged notes' images; each frame computes the *total*
+    tick and key delta from the press, clamped with checked arithmetic so every dragged
+    note starts at tick ≥ 0, ends by `LAST_WRITABLE_TICK` (`music_midi`'s
+    `ends_by_last_writable_tick`) and sits in key 0..=127 (the tightest note bounds the
+    whole set, so a chord keeps its intervals); a commit the document still refuses clears
+    the drag and reports on the status bar;
+    and the roll draws those notes at the previewed position while the document is
+    untouched; release applies one `SongEdit::Batch` — `MoveNotes { notes, tick_delta }`
+    then one `SetPitch { notes_at_that_key, key }` per distinct starting key, in
+    starting-key order — with `Gesture::Discrete`, or nothing when the total delta is
+    zero; Escape drops the preview and applies nothing, so no history entry, no redo entry
+    and nothing older is touched. No frame can be refused (the deltas are clamped), no
+    history operation runs during the drag (correction 7), and no API line lands between
+    its frames. Nudges (Shift+arrows) are the same batch per key press with
+    `Gesture::Continuing`, merging while the key is held — so `try_merge` gains a `Batch`
+    arm (two batches of equal length merge member by member, `None` if any pair does not)
+    — and the key release calls `break_merge` (the arrow-nudge precedent,
+    `game_impl.rs:138-149`).
+11. **Screenshots for codex.** The editor has no screenshot facility. The report names
+    three PNGs under `review/conductor/shots-10/` — `full.png` from the native editor over
+    `examples/` (a bottom panel spans the window, and the native minimum is 1024 × 720, so
+    native is always Full mode), `compact.png` and `tabs.png` from the playground in a
+    browser narrowed under 720 and 480 px (the only place those modes are reachable) —
+    taken by Jesse or the executor; the planner dispatches codex with `--image` for each.
+12. **Carried out, not in:** #182 (one sample folder per stem) and #183 (the song's own
+    `LICENSE` stanza, `assets/ai/music` unscanned by the gate) go to batch 11 with its save
+    transaction.
+13. **Composer state follows the document.** `EditorGame` bumps a `song_generation`
+    counter in `new_song`, `open_song` and `close_song` (the GUI's and the API's paths
+    alike); `ComposerState` keeps the generation it was built against and resets focus,
+    drag, scroll, active track and selection-dependent state when they differ, so a drag in
+    flight when `song open … discard` replaces the song is dropped without an undo and its
+    note ids never reach the new document.
+14. **Scroll.** Four `ScrollState`s (`scroll.rs:36`, one axis each): the roll's horizontal
+    and vertical, the note list's vertical, the sidebar's vertical.
+15. **Screenshots have a fallback.** If the three PNGs are not in `review/conductor/shots-10/`
+    when the code round closes, the batch lands on the diff review and the screenshots
+    become a follow-up issue for codex's UI pass; it does not wait.
+
+Files (new): `crates/editor/src/composer/{mod.rs, state.rs, layout.rs, keys.rs,
+piano_roll.rs, note_list.rs, sidebar.rs, transport.rs}` + tests,
+`crates/editor_integration/src/panel_renderer/composer.rs` + `composer_drag.rs`,
+`crates/editor_integration/src/editor_game/composer_keys.rs` + tests, theme tokens
+`note_fill`, `note_selected_border`, `key_black`, `playhead` with contrast guard tests.
+Touched: `editor/src/dock/mod.rs` (`PanelId::COMPOSER`, the label), `context/mod.rs` (the
+panel, the one field), `menu/mod.rs` + `menu/actions.rs` (View → Composer; File → New Song /
+Open Song… / Save Song / Save Song As… / Close Song), `editor_input.rs`
+(`EditorAction::{SaveSong, SaveSongAs, FocusComposer, SongPlayStop}`, all
+four denied while Playing), `editor_game/shortcuts.rs` (`KeyRoute::Composer`,
+Escape first in the cancel cascade, key-release seals a nudge), `editor_game/mod.rs` (the
+dispatch branch), `asset_browser.rs` + `drag_drop.rs` + `panel_renderer/asset_browser/tile.rs`
+(correction 2), `scene_io.rs` + `song_io_tests.rs` (`song_path_to_open` removed),
+`song/mod.rs` + `song/edit.rs` (`select(ids)`, the `Batch` merge arm — corrections 4 and
+10), `scene_confirm.rs` + `confirm_dialog.rs` (`OverwriteSong`, `overwrite_song`),
+`song_io.rs` + `command_api/{mod,song,specs}.rs` + `docs/EDITOR_COMMAND_API.md`
+(`HostedWrite::SongSave { path, overwrite }` and the word — correction 1; `song_generation`
+— correction 13), `crates/editor/CLAUDE.md` and `crates/editor_integration/CLAUDE.md`
+(file maps, pitfall rows).
 
 **Target shape.** `layout::compute(bounds, state) -> ComposerLayout { transport, sidebar,
 note_list, roll: PianoRollGeometry, mode: Full | Compact (< 720 px: sidebar as tabs) | Tabs
 (< 480 px: one area at a time) }`; `PianoRollGeometry` with `tick_to_x`/`x_to_tick`/
 `pitch_to_y`/`y_to_pitch`, `note_rect`, `beat_lines(TempoMap, TimeSignature)` at the
-`grid_segments` LOD; two `ScrollState`s. Focus model: `ComposerFocus { None, Transport,
-PianoRoll, NoteList, Sidebar }`, entered by click or Ctrl+Shift+M; Tab/Shift+Tab cycle areas
-(ui's traversal only runs for a focused field, so no clash); arrows move cursor/row,
-Shift+arrows nudge selected notes (merging per hold), Enter/Insert add, Delete delete, `[`/`]`
-resize, `+`/`-` velocity, Space preview, Escape clears focus. While the composer holds
-focus the single-key editor toggles are unreachable — intentional and documented. Visible
-focus: a 2 px `focus_ring` on the focused area and on the focused note or row; selection is
-never colour-only (thicker border plus a glyph; rows get the accent fill plus a leading
-"▸"). The sidebar shows parts (with the "unassigned background" badge and the bindings
-using each), instruments (root/gain/one-shot fields; the duration-changes-with-pitch note
-beside the root field), bindings (name → part + instrument, a Trigger button each), and the
-mode caveat text for `Loop`. The drop site splits by extension: `.wav` imports a sample,
-`.mid` opens a song, `.sf2` adds a SoundFont instrument, `.mp3`/`.ogg` are refused with a
-tooltip naming WAV as the pitched-sample format. A drag records one history entry (every drag frame applies
-with the gesture id; release calls `break_merge`); Escape mid-drag restores. **Tests:**
-geometry round trips and LOD, mode thresholds, the key map table including Tab cycle and
-Escape, a 30-frame drag yields one entry, selection marker present in the draw list (as
-`menu/tests.rs` does), tokens pass contrast, composer keys never reach the game while
-focused and do once unfocused. **Gates:** standard; `check_wasm.sh`; native screenshots
-for codex. **Leaves out:** audio (next), CC and pitch-bend lanes (preserved opaquely only).
+`grid_segments` LOD; the four scroll states (correction 14); the active track (correction
+4). Focus model: `ComposerFocus { None, Transport,
+PianoRoll, NoteList, Sidebar }`, entered by click or Ctrl+Shift+M; Tab/Shift+Tab cycle areas;
+arrows move cursor/row, Shift+arrows nudge selected notes (merging per hold), Enter/Insert
+add, Delete delete, `[`/`]` resize, `+`/`-` velocity, Space preview (refused until batch 11),
+Escape clears focus. While the composer holds focus the single-key editor toggles are
+unreachable — intentional and documented. Visible focus: a 2 px `focus_ring` on the focused
+area and on the focused note or row; selection is never colour-only (thicker border plus a
+glyph; rows get the accent fill plus a leading "▸"). The sidebar shows the song header (the
+path field, the Songs list, dirty mark), parts (with the "unassigned background" badge and
+the bindings using each), instruments (root/gain/one-shot fields, author and license, the
+duration-changes-with-pitch note beside the root field), bindings (name → part +
+instrument, a Trigger button each, disabled until batch 11), and the mode caveat text for
+`Loop`. The drop site is correction 2. A drag is correction 10. **Tests:** geometry round
+trips and LOD over a melody and over `new_song()` (finite, monotonic, nothing to divide by),
+mode thresholds, the key map table including Tab cycle, Escape and the undo chords, a
+30-frame diagonal drag yields one entry and Escape undoes it (and an unmoved drag's Escape
+undoes nothing; a move after Escape applies nothing; a diagonal drag across two starting
+keys), Undo while focused undoes the song and unfocused the scene with pending edits in both,
+Playing and Paused refuse every composer mutation and clear the focus so keys reach the
+game, Save As onto another song (either final present) parks behind the overwrite prompt
+and Cancel leaves both untouched while the API needs `overwrite`, Enter in the path field
+parks the prompt and the same Enter does not arm the dialog's `pending_choice`, a song
+replaced under a drag drops it, a failed open after Discard keeps the old song with the
+error on the status bar, the active track defaults to the first with notes and Enter adds
+to it and switching it clears the selection, a tempo-only file refuses adds, a drag's
+preview leaves the document untouched until release and a clamped chord keeps its
+intervals, Ctrl+Z during a drag is refused, Ctrl+click adds to a prior selection, a drop
+of a second `kick.wav` is named `kick_2`, two home folders' same-named songs list apart,
+bar lines follow a meter change, a click in the scene then Edit → Undo undoes the scene,
+an orphan `untitled.mid.ron` moves the default save path on, Overwrite completes in one
+click, hiding the panel mid-drag drops the drag and frees undo and the API, a track switch
+is refused mid-drag, a drag near `LAST_WRITABLE_TICK` clamps and commits,
+selection marker present in the draw list (as
+`menu/tests.rs:36-49` reads `ui.draw_list().commands()`), tokens pass contrast, composer
+keys never reach the game while focused and do once unfocused, the Songs list finds a song
+in each home folder and its click parks behind the dirty prompt, the path field's Enter
+saves there and an outside path is refused on the status bar, each drop kind lands its
+instrument or its open and a `.mp3` is refused, a Sample without provenance shows the
+mark and `SetInstrument` carries it, View → Composer toggles the hidden panel and an old
+prefs file leaves it hidden, the preview controls refuse naming batch 11. **Gates:**
+standard; `check_wasm.sh`; the three screenshots (correction 11). **Leaves out:** audio
+(next), CC and pitch-bend lanes (preserved opaquely only), #182 and #183 (batch 11), a
+native file dialog.
 
 ## Batch 11 — K8c: transport, Play interplay, the web bridge, the accessibility pass (#141)
 
