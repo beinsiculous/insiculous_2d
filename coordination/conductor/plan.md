@@ -393,8 +393,9 @@ Menus use the same song's slowest phrase through the `menu` binding (K6's standa
     reason on the status bar), and save-while-saving is refused with a status-bar message.
     A leftover `.new` that matches the finals' fingerprint is purged silently on open; a
     `.mid.ron.new` without its partner is reported and removed. Samples are copied under
-    `assets/music/samples/<song stem>/` (an unsaved song stages them under
-    `samples/_unsaved/`, remapped into `<stem>/` by Save or Save As in the same journal); a
+    the song's own flat folder in its home, `<home>/samples/<flat>/` (batch 11; an unsaved
+    song stages nothing — its instruments name the imported files where they lie until the
+    first save copies them); a
     byte mismatch on a same-named file inside that directory gets a short content-hash
     suffix and the instrument path follows — never a refusal. **A sample instrument carries
     `provenance { author, license }`, required;** Save writes it into the `LICENSE` beside
@@ -1707,7 +1708,50 @@ standard; `check_wasm.sh`; the three screenshots (correction 11). **Leaves out:*
 (next), CC and pitch-bend lanes (preserved opaquely only), #182 and #183 (batch 11), a
 native file dialog.
 
-## Batch 11 — K8c: transport, Play interplay, the web bridge, the accessibility pass (#141)
+## Batch 11 — K8c: transport, Play interplay, the web bridge, the accessibility pass (#141) — DONE 2026-10-22 (574e7e2; site 5375ebc)
+
+**DONE 2026-10-22** (574e7e2 in the engine, 5375ebc in `insiculous_web`). Landed as planned by
+the Opus executor (`report-11.md`, +5182/−1085 before fixes), with the differences it declared:
+`PreviewState` has no `Paused` (the session's pause is `PauseSession`); `PlaySaved` is not an
+intent — the armed `PendingPlay` carries the path and the drain runs it last; the preview stops
+on a document change by watching `SongHistory::revision()` at the drain, not by hooks in
+`apply`/`undo`/`redo`, which also catches the API's `song edit|undo|redo`; the playhead waits for
+the song's first rendered block; the audio test starts at tick 3072 (the fixture is 16 beats); a
+song's upload limit is `MIDI_BYTE_LIMIT` (1 MiB), the sidecar's 256 KiB being another file's;
+`playground_write_file_bytes(name, bytes, replace)` decides the destination itself and answers
+`{written, kind, destination, referenced_by, sidecar_lost}`; the open-song refusal rides a
+`Hooks.open_song` mirror `sync_dirty_mirror` writes; a dropped `.new`'s note goes to the console;
+the playground takes `music_midi` with its default features (the `.sf2` check is `synth`-only and
+`audio` already turns it on). The grandfather clause covers a song directly in either home; the
+home `LICENSE` is written only when its text changed; a stanza naming only this song's files is
+replaced whole. The executor's native keyboard walk (XTEST on the session's display) found and
+fixed, at Jesse's call and each with a guard test: sidebar notes wrapping, the arrows' reveal
+inset, a provenance field committed unchanged being no edit, the transport disabled during a
+session, the File menu's shortcut placement, the status bar keeping a long message whole, Play
+from a cursor past the last note starting at the top, Left/Right stepping the full-width
+sidebar's sections. Not heard by the executor: sound is inferred from the log and the playhead.
+
+Code round 29 (kimi 3, gemini 5, codex 5, the planner 8; `rebuttal-29.md`) found the store's
+queue cancelling a queued removal (the FIFO's one guarantee broken), the drain waiting for the
+head alone (a switch right after a save lost the rest), a restored epoch issuing a head nobody
+drove on wasm, a tombstone not unseating a preloaded bundled file, `StopAll` leaving a recorded
+track, the page claiming a song opened whatever `song open` answered; fixed by the planner and
+reviewed again as round 30 (codex 1, kimi 3, gemini 5; `rebuttal-30.md`), whose two accepted
+findings — the drain not driving its own retry of a stranded head, and a head stranded under the
+drain ending it as a success — landed enumerated. **The drain now refuses a switch over a
+stranded head, naming the path** ("… is not saved to this browser — export your project, then
+try again"): a change to the old "a stranded path never blocks a switch" contract, made because
+the queue behind the head would go with the page; a conflicted head still never blocks (its
+banner asks for the reload). Jesse may overrule it. Rulings held: (a) Ctrl+S saves the song while
+the composer holds the keyboard, (b) provenance is required at Save (gemini re-raised it as a
+block on legacy songs; rebutted), (d) subfolder and `ai/music` songs get new sample folders.
+Gates in `gates-11.log` and `gates-11-fixes-3.log`; bundle 12.22 MiB in the executor's build
+against 16 MiB. Filed: #186 (Stop while the session's song waits for the first click opens the
+dialog over a running session), #187 (the composer reaches no accessibility tree), #188 (no
+control adds a binding), #189 (the Firefox save-time measurement), #190 (tombstone compaction),
+#191 (the playground's browser-only checks), #192 (Exit prompting); #112 and #184 commented.
+#141 stays open for Jesse's listen check (`report-11.md` § For Jesse), #184's screenshots and
+the K5 scene (batch 12).
 
 Executor: the Opus session. Reviewers: kimi, gemini (the bridge and persistence seam), codex
 (the transport and the keyboard walk). Listen check and keyboard walk: Jesse, native and
