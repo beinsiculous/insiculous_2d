@@ -2152,8 +2152,11 @@ respawned hummer's patrol, pong's `Resumed` arm clearing the jam's pause history
 mid-batch, 2026-10-23): the editor starts silent** — `EditorGame::init` stops whatever music the
 wrapped game's `init` asked for, and Stop stops the slot whoever filled it; it supersedes correction
 4's editor-bundle paragraph and ruling (j)'s parenthetical below (left as written, for the record).
-Its consequence for a game whose music starts only in `init` is #198, and the K6 rule is in batches
-13–15. Measured: Chromium's throttled cold-boot increment +1.71 s (gate 8 s); Firefox +0.07 s; the
+Jesse took **door (b)** the same day (8604ddb; pong's guide line d0a8240; #198 closed): the editor
+remembers what the game's `init` asked the audio for (`init_music.rs`, over the audio's new
+`song_request` / `music_request`) and asks for it again on each session's first frame when no composer
+song is open; the platformer demo's music control reads the audio's state; rounds 49–51
+(`rebuttal-49..51.md`). The K6 rule is in batches 13–15. Measured: Chromium's throttled cold-boot increment +1.71 s (gate 8 s); Firefox +0.07 s; the
 stress run's longest drain gap 63.8 ms (Chromium) and 55.0 ms (Firefox), no two consecutive windows
 over 92 ms; v7 `game_bg.wasm` 7.46 MiB (the carried batch-6 finding closes on the number); the bank
 1.98 MiB. Follow-ups: #197 (the Compact layout's clipping — the executor's screen finding; codex
@@ -2958,11 +2961,14 @@ directory. Reviewers: kimi, gemini, codex (the beat visuals). Listen check: Jess
   part, thrust and hyperspace over *Mars*; hops, death and home-slot voices over the
   *William Tell* finale).
 
-**The rule batch 12 left (ruling 3b, #198): the editor starts silent, so a game requests its song at
-match or session start and decides by the slot's label (`AudioManager::song_label`: none → request;
-its own → seek to the top; another → leave the audition alone), never at `init` alone — Tong's
-`Music::restart` is the model, and a game that starts its music once in `update` behind its own
-flag is silenced by Stop and never restarts.**
+**The rule batch 12 left (ruling 3b, door (b) — Jesse, 2026-10-23, #198): the editor starts silent,
+remembers what the game's `init` asked the audio for, and asks for it again on each Play session's
+first frame when no composer song is open. So a game starts its music where it naturally would —
+at `init`, or at a match start that decides by the slot's label as Tong's `Music::restart` does
+(none → request; its own → seek to the top; another → leave the audition alone) — and asks the
+audio for its state (`is_music_playing`, `song_label`) rather than trusting a flag it set at `init`,
+since the editor stops and restarts the slot around it. A song built in memory is not replayed, and
+what the game set after the request (looping, a seek) is the game's to set again.**
 
 Per game: the song sequenced in the composer under `assets/ai/music/ai_<slug>.mid` with its
 sidecar, the SoundFont subset and `LICENSE` beside them; bindings through the host's
