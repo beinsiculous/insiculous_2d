@@ -21,6 +21,7 @@ use crate::pan_source::{PanLevel, PanSource};
 use crate::sound::{Bus, PlaybackId, SoundHandle, SoundSettings};
 
 mod music;
+pub use music::MusicRequest;
 mod playback;
 pub(crate) mod song;
 
@@ -129,6 +130,8 @@ pub struct AudioManager {
     music_sink: Option<Sink>,
     /// Music requested while disabled, started when a device connects.
     pending_music: Option<PendingMusic>,
+    /// The recorded track last asked for, for a host that stops it and asks again.
+    music_request: Option<MusicRequest>,
     /// Per-track volume of the current music, kept so bus volume changes can
     /// re-derive the music sink volume.
     music_base_volume: f32,
@@ -250,6 +253,7 @@ impl AudioManager {
             active_sources: Vec::new(),
             music_sink: None,
             pending_music: None,
+            music_request: None,
             music_base_volume: 1.0,
             master_volume: 1.0,
             sfx_volume: 1.0,

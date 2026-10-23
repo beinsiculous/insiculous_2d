@@ -1048,6 +1048,13 @@ clock stop, and the song plays on. The song's pause is `ctx.audio.pause_song()`:
 holds, every note is released, and a trigger is rejected with its cursor kept until
 `resume_song`. A pause menu that jams over its music wants the first and never the second.
 
+**In the editor.** Editing is silent: `EditorGame::init` remembers and stops whatever music the
+game's `init` asked for, and a Play session with no composer song open asks for it again on its
+first frame — so a game that starts its music once at `init` is heard in Play, and a match start
+that decides by the slot (Tong's) finds its own song there and seeks it to the top. With a
+composer song open, the saved song is the session's music instead. Stop silences the slot
+whoever filled it; the next Play asks again.
+
 **Files:** `engine_core/src/sound_sources.rs`, `engine_core/src/sound_emitters.rs`,
 `engine_core/src/assets/sound_library.rs`, `engine_core/src/scripting/triggers.rs`,
 `engine_core/src/game/frame_tail.rs`, `ecs/src/sound_emitter.rs`, `audio/src/manager/song.rs`,

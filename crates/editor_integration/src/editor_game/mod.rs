@@ -39,6 +39,7 @@ mod scene_confirm;
 mod scene_io;
 mod snapshot;
 mod song_io;
+mod init_music;
 mod song_preview;
 mod stop_confirm;
 #[cfg(test)]
@@ -69,6 +70,8 @@ struct EditorGame<G: Game> {
     pub(super) song_generation: u64,
     /// The song preview and the session's music: intents drained once a frame.
     pub(super) song_preview: song_preview::SongPreview,
+    /// What the game's `init` asked the audio for, asked again by a session with no composer song.
+    pub(super) init_music: init_music::InitMusic,
     /// A live drag in the composer's roll: owned here, not by the panel's render, so every
     /// way the composer loses focus can drop it.
     composer_drag: Option<composer_drag::ComposerDrag>,
@@ -138,6 +141,7 @@ impl<G: Game> EditorGame<G> {
             song: None,
             song_generation: 0,
             song_preview: song_preview::SongPreview::default(),
+            init_music: init_music::InitMusic::None,
             composer_drag: None,
             gizmo_drag: None,
             clipboard: Vec::new(),

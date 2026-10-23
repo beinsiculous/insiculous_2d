@@ -134,6 +134,8 @@ enum SongOutput {
 
 struct SongPlayback {
     label: String,
+    /// The path the song was asked for by, `None` for one built in memory.
+    path: Option<PathBuf>,
     song: Arc<Song>,
     bindings: HashMap<String, BindingIndex>,
     handle: ConductorHandle,
@@ -212,7 +214,8 @@ impl AudioManager {
         let path = path.as_ref();
         let (file, data) = read_song_files(path)?;
         let label = path.display().to_string();
-        let ready = self.prepare_ready(&label, file, data)?;
+        let mut ready = self.prepare_ready(&label, file, data)?;
+        ready.path = Some(path.to_path_buf());
         self.install_song(ready);
         Ok(())
     }
@@ -271,6 +274,7 @@ impl AudioManager {
     pub(super) fn start_song(&mut self, ready: ReadySong) {
         let ReadySong {
             label,
+            path,
             song,
             conductor,
             handle,
@@ -285,6 +289,7 @@ impl AudioManager {
         let output = self.song_output(source);
         let mut playback = SongPlayback {
             label,
+            path,
             bindings: binding_table(&song),
             song,
             handle,

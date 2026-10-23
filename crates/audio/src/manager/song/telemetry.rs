@@ -2,6 +2,8 @@
 //! song in the slot, the source's maxima taken window by window, and the one line every
 //! `conductor=on` report prints, so the example and the games never format it twice.
 
+use std::path::Path;
+
 use super::{AudioManager, PendingMusic, SongSnapshot};
 
 /// The source's two maxima since the last take.
@@ -27,6 +29,21 @@ impl AudioManager {
             .as_ref()
             .filter(|playback| !playback.is_dead() && !playback.handle.position().has_ended())
             .map(|playback| playback.label.as_str())
+    }
+
+    /// The path the song in the slot was asked for by — pending, playing or paused, the same
+    /// filter as [`AudioManager::song_label`] — so a host that stopped it can ask for it again
+    /// as the game did. `None` for a song built in memory, which only its builder can replay.
+    #[must_use]
+    pub fn song_request(&self) -> Option<&Path> {
+        if let Some(PendingMusic::Song(ready)) = &self.pending_music {
+            return ready.path.as_deref();
+        }
+        self.songs
+            .playback
+            .as_ref()
+            .filter(|playback| !playback.is_dead() && !playback.handle.position().has_ended())
+            .and_then(|playback| playback.path.as_deref())
     }
 
     /// The longest render and the longest drain gap since the last take, both swapped to

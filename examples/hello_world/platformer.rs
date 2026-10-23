@@ -72,7 +72,6 @@ pub struct PlatformerGame {
     behaviors: BehaviorRunner,
     scene_instance: Option<SceneInstance>,
     actions: InputMapping<DemoAction>,
-    music_playing: bool,
     volume: f32,
     show_ui: bool,
     font_loaded: bool,
@@ -91,7 +90,6 @@ impl PlatformerGame {
             behaviors: BehaviorRunner::new(),
             scene_instance: None,
             actions: demo_actions(),
-            music_playing: false,
             volume: 1.0,
             show_ui: true,
             font_loaded: false,
@@ -115,14 +113,19 @@ impl PlatformerGame {
         }
     }
 
+    /// Decided by what the audio is doing, not by a flag of our own: in the editor the music
+    /// is stopped while editing and asked for again when a session starts, so a flag set at
+    /// `init` would soon lie.
     fn toggle_music(&mut self, ctx: &mut GameContext) {
-        if self.music_playing {
+        if ctx.audio.music_request().is_none() {
+            log::info!("No music to toggle: none loaded, or none in this mode");
+            return;
+        }
+        if ctx.audio.is_music_playing() {
             ctx.audio.pause_music();
-            self.music_playing = false;
             log::info!("Music paused");
         } else {
             ctx.audio.resume_music();
-            self.music_playing = true;
             log::info!("Music resumed");
         }
     }
@@ -218,10 +221,7 @@ impl PlatformerGame {
     /// the music is started from code.
     fn load_audio(&mut self, ctx: &mut GameContext) {
         match ctx.audio.play_music(Path::new(EXAMPLES_DIR).join("assets/sounds/music.ogg")) {
-            Ok(()) => {
-                self.music_playing = true;
-                log::info!("Playing background music");
-            }
+            Ok(()) => log::info!("Playing background music"),
             Err(_error) => {
                 log::info!("No background music found. Add music.ogg to examples/assets/sounds/");
             }
@@ -408,7 +408,7 @@ impl PlatformerGame {
 
         let music_btn_rect = UIRect::new(20.0, 140.0, 90.0, 30.0);
         let music_label = ctx.strings
-            .tr(if self.music_playing { "panel.music_pause" } else { "panel.music_play" })
+            .tr(if ctx.audio.is_music_playing() { "panel.music_pause" } else { "panel.music_play" })
             .to_string();
         if ctx.ui.button("music_btn", &music_label, music_btn_rect) {
             self.toggle_music(ctx);

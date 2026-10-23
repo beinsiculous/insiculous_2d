@@ -238,3 +238,96 @@ fn the_editor_starts_silent_the_games_own_song_plays_in_a_session_and_stop_ends_
     assert_eq!(harness.game().editor.play_state(), EditorPlayState::Editing);
     assert_eq!(harness.audio().song_label(), None, "and Stop ends it");
 }
+
+/// A game that asks for its song at `init` and never again: the editor demo's shape.
+struct SingsAtInitOnly {
+    song: std::path::PathBuf,
+}
+
+impl engine_core::Game for SingsAtInitOnly {
+    fn init(&mut self, ctx: &mut engine_core::prelude::GameContext) {
+        ctx.audio.play_song(&self.song).expect("the game's song loads");
+    }
+
+    fn update(&mut self, _ctx: &mut engine_core::prelude::GameContext) {}
+}
+
+fn silent_editor_over<G: engine_core::Game>(game: G, folder: &std::path::Path, slot: &str) -> GameHarness<EditorGame<G>> {
+    let mut editor = EditorGame::new(game);
+    editor.prefs_slot = std::env::temp_dir().join(format!("insiculous_test_editor_prefs_{}_{slot}.json", std::process::id()));
+    let config = GameConfig::new("Init music").with_asset_base_path(folder.to_string_lossy().to_string());
+    let mut harness = GameHarness::new(editor, config);
+    harness.step(FRAME, &[]);
+    harness
+}
+
+#[test]
+fn a_games_init_time_song_is_silent_while_editing_plays_through_each_session_and_stop_ends_it() {
+    let folder = tempfile::tempdir().expect("a temporary asset folder");
+    drop(harness_with_a_saved_song(&folder));
+    let song = folder.path().join("music/theme.mid");
+    let mut harness = silent_editor_over(SingsAtInitOnly { song: song.clone() }, folder.path(), "init_song");
+    assert_eq!(harness.audio().song_label(), None, "editing is silent");
+    assert_eq!(harness.game().init_music, super::init_music::InitMusic::Song(song.clone()), "but the request is remembered");
+
+    let label = song.display().to_string();
+    for session in 1..=2 {
+        harness.context(|editor, ctx| editor.handle_play_action(PlayControlAction::Play, ctx.world));
+        harness.steps(3, FRAME);
+        assert_eq!(harness.game().editor.play_state(), EditorPlayState::Playing);
+        assert_eq!(harness.audio().song_label(), Some(label.as_str()), "session {session} asks for the game's song again");
+        harness.context(|editor, ctx| editor.handle_play_action(PlayControlAction::Stop, ctx.world));
+        harness.step(FRAME, &[]);
+        assert_eq!(harness.game().editor.play_state(), EditorPlayState::Editing);
+        assert_eq!(harness.audio().song_label(), None, "and Stop ends it");
+    }
+}
+
+/// A game that asks for a recorded track at `init` and never again.
+struct PlaysATrackAtInit {
+    track: std::path::PathBuf,
+}
+
+impl engine_core::Game for PlaysATrackAtInit {
+    fn init(&mut self, ctx: &mut engine_core::prelude::GameContext) {
+        ctx.audio.play_music(&self.track).expect("the track loads");
+    }
+
+    fn update(&mut self, _ctx: &mut engine_core::prelude::GameContext) {}
+}
+
+#[test]
+fn a_games_init_time_track_is_asked_for_again_unless_a_composer_song_takes_the_slot() {
+    const SINE_WAV: &[u8] = include_bytes!("../../../music_midi/fixtures/sine_48000_mono.wav");
+    let folder = tempfile::tempdir().expect("a temporary asset folder");
+    stock_sound_font(folder.path());
+    let track = folder.path().join("sounds/track.wav");
+    common::vfs::write(&track, SINE_WAV).expect("written");
+    let mut harness = silent_editor_over(PlaysATrackAtInit { track: track.clone() }, folder.path(), "init_track");
+    assert!(harness.audio().music_request().is_none(), "editing is silent");
+    assert!(
+        matches!(&harness.game().init_music, super::init_music::InitMusic::Track(request) if request.path == track),
+        "but the request is remembered: {:?}",
+        harness.game().init_music
+    );
+
+    harness.context(|editor, ctx| editor.handle_play_action(PlayControlAction::Play, ctx.world));
+    harness.steps(3, FRAME);
+    assert!(harness.audio().music_request().is_some_and(|request| request.path == track), "the session asks for the track again");
+    harness.context(|editor, ctx| editor.handle_play_action(PlayControlAction::Stop, ctx.world));
+    harness.step(FRAME, &[]);
+    assert!(harness.audio().music_request().is_none(), "Stop ends it");
+
+    let saved = folder.path().join("music/theme.mid");
+    harness.context(|editor, _| {
+        editor.song = Some(melody_song());
+        editor.follow_song();
+        editor.save_song_to(saved.clone()).expect("the composer's song saves");
+    });
+    harness.context(|editor, ctx| editor.handle_play_action(PlayControlAction::Play, ctx.world));
+    harness.steps(3, FRAME);
+    assert_eq!(harness.game().editor.play_state(), EditorPlayState::Playing);
+    let label = saved.display().to_string();
+    assert_eq!(harness.audio().song_label(), Some(label.as_str()), "the saved song is the session's music");
+    assert!(harness.audio().music_request().is_none(), "and the game's track is not asked for");
+}

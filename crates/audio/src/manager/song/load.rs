@@ -65,6 +65,9 @@ pub enum SongProblem {
 pub(crate) struct ReadySong {
     /// The `.mid` path, or the label of a song built in memory.
     pub label: String,
+    /// The path `play_song` was given — what a host that stopped the song asks for again;
+    /// `None` for a song built in memory, which only its builder can play again.
+    pub path: Option<PathBuf>,
     pub song: Arc<Song>,
     pub conductor: Conductor,
     pub handle: ConductorHandle,
@@ -84,6 +87,7 @@ impl ReadySong {
         }
         Ok(Self {
             label: label.to_string(),
+            path: None,
             song,
             conductor,
             handle,

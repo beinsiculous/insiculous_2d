@@ -5,13 +5,23 @@
 //! music shares one slot with a song: playing either stops the other.
 
 use std::io::Cursor;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use rodio::Decoder;
 
 use crate::error::{AudioError, AudioResult};
 
 use super::{clamp_volume, effective_volume, AudioManager, PendingMusic};
+
+/// The recorded track last asked for, as it was asked for: what a host that stopped it
+/// plays again. `play_music` always loops, so `looping` records the request rather than
+/// offering a choice.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MusicRequest {
+    pub path: PathBuf,
+    pub volume: f32,
+    pub looping: bool,
+}
 
 impl AudioManager {
     /// Play background music from a file, looping forever.
@@ -56,6 +66,11 @@ impl AudioManager {
         // load does. The slot is shared, so a playing or pending song stops too.
         self.stop_music();
         self.stop_song();
+        self.music_request = Some(MusicRequest {
+            path: path.to_path_buf(),
+            volume,
+            looping,
+        });
 
         // Disabled mode: file was validated above, playback is a no-op.
         // Record the request AFTER validation so missing/corrupt files still
@@ -86,6 +101,7 @@ impl AudioManager {
     /// stopped track cannot resurrect when a device connects later. A song
     /// is [`AudioManager::stop_song`]'s.
     pub fn stop_music(&mut self) {
+        self.music_request = None;
         if matches!(self.pending_music, Some(PendingMusic::Recorded { .. })) {
             self.pending_music = None;
         }
@@ -126,6 +142,17 @@ impl AudioManager {
         if let Some(ref sink) = self.music_sink {
             sink.play();
         }
+    }
+
+    /// The recorded track last asked for — pending the web's gesture, or playing, paused
+    /// included — with the volume it was asked with, so a host that stopped it can ask again as
+    /// the game did. `None` after `stop_music`, after a song took the slot, and once a track's
+    /// sink has emptied.
+    #[must_use]
+    pub fn music_request(&self) -> Option<&MusicRequest> {
+        let pending = matches!(self.pending_music, Some(PendingMusic::Recorded { .. }));
+        let sounding = self.music_sink.as_ref().is_some_and(|sink| !sink.empty());
+        (pending || sounding).then_some(self.music_request.as_ref()).flatten()
     }
 
     /// Check if music is currently playing.

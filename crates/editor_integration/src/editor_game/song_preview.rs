@@ -18,11 +18,13 @@
 //! all the same, without the editor's music: the editor's Play is never hostage to a
 //! song's bank. Intents pushed while it is armed are dropped.
 //!
-//! **Editing is silent until the composer plays.** The editor stops whatever music the
-//! wrapped game's `init` asked for, and Stop flushes the sources and stops the slot
-//! whoever filled it — the saved song, the game's own music, a recorded track — so the only
-//! music heard while editing is the composer's preview, started and stopped by its
-//! transport.
+//! **Editing is silent until the composer plays.** The editor remembers and stops whatever
+//! music the wrapped game's `init` asked for (`init_music.rs`); a session with no composer
+//! song asks for it again on its first frame, so a game that starts its music once at `init`
+//! is heard in Play; and Stop flushes the sources and stops the slot whoever filled it — the
+//! saved song, the game's own music, a recorded track — so the only music heard while editing
+//! is the composer's preview, started and stopped by its transport, and the next Play asks
+//! for the game's music again.
 
 use std::path::{Path, PathBuf};
 
@@ -473,10 +475,11 @@ impl<G: Game> EditorGame<G> {
 
     /// An armed Play's music, last of the drain: the sources flushed and, with a song
     /// open, its saved file played — loaded and checked whole before the playing song is
-    /// touched. A song that fails to load never blocks Play: the session starts without the
-    /// editor's music — a parked preview still sounding is stopped, so the session owns
-    /// nothing it did not start; the game's own music is the game's to start — and the
-    /// error stays on the status bar.
+    /// touched — or, with none open, the music the game's `init` asked for asked again. A
+    /// song that fails to load never blocks Play: the session starts without the editor's
+    /// music — a parked preview still sounding is stopped, so the session owns nothing it
+    /// did not start — and the error stays on the status bar; so does the game's music that
+    /// will not play again.
     fn play_armed_song(
         &mut self,
         audio: &mut AudioManager,
@@ -487,7 +490,20 @@ impl<G: Game> EditorGame<G> {
         sources.flush(audio);
         let played = match &song {
             Some(path) => audio.play_song(path).map_err(|error| error.to_string()),
-            None => Ok(()),
+            // Only with no composer song open at all: an open song, saved or not, is the
+            // editor's claim on the slot, so the editor replays nothing; what the game asks
+            // for itself during the session is the game's own policy.
+            None if self.song.is_some() => Ok(()),
+            None => match self.init_music.replay(audio) {
+                Ok(()) => Ok(()),
+                Err(error) => {
+                    // The game's music is not the editor's: the session starts all the same.
+                    self.editor.status_bar.show_error(format!(
+                        "Play could not start the game's music: {error}; the game runs without it"
+                    ));
+                    Ok(())
+                }
+            },
         };
         let preview = &mut self.song_preview;
         match &played {

@@ -34,10 +34,10 @@ impl<G: Game> Game for EditorGame<G> {
         self.inner.init(ctx);
         self.asset_base = std::path::PathBuf::from(ctx.assets.base_path());
         // The editor starts silent: while editing, music is the composer's to start and
-        // stop, and a game's own music belongs to a Play session. Whatever the game's init
-        // asked for — a song or a recorded track, playing or waiting for the web's first
-        // gesture — is stopped here; a game that starts its music when a match begins is
-        // heard in Play.
+        // stop. Whatever the game's init asked for — a song or a recorded track, playing or
+        // waiting for the web's first gesture — is remembered and stopped here; a Play
+        // session with no composer song asks for it again.
+        self.init_music = super::init_music::InitMusic::capture(ctx.audio);
         ctx.audio.stop_song();
         ctx.audio.stop_music();
 

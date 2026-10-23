@@ -24,8 +24,10 @@ on its own. **The crate knows no scene and no space**: the scene's `SoundEmitter
   doubled, stereo panned channel by channel, more channels passed through; **unity at
   centre** (`left = min(1, 1 − pan)`, `right = min(1, 1 + pan)`), so a centred play is
   sample for sample what it was without the adapter.
-- `manager/music.rs` — **recorded music** (play/stop/pause/resume) and the volume buses
-  (`update_all_volumes`, which also hands the music and sfx gains to a playing song).
+- `manager/music.rs` — **recorded music** (play/stop/pause/resume), `MusicRequest` and
+  `music_request` (the track last asked for, while pending or playing, for a host that stops
+  it and asks again) and the volume buses (`update_all_volumes`, which also hands the music
+  and sfx gains to a playing song).
 - `manager/song.rs` — **the song**: `play_song`, `prepare_song`, `play_song_in_memory`,
   `play_song_in_memory_at(song, tick)`, `stop_song`, `pause_song`, `resume_song`,
   `seek_song(beat)`, `set_song_looping`, `is_song_playing`, `song_ended`, `song_position`,
@@ -44,7 +46,8 @@ on its own. **The crate knows no scene and no space**: the scene's `SoundEmitter
 - `manager/song/edges.rs` — `Subdivision` and the beat edges latched each update.
 - `manager/song/telemetry.rs` — what a game reads for its logic and its reports:
   `song_label` (the label the slot's song was requested with while pending, playing or
-  paused; `None` once it ended or its output died, which nothing reaps), `take_song_maxima`
+  paused; `None` once it ended or its output died, which nothing reaps), `song_request` (the
+  path it was asked for by under the same filter, `None` for a song built in memory), `take_song_maxima`
   (`SongMaxima`: the source's longest render and drain gap swapped to zero, so each report
   is its own window) and `SongSnapshot::log_line` (the one `conductor=on` line the example
   and the games print).
@@ -80,6 +83,7 @@ on its own. **The crate knows no scene and no space**: the scene's `SoundEmitter
 | WAV is the only pitched-sample import, told by its RIFF header and never by its name: a file called `.wav` may hold anything, and rodio decodes more formats than the import supports | `src/sample_loader/tests.rs a_stream_that_is_not_wav_is_refused_naming_wav_whatever_the_file_is_called` |
 | rodio 0.20's decoder yields 16-bit integers, so a float WAV's NaN arrives finite; the non-finite refusal is `OwnedPcm::new`'s, for any other producer | `src/sample_loader/tests.rs a_float_wav_carrying_nan_decodes_finite_because_the_decoder_yields_sixteen_bit_integers` |
 | Every sample-loader error names the path, an unreadable file included (unlike `IoError`) | `src/sample_loader/tests.rs a_file_that_cannot_be_read_is_an_error_naming_its_path` |
+| A host that silences a game's music at boot needs what was asked for to ask again: `music_request` is the track's path and volume while it is pending or sounding, `None` after `stop_music`, after a song took the slot, or once its sink emptied — a song's counterpart is `song_request`, the path it was asked for by, `None` for one built in memory | `src/manager/tests.rs the_request_names_a_pending_or_playing_track_and_nothing_once_stopped_or_replaced_by_a_song` `src/manager/song/tests.rs a_song_taking_the_slot_clears_the_recorded_tracks_request` `src/manager/song/tests/telemetry.rs the_request_is_the_path_a_song_was_asked_for_by_and_nothing_for_one_built_in_memory` |
 | A song and a recorded track share one music slot: playing either stops the other, and before the web's gesture the last request of either kind is the one pending; a pending song is not playing and has no position | `src/manager/song/tests.rs a_song_and_a_recorded_track_share_one_pending_slot_the_last_request_winning_through_the_gesture` |
 | A disabled manager is one of two things: gesture-gated (the web) holds a song pending, headless (tests, `GameHarness`, no device) plays it on a virtual clock advanced by `update()`'s wall time, capped at one second an update | `src/manager/song/tests.rs without_a_device_a_playing_song_advances_by_the_wall_time_between_updates` |
 | Beat edges are counted on the published sample by integer boundaries and latched once an update: a long gap reports one crossing, not a flood; a wrap reports its downbeat, a seek back nothing | `src/manager/song/tests.rs beat_edges_count_every_boundary_once_and_a_ten_beat_gap_reports_one_crossing` `src/manager/song/tests.rs a_loop_wrap_reports_its_downbeat_and_a_seek_back_reports_nothing` |

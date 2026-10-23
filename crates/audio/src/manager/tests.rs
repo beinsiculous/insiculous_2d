@@ -546,3 +546,28 @@ fn test_effective_volume_combines_base_bus_and_master() {
     assert_eq!(effective_volume(0.0, 1.0, 1.0), 0.0);
     assert_eq!(effective_volume(0.8, 0.5, 0.25), 0.1);
 }
+
+/// A host that silences a game's music at boot asks for it again from the request: the
+/// track's path and volume while it is pending or sounding, nothing once it is stopped.
+#[test]
+fn the_request_names_a_pending_or_playing_track_and_nothing_once_stopped_or_replaced_by_a_song() {
+    let mut manager = AudioManager::disabled();
+    assert!(manager.music_request().is_none(), "nothing asked for yet");
+    let music = write_temp_wav();
+    manager.play_music_with_volume(music.path(), 0.5).expect("the track loads");
+    let request = manager.music_request().expect("a pending track is a request").clone();
+    assert_eq!((request.path.as_path(), request.volume, request.looping), (music.path(), 0.5, true));
+
+    manager.stop_music();
+    assert!(manager.music_request().is_none(), "stopped, it is no request");
+
+    manager.play_music(music.path()).expect("the track loads again");
+    if manager.enable_output().is_ok() {
+        assert!(manager.is_music_playing(), "a live device starts the pending track");
+        assert_eq!(manager.music_request().map(|request| request.path.as_path()), Some(music.path()), "and it is still the request while it sounds");
+        manager.stop_music();
+        assert!(manager.music_request().is_none());
+    } else {
+        assert_eq!(manager.music_request().map(|request| request.path.as_path()), Some(music.path()), "still pending without a device");
+    }
+}

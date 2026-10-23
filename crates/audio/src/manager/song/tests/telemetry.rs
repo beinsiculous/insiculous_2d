@@ -84,3 +84,24 @@ fn the_log_line_carries_every_counter_of_the_snapshot_it_was_made_from() {
     }
     assert_eq!(conductor.accepted_triggers, 1, "{line}");
 }
+
+#[test]
+fn the_request_is_the_path_a_song_was_asked_for_by_and_nothing_for_one_built_in_memory() {
+    let assets = AssetDirectory::new();
+    let song = assets.write_song("song", &song_midi(true), &sidecar(None));
+
+    let mut gated = AudioManager::awaiting_gesture();
+    gated.set_asset_base(assets.path());
+    gated.play_song(&song).expect("the song loads");
+    assert_eq!(gated.song_request(), Some(song.as_path()), "pending the gesture, by its path");
+
+    let (mut manager, _) = playing(&assets);
+    assert_eq!(manager.song_request(), Some(song.as_path()), "playing");
+    manager.stop_song();
+    assert_eq!(manager.song_request(), None, "stopped");
+
+    let (mut in_memory, built) = song_in_memory(&assets, true);
+    in_memory.play_song_in_memory(built).expect("the conductor loads it");
+    assert!(in_memory.song_label().is_some(), "it has a label");
+    assert_eq!(in_memory.song_request(), None, "but no path to ask for again");
+}

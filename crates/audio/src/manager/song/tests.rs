@@ -459,3 +459,19 @@ fn a_song_played_to_its_end_has_ended_and_one_stopped_or_looping_has_not() {
     }
     assert!(looping.is_song_playing() && !looping.song_ended(), "a loop never ends");
 }
+
+#[test]
+fn a_song_taking_the_slot_clears_the_recorded_tracks_request() {
+    let assets = AssetDirectory::new();
+    let track = write_recorded_track(&assets);
+    let song = assets.write_song("song", &song_midi(true), &sidecar(None));
+    let mut manager = AudioManager::disabled();
+    manager.set_asset_base(assets.path());
+    manager.play_music(&track).expect("the track loads");
+    assert!(manager.music_request().is_some());
+    manager.play_song(&song).expect("the song loads");
+    assert_eq!(manager.music_request(), None, "the song took the one slot");
+    assert_eq!(manager.song_request(), Some(song.as_path()));
+    manager.play_music(&track).expect("the track loads again");
+    assert_eq!(manager.song_request(), None, "and the track took it back");
+}
