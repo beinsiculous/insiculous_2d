@@ -212,3 +212,20 @@ fn test_grid_primary_and_secondary_differ_and_axes_are_brighter() {
         "Y axis luminance must exceed grid primary"
     );
 }
+
+/// The status bar's error is text a user must read, so it holds WCAG's 4.5:1 on the bar
+/// and on the two lowest surfaces, and it is not the red a red-green colourblind eye loses.
+#[test]
+fn test_the_status_bars_error_text_reads_at_four_and_a_half_to_one() {
+    let theme = EditorTheme::default();
+    let surfaces = [
+        ("surface_0", theme.surface_0),
+        ("surface_1", theme.surface_1),
+        ("status_bar_bg", theme.status_bar_bg),
+    ];
+    for (name, surface) in surfaces {
+        let ratio = theme.status_error.contrast_ratio(surface);
+        assert!(ratio >= 4.5, "status error vs {name}: {ratio:.2} < 4.5");
+    }
+    assert_ne!(theme.status_error, theme.error_red);
+}

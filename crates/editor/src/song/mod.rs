@@ -27,6 +27,8 @@ mod open_tests;
 #[cfg(test)]
 mod parity_tests;
 #[cfg(test)]
+mod track_edit_tests;
+#[cfg(test)]
 mod test_support;
 
 use std::path::{Path, PathBuf};
@@ -51,8 +53,8 @@ pub use selection::SongSelection;
 /// with no song crate of its own.
 pub use music_midi::Provenance;
 
-/// The SoundFont a new or sidecar-less song plays its background on: the bank every game
-/// copies in, by its path under the asset folder.
+/// The SoundFont a new or sidecar-less song plays its background on when the project has
+/// no bank of its own to offer, by its path under the asset folder.
 pub const DEFAULT_SOUND_FONT_PATH: &str = "soundfonts/cast.sf2";
 
 /// The division of a new song, in ticks per quarter note.
@@ -106,6 +108,14 @@ impl SongDocument {
     /// never saved.
     pub fn new_song() -> Result<Self, SongError> {
         Self::from_smf(&blank_song_bytes()?, default_song_file())
+    }
+
+    /// An empty song as [`SongDocument::new_song`] makes it, its background on
+    /// `sound_font`, asset-relative.
+    pub fn new_song_on(sound_font: &str) -> Result<Self, SongError> {
+        let mut file = default_song_file();
+        file.soundfont = sound_font.to_string();
+        Self::from_smf(&blank_song_bytes()?, file)
     }
 
     /// A song read from MIDI bytes with `file` as its sidecar, never saved: the report's

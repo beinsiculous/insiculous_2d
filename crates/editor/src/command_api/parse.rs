@@ -23,8 +23,8 @@ const ARCHETYPE_COUNT: usize = Archetype::ALL.len();
 
 /// Every verb the parser accepts (queries + writes); `specs` mirrors this
 /// list for `commands` discovery — a drift test keeps them equal.
-pub(super) const VERBS: [&str; 17] = [
-    "list", "describe", "selection", "scene", "commands",
+pub(super) const VERBS: [&str; 18] = [
+    "list", "describe", "selection", "scene", "commands", "status",
     "set", "add", "remove", "rename", "create", "delete", "select",
     "undo", "redo", "save", "batch", "song",
 ];
@@ -260,6 +260,7 @@ pub fn parse_line(line: &str) -> Result<Request, ApiError> {
         "selection" => Request::Query(Query::Selection),
         "scene" => Request::Query(Query::SceneInfo),
         "commands" => Request::Query(Query::ListCommands),
+        "status" => Request::Query(Query::Status),
         "remove" => parse_remove(&mut tokens)?,
         "rename" => parse_rename(&mut tokens)?,
         "create" => return parse_create(&mut tokens),

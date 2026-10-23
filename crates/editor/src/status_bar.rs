@@ -63,11 +63,36 @@ impl StatusBar {
         self.message_persistent = false;
     }
 
-    /// Show a persistent status message (stays until explicitly cleared).
+    /// Show a persistent status message (stays until explicitly cleared or replaced by a
+    /// user's action), drawn with an "Error: " prefix and logged at `error`, so the terminal
+    /// or the browser's console carries it too.
     pub fn show_error(&mut self, message: impl Into<String>) {
-        self.message = Some(message.into());
+        let message = message.into();
+        log::error!("{message}");
+        self.message = Some(message);
         self.message_timer = 0.0;
         self.message_persistent = true;
+    }
+
+    /// A message the editor shows by itself rather than for a user's action: it never
+    /// displaces an error, which the user has not yet read.
+    pub fn show_notice(&mut self, message: impl Into<String>) {
+        if self.is_showing_error() {
+            log::info!("{}", message.into());
+            return;
+        }
+        self.show_message(message);
+    }
+
+    /// The text the bar draws: the message, an error's with its "Error: " prefix; `None`
+    /// while it says nothing.
+    pub fn shown_text(&self) -> Option<String> {
+        let message = self.message.as_deref()?;
+        Some(if self.message_persistent {
+            format!("Error: {message}")
+        } else {
+            message.to_string()
+        })
     }
 
     /// Clear the current status message.
@@ -132,9 +157,10 @@ impl StatusBar {
         let font_size = theme.fonts.small;
         let measure = |text: &str| ui.measure_text_styled(text, font_size).x;
 
-        let status_text = self.message.as_deref().unwrap_or("Ready");
+        let shown_message = self.shown_text();
+        let status_text = shown_message.as_deref().unwrap_or("Ready");
         let status_color = if self.message_persistent {
-            theme.error_red
+            theme.status_error
         } else {
             theme.text_secondary
         };
@@ -229,8 +255,40 @@ mod tests {
             bar.render(&mut ui, window, &theme);
             let texts = drawn(&ui);
             ui.end_frame();
-            assert!(texts.iter().any(|text| text == message), "the whole message is drawn: {texts:?}");
+            let shown = format!("Error: {message}");
+            assert!(texts.contains(&shown), "the whole message is drawn: {texts:?}");
             assert_eq!(texts.iter().any(|text| text.starts_with("Objects:")), stats_drawn, "{message}");
         }
+    }
+
+    /// An error is told from a message by more than its colour — the drawn text carries
+    /// "Error: " and the amber token — while the stored message keeps the caller's words;
+    /// the editor's own notices leave it in place, and a user's next action replaces it.
+    #[test]
+    fn test_an_error_is_prefixed_amber_and_held_against_notices_but_not_against_a_users_action() {
+        let theme = EditorTheme::default();
+        let input = input::InputHandler::new();
+        let window = Vec2::new(1280.0, 720.0);
+        let mut bar = StatusBar::new();
+        bar.show_error("Play could not start the song");
+        assert_eq!(bar.message(), Some("Play could not start the song"));
+        assert_eq!(bar.shown_text().as_deref(), Some("Error: Play could not start the song"));
+
+        let mut ui = UIContext::new();
+        ui.begin_frame(&input, window);
+        bar.render(&mut ui, window, &theme);
+        let amber = ui.draw_list().commands().iter().any(|command| {
+            matches!(command, ui::DrawCommand::TextPlaceholder { text, color, .. }
+                if text == "Error: Play could not start the song" && *color == theme.status_error)
+        });
+        ui.end_frame();
+        assert!(amber, "the error is drawn prefixed, in the status error colour");
+
+        bar.show_notice("API batch committed by Play");
+        assert_eq!(bar.message(), Some("Play could not start the song"), "a notice never displaces an error");
+        bar.show_message("Saved");
+        assert_eq!(bar.shown_text().as_deref(), Some("Saved"), "a user's action replaces it");
+        bar.show_notice("Snapshot warning");
+        assert_eq!(bar.message(), Some("Snapshot warning"), "with no error a notice shows like any message");
     }
 }

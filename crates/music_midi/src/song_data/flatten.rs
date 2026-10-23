@@ -154,6 +154,7 @@ pub(super) fn flatten(bytes: &[u8]) -> Result<(SongData, UnsupportedReport), Son
         tempo_edited: false,
         time_signatures_edited: false,
         next_note_id,
+        added_tracks: 0,
     };
     Ok((song, report))
 }

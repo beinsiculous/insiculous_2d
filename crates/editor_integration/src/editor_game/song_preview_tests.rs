@@ -248,32 +248,73 @@ fn saved_song(editor: &EditorGame<DummyGame>) -> Option<&Path> {
     editor.song.as_ref().and_then(|song| song.path())
 }
 
+/// A saved song with a sample instrument, at `music/theme.mid`.
+fn save_song_with_a_sample(folder: &Path, editor: &mut EditorGame<DummyGame>, world: &mut World) {
+    const SINE_WAV: &[u8] = include_bytes!("../../../music_midi/fixtures/sine_48000_mono.wav");
+    common::vfs::write(&folder.join("sounds/blip.wav"), SINE_WAV).expect("written");
+    let add = r#"song edit {"AddInstrument": {"instrument": {"name": "blip", "source": {"Sample": {"path": "sounds/blip.wav", "root_note": 60}}, "provenance": {"author": "2026 Jesse", "license": "MIT"}}}}"#;
+    assert_eq!(json(&api_line(editor, world, add))["ok"], true);
+    assert_eq!(json(&api_line(editor, world, "song save music/theme.mid"))["ok"], true);
+    assert!(saved_song(editor).is_some());
+}
+
+fn remove_the_saved_sample(folder: &Path) {
+    common::vfs::remove_prefix(&folder.join("music/samples/theme/blip.wav")).expect("removed");
+}
+
 #[test]
-fn a_saved_song_missing_a_sample_keeps_the_preview_shows_the_error_and_starts_no_session() {
+fn a_saved_song_missing_a_sample_keeps_the_preview_shows_the_error_and_starts_the_session_without_music() {
     let (folder, mut editor) = session();
     let mut world = World::new();
-    const SINE_WAV: &[u8] = include_bytes!("../../../music_midi/fixtures/sine_48000_mono.wav");
-    common::vfs::write(&folder.path().join("sounds/blip.wav"), SINE_WAV).expect("written");
-    let add = r#"song edit {"AddInstrument": {"instrument": {"name": "blip", "source": {"Sample": {"path": "sounds/blip.wav", "root_note": 60}}, "provenance": {"author": "2026 Jesse", "license": "MIT"}}}}"#;
-    assert_eq!(json(&api_line(&mut editor, &mut world, add))["ok"], true);
-    assert_eq!(json(&api_line(&mut editor, &mut world, "song save music/theme.mid"))["ok"], true);
-    assert!(saved_song(&editor).is_some());
+    save_song_with_a_sample(folder.path(), &mut editor, &mut world);
     let (mut audio, mut sources) = (headless_audio(&editor), SoundSources::default());
     editor.preview_play(0).expect("plays");
     frame(&mut editor, &mut audio, &mut sources);
     assert!(editor.song_preview.is_audible());
 
-    common::vfs::remove_prefix(&folder.path().join("music/samples/theme/blip.wav")).expect("removed");
+    remove_the_saved_sample(folder.path());
     editor.handle_play_action(editor::PlayControlAction::Play, &mut world);
     assert!(!editor.song_preview.is_playing(), "Play parks the preview");
     let report = editor.apply_song_intents(&mut audio, &mut sources);
     assert!(matches!(report.session_play, Some(Err(_))), "{report:?}");
     editor.start_armed_play(&mut world);
 
-    assert!(editor.editor.is_editing(), "no session started");
-    assert!(editor.song_preview.is_playing(), "the preview it parked plays on");
-    assert!(audio.is_song_playing());
+    assert!(!editor.editor.is_editing(), "the session started");
+    assert!(!editor.song_preview.is_playing(), "the preview stays parked");
+    assert!(!audio.is_song_playing(), "and silent: the session owns no music");
     assert!(status(&editor).contains("Play could not start the song"), "{}", status(&editor));
+    assert!(status(&editor).contains("the game runs without it"), "{}", status(&editor));
+
+    editor.handle_play_action(editor::PlayControlAction::Stop, &mut world);
+    frame(&mut editor, &mut audio, &mut sources);
+    assert!(editor.editor.is_editing(), "Stop ends the session");
+    assert!(!audio.is_song_playing(), "and starts nothing");
+}
+
+#[test]
+fn a_saved_song_that_fails_to_load_leaves_the_games_own_song_playing_through_the_session_and_stop_ends_it() {
+    let (folder, mut editor) = session();
+    let mut world = World::new();
+    save_song_with_a_sample(folder.path(), &mut editor, &mut world);
+    let (mut audio, mut sources) = (headless_audio(&editor), SoundSources::default());
+    let games_song = folder.path().join("music/theme.mid");
+    audio.play_song(&games_song).expect("the game's own song plays");
+    let label = games_song.display().to_string();
+
+    remove_the_saved_sample(folder.path());
+    editor.handle_play_action(editor::PlayControlAction::Play, &mut world);
+    let report = editor.apply_song_intents(&mut audio, &mut sources);
+    assert!(matches!(report.session_play, Some(Err(_))), "{report:?}");
+    editor.start_armed_play(&mut world);
+
+    assert!(!editor.editor.is_editing(), "the session started");
+    assert!(audio.is_song_playing(), "the game's own song plays on");
+    assert_eq!(audio.song_label(), Some(label.as_str()));
+
+    editor.handle_play_action(editor::PlayControlAction::Stop, &mut world);
+    frame(&mut editor, &mut audio, &mut sources);
+    assert!(editor.editor.is_editing());
+    assert_eq!(audio.song_label(), None, "Stop leaves editing silent, the game's own music included");
 }
 
 #[test]

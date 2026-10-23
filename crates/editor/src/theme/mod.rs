@@ -108,6 +108,10 @@ pub struct EditorTheme {
     pub error_red: Color,
     /// Warning logs (`#ffcc00`)
     pub warn_yellow: Color,
+    /// The status bar's error text (`#ffb020`, amber): read at ≥ 4.5:1 on the bar and the
+    /// panels by a red-green colourblind eye that sees `error_red` there as dark, and
+    /// never told from a message by colour alone — the bar prefixes "Error: ".
+    pub status_error: Color,
 
     // ── Play control button backgrounds ─────────────────────────
     /// Dark green tint behind play/resume button
@@ -258,6 +262,7 @@ impl Default for EditorTheme {
             // Semantic
             error_red: Color::from_hex(0xff4444),
             warn_yellow: Color::from_hex(0xffcc00),
+            status_error: Color::from_hex(0xffb020),
 
             // Play control button backgrounds
             play_button_bg: Color::new(0.15, 0.35, 0.15, 1.0),

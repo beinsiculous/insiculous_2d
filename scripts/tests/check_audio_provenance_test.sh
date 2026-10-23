@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The audio provenance gate's own test: a tree where every audio file is named passes, and a
 # tree with stray files (no LICENSE at all, in `assets/sounds` and in an agent's
-# `assets/ai/music`) and an unnamed file (a LICENSE whose only cover for it is a glob)
+# `assets/ai/music`, and in the examples' `examples/soundfonts`) and an unnamed file (a LICENSE whose only cover for it is a glob)
 # fails, naming exactly those paths.
 #
 # Run from anywhere: scripts/tests/check_audio_provenance_test.sh
@@ -30,6 +30,8 @@ grep -q "UNNAMED     crates/demo/fixtures/piece.mid" <<< "$unnamed_output" \
     || fail "a file covered only by a glob should be reported: $unnamed_output"
 grep -q "NO LICENSE  assets/ai/music/ai_stray.mid" <<< "$unnamed_output" \
     || fail "an agent's song folder should be scanned too: $unnamed_output"
+grep -q "NO LICENSE  examples/soundfonts/stray.sf2" <<< "$unnamed_output" \
+    || fail "the examples' bank folder should be scanned too: $unnamed_output"
 if grep -q "other.mid" <<< "$unnamed_output"; then
     fail "a named file should not be reported: $unnamed_output"
 fi

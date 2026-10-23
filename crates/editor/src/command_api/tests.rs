@@ -19,6 +19,7 @@ fn ctx<'a>(world: &'a World, selection: &'a Selection) -> QueryCtx<'a> {
         dirty: false,
         play_state: EditorPlayState::Editing,
         song: None,
+        status_bar: None,
     }
 }
 
@@ -160,4 +161,24 @@ fn test_every_response_is_one_line_and_blank_input_gets_none() {
         assert!(!response.contains('\n'), "response must be one line: {response}");
     }
     assert_eq!(dispatch_line("   ", &ctx), None, "a blank line is not a request");
+}
+
+#[test]
+fn status_reads_back_what_the_bar_draws_an_error_with_its_prefix() {
+    let (world, selection) = (World::new(), Selection::new());
+    let mut bar = crate::status_bar::StatusBar::new();
+    let read = |bar: &crate::status_bar::StatusBar| {
+        let ctx = QueryCtx { status_bar: Some(bar), ..ctx(&world, &selection) };
+        dispatch_data("status", &ctx)
+    };
+
+    assert_eq!(read(&bar), serde_json::json!({ "message": null }));
+    bar.show_error("Play could not start the song: no bank");
+    assert_eq!(
+        read(&bar),
+        serde_json::json!({ "message": "Error: Play could not start the song: no bank", "error": true })
+    );
+    bar.show_message("Saved");
+    assert_eq!(read(&bar), serde_json::json!({ "message": "Saved", "error": false }));
+    assert_eq!(dispatch_data("status", &ctx(&world, &selection)), serde_json::json!({ "message": null }));
 }

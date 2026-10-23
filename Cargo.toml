@@ -86,3 +86,12 @@ path = "examples/hello_world.rs"
 name = "editor_demo"
 path = "examples/editor_demo.rs"
 required-features = ["editor"]
+
+# The first tested example: its inline tests run under a plain `cargo test`.
+[[example]]
+name = "conductor_demo"
+path = "examples/conductor_demo.rs"
+test = true
+
+[dev-dependencies]
+engine_core = { path = "crates/engine_core", features = ["test-support"] }

@@ -295,39 +295,16 @@ impl ConductorBackground {
         else {
             return;
         };
-        let (conductor, source) = (snapshot.conductor, snapshot.source);
-        let blocks = conductor.blocks_rendered.max(1);
         let window = std::mem::take(&mut self.window);
         println!(
-            "conductor=on t={:.0}s block_mean={:.1}us block_longest={:.1}us drain_gap_longest={:.2}ms \
-             frame_mean={:.2}ms frame_longest={:.2}ms \
-             bar={} beat={} latency_samples={} transport={:?} wraps={} reconstructions={} non_finite={} \
-             applied={} rejected={} \
-             triggers_accepted={} triggers_rejected={} triggers_late={} triggers_stale={} triggers_silent={} pending={} \
-             sample_voices={} limited_samples={}",
+            "{} t={:.0}s frame_mean={:.2}ms frame_longest={:.2}ms bar={} beat={} latency_samples={}",
+            snapshot.log_line(),
             self.elapsed_seconds,
-            source.render_nanoseconds_total as f64 / 1000.0 / blocks as f64,
-            source.render_nanoseconds_longest as f64 / 1000.0,
-            source.drain_gap_nanoseconds_longest as f64 / 1_000_000.0,
             window.seconds_total * 1000.0 / window.frames.max(1) as f32,
             window.seconds_longest * 1000.0,
             position.bar + 1,
             position.beat_in_bar + 1,
             position.latency_samples,
-            conductor.transport,
-            conductor.loop_wraps,
-            conductor.reconstructions,
-            conductor.non_finite_samples,
-            conductor.commands_applied,
-            conductor.commands_rejected,
-            conductor.accepted_triggers,
-            conductor.rejected_triggers,
-            conductor.late_triggers,
-            conductor.stale_triggers,
-            conductor.silent_triggers,
-            conductor.pending_events,
-            conductor.sample_voices,
-            source.limited_samples,
         );
     }
 }

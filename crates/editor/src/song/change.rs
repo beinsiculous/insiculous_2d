@@ -3,7 +3,9 @@
 //! a meter on its tick, a whole sidecar — so replaying never resolves a name or a number
 //! again and a redone note keeps the id later entries name it by.
 
-use music_midi::{EditError, NoteId, NoteImage, SongData, SongFile, TempoChange, TimeSignature};
+use music_midi::{
+    EditError, NewTrack, NoteId, NoteImage, SongData, SongFile, TempoChange, TimeSignature,
+};
 
 #[derive(Debug, Clone)]
 pub(super) enum Change {
@@ -20,6 +22,11 @@ pub(super) enum Change {
         tick: u64,
         signature: Option<TimeSignature>,
     },
+    /// A track added at the end, on the channel it was given the first time.
+    AddTrack(NewTrack),
+    /// The track added last taken away, with whatever notes it holds: a linear history
+    /// undoes every later edit first, so it holds none by then.
+    RemoveAddedTrack(usize),
     /// The whole sidecar.
     File(Box<SongFile>),
     /// Changes in order.
@@ -45,6 +52,8 @@ impl Change {
                     Ok(())
                 }
             },
+            Change::AddTrack(track) => data.add_track(track.clone()).map(drop),
+            Change::RemoveAddedTrack(track) => data.remove_added_track(*track).map(drop),
             Change::File(image) => {
                 *file = SongFile::clone(image);
                 Ok(())

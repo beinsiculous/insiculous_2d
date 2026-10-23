@@ -30,6 +30,7 @@ fn context<'a>(song: Option<&'a SongDocument>, enter_pressed: bool, song_path: O
         default_path: "music/untitled.mid",
         song_path,
         preview_audible: false,
+        sound_font_present: true,
     }
 }
 

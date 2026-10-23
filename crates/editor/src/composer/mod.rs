@@ -13,6 +13,7 @@ pub mod layout;
 pub mod note_list;
 pub mod piano_roll;
 pub mod sidebar;
+pub mod sound_fonts;
 pub mod state;
 pub mod transport;
 
@@ -24,6 +25,8 @@ mod layout_tests;
 mod piano_roll_tests;
 #[cfg(test)]
 mod sidebar_tests;
+#[cfg(test)]
+mod sound_font_row_tests;
 #[cfg(test)]
 mod state_tests;
 #[cfg(test)]
@@ -43,6 +46,7 @@ pub use music_midi::{NoteId, NoteImage};
 
 pub use keys::{resolve as resolve_composer_key, ComposerKeyAction, ComposerKeyRoute, Direction};
 pub use layout::{ComposerLayout, ComposerMode, PianoRollGeometry};
+pub use sound_fonts::{scan_sound_fonts, sound_font_exists, SoundFontScan};
 pub use state::{ComposerFocus, ComposerState, ControlRequest, RollCursor, SidebarSection};
 
 /// MIDI's largest delta time: a note may end no later, or no file could write the gap

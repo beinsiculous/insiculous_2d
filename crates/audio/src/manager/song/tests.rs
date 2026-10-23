@@ -12,6 +12,7 @@ use super::*;
 use crate::test_support::*;
 
 mod loading;
+mod telemetry;
 
 /// A headless manager whose sidecar paths resolve in `assets`, playing its song `song`.
 fn playing(assets: &AssetDirectory) -> (AudioManager, Instant) {

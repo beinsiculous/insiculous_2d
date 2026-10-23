@@ -42,12 +42,14 @@ use super::{AudioManager, PendingMusic};
 
 mod edges;
 pub(crate) mod load;
+mod telemetry;
 #[cfg(test)]
 mod tests;
 mod virtual_clock;
 
 use edges::BeatEdges;
 pub use edges::Subdivision;
+pub use telemetry::SongMaxima;
 use load::{read_song_files, Closure, DependencyCache, ReadySong};
 use virtual_clock::{duration_of, frames_in, LONGEST_VIRTUAL_STEP};
 

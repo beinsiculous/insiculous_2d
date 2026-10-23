@@ -73,7 +73,7 @@ pub use sequencer::{
     BackgroundScore, ChannelMessage, ChannelStateFold, ScoreEvent, Sequencer, SequencerSink,
 };
 pub use song_data::{
-    MusicalUnit, NewNote, Note, NoteId, NoteImage, RetainedEvent, SameKeyOverlap, SmfFormat,
+    AddedTrack, MusicalUnit, NewNote, NewTrack, Note, NoteId, NoteImage, RetainedEvent, SameKeyOverlap, SmfFormat,
     SongData, SongTrack, UnsupportedFeature, UnsupportedReport,
 };
 pub use song_file::{

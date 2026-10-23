@@ -113,6 +113,7 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
   - `hello_world.rs` - Physics platformer with UI, audio, ECS, and scene graph
   - `editor_demo.rs` - Editor wrapping the platformer (`--features editor`, shares `hello_world/platformer.rs`)
   - `behavior_demo.rs` - Scene-driven behaviors
+  - `conductor_demo.rs` + `conductor_demo/{enemies,tests}.rs` - Two enemy kinds on one shared part of `assets/music/ai_demo.mid` (a sine-bank hummer, a sample pinger), cadences on one game clock, attacks minted only in the camera's view and the source ended on leaving it, D despawn / R respawn, Space game pause against P song pause, M/S bus mutes, `--stress spread|burst|saturate`; its asset base is `examples/assets/`, and its tests run under `cargo test` (`test = true`)
   - `conductor_background.rs` - A MIDI fixture through `ctx.audio.play_song` (copied with its written sidecar into a temporary directory) — by default the *Napolitan Dance* cast fixture with keys 1–4 triggering two parts on two instruments through `ctx.audio.trigger`, Left Shift the melody through a script's `cmd.trigger` (`examples/assets/scripts/conductor_trigger.rhai`), key 5 the left hand on a sample instrument with `--sample`, M and S muting the music and sfx buses — with render-cost, drain-gap, trigger-counter, sample-voice and limiter log lines from `song_position` and `song_snapshot`
   - Real games live in `../games/` (pong, breakout, space_invaders, snake, asteroids) — see `PROJECT_ROADMAP.md`
 
@@ -997,10 +998,61 @@ SoundEmitter(
   `play_with_settings` returns a `PlaybackId` to stop (`stop_playback`) or re-mix
   (`set_playback_mix`, volume and pan) that instance alone.
 
+**Authoring a song.** Songs are made in the editor's composer: File → New Song (its
+background on the project's first bank under `soundfonts/`), or the command API's `song`
+verbs — `song new`, `song edit <SongEdit>` (`AddTrack`, `AddNote`, `AddPart`,
+`AddInstrument`, `SetBinding`, `SetProvenance`, …), `song` and `song notes` to check what the
+document holds, `song save <path>` (`docs/EDITOR_COMMAND_API.md` § Songs). Save is a journal
+that writes the `.mid`, the sidecar and the song's stanza in its home folder's `LICENSE`, and
+copies each sample into the song's own folder (`docs/SONG_FORMAT.md` § How the composer
+saves). An agent's first cut goes under `assets/ai/music/` with the `ai_` prefix; a person's
+pass promotes it to `music/`.
+
+**Shared-part modes** (`docs/SONG_FORMAT.md` § Modes). `Loop` plays the part's units in order
+and wraps — a melody walked by hits. `Sequence` plays them once and is silent until the song
+loops — a phrase that must not repeat. `AtSongPosition` plays whatever unit is sounding at the
+song's position — harmony that always fits the chord. A `Loop` or `Sequence` unit plays over
+whatever chord is sounding, so write it to fit every chord or use `AtSongPosition`.
+
+**Custom instruments.** A `.wav` dropped on the composer (or imported on the web playground)
+becomes a `Sample(…)` instrument: its root note, gain and one-shot or gated playback in the
+sidebar, and an author and license Save requires before it writes anything; Save copies it to
+`music/samples/<song path, / as __>/` with a `LICENSE` naming it.
+
+**Sources: eligibility and lifecycle.** An entity, the game or the menu triggers under its
+own source (above). Whether an entity may sound is the game's policy, never the song's — a
+binding is never spatial — so a game gates its own triggers on the camera's view and ends the
+source with `ctx.sources.end` on the frame its entity leaves it; its next trigger back in
+view activates it anew. Despawning ends it in the frame tail. Mint triggers in game code
+where eligibility matters: a script's `cmd.trigger` reaches the conductor before the game
+can gate it. `examples/conductor_demo.rs` is the worked case.
+
+**Crowd limits.** Each SoundFont instrument holds 24 waiting note-ons (a quantized trigger
+past them is refused whole) and 24 sounding notes (past those it releases its oldest); a
+sample instrument 16 live voices and a fade budget of 16,
+past which the newest trigger is refused whole; the conductor schedules at most 512 events.
+A refused trigger moves no cursor and is counted — `song_snapshot()`'s `rejected_triggers`,
+`late_triggers`, `stale_triggers`, and `ctx.sources.refused_triggers()` for what never reached
+the conductor.
+
+**Volume.** The background plays on the music bus and every triggered note on the sfx bus:
+music at 0 keeps the hits, sfx at 0 keeps the song, and the clock runs at both.
+
+**Beat timing.** `beat_crossed(Subdivision::Bar | Beat | Eighth | Sixteenth)` (the subdivision
+is in the prelude) is latched once an `update`, so a long frame reports one crossing. A
+position runs ahead of what is heard by `latency_samples` and the device's own buffer — up to
+61 ms in a browser — so a beat visual leads its sound by that much.
+
+**Pause.** The game's pause is `ctx.time_scale = 0`: the world, the emitters and a game's own
+clock stop, and the song plays on. The song's pause is `ctx.audio.pause_song()`: its clock
+holds, every note is released, and a trigger is rejected with its cursor kept until
+`resume_song`. A pause menu that jams over its music wants the first and never the second.
+
 **Files:** `engine_core/src/sound_sources.rs`, `engine_core/src/sound_emitters.rs`,
 `engine_core/src/assets/sound_library.rs`, `engine_core/src/scripting/triggers.rs`,
 `engine_core/src/game/frame_tail.rs`, `ecs/src/sound_emitter.rs`, `audio/src/manager/song.rs`,
-`audio/src/manager/playback.rs`, `audio/src/pan_source.rs`
+`audio/src/manager/playback.rs`, `audio/src/pan_source.rs`, `examples/conductor_demo.rs`
+(two enemy kinds on one part, eligibility, despawn, the two pauses, `--stress`)
 
 ## Current Known Limitations
 

@@ -2,8 +2,8 @@
 //! its sidecar, returning the exact changes that undo and redo it.
 
 use music_midi::{
-    EditError, Instrument, NewNote, NoteId, NoteImage, Part, SongData, SongFile, TempoChange,
-    TimeSignature,
+    EditError, Instrument, NewNote, NewTrack, NoteId, NoteImage, Part, SongData, SongFile,
+    TempoChange, TimeSignature,
 };
 
 use super::{note_ids, Applied, SongEdit, SongEditError};
@@ -117,8 +117,47 @@ impl SongEdit {
                     },
                 })
             }
+            E::AddTrack {
+                name,
+                channel,
+                program,
+            } => {
+                // A part selecting a name resolves it only while one track carries it: a
+                // second would break a part that worked, through an accepted edit.
+                let carried = data.tracks().iter().any(|track| track.name() == Some(name.as_str()));
+                let selected = file.parts.iter().any(|part| {
+                    matches!(&part.track, music_midi::TrackSelector::Name(selected) if selected == name)
+                });
+                if carried && selected {
+                    return Err(SongEditError::TrackNameSelected(name.clone()));
+                }
+                let channel = match channel {
+                    Some(number @ 1..=16) => Some(number - 1),
+                    Some(number) => return Err(SongEditError::ChannelOutOfRange(*number)),
+                    None => None,
+                };
+                let added = data.add_track(NewTrack {
+                    name: name.clone(),
+                    channel,
+                    program: *program,
+                })?;
+                Ok(Applied {
+                    undo: Change::RemoveAddedTrack(added.track),
+                    redo: Change::AddTrack(NewTrack {
+                        name: name.clone(),
+                        channel: Some(added.channel),
+                        program: *program,
+                    }),
+                })
+            }
             E::Batch(edits) => apply_batch(edits, data, file),
-            sidecar_edit => edit_file(file, |candidate| sidecar_edit.apply_to_file(candidate)),
+            sidecar_edit => {
+                let parts_before = file.parts.clone();
+                edit_file(file, |candidate| {
+                    sidecar_edit.apply_to_file(candidate)?;
+                    refuse_new_ambiguous_parts(&parts_before, candidate, data)
+                })
+            }
         }
     }
 
@@ -128,6 +167,7 @@ impl SongEdit {
         match self {
             E::SetLoop { looping } => file.looping = *looping,
             E::SetProvenance { provenance } => file.provenance = Some(provenance.clone()),
+            E::SetSoundFont { path } => file.soundfont = path.clone(),
             E::SetQuantize { part, quantize } => part_named(file, part)?.quantize = *quantize,
             E::SetPartMode { part, mode } => part_named(file, part)?.mode = *mode,
             E::AddInstrument { instrument } => file.instruments.push(instrument.clone()),
@@ -178,6 +218,7 @@ impl SongEdit {
             | E::AssignPart { .. }
             | E::SetTempo { .. }
             | E::SetTimeSignature { .. }
+            | E::AddTrack { .. }
             | E::Batch(_) => log::error!("{} is not a sidecar edit", self.name()),
         }
         Ok(())
@@ -201,6 +242,38 @@ fn edit_notes(
         undo: Change::RestoreNotes(before),
         redo: Change::RestoreNotes(images(data, &ids)),
     })
+}
+
+/// A part that this edit added or re-pointed must select one track: `check_schema` sees no
+/// tracks, so a part naming a name two tracks carry — a duplicate track added before the part,
+/// the order `AddTrack`'s own guard cannot see — is refused here. A candidate part carrying a
+/// before-part's name and selector is that part untouched (part names are unique, which
+/// `check_schema` holds) and is not re-judged; a part removed and re-added in one batch has no
+/// such twin and is judged as new.
+fn refuse_new_ambiguous_parts(
+    parts_before: &[Part],
+    candidate: &SongFile,
+    data: &SongData,
+) -> Result<(), SongEditError> {
+    for part in &candidate.parts {
+        let music_midi::TrackSelector::Name(name) = &part.track else {
+            continue;
+        };
+        let untouched = parts_before
+            .iter()
+            .any(|before| before.name == part.name && before.track == part.track);
+        if untouched {
+            continue;
+        }
+        let carriers = data.tracks().iter().filter(|track| track.name() == Some(name.as_str())).count();
+        if carriers > 1 {
+            return Err(SongEditError::TrackNameAmbiguous {
+                part: part.name.clone(),
+                name: name.clone(),
+            });
+        }
+    }
+    Ok(())
 }
 
 /// A sidecar edit made on a copy, kept only when the copy passes the schema check.

@@ -85,8 +85,12 @@ impl<G: Game> EditorGame<G> {
     }
 
     /// Replace the song with a new, never-saved one.
+    /// A new song, its background on the project's first bank under `soundfonts/` — the
+    /// default path, which the composer then warns about, when it has none.
     pub(super) fn new_song(&mut self) {
-        match SongDocument::new_song() {
+        let banks = editor::composer::scan_sound_fonts(&self.asset_base).banks;
+        let bank = banks.first().map_or(editor::song::DEFAULT_SOUND_FONT_PATH, String::as_str);
+        match SongDocument::new_song_on(bank) {
             Ok(song) => {
                 self.song = Some(song);
                 self.song_generation += 1;

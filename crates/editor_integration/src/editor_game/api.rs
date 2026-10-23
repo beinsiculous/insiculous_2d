@@ -76,6 +76,7 @@ impl<G: Game> EditorGame<G> {
                         dirty: self.command_history.is_dirty(),
                         play_state: self.editor.play_state(),
                         song: self.song.as_ref(),
+                        status_bar: Some(&self.editor.status_bar),
                     };
                     command_api::answer_query(&query, &ctx)
                 }
@@ -104,6 +105,9 @@ impl<G: Game> EditorGame<G> {
             };
             responses.push(response);
         }
+        // A song line may have undone the track the composer selects; the selector follows
+        // here, so a headless host needs no frame to reconcile it.
+        self.editor.composer.reconcile_active_track(self.song.as_ref());
         responses
     }
 

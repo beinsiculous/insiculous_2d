@@ -33,6 +33,13 @@ impl<G: Game> Game for EditorGame<G> {
         // Delegate to inner game
         self.inner.init(ctx);
         self.asset_base = std::path::PathBuf::from(ctx.assets.base_path());
+        // The editor starts silent: while editing, music is the composer's to start and
+        // stop, and a game's own music belongs to a Play session. Whatever the game's init
+        // asked for — a song or a recorded track, playing or waiting for the web's first
+        // gesture — is stopped here; a game that starts its music when a match begins is
+        // heard in Play.
+        ctx.audio.stop_song();
+        ctx.audio.stop_music();
 
         // Whatever font the game set up is the game view's baseline; locale
         // fonts layer on top of it during play (see update_inner_game).

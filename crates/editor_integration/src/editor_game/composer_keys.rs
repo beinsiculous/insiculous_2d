@@ -393,6 +393,9 @@ impl<G: Game> EditorGame<G> {
     /// run what it asked for and carry the drag one frame on.
     pub(super) fn render_composer_panel(&mut self, ctx: &mut GameContext, bounds: common::Rect) {
         self.follow_song();
+        // An API line drained this frame may have undone the selected track; the render
+        // must not offer "Add a part" on an index that is gone.
+        self.editor.composer.reconcile_active_track(self.song.as_ref());
         if !self.editor.composer.songs_scanned {
             self.editor.composer.rescan_songs(&self.asset_base);
         }
@@ -410,6 +413,9 @@ impl<G: Game> EditorGame<G> {
             default_path: &default_path,
             song_path: song_path.as_deref(),
             preview_audible: self.song_preview.is_audible(),
+            sound_font_present: self.song.as_ref().is_none_or(|song| {
+                editor::composer::sound_font_exists(&self.asset_base, &song.file().soundfont)
+            }),
         };
         let output = render_composer(&mut self.editor, ctx.ui, bounds, &view);
         self.run_composer_actions(output.actions);

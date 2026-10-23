@@ -44,6 +44,16 @@ pub(super) fn run(query: &Query, ctx: &QueryCtx<'_>) -> Result<Value, ApiError> 
         Query::ListCommands => Ok(super::specs::commands_response()),
         Query::Song => Ok(super::song::answer_song(ctx)),
         Query::SongNotes { part } => super::song::answer_song_notes(ctx, part.as_deref()),
+        Query::Status => Ok(status(ctx)),
+    }
+}
+
+/// The text the status bar draws — an error's "Error: " prefix included — so an agent or
+/// the playground reads what a person sees: `{"message": null}` when it says nothing.
+fn status(ctx: &QueryCtx<'_>) -> Value {
+    match ctx.status_bar.and_then(|bar| bar.shown_text().map(|text| (text, bar.is_showing_error()))) {
+        Some((message, error)) => json!({ "message": message, "error": error }),
+        None => json!({ "message": null }),
     }
 }
 

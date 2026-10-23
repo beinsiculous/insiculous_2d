@@ -64,7 +64,9 @@ the code's.
   owned events at absolute ticks, first-in first-out note pairing, type-0 channel
   normalization, the report.
 - `song_data/edit.rs` — the mutation helpers and `restore_notes`; each validates every
-  note before changing any and returns before-images.
+  note before changing any and returns before-images. `add_track` (`NewTrack`, `AddedTrack`)
+  adds an empty file track to a type-1 song with its name and a program change at tick 0
+  on the next free channel, skipping 10; `remove_added_track` is its inverse.
 - `song_data/export.rs` — `SongData::write_smf`: retained events minus edited notes'
   original pairs, plus live notes and edited timing, through midly's writer.
 - `tempo_map.rs` — `TempoMap` (exact integer tick ↔ seconds ↔ sample ↔ bar),
@@ -139,6 +141,10 @@ the code's.
 | An edited note's original pair must leave the export, or the note sounds twice | `src/song_data/tests.rs an_edited_note_leaves_its_original_pair_out_of_the_export_and_is_written_live` |
 | Undo must re-link an original note to its events (`NoteImage::original_pair`), or an undone edit still rewrites the file | `src/song_data/tests.rs restoring_before_images_undoes_an_edit_down_to_the_exported_bytes` |
 | A refused edit must change nothing: every note is checked before any is touched | `src/song_data/tests.rs a_refused_edit_changes_nothing` |
+| An added track carries a program change at tick 0: the background reads programs from the MIDI, so without one it plays the bank's first preset, and a channel event is what a reopen derives the track's channel from — an empty added track saved and reopened keeps its channel | `src/song_data/track_tests.rs an_empty_added_track_saved_and_reopened_keeps_its_name_channel_and_program` |
+| A channel is free only when no track plays on it and no retained event names it — an imported track's controller on a channel its notes never use would reach the new track's voice — and the next free channel skips 10, General MIDI's percussion | `src/song_data/track_tests.rs an_added_track_takes_the_next_free_channel_past_percussion_and_writes_its_program` `src/song_data/track_tests.rs a_channel_already_used_out_of_range_or_a_bad_program_is_refused_and_changes_nothing` |
+| A type-0 file's selectable tracks are rebuilt from its channels on reopen, so a track cannot be added to one | `src/song_data/track_tests.rs a_single_track_song_refuses_a_track_because_its_channels_are_its_tracks` |
+| `remove_added_track` is the inverse of `add_track` and nothing more: it counts the tracks added and refuses at zero, so an imported file's own last track — which also owns the last file track — is never taken away through the public API | `src/song_data/track_tests.rs taking_an_added_track_away_removes_it_with_its_notes_and_only_the_last_can_go` |
 | Same-key overlaps pair first-in first-out and are reported, never refused | `src/song_data/tests.rs same_key_overlaps_pair_first_in_first_out_and_are_reported_without_refusing` |
 | Tick → sample rounds up and sample → tick rounds down; mixing the rules double-counts or skips a beat crossing | `src/tempo_map/tests.rs beat_crossings_are_counted_by_integer_boundaries_across_a_tempo_and_meter_change` |
 | A beat is the time signature's denominator note (a half note in 3/2), not always a quarter | `src/tempo_map/tests.rs egmont_bars_and_beats_follow_its_three_meters` |

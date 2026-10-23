@@ -55,7 +55,7 @@ fn a_preview_plays_then_play_parks_it_and_the_session_hears_the_saved_song_the_f
     assert_eq!(play_state(&mut harness), EditorPlayState::Editing, "the request frame plays the song, not the game");
     assert!(harness.audio().is_song_playing(), "the saved song took the slot");
     harness.step(FRAME, &[]);
-    assert_eq!(play_state(&mut harness), EditorPlayState::Playing);
+    assert_eq!(harness.game().editor.play_state(), EditorPlayState::Playing);
     assert!(harness.audio().is_song_playing());
     assert!(!harness.game().song_preview.is_playing(), "the preview stays parked through the session");
 }
@@ -72,9 +72,9 @@ fn play_saved_from_the_dirty_prompt_takes_the_same_two_frames() {
         editor.resolve_song_choice(PendingSceneAction::StartPlay, ConfirmChoice::Alt);
     });
     harness.step(FRAME, &[]);
-    assert_eq!(play_state(&mut harness), EditorPlayState::Editing);
+    assert_eq!(harness.game().editor.play_state(), EditorPlayState::Editing);
     harness.step(FRAME, &[]);
-    assert_eq!(play_state(&mut harness), EditorPlayState::Playing);
+    assert_eq!(harness.game().editor.play_state(), EditorPlayState::Playing);
     assert!(harness.audio().is_song_playing(), "the saved song, the edits kept unsaved");
     assert!(harness.game().song.as_ref().is_some_and(editor::SongDocument::is_dirty));
 }
@@ -92,7 +92,7 @@ fn stop_while_play_is_armed_drops_it_and_starts_nothing() {
         assert!(!editor.song_preview.is_armed(), "Stop drops it");
     });
     harness.steps(2, FRAME);
-    assert_eq!(play_state(&mut harness), EditorPlayState::Editing);
+    assert_eq!(harness.game().editor.play_state(), EditorPlayState::Editing);
     assert!(!harness.audio().is_song_playing(), "no song was started");
 }
 
@@ -190,4 +190,51 @@ fn a_save_refused_for_the_songs_provenance_from_the_play_prompt_opens_its_author
     assert_eq!(composer.focus, editor::composer::ComposerFocus::Sidebar);
     assert_eq!(composer.sidebar_section, editor::composer::SidebarSection::Song);
     assert_eq!(composer.request, Some(editor::composer::ControlRequest::FocusSongAuthor));
+}
+
+/// A game that asks for its song at `init`, as Tong does, and again on its first frame in a
+/// session, as Tong's match start does.
+struct SingsItsOwnSong {
+    song: std::path::PathBuf,
+    sang_in_session: bool,
+}
+
+impl engine_core::Game for SingsItsOwnSong {
+    fn init(&mut self, ctx: &mut engine_core::prelude::GameContext) {
+        ctx.audio.play_song(&self.song).expect("the game's song loads");
+    }
+
+    fn update(&mut self, ctx: &mut engine_core::prelude::GameContext) {
+        if !self.sang_in_session {
+            self.sang_in_session = true;
+            ctx.audio.play_song(&self.song).expect("the game's song loads");
+        }
+    }
+}
+
+#[test]
+fn the_editor_starts_silent_the_games_own_song_plays_in_a_session_and_stop_ends_it() {
+    let folder = tempfile::tempdir().expect("a temporary asset folder");
+    drop(harness_with_a_saved_song(&folder));
+    let song = folder.path().join("music/theme.mid");
+    let mut editor = EditorGame::new(SingsItsOwnSong { song: song.clone(), sang_in_session: false });
+    editor.prefs_slot = std::env::temp_dir()
+        .join(format!("insiculous_test_editor_prefs_{}_silent_boot.json", std::process::id()));
+    let config = GameConfig::new("Silent boot").with_asset_base_path(folder.path().to_string_lossy().to_string());
+    let mut harness = GameHarness::new(editor, config);
+    harness.step(FRAME, &[]);
+    assert_eq!(harness.audio().song_label(), None, "the game's init-time song is stopped: editing is silent");
+
+    harness.context(|editor, ctx| editor.handle_play_action(PlayControlAction::Play, ctx.world));
+    for _ in 0..3 {
+        harness.step(FRAME, &[]);
+    }
+    assert_eq!(harness.game().editor.play_state(), EditorPlayState::Playing);
+    let label = song.display().to_string();
+    assert_eq!(harness.audio().song_label(), Some(label.as_str()), "the game's own music plays in its session");
+
+    harness.context(|editor, ctx| editor.handle_play_action(PlayControlAction::Stop, ctx.world));
+    harness.step(FRAME, &[]);
+    assert_eq!(harness.game().editor.play_state(), EditorPlayState::Editing);
+    assert_eq!(harness.audio().song_label(), None, "and Stop ends it");
 }

@@ -13,10 +13,16 @@
 //!
 //! **Play hears the saved song.** Scene Play arms a pending play instead of starting the
 //! session: the drain flushes the sources and plays the saved file, the one slot replacing
-//! the preview, and only once that succeeded does the next frame start the session, so a
-//! game's first update hears the song. Intents pushed while it is armed are dropped. Stop
-//! flushes the sources and stops the slot when the editor holds it — the preview or the
-//! saved song — whatever a wrapped game did to it; with no song open Stop touches no music.
+//! the preview, and the next frame starts the session, so a game's first update hears the
+//! song. A saved song that fails to load says so on the status bar and the session starts
+//! all the same, without the editor's music: the editor's Play is never hostage to a
+//! song's bank. Intents pushed while it is armed are dropped.
+//!
+//! **Editing is silent until the composer plays.** The editor stops whatever music the
+//! wrapped game's `init` asked for, and Stop flushes the sources and stops the slot
+//! whoever filled it — the saved song, the game's own music, a recorded track — so the only
+//! music heard while editing is the composer's preview, started and stopped by its
+//! transport.
 
 use std::path::{Path, PathBuf};
 
@@ -72,8 +78,6 @@ enum SlotHolder {
 pub(super) struct PendingPlay {
     /// The saved song to play; `None` with no song open, when Play touches no music.
     song: Option<PathBuf>,
-    /// Whether the preview was playing when Play parked it: a failed play brings it back.
-    parked_preview: bool,
     /// Whether the drain played it, so the next frame starts the session.
     ready: bool,
 }
@@ -309,14 +313,8 @@ impl<G: Game> EditorGame<G> {
             .and_then(SongDocument::path)
             .map(Path::to_path_buf);
         let preview = &mut self.song_preview;
-        let parked_preview = preview.is_playing()
-            || preview.pending_play.as_ref().is_some_and(|pending| pending.parked_preview);
         preview.park();
-        preview.pending_play = Some(PendingPlay {
-            song,
-            parked_preview,
-            ready: false,
-        });
+        preview.pending_play = Some(PendingPlay { song, ready: false });
         self.sync_preview_view();
     }
 
@@ -421,12 +419,11 @@ impl<G: Game> EditorGame<G> {
             SongAudioIntent::PauseSession if session_holds_slot => audio.pause_song(),
             SongAudioIntent::ResumeSession if session_holds_slot => audio.resume_song(),
             SongAudioIntent::StopAll => {
-                                sources.flush(audio);
-                if self.song_preview.slot != SlotHolder::Nobody {
-                    // The slot is the editor's: a recorded track a game put in it goes too.
-                    audio.stop_song();
-                    audio.stop_music();
-                }
+                sources.flush(audio);
+                // Editing is silent until the composer plays: whoever filled the slot during
+                // the session — the saved song, the game's own music, a recorded track — stops.
+                audio.stop_song();
+                audio.stop_music();
                 self.song_preview.slot = SlotHolder::Nobody;
                 self.song_preview.position_seen = false;
                 self.song_preview.park();
@@ -476,7 +473,10 @@ impl<G: Game> EditorGame<G> {
 
     /// An armed Play's music, last of the drain: the sources flushed and, with a song
     /// open, its saved file played — loaded and checked whole before the playing song is
-    /// touched. On failure the Play is dropped and a parked preview plays on.
+    /// touched. A song that fails to load never blocks Play: the session starts without the
+    /// editor's music — a parked preview still sounding is stopped, so the session owns
+    /// nothing it did not start; the game's own music is the game's to start — and the
+    /// error stays on the status bar.
     fn play_armed_song(
         &mut self,
         audio: &mut AudioManager,
@@ -484,7 +484,6 @@ impl<G: Game> EditorGame<G> {
     ) -> Option<Result<(), String>> {
         let pending = self.song_preview.pending_play.as_ref().filter(|pending| !pending.ready)?;
         let song = pending.song.clone();
-        let parked_preview = pending.parked_preview;
         sources.flush(audio);
         let played = match &song {
             Some(path) => audio.play_song(path).map_err(|error| error.to_string()),
@@ -502,13 +501,18 @@ impl<G: Game> EditorGame<G> {
                 }
             }
             Err(error) => {
-                preview.pending_play = None;
-                if parked_preview && preview.slot == SlotHolder::Preview {
-                    preview.state = PreviewState::Playing;
+                if let Some(pending) = preview.pending_play.as_mut() {
+                    pending.ready = true;
                 }
-                self.editor
-                    .status_bar
-                    .show_error(format!("Play could not start the song: {error}"));
+                // `play_song` refused before touching the slot, so a parked preview would
+                // otherwise play on under a session that owns nothing.
+                if preview.slot == SlotHolder::Preview {
+                    audio.stop_song();
+                    preview.slot = SlotHolder::Nobody;
+                }
+                self.editor.status_bar.show_error(format!(
+                    "Play could not start the song: {error}; the game runs without it"
+                ));
             }
         }
         Some(played)

@@ -1,16 +1,28 @@
 //! The mutation helpers. Each checks every note it names before touching any, so a
 //! refused edit changes nothing, and each returns what an inverse needs: the edited
 //! notes' before-images (undo with [`SongData::restore_notes`]), the new note's id (undo
-//! with [`SongData::remove_notes`]), or the tempo or time signature that was replaced.
+//! with [`SongData::remove_notes`]), the added track's place (undo with
+//! [`SongData::remove_added_track`]), or the tempo or time signature that was replaced.
 
 use std::collections::BTreeSet;
 
-use super::{MusicalUnit, NewNote, Note, NoteId, NoteImage, NoteLocation, SongData};
+use midly::num::{u4, u7};
+use midly::{MetaMessage, MidiMessage, TrackEventKind};
+
+use super::{
+    AddedTrack, MusicalUnit, NewNote, NewTrack, Note, NoteId, NoteImage, NoteLocation,
+    RetainedEvent, SmfFormat, SongData, SongTrack,
+};
 use crate::error::EditError;
 use crate::tempo_map::{TempoChange, TimeSignature};
 
 const HIGHEST_KEY: u8 = 127;
 const HIGHEST_VELOCITY: u8 = 127;
+const HIGHEST_PROGRAM: u8 = 127;
+const HIGHEST_CHANNEL: u8 = 15;
+/// General MIDI's percussion channel (`channel 10` counted from 1): the synthesizer plays
+/// it from the drum bank, so a track only lands there when it asks for it.
+const PERCUSSION_CHANNEL: u8 = 9;
 /// MIDI's largest delta time. A note ending past it could leave a gap between two events
 /// that no Standard MIDI File can write, so the edit is refused rather than the export.
 const LAST_WRITABLE_TICK: u64 = 0x0FFF_FFFF;
@@ -155,6 +167,110 @@ impl SongData {
             self.next_note_id = self.next_note_id.max(image.id.0 + 1);
         }
         Ok(())
+    }
+
+    /// Add an empty track at the end of a type-1 song: a file track of its own carrying its
+    /// name and, at tick 0, the program change that makes it play `program` and keeps its
+    /// channel when the file is read back. A channel is free when no track plays on it and
+    /// no retained event of any track names it.
+    pub fn add_track(&mut self, track: NewTrack) -> Result<AddedTrack, EditError> {
+        if self.format == SmfFormat::SingleTrack {
+            return Err(EditError::SingleTrackSong);
+        }
+        if track.program > HIGHEST_PROGRAM {
+            return Err(EditError::ProgramOutOfRange {
+                program: track.program,
+            });
+        }
+        let occupied = self.occupied_channels();
+        let channel = match track.channel {
+            Some(channel) if channel > HIGHEST_CHANNEL => {
+                return Err(EditError::ChannelOutOfRange { channel })
+            }
+            Some(channel) if occupied.contains(&channel) => {
+                return Err(EditError::ChannelInUse { channel })
+            }
+            Some(channel) => channel,
+            None => (0..=HIGHEST_CHANNEL)
+                .find(|channel| *channel != PERCUSSION_CHANNEL && !occupied.contains(channel))
+                .ok_or(EditError::NoFreeChannel)?,
+        };
+        let midi_channel = u4::new(channel);
+        self.retained_tracks.push(vec![
+            RetainedEvent::retain(
+                0,
+                TrackEventKind::Meta(MetaMessage::TrackName(track.name.as_bytes())),
+            ),
+            RetainedEvent::retain(
+                0,
+                TrackEventKind::Midi {
+                    channel: midi_channel,
+                    message: MidiMessage::ProgramChange {
+                        program: u7::new(track.program),
+                    },
+                },
+            ),
+            RetainedEvent::retain(0, TrackEventKind::Meta(MetaMessage::EndOfTrack)),
+        ]);
+        self.tracks.push(SongTrack {
+            name: Some(track.name),
+            channel: Some(channel),
+            source_track: self.retained_tracks.len() - 1,
+            units: Vec::new(),
+        });
+        self.added_tracks += 1;
+        Ok(AddedTrack {
+            track: self.tracks.len() - 1,
+            channel,
+        })
+    }
+
+    /// Take away the track [`SongData::add_track`] added last, with whatever notes it holds,
+    /// returning their before-images. Only the last track, only while an added one remains,
+    /// and only one that is a file track of its own, can go: an imported file's own tracks are
+    /// never taken away, and every other track's index is what a part's selector names.
+    pub fn remove_added_track(&mut self, track: usize) -> Result<Vec<NoteImage>, EditError> {
+        self.check_track(track)?;
+        let last_source = self.retained_tracks.len() - 1;
+        let removable = self.added_tracks > 0
+            && track + 1 == self.tracks.len()
+            && self.tracks[track].source_track == last_source
+            && self
+                .tracks
+                .iter()
+                .filter(|candidate| candidate.source_track == last_source)
+                .count()
+                == 1;
+        if !removable {
+            return Err(EditError::NotTheLastTrack { track });
+        }
+        let ids: Vec<NoteId> = self.tracks[track]
+            .units
+            .iter()
+            .flat_map(|unit| unit.notes.iter().map(|note| note.id))
+            .collect();
+        let images = self.remove_notes(&ids)?;
+        self.tracks.pop();
+        self.retained_tracks.pop();
+        self.added_tracks -= 1;
+        Ok(images)
+    }
+
+    /// Every channel a track plays on or a retained event names.
+    pub(super) fn occupied_channels(&self) -> BTreeSet<u8> {
+        let event_channels = self
+            .retained_tracks
+            .iter()
+            .flatten()
+            .filter_map(|event| match event.kind {
+                TrackEventKind::Midi { channel, .. } => Some(channel.as_int()),
+                _ => None,
+            });
+        self.tracks
+            .iter()
+            .filter_map(|track| track.channel)
+            .chain(event_channels)
+            .collect()
     }
 
     /// Set the tempo from `change.tick` on, returning the change it replaced on that

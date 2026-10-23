@@ -42,6 +42,12 @@ on its own. **The crate knows no scene and no space**: the scene's `SoundEmitter
   filesystem keeps one and by a content fingerprint where it does not); `SongProblem`,
   `SONG_FILE_BYTE_LIMIT` (256 KiB), `SOUND_FONT_BYTE_LIMIT` (48 MiB).
 - `manager/song/edges.rs` — `Subdivision` and the beat edges latched each update.
+- `manager/song/telemetry.rs` — what a game reads for its logic and its reports:
+  `song_label` (the label the slot's song was requested with while pending, playing or
+  paused; `None` once it ended or its output died, which nothing reaps), `take_song_maxima`
+  (`SongMaxima`: the source's longest render and drain gap swapped to zero, so each report
+  is its own window) and `SongSnapshot::log_line` (the one `conductor=on` line the example
+  and the games print).
 - `conductor_source.rs` — `ConductorSource`, the conductor as a rodio `Source`: one
   64-frame block rendered per pull at its own instant, the bus gains read from two atomics
   per block, `SourceReadings` (limited samples, the frames not yet handed out, render
@@ -80,6 +86,8 @@ on its own. **The crate knows no scene and no space**: the scene's `SoundEmitter
 | Transport, deactivations and flushes a full queue refuses wait in the manager and go first, in order, from `update()`; a trigger is refused while one waits, so it never overtakes them | `src/manager/song/tests.rs transport_a_full_queue_refuses_waits_and_is_sent_in_order_before_any_trigger` `src/manager/song/tests.rs ten_thousand_triggers_never_lose_a_deactivation_a_flush_or_a_pause` |
 | A song started part way (`play_song_in_memory_at`) carries its tick in the ready song, and `start_song` sends `Seek` before `Play`, so it starts there whether it starts now or after the web's gesture and never publishes a position before it | `src/manager/song/tests.rs a_song_started_part_way_publishes_no_position_before_its_start` |
 | `is_song_playing` is false for a song that ended, a paused one and a dead one alike; `song_ended` is what tells the end of a song that does not loop from an output that died | `src/manager/song/tests.rs a_song_played_to_its_end_has_ended_and_one_stopped_or_looping_has_not` |
+| A song that played to its end or whose output died is no song to a caller deciding whether to request music: nothing reaps the playback, so `song_label` filters both, while a paused song is a live one another caller holds | `src/manager/song/tests/telemetry.rs the_label_names_a_pending_playing_or_paused_song_and_nothing_once_it_ended_died_or_stopped` |
+| The source's two maxima are cumulative `fetch_max` atomics, so a hitch at boot sat in every later line: `take_song_maxima` swaps zero into both and returns what they held (a `fetch_max` racing the swap may lose a smaller spike in that instant, never a larger one) | `src/manager/song/tests/telemetry.rs taking_the_maxima_returns_what_they_held_and_leaves_zeros_for_the_next_window` |
 | Each song gets a conductor of its own, built on the game thread, so a song change neither allocates on the audio thread nor lets an old binding index reach the new song; the flush floor is the one thing carried, sent after `Play` | `src/manager/song/tests.rs a_song_change_carries_the_flush_and_the_next_trigger_reactivates_under_a_new_epoch` |
 | A song's whole closure is loaded and checked before the playing song is touched, in disabled mode too; every refusal names the song, the sidecar entry and the path | `src/manager/song/tests/loading.rs a_missing_sample_a_missing_bank_or_an_oversized_file_is_refused_and_the_song_plays_on` `src/manager/song/tests/loading.rs a_missing_sidecar_is_refused_naming_it_without_touching_recorded_music` |
 | The recorded path keeps the same rule: `play_music` reads and decodes before it stops anything, so a missing or undecodable track leaves a playing or pending song (and the playing track) alone | `src/manager/song/tests/loading.rs a_recorded_track_that_fails_to_load_leaves_a_playing_or_pending_song_alone` |

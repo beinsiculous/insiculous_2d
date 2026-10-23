@@ -67,7 +67,7 @@ impl<G: Game> EditorGame<G> {
         // never re-capture: the paused world is mid-simulation.)
         let snapshot = WorldSnapshot::capture(world);
         if let Some(warning) = snapshot.loss_warning() {
-            self.editor.status_bar.show_message(warning);
+            self.editor.status_bar.show_notice(warning);
         }
         self.world_snapshot = Some(snapshot);
         self.adopt_game_camera(world);
@@ -93,7 +93,7 @@ impl<G: Game> EditorGame<G> {
                     batch.selection_before,
                 );
             }
-            self.editor.status_bar.show_message(format!("API batch committed by {by}"));
+            self.editor.status_bar.show_notice(format!("API batch committed by {by}"));
         }
     }
 

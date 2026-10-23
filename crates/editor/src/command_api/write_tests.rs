@@ -394,6 +394,7 @@ fn test_writes_refused_while_playing_and_allowed_while_paused() {
         dirty: false,
         play_state: EditorPlayState::Editing,
         song: None,
+        status_bar: None,
     };
     let response = super::dispatch_line("delete Player", &ctx).expect("response owed");
     assert!(response.contains("\"refused\""), "{response}");

@@ -12,6 +12,7 @@ use std::path::Path;
 use music_midi::NoteId;
 use ui::WidgetId;
 
+use super::sound_fonts::{scan_sound_fonts, SoundFontScan};
 use crate::scroll::ScrollState;
 use crate::song::{SongDocument, HOME_DIRECTORIES};
 
@@ -180,8 +181,13 @@ pub struct ComposerState {
     pub request: Option<ControlRequest>,
     /// Every `.mid` under the song folders, by its asset-relative path.
     pub songs: Vec<String>,
-    /// Whether `songs` is current; cleared when the panel closes, so opening it rescans.
+    /// Whether `songs` and `sound_fonts` are current; cleared when the panel closes, so
+    /// opening it rescans.
     pub songs_scanned: bool,
+    /// Every bank under `soundfonts/`, which the Song section's SoundFont row cycles.
+    pub sound_fonts: SoundFontScan,
+    /// The program the Parts section's Add-track row gives the next track it adds.
+    pub new_track_program: u8,
     /// Whether the host's song preview is playing, written by the host each frame: the
     /// transport's Play and Stop act on it.
     pub preview_playing: bool,
@@ -221,6 +227,8 @@ impl Default for ComposerState {
             request: None,
             songs: Vec::new(),
             songs_scanned: false,
+            sound_fonts: SoundFontScan::default(),
+            new_track_program: 0,
             preview_playing: false,
             playhead_tick: None,
         }
@@ -229,18 +237,20 @@ impl Default for ComposerState {
 
 impl ComposerState {
     /// Reset what pointed into another song when `generation` is not the one this state
-    /// was built against; returns whether it reset. The songs list is the folders', not
-    /// the song's, and survives.
+    /// was built against; returns whether it reset. The songs and banks lists are the
+    /// folders', not the song's, and survive.
     pub fn follow(&mut self, generation: u64, song: Option<&SongDocument>) -> bool {
         if self.generation == Some(generation) {
             return false;
         }
         let songs = std::mem::take(&mut self.songs);
+        let sound_fonts = std::mem::take(&mut self.sound_fonts);
         let songs_scanned = self.songs_scanned;
         *self = Self {
             generation: Some(generation),
             active_track: song.and_then(default_track),
             songs,
+            sound_fonts,
             songs_scanned,
             ..Self::default()
         };
@@ -296,10 +306,27 @@ impl ComposerState {
         }
     }
 
-    /// Find every song in the two song folders under `asset_base` again.
+    /// Find every song in the two song folders under `asset_base` again, and every bank.
     pub fn rescan_songs(&mut self, asset_base: &Path) {
         self.songs = scan_songs(asset_base);
+        self.sound_fonts = scan_sound_fonts(asset_base);
         self.songs_scanned = true;
+    }
+
+    /// Keep `active_track` a track the song still has with a channel: an undone `AddTrack`
+    /// shrinks the list under the selector, and a stale index showed an empty roll and let
+    /// "Add a part" build one on a track that was not there.
+    pub fn reconcile_active_track(&mut self, song: Option<&SongDocument>) {
+        let Some(song) = song else {
+            self.active_track = None;
+            return;
+        };
+        let still_selectable = self.active_track.is_some_and(|track| {
+            song.data().tracks().get(track).is_some_and(|song_track| song_track.channel().is_some())
+        });
+        if !still_selectable {
+            self.active_track = default_track(song);
+        }
     }
 }
 

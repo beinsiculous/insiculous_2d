@@ -54,6 +54,14 @@ pub fn command_docs() -> &'static [CommandDoc] {
             undoable: false,
         },
         CommandDoc {
+            id: "status",
+            usage: "status",
+            example: "status",
+            summary: "The status bar's message as drawn (an error with its \"Error: \" prefix) and whether it is an error; {\"message\": null} when it shows none.",
+            writes: false,
+            undoable: false,
+        },
+        CommandDoc {
             id: "commands",
             usage: "commands",
             example: "commands",

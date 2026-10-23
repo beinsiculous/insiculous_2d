@@ -12,9 +12,9 @@
 //! keeps the global tempo and meta events and every original byte of event data.
 //!
 //! **Editing.** The mutation helpers (`add_note`, `remove_notes`, `move_notes`,
-//! `resize_notes`, `set_velocity`, `set_pitch`, `assign_part`, and the tempo and
-//! time-signature setters) refuse a bad edit whole and return the before-images an
-//! inverse edit needs; [`SongData::restore_notes`] applies them. [`SongData::write_smf`]
+//! `resize_notes`, `set_velocity`, `set_pitch`, `assign_part`, `add_track` and its
+//! inverse, and the tempo and time-signature setters) refuse a bad edit whole and return
+//! the before-images an inverse edit needs; [`SongData::restore_notes`] applies them. [`SongData::write_smf`]
 //! re-emits the retained events, leaving out the original note pair of every edited or
 //! removed note, plus the live notes.
 
@@ -31,6 +31,8 @@ mod export;
 mod flatten;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod track_tests;
 
 /// A note's identity, stable across every edit. The composer's selection and undo
 /// address notes by it, never by a position in a vector.
@@ -73,6 +75,22 @@ pub struct NewNote {
     pub key: u8,
     pub velocity: u8,
     pub duration_ticks: u64,
+}
+
+/// A track to add to a type-1 song: its name, the channel it plays on (0–15; `None` takes
+/// the next free one, skipping General MIDI's percussion channel) and the program it plays.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewTrack {
+    pub name: String,
+    pub channel: Option<u8>,
+    pub program: u8,
+}
+
+/// Where [`SongData::add_track`] put a track: its selectable index and its channel (0–15).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AddedTrack {
+    pub track: usize,
+    pub channel: u8,
 }
 
 /// A note's whole state — the before-image an edit returns. `original_pair` records that
@@ -283,6 +301,9 @@ pub struct SongData {
     tempo_edited: bool,
     time_signatures_edited: bool,
     next_note_id: u64,
+    /// How many tracks `add_track` appended: the only ones `remove_added_track` may take
+    /// back, since an imported file's own tracks are never taken away.
+    added_tracks: usize,
 }
 
 impl SongData {

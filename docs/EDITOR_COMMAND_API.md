@@ -32,6 +32,7 @@ parse errors.
 | `describe <entity>` | one entity with all registry component values |
 | `selection` | current selection (primary + all, insertion order) |
 | `scene` | scene path, the scene's dirty state, the song's (`song_dirty`) and either's (`any_dirty`), entity count, play state |
+| `status` | the status bar's message as it is drawn — an error with its `Error: ` prefix — and whether it is an error: `{"message": "…", "error": true}`, or `{"message": null}` while it shows none |
 | `commands` | self-description: every verb (usage/example/summary/writes/undoable) plus the LIVE `settable`, `addable`, and `archetypes` name lists |
 
 Write verbs (Stage B — one undo entry each unless noted):
@@ -147,6 +148,18 @@ its key so the map stays total.
 
 `primary` is `null` when nothing is selected; `all` is insertion-ordered.
 
+### `status`
+
+```json
+{"message":"Error: Play could not start the song: …; the game runs without it","error":true}
+```
+
+The text the bar shows, through the same formatter that draws it, so an
+`--api` session, an agent or the playground's command input reads what a
+person reads. An error holds until a user's own action replaces it; the
+editor's automatic notices (the snapshot warning and "API batch committed by
+Play" a frame after Play) never displace one.
+
 ### `scene`
 
 ```json
@@ -173,7 +186,7 @@ addresses it; none touches the scene's `CommandHistory`, and `undo` /
 | `song edit <json>` | one `SongEdit` (the REST OF THE LINE, never tokenized) through `SongDocument::apply`, the mutation path the composer's GUI uses — one entry on the song's history. Answers `{"command":"song edit","edit":"<variant>","added_notes":[<id>...],"dirty":<bool>}` |
 | `song undo` / `song redo` | the song's history only: `{"undid"/"redid": <variant>\|null}` |
 | `song select <note>...` / `song select none` | select exactly these notes by id — never on the undo stack (GUI parity) |
-| `song new [discard]` | a new, never-saved song (one tempo track, a `melody` track on channel 1, 120 BPM in 4/4, the background on `soundfonts/cast.sf2`) |
+| `song new [discard]` | a new, never-saved song (one tempo track, a `melody` track on channel 1, 120 BPM in 4/4, the background on the asset folder's first `.sf2` under `soundfonts/` in sorted order — `soundfonts/cast.sf2` when it has none, which the composer's Song section then warns about) |
 | `song open <path> [discard]` | open a `.mid` (relative to the asset root), settling what an interrupted save left — the answer's `notes` say what was settled |
 | `song save [path [overwrite]]` | save to `path`, else the song's own path, else — never saved — `music/untitled.mid` (numbered while its `.mid` or its `.mid.ron` is taken). A `path` whose `.mid` or `.mid.ron` exists and is not the song's own file is another song: `refused` unless the line ends in `overwrite` (its own word — it replaces that song's files, where `discard` drops this song's edits); the composer's path field asks Overwrite / Cancel instead |
 | `song close [discard]` | close the song |
@@ -230,11 +243,23 @@ with `refused_reason`, and it still opens and saves as it was.
 {"AddPart": {"part": {"name": "lead", "track": {"Name": "melody"}, "mode": "Loop", "quantize": "Off"}}}
 {"RemovePart": {"name": "lead"}}
 {"SetProvenance": {"provenance": {"author": "2026 Jesse", "license": "CC-BY-4.0"}}}
+{"AddTrack": {"name": "brass", "program": 57}}
+{"AddTrack": {"name": "drums", "channel": 10, "program": 0}}
+{"SetSoundFont": {"path": "soundfonts/tong.sf2"}}
 {"Batch": [ {"SetPitch": {"notes": [3], "key": 62}}, {"SetPitch": {"notes": [4], "key": 65}} ]}
 ```
 
 `SetTempo`'s `microseconds_per_quarter` and `SetTimeSignature`'s `meter`
-take `null` to remove the change on that tick. `Batch` is the song's
+take `null` to remove the change on that tick. `AddTrack` adds an empty
+track at the end of a type-1 song, with a program change at tick 0 so it
+plays General MIDI `program` (0–127) and keeps its channel when reopened;
+`channel` counts 1 to 16 as `song` does, and without it the track takes the
+next free channel, never 10 (percussion), which a track gets only by naming
+it. A channel already in use — by a track or by any event of the file — or
+outside 1 to 16 is refused, and so is the edit on a type-0 song, whose
+channels are its tracks. Undo takes the track away with its notes.
+`SetSoundFont` changes the background's bank; the composer's SoundFont row
+cycles the asset folder's `.sf2`s through it. `Batch` is the song's
 composite: every member is checked before any lands, a refused member lands
 none of it, and the whole is one undo entry. An edit to the sidecar is
 checked by `SongFile::check_schema` on the file it would produce, so a ninth

@@ -1,0 +1,12 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Comment: The examples' background bank, a copy of crates/music_midi/fixtures/sine.sf2
+ (that folder's LICENSE carries the same entry): what a new song in an example plays
+ its background on.
+
+Files: sine.sf2
+Copyright: none (generated)
+Comment: Written by scripts/make_sine_soundfont.py: one A4 sine sample (44000 Hz,
+ 100 points a cycle, looped), one instrument releasing over 0.1 s, one preset at bank
+ 0, program 0. Byte-reproducible.
+ sha256: e2b55d31e4cc57722f2cc2550b2b3afc8c9f35aff421a5d3c50e7e1683b07199
+License: public-domain

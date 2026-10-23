@@ -162,7 +162,7 @@ pub fn write_string(path: &Path, text: &str) -> io::Result<()> {
 /// pathological tree, since symlinks are never followed. The wasm scan has no
 /// directories to descend, hence the cfg.
 #[cfg(not(target_arch = "wasm32"))]
-const MAX_LIST_DEPTH: usize = 6;
+pub const MAX_LIST_DEPTH: usize = 6;
 
 /// Recursively list all files under `dir`, sorted by path.
 ///

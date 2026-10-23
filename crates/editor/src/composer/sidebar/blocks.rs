@@ -59,7 +59,14 @@ fn next_quantize(quantize: Quantize) -> Quantize {
     }
 }
 
-pub(super) fn parts(walk: &mut SidebarWalk, song: &SongDocument, active_track: Option<usize>) {
+/// The Add-track row's program, kept on the composer's state between frames, and whether
+/// Enter went down this frame: the name field's commit adds the track only on Enter.
+pub(super) struct TrackDraft<'a> {
+    pub program: &'a mut u8,
+    pub enter_pressed: bool,
+}
+
+pub(super) fn parts(walk: &mut SidebarWalk, song: &SongDocument, active_track: Option<usize>, draft: TrackDraft) {
     walk.heading("Parts");
     let file = song.file();
     if file.parts.is_empty() {
@@ -115,11 +122,40 @@ pub(super) fn parts(walk: &mut SidebarWalk, song: &SongDocument, active_track: O
             walk.note(&format!("{} · unassigned background", track_label(song, track)));
         }
     }
-    let Some(track) = active_track else {
+    if let Some(track) = active_track {
+        if walk.button(WidgetId::hashed("composer_part_add"), "Add a part for the shown track", true) {
+            walk.push(ComposerAction::Edit(SongEdit::AddPart { part: new_part(song, track) }));
+        }
+    }
+    add_track_row(walk, draft);
+}
+
+/// A name field and a program field: Enter in the name adds the track on the next free
+/// channel playing that program, as one edit.
+fn add_track_row(walk: &mut SidebarWalk, draft: TrackDraft) {
+    walk.heading("Add track");
+    let program = walk.number(
+        WidgetId::hashed("composer_track_program"),
+        "Program",
+        f32::from(*draft.program),
+        FloatFieldOpts::hard(0.0, 127.0),
+    );
+    if let Some((value, _)) = program {
+        *draft.program = value.round().clamp(0.0, 127.0) as u8;
+    }
+    walk.note("General MIDI 0–127: trumpet 56, trombone 57, timpani 47");
+    let named = walk.field(WidgetId::hashed("composer_track_name"), "Name", "");
+    walk.note("Type a name, Enter adds the track on the next free channel");
+    let Some(name) = named.filter(|_| draft.enter_pressed) else {
         return;
     };
-    if walk.button(WidgetId::hashed("composer_part_add"), "Add a part for the shown track", true) {
-        walk.push(ComposerAction::Edit(SongEdit::AddPart { part: new_part(song, track) }));
+    let name = name.trim();
+    if !name.is_empty() {
+        walk.push(ComposerAction::Edit(SongEdit::AddTrack {
+            name: name.to_string(),
+            channel: None,
+            program: *draft.program,
+        }));
     }
 }
 

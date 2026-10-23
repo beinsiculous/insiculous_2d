@@ -79,6 +79,18 @@ pub enum EditError {
         denominator: u8,
         ticks_per_quarter: u16,
     },
+    #[error("this song is a single-track MIDI file; its channels are its tracks")]
+    SingleTrackSong,
+    #[error("no channel is free: every channel from 1 to 16 but 10 plays a track already")]
+    NoFreeChannel,
+    #[error("channel {} is outside 1 to 16", u16::from(*.channel) + 1)]
+    ChannelOutOfRange { channel: u8 },
+    #[error("channel {} is already in use", u16::from(*.channel) + 1)]
+    ChannelInUse { channel: u8 },
+    #[error("program {program} is outside General MIDI's 0 to 127")]
+    ProgramOutOfRange { program: u8 },
+    #[error("track {track} is not the last track added, so it cannot be taken away")]
+    NotTheLastTrack { track: usize },
 }
 
 /// One of a song file's three named collections.

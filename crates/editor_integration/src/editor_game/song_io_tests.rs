@@ -302,3 +302,24 @@ fn song_undo_leaves_the_scene_history_and_scene_undo_leaves_the_song() {
         "the song's edit stands"
     );
 }
+
+#[test]
+fn a_new_song_plays_on_the_projects_first_bank_and_on_the_default_when_it_has_none() {
+    let banked = folder();
+    let mut editor = editor_game();
+    editor.asset_base = banked.path().to_path_buf();
+    for bank in ["soundfonts/b.sf2", "soundfonts/a.sf2"] {
+        common::vfs::write(&banked.path().join(bank), b"bank").expect("written");
+    }
+    editor.new_song();
+    let song = editor.song.as_ref().expect("a new song");
+    assert_eq!(song.file().soundfont, "soundfonts/a.sf2", "the first in sorted order");
+
+    let bare = folder();
+    let mut editor = editor_game();
+    editor.asset_base = bare.path().to_path_buf();
+    editor.new_song();
+    let song = editor.song.as_ref().expect("a new song");
+    assert_eq!(song.file().soundfont, editor::song::DEFAULT_SOUND_FONT_PATH);
+    assert!(!editor::composer::sound_font_exists(bare.path(), &song.file().soundfont), "which the composer warns about");
+}

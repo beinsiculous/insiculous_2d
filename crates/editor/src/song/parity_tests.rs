@@ -21,7 +21,7 @@ use crate::commands::CommandHistory;
 use crate::play_state::EditorPlayState;
 use crate::selection::Selection;
 
-const VARIANT_COUNT: usize = 21;
+const VARIANT_COUNT: usize = 23;
 
 /// Every variant's place in the table. Exhaustive on purpose: a new variant fails to
 /// compile here until it has a row.
@@ -48,6 +48,8 @@ fn variant_index(edit: &SongEdit) -> usize {
         SongEdit::RemovePart { .. } => 18,
         SongEdit::SetProvenance { .. } => 19,
         SongEdit::Batch(_) => 20,
+        SongEdit::AddTrack { .. } => 21,
+        SongEdit::SetSoundFont { .. } => 22,
     }
 }
 
@@ -182,6 +184,14 @@ fn rows(first_note: u64) -> Vec<SongEdit> {
                 license: "CC-BY-4.0".to_string(),
             },
         },
+        SongEdit::AddTrack {
+            name: "brass".to_string(),
+            channel: None,
+            program: 57,
+        },
+        SongEdit::SetSoundFont {
+            path: "soundfonts/tong.sf2".to_string(),
+        },
         SongEdit::Batch(vec![
             SongEdit::SetLoop { looping: false },
             SongEdit::SetVelocity {
@@ -233,7 +243,7 @@ impl ApiRig {
     }
 }
 
-/// What a song plays: its timing and every note under its id. An undone tempo or meter
+/// What a song plays: its timing, its tracks and every note under its id. An undone tempo or meter
 /// edit restores these exactly, though `SongData` then writes its timing events in its own
 /// order, so the bytes are compared only between the two paths.
 fn content(document: &SongDocument) -> String {
@@ -244,8 +254,13 @@ fn content(document: &SongDocument) -> String {
         .flat_map(|track| track.units())
         .flat_map(|unit| unit.notes.iter().map(move |note| (unit.tick, *note)))
         .collect();
+    let tracks: Vec<_> = data
+        .tracks()
+        .iter()
+        .map(|track| (track.name(), track.channel()))
+        .collect();
     format!(
-        "{:?} {:?} {notes:?}",
+        "{:?} {:?} {tracks:?} {notes:?}",
         data.tempo_changes(),
         data.time_signatures()
     )

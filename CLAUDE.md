@@ -358,6 +358,7 @@ scripts/check_audio_provenance.sh    # Every audio file under assets/{music,soun
 - `log_archive.md` - Resolved/completed history (append lessons when closing work)
 - `examples/hello_world.rs` - Working game demonstration
 - `examples/editor_demo.rs` - Editor demo (requires `--features editor`)
+- `examples/conductor_demo.rs` - Two enemy kinds on one shared song part: eligibility, despawn, the two pauses, `--stress` (its tests run under `cargo test`)
 - `src/bin/editor.rs` - Standalone editor binary
 - `../games/` - Sibling dir: one cargo project per game (pong, breakout, space_invaders)
 

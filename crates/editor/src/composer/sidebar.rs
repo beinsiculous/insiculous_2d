@@ -51,6 +51,8 @@ pub struct SidebarContext<'a> {
     pub song_path: Option<&'a str>,
     /// Whether the song preview is sounding, so a binding's Trigger reaches the conductor.
     pub preview_audible: bool,
+    /// Whether the bank the song's sidecar names is a file under the asset folder.
+    pub sound_font_present: bool,
 }
 
 /// Draw the sections the mode shows — all of them when `section_tabs` is `None`, else the
@@ -115,7 +117,10 @@ pub fn render_sidebar(
         match (section, context.song) {
             (SidebarSection::Song, _) => song_section(&mut walk, state, context),
             (_, None) => {}
-            (SidebarSection::Parts, Some(song)) => blocks::parts(&mut walk, song, state.active_track),
+            (SidebarSection::Parts, Some(song)) => {
+                let draft = blocks::TrackDraft { program: &mut state.new_track_program, enter_pressed: context.enter_pressed };
+                blocks::parts(&mut walk, song, state.active_track, draft)
+            }
             (SidebarSection::Instruments, Some(song)) => blocks::instruments(&mut walk, song),
             (SidebarSection::Bindings, Some(song)) => blocks::bindings(&mut walk, song, context.preview_audible),
         }
@@ -180,6 +185,7 @@ fn song_section(walk: &mut SidebarWalk, state: &ComposerState, context: &Sidebar
             }
             walk.note("Enter saves here (Save Song As…); under music/ or ai/music/");
             song_provenance_fields(walk, song);
+            sound_font_row(walk, song, state, context);
             let looping = song.file().looping;
             let label = if looping { "Song loops: on" } else { "Song loops: off" };
             if walk.button(WidgetId::hashed("composer_song_loop"), label, true) {
@@ -205,6 +211,33 @@ fn song_section(walk: &mut SidebarWalk, state: &ComposerState, context: &Sidebar
         let pressed = walk.button(WidgetId::from_str_index("composer_song_row", index), &label, !is_open);
         if pressed && !is_open && !context.read_only {
             walk.push(ComposerAction::OpenSong(path.clone()));
+        }
+    }
+}
+
+/// The background's bank: a row that cycles the project's banks, one `SetSoundFont` a
+/// click, drawn disabled naming the sidecar's bank while the project has none, and a
+/// warning while the bank it names is no file under the asset folder.
+fn sound_font_row(walk: &mut SidebarWalk, song: &SongDocument, state: &ComposerState, context: &SidebarContext) {
+    let current = &song.file().soundfont;
+    let banks = &state.sound_fonts.banks;
+    let label = format!("SoundFont: {current}");
+    if walk.button(WidgetId::hashed("composer_song_sound_font"), &label, !banks.is_empty()) {
+        let next = banks
+            .iter()
+            .position(|bank| bank == current)
+            .map_or(0, |index| (index + 1) % banks.len());
+        if let Some(bank) = banks.get(next) {
+            walk.push(ComposerAction::Edit(SongEdit::SetSoundFont { path: bank.clone() }));
+        }
+    }
+    walk.tooltip("The bank the song's background plays on: click for the next one under soundfonts/");
+    if !context.sound_font_present {
+        walk.warning(&format!(
+            "No SoundFont at {current} — put an .sf2 under soundfonts/ and pick it on the SoundFont row"
+        ));
+        if state.sound_fonts.links_only {
+            walk.warning("soundfonts/ holds no listed bank: banks must be files, not links");
         }
     }
 }

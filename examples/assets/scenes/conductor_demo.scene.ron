@@ -1,0 +1,42 @@
+// Conductor Demo Scene - two enemy kinds playing one shared part of a song
+//
+// The hummer plays the melody on the sine bank, the pinger on the imported sample; the
+// demo (examples/conductor_demo.rs) mints their attacks and keeps them to the camera's view.
+SceneData(
+    name: "Conductor Demo",
+
+    prefabs: {
+        "Hummer": PrefabData(
+            components: [
+                Transform2D(position: (0.0, 0.0), scale: (0.5, 0.5)),
+                Sprite(texture: "#solid:44AAFF", depth: 1.0),
+            ],
+        ),
+        "Pinger": PrefabData(
+            components: [
+                Transform2D(position: (0.0, 0.0), scale: (0.5, 0.5)),
+                Sprite(texture: "#solid:FF9933", depth: 1.0),
+            ],
+        ),
+    },
+
+    entities: [
+        EntityData(
+            name: Some("camera"),
+            components: [
+                Transform2D(position: (0.0, 0.0)),
+                Camera2D(is_main_camera: true),
+            ],
+        ),
+        EntityData(
+            name: Some("Hummer"),
+            prefab: Some("Hummer"),
+            overrides: [Transform2D(position: (-100.0, 80.0))],
+        ),
+        EntityData(
+            name: Some("Pinger"),
+            prefab: Some("Pinger"),
+            overrides: [Transform2D(position: (150.0, -80.0))],
+        ),
+    ],
+)

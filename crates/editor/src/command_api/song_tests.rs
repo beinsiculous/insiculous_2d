@@ -43,6 +43,7 @@ fn query(line: &str, song: Option<&SongDocument>) -> Value {
         dirty: false,
         play_state: EditorPlayState::Editing,
         song,
+        status_bar: None,
     };
     let response = dispatch_line(line, &ctx).expect("a response is owed");
     serde_json::from_str(&response).expect("one line of JSON")

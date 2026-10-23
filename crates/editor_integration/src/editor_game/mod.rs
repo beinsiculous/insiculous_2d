@@ -456,6 +456,7 @@ impl<G: Game> EditorGame<G> {
     /// The host's two flags carry either document's edits, so the playground's
     /// unsaved-work checks cover the song without a bridge change.
     pub(super) fn sync_dirty_mirror(&mut self) {
+        self.editor.composer.reconcile_active_track(self.song.as_ref());
         let is_command_dirty = self.command_history.is_dirty();
         let is_song_dirty = self.song.as_ref().is_some_and(editor::SongDocument::is_dirty);
         let is_persist_pending = self

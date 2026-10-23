@@ -29,6 +29,8 @@ pub(crate) struct ComposerView<'a> {
     pub song_path: Option<&'a str>,
     /// The song preview is sounding, so a binding's Trigger reaches the conductor.
     pub preview_audible: bool,
+    /// The bank the song's sidecar names is a file under the asset folder.
+    pub sound_font_present: bool,
 }
 
 /// What the composer's render asked for this frame.
@@ -114,6 +116,7 @@ fn render_body(editor: &mut EditorContext, ui: &mut UIContext, bounds: Rect, vie
             default_path: view.default_path,
             song_path: view.song_path,
             preview_audible: view.preview_audible,
+            sound_font_present: view.sound_font_present,
         };
         output
             .actions
@@ -206,6 +209,7 @@ mod tests {
             default_path: "music/untitled.mid",
             song_path: None,
             preview_audible: false,
+            sound_font_present: true,
         }
     }
 

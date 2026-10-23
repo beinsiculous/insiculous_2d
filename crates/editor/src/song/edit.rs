@@ -109,6 +109,18 @@ pub enum SongEdit {
     RemovePart {
         name: String,
     },
+    /// An empty track at the end of a type-1 song, playing General MIDI `program` (0–127) on
+    /// `channel`, counted 1 to 16 as musicians count; `None` takes the next free channel and
+    /// never 10, the percussion channel, which a track only gets by naming it.
+    AddTrack {
+        name: String,
+        channel: Option<u8>,
+        program: u8,
+    },
+    /// The SoundFont the background plays on, by its path under the asset folder.
+    SetSoundFont {
+        path: String,
+    },
     /// Who wrote the song and under which license: what Save requires of it, and writes
     /// into the home folder's `LICENSE`.
     SetProvenance {
@@ -138,6 +150,12 @@ pub enum SongEditError {
     NoTempoChange(u64),
     #[error("there is no time signature on tick {0}")]
     NoTimeSignature(u64),
+    #[error("channel {0} is outside 1 to 16")]
+    ChannelOutOfRange(u8),
+    #[error("a part selects the track named {0:?}; a second track of that name would leave it ambiguous")]
+    TrackNameSelected(String),
+    #[error("part {part:?} selects the track named {name:?}, which two tracks carry; select one by index")]
+    TrackNameAmbiguous { part: String, name: String },
     #[error("an empty batch changes nothing")]
     EmptyBatch,
     #[error("{0}")]
@@ -176,6 +194,8 @@ impl SongEdit {
             SongEdit::AddPart { .. } => "AddPart",
             SongEdit::RemovePart { .. } => "RemovePart",
             SongEdit::SetProvenance { .. } => "SetProvenance",
+            SongEdit::AddTrack { .. } => "AddTrack",
+            SongEdit::SetSoundFont { .. } => "SetSoundFont",
             SongEdit::Batch(_) => "Batch",
         }
     }
@@ -227,6 +247,7 @@ impl SongEdit {
                 },
             ) if tick == next_tick => Some(next.clone()),
             (E::SetLoop { .. }, E::SetLoop { .. })
+            | (E::SetSoundFont { .. }, E::SetSoundFont { .. })
             | (E::SetProvenance { .. }, E::SetProvenance { .. }) => Some(next.clone()),
             (
                 E::SetQuantize { part, .. },

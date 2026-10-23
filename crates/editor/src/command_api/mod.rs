@@ -46,6 +46,8 @@ pub struct QueryCtx<'a> {
     pub play_state: EditorPlayState,
     /// The composer's song, when one is open.
     pub song: Option<&'a SongDocument>,
+    /// The status bar, whose message `status` reads back; `None` where nothing draws one.
+    pub status_bar: Option<&'a crate::status_bar::StatusBar>,
 }
 
 /// How a request names an entity: by `Name` component (the stable,
@@ -78,6 +80,8 @@ pub enum Query {
     Song,
     /// Every note of the song, or of the track one part plays.
     SongNotes { part: Option<String> },
+    /// The status bar's message as it is drawn, and whether it is an error.
+    Status,
 }
 
 /// One parsed request line.

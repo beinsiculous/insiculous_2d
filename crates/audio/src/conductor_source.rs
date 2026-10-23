@@ -102,6 +102,17 @@ impl SourceMeters {
                 .load(Ordering::Acquire),
         }
     }
+
+    /// Swap zero into the two maxima and return what they held: the longest render and
+    /// the longest drain gap since the last take. A `fetch_max` that loaded the old maximum
+    /// just before the swap compares against it, so a smaller spike in that instant can be
+    /// lost; nothing larger is.
+    pub(crate) fn take_maxima(&self) -> (u64, u64) {
+        (
+            self.render_nanoseconds_longest.swap(0, Ordering::AcqRel),
+            self.drain_gap_nanoseconds_longest.swap(0, Ordering::AcqRel),
+        )
+    }
 }
 
 /// See the module docs.
