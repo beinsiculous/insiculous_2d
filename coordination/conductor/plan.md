@@ -2139,7 +2139,28 @@ the report. **Leaves out:** live mutation of a running score, MIDI recording, a 
 dialog, Exit prompting (filed as its own issue — it prompts for nothing today, scene
 included), #184's screenshots (Jesse's capture, dispatched by the planner).
 
-## Batch 12 — K5: the Pong demo, the two-enemy example scene, the web proof (#64)
+## Batch 12 — K5: the Pong demo, the two-enemy example scene, the web proof (#64) — DONE 2026-10-23 (d8f8a2e; pong d4e50bd; site db162d3)
+
+**Landed 2026-10-23.** Built by the Opus executor session (`review/conductor/report-12.md`); Jesse's
+listen check passed natively and in both browsers before the code round. Code round 44 (kimi 4 /
+gemini 4 / codex 2 on the engine, kimi 0 / gemini 4 / codex 1 on pong, the planner 4), then the
+planner's fixes in four enumerated passes, rounds 45–48 (`rebuttal-44..48.md`): the added-track count
+guarding `remove_added_track`, `AddTrack` refusing a name a part selects and a sidecar edit refusing
+a new selection of a doubled name, the composer's selector reconciled after an undo (per frame, after
+the API's lines, before the render), the SoundFont row's `is_file` and depth-capped link walk, the
+respawned hummer's patrol, pong's `Resumed` arm clearing the jam's pause history. **Ruling 3b (Jesse,
+mid-batch, 2026-10-23): the editor starts silent** — `EditorGame::init` stops whatever music the
+wrapped game's `init` asked for, and Stop stops the slot whoever filled it; it supersedes correction
+4's editor-bundle paragraph and ruling (j)'s parenthetical below (left as written, for the record).
+Its consequence for a game whose music starts only in `init` is #198, and the K6 rule is in batches
+13–15. Measured: Chromium's throttled cold-boot increment +1.71 s (gate 8 s); Firefox +0.07 s; the
+stress run's longest drain gap 63.8 ms (Chromium) and 55.0 ms (Firefox), no two consecutive windows
+over 92 ms; v7 `game_bg.wasm` 7.46 MiB (the carried batch-6 finding closes on the number); the bank
+1.98 MiB. Follow-ups: #197 (the Compact layout's clipping — the executor's screen finding; codex
+raised nothing on the three screenshots, so #184 closed with the commit), #198, #199 (no Stop signal
+on the web editor bundle), #200 (the XTEST wheel notch); #159 carries the standalone playground
+bundle's rebuild; #195 rescoped to the clipboard and the live region. Scorecard rows 44–48 beside this
+file.
 
 **Re-verified 2026-10-22 against the tree at edc1509** (engine), `games/pong` 4cb0d5c and
 `insiculous_web` 5375ebc, after batch 11 landed; **v14, settled after plan rounds 31 to 43** (kimi 7 + 7 + 6 + 5 + 7 + 5 + 8 + 8 + 6 + 8 + 8 + 9 + 7, gemini 7 + 7 + 7 + 7 + 8 + 7 + 6 + 7 + 8 + 8 + 8 + 8 + 7, codex 4 + 3 + 3 + 4 + 3 + 2 + 2 + 2
@@ -2936,6 +2957,12 @@ directory. Reviewers: kimi, gemini, codex (the beat visuals). Listen check: Jess
 - **15 — Meatieroids + Chicken Coop** (shots, three rock sizes as three instruments on one
   part, thrust and hyperspace over *Mars*; hops, death and home-slot voices over the
   *William Tell* finale).
+
+**The rule batch 12 left (ruling 3b, #198): the editor starts silent, so a game requests its song at
+match or session start and decides by the slot's label (`AudioManager::song_label`: none → request;
+its own → seek to the top; another → leave the audition alone), never at `init` alone — Tong's
+`Music::restart` is the model, and a game that starts its music once in `update` behind its own
+flag is silenced by Stop and never restarts.**
 
 Per game: the song sequenced in the composer under `assets/ai/music/ai_<slug>.mid` with its
 sidecar, the SoundFont subset and `LICENSE` beside them; bindings through the host's
