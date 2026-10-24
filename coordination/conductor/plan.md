@@ -2947,13 +2947,621 @@ the editor bundle, plays on) with the error on the status bar (correction 10, re
 the bank is a boot dependency on the web until #194 — a dropped fetch fails the boot as any
 asset's does today, and the preloader's retry is #196's batch, not this one's.
 
-## Batches 13–15 — K6: the six games, in pairs (#65)
+## Batch 13 — K6: Tong's acceptance and The Food Pyramid (#65)
+
+**Re-verified 2026-10-23 against the tree at 02760a7** (engine), `games/pong` d0a8240,
+`games/breakout` 8f7b109 and `insiculous_web` db162d3, after batch 12 and ruling 3b's door (b)
+landed; **v6 after plan rounds 52 to 56** (52: codex 5, kimi 5 — codex's five, read from the
+shared directory — gemini 6; 53: codex 1, kimi 7, gemini 6; 54: codex 3, kimi 4, gemini 6; 55:
+codex 2, kimi 4, gemini 7; 56: codex 2, kimi 4, gemini 4; `rebuttal-52.md` to `rebuttal-56.md`;
+**the planner recommends settling here** — no contract has moved since v3, and rounds 54 to 56
+hardened gates). **Settled at v6 by Jesse on 2026-10-24**, when he asked for the handoff;
+rulings (l) to (s) at the section's foot go out as proposed, his to reverse before the executor
+starts. Ten corrections to the one bullet the section was; each names what the tree says.
+
+Executor: the Opus session, in four checkouts — `games/breakout` (the game, its song, its bank,
+its page versions), `games/pong` (the migration and three proofs), `insiculous_2d` (the shared
+music module, the shared bank script, `training.md`), `insiculous_web` (the two bundles and two
+content lines) — with **one report, the engine's `review/conductor/report-13.md`**. Reviewers:
+kimi (everything), gemini (the engine module, the harness tests, the bank script), codex (the
+beat pulse under the paddles, the two page sentences). Listen check: Jesse, natively and in
+Firefox and Chromium, for The Food Pyramid; Tong's passed in batch 12 and is heard again
+natively after the migration (the deployed Tong bundles keep batch 12's bytes, ruling (s)). Size: about +1,100 lines across the four repos plus the assets (a song, its
+sidecar, a 2.2 MiB SoundFont subset); the games' diffs are reviewed from
+`games/breakout/review/conductor/` and `games/pong/review/conductor/`, the engine's and the
+site's from `insiculous_2d/review/conductor/`, each reviewer dispatched from the repo it reads.
+
+**Standing from batch 12:** ruling (e) — no recorded fallback; (f) — the song plays on under the
+pause menu and the jam reads `MenuInput`, never the selection; (h) — a committed per-game bank
+with its `LICENSE`; (i) — hits on `quantize: Off`, the jam a `Loop` part; (k) — the bank is a
+boot dependency on the web until #194; and **the K6 rule** (ruling 3b, door (b)): a game starts
+its song where it naturally would and asks the audio for its state rather than trusting a flag,
+since the editor stops and replays the slot around it.
+
+### Correction 1 — Tong's acceptance is a migration and three proofs, not new sound
+
+#65's per-game list, read against what batch 12 shipped for Tong: the song, the three bindings,
+the pause jam, the beat visual, the browser build, the tests, the provenance and Jesse's ear are
+done (`games/pong/CLAUDE.md` § Music; `report-12.md` § 4, § 5, § 8). What the list still asks
+and the tree does not show is three things, none of them sound:
+
+- **The host's lifecycle, stated.** Tong's trigger sources are the two tongs — spawned once in
+  `init` (`src/lib.rs:110-115`) and never despawned; `start_game` (`gameplay/flow.rs:68-85`)
+  resets positions and jaws and spawns no paddle — the game and the menu. No scene is loaded
+  (`request_transform_hierarchy_reset` has no caller in the game), so the host's reconcile
+  never ends a Tong source and the flush path is the editor's world replacement on Stop, which
+  the engine's own tests hold (`tests/song_triggers.rs
+  a_world_replacement_flushes_every_source_and_the_next_trigger_activates_anew`). That is the
+  acceptance: **nothing in Tong despawns a source, by construction**; `CLAUDE.md` § Music gains
+  the sentence. The Food Pyramid is where the lifecycle is exercised (correction 6).
+- **The same-frame order, tested where it is a function.** `handle_paddle_hits_and_collect_goals`
+  (`scoring.rs:108-150`) walks the frame's collisions in the order the physics step reported
+  them and, inside each, the balls in `all_balls` order and the tongs left then right; the
+  hits are triggered in that order (`spawn_paddle_hit_visuals`, :190-194) **before** any goal
+  (`concede_goal`, :237), because `update_gameplay` runs the hit pass before the scoring pass.
+  The order within a kind follows the physics step's contact order, which is rapier's and not
+  the game's to pin; the order **between kinds** is the game's — one test: a frame holding a
+  paddle hit and a goal (two balls) triggers `hit` then `goal`, observed as the `refrain`
+  cursor's two units going trumpet-then-timpani — which **no conductor counter shows**
+  (`SongSnapshot` keeps no per-trigger log, `music_midi/src/position.rs:37-70`), so **the
+  order is observed at the game's own seam**: `Music` carries a `#[cfg(test)] triggered:
+  Vec<&'static str>` that every moment pushes its binding name onto and `update` clears each
+  frame — production's call order recorded, never reconstructed — and the test lands a paddle
+  hit and a goal in one physics step (two balls, placed as `music_tests.rs:91-131` places
+  them) and asserts the frame's trace is `["hit", "goal"]` beside the two accepted triggers on
+  two sources (round 52, codex F5; round 54, kimi F2 — #65's "tested stable same-frame order"
+  is this test and its twin in the Food Pyramid, correction 6). No new engine query is added
+  for a test's sake.
+- **The song reopens in the composer.** The executor opens the shipped song through the API
+  (`song open ai/music/ai_tong.mid` on the pong project, as `report-12.md` § 4 drove `song new`),
+  quotes the `song` answer (five tracks, two parts, three bindings, the provenance) and closes it
+  **without saving** — the proof that #65's "reopen/tweak the song in K8" is possible on the
+  committed file; the tweak itself is Jesse's pass, outside the batch.
+
+And the code half: Tong's `music.rs` moves onto the engine's shared module (correction 3), every
+one of its ten tests staying green, none deleted — **and the migrated Tong reaches a browser**
+(round 52, codex F2): the executor rebuilds Tong's two bundles after the migration
+(`scripts/build_wasm.sh ../games/pong tong --version v7` and `--kind editor --version v6`, into
+the game's own `dist/`, **no `--sync`**), copies them into the site's built `dist/games/tong/v7/`
+and `dist/playground/pong/v6/` under the one `npm run preview` — the way batch 12 served its
+`v99` arm, never into `public/`, and **as the last staging step of correction 7's order** — after
+the Food Pyramid's bundles are synced, the content lines edited and `npm run build` run once, so
+no later build overwrites them (round 53, gemini F5; round 56, kimi F1), the executor quoting
+`sha256sum` of each copied `game_bg.wasm` against the game-local build's — and runs Tong's
+functional checks on them in Chromium: the
+song on the title's first key, a rally's hits walking the refrain, the pause jam, the pulse,
+and a `conductor=on` telemetry line in batch 12's exact shape; the two `wasm size:` lines are
+quoted. **The deployed v7 and v6 keep batch 12's bytes**: a version directory is immutable
+once deployed (`build_wasm.sh`'s header), the migration changes no behaviour, and the next
+Tong bump ships the migrated code — the standing pattern for a live bundle behind its source
+(#118, #159). **Ruling (s), proposed:** that, rather than a v8 / editor v7 bump for a refactor.
+The #65 checklist's Pong and Breakout boxes are ticked by the planner at the done mark, after
+Jesse's listen check.
+
+### Correction 2 — The Food Pyramid has no sound today
+
+`grep -rn -i "sound\|music\|audio\|beep" games/breakout/src games/breakout/README.md` prints
+nothing; `assets/` holds `fonts`, `scenes` and `sprites`. As Tong (batch 12, correction 1):
+nothing is gated behind a binding replacing a beep, there is no recorded fallback (ruling (e)
+extends), and a song that fails at `init` leaves the game as silent as it is today, every
+trigger refused and counted.
+
+### Correction 3 — the game-side music module is promoted to the engine, and Tong migrates
+
+`games/pong/src/music.rs` (272 lines) is nine tenths rules every game will carry: the request
+at `init` with its once-logged failure, the match-start identity rule (`restart`: none →
+request, own → seek to the top, another → leave it), the pause-jam latch over `MenuInput`
+(`follow_pause`), the beat pulse's bar-first-else-beat read, the telemetry line (the frame-time
+ring, the maxima taken, `?telemetry=1` / an environment variable), the once-a-second refusal
+count. The Food Pyramid is the second game; #65 says "promote duplicated integration helpers
+to engine_core when actual shared usage justifies it", and the house rule says a rule lives in
+one place. **Ruling (l), proposed: promote now**, in this batch, so the Food Pyramid is the
+first consumer rather than the first copy.
+
+**`crates/engine_core/src/game_music.rs`** (new, under 300 lines, `pub mod game_music` in
+`lib.rs`, `GameMusic` and `BeatPulse` re-exported from the prelude beside `SoundSources`):
+
+```rust
+/// A game's song: requested at `init`, re-aimed at every match start by the slot's identity,
+/// jammed from a pause menu, pulsed on the beat, and reported every five seconds.
+pub struct GameMusic { /* private: song_path, log_prefix, telemetry_env, telemetry_at_info,
+    song_failed, failures, refused_seen, frame_times: FrameRing, was_paused, jam_units, pulsed,
+    seconds_since_telemetry, seconds_since_refusals */ }
+
+pub enum BeatPulse { Bar, Beat }
+
+impl GameMusic {
+    /// `song_path` relative to the asset base (`"ai/music/ai_tong.mid"`), `log_prefix` the
+    /// game's name in its lines (`"tong"`), `telemetry_env` the native switch (`"TONG_TELEMETRY"`).
+    pub fn new(song_path: &'static str, log_prefix: &'static str, telemetry_env: &'static str) -> Self;
+    /// The joined path `start` requests and `restart` compares the slot against.
+    pub fn song_path(&self, ctx: &GameContext) -> String;
+    /// Request the song (web: it waits for the first gesture), drop the boot's maxima.
+    pub fn start(&mut self, ctx: &mut GameContext);
+    /// The identity rule, verbatim from Tong's `Music::restart` — which also clears the pause
+    /// latch, so a Restart taken from the pause menu does not read the next pause's open
+    /// frame as an already-open menu (Tong's `music.rs:133`; round 54, gemini F6).
+    pub fn restart(&mut self, ctx: &mut GameContext);
+    /// The pause menu's frame: a move up or down triggers `action` on `ctx.sources.menu()`
+    /// — the one trigger the helper sends itself, since the menu's source is the engine's
+    /// and the latch is the rule; the open frame, confirm, cancel and the pointer jam
+    /// nothing. Returns whether a unit was jammed, so the game may count it.
+    pub fn follow_pause(&mut self, ctx: &mut GameContext, paused: bool, action: &str) -> bool;
+    /// The beat this frame crossed, bar first: the game applies its own visual to it.
+    pub fn beat_pulse(&mut self, ctx: &mut GameContext) -> Option<BeatPulse>;
+    /// Every frame: the frame time into the ring, the telemetry line every five seconds with
+    /// the game's own counts appended (`counts` is called only when a line prints), the
+    /// refusals once a second at debug.
+    pub fn update(&mut self, ctx: &mut GameContext, counts: impl FnOnce() -> String);
+    pub fn song_failed(&self) -> bool;
+    pub fn failures(&self) -> u64;
+    pub fn jam_units(&self) -> u64;
+    pub fn pulsed(&self) -> u64;
+}
+```
+
+What stays in each game: the binding names and the song path (constants), the moments that
+trigger (`ctx.sources.trigger` called by the game at each one — the helper has no general
+trigger method, since every game names its own moments and counts them; **the one trigger the
+helper sends is the jam**, inside `follow_pause`, on the menu's source — round 52, gemini F1,
+where v1 said both things), the counts it appends, the pulse's anchors and strengths. `FrameRing` moves whole, private; `telemetry_asked` is `cfg`-split inside the
+module (wasm: `web::query_param("telemetry") == Some("1")`, the module is in the crate that
+owns `web`; native: `std::env::var(telemetry_env) == Ok("1")`). The telemetry line is
+`"{snapshot.log_line()} frame_p95={:.2}ms frame_mean={:.2}ms {counts} refused={}"` — Tong's
+shape with the game's counts where Tong's `hits=… goals=… jam_units=… pulsed=…` sat, so Tong
+appends `hits={} goals={} jam_units={} pulsed={}` and the line batch 12's harness read is
+unchanged byte for byte. **Tong's `Music` shrinks** to `{ game: GameMusic, counts: MusicCounts }`
+with `start`/`restart`/`update` delegating, `hit`/`goal` counting and triggering as today,
+`follow_pause` counting a jam the helper reports, `pulse` mapping `Bar` to `HIT_RIPPLE_STRENGTH`
+and `Beat` to its quarter under the grills; `song_failed` and `failures` read through the
+helper (`music_tests.rs` reads both — the test lines change from the field to the accessor,
+nothing else). `TONG_TELEMETRY` keeps its name.
+
+**Tests.** `crates/engine_core/tests/game_music.rs` (new, `GameHarness` over a minimal `Game`
+holding a `GameMusic` on the sine fixture song, `tests/song_triggers.rs` the model) pins the
+rules where they now live: the identity rule's four arms (an empty slot is requested into; the
+own song is sought to the top; another playing song is left alone; another song that played to
+its end is replaced), the open-frame jam latch (the frame the menu becomes active jams nothing,
+one move one unit, confirm nothing, a reopen on the frame after a resume nothing), the pulse's
+bar-before-beat and its once-an-update latch, a missing song counted as failed and every later
+`restart` retrying it. Tong's ten tests **stay** — they pin the game's wiring through the real
+menus, the real grills and the committed sidecar, which the engine's test cannot — so no test
+is deleted and the report shows no deletion grep for one. `crates/engine_core/CLAUDE.md`'s file
+map gains the module and its pitfall table two rows (the identity rule, the open-frame latch),
+each citing a test in the new file; `training.md` § Conductor Pattern gains a paragraph **"A
+game's music module"** after "In the editor", and the directory map a line.
+
+### Correction 4 — the bank script is shared too, and the Food Pyramid's bank is Aida's brass
+
+`games/pong/scripts/prepare_soundfont.sh` is 90 lines of which three are Tong's (the bank's
+stem, the preset list, one comment). A second copy with three other lines is the drift the
+house rule names. **`insiculous_2d/scripts/prepare_game_soundfont.sh [--bank path]
+<assets/soundfonts dir> <stem> <bank:program>...`** takes the whole of pong's script — the
+Debian package and version, the pinned sha256, `apt download` then snapshot.debian.org, the
+sha256 refusal, `subset_soundfont.py`, the `LICENSE` in the spike's shape with both sha256s —
+**with `--connect-timeout 20 --max-time 900` on every `curl`, `apt download` under `timeout
+300` with its expiry taken as the signal to try snapshot.debian.org**, and a failure message
+naming `--bank` as the offline path (round 53, kimi F7, and round 54, kimi F4: pong's script
+bounds neither, so a stalled mirror would hold the batch) — and **pong's script becomes a
+wrapper**: the stem `tong`, the three presets, **`"$@"` passed through
+first** — `exec "$ENGINE_DIR/scripts/prepare_game_soundfont.sh" "$@" "$OUTPUT_DIR" tong 0:56
+0:57 0:47`, so a caller's `--bank <path>` lands where the engine script parses its leading
+options, not after the presets where it would be read as one (round 55, gemini F4) — `exec`ing
+the engine's. The executor fetches the package **once**, keeps the extracted `FluidR3_GM.sf2`
+in its scratchpad for the batch, and passes it with `--bank` to both wrappers, so the download
+of about 130 MiB is paid once and not per game (round 55, gemini F3; a cache inside the script
+is not built for two runs). The executor re-runs the wrapper and shows `sha256sum
+assets/soundfonts/tong.sf2` equal to the `LICENSE`'s line and `git diff --stat
+assets/soundfonts/` empty — the proof the promotion changed no byte. The `LICENSE`'s sentence
+"Re-running scripts/prepare_soundfont.sh reproduces it byte for byte" stays true of the wrapper.
+
+**The Food Pyramid's bank: `games/breakout/assets/soundfonts/food_pyramid.sf2`**, FluidR3 GM
+**0:56 Trumpet (226 KiB), 0:57 Trombone (438 KiB), 0:58 Tuba (190 KiB), 0:47 Timpani (1,361
+KiB)** — 2,215 KiB of sample data by `subset_soundfont.py --sizes` on the spike's cast bank
+(measured 2026-10-23; the cast bank holds all four), about 2.2 MiB written — the Triumphal
+March's brass and drums, no strings and no kit for batch 12's reasons. **Ruling (m), proposed:
+these four presets, the bank committed, and a hard cap of 4 MiB on the file** — the cap is
+what replaces batch 12's boot-increment measurement (correction 7), **and the shared script
+enforces it**: `prepare_game_soundfont.sh` takes `--max-mib <n>` among its leading options
+(each wrapper passes 4) and, for a bank over it, deletes the output, writes no `LICENSE` and
+exits 1 — so a later preset change trips the cap where the bank is made, not in a report
+nobody rereads (round 56, kimi F4). `games/breakout/scripts/
+prepare_soundfont.sh` is the second wrapper (stem `food_pyramid`, four presets). FluidR3 is not
+installed on Iroh (`apt-cache policy fluid-soundfont-gm`: none installed, 3.1-5.3 the candidate)
+and the spike's `cast.sf2` is a subset whose sha256 the script refuses, so the script fetches the
+package as it did in batch 12; `--bank` is for a machine that has the file.
+
+### Correction 5 — the song: Verdi's Triumphal March, its shape, and the two modes Tong left
+
+`games/breakout/assets/ai/music/ai_food_pyramid.mid` + `.mid.ron`: the *Triumphal March* from
+*Aida* (Verdi, 1871; public domain) in a short arrangement the executor sequences **in the
+composer on the breakout project**, as batch 12 did on pong's (`report-12.md` § 4 is the worked
+record: `song new`, `AddTrack` for every track past `melody`, `AddNote`, `SetTempo`, `AddPart`,
+`AddInstrument`, `SetBinding`, `SetProvenance`, the `song` and `song notes` answers checked
+against the declared shape and quoted, then `song save ai/music/ai_food_pyramid.mid`). **The
+bank is built before `song new`** (correction 4 before this one): `new_song` takes the project's
+first `.sf2` under `soundfonts/`, so a project without one gets `soundfonts/cast.sf2` and the
+missing-bank warning. **The executor cannot hear** (`report-12.md:310`, `:368`: "not heard; I
+cannot hear"), so it sequences from the score, checks the arrangement by `song notes` and the
+exported MIDI's readback, and declares the shape in the report; the ear that tunes it is Jesse's,
+in the listen check, and a re-voicing he asks for is a follow-up through the composer (round
+53, kimi F4). Shape:
+
+- **sixteen bars** of 4/4 at about **112 BPM** (the march's tempo; a loop of about 34 s), in a
+  key the bank's brass sit well in (the original's A♭ major, or the executor's transposition,
+  declared), looping at a phrase boundary for batch 12's reasons (the wrap restarts every
+  `Loop` cursor, so the fanfare realigns with the chords each loop);
+- **background**: `chords` (trombone 57) and `drums` (timpani 47), the march's accompaniment,
+  on their own tracks — a track a part selects is a trigger track and plays in no background
+  (`music_midi` `BackgroundScore`: "what export would write, minus trigger tracks"), so the
+  background and the bass line below are different tracks even where both would be the tuba's;
+- **track `melody`** (`song new`'s own, trumpet): the fanfare, the **one shared part `march`**
+  (`Loop`, `quantize: Off`), played by **two bindings on two instruments — `brick` on the
+  trumpet and `armor` on the trombone** — a destroyed brick and a foil-wrapped one that survived
+  its hit walk one tune, the survivor's note the muted echo of the fanfare's next unit: #65's
+  "multiple enemy types share one part and select different instruments", literally — **a
+  binding names a part for its notes and an instrument for its voice, and every instrument is
+  its own synthesizer slot** (decision 2; `triggers.rs`), so the trombone's `armor` and the
+  trumpet's `brick` read one track and touch neither its channel nor each other's timbre,
+  exactly as Tong's `hit` (trumpet) and `goal` (timpani) share `refrain` today
+  (`games/pong/assets/ai/music/ai_tong.mid.ron`, heard by Jesse in batch 12);
+- **track `bass`** (tuba 58): the march's bass line written under `chords`, the part **`bass`
+  in mode `AtSongPosition`** on the `paddle` binding — a paddle hit plays the bass note written
+  for that moment of the march, always in the chord, never advancing a cursor (`SONG_FORMAT.md`
+  § Modes: "harmony that always fits"), and a hit in a rest plays nothing, which a bass line
+  with no rests avoids — **written gap-free from tick 0 to the loop's last tick**, each unit
+  ending where the next begins, so no position in the loop is a rest (round 55, gemini F7),
+  **held by a test over the committed MIDI**: `music_tests.rs` reads the `bass` track through
+  `music_midi` and asserts its units tile the loop — the first at tick 0, each unit's end equal
+  to the next unit's start, the last ending at the loop's last tick (round 56, kimi F3) — the mode Tong left undemonstrated, demonstrated where it fits;
+- **track `dirge`** (timpani 47, a second track on the program, its own channel): **one low
+  stroke, one onset** — a single note or a dyad — the part `loss` (`Loop`, `Off`) on the
+  `loss` binding, one unit a lost ball. Not v2's "two-note fall": a unit is "the notes that
+  start on one tick of one track" (`music_midi/src/song_data.rs:64-68`), so two successive
+  notes are two units and alternate losses would hear one note each (round 53, kimi F1);
+- **track `stinger`** (trumpet 56): the march's final chord as **one unit**, the part `clear`
+  (**`Loop`, `quantize: Off`** — v2 quantized it to the beat, and round 53 (kimi F2) found the
+  seam: a loop wrap drops every scheduled trigger (`SONG_FORMAT.md` § Modes: "a loop wrap, a
+  seek and `Play` release every triggered note and drop every scheduled one";
+  `conductor.rs:466-470`), so a clear in the loop's last beat would be parked on the grid line
+  that is the loop end and never heard, one clear in sixty-four, silently. On `Off` the chord
+  sounds the instant the last brick breaks, with its burst, and **every binding in this game is
+  `Off`** — one rule. The seam is filed as an engine question for K3's follow-ups,
+  insiculous_2d#201, not this batch's. **One limitation stands and is stated**: a wrap releases
+  every triggered note (`conductor.rs:466-467`, `release_slots`), so a clear in the loop's last
+  half-beat hears its chord cut at the seam — about one clear in thirty for a half-note
+  stinger; the same seam as #201, recorded there, and not this batch's to close (round 54,
+  codex F1)) on the `clear` binding. **`Sequence` is not this game's either**, and the reason is stated so
+  it is not asked again: a `Sequence` part consumes its units by song time as well as by
+  trigger ("skipping units whose time is behind the song", § Modes), so it suits a phrase
+  pinned to a moment of the song, and a board clear falls anywhere in the loop; written at the
+  loop's end it is silent until bar 15, written at its start it is exhausted after one beat.
+  **One unit, full stop** — v1 allowed a V–I pair with the second triggered on the next beat
+  crossing, and round 52 (codex F1) showed the trap: the crossing is read in gameplay code that
+  stops running at `GameOver`, so the second half would never fire, or a pending one would
+  leak into the next match. The march plays on under the game-over panel as Tong's does under
+  its menus (the song is the game's, not the match's — batch 12, correction 4); the stinger is
+  the tonic chord over a march whose bars are mostly tonic and dominant, so the clash is
+  Jesse's ear to judge in the listen check, and if he wants silence after the
+  stinger a `stop_song` on the win is a two-line follow-up the identity rule already supports
+  (an empty slot is requested into at the next match start) — not built unless asked;
+- **track `jam`** (trumpet 56): the counter-line, the part `jam` (`Loop`, `Off`) on `menu`, as
+  Tong's;
+- `soundfont: "soundfonts/food_pyramid.sf2"`; instruments `trumpet` (0:56), `trombone` (0:57),
+  `tuba` (0:58), `timpani` (0:47), all from the one bank; `provenance: (author: "Giuseppe Verdi,
+  1871; sequenced by the Opus executor for Be Insiculous, 2026", license: "CC0-1.0")`; no
+  sample instrument.
+
+Seven tracks past the tempo track, six bindings, four instruments; `AddTrack` takes the next
+free channel 1–9 and 11–16 (batch 12's edit, `SongEdit::AddTrack { name, channel, program }`),
+so seven fit. The sidecar is the composer's output, never hand-edited; `music_tests.rs` asserts
+its structure (correction 6). The file sits under `ai/music` with the `ai_` prefix because an
+agent sequenced it; Jesse's pass promotes it.
+
+### Correction 6 — the game's code: six moments, two source kinds, the paddles' lifecycle
+
+- **`src/music.rs`** (new, under 150 lines): the music constants at its top — **not in
+  `constants.rs`, which is 590 lines, ten under the ceiling** (`SONG_PATH = "ai/music/
+  ai_food_pyramid.mid"`, the six binding names, `BEAT_PULSE_FRACTION`, the pause hint) — and
+  `Music { game: GameMusic, counts: MusicCounts { bricks, armor_hits, paddle_hits, losses,
+  clears, jam_units, pulsed }, #[cfg(test)] triggered: Vec<&'static str> }` on `BreakoutGame`
+  (`types.rs`) — the trace every moment pushes its binding name onto and `update` clears, test
+  builds only, so a test reads production's order (correction 1) — with:
+  `start(ctx)` at the end of `init` (`lib.rs:356`, after `rebuild_playfield`) followed by
+  **`log::info!("food pyramid: init complete")`**, the boot marker; `update(ctx)` at the top of
+  `update` (`lib.rs:364`); `restart(ctx)` at the end of `start_game` (`menu.rs:150-178` — every
+  match start takes that function: the level select, the pause menu's Restart, the game-over
+  launch); `brick(ctx)` → `ctx.sources.trigger(ctx.audio, "brick", ctx.sources.game())` from
+  `destroy_brick_entity` (`bricks.rs:107-140`, beside the burst and the ripple — the game's
+  source: the entity is destroyed in that call, and a brick's death must ring on); `armor(ctx,
+  brick)` → `"armor"` on **`ctx.sources.entity(brick)`** from the `Damaged` arm (`bricks.rs:
+  85-99`) — the brick's own source, so a survivor's note is released when a second ball kills
+  it mid-note, the host's reconcile doing the releasing; `paddle(ctx, paddle)` → `"paddle"` on
+  **`ctx.sources.entity(paddle)`** from `check_paddle_hits` (`paddles.rs:317-362`, beside the
+  burst; a chomp is the same binding) — the paddle bodies are destroyed and respawned by
+  `rebuild_playfield` at every match start (`spawning.rs:224`), so the old paddle's source ends
+  in that frame's tail and the new one activates on its first hit; `loss(ctx)` → `"loss"` on
+  `game()` once per lost ball from `check_ball_loss` (`balls.rs:139-158`, beside the splash;
+  two balls lost in one frame are two); `clear(ctx)` → `"clear"` on `game()` from
+  `check_win_condition` (`flow.rs:50-60`); `follow_pause` and `pulse` in `update_gameplay`
+  (`gameplay/mod.rs:49-70`) exactly as pong's `gameplay/mod.rs:55-78` places them — the
+  `Resumed` arm calls `follow_pause(ctx, false, MENU_BINDING)` before returning, the gate's
+  end calls `follow_pause(ctx, pause.is_active(), MENU_BINDING)` and counts a `true` as a jam
+  unit, and `pulse` runs after the gate while Serving or Playing and not paused.
+- **The beat pulse**: `Bar` → the paddle-hit ripple (`GRID_IMPULSE_PADDLE_HIT_STRENGTH`,
+  `_RADIUS`) under each live paddle — `self.paddle` and `self.paddle_top` are
+  `Option<EntityId>` (`types.rs:238-240`), solo's top is `None` and is skipped, as Tong flattens
+  its `[Option<Vec2>; 2]` — `Beat` → a quarter of it — the counter breathing under the tongs on the march's beat, the one surface that reads
+  "pulse" without touching the art, as Tong's grills (bar full, beat a quarter, at 120 BPM —
+  the shape Jesse heard and saw in batch 12). Codex judges the look from two stills (a pulse's
+  peak and rest under the bottom paddle) and may move the anchors or cut the beats:
+  `BEAT_PULSE_FRACTION` is the lever and zero is "bars only" (round 52, gemini F6 — a worry
+  the stills answer, not the plan); the timing is judged live by the executor and by Jesse.
+- **The pause hint**: the game draws the engine's default `PauseMenuLabels` today
+  (`drawing.rs:191-194`, `pause.draw`); it switches to `pause.draw_labeled` with the default
+  labels and a hint of its own, `"ESC resumes - SPACE/ENTER or click confirms - move to jam"`
+  (no locale files in this game; one constant in `music.rs`).
+- **The same-frame order**, tested where it is a function: `check_brick_hits` collects the
+  bricks hit this frame, `sort_unstable`s and `dedup`s them and walks them **in descending
+  index** (`bricks.rs:62-79`, so removals never shift a lower index) — that walk is the order
+  the `brick` and `armor` triggers go out in, and it is the one same-kind order the game owns
+  (the physics step's contact order decides which ball hit which paddle first, as in Tong). The
+  executor lifts the collection into a pure function (`bricks_hit_this_frame(collisions,
+  balls, bricks) -> Vec<usize>`, descending) and tests it with two bricks hit by two balls in
+  one frame; **the order between kinds is tested through the trace**: one physics step in
+  which one ball strikes the paddle and another destroys a brick (placed with `jaw_tests.rs`'s
+  `place_ball`) leaves the frame's trace `["paddle", "brick"]` — the order `update_gameplay`
+  runs the passes in, paddles then bricks then loss then clear, which the module doc also
+  names (round 54, kimi F2). A second trace case lands two balls on two bricks of known
+  indices in one step, one armored and one plain, and asserts the trace is the descending
+  walk's order through the production path — not the pure function alone (round 55, codex F2).
+  A third case leaves one brick, destroys it with a ball, and asserts `["brick", "clear"]` — the
+  win decided on the frame the last brick breaks, through the production path (round 56,
+  gemini F3).
+- **Tests** (`src/music_tests.rs`, new, under 400 lines, on `test_support::harness`; the three
+  helpers it needs that `flow_tests.rs` and `jaw_tests.rs` hold as private functions —
+  `launch`, `place_ball`, `send_past_the_bottom` — **move to `test_support.rs`** as `pub(crate)`,
+  their call sites following, which is the one edit `jaw_tests.rs` takes and it shrinks the
+  file; round 56, gemini F4): the committed sidecar's structure (`brick` and `armor` name one
+  part, `Loop` with `quantize: Off`, on two instruments; `paddle`'s part is `AtSongPosition`;
+  `loss` a `Loop`; `clear` a `Loop`; every part `quantize: Off`; `menu` a `Loop`; provenance set);
+  the song plays after `init` (`blocks_rendered` moves, as `song_triggers.rs settle` waits); a
+  destroyed brick is one accepted trigger, the brick's `source_of` is `None` **and the
+  conductor's `live_sources` still counts the game's source after that frame's tail** — the
+  trigger was the game's, so the reconcile had nothing to end; a trigger wrongly sent on the
+  brick's own source would leave `source_of` `None` just the same but `live_sources` back down
+  (round 55, kimi F3); an armored brick's hit is one accepted trigger with
+  `source_of(brick)` `Some`, and killing it ends that source in the tail (`None` after the
+  frame); a paddle hit is one on `source_of(paddle)`, and `start_game` leaves the old paddle's
+  `source_of` `None` — **the lifecycle**; two bricks destroyed in one frame are two triggers,
+  in descending index (the pure function); a lost ball is one; **the clear is one accepted
+  trigger and not a silent one** — `silent_triggers` unchanged (the conductor's counter for a
+  trigger that found nothing to play, a rest or an exhausted part, `position.rs:64-65`) and
+  `pending_events` — the trigger buffer's held note-ons and note-offs (`conductor.rs:541`,
+  `triggers.pending_len()`), which the background player never touches — **from zero to above
+  zero and back to zero**: the test clears a board on a fresh match in which nothing else has
+  triggered (the harness empties `bricks` through the game's own list, no hit, no loss), so the
+  count is zero on the frame before the clear, above it on the frame after (the stinger's notes
+  start on the next block and their note-offs are held until each note's written end,
+  `position.rs:67`), and zero again once the stinger's longest note has played — its length
+  read from the committed MIDI through `music_midi` (`SongData::from_smf`, the `stinger`
+  track's longest `duration_ticks` through the tempo map) plus one block of the virtual clock
+  (round 53, codex F1 / kimi F6: "within a beat" would have failed a half-note chord; round 54,
+  codex F2 / kimi F3: a baseline holding other triggers' note-offs moves while the stinger
+  plays, so the test quiesces instead of differencing) — so the counters, not the trigger
+  count alone, say the unit had notes and an instrument to play them on (round 52, codex F3) —
+  **by bounded polling, never by counting frames**: the headless song runs on a virtual clock
+  advanced by the wall time between `update`s (`training.md` § Conductor), so the test steps
+  the harness with the 3 ms pause pong's `music_tests.rs settle` uses until `accepted_triggers`
+  has moved and `pending_events` is above zero (bounded at two seconds, a failure past it),
+  then until it is zero again (bounded at the stinger's longest note plus two seconds), reading
+  the audio's counters and never assuming a frame is a block (round 56, codex F1); the wiring
+  from the last brick to the trigger is the trace's third case; the pause jam through the
+  real `PauseMenu` with keys and the pointer (pong's five cases, `music_tests.rs:152-190`);
+  the pulse under the paddles while Serving and Playing and never under the pause menu (a
+  `pulsed` count); `restart` by identity in the two arms the game can reach (an empty slot is
+  requested into — the label becomes the song's path; its own is sought — the position reads
+  the top), the fixture-song arms being the engine's tests now; the missing bank (pong's
+  `cfg(unix)` scratch-directory shape with symbolic links to `fonts/`, `scenes/`, `sprites/`
+  and `ai/music/`, no `soundfonts/`) leaves the game running silent, `song_failed` true and
+  the triggers counted as refused.
+- **`CLAUDE.md`** (breakout): a § Music modelled on pong's — the files, the six bindings and
+  their modes, the two source kinds and why, the pulse, the hint, the no-fallback rule, the
+  bank's wrapper and the budget line, the version bump — the module layout gaining `music.rs`,
+  and the test list gaining `music_tests.rs` with its count (that guide keeps counts; the
+  "107 tests" lines are updated to what `cargo test` prints).
+
+### Correction 7 — the web proof for a K6 game: a byte cap, one recorded boot, pass-or-fail checks
+
+Both bundle versions are four-place contracts (`games/breakout/src/web_entry.rs` names the
+lists): the game **v5 → v6** (`ASSET_BASE = "/games/food-pyramid/v6/assets"`,
+`scripts/build_wasm.sh ../games/breakout food-pyramid --version v6`, `insiculous_web/src/
+content/games/food-pyramid.md` `wasm: '/games/food-pyramid/v6/game.js'`,
+`public/games/food-pyramid/v6/`) and the editor bundle **v4 → v5** (`EDITOR_ASSET_BASE =
+"/playground/breakout/v5/assets"` — the editor bundle's slug is still `breakout`, as the
+deployed `public/playground/breakout/v4/` and the content line `editor: '/playground/breakout/
+v4/game.js'` show — `--kind editor --version v5` with the slug `breakout`,
+`public/playground/breakout/v5/`). The old directories stay until the deploy. **The checks run
+on the exact bytes that will ship.** `build_wasm.sh --sync` is a second build, not a copy — it
+`rm -rf`s the game's `dist/`, rebuilds, and copies the new output (`build_wasm.sh:230-234`,
+`:446-451`) — so a bundle checked from one run and synced by another is two bundles (round 55,
+kimi F1). So each bundle is built **once, with `--sync` up front**, into
+`insiculous_web/public/games/food-pyramid/v6/` and `public/playground/breakout/v5/` — two new,
+untracked directories — the content lines are edited to v6 and v5, `npm run build` copies them
+into `dist/`, and every check runs on that `dist/` under the one `npm run preview`, beside the
+Tong copies of correction 1 (round 54, kimi F1 — v3 staged Tong's bundles and forgot the Food
+Pyramid's own). **The order is one sequence and its failure path one rollback unit** (round 56:
+codex F2, kimi F1 and F2, gemini F1 and F2): (1) `web_entry.rs`'s two constants bumped; (2)
+both bundles built once with `--sync` into `public/` — if the second build fails, the first's
+synced directory is removed before any retry, since `--sync` refuses a non-empty target; (3)
+the two content lines edited; (4) `npm run build` once; (5) the Tong copies of correction 1
+overlaid into `dist/`; (6) `npm run preview` and every check; (7) the preview stopped by its
+pid, then `npm run verify`. **A failure at any step rolls the unit back**: the two untracked
+version directories removed, the content file and `web_entry.rs` restored with `git checkout --
+<file>` in each repo (the file named, never `checkout -- .`), and the report INCOMPLETE naming
+the step — the trees left as the batch found them; a pass stages all of it.
+
+**Ruling (o), proposed: the boot gate for a K6 game is the bank's byte cap, not the five-pair
+increment.** Batch 12 measured the method's answer once — a 1.98 MiB bank cost +1.71 s cold on
+throttled Chromium against an 8 s gate, and `tong.sf2` parses in 7.5 ms natively — and the
+K6 banks are the same kind of file at the same scale: a 4 MiB bank at 10 Mbit/s is 3.4 s of
+transfer, and the parse is milliseconds. So: the bank **≤ 4 MiB** (the file's size, asserted in
+the report), and **one** throttled Chromium cold boot of v6 recorded to the `food pyramid: init
+complete` line (10 Mbit/s, 100 ms latency, 4× CPU, a fresh profile, the CDP order of batch 12
+correction 6, `?telemetry=1`), with no baseline arm, no five pairs, no `games/breakout-baseline/`
+copy; the number goes in the report and the scorecard beside Tong's — **under a ceiling with a
+consequence** (round 52, codex F4): Tong's v7 measured **16.95 s** cold under the same
+throttling (`report-12.md` § 5), so a Food Pyramid v6 cold boot over **25 s** — Tong's plus
+the 8 s the increment was ever allowed, anchored to Tong because the two bundles are the same
+size: the Food Pyramid's v5 `game_bg.wasm` is 7.35 MiB to Tong's v7 7.46
+(`insiculous_web/public/`), its eight scenes and fifteen sheets are kilobytes, its bank 0.2 MiB
+larger, and its preload manifest 48 entries to Tong's 36 (the two `dist/` manifests, counted
+2026-10-23) — twelve more serial fetches at the emulated 100 ms, about 1.2 s (round 53, gemini
+F2 guessed a 22–24 s baseline from no measurement; round 55, gemini F2 a waterfall the
+manifests do not show) — is run twice more and the median of the three decides; **an attempt
+that logs no `food pyramid: init complete` within 90 s is a failed attempt**, counted as over
+the ceiling, and three of them are INCOMPLETE with the console transcript (round 55, kimi F4);
+a median over 25 s removes the synced directories and the report is INCOMPLETE naming it. One
+run alone is not a verdict either way: batch 12's fourth pair hit 59 s on both arms from
+desktop activity on the shared display. **One bounded stress
+run is kept** (round 53, kimi F5: four instrument slots and a brick burst under multiball are
+not Tong's workload): two minutes of THE GAUNTLET — Insiculous, so every serve is two balls
+and the speed climbs — on the v6 bundle in Chromium, unthrottled, the XTEST driver restarting
+matches, **with a workload floor**: the run's last telemetry line shows at least 60 `bricks=`
+and 60 `paddle_hits=`, or the run did not exercise what it gates and is INCOMPLETE, not a pass
+(round 55, codex F1); batch 12's criterion verbatim — no two consecutive telemetry windows
+with a drain gap over 92 ms, the render cost under a block, `blocks_rendered` advancing in
+every window, zero lines a FAIL — and a fail removes the synced directories. The five-pair
+boot measurement is not repeated: it proved the method once (ruling (o)).
+
+**Browser checks, each a pass or a fail with a consequence, and every one a counter, a state
+or a still — never an ear** (round 53, kimi F4: the executor cannot hear, so v2's "a lost ball
+plays the dirge" was a check nobody could run): a fail removes the two synced version
+directories from `public/` (above) and the report is INCOMPLETE naming the check. The checks: the song is requested before any gesture and starts on the
+title's first key after the cards (the console's `Web audio enabled after user gesture` and
+`Playing song:` lines, in that order); a rally in which the telemetry line's `bricks=`,
+`armor_hits=`, `paddle_hits=` and `losses=` counts rise together with the conductor's
+`accepted_triggers` while `refused=`, `silent_triggers`, `rejected_triggers`, `late_triggers`
+and `stale_triggers` all hold at zero — a rally is not saturation, and a paddle hit whose
+command was rejected, late or stale would leave `paddle_hits=` rising with nothing heard
+(round 55, kimi F2); zero silent means every binding resolved to a unit with notes, the
+`AtSongPosition` bass included: its line is written without a rest, so a paddle hit that finds
+one is an arrangement defect this check exists to catch, not noise to allow (round 54, gemini
+F4); `jam_units=` rising on a move in the pause menu and not on its open;
+`pulsed=` rising while a match runs and holding under the pause menu, with the two stills;
+`/playground/food-pyramid/` — the site's page, `src/pages/playground/[slug].astro` over the
+game's content id `food-pyramid`, which loads the editor bundle from `/playground/breakout/v5/`;
+the page route is the game's slug and the bundle directory the crate's, two names by the
+site's standing contract (`web_entry.rs:9-10`, `CLAUDE.md:20`) — showing no `Playing song:`
+while editing, the line on Play's first frame (the editor replays what `init` asked for —
+door (b), `editor_integration/src/editor_game/init_music.rs`), a `reconstructions` step at the
+first match start (the seek to the top), and no music line after Stop (#199: the bundle
+exposes no silence signal, so the absence is what is checked). **What each of those sounds
+like is Jesse's listen check, the gate before the done mark** — natively and in both browsers,
+the fanfare on the bricks, the trombone's echo on a foil brick, the bass on the tong, the dirge
+on a loss, the jam, the pulse on the beat, and **a cleared board** (CLASSIC, a few minutes; the
+stinger with the last brick's burst), which no browser check reaches and the harness pins by
+its counters (correction 6); the executor quotes `song notes stinger` so the unit's notes and
+instrument are on record. Chromium drives the throttled boot and every check; Firefox (snap, the
+`devtools.console.stdout.content` profile, XTEST) the functional checks unthrottled — **the
+editor bundle in Firefox too**, which batch 12 left undone. Every measurement URL carries
+`?telemetry=1`; the lines are quoted. `npm run verify` in the site. **Two stills** of the pulse
+(peak and rest under the bottom paddle, a rally running) go to `review/conductor/` and to
+`coordination/conductor/screenshots/batch-13/` (tracked), as batch 12's did.
+
+### Correction 8 — the docs, and one sentence on each game's page
+
+`training.md` § Conductor Pattern gains "A game's music module" (correction 3) and its file
+list `engine_core/src/game_music.rs`; the directory map a line for it;
+`crates/engine_core/CLAUDE.md` the file-map entry and two pitfall rows; `games/pong/CLAUDE.md`
+§ Music is rewritten where it changes (the module stands on the engine's `GameMusic`; the bank
+script is a wrapper over the engine's; the lifecycle sentence of correction 1) and nowhere
+else; `games/breakout/CLAUDE.md` § Music is new (correction 6). **Each game's page gains one
+sentence** (`insiculous_web/src/content/games/{tong,food-pyramid}.md`, the body, after the
+chaos-modes paragraph): Tong's — "Over it all, Bizet's *Toreador Song*, played live by the
+engine's conductor: every paddle hit walks the refrain, and the pause menu jams over it." — and
+the Food Pyramid's — "The counter marches to Verdi's *Triumphal March*, played live by the
+engine's conductor: every brick you break walks the fanfare, and the tong plays the bass."
+Batch 12's site commit changed Tong's two version lines and nothing in the body, so the
+shopfront says nothing of the music yet. Codex judges the two sentences with the stills.
+`PROJECT_ROADMAP.md` row K and `CLAUDE.md`'s "K1 gates all of Conductor" line stay batch 16's.
+
+### Correction 9 — sizes, placements, gates
+
+Files near the ceiling: breakout `constants.rs` 590 (untouched — the music constants live in
+`music.rs`), `levels_tests.rs` 569 (untouched); **`jaw_tests.rs` is 614 lines today**, over
+the ceiling before this batch — this batch touches it only to move three private helpers to
+`test_support.rs` (correction 6), which shrinks it; the split itself is breakout#7, filed by the
+planner rather than have a music batch reshape a jaw test file. Pong: `types.rs` 475 (gains one line),
+`music_tests.rs` 371 (gains the order test and the accessor edits, under 420), `music.rs` 272
+shrinks. Engine: `prelude.rs` gains two names. New files: `crates/engine_core/src/game_music.rs`,
+`crates/engine_core/tests/game_music.rs`, `scripts/prepare_game_soundfont.sh`;
+`games/breakout/src/{music.rs, music_tests.rs}`, `games/breakout/scripts/prepare_soundfont.sh`,
+`games/breakout/assets/{ai/music/ai_food_pyramid.mid, ai/music/ai_food_pyramid.mid.ron,
+ai/music/LICENSE, soundfonts/food_pyramid.sf2, soundfonts/LICENSE}`,
+`games/breakout/review/conductor/` (the game's reviews), `coordination/conductor/screenshots/
+batch-13/`. Touched: engine `crates/engine_core/src/{lib,prelude}.rs`, `crates/engine_core/
+CLAUDE.md`, `training.md`; pong `src/{music,music_tests,lib}.rs` (`lib.rs` only if the prelude
+import changes), `scripts/prepare_soundfont.sh`, `CLAUDE.md`; breakout `Cargo.toml` (the
+`music_midi` dev-dependency for the sidecar test, as pong's), `src/{lib,types,menu,drawing}.rs`,
+`src/gameplay/{mod,bricks,paddles,balls,flow}.rs`, `src/web_entry.rs`, `CLAUDE.md`; site
+`src/content/games/{tong,food-pyramid}.md`, `public/games/food-pyramid/v6/`,
+`public/playground/breakout/v5/`.
+
+**Gates:** in `insiculous_2d` the standard set (`cargo test --workspace`, both clippy runs,
+`check_wasm.sh` — `engine_core` is touched — `check_games.sh --test` — a public item of
+`engine_core` is added, and two games' behaviour is exercised — `check_guide_tests.sh`,
+`check_features.sh`, `check_audio_provenance.sh`, the comment-tag grep, the 600-line check);
+in each game `cargo test`, `cargo clippy --all-targets` with and without `--features editor`,
+`../../insiculous_2d/scripts/check_audio_provenance.sh "$PWD"` (breakout's executor breaks its
+`soundfonts/LICENSE` once to see the gate fail, restores it, quotes both runs); in pong the
+wrapper's re-run reproducing `tong.sf2` byte for byte (correction 4) and the ten music tests
+green; in breakout the two `build_wasm.sh` runs with their `wasm size:` lines, the bank's size
+against the 4 MiB cap, the song under 256 KiB, **and correction 7's staged browser checks, the
+recorded boot under its ceiling and the two-minute stress run on THE GAUNTLET, each pass or
+fail, a fail removing the synced directories**; in `insiculous_web` `npm run verify` after the
+checks. **Leaves
+out:** the pyramid roster and the Maxwell cameo (correction 10), a volume control, a recorded
+fallback (ruling (e)), a `Sequence` part in a game (correction 5 says why), the title and
+level-select menus jamming (**ruling (p), proposed: the pause menu is the one menu that jams,
+in every game** — Tong set it, and a level select that plays a note on every move is a sound
+effect, not a jam), the five-pair boot measurement (ruling (o); the two-minute stress run is a
+gate, not an exclusion — round 54, codex F3 caught v3 listing it in both), the other
+four games, the game template (a `GameMusic` in the template is its own issue, filed by the
+planner), intensity layers and harmony generation (the milestone's exclusions), Jesse's
+promotion of either song to `music/`.
+
+### Correction 10 — the Maxwell finale is breakout#3's, and the clear is the binding today
+
+The section's bullet said "the Maxwell finale takes the march's cadence". The tree has no
+Maxwell finale: `check_win_condition` (`flow.rs:50-60`) empties the balls and candies and sets
+`GameOver { won: true }`, and the game-over panel says "BOARD CLEARED!" (`drawing.rs:181`).
+Dr. Maxwell's taunt cameo on a clear is **breakout#3** — the pyramid level select, the gates,
+the unlock save, "P2 soon, after 8c", a batch with its own plan revision, not this effort's.
+So: **the `clear` binding is the finale's cadence today**, triggered where the win is decided,
+and when #3 lands its cameo inherits the binding (one trigger, wherever the cameo plays). The
+planner adds that sentence to #3 at the done mark. Nothing in this batch waits on #3.
+
+**Rulings for Jesse** (sent with the section unless he says otherwise): (l) the game-side music
+module is promoted to `engine_core::game_music::GameMusic` in this batch and Tong migrates onto
+it, none of its tests deleted; (m) the Food Pyramid's bank is FluidR3's trumpet, trombone,
+tuba and timpani, about 2.2 MiB, committed, under a 4 MiB cap; (n) the paddle hit plays the
+bass line in `AtSongPosition`, the clear a one-unit `Loop` on `quantize: Off` like every
+binding in the game, and `Sequence` stays out of the games for the reason correction 5 gives;
+(o) a K6 game's boot gate is the bank's byte cap plus one recorded throttled cold boot under a
+25 s ceiling, with one two-minute stress run on the game's own bundle — the five-pair increment
+was batch 12's proof of the method and is not repeated per game;
+(p) the pause menu is the one menu that jams, in every game; (q) the clear's cadence is the
+`clear` binding, which breakout#3's Maxwell cameo inherits; (r) each game's site page gains
+one sentence naming its music; (s) Tong's migrated bundles are built and browser-checked
+locally and not deployed — the next Tong bump ships them — rather than bumped to v8 / editor
+v7 for a refactor.
+
+## Batches 14–15 — K6: the other four games, in pairs (#65)
 
 Executor: the Opus session per pair, each game in its own repo with its own review
 directory. Reviewers: kimi, gemini, codex (the beat visuals). Listen check: Jesse per game.
 
-- **13 — Tong's full per-game acceptance + The Food Pyramid** (brick, paddle, loss and clear
-  voices over the *Triumphal March*; the Maxwell finale takes the march's cadence).
 - **14 — Bratdog + Toast Busters** (food, turn and death voices over the polka; shots, each
   Toasted kind on one shared part with its own instrument, UFO and hit voices over *Danse
   Macabre*).
