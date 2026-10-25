@@ -2959,6 +2959,22 @@ hardened gates). **Settled at v6 by Jesse on 2026-10-24**, when he asked for the
 rulings (l) to (s) at the section's foot go out as proposed, his to reverse before the executor
 starts. Ten corrections to the one bullet the section was; each names what the tree says.
 
+**Landed 2026-10-24, listen check pending.** Built by the Opus executor session
+(`review/conductor/report-13.md`, COMPLETE: the march sequenced from memory, the gates clean, the
+cold boot 19.22 s under the 25 s ceiling, THE GAUNTLET's two minutes over 108 bricks and 84 paddle
+hits, every browser check a pass in Chromium and Firefox, the editor bundle in both); reviewed as
+round 57 (engine kimi 3, gemini 6, planner 3; pong kimi 1; breakout kimi 2, codex 0 with the
+stills; site kimi 0, codex 0 — `rebuttal-57.md`: five doc lines accepted, eight rebutted, gemini's
+two blockers false against `game_config.rs:23` and the passing fourth-arm test); committed on
+`jesse` as engine 58a0601, pong 121d1ba, breakout 0b50546, site 59b3cd6. **Not yet done:** Jesse's
+listen check (natively and in both browsers, a cleared board included; Tong heard again after the
+migration) is the gate before the done mark, #65's Pong and Breakout ticks, the sentence on
+breakout#3 and the gesture-order correction for batches 14–15 (report § 8.3: check "no `Playing
+song:` before the gesture, both lines on it", not an order). Filed: insiculous_2d#202 (the pause
+hint over the 300 px panel, both games), insiculous_web#76 (the profile prompt takes a running
+game's keyboard), game-template#3 (a `GameMusic` in the template), a line on backlog #84
+(`stop_binding` dead under `--no-default-features`).
+
 Executor: the Opus session, in four checkouts — `games/breakout` (the game, its song, its bank,
 its page versions), `games/pong` (the migration and three proofs), `insiculous_2d` (the shared
 music module, the shared bank script, `training.md`), `insiculous_web` (the two bundles and two
