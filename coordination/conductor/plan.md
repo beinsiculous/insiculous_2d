@@ -2947,7 +2947,7 @@ the editor bundle, plays on) with the error on the status bar (correction 10, re
 the bank is a boot dependency on the web until #194 — a dropped fetch fails the boot as any
 asset's does today, and the preloader's retry is #196's batch, not this one's.
 
-## Batch 13 — K6: Tong's acceptance and The Food Pyramid (#65)
+## Batch 13 — K6: Tong's acceptance and The Food Pyramid (#65) — DONE 2026-10-24 (58a0601; pong 121d1ba; breakout 0b50546; site 59b3cd6)
 
 **Re-verified 2026-10-23 against the tree at 02760a7** (engine), `games/pong` d0a8240,
 `games/breakout` 8f7b109 and `insiculous_web` db162d3, after batch 12 and ruling 3b's door (b)
@@ -2966,11 +2966,12 @@ hits, every browser check a pass in Chromium and Firefox, the editor bundle in b
 round 57 (engine kimi 3, gemini 6, planner 3; pong kimi 1; breakout kimi 2, codex 0 with the
 stills; site kimi 0, codex 0 — `rebuttal-57.md`: five doc lines accepted, eight rebutted, gemini's
 two blockers false against `game_config.rs:23` and the passing fourth-arm test); committed on
-`jesse` as engine 58a0601, pong 121d1ba, breakout 0b50546, site 59b3cd6. **Not yet done:** Jesse's
-listen check (natively and in both browsers, a cleared board included; Tong heard again after the
-migration) is the gate before the done mark, #65's Pong and Breakout ticks, the sentence on
-breakout#3 and the gesture-order correction for batches 14–15 (report § 8.3: check "no `Playing
-song:` before the gesture, both lines on it", not an order). Filed: insiculous_2d#202 (the pause
+`jesse` as engine 58a0601, pong 121d1ba, breakout 0b50546, site 59b3cd6. **DONE 2026-10-24:
+Jesse's listen checks passed, The Food Pyramid's and Tong's after the migration**; #65's Pong and
+Breakout boxes ticked, breakout#3 told the `clear` binding is the cadence its cameo inherits, and
+the gesture-order correction written into Batches 14–15 (report § 8.3: `enable_output` logs
+`Playing song:` before `Web audio enabled after user gesture`, on one instant — check "no song
+before the gesture, both lines on it", never an order). Filed: insiculous_2d#202 (the pause
 hint over the 300 px panel, both games), insiculous_web#76 (the profile prompt takes a running
 game's keyboard), game-template#3 (a `GameMusic` in the template), a line on backlog #84
 (`stop_binding` dead under `--no-default-features`).
@@ -3588,11 +3589,27 @@ directory. Reviewers: kimi, gemini, codex (the beat visuals). Listen check: Jess
 **The rule batch 12 left (ruling 3b, door (b) — Jesse, 2026-10-23, #198): the editor starts silent,
 remembers what the game's `init` asked the audio for, and asks for it again on each Play session's
 first frame when no composer song is open. So a game starts its music where it naturally would —
-at `init`, or at a match start that decides by the slot's label as Tong's `Music::restart` does
+at `init`, or at a match start that decides by the slot's label as `GameMusic::restart` does
 (none → request; its own → seek to the top; another → leave the audition alone) — and asks the
 audio for its state (`is_music_playing`, `song_label`) rather than trusting a flag it set at `init`,
 since the editor stops and restarts the slot around it. A song built in memory is not replayed, and
 what the game set after the request (looping, a seek) is the game's to set again.**
+
+**What batch 13 left (2026-10-24).** The rules above are code now: a game's `music.rs` is a thin
+module over `engine_core::game_music::GameMusic` (prelude) — the song path and bindings as
+constants, the moments that call `ctx.sources.trigger`, the counts the telemetry line appends,
+the pulse's anchors — with `start` at `init`'s end, `restart` at every match start, `follow_pause`
+at the pause gate's end and in the `Resumed` arm, `update` at the top of `update`; Tong
+(`games/pong/src/music.rs`) and The Food Pyramid (`games/breakout/src/music.rs`) are the worked
+cases, and `training.md` § Conductor "A game's music module" the contract. Each game's bank is cut
+by a `scripts/prepare_soundfont.sh` wrapper over the engine's `prepare_game_soundfont.sh`
+(`"$@"` first, then `--max-mib 4`, the stem and the presets), built once from one `--bank`
+FluidR3 for the pair. The browser check on the gesture reads **"no `Playing song:` line before the
+gesture, and both `Playing song:` and `Web audio enabled after user gesture` on it"** — never an
+order between them: `enable_output` starts the pending song and logs it from inside, and the
+`Web audio enabled` line is logged on its return (report-13 § 8.3). The pause hint "… - move to
+jam" overflows the engine's 300 px pause panel in both games (insiculous_2d#202); a new game's
+hint waits for that ruling rather than adding a third copy of the text.
 
 Per game: the song sequenced in the composer under `assets/ai/music/ai_<slug>.mid` with its
 sidecar, the SoundFont subset and `LICENSE` beside them; bindings through the host's
