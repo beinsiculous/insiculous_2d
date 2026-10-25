@@ -57,6 +57,7 @@ pub mod save_store;
 pub mod scores;
 pub mod sound_emitters;
 pub mod sound_sources;
+pub mod game_music;
 mod startup_splash;
 pub mod contexts;
 pub mod ui_integration;

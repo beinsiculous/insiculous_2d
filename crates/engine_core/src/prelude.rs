@@ -89,6 +89,7 @@ pub use renderer::line_pipeline::LineVertex;
 pub use audio::{AudioManager, Bus, SoundHandle, SoundSettings, SourceId, Subdivision};
 pub use crate::sound_emitters::SoundEmitters;
 pub use crate::sound_sources::SoundSources;
+pub use crate::game_music::{BeatPulse, GameMusic};
 
 // Re-export UI types (UIRect and UIColor are aliases to common types for backwards compatibility)
 pub use ui::{TextAlign, UIContext, Theme as UITheme, WidgetId};

@@ -13,6 +13,7 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
   - `render_manager.rs` / `window_manager.rs` - Focused managers (renderer lifecycle, window creation)
   - `contexts.rs` - `GameContext` / `RenderContext` passed to Game methods
   - `sound_sources.rs` - `SoundSources` (`ctx.sources`): the `SourceId` an entity, the game or the menu triggers a song binding under, the host-wide activation epoch, the reconcile, `end` and the flush the frame tail runs
+  - `game_music.rs` - `GameMusic`: a game's song requested at `init`, re-aimed at each match start by the song in the slot, jammed from the pause menu, pulsed on the beat, reported every five seconds
   - `sound_emitters.rs` - `SoundEmitters` (`ctx.emitters`): the scene's `SoundEmitter`s played, re-mixed from the main camera (`spatial_mix`) and ended by the frame tail after the hierarchy (a spawn sound only while the time scale is live)
   - `assets.rs` - Asset loading and caching (tracks handle→path for scene save)
   - `assets/sprite_sheet.rs` - `AssetManager::load_sprite_sheet` (PNG + sidecar → `SpriteSheet`), `SidecarCache` (one sidecar read per path per scene load, cleared at the top of every load)
@@ -1055,7 +1056,39 @@ that decides by the slot (Tong's) finds its own song there and seeks it to the t
 composer song open, the saved song is the session's music instead. Stop silences the slot
 whoever filled it; the next Play asks again.
 
-**Files:** `engine_core/src/sound_sources.rs`, `engine_core/src/sound_emitters.rs`,
+**A game's music module.** The rules every game with a song carries live in
+`engine_core::game_music::GameMusic` (prelude), so a game's own `music.rs` names only its song and
+its moments:
+
+```rust
+// built with the game: GameMusic::new(SONG_PATH, "food pyramid", "FOOD_PYRAMID_TELEMETRY")
+// end of init, after the world is built
+self.music.game.start(ctx);
+// top of update: the telemetry line appends the game's own counts
+let bricks = self.music.counts.bricks;
+self.music.game.update(ctx, || format!("bricks={bricks}"));
+// every match start
+self.music.game.restart(ctx);
+// at each moment, the game triggers and counts
+let source = ctx.sources.game();
+ctx.sources.trigger(ctx.audio, "brick", source);
+// the pause gate's end: a move in the menu jams one unit of the `menu` binding
+self.music.game.follow_pause(ctx, self.pause.is_active(), "menu");
+// a running frame: the visual is the game's
+if let Some(pulse) = self.music.game.beat_pulse(ctx) { /* Bar: the full ripple; Beat: a quarter */ }
+```
+
+`restart` decides by the song in the slot, never by a flag `init` set: none — a preview that ended
+took it — requests the game's song; the game's own goes back to its top; another is left alone,
+since in the editor it is the composer's audition, unless it played to its end. That is what lets
+the editor stop and replay the slot around the game. `follow_pause` reads `MenuInput`, never the
+menu's selection, which follows a resting pointer, and jams nothing on the frame the menu opens.
+`beat_pulse` answers once an update, the bar before the beat. A song that will not load is
+logged once at error, `song_failed()` stays true, and every `restart` asks again. Tong
+(`../games/pong/src/music.rs`) and The Food Pyramid (`../games/breakout/src/music.rs`) are the
+worked cases.
+
+**Files:** `engine_core/src/sound_sources.rs`, `engine_core/src/game_music.rs`, `engine_core/src/sound_emitters.rs`,
 `engine_core/src/assets/sound_library.rs`, `engine_core/src/scripting/triggers.rs`,
 `engine_core/src/game/frame_tail.rs`, `ecs/src/sound_emitter.rs`, `audio/src/manager/song.rs`,
 `audio/src/manager/playback.rs`, `audio/src/pan_source.rs`, `examples/conductor_demo.rs`
