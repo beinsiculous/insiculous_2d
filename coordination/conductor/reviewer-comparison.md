@@ -183,3 +183,8 @@ is wall clock from the dispatch timestamp to the review file's mtime.
 | batch 14a code round (draft-14a-web.diff, with the stills) | codex | 0 | 0 | 0 | 0 | "The version bumps and added description introduce no visible contract or schema changes" | 0 m 50 s |
 | batch 14a fix round (fixes-14a.diff, the pulse after the ticks + its spatial test) | kimi | 0 | 0 | 0 | 0 | "The new test distinguishes pre-tick from post-tick anchoring, including wrap-around movement" | 0 m 57 s |
 | batch 14a fix round (fixes-14a.diff) | codex | 0 | 0 | 0 | 0 | "The pulse now uses post-tick head positions while preserving pause gating and suppressing pulses after a fatal tick" — dispatched after kimi exited | 0 m 22 s |
+| batch 14b code round (draft-14b.diff, space_invaders) | kimi | 0 | 0 | 0 | 0 | "No concrete correctness or regression findings" — weighed the pause latch after a quit to title and raised nothing | 5 m 07 s |
+| batch 14b code round (draft-14b.diff, space_invaders) | gemini | 1 | 0 | 1 | 0 | "Singed Sour-Doom leaks an unreleased looping audio source across match end" — `Loop` is a cursor mode: one trigger plays one unit, ending where it was written; the source stays activated and silent | 15 m 24 s |
+| batch 14b code round (draft-14b-web.diff, the content file) | kimi | 0 | 0 | 0 | 0 | "No findings … Mergeable, assuming the referenced bundles are deployed" | 0 m 21 s |
+| batch 14b code round (draft-14b.diff, with the two bob stills) | codex | 0 | 0 | 0 | 0 | "the bob resets on pause and match completion … mergeable within the reviewed scope" — dispatched after kimi exited | 0 m 26 s |
+| batch 14b code round (draft-14b-web.diff, with the stills) | codex | 0 | 0 | 0 | 0 | "updates two bundle URLs and adds descriptive copy" | 0 m 20 s |

@@ -3623,7 +3623,7 @@ after Jesse heard it. **Gates:** each game's `cargo test` and clippy, `check_gam
 `../../insiculous_2d/scripts/check_audio_provenance.sh .` run from the game (the same
 relative-path precondition every game's `Cargo.toml` carries), the listen check. **Leaves out:** intensity layers, harmony generation (excluded by the milestone).
 
-## Batch 14 — K6: Bratdog and Toast Busters (#65) — 14a Bratdog DONE 2026-10-26 (snake 8aea9f3; site 829d2fe; stills 3ee2928)
+## Batch 14 — K6: Bratdog and Toast Busters (#65) — DONE 2026-10-26: 14a Bratdog (snake 8aea9f3; site 829d2fe; stills 3ee2928), 14b Toast Busters (invaders eccd17e; site 8cf69f6; stills 3947985)
 
 **Re-verified 2026-10-24 against the tree at ecaff0c** (engine), `games/snake` 590b2d1,
 `games/space_invaders` a102eed and `insiculous_web` 59b3cd6, after batch 13 landed (the engine's
@@ -3672,6 +3672,26 @@ preview and the in-place rollback held with nothing to roll back; the first Chro
 load rebooted the game once (#222) and one stress window stalled for 2.1 s (#221), neither
 reproduced; the executor's drivers, tracker and song generator are kept at
 `review/conductor/batch14a-tools/` for 14b's session to start from.
+
+**What 14b left (2026-10-26).** Toast Busters landed from `report-14b.md` (COMPLETE) after code
+round 64 (kimi 0, gemini 1 rebutted — `mode: Loop` read as a note looping until despawn; codex 0
+with the two bob stills; the site's content diff kimi 0, codex 0); `rebuttal-64.md`,
+`review-64-claude.md`. One in-session ruling: **the tune is on a track named `tune`, and `song
+new`'s `melody` ships empty** — `melody` is program 0, no `SongEdit` changes a track's program, and
+a subset bank has no preset 0, so rustysynth would voice it on the bank's lowest preset (the
+xylophone). Filed as insiculous_2d#223; **batch 15's two songs name their own tune track the same
+way** rather than wait on the edit. Two lessons bind 15. **A sprite-offset beat visual has no
+observable placement**: `Sprite.offset` is relative to its entity, so the bob draws the same
+whether it is written before or after the fleet's step, and the ordering matters only on a frame
+that ends the match, which `finish_game`'s `rest_bob` already covers — 14a's "after the frame's
+ticks" lesson is for a world-space anchor (Bratdog's ripple), and a section must not spend a test
+on the ordering of an entity-relative one. **A press on the web editor's toolbar reaches the game
+as P1's `Action1` on the press frame** (Firefox, press and release frames apart; insiculous_2d#224):
+an editor-bundle check that clicks Stop over a game-over panel will see one restart line and one
+shot before the restore, and a report should name it rather than chase it. Also kept from 14b:
+the stress floor at the starting cadence held (263 shots / 226 busted against 120 / 30), neither
+of 14a's browser anomalies (#221, #222) recurred, and the method's tools and logs for batch 15 are
+`review/conductor/batch14b-tools/` and `batch14b-logs/` (14a's copied beside them).
 
 Executor: the Opus session, **one handoff per game, in order** (ruling (t)): **14a Bratdog** in
 `games/snake` + `insiculous_web`, then **14b Toast Busters** in `games/space_invaders` +
