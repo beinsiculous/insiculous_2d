@@ -3623,7 +3623,7 @@ after Jesse heard it. **Gates:** each game's `cargo test` and clippy, `check_gam
 `../../insiculous_2d/scripts/check_audio_provenance.sh .` run from the game (the same
 relative-path precondition every game's `Cargo.toml` carries), the listen check. **Leaves out:** intensity layers, harmony generation (excluded by the milestone).
 
-## Batch 14 — K6: Bratdog and Toast Busters (#65)
+## Batch 14 — K6: Bratdog and Toast Busters (#65) — 14a Bratdog DONE 2026-10-26 (snake 8aea9f3; site 829d2fe; stills 3ee2928)
 
 **Re-verified 2026-10-24 against the tree at ecaff0c** (engine), `games/snake` 590b2d1,
 `games/space_invaders` a102eed and `insiculous_web` 59b3cd6, after batch 13 landed (the engine's
@@ -3647,6 +3647,31 @@ fetched per handoff, the rulings' alternatives decided at settling; `rebuttal-58
 `rebuttal-59.md`). Nine corrections to the two bullets the section was; each names what the tree
 says. **The coordinate convention throughout: world Y is up** (the engine's `Transform2D` and
 `Sprite.offset`, "in world units, Y up" — pong's guide), so a dip is a smaller y.
+
+**What 14a left (2026-10-26).** Bratdog landed from `report-14a.md` (COMPLETE) after code round 62
+(kimi 0, gemini 1 rebutted, codex 1 real; the site's content diff kimi 0, codex 0) and fix round 63
+(kimi 0, codex 0); `rebuttal-62.md`, `rebuttal-63.md`, `review-62-claude.md`. Three lessons bind 14b.
+**The pulse runs after the frame's ticks**, gated on `Playing`, before the frame's one map writer:
+the executor placed it right after the pause gate, so a beat on a tick frame rippled the cell the
+dog had just left (codex, round 62); the fix records the pulse's anchors in a test-only
+`Music.pulsed_at` and asserts the beat frame's anchor is the head after that frame's tick — Toast
+Busters' bob is written after the fleet's step for the same reason, and its test reads the
+slices' offsets on the frame of the pulse. **A two-minute stress floor is computed at the game's
+starting cadence, never its floor cadence**: correction 7's "a sweep every eighteen seconds" used
+Bratdog's 0.05 s floor tick where a match starts at 0.10 s, so the section's row sweep could not
+reach 120 turns; the executor turned the driver a quarter (columns, 15 cells) and met the floor
+twice (173, 166). Toast Busters' 120 shots / 40 busted are re-checked against the cannon's fire
+cooldown and the wave's slice count before `handoff-14b.md` is written. **The loop's end is a
+written note's end** (`BackgroundScore::end_tick`): a staccato arrangement ends its background 40
+ticks before the bar and slides the bar lines a little every loop; Bratdog's counter-line is legato
+so its last note ends on tick 30720, and a test holds the meter and the end — Danse Macabre's
+recipe does the same (the waltz bass's last note held to the loop's last tick). Also: the tune on a
+trigger track means the background alone carries no melody — by design, and Jesse's ear is the
+gate on whether the background still reads as the piece; the web preconditions, the pid-stopped
+preview and the in-place rollback held with nothing to roll back; the first Chromium functional
+load rebooted the game once (#222) and one stress window stalled for 2.1 s (#221), neither
+reproduced; the executor's drivers, tracker and song generator are kept at
+`review/conductor/batch14a-tools/` for 14b's session to start from.
 
 Executor: the Opus session, **one handoff per game, in order** (ruling (t)): **14a Bratdog** in
 `games/snake` + `insiculous_web`, then **14b Toast Busters** in `games/space_invaders` +
