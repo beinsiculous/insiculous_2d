@@ -3581,7 +3581,7 @@ directory. Reviewers: kimi, gemini, codex (the beat visuals). Listen check: Jess
 
 - **14 — Bratdog + Toast Busters** (food, turn and death voices over the polka; shots, each
   Toasted kind on one shared part with its own instrument, UFO and hit voices over *Danse
-  Macabre*).
+  Macabre*). **Its own section follows this one; it goes out as two handoffs, 14a and 14b.**
 - **15 — Meatieroids + Chicken Coop** (shots, three rock sizes as three instruments on one
   part, thrust and hyperspace over *Mars*; hops, death and home-slot voices over the
   *William Tell* finale).
@@ -3622,6 +3622,524 @@ after Jesse heard it. **Gates:** each game's `cargo test` and clippy, `check_gam
 --test`, `build_wasm.sh` bundle size against #127,
 `../../insiculous_2d/scripts/check_audio_provenance.sh .` run from the game (the same
 relative-path precondition every game's `Cargo.toml` carries), the listen check. **Leaves out:** intensity layers, harmony generation (excluded by the milestone).
+
+## Batch 14 — K6: Bratdog and Toast Busters (#65)
+
+**Re-verified 2026-10-24 against the tree at ecaff0c** (engine), `games/snake` 590b2d1,
+`games/space_invaders` a102eed and `insiculous_web` 59b3cd6, after batch 13 landed (the engine's
+`GameMusic`, the shared bank script, two worked games). **Settled at v5 on 2026-10-26, rulings (t) to (aa) as proposed — no oboe swap, no cuts** (Jesse, on
+the planner's recommendation after round 61). v5 after plan rounds 58 to 61 (61: kimi
+2, gemini 5, codex 2 — the oboe swap reaches every clarinet track's program, Bratdog's four parts,
+the bob rested when the state leaves Playing, the stress driver closed on the screencast's head
+cell with a restart key in its cadence, the preview's pid named as the server's; `rebuttal-61.md`;
+the planner recommended settling here — no contract has moved since v1 but the bob's host and
+its state, and rounds 59 to 61 hardened gates. 60: kimi 5, gemini 6, codex 2 — `blocks=`
+verbatim, the bob's peak stored and reset on pause and restart, Bratdog's stress driver a blind
+boustrophedon with a floor it can reach, the preview stopped on every exit, the web unit's
+ownership stated; `rebuttal-60.md`. 58 and 59 before it:
+kimi 4, gemini 7, codex 3 — the `singe` count, the missing-bank fixtures, the rollback's
+precondition, the meter in the composer recipe, the bob off the physics body, four-kind and
+flyer-bust tests, bounded polling; gemini's two Criticals misread a `Loop` part and an instrument
+slot. 59: kimi 6, gemini 6, codex 1 — the leftover "ten"s, Bratdog's seven tracks, the telemetry
+keys verbatim, the meter edit's exact payload, the bob's decay state and its sign, the rollback by
+reversing the executor's own edits with the version directories absent at step 0, FluidR3
+fetched per handoff, the rulings' alternatives decided at settling; `rebuttal-58.md`,
+`rebuttal-59.md`). Nine corrections to the two bullets the section was; each names what the tree
+says. **The coordinate convention throughout: world Y is up** (the engine's `Transform2D` and
+`Sprite.offset`, "in world units, Y up" — pong's guide), so a dip is a smaller y.
+
+Executor: the Opus session, **one handoff per game, in order** (ruling (t)): **14a Bratdog** in
+`games/snake` + `insiculous_web`, then **14b Toast Busters** in `games/space_invaders` +
+`insiculous_web`; each with one report at the engine's `review/conductor/report-14a.md` /
+`report-14b.md` (the engine's tree is not touched: batch 13 left nothing for it to carry). Reviewers
+per handoff: kimi (everything), gemini (the game's tests and the bank wrapper), codex (the beat
+visual from two stills, the page sentence). Listen check: Jesse per game, natively and in Firefox
+and Chromium. Size: about +700 lines a game plus the assets (a song, its sidecar, a 3.5 MiB
+SoundFont subset each); each game's diff is reviewed from its own `review/conductor/`, the site's
+from `insiculous_2d/review/conductor/`.
+
+**Standing:** batch 12's rulings (e) no recorded fallback, (f) the song plays on under the pause
+menu and the jam reads `MenuInput`, (h) a committed per-game bank with its `LICENSE`, (i) hits on
+`quantize: Off`, (k) the bank is a boot dependency on the web until #194; batch 13's (l) the game
+module is `engine_core::game_music::GameMusic`, (m) a per-game bank under a **4 MiB cap** the
+wrapper enforces, (o) the boot gate is the cap plus one recorded throttled cold boot under 25 s and
+one two-minute stress run, (p) the pause menu is the one menu that jams, (r) one sentence on each
+game's page; the K6 rule (3b, door (b)); and **"What batch 13 left"** in this section's parent
+(the module shape, the wrapper with `"$@"` first, the gesture check as two lines on the gesture,
+the pause hint waiting on #202).
+
+### Correction 1 — what the two trees hold today
+
+Neither game has a line of sound: `grep -rni "sound\|music\|audio\|beep\|conductor"` over each
+`src/`, `Cargo.toml`, `scripts/` and `README.md` prints nothing. Both carry `log = "0.4"` **only
+under the wasm target**, so a native `log::info!("<name>: init complete")` needs the dependency
+moved to `[dependencies]` as breakout's and pong's are (`breakout/Cargo.toml:16`); neither has a
+boot marker. Both pause gates draw the engine's defaults (`pause.draw`: snake `drawing.rs:116-118`,
+invaders `drawing.rs:117-120`) and neither has locale files. Both guides' test counts are stale by
+their title-screen tests (snake says 65, `cargo test` prints 67; invaders says 68, prints 73) — the
+batch rewrites the counts anyway. Both editor bundles keep the crate's slug under the game's route,
+the site's standing two-name contract (snake: `/playground/bratdog/` → `/playground/snake/v5/`,
+`web_entry.rs:47`; invaders: `/playground/toast-busters/` → `/playground/invaders/v5/`, `:48`), so
+the guides' "the editor at `/playground/<game>/`" lines are the route and are right. **Bratdog** has
+the engine's `GridBackdrop` (`spawning.rs:125-135`, `GRID_IMPULSE_EAT_*` and `_DEATH_*` at
+`constants.rs:160-163`) but its `ripple_grid` is a private `fn` (`gameplay/mod.rs:23`); it becomes
+`pub(crate)` for `music.rs`, as breakout's is. **Toast Busters has no grid by Jesse's ruling**
+(2026-10-13, "the countertop's grout is the grid", `CLAUDE.md:58`; `flow_tests.rs:261-272` asserts
+none) and **no next wave** ("there is no level progression yet", `CLAUDE.md:22`): the win ends the
+match (`combat.rs:301-306`). Its fleet moves continuously (`formation.rs:66-93`, `march_speed`
+30 → 240 px/s as the fleet thins), not in stepped ticks — the classic heartbeat is the fleet's
+speed, not a tempo, and **the song does not speed up with it** (intensity layers are the
+milestone's exclusion; one tempo map a song).
+
+### Correction 2 — one section, two handoffs
+
+The parent section says "the Opus session per pair". Batch 13's one game with a migration ran the
+executor about five hours and a 650-line report; two new games, two songs sequenced from memory,
+two banks, two browser proofs and two stress runs in one handoff is a report nobody reads whole and
+a batch that cannot land half. **Ruling (t), settled:** this section is one plan, settled once;
+the executor takes **14a Bratdog** first and **14b Toast Busters** after 14a's review round, each
+with its own report, review round, listen check and commits; the site's second commit carries the
+second game's bundles. One batch out at a time stands: 14b is not handed off while 14a's report is
+unreviewed. (The alternative, one handoff for the pair, was offered and declined.)
+
+### Correction 3 — Bratdog's song: the Tritsch-Tratsch Polka, its shape, its bank
+
+`games/snake/assets/ai/music/ai_bratdog.mid` + `.mid.ron`: Johann Strauss II's *Tritsch-Tratsch
+Polka* (1858; public domain) in a short arrangement the executor sequences **in the composer on the
+snake project** (as `report-13.md` § 6 did: the bank first, `song new`, `AddTrack`, `AddNote` in
+`Batch`es, `SetTempo`, `AddPart`, `AddInstrument`, `SetBinding`, `SetProvenance`, the `song` and
+`song notes` answers quoted, `song save ai/music/ai_bratdog.mid`), from memory as the march was —
+the executor cannot hear; it declares the shape, and Jesse's ear is the gate. **The meter is set,
+not assumed**: `song new` opens a 4/4 song, so the recipe's first edit after `SetTempo` is the
+meter, sent exactly as the API takes it — `{"SetTimeSignature": {"tick": 0, "meter": {"numerator":
+2, "denominator": 4}}}` (`crates/editor/src/song/edit.rs:73-76`, `docs/EDITOR_COMMAND_API.md:233`;
+the `meter` object is required, inline fields are refused), its `"ok":true` required before the
+first `AddNote`; the export writes an edited meter (`song_data/export.rs:120-125`); the `song` answer's
+`time_signatures` is quoted, and `music_tests.rs` reads the committed MIDI's signature at tick 0
+through `music_midi` and asserts 2/4 — else the conductor's bar lines fall every four quarters and
+the pulse accents every other bar (round 58, codex F2). Shape:
+
+- **thirty-two bars of 2/4 at about 124 BPM** (a loop of about 31 s — sixteen bars of 2/4 is
+  fifteen seconds and would wrap under every match), in A major or the executor's declared key,
+  looping at a phrase boundary;
+- **background**: `counter` (clarinet 0:71, the second voice), `oom` (tuba 0:58, the downbeats)
+  and `pah` (trombone 0:57, the off-beats) on their own tracks — a track a part selects plays in no
+  background, so the trigger tracks below are separate even where an instrument repeats;
+- **track `melody`** (`song new`'s own, accordion 0:21): the polka's tune, **the one shared part
+  `romp`** (`Loop`, `quantize: Off`), played by **two bindings on two instruments — `snack` on the
+  accordion and `snack_two` on the clarinet**: Frank's snacks walk the tune on the squeezebox, the
+  second dog's the same tune on the clarinet (versus only; in solo `snack_two` is never sent), the
+  Food Pyramid's brick/armor shape over two players instead of two brick kinds;
+- **track `paws`** (woodblock 0:115): **one short tick, one unit**, the part `paws` (`Loop`, `Off`)
+  on the `turn` binding — a dog's claws on the kitchen floor, one click a turn. Not the bass line
+  in `AtSongPosition`: a polka's "oom" is the tuba's background already, and a turn is a step, not
+  harmony. The woodblock is 82 KiB;
+- **track `dirge`** (trombone 0:57, its own channel): **one low blat, one unit** — a single note —
+  the part `dirge` (`Loop`, `Off`) on the `death` binding; a head-on death in versus sends it
+  twice in one tick, the same one unit on the game's source;
+- **track `jam`** (accordion): the counter-line, the part `jam` (`Loop`, `Off`) on `menu`;
+- every part `quantize: Off`; `soundfont: "soundfonts/bratdog.sf2"`; instruments `accordion`
+  (0:21), `clarinet` (0:71), `tuba` (0:58), `trombone` (0:57), `woodblock` (0:115);
+  `provenance: (author: "Johann Strauss II, 1858; sequenced by the Opus executor for Be
+  Insiculous, 2026", license: "CC0-1.0")`; no sample instrument. **Seven tracks past the tempo
+  track** — `melody`, `counter`, `oom`, `pah`, `paws`, `dirge`, `jam` (channels 1–7; `song new`'s
+  `melody` is the first, six `AddTrack`s follow) — **four parts** (`romp`, `paws`, `dirge`, `jam`
+  and nothing else: `counter`, `oom` and `pah` are background and select no part; the sidecar test
+  asserts these four by name), five bindings, five instruments.
+
+**The bank: `games/snake/assets/soundfonts/bratdog.sf2`**, FluidR3 GM **0:21 Accordion (2,294
+KiB), 0:71 Clarinet (609), 0:58 Tuba (190), 0:57 Trombone (438), 0:115 Woodblock (82)** —
+3,613 KiB of sample data by `subset_soundfont.py --sizes` on the full bank (measured 2026-10-24 on
+a fresh `apt download` of 3.1-5.3, sha256 `74594e8f…1cb0`), about **3.53 MiB against the 4 MiB
+cap** (ruling (u), settled). The accordion is two thirds of it and is the polka; no strings.
+`games/snake/scripts/prepare_soundfont.sh` is the third wrapper: `exec
+"$ENGINE_DIR/scripts/prepare_game_soundfont.sh" "$@" --max-mib 4 "$OUTPUT_DIR" bratdog 0:21 0:71
+0:58 0:57 0:115`. The executor fetches FluidR3 **once per handoff** into its scratchpad (`apt
+download fluid-soundfont-gm=3.1-5.3`, two seconds on Iroh, the sha256 checked by the script) and
+passes `--bank` to the wrapper; 14b's session fetches its own — a scratchpad does not outlive the
+session, and the bank is not committed anywhere (round 59, gemini F4).
+
+### Correction 4 — Bratdog's code: three moments a tick, two dogs, the dogs' lifecycle
+
+- **`src/music.rs`** (new, under 150 lines): the music constants at its top (`SONG_PATH =
+  "ai/music/ai_bratdog.mid"`, the five binding names, `BEAT_PULSE_FRACTION = 0.25`) and `Music {
+  game: GameMusic, counts: MusicCounts { snacks, turns, deaths }, #[cfg(test)] triggered }` on
+  `SnakeGame` (`types.rs:192-225`, its hand-written `Default` at `:227-248`), built with
+  `GameMusic::new(SONG_PATH, "bratdog", "BRATDOG_TELEMETRY")`. Wiring: `start(ctx)` at the end of
+  `init` (`lib.rs:97`, after `apply_theme`) followed by `log::info!("bratdog: init complete")`;
+  `update(ctx)` at the top of `update` (`lib.rs:101`); `restart(ctx)` at the end of `start_game`
+  (`gameplay/mod.rs:272-296` — every match start takes it: the mode select's confirm `menu.rs:130`,
+  the pause menu's Restart `mod.rs:49`, the game-over restart `mod.rs:263`); `follow_pause` in the
+  `Resumed` arm (`mod.rs:54`) and at the gate's end (`:60`), `pulse` after the gate while Playing.
+- **The moments and their sources.** A snack: `eat_food(ctx, i, cell)` (`mod.rs:213-237`, the
+  pellet's entity removed at `:221` in the same call) → `snack` for snake 0 and `snack_two` for
+  snake 1, **on the dog's own source, `ctx.sources.entity(self.snakes[i].map)`** — the dog's one
+  `Tilemap` entity (`types.rs:110`), never the pellet's: the pellet is gone in that call and a note
+  on it would be released at once. A turn: `advance_single` applies `next_direction` at
+  `mod.rs:158-159` (versus `:174-177`); the executor compares the applied heading against the one
+  before it and sends `turn` on the dog's source when they differ — a turn is a changed heading at
+  apply time, never a buffered key (`buffer_for_snake`, `:127-147`, queues two ahead). A death:
+  `kill(ctx, i)` (`mod.rs:308-317`) → `death` **on the game's source** — the dog's body stays on
+  the floor behind the game-over panel, so its own source would also serve, but a death's note must
+  ring on whatever the next frame does, as a brick's does. The menu's jam is the helper's.
+- **The lifecycle.** The dogs' entities are destroyed by `destroy_snakes_and_food`
+  (`mod.rs:350-360`) at every `start_game` and `reset_to_title`, so a dog's source ends in that
+  frame's tail and the next match's dog activates on its first snack (the paddle test's shape,
+  `breakout/src/music_tests.rs a_tong_hit_plays_on_the_paddles_source_and_a_match_start_ends_it…`).
+  A pellet's removal ends nothing: the snack was the dog's (the brick test's shape — `source_of
+  (pellet)` `None` and `live_sources` steady).
+- **The order within a tick, and ticks within a frame.** `advance_single` applies the turn, then
+  steps, then eats or dies (`mod.rs:156-168`); versus applies both headings (snake 0 then 1), steps
+  both, eats in index order (`:199-203`), then `finish_versus` kills each dead dog in index order
+  (`:329-339`). So a tick's trace is `turn` (0, 1) → `snack`/`snack_two` (0, 1) → `death` (0, 1).
+  The game runs **several ticks in one frame** when the frame is long (`while self.tick_timer <=
+  0.0`, `mod.rs:81-84`), so the trace is per frame and holds whole ticks in order; at `FRAME` and
+  `NORMAL_TICK = 0.14` (`constants.rs:30`) a test sees one tick about every eight frames, which
+  `test_support::step_one_tick` (`:70-80`) already waits for. Tests: `["turn", "snack"]` — a
+  buffered turn into the snack's cell in one tick; versus `["snack", "snack_two"]` — two dogs on
+  two pellets in one tick (Ridiculous lays two, `place_dog` and `lay_snack` place them);
+  `["death", "death"]` — a head-on, the one dirge unit twice, a `Draw`.
+- **The beat pulse**: the backdrop grid under **each live dog's head** (`cell_to_world(*snake
+  .cells.front())`, as `kill` reads it at `:312`) — `Bar` → `GRID_IMPULSE_EAT_STRENGTH` /
+  `_RADIUS`, `Beat` → a quarter of it — while Playing and never under the pause menu; a dead dog's
+  head is skipped. Codex judges from two stills (peak and rest under Frank's head mid-run).
+- **The pause menu keeps the engine's labels** (`pause.draw` stays): the jam works on a move, and
+  the hint that says so waits on #202 for both games (ruling (z)). `CLAUDE.md` says the hint is
+  silent on it.
+- **Tests** (`src/music_tests.rs`, new, under 400 lines, on `test_support::harness(mode, chaos)`
+  which already calls `start_game` and drains the pellets; `settle` — six frames with 3 ms between
+  them — goes into `test_support.rs` since nothing in snake waits on wall time today): the sidecar's
+  structure (`snack` and `snack_two` one part on two instruments, `Loop`, `Off`; `turn`, `death`,
+  `menu` each a `Loop`; every part `Off`; provenance); the song after `init`; a snack is one
+  accepted trigger on `source_of(dog)` with the pellet's entity gone and `live_sources` steady; a
+  turn is one on the same source and a buffered key that does not change the heading is none; a
+  death is one on the game's source, `source_of(dog)` kept, and the next `start_game` leaves the
+  old dog's `source_of` `None` — the lifecycle; the three trace cases; the pause jam through the
+  real `PauseMenu` (open frame, one move, pointer sweep, confirm, reopen); the pulse while Playing
+  and never under the pause menu; `restart` by identity (empty slot requested into; own sought to
+  the top); the missing bank (the `cfg(unix)` scratch directory linking `fonts/`, `sprites/` **and
+  `ai/music/`**, no `soundfonts/` — snake has no `scenes/`; the song and its sidecar are present so
+  the failure is the bank's, as breakout's fixture has it — round 58, kimi F3) leaves the game
+  running silent with every trigger refused and counted. **The waits are bounded polls, never fixed
+  sleeps** (round 58, codex F3): `test_support.rs` gains `poll(harness, limit, what, done)` in
+  breakout's shape (`music_tests.rs:998-1005` there — 3 ms between frames until the condition
+  holds, a failure past the limit), and every assertion on `accepted_triggers`, `live_sources` or
+  `source_of` after a trigger polls for its condition with a two-second limit rather than stepping
+  six frames and hoping.
+- **`CLAUDE.md`**: a § Music modelled on breakout's (the files, the five bindings' table with
+  modes, instruments and sources, the dogs' lifecycle, the order within a tick, the identity rule,
+  the pulse, the engine's pause labels and #202, no fallback, telemetry, the bank and budget, the
+  versions); the module layout gains `music.rs`; the test list gains `music_tests.rs` and the
+  counts become what `cargo test` prints. **Web**: `web_entry.rs` `ASSET_BASE` v6 → **v7**
+  (`/games/bratdog/v7/assets`), `EDITOR_ASSET_BASE` v5 → **v6** (`/playground/snake/v6/assets`),
+  the content file's two lines, `public/games/bratdog/v7/` and `public/playground/snake/v6/`.
+
+### Correction 5 — Toast Busters' song: Danse Macabre, its shape, its bank
+
+`games/space_invaders/assets/ai/music/ai_toast_busters.mid` + `.mid.ron`: Saint-Saëns's *Danse
+Macabre* (1874; public domain), the waltz, sequenced in the composer on the invaders project as
+above — **`{"SetTimeSignature": {"tick": 0, "meter": {"numerator": 3, "denominator": 4}}}` right
+after `SetTempo`**, its `"ok":true` before the first note, the `song` answer's `time_signatures`
+quoted, the committed meter asserted by a test, or the bob's bar accents drift across the waltz's
+downbeats (round 58, codex F2). Shape:
+
+- **thirty-two bars of 3/4 at about 144 BPM** (a loop of about 40 s), G minor, looping at a phrase
+  boundary;
+- **background**: `melody` (clarinet 0:71, the solo violin's waltz tune — the bank has no violin
+  under the cap, correction 5's bank below) and `waltz_bass` (acoustic bass 0:32, the oom-pah-pah)
+  on their own tracks;
+- **track `bones`** (xylophone 0:13): the rattling-bones theme, **the one shared part `bones`**
+  (`Loop`, `Off`), played by **four bindings on four instruments — one a Toasted kind**: `plain_wraith`
+  on the xylophone, `rye_ip` on the clarinet, `bagelgeist` on the bells (a ring for the ring),
+  `sour_doom` on the acoustic bass (the two-hit loaf, low) — #65's "multiple enemy types share one
+  part and select different instruments", four ways; the casting table's own line ("the waltz's
+  bones-rattling xylophone is the Toasted");
+- **track `pluck`** (acoustic bass): a gap-free bass line under the whole loop, the part `pluck`
+  in **`AtSongPosition`** on the `shot` binding — a cannon's shot plucks the bass note of that
+  moment of the waltz, always in the chord (the mode the Food Pyramid's paddle demonstrated;
+  the tiling test holds it here too);
+- **track `chime`** (tubular bells 0:14): **one low stroke, one unit**, the part `chime` (`Loop`,
+  `Off`) on `flyer` — midnight strikes as Maxwell's saucer (or Jammer) enters;
+- **track `bonus`** (tubular bells): **one high chord, one unit**, the part `bonus` (`Loop`, `Off`)
+  on `bonus` — the flyer busted;
+- **track `hurt`** (clarinet): **one low held note, one unit**, the part `hurt` (`Loop`, `Off`) on
+  `hit` — a cannon hit;
+- **track `stinger`** (clarinet): the dance's last chord as **one unit**, the part `clear` (`Loop`,
+  `Off`) on `clear` — the last slice busted;
+- **track `jam`** (clarinet): the counter-line, the part `jam` on `menu`;
+- **the eleventh binding, `singe`** → the part `bones` on the `bass` — a Sour-Doom's first hit walks
+  the same tune on the same voice as its bust, so the loaf has one timbre; no track of its own
+  (round 58, kimi F2 / codex F1: v1 wired it in correction 6 and left it out of this list);
+- every part `quantize: Off`; `soundfont: "soundfonts/toast_busters.sf2"`; instruments `xylophone`
+  (0:13), `clarinet` (0:71), `bells` (0:14), `bass` (0:32); `provenance: (author: "Camille
+  Saint-Saëns, 1874; sequenced by the Opus executor for Be Insiculous, 2026", license: "CC0-1.0")`.
+  **Nine tracks past the tempo track** (`AddTrack` takes channels 1–9 and 11–16, so nine fit),
+  **eleven bindings, seven parts, four instruments** — the largest sidecar yet; **ruling (x)** offered
+  `bonus` and `hit` as the two cuts and Jesse kept both: all eleven stand.
+
+**On one track, four instruments** (round 58, gemini F1, a Critical that is not so): a binding
+names a part for its notes and an instrument for its voice, and **every instrument is its own
+synthesizer slot** — a trigger plays the part's units on the instrument's slot, never on the
+track's MIDI channel, so no program change is ever issued and the track's channel is unused by
+the triggers (decision 2; `triggers.rs`; batch 13 correction 5, the same sentence for the
+Pyramid's `brick`/`armor` pair, which Jesse has heard). **And a `Loop` part does not loop a note**
+(gemini F2, F4): `Loop` is the cursor's mode — the units walked in order and wrapping at the
+part's end — and a unit's notes play to their written ends; `hurt`'s one held note and `chime`'s
+one stroke end when written, as Tong's `goal` and the Pyramid's `loss` do.
+
+**No binding for a Toasted's crumb** (`update_invader_fire`, `combat.rs:57-79`, a random draw a
+frame): no player act is behind it, forty slices firing at random would be a trigger storm with no
+melody in it, and a crumb that lands is the `hit`. Said here so it is not asked again.
+
+**The bank: `games/space_invaders/assets/soundfonts/toast_busters.sf2`**, FluidR3 GM **0:13
+Xylophone (1,773 KiB), 0:71 Clarinet (609), 0:14 Tubular Bells (274), 0:32 Acoustic Bass (905)** —
+3,560 KiB, about **3.48 MiB against the 4 MiB cap** (ruling (w), settled). **There is no violin
+under the cap**: FluidR3's Violin is 3,005 KiB alone, the Strings 5,466, the Pizzicato Section 2,729
+— any of them with the xylophone is over 4 MiB — so the solo violin's tune is the clarinet's
+(sardonic enough for a graveyard), and the Oboe (889 KiB, the dawn's cock-crow in the score) is
+the alternative offered and declined: 3,840 KiB, 3.75 MiB, still under. The clarinet stands. The wrapper
+is the fourth: `… "$@" --max-mib 4 "$OUTPUT_DIR" toast_busters 0:13 0:71 0:14 0:32`.
+
+### Correction 6 — Toast Busters' code: ten moments, four source kinds, the flyer's lifecycle
+
+- **`src/music.rs`** (new, under 190 lines — eleven bindings and the bob): the constants at its top
+  (`SONG_PATH = "ai/music/ai_toast_busters.mid"`, **the eleven binding names** — `SOUR_DOOM_BINDING`,
+  `BAGELGEIST_BINDING`, `RYE_IP_BINDING`, `PLAIN_WRAITH_BINDING`, `SINGE_BINDING`, `SHOT_BINDING`,
+  `FLYER_BINDING`, `BONUS_BINDING`, `HIT_BINDING`, `CLEAR_BINDING`, `MENU_BINDING` —
+  `BEAT_BOB_BAR_PIXELS = 4.0`, `BEAT_BOB_BEAT_PIXELS = 2.0`, `BEAT_BOB_SECONDS = 0.12`) and `Music
+  { game, counts: MusicCounts { shots, busted, singes, flyers, bonuses, hits, clears },
+  bob_pixels: f32, bob_peak: f32, #[cfg(test)] triggered }` on `SpaceInvadersGame`
+  (`types.rs:281-324`, `Default` at `:326-354`) — **the bob's state is two numbers** (round 59,
+  gemini F2; round 60, kimi F3 and gemini F3): a pulse sets both `bob_peak` and `bob_pixels` to the
+  bar's or the beat's peak; every running frame after that computes `bob_pixels = (bob_pixels -
+  bob_peak * ctx.delta_time / BEAT_BOB_SECONDS).max(0.0)` — linear, back to zero in
+  `BEAT_BOB_SECONDS` whichever peak started it — and writes the slices; **`rest_bob(ctx)`** zeroes
+  both and writes every live slice's `Sprite.offset.y` back to its spec's, called once when the
+  pause gate finds the menu active, from `restart`, **and wherever the state leaves `Playing` —
+  `finish_game` (`flow.rs:55-78`, a win or a loss) and `reset_to_title` (`:82-88`)** — so a fleet
+  that lands or outlives the last cannon within a dip's 120 ms is drawn at rest behind the
+  game-over panel (round 60, kimi F4, gemini F4; round 61, gemini F3, codex F2: a dip frozen under
+  a panel, or thawed out of phase on resume, is a pulse with no beat under it) — built with
+  `GameMusic::new(SONG_PATH, "toast busters", "TOAST_BUSTERS_TELEMETRY")`. Wiring: `start` at the
+  end of `init` (`lib.rs:123`, after the countertop) + `log::info!("toast busters: init
+  complete")`; `update` at the top of `update` (`lib.rs:127`); `restart` at the end of `start_game`
+  (`gameplay/flow.rs:28-51` — the chaos select's confirm `menu.rs:136`, the pause menu's Restart
+  `mod.rs:60`, the game-over restart `flow.rs:19`); `follow_pause` in the `Resumed` arm (`mod.rs:65`)
+  and at the gate's end (`:73`); the bob (below) after the gate while Playing.
+- **The moments and their sources.** A shot: `update_one_cannon_fire` (`players.rs:154-174`, the
+  volley loop at `:169-171`) → `shot` **once per fire, not per shot** (Ridiculous's twin volley is
+  one press), **on the cannon's own source, `ctx.sources.entity(player.entity)`**. A Toasted busted:
+  `strike_invader`'s kill branch (`combat.rs:169-181`, the entity destroyed at `:181` in the same
+  call) → the kind's binding by `invader.kind` (`types.rs:101`; `Toasted` at `art.rs:216-221`),
+  **on the game's source** — the slice is gone in that call and its note rings on. A Sour-Doom
+  singed: the absorbed branch (`combat.rs:160-167`, `hits_left` 2 → 1, `HURT` played, the slice
+  survives) → `singe`, **on the slice's own source** — so a second icicle that busts it mid-note
+  releases the note, the host's reconcile doing it (the foil brick's shape; `singe` plays `bones`
+  on the bass, the same voice as `sour_doom`, so the loaf has one timbre). A flyer entering:
+  `update_flyer`'s spawn arm (`flyers.rs:51-55`) → `flyer` **on the flyer's own source** — and
+  **the flyer leaving the screen is the visibility exit #65 asks for**: `update_flyer` destroys it
+  off-screen (`:67-69`, `destroy_flyer` `:125-129`), so the reconcile ends its source in that tail
+  with no call from the game. A flyer busted: `check_flyer_hit` (`flyers.rs:87-123`, the flyer
+  destroyed at `:121`) → `bonus` on the game's source. A cannon hit: `player_hit`
+  (`players.rs:197-233`) → `hit` on the game's source — on the last life the cannon's entity is
+  destroyed in the same call (`:224`), ending its `shot` source in that tail; a surviving hit keeps
+  the entity and respawns it (`:231`, `respawn_cannon` `:100-111`), its source kept. The win:
+  `check_win_condition` (`combat.rs:301-306`) → `clear` on the game's source. The menu's jam is the
+  helper's. Bunker chips, shot-vs-shot cancels, Jammer's glob and the fleet's descent get no
+  binding (correction 9 says why).
+- **The order within a frame** is `update_gameplay`'s (`mod.rs:88-99`): `update_firing` (shot) →
+  `update_flyer` (flyer) → `resolve_player_shots` (busts and singes, **players then shots** —
+  `combat.rs:139-142`) → `check_flyer_hit` (bonus) → `resolve_enemy_shots` (hit) →
+  `check_win_condition` (clear). Trace cases through the production path: `["shot", "plain_wraith"]`
+  — a fire pressed on the frame an earlier icicle lands; `["sour_doom", "plain_wraith"]` — two
+  icicles of one cannon on two slices in one frame, in the cannon's `shots` order; `["plain_wraith",
+  "clear"]` — the last slice, `GameOver { won: true }` on that frame.
+- **The beat visual, with no grid (ruling (y)):** the fleet **bobs on the beat, in its art, never
+  in its bodies** — each slice's `Sprite.offset.y` is `spec.sprite_offset().y` (the spawn's,
+  `spawning.rs:19`) **minus `bob_pixels` — world Y is up, so minus is the dip toward the
+  countertop** — `BEAT_BOB_BAR_PIXELS` on a bar, `BEAT_BOB_BEAT_PIXELS` on a beat, decaying to zero
+  over `BEAT_BOB_SECONDS` — written to every live slice's `Sprite` each running frame after the
+  gate, so the Toasted dip together on the waltz's beats while their
+  kinematic bodies, the descent (`formation_offset.y`, `formation.rs:83-85`) and the march speed are
+  untouched. **Not the kinematic target** (round 58, gemini F3, real): `check_invasion`
+  (`formation.rs:125-138`) and `chomp_bunkers` (`:98-121`) read the bodies' positions, so a 4 px dip
+  of the body at the invasion line would land the fleet or chip a bunker on a bar line; an icicle
+  that meets a dipped slice's body 4 px above its drawn crust for 120 ms is the tong's own
+  art-beside-body rule, and no test holds a hit to the drawn pixel. Codex judges from two stills
+  (on a beat, between beats) and may cut it to bars (`BEAT_BOB_BEAT_PIXELS = 0`); Jesse judges the
+  timing live. Not the `MARCH` clip restarted on the beat: the slices are `ClipStateMachine`s
+  (`spawning.rs:23-29`), and a transition to the state a machine is in is a no-op by design.
+- **The pause menu keeps the engine's labels** (ruling (z)).
+- **Tests** (`src/music_tests.rs`, new, under 450 lines — eleven bindings — on
+  `test_support::harness(mode, chaos)`, `clear_field`, `drop_on_cannon`, `step_with`; `settle` added
+  to `test_support.rs`): the sidecar's structure (the four kind bindings one part on four
+  instruments, `shot`'s part `AtSongPosition`, the rest `Loop`, every part `Off`, provenance); **the
+  `pluck` line tiles the loop** (the bass test's shape over the committed MIDI); the song after
+  `init` and the committed meter 3/4; a shot is one accepted trigger on `source_of(cannon)` and a
+  twin volley is still one; **one slice of each of the four kinds busted through the production
+  path, the trace naming `sour_doom`, `bagelgeist`, `rye_ip` and `plain_wraith` in turn** — the
+  kind-to-binding table is the batch's centre and a swap of two kinds would pass every counter
+  (round 58, kimi F4); a busted Plain Wraith is one on the game's source with `live_sources` steady;
+  a singed Sour-Doom is one on `source_of(slice)` `Some`, and busting it ends that source in the
+  tail; a flyer spawned through `context` (`spawn_flyer`, `flyers.rs:54`) is one on
+  `source_of(flyer)`, **and driving it off-screen leaves `source_of(flyer)` `None` after that
+  frame's tail** — the visibility exit; **a flyer busted by an icicle is one `bonus` on the game's
+  source and the flyer's source `None` after the tail** (kimi F4); a cannon's last life ends its
+  source; the three trace cases; the stinger's notes held and released by bounded polling (the
+  clear test's shape); the pause jam through the real menu; the bob: a slice's `Sprite.offset.y`
+  **drops below the spec's** on a beat frame (Y up: smaller is lower) and is back at the spec's
+  within `BEAT_BOB_SECONDS`, its body's position unchanged by it; **a pause opened on a dipped
+  frame shows the slices at the spec's offset on its first frame and `pulsed` holds; a Restart
+  from a dipped frame spawns the new fleet at the spec's; a loss on a dipped frame (the last
+  cannon hit with slices alive) leaves every surviving slice at the spec's on the game-over
+  frame**; `restart` by identity; the
+  missing bank (`fonts/`, `sprites/` and `ai/music/` linked, no `soundfonts/` — kimi F3). Every
+  wait a bounded `poll` from `test_support.rs`, as correction 4 says for Bratdog.
+- **`CLAUDE.md`**: § Music (the eleven bindings' table, the four source kinds and why, the flyer's exit,
+  the order, the bob, the engine's pause labels and #202, no fallback, telemetry, the bank, the
+  versions, no crumb binding); the layout and counts. **Web**: `ASSET_BASE` v6 → **v7**
+  (`/games/toast-busters/v7/assets`), `EDITOR_ASSET_BASE` v5 → **v6** (`/playground/invaders/v6/
+  assets`), the content file's two lines, `public/games/toast-busters/v7/` and
+  `public/playground/invaders/v6/`.
+
+### Correction 7 — the web proof, per game, by batch 13's method
+
+Batch 13's correction 7 is the method and is not restated: each bundle built **once with `--sync`**
+into `public/`, the content lines edited, `npm run build` once, every check on that `dist/` under
+one `npm run preview`, the preview stopped by its pid, `npm run verify`; a failure rolls the unit
+back and the report is INCOMPLETE naming the step. **The rollback, made safe** (round 58, kimi F1;
+round 59, kimi F1, codex F1, gemini F6; the preview is stopped by **the pid in
+`insiculous_web/.astro/preview.json`, the server's own — a child of `npm`, so never `npm`'s `$!`
+— its command line checked first**, as batch 13 did; round 61, gemini F2): step 0 shows `git status --porcelain -- src/web_entry.rs`
+in the game and `-- src/content/games/<slug>.md` in the site **empty**, and **both destination
+directories absent** (`public/games/<slug>/v7/`, `public/playground/<crate>/v6/` — a leftover from
+an earlier attempt is reported, never deleted; `--sync` refuses a non-empty target anyway), and
+stops INCOMPLETE otherwise. On a failure the executor **reverses its own edits in place** — the
+two version constants back to v6 and v5, the two content lines back, the sentence out — **never
+`git checkout`**, and it removes only the directories this attempt synced. **The web unit owns its
+three checkouts while it runs** — the loop's standing rule: while a batch is out nobody else edits
+or builds in its checkouts (`handoff-loop` § 2), and the executor's session is the one Jesse is
+driving — so the lines it reverses and the directories it removes are its own; a concurrent edit
+of the same line is not a case the rollback guards against, and three rounds of hardening it stop
+here (round 60, kimi F1, codex F1). **The preview is stopped by its recorded pid on every exit** —
+before the rollback and before an INCOMPLETE report as before a pass — so a retry never finds the
+port held or serves a stale `dist/` (round 60, kimi F5). The game's music code and assets stay
+staged: they are the report's, and the planner reads them whatever the web unit did. A leftover
+directory from a crashed attempt is reported and the planner clears it by hand; the executor does
+not guess what it holds. No Tong overlay this time. Per game:
+
+- **the bank ≤ 4 MiB** (the file's size in the report) and **one throttled Chromium cold boot** of
+  the new version to the game's `init complete` line (10 Mbit/s, 100 ms, 4× CPU, a fresh profile,
+  batch 12's CDP order, `?telemetry=1`) **under 25 s** — the same ceiling as the Food Pyramid's,
+  whose v6 bundle is the same size class (7.88 MiB; Bratdog's v6 and Toast Busters' v6 `game_bg.wasm`
+  are both under 8 MiB in `public/`) with a bank 1.3 MiB larger, about 1.1 s more at the emulated
+  rate; over 25 s, two more runs and the median; no marker within 90 s is a failed attempt;
+- **one two-minute stress run, with a workload floor the driver can reach**: Bratdog on
+  **Insiculous solo** (the fast tick, the wrap-around, two snacks) driven **blind, by a
+  boustrophedon** — the counter's edge is open in Insiculous, so Frank runs each row to its end,
+  steps down one row and runs back, wrapping at the walls; the path never crosses itself, so a dog
+  of any length never bites its tail, every snack on the floor is eaten once a sweep (24 × 15
+  cells at the 0.05 s floor tick is a sweep every eighteen seconds or so), and the two turns at
+  each row's end fit the two-deep input buffer (`buffer_for_snake`) — **closed on the screencast,
+  not on the clock** (round 61, gemini F1, codex F1): the driver reads Frank's head cell from the
+  DevTools screencast frames batch 13's driver already read Deion from (the 24 × 15 grid's cell
+  size and origin measured once from a still), sends the row-end turn pair when the head is seen
+  in the row's last cell, never on an elapsed interval that a long frame's second tick would
+  overrun; and it sends the confirm key every two seconds throughout — in play `Action1` is read
+  nowhere (`gameplay/mod.rs:259-268` reads it in `GameOver` only; `buffer_for_snake` reads the
+  four directions), so the key is inert mid-match and restarts a lost one within two seconds. No
+  pathfinding to a snack: the sweep eats whatever lies on the floor. The last telemetry line
+  shows at least **10 `snacks=` and 120 `turns=`**;
+  Toast Busters on **Insiculous solo** (twin volleys) with the driver sweeping and firing, matches
+  restarted — at least **120 `shots=` and 40 `busted=`**; batch 12's criterion verbatim (no two
+  consecutive windows with a drain gap over 92 ms, the render cost under a block, **`blocks=`
+  advancing in every window** — the key as the line prints it, round 60, kimi F2 — zero lines a
+  FAIL), a fail removing the synced directories;
+- **the functional checks**, each a counter, a state or a still: the song requested before any
+  gesture and started on **the first gesture, whichever it is** — the driver's is the title's first
+  key after the cards, a person's may be a click on the canvas, and the pending song starts on
+  either — **no `Playing song:` line before that gesture, and both `Playing song:` and `Web audio
+  enabled after user gesture` on it** (never an order between them; round 58, gemini F7 imagined a
+  click that enables the output and a key that starts the song, which is not how a pending song
+  behaves); a rally in which the game's counts rise with **`triggers_accepted=`** while
+  **`refused=`, `triggers_silent=`, `triggers_rejected=`, `triggers_late=` and `triggers_stale=`**
+  hold at zero — **the keys as the line prints them** (`crates/audio/src/manager/song/telemetry.rs:
+  73-76`; round 59, kimi F3), **and a line missing any of them is a failed check, never a zero**
+  (Toast Busters' `AtSongPosition` pluck included — a rest in the bass line is an arrangement
+  defect this catches); `jam_units=` rising on a move in the pause menu and not on its open;
+  `pulsed=` rising while a match runs and holding under the pause menu, with the two stills; the
+  editor bundle at the game's playground route showing no `Playing song:` while editing, the line
+  on Play's first frame, a `reconstructions` step at the first match start, no music line after
+  Stop; Firefox the functional checks unthrottled, the editor bundle included; `npm run verify`.
+  Two stills per game to `review/conductor/` and `coordination/conductor/screenshots/batch-14/`.
+- **The site's profile prompt** will take the keyboard on a fresh profile's first achievement
+  (insiculous_web#76): the driver seeds `beinsiculous.achievements.profile-prompt = dismissed`
+  before the page loads, as `report-13.md` § 7 did.
+
+### Correction 8 — the docs, and one sentence on each game's page
+
+Each game's `CLAUDE.md` § Music (corrections 4 and 6). `training.md` § Conductor "A game's music
+module" names its two worked cases and stays; nothing in the engine changes. Each game's page gains
+one sentence after its chaos-modes paragraph (`insiculous_web/src/content/games/{bratdog,
+toast-busters}.md`): Bratdog's — "Frank romps to Strauss's *Tritsch-Tratsch Polka*, played live by
+the engine's conductor: every snack walks the tune, every turn clicks a paw, and the second dog
+answers on the clarinet." — and Toast Busters' — "The Toasted march to Saint-Saëns's *Danse
+Macabre*, played live by the engine's conductor: every slice you bust rattles the bones on its own
+instrument, and Maxwell's saucer rings midnight." Codex judges the two sentences with the stills.
+
+### Correction 9 — sizes, placements, gates, what stays out
+
+No file in either game is near the ceiling (the largest: snake `gameplay_tests.rs` 478, invaders
+`gameplay_tests.rs` 369). New files per game: `src/{music.rs, music_tests.rs}`,
+`scripts/prepare_soundfont.sh`, `assets/ai/music/{ai_<slug>.mid, .mid.ron, LICENSE}`,
+`assets/soundfonts/{<stem>.sf2, LICENSE}`, `review/conductor/`. Touched: snake `Cargo.toml` (`log`
+native, `music_midi` dev-dependency), `src/{lib,types,test_support,web_entry}.rs`,
+`src/gameplay/mod.rs` (the moments, `ripple_grid` `pub(crate)`, the pulse), `CLAUDE.md`; invaders
+`Cargo.toml` (the same two), `src/{lib,types,test_support,web_entry}.rs`, `src/gameplay/{mod,
+players,combat,flyers,formation}.rs`, `CLAUDE.md`; site the two content files and four version
+directories. Each game's `Cargo.lock` takes the engine's drift as breakout's did; stage it and say
+so.
+
+**Gates**, per handoff: in the game `cargo test`, `cargo clippy --all-targets` with and without
+`--features editor`, `../../insiculous_2d/scripts/check_audio_provenance.sh "$PWD"` (broken once by
+renaming `Files:`, restored, both runs quoted), the wrapper run with `--bank` and the bank's size
+against the cap, the song under 256 KiB, the two `build_wasm.sh` runs with their `wasm size:`
+lines, correction 7's checks; in the engine `scripts/check_games.sh --test` (two games' behaviour
+changes; nothing else there runs — no engine file is touched); in the site `npm run verify`. The
+comment-tag grep and the 600-line check over the game's `src`.
+
+**Leaves out:** a violin (over the cap), a crumb binding (correction 5), bunker chips, shot
+cancels, Jammer's glob and the descent as bindings (sound effects with no melody in them; a game
+without a binding for a moment plays nothing there, as before), a next wave for Toast Busters
+(there is none), the song speeding up with the fleet (intensity layers), the pause hint (#202), a
+recorded fallback (e), `Sequence` (batch 13 said why), the other two games (batch 15), the game
+template (game-template#3), Jesse's promotion of either song to `music/`.
+
+**The rulings' alternatives were decided at settling and neither was taken (2026-10-26), so the
+handoff carries the shape above; what either would have reached stays as the record** (round 59,
+kimi F4): if Jesse cuts `bonus` or `hit` under (x), the cut removes that moment's track, part,
+binding, `Music` method and call site, count and telemetry key, test and table row — one list, all
+or none — and the plan is edited before the handoff is written; if he swaps the oboe for the
+clarinet under (w), the wrapper's preset, the `clarinet` instrument's program **and the program of
+every clarinet track — `melody`, `hurt`, `stinger`, `jam` — since a background track plays its own
+program and a trigger track's program is what the exported MIDI declares** (round 61, kimi F1) and
+the bank's size line change, the instrument renamed `oboe`, and nothing else. The executor never
+sees an alternative.
+
+**Rulings, settled 2026-10-26 (Jesse: everything as proposed):** **(t)** one section, two
+handoffs — 14a Bratdog then 14b Toast Busters, each reviewed, heard and committed before the next;
+**(u)** Bratdog's bank is FluidR3's accordion, clarinet, tuba, trombone and woodblock, about 3.5 MiB,
+committed under the 4 MiB cap; **(v)** Bratdog's five bindings: `snack` and `snack_two` walk one
+tune on the accordion and the clarinet on each dog's own source, `turn` a woodblock click on the
+dog's source, `death` one trombone blat on the game's source, `menu` the jam; **(w)** Toast
+Busters' bank is xylophone, clarinet, tubular bells and acoustic bass, about 3.5 MiB — no violin
+fits under the cap, the clarinet carries the tune, the oboe offered as a swap and declined; **(x)**
+Toast Busters' eleven bindings as correction 5 lists them, no crumb binding, `bonus` and `hit` offered
+as cuts and kept; **(y)** the beat visual is the grid under each dog's head in Bratdog and the
+fleet's bob in Toast Busters — in the slices' sprite offsets, never their bodies — no grid there
+by the 2026-10-13 ruling, codex judging both from stills;
+**(z)** the pause menu keeps the engine's labels in both games until #202 decides the hint;
+**(aa)** each game's page gains the one sentence of correction 8.
 
 ## Batch 16 — planner only: close-out
 
