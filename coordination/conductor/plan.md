@@ -4199,6 +4199,33 @@ by the 2026-10-13 ruling, codex judging both from stills;
 bullets the section was; each names what the tree says. **The coordinate convention throughout:
 world Y is up.**
 
+**What 15a left (2026-10-26).** Meatieroids landed from `report-15a.md` (COMPLETE) after code
+round 68 — asteroids 8709a58, site 87a940f, stills 9bdc7fa — (kimi 2 — one real, the wrap test's unbounded loop; gemini 3 — one real, the losing-frame
+test's ship id read outside its retry loop, its "stale `asteroids` slug" the site's two-name
+contract and its `cfg(unix)` line the section's own fixture; codex 2, the same two, with the pulse
+stills; the site's content diff kimi 0, codex 0); `rebuttal-68.md`, `review-68-claude.md`. The
+planner applied both lines in `music_tests.rs` (451 lines, one over the soft cap) and reran the
+fifteen green. One deviation accepted: **`life` is sounded from `award_points`'s return, by the
+break that earned it** — `award_points` takes a bare `AchievementManager` that `gameplay_tests.rs`
+calls seven times, and that file is asteroids#4's, so the function returns the lives earned and
+`shatter_asteroid` plays `Moment::Life` once each; the trace is the section's `["large", "life"]`.
+Jesse's listen check passed (Bratdog and Toast Busters reported with it). Three lessons bind 15b.
+**A retry loop re-reads every id a restart replaces**: the losing-frame test held the ship's
+`EntityId` across `start_game`, so its ten tries could only panic on the second — Chicken Coop's
+restart tests read the chicken's entity inside each attempt. **Every wait is bounded, a loop over
+beats included**: "every wait is a bounded poll or a step count" was in the section and the wrap
+test's `while beats < 2` still shipped without one; the reviewers caught it, the gate did not, so
+the executor greps its own test file for `while`/`loop` before reporting. **A CDP-driven pause is
+confirmed before its moves**: one Escape of the first Chromium functional run never opened the
+menu (the match played on to game over; a probe and a rerun paused on the first Escape; not
+diagnosed), so the driver reads one paused window (`pulsed` held) before the three moves and
+reruns once on a miss, reporting both. Also kept: the display's lock is checked (`LockedHint`)
+before the throttled boot — a locked run took 63 s against 17 s unlocked; the stress floors held
+(423 shots / 181 broken / 30 thrusts against 150 / 30 / 10) with one loop wrap under the pause
+menu in each browser (`wraps=1`, `pulsed` held); the method's tools and logs for 15b are
+`review/conductor/batch15a-tools/` and `batch15a-logs/`; the stills are
+`coordination/conductor/screenshots/batch-15/meatieroids-pulse-{peak,rest}.png` (9bdc7fa).
+
 Executor: the Opus session, **one handoff per game, in order** (ruling (t) stands): **15a
 Meatieroids** in `games/asteroids` + `insiculous_web`, then **15b Chicken Coop** in `games/frogger`
 + `insiculous_web`; each with one report at the engine's `review/conductor/report-15a.md` /
