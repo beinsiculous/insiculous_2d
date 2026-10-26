@@ -4191,6 +4191,507 @@ by the 2026-10-13 ruling, codex judging both from stills;
 **(z)** the pause menu keeps the engine's labels in both games until #202 decides the hint;
 **(aa)** each game's page gains the one sentence of correction 8.
 
+## Batch 15 — K6: Meatieroids and Chicken Coop (#65)
+
+**Re-verified 2026-10-26 against the tree at 88ebe82** (engine), `games/asteroids` f8cab8e,
+`games/frogger` d9ae20c and `insiculous_web` 8cf69f6, after batch 14 landed (two more worked games,
+`GameMusic` unchanged, the `tune` lesson and #223). **Settled at v4 on 2026-10-26, rulings (ab) to (ah) as proposed — `life` kept, one `death` binding, Mars at sixty seconds** (Jesse, on the planner's recommendation after round 67). v4 after plan rounds 65 to 67 — no contract has moved since v2's cues became notes or chords, and rounds 66 and 67 hardened gates and tests (67: kimi's findings never written, two lines from its log — the FluidR3 fetch, the match-ending frame's pulse; gemini 5 — the shared parts' register and a bank-region test, the fifth nest plays the cadence alone, the loop-wrap wait as the driver's poll; its source-pruning, `World` and `triggers_silent` claims false; codex 0; `rebuttal-67.md`. 66: kimi 2, gemini 5, codex 2 — the ostinato written in ticks and asserted per bar, the crash trace asserted on both deaths, Chicken Coop's hop floor at the road's cadence, the drivers' title walk stated, Chicken Coop's `ripple_grid` a free function, no pulse in the round-clear second, a live ship is one with an entity, one loop wrap recorded under the pause menu; `rebuttal-66.md`. 65: kimi 5, gemini 7, codex 1 — a cue is a note or a chord, never a phrase; the cadence one voice; the web precondition path-scoped; the tempo asserted; the missing-bank fixtures link the song; the counts session-cumulative; the break sent before the points; the stress floors read from the run's own page load; gemini's two Criticals misread the instrument slots and the loop seam; `rebuttal-65.md`). Nine corrections to the two
+bullets the section was; each names what the tree says. **The coordinate convention throughout:
+world Y is up.**
+
+Executor: the Opus session, **one handoff per game, in order** (ruling (t) stands): **15a
+Meatieroids** in `games/asteroids` + `insiculous_web`, then **15b Chicken Coop** in `games/frogger`
++ `insiculous_web`; each with one report at the engine's `review/conductor/report-15a.md` /
+`report-15b.md` (the engine's tree is not touched beyond the stills). Reviewers per handoff: kimi
+(everything), gemini (the game's tests and the bank wrapper), codex (the beat visual from two
+stills, the page sentence). Listen check: Jesse per game, natively and in Firefox and Chromium.
+Size: about +700 lines a game plus the assets (a song, its sidecar, a 2.5 and a 3.4 MiB SoundFont
+subset); each game's diff is reviewed from its own `review/conductor/`, the site's from
+`insiculous_2d/review/conductor/`.
+
+**Standing:** batch 12's rulings (e) no recorded fallback, (f) the song plays on under the pause
+menu and the jam reads `MenuInput`, (h) a committed per-game bank with its `LICENSE`, (i) hits on
+`quantize: Off`, (k) the bank is a boot dependency on the web until #194; batch 13's (l) the game
+module is `engine_core::game_music::GameMusic`, (m) a per-game bank under a **4 MiB cap** the
+wrapper enforces, (o) the boot gate is the cap plus one recorded throttled cold boot under 25 s and
+one two-minute stress run, (p) the pause menu is the one menu that jams, (r) one sentence on each
+game's page; batch 14's (t) one section, two handoffs, (z) the pause menu keeps its labels until
+#202; the K6 rule (3b, door (b)); **"What batch 13 left"** and **"What 14a left" / "What 14b
+left"** in this section's parents — the module shape, the wrapper with `"$@"` first, the gesture
+check as two lines on the gesture, **the pulse after the frame's movement for a world-space
+anchor**, **a stress floor computed at the game's starting cadence**, **the loop's end is a written
+note's end**, **the tune on its own named track with `melody` left empty** (#223), **no test on the
+ordering of an entity-relative visual**.
+
+### Correction 1 — what the two trees hold today
+
+Neither game has a line of sound: `grep -rni "sound\|music\|audio\|beep\|conductor"` over each
+`src/`, `Cargo.toml` and `scripts/` prints nothing; neither has `soundfonts/`, `ai/` or a `LICENSE`
+under `assets/`. **Meatieroids** carries `log = "0.4"` only under the wasm target
+(`Cargo.toml:26-31`), so it moves to `[dependencies]` as the other four games'; **Chicken Coop's
+is native already** (`Cargo.toml` `[dependencies]`). Neither has `music_midi` as a dev-dependency.
+Both guides' test counts are stale (asteroids says 65, `cargo test` prints 67 — `title_screen_tests`
+(2) missing; frogger says 84, prints 87 — `title_screen_tests` (2) and `constants` (1) missing); the
+batch rewrites the counts anyway. Both editor bundles keep the crate's slug under the game's route,
+the site's two-name contract (asteroids: `/playground/meatieroids/` → `/playground/asteroids/v4/`,
+`web_entry.rs:47`; frogger: `/playground/chicken-coop/` → `/playground/frogger/v4/`, `:47`), and
+both game bundles are at **v5** (`web_entry.rs:36` in each; the site's `meatieroids.md:6-7`,
+`chicken-coop.md:6-7`). Both carry ` M Cargo.lock` (the engine's drift, 27 lines each) — staged with
+the batch as 14's were.
+
+**Meatieroids** has the engine's `GridBackdrop` (`spawning.rs:118-128`, `BehindSprites`) and a free
+`ripple_grid(world, pos, strength, radius)` at `gameplay/mod.rs:143-145`, already rippled on a rock
+break (`GRID_IMPULSE_BREAK[size]`, `constants.rs:80-81`, `rocks.rs:244-245`) and a ship's death
+(`GRID_IMPULSE_SHIP_DEATH`, `constants.rs:82`, `ship.rs:248-249`); it becomes `pub(crate)` for
+`music.rs`, as Bratdog's did. **It has no hyperspace** — `grep -rni hyperspace` prints nothing; #65's
+"thrust and hyperspace voices" names a move the re-skin never had (asteroids#2 is the next move,
+the cake saucer) — **so there is no hyperspace binding**, and nothing else from #65's line is lost.
+**Thrust is a held state, not an edge** (`ship.rs:163-166, :174-175` read `move_y > 0 ||
+is_active(MoveUp)` each frame into `ship.thrusting` at `:132`); the previous frame's value is in
+`self.ships[index].thrusting` right before that write, so a rising edge is one comparison there.
+The match is endless (`CLAUDE.md:21`; `finish_game` `flow.rs:75-86` is reached only from
+`kill_ship` `ship.rs:259-261` when every ship is out); waves follow each other through
+`check_wave_clear` (`rocks.rs:306-330`: the clear edge at `:310-317` arms a 2 s breath, the spawn
+edge at `:319-329` spawns the next, bigger wave). **A harness test pins every rock's `Sprite.offset`
+to its spec each frame** (`harness_tests.rs:26-45`, the tumble test), so no bob on the rocks — the
+grid is the visual here anyway. `gameplay_tests.rs` is **760 lines**, over the 600 cap before this
+batch: not this batch's to split (asteroids#4); the batch adds no line there.
+
+**Chicken Coop** has the `GridBackdrop` too (`spawning.rs:377-388`, `OverSprites`, alpha 0.25,
+spawned per match at `flow.rs:63`), rippled on a death (`GRID_IMPULSE_DEATH`, `flow.rs:102`) and a
+nest filled (`GRID_IMPULSE_HOME`, `flow.rs:139`), through a **method** `ripple_grid(&mut self,
+world, position, (strength, radius))` at `gameplay/mod.rs:379-381` — already `pub(crate)`. It is
+**localized** (`assets/locales/{en,pirate}.ron`, parity held by `locale_files_have_matching_keys`)
+and its pause menu draws **its own localized labels** through `draw_labeled` (`drawing.rs:168-181`,
+`pause.hint` from the locale) — the hint stays as it is (ruling (z), #202); no locale key is added
+or changed by this batch (no string the music needs is on screen). There is **no physics crate**:
+collisions are lane arithmetic in `rules.rs`; the chicken entity is **never destroyed** in a match
+(hidden by `sprite.visible` `mod.rs:302-308`, reset in place by `step_respawns` `mod.rs:257-284`),
+and the lane entities are spawned once per match on a torus (`LANE_PERIOD` 816, `constants.rs:31-33`;
+`spawn_lane` `flow.rs:47-52`) and never despawned until `clear_match_entities` (`flow.rs:287-312`).
+Rounds are endless (`advance_round` `flow.rs:196-213`); the match ends in `finish_game`
+(`flow.rs:266-273`) from `step_respawns` when every chicken is retired. Its window is **720 × 768**
+(`main.rs:155-156`) — the stills and the driver read that canvas, not 800 × 600. `update` has no
+frame counter at its top (`lib.rs:121-130`): `music.update` is the first line. `reset_to_title`
+takes `ctx` (`flow.rs:275-278`), `start_game` ends with `apply_theme` then `state = Playing`
+(`flow.rs:77-78`).
+
+### Correction 2 — one section, two handoffs
+
+Ruling (t) stands as batch 14 ran it: **15a Meatieroids** first, **15b Chicken Coop** after 15a's
+review round, each with its own report, review round, listen check and commits; the site's second
+commit carries the second game's bundles. One batch out at a time: 15b is not handed off while 15a's
+report is unreviewed. The handoffs start from 14b's kept tools (`review/conductor/batch14b-tools/`,
+the drivers and the tracker, with 14a's helpers beside them) and logs.
+
+### Correction 3 — Meatieroids' song: *Mars*, its shape, its bank
+
+`games/asteroids/assets/ai/music/ai_meatieroids.mid` + `.mid.ron`: Gustav Holst's *Mars, the
+Bringer of War* (*The Planets*, 1914–16, published 1921; public domain) in a short arrangement the
+executor sequences **in the composer on the asteroids project** (14b's recipe: the bank first,
+`target/debug/editor . --headless`, `song new`, `SetTempo`, **the meter**, `AddTrack` with
+explicit channels, `AddNote` in `Batch`es, `AddPart`, `AddInstrument`, `SetBinding`,
+`SetProvenance`, the `song` and `song notes` answers quoted, a dry run without the save, `song save
+ai/music/ai_meatieroids.mid`), from memory — the executor cannot hear; it declares the shape, and
+Jesse's ear is the gate. **The meter is 5/4, set, not assumed**: the first edit after `SetTempo` is
+`{"SetTimeSignature": {"tick": 0, "meter": {"numerator": 5, "denominator": 4}}}`, its `"ok":true`
+required before the first `AddNote`; `music_tests.rs` reads the committed MIDI's signature at tick 0
+and asserts 5/4 — a 4/4 default would put the bar pulse one beat earlier every bar. **`melody` stays
+empty** (14b's lesson, #223): every sounding track is an `AddTrack` with its program. Shape:
+
+- **thirty-two bars of 5/4 at 160 BPM** (375,000 µs a quarter; 2,400 ticks a bar at 480; the loop
+  ends at tick **76,800**, 60 s — Mars is a long crescendo and a match is long), on G (Holst's
+  pedal), looping on the ostinato's downbeat; **the loop's end is a written note's end**: the tuba
+  pedal's last note is held to tick 76,800, and a test holds the meter and the end;
+- **background**: `ostinato` (timpani 0:47 — Mars's figure on G every bar: **a triplet on beat one, quarters on
+  two and three, two eighths on four, a quarter on five — note starts at bar offsets 0, 160, 320,
+  480, 960, 1,440, 1,680 and 1,920 ticks, the last ending on 2,400** (round 66, kimi F1, codex F1);
+  in the score it is col legno strings, timpani and harp, and no string preset fits under the cap),
+  `pedal` (tuba 0:58, the G pedal and the bass theme's low voice, the one held to the bar line) and
+  `calls` (trumpet 0:56, the fanfare calls of the second phrase, sparse) on their own tracks — a
+  track a part selects plays in no background, so the trigger tracks below are separate even where
+  an instrument repeats;
+- **track `theme`** (tuba 0:58 as its own program; the brass theme — Mars's rising first subject
+  over the ostinato, written as quarter-or-longer units, 24 to 32 of them, **in the octave the
+  tuba, the trombone and the trumpet all carry, G3 to D4** — round 67, gemini F1): **the one shared part
+  `theme`** (`Loop`, `quantize: Off`), played by **three bindings on three instruments, one a rock
+  size — `large` on the tuba, `medium` on the trombone (0:57), `small` on the trumpet (0:56)** —
+  #65's "three rock sizes as three instruments on one part"; a wave is walked through the theme in
+  the order the rocks break, the big ones low;
+- **track `drum`** (timpani 0:47): a gap-free line of quarters on G from tick 0 to 76,800 — the
+  ostinato's beat, one note a quarter, **every unit ending where the next begins** — the part `drum`
+  in **`AtSongPosition`** (`Off`) on the `shot` binding: a shot drums the beat sounding at that
+  moment, so a volley sits on the ostinato instead of beside it; a rest in that line is an
+  arrangement defect the `triggers_silent=` key catches (14's rule);
+- **track `surge`** (tuba): **one low held note, one unit** (two beats), the part `surge` (`Loop`,
+  `Off`) on the `thrust` binding — the engines, once per burst of thrust;
+- **track `crash`** (orchestra hit 0:55): **one chord, one unit** — Mars's last chord on the hit; **a
+  unit is the notes starting on one tick (`MusicalUnit`), and `Loop` plays one unit a trigger, so a
+  cue is a note or a chord, never a phrase** (round 65, codex F1) — the part `crash` (`Loop`, `Off`) on the `crash` binding, a ship lost;
+- **track `fanfare`** (trumpet): **one chord, one unit** — the closing fifth of the trumpet call that
+  opens the second phrase — the part `fanfare` (`Loop`, `Off`) on the `wave` binding — the next wave arriving;
+- **track `life`** (trumpet): **one short high note, one unit**, the part `life` (`Loop`, `Off`) on the `life`
+  binding — an extra ship at 10,000 (ruling (ad) offers it as a cut);
+- **track `jam`** (trumpet): the calls as a slow counter-line, eight units, the part `jam` (`Loop`,
+  `Off`) on `menu`;
+- every part `quantize: Off`; `soundfont: "soundfonts/meatieroids.sf2"`; instruments `timpani`
+  (0:47), `tuba` (0:58), `trombone` (0:57), `trumpet` (0:56), `hit` (0:55); `provenance: (author:
+  "Gustav Holst, 1914–16; sequenced by the Opus executor for Be Insiculous, 2026", license:
+  "CC0-1.0")`; no sample instrument. **Eleven tracks past the tempo track** — `melody` (empty),
+  `ostinato`, `pedal`, `calls`, `theme`, `drum`, `surge`, `crash`, `fanfare`, `life`, `jam`
+  (channels 1–9, 11, 12; 10 is percussion); **eight bindings** — `shot`, `large`, `medium`,
+  `small`, `thrust`, `crash`, `wave`, `life` — plus `menu`: **nine**.
+
+**No binding for hyperspace** (correction 1: there is none), **none for a wave's clear edge** (the
+2 s breath is the signal; the `wave` fanfare lands when the rocks do), none for a bullet expiring,
+a rock–rock bounce or a close call.
+
+**The bank: `games/asteroids/assets/soundfonts/meatieroids.sf2`**, FluidR3 GM **0:47 Timpani
+(1,361 KiB), 0:58 Tuba (190), 0:57 Trombone (438), 0:56 Trumpet (226), 0:55 Orchestra Hit (262)**
+— about **2,477 KiB, 2.42 MiB**, under the cap with room. No strings (0:48 Strings 5,466 KiB;
+0:44 Tremolo 5,466; 0:40 Violin 3,005; 0:45 Pizzicato 2,729 — any one with the timpani is over
+4 MiB) and **no horns** (0:60 French Horns 2,953 — with the timpani 4,314 KiB, over): the brass theme
+is tuba, trombone and trumpet. The wrapper is the fifth: `… "$@" --max-mib 4 "$OUTPUT_DIR"
+meatieroids 0:47 0:58 0:57 0:56 0:55`.
+
+### Correction 4 — Meatieroids' code: seven moments, two source kinds, the ships' lifecycle
+
+- **`src/music.rs`** (new, under 190 lines): the constants at its top (`SONG_PATH =
+  "ai/music/ai_meatieroids.mid"`, the nine binding names — `SHOT_BINDING`, `LARGE_BINDING`,
+  `MEDIUM_BINDING`, `SMALL_BINDING`, `THRUST_BINDING`, `CRASH_BINDING`, `WAVE_BINDING`,
+  `LIFE_BINDING`, `MENU_BINDING` — `BEAT_PULSE_STRENGTH`, `BEAT_PULSE_RADIUS` and
+  `BEAT_PULSE_FRACTION = 0.25`), `Moment { Shot(EntityId), Break(AsteroidSize), Thrust(EntityId),
+  Crash, Wave, Life }` and `Music { game, counts: MusicCounts { shots, broken: [u64; 3], thrusts,
+  crashes, waves, lives }, #[cfg(test)] triggered, #[cfg(test)] pulsed_at }` — **the counts are
+  session-cumulative, never reset by `restart`**, as Bratdog's and Toast Busters' are (14b's last
+  line: 263 shots across eleven restarts; round 65, gemini F2) — on `AsteroidsGame`
+  (`types.rs:175-225`, `Default` at `:227-253`), built with `GameMusic::new(SONG_PATH,
+  "meatieroids", "MEATIEROIDS_TELEMETRY")`; one `play(ctx, Moment)` (14b's table shape: binding,
+  source, count on one line a moment — `Break(size)` to the size's binding by `AsteroidSize::idx`,
+  `types.rs:87-116`); `follow_pause`; `pulse(ctx, &ships)`; `update`. Wiring: `start` at the end of
+  `init` (`lib.rs:112`, after the backdrop) + `log::info!("meatieroids: init complete")`; `update`
+  at the top of `update` after the frame count (`lib.rs:116`); `restart` at the end of
+  `start_game` (`flow.rs:30-44` — the mode select `menu.rs:132`, the pause menu's Restart
+  `gameplay/mod.rs:57`, the game-over restart `flow.rs:21`); `follow_pause` in the `Resumed` arm
+  (`gameplay/mod.rs:62`, today a bare `return`) and at the gate's end (`:69`); the pulse after
+  `wrap_entities` (`:92`) while `Playing` — a world-space anchor, after the frame's movement (14a's
+  lesson).
+- **The moments and their sources.** A shot: `update_firing` (`ship.rs:182-197`, the one shot at
+  `:195` after `can_fire` — cooldown 0.22 s, four live, no chaos variant) → `shot` **on the ship's
+  own source, `ctx.sources.entity(entity)`** (`:192`). A rock broken: `shatter_asteroid`
+  (`rocks.rs:221-264`; the parent destroyed at `:228` in the same call, its children spawned at
+  `:263`) → the size's binding **on the game's source**, **sent right after the destroy at `:228`
+  and before `award_points` at `:247`** (round 65, gemini F3) — the rock is gone in that call and
+  its note rings on; a `Small` has no children and the same binding. Thrust: `update_ship_control`
+  (`ship.rs:118-135`): **the rising edge** — `thrust && !self.ships[index].thrusting`, read before
+  `ship.thrusting = thrust` at `:132` — → `thrust` **on the ship's source**; holding thrust sends
+  nothing more (the unit ends by its length), releasing sends nothing, and the edge is never read
+  off-Playing or for a dead ship (`:119-123, :127` force `thrusting` false, so the next thrust in
+  a new match is an edge). A ship killed: `kill_ship` (`ship.rs:230-266`) → `crash` **on the game's
+  source** (on the last life the entity is destroyed at `:256` in the same call, ending its `shot`
+  and `thrust` source in that tail; a surviving ship is teleported and keeps its source). The next
+  wave: `check_wave_clear`'s spawn edge (`rocks.rs:319-329`, after `spawn_wave`) → `wave` on the
+  game's source. An extra ship: `award_points`'s `while` (`flow.rs:143-146`) → `life` on the game's
+  source, once per life granted — `award_points` runs inside `shatter_asteroid`, so a break that
+  earns a life traces `["large", "life"]`. The menu's jam is the helper's.
+- **Nothing is ever off-screen by policy**: `wrap_entities` (`rocks.rs:283-302`) teleports every
+  ship, bullet and rock at its margin, and a wave's rocks spawn on the border half in view
+  (`border_point`, `rocks.rs:102-115`) — the game's camera policy is "everything in the window is
+  visible", so there is **no visibility exit** and no `ctx.sources.end` call; a ship's source ends
+  with its entity on the last life, a rock is never a source, the game's is never ended.
+- **The order within a frame** is `update_gameplay`'s (`gameplay/mod.rs:42-95`): `update_ship_control`
+  (thrust, then shot, each ship in index order) → physics → … → `resolve_bullet_hits` (breaks, and
+  a `life` inside one) → `check_ship_hit` (crash) → `check_wave_clear` (wave). Trace cases through
+  the production path: `["thrust", "shot"]` — a press of thrust and fire on one frame;
+  `["large", "medium"]` — two bullets of one ship on two rocks in one frame, in the hit pairs'
+  order; `["small", "wave"]` is not one frame (the breath is 2 s), so **`["small"]` then, 2 s of
+  frames later, `["wave"]`** with the field empty between.
+- **The beat visual (ruling (ac)): the grid ripples under each live ship** (one whose `entity` is
+  `Some`) — Bar the full impulse,
+  Beat `BEAT_PULSE_FRACTION` of it — through `ripple_grid` made `pub(crate)`, after `wrap_entities`
+  so the ripple lands where the ship is drawn this frame; nothing while paused (the frozen grid
+  discards impulses) and nothing in `GameOver`. In 5/4 that is a bar every 1.875 s and four lesser
+  beats between; codex judges from two stills (a bar's frame, a rest frame) and may cut it to bars
+  (`BEAT_PULSE_FRACTION = 0.0`). Not on the rocks' sprites (the tumble test, correction 1).
+- **Tests** (`src/music_tests.rs`, new, under 450 lines; `test_support.rs` gains `press`/`release`
+  (exist), `step_with`, `settle`, `poll`, `drawn_at` in 14b's shape — asteroids has no `step_with`
+  or `drawn_at` today; `empty_field(mode, chaos)` (`test_support.rs:43`) is the match fixture):
+  the sidecar's structure (the three size bindings one part on three instruments, `shot`'s part
+  `AtSongPosition`, the rest `Loop`, every part `Off`, provenance, the bank's path, **and each cue
+  part — `surge`, `crash`, `fanfare`, `life` — holding exactly one unit in the committed MIDI**);
+  **every key of the shared `theme` track lies in a region of each instrument bound to it**,
+  read from the committed bank through `music_midi::rustysynth` (a region without a key range
+  covers every key; round 67); **the `drum` line tiles the loop**, the committed meter is 5/4 with
+  the end at 76,800, **and the
+  tick-0 tempo is 375,000 µs with the loop 60.0 s long through `TempoMap`** (round 65, kimi F4),
+  **and every bar of the committed `ostinato` track starts its eight notes at the offsets above**
+  (round 66); the song after
+  `init`; a shot is one accepted trigger on `source_of(ship)` with `silent_triggers` unchanged, and
+  a press under the cooldown or the cap sends nothing; **one rock of each size broken through the
+  production path (a bullet aimed by `place_meatieroid` + `spawn_bullet`), the trace naming
+  `large`, `medium`, `small` in turn** on the game's source with `live_sources` steady; a thrust
+  press is one `thrust` on the ship's source and a held thrust over thirty frames is still one, a
+  release and a second press two; a ship's last life ends its source, a surviving death keeps it, **each tracing `["crash"]` with
+  `crashes` up by one** (round 66, kimi F2);
+  the extra life traced inside the break; the `wave` on the spawn edge and nothing on the clear
+  edge; the two one-frame trace cases; the pause jam through the real menu (14b's case); the
+  pulse: `pulsed_at` is each live ship's position after that frame's wrap — **a live ship is one
+  whose `entity` is `Some` (`types.rs:38`; `None` after the last life, `ship.rs:257`), Bratdog's
+  `live_heads()` shape, no transform unwrapped** (round 66, gemini F5) — read on the beat frame,
+  none while paused, a co-op ship out of lives is not an anchor, **and the frame that ends the
+  match — the last life's crash — records no `pulsed_at`** (round 67, kimi); `restart` by identity; the missing bank (`fonts/`, `sprites/` **and `ai/music/`** linked, no
+  `soundfonts/` — 14b's test 16's contract: `song_failed`, two `failures` after a match start, no
+  label, a shot traced, refused and counted, the match still `Playing`; round 65, kimi F3, gemini
+  F6). Every wait a bounded `poll`.
+- **`CLAUDE.md`**: § Music (the nine bindings' table, the two source kinds, no hyperspace and why,
+  the order, the pulse, the pause labels and #202, no fallback, telemetry, the bank, the versions);
+  the layout and counts (67 → 67 + the music tests; the stale 65 corrected). **Web**: `ASSET_BASE`
+  v5 → **v6** (`/games/meatieroids/v6/assets`), `EDITOR_ASSET_BASE` v4 → **v5**
+  (`/playground/asteroids/v5/assets`), the content file's two lines, `public/games/meatieroids/v6/`
+  and `public/playground/asteroids/v5/`.
+
+### Correction 5 — Chicken Coop's song: the *William Tell* finale, its shape, its bank
+
+`games/frogger/assets/ai/music/ai_chicken_coop.mid` + `.mid.ron`: Gioachino Rossini's *William
+Tell* overture, the finale (1829; public domain), sequenced the same way on the frogger project.
+**The meter is 2/4, set** (`{"numerator": 2, "denominator": 4}`), asserted by a test; `melody`
+stays empty. Shape:
+
+- **forty-eight bars of 2/4 at 152 BPM** (394,737 µs a quarter; 960 ticks a bar; the loop ends at
+  tick **46,080**, about 38 s), in E major or the executor's declared key: the trumpet's opening
+  call (eight bars) then the galop (forty), looping on the call's downbeat; **the tuba's last note
+  held to tick 46,080**, a test holding the meter and the end;
+- **background**: `bass` (tuba 0:58, the galop's oom), `chords` (trombone 0:57, the pah), `drums`
+  (timpani 0:47, the galop's gallop rhythm ♪♪♩) and `counter` (piccolo 0:72, the tune's second
+  voice in the galop) on their own tracks;
+- **track `galop`** (trumpet 0:56): the galop's tune — the *Lone Ranger* theme — as eighths and
+  quarters, **in the register the trumpet and the piccolo share, G4 to G5** (round 67, gemini F1), **the one shared part `galop`** (`Loop`, `Off`), played by **two bindings on two
+  instruments — `hop` on the trumpet and `hop_two` on the piccolo**: the first chicken walks the
+  tune a hop a note, the second the same tune on the piccolo (co-op only; in solo `hop_two` is
+  never sent) — Bratdog's `snack`/`snack_two` shape;
+- **track `squawk`** (trombone): **one low note, one unit** — the part `squawk` (`Loop`,
+  `Off`) on the `death` binding, **every cause** (`DeathCause`, `types.rs:307-317`: cart, soup,
+  swept, timeout, a missed nest, the bun) one binding; two chickens dying on one frame send it
+  twice on the game's source;
+- **track `fanfare`** (trumpet): **one chord, one unit** — the closing fifth of the overture's
+  opening call (a cue is a note or a chord, correction 3) — the part `fanfare` (`Loop`, `Off`) on the `home` binding — a nest filled;
+- **track `cadence`** (trumpet): the finale's closing chord, **one chord, one unit** — one track,
+  one program, so the trumpet's alone (round 65, kimi F5, gemini F4) — the part `clear` (`Loop`, `Off`) on `clear` — the fifth
+  nest, the round cleared;
+- **track `jam`** (piccolo): the *Ranz des Vaches* — the overture's pastoral, the song's slowest
+  phrase — eight units, the part `jam` (`Loop`, `Off`) on `menu`;
+- every part `quantize: Off`; `soundfont: "soundfonts/chicken_coop.sf2"`; instruments `trumpet`
+  (0:56), `piccolo` (0:72), `trombone` (0:57), `tuba` (0:58), `timpani` (0:47); `provenance:
+  (author: "Gioachino Rossini, 1829; sequenced by the Opus executor for Be Insiculous, 2026",
+  license: "CC0-1.0")`. **Ten tracks past the tempo track** — `melody` (empty), `bass`, `chords`,
+  `drums`, `counter`, `galop`, `squawk`, `fanfare`, `cadence`, `jam` (channels 1–9, 11); **five
+  bindings** — `hop`, `hop_two`, `death`, `home`, `clear` — plus `menu`: **six**.
+
+**No binding for a cart passing, a raft, the bun snapping, the cracker sinking or the attempt
+timer's last seconds** (hazards with no player act behind them — the timer's end is a `death`), and
+**none for the +10 a new row pays** (it is the hop).
+
+**The bank: `games/frogger/assets/soundfonts/chicken_coop.sf2`**, FluidR3 GM **0:56 Trumpet
+(226 KiB), 0:72 Piccolo (1,177), 0:57 Trombone (438), 0:58 Tuba (190), 0:47 Timpani (1,361)** —
+about **3,392 KiB, 3.31 MiB**, under the cap. No horns (2,953 with the piccolo and the timpani is
+5,491 KiB), no strings; the galop's horn call is the trumpet's. The wrapper is the sixth: `… "$@"
+--max-mib 4 "$OUTPUT_DIR" chicken_coop 0:56 0:72 0:57 0:58 0:47`.
+
+### Correction 6 — Chicken Coop's code: five moments, two source kinds, chickens that never die
+
+- **`src/music.rs`** (new, under 190 lines): the constants (`SONG_PATH = "ai/music/ai_chicken_coop.mid"`,
+  `HOP_BINDING`, `HOP_TWO_BINDING`, `DEATH_BINDING`, `HOME_BINDING`, `CLEAR_BINDING`,
+  `MENU_BINDING`, `BEAT_PULSE_STRENGTH`, `BEAT_PULSE_RADIUS`, `BEAT_PULSE_FRACTION = 0.25`),
+  `Moment { Hop { chicken: EntityId, index: usize }, Death, Home, Clear }` and `Music { game, counts:
+  MusicCounts { hops, deaths, homes, clears }, #[cfg(test)] triggered, #[cfg(test)] pulsed_at }` on
+  `FroggerGame` (`types.rs:412-464`, `Default` at `:466-495`), built with `GameMusic::new(SONG_PATH,
+  "chicken coop", "CHICKEN_COOP_TELEMETRY")`; `play(ctx, Moment)` sends `hop` for index 0 and
+  `hop_two` for index 1 (`Pilot`'s shape: P1 the round chicken, P2 the tall, `types.rs:368-374`) on
+  the chicken's source, the rest on the game's. Wiring: `start` at the end of `init` (`lib.rs:114`,
+  after the background) + `log::info!("chicken coop: init complete")`; `update` as **the first line
+  of `update`** (`lib.rs:121`); `restart` at the end of `start_game` (`flow.rs:78`, after `state =
+  Playing` — the mode select `menu.rs:147`, the pause menu's Restart `gameplay/mod.rs:54`, the
+  game-over restart `flow.rs:22`); `follow_pause` in the `Resumed` arm (`gameplay/mod.rs:59`) and at
+  the gate's end (`:65`); the pulse after `sync_sprites` (`:90`) while `Playing`.
+- **The moments and their sources.** A hop: `try_hop` (`gameplay/mod.rs:179-253`; the edge at
+  `:186-188`, `just_activated`, one hop a chicken a frame, no repeat, no cooldown) → `hop` /
+  `hop_two` **on the chicken's own source** (`ChickenState.entity`, `types.rs:262`), sent where the
+  pose is set (`:216-218`) — **a clamped hop at an edge counts** (it poses and puffs, `CLAUDE.md`'s
+  rule), and a hop that lands in a cart, the soup, a wall or the bun plays its note and then the
+  `death` the landing resolves (`:225-252`), on the same frame. A death: `kill_chicken`
+  (`flow.rs:84-111`) → `death` **on the game's source** — the chicken is not destroyed, it is hidden
+  and reset in place, so its source lives the whole match and a note on it would be released by
+  nothing; the squawk must ring whatever the chicken does next. A nest filled: `fill_home`
+  (`flow.rs:116-159`, the chicken sent back to its start at `:153-154`) → `home` on the game's
+  source **when the round is not complete after it**; the fill that completes the round sends
+  `clear` alone from `award_round_clear` (`:156-158`) — a fanfare under the cadence is two trumpet
+  chords with one meaning (round 67, gemini F3) — so the fifth fill traces `["hop", "clear"]`. The round cleared: `award_round_clear` (`flow.rs:166-191`) → `clear` on the game's
+  source; `advance_round` (`:196-213`, 1 s later) sends nothing. The menu's jam is the helper's.
+- **The lifecycle**: a chicken's source activates on its first hop and ends in `clear_match_entities`
+  (`flow.rs:287-312`) when the match's entities go — a restart or the title — so the next match's
+  first hop activates anew; the lanes' entities never despawn in a match and carry no binding; the
+  seam's ghost sprites are not entities a sound could sit on. The camera policy is the window: a
+  cart half past the seam is a drawn ghost, not an exit. No `ctx.sources.end` call.
+- **The order within a frame** is `update_gameplay`'s (`gameplay/mod.rs:45-93`): `step_chickens`
+  (`:166` → `try_hop`: hop, then its landing's death or home, chicken 0 then 1) → `step_respawns`.
+  Trace cases: `["hop", "death"]` — a hop into a cart; `["hop", "home"]` — a nest; `["hop",
+  "clear"]` — the fifth nest, no `home`;
+  `["hop", "hop_two"]` — both chickens hopping on one frame in co-op, in index order.
+- **The beat visual (ruling (ac)): the grid ripples under each active chicken** — Bar the full
+  impulse, Beat a quarter — through `ripple_grid` **made a `pub(crate)` free function `ripple_grid(world, position,
+  (strength, radius))`** in `gameplay/mod.rs` — today a method on `FroggerGame` (`:379-381`) that
+  `Music::pulse` cannot call; its two callers (`flow.rs:102`, `:139`) updated (round 66, gemini
+  F3) — after `sync_sprites` so the ripple sits under the drawn chicken; a hidden chicken (dead, waiting its 1 s respawn; retired)
+  gets none; nothing while paused, nothing in `GameOver`, **and nothing during the round-clear second
+  (`round_clear_in` is `Some`): `pulsed_at` empty, as under the pause menu** (round 66, gemini F4). Codex judges from two
+  stills and may cut it to bars.
+- **Tests** (`src/music_tests.rs`, new, under 450 lines; `test_support.rs` (144 lines) gains `press`,
+  `release`, `step_with`, `settle`, `poll`, `drawn_at` in 14b's shape; `harness(mode, chaos)` and
+  `start_match` exist at `:130-144`; `flow_tests.rs`'s `fill_nest`/`arm_beat` (`:30-41`) move to
+  `test_support.rs` as `pub(crate)` for the music tests): the sidecar's structure (`hop` and
+  `hop_two` one part on two instruments, every part `Loop` and `Off`, provenance, the bank, and
+  each cue part — `squawk`, `fanfare`, `cadence` — holding exactly one unit, **and every key of
+  `galop` in a region of the trumpet's and the piccolo's presets** — correction 4's bank test); the
+  committed meter 2/4, the end at 46,080, the tick-0 tempo 394,737 µs and the loop about 37.9 s through `TempoMap`; the song after `init`; a hop is one accepted trigger on
+  `source_of(chicken)` (a W press through the real input), a clamped hop too; in co-op the second
+  chicken's hop is `hop_two` on its own source and in solo `hop_two` is never sent over a walk
+  (counter zero); a hop into a cart traces `["hop", "death"]` with `source_of(chicken)` still `Some`
+  after the tail (the entity lives); a drown, a timeout and a swept each trace `["death"]` (the
+  cause table's three paths through `kill_chicken`); a nest `["hop", "home"]` and `homes` up by one; the fifth nest `["hop", "clear"]` with
+  `homes` unchanged and `GameOver` not reached; a restart ends the chicken's source (`clear_match_entities`) and the next
+  match's hop activates a new one; the pause jam through the real localized menu (`drawn_at` on the
+  locale's "Resume"/"Restart" strings — the en locale under test); the pulse: `pulsed_at` is each
+  active chicken's position on the beat frame, none for a hidden chicken, none while paused, none
+  during the round-clear second, **none on the frame the last chicken retires** (round 67, kimi);
+  `restart` by identity; the missing bank (`fonts/`, `locales/`, `sprites/` and `ai/music/` linked,
+  no `soundfonts/`; 14b's test-16 contract). Every wait a bounded `poll`.
+- **`CLAUDE.md`**: § Music (the six bindings' table, the chicken that never dies and what that
+  means for sources, the order, the pulse, the localized pause labels and #202, no fallback,
+  telemetry, the bank, the versions); the layout and counts (87 → 87 + the music tests; the stale 84
+  corrected). **Web**: `ASSET_BASE` v5 → **v6** (`/games/chicken-coop/v6/assets`),
+  `EDITOR_ASSET_BASE` v4 → **v5** (`/playground/frogger/v5/assets`), the content file's two lines,
+  `public/games/chicken-coop/v6/` and `public/playground/frogger/v5/`.
+
+### Correction 7 — the web proof, per game, by batch 14's method
+
+Batch 14's correction 7 is the method and is not restated: each bundle built **once with `--sync`**
+into `public/`, the content lines edited, `npm run build` once, every check on that `dist/` under one
+`npm run preview`, the preview stopped by **the pid in `.astro/preview.json`** on every exit, `npm
+run verify`; step 0 shows `git status --porcelain -- src/web_entry.rs` in the game and `-- src/content/games/
+<slug>.md` in the site **empty** (the game's ` M Cargo.lock` is the engine's drift, expected and
+staged — correction 1; round 65, kimi F2) and **both destination directories absent** (`public/games/<slug>/v6/`, `public/playground/<crate>/v5/`); a failure
+reverses the executor's own edits in place — never `git checkout` — and removes only the directories
+this attempt synced; the web unit owns its checkouts while it runs; the profile prompt seeded
+`dismissed`. **Step 0 fetches the source bank as 14b did**: `apt download fluid-soundfont-gm=3.1-5.3`,
+extracted in the executor's scratchpad, its sha256 `74594e8f4250680adf590507a306655a299935343583256f3b722c48a1bc1cb0`
+against the engine script's pin, the wrapper run with `--bank <that path>` (round 67, kimi). Per
+game:
+
+- **the bank ≤ 4 MiB** and **one throttled Chromium cold boot** to the game's `init complete` line
+  **under 25 s** (Bratdog 17.23 s, Toast Busters 19.62 s, the Food Pyramid 19.22 s); over 25 s,
+  two more runs and the median;
+- **one two-minute stress run, with a floor at the starting cadence** (14a's lesson), **its floors
+  read from the run's own page load** — a fresh navigation whose counts are zero at its boot, the
+  run's last line against the floor (round 65, kimi F1); **the driver walks the title first,
+  deterministically** — 14b's driver's walk: the title's `1 Player` row, then the chaos select's last
+  row (`ChaosMode::ALL` in order, Insiculous fourth), confirm each, the rows read from each game's
+  `menu.rs` — and only then starts its blind loop (round 66, gemini F2): **Meatieroids
+  on Insiculous solo** (five rocks a wave, a large splitting into three, rocks 1.6× faster) driven
+  blind — **turn held, fire pressed every 0.25 s** (`FIRE_COOLDOWN` 0.22 s and four live bullets
+  cap the rate at about four a second), **thrust tapped for a quarter second every four seconds**
+  (an edge each, a ship that drifts dies oftener), the confirm key doubling as fire in play and as
+  the restart on the game-over panel (`flow.rs:21`); in two minutes a spinning ship firing 480
+  times at a field of twenty-odd rocks breaks a good share — the last telemetry line shows at least
+  **150 `shots=`, 30 `broken=` (the three sizes summed) and 10 `thrusts=`**; **Chicken Coop on
+  Insiculous solo** (1.5× lanes, the 25 s timer, sinking crackers, the bun) driven blind — **Up
+  pressed every 0.4 s with a Left or Right every third press**, the confirm key every second
+  (inert in play — `Action1` is read in `GameOver` only, `flow.rs:17-27`; in play the hop keys are
+  the four directions) — a blind chicken into 1.5× traffic dies one to three hops in; three lives
+  are about six seconds of hops, three one-second respawns and a game-over wait under a second, so
+  a match is about ten seconds and a dozen fit in two minutes: at least **80 `hops=` and 15
+  `deaths=`** (round 66, gemini F1 — the road's cadence, not the soup's), `homes=` reported with no floor (a blind chicken fills a nest by luck); batch
+  12's criterion verbatim (no two consecutive windows with a drain gap over 92 ms, the render cost
+  under a block, **`blocks=` advancing in every window**, zero lines a FAIL), a fail removing the
+  synced directories;
+- **the functional checks**, each a counter, a state or a still: no `Playing song:` line before the
+  first gesture and both `Playing song:` and `Web audio enabled after user gesture` on it; a rally
+  in which the game's counts rise with **`triggers_accepted=`** while **`refused=`,
+  `triggers_silent=`, `triggers_rejected=`, `triggers_late=` and `triggers_stale=`** hold at zero,
+  **the keys as the line prints them, a line missing any a failed check** (Meatieroids'
+  `AtSongPosition` drum included); `jam_units=` rising on a move in the pause menu and not on its
+  open; `pulsed=` rising while a match runs and holding under the pause menu, with the two stills;
+  **one loop wrap recorded** — under the pause menu, the song playing on, the driver waits past the
+  loop's length (Mars 60 s, the galop 38 s) and `wraps=` rises by one in the next line — the wait is the driver's own watch of the
+  console lines, no CDP command outstanding, as the two-minute stress run already waits (round
+  67, gemini F5): a stress run's restarts seek the song to its top and never cross the seam (14b's line read `wraps=0`;
+  round 66, codex F2), and Jesse's listen check names the seam, a match left to run past it;
+  the editor bundle at the game's playground route showing no `Playing song:` while editing, the
+  line on Play's first frame, a `reconstructions` step at the first match start, no music line
+  after Stop — **and the one restart line a Stop click over a game-over panel may log before the
+  restore is #224, named in the report, not chased**; Firefox the functional checks unthrottled, the
+  editor bundle included; `npm run verify`. Two stills per game (`meatieroids-pulse-{peak,rest}.png`,
+  `chicken-coop-pulse-{peak,rest}.png`) to `review/conductor/` and
+  `coordination/conductor/screenshots/batch-15/`. **Chicken Coop's canvas is 720 × 768**: the CDP
+  viewport is set to it, and the tracker's cell size and origin are measured once from a still of
+  that canvas, not 14b's.
+
+### Correction 8 — the docs, and one sentence on each game's page
+
+Each game's `CLAUDE.md` § Music (corrections 4 and 6). `training.md` § Conductor stays; nothing in
+the engine changes. Each game's page gains one sentence after its chaos-modes paragraph
+(`insiculous_web/src/content/games/{meatieroids,chicken-coop}.md`): Meatieroids' — "The Flying Funk
+brawls to Holst's *Mars*, played live by the engine's conductor: every shot drums the ostinato,
+every meatieroid you break walks the brass theme on its size's own horn, and a lost ship lands the
+final chord." — and Chicken Coop's — "The chickens hop to Rossini's *William Tell* finale, played
+live by the engine's conductor: every hop is a note of the galop, every nest filled sounds the
+fanfare, and the second chicken answers on the piccolo." Codex judges the two sentences with the
+stills. Chicken Coop's page is English prose; the game's pirate locale is untouched.
+
+### Correction 9 — sizes, placements, gates, what stays out
+
+Asteroids' `gameplay_tests.rs` is 760 lines before this batch (asteroids#4;
+the batch adds nothing there); frogger's largest are `spawning.rs` 554 and `types.rs` 495 — the
+`music` field is three lines in `types.rs`, `spawning.rs` is untouched. New files per game:
+`src/{music.rs, music_tests.rs}`, `scripts/prepare_soundfont.sh`, `assets/ai/music/{ai_<slug>.mid,
+.mid.ron, LICENSE}`, `assets/soundfonts/{<stem>.sf2, LICENSE}`, `review/conductor/`. Touched:
+asteroids `Cargo.toml` (`log` native, `music_midi` dev-dependency), `src/{lib,types,test_support,
+web_entry}.rs`, `src/gameplay/{mod,ship,rocks,flow}.rs` (the moments, `ripple_grid` `pub(crate)`,
+the pulse), `CLAUDE.md`; frogger `Cargo.toml` (`music_midi`), `src/{lib,types,test_support,
+web_entry,flow_tests}.rs`, `src/gameplay/{mod,flow}.rs`, `CLAUDE.md`; site the two content files
+and four version directories; the engine `coordination/conductor/screenshots/batch-15/` only.
+Each game's `Cargo.lock` takes the engine's drift; stage it and say so.
+
+**Gates**, per handoff: in the game `cargo test`, `cargo clippy --all-targets` with and without
+`--features editor`, `../../insiculous_2d/scripts/check_audio_provenance.sh "$PWD"` (broken once by
+renaming `Files:`, restored, both runs quoted), the wrapper run with `--bank` and the bank's size
+against the cap, the song under 256 KiB, the two `build_wasm.sh` runs with their `wasm size:`
+lines, correction 7's checks; in the engine `scripts/check_games.sh --test`; in the site `npm run
+verify`. The comment-tag grep and the 600-line check over the game's `src` (asteroids'
+`gameplay_tests.rs` reported as pre-existing, not a fail). Frogger's locale parity test runs under
+`cargo test` as it does today.
+
+**Leaves out:** hyperspace (there is none), the cake saucer (asteroids#2), strings and horns (over
+the cap), a wave-clear binding, a cart or raft binding, a bun or cracker binding, the +10 a row, the
+pause hint (#202), a recorded fallback (e), `Sequence`, a song that speeds up with the round
+(frogger's lanes ramp 15 % a round — intensity layers are the milestone's exclusion), Chicken
+Reel (the casting table's alternative — the finale is the stronger hop tune and the bank is set),
+the game template (game-template#3), Jesse's promotion of either song to `music/`, the split of
+asteroids' `gameplay_tests.rs`.
+
+**Rulings, settled 2026-10-26 (Jesse: everything as proposed; the alternatives were decided at settling and neither was taken, so the handoffs carry the shape above):**
+**(ab)** Meatieroids' bank is FluidR3's timpani, tuba, trombone, trumpet and orchestra hit, about
+2.4 MiB; Chicken Coop's trumpet, piccolo, trombone, tuba and timpani, about 3.3 MiB — no strings
+or horns fit under the cap in either; **(ac)** the beat visual is the grid's ripple under each live
+ship and under each active chicken (both games have a backdrop), codex judging from stills;
+**(ad)** Meatieroids' nine bindings as correction 3 lists them — `life` offered as a cut (alternative:
+seven bindings plus `menu`, the track, part, moment, count, key, test and table row removed as one
+list); **(ae)** no hyperspace binding — the move does not exist; **(af)** Chicken Coop's six
+bindings as correction 5 lists them, one `death` for every cause (alternative: a second binding
+`drown` on the same `squawk` unit with a tuba voice for the soup deaths — offered, not
+recommended: two voices for one bad hop); **(ag)** each game's page gains the one sentence of
+correction 8; **(ah)** Mars loops at sixty seconds (alternative: twenty-four bars, forty-five
+seconds — a shorter crescendo under a long match).
+
 ## Batch 16 — planner only: close-out
 
 The milestone's nine issues closed by their commits; `PROJECT_ROADMAP.md` row K and
