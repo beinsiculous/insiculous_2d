@@ -4076,7 +4076,12 @@ not guess what it holds. No Tong overlay this time. Per game:
   pathfinding to a snack: the sweep eats whatever lies on the floor. The last telemetry line
   shows at least **10 `snacks=` and 120 `turns=`**;
   Toast Busters on **Insiculous solo** (twin volleys) with the driver sweeping and firing, matches
-  restarted — at least **120 `shots=` and 40 `busted=`**; batch 12's criterion verbatim (no two
+  restarted — at least **120 `shots=` and 30 `busted=`** (amended 2026-10-26 at the starting
+  cadence, as 14a's lesson asks: the cannon's `FIRE_COOLDOWN` is 0.4 s and Insiculous allows six
+  shots in flight, so 120 fires in two minutes is under half the cannon's rate; a wave is
+  `ROSTER.len() × FORMATION_COLUMNS` = 40 slices and the win ends the match, so 40 busted was one
+  whole wave busted blind with its last slices at 240 px/s — 30 is three quarters of one, which a
+  driver aiming at the fleet from the screencast reaches without a win); batch 12's criterion verbatim (no two
   consecutive windows with a drain gap over 92 ms, the render cost under a block, **`blocks=`
   advancing in every window** — the key as the line prints it, round 60, kimi F2 — zero lines a
   FAIL), a fail removing the synced directories;
