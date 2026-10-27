@@ -1,5 +1,20 @@
 # Aseprite Native — the plan
 
+**v3 — 2026-10-27, after round 2** (`review/aseprite-native/rebuttal-2.md`: kimi 8, gemini 9,
+codex 4 — twenty-one findings, eighteen accepted, two rebutted against the tree, one in part).
+What moved: **the reload transaction lives at the host**, where the asset manager and the render
+manager are both reachable, and ends by writing the displayed region of every sprite on the
+master and replacing the prepared-sheet cache entry; **an unresolved clip keeps its name** and
+stops on the first cell, so a renamed tag loses no authored binding; a removed cell falls back to
+the first; **the scene loader sets a plain sprite's first cell** — a full-texture region on a
+master means the first cell, by value, no wire change — and the undoable command is for the drop
+and the texture field only; an encoded 64 MiB limit is checked by `vfs::file_size` before any
+master is read; a cel is bounded by its own dimensions, never the canvas; indexed cel opacity is
+refused with the layer rule; palette chunks honour their first index; the parity check compares
+`fps` within the exporter's precision; a playground re-import reaches loaded textures; a sheet's
+PNG with an invalid sidecar keeps both halves until the pair validates; the upload pipeline names
+the master's destination, limit and validation.
+
 **v2 — 2026-10-27, after round 1** (`review/aseprite-native/rebuttal-1.md`: kimi 9, gemini 9,
 codex 6 — twenty-four findings, twenty-three accepted, one half-rebutted against the tree: a
 dropped texture resource cannot crash a cached bind group, wgpu refcounts the view). What moved:
@@ -131,19 +146,25 @@ in ms, the chunk count (the new field, the old when it is `0xFFFF`); and chunks 
 `0x2004` (flags: visible, reference; type: normal, group, tilemap; child level; blend mode;
 opacity; name), **Cel** `0x2005` (layer index, x, y, opacity, type: raw, linked, compressed
 image, compressed tilemap; for an image its width, height and zlib data), **Tags** `0x2018`
-(from, to, direction, repeat, name), **Palette** `0x2019` (an entry whose flags bit 0 is set
-carries a name string after its colour, read and skipped — round 1, gemini F2) and the old
+(from, to, direction, repeat, name), **Palette** `0x2019` (applied from its `first_color_index` to its `last_color_index`, never
+from zero — round 2, gemini F8; an entry whose flags bit 0 is set carries a name string after
+its colour, read and skipped — round 1, gemini F2) and the old
 palettes `0x0004`/`0x0011`; every other chunk is skipped by its size. A frame's chunk count is
 the new field unless it is zero, then the old one (round 1, codex F3), validated against the
 frame's own byte length. Strings are a `u16` length and UTF-8; everything is
 little-endian; every read is bounds-checked and a truncated or mis-sized file is
 `AsepriteError::Truncated { offset, needed }` — one sentence naming the file and the offset,
 never a panic. **Explicit limits before any allocation**, in checked arithmetic (round 1, kimi
-F1, gemini F7, codex F1): the canvas at most 4096 a side, at most 1024 frames, the composed
-sheet at most the renderer's `max_texture_dimension_2d` a side, the total decoded bytes at most
-64 MiB, a cel's dimensions inside the canvas; a file past any of them is refused naming the
-limit, and nothing is sized from the file's own counts until they pass. A cel's `x` and `y` are
-`i16`: the signed intersection with the canvas is what is copied (round 1, gemini F4). A linked
+F1, gemini F7, codex F1): **the encoded file at most 64 MiB, checked by `vfs::file_size` before
+any read** — at load, thumbnail, reload and upload alike (round 2, kimi F1) — the canvas at most
+4096 a side, at most 1024 frames, the composed sheet at most the renderer's
+`max_texture_dimension_2d` a side (an editor error naming the limit, never a GPU failure; the
+exporter's PNG of such a master has the same height and fails the same way today — round 2,
+gemini F6), the total decoded bytes at most 64 MiB, a cel at most 4096 a side by its own
+dimensions — never bounded by the canvas, since a cropped canvas keeps its cels whole (round 2,
+kimi F8, gemini F7); a file past any of them is refused naming the limit, and nothing is sized
+from the file's own counts until they pass. A cel's `x` and `y` are `i16`: the signed
+intersection with the canvas is what is copied (round 1, gemini F4). A linked
 cel must name an image cel in an earlier frame on its layer, as Aseprite writes them; a chain or
 a missing target is refused naming the frame (round 1, gemini F8). The zlib data inflates
 through `flate2::read::ZlibDecoder` bounded to its cel's `width × height × bytes_per_pixel`.
@@ -159,8 +180,8 @@ RGBA. A background layer (flag bit 3) is opaque: the transparent index does not 
 Aseprite (round 1, codex F2). **Refused, naming the layer or the frame**: a tilemap layer or cel
 ("layer `tiles` is a tilemap; export it as a PNG"); a blend mode other than normal on any
 layer, a group included — a group has no cel, so a per-cel rule would miss it (round 1, kimi F2,
-codex F2); a group with opacity under 255; layer opacity under 255 in indexed mode (Aseprite
-composes those by index, which this reader does not reproduce); a cel with a nonzero z-index; a
+codex F2); a group with opacity under 255; layer or cel opacity under 255 in indexed mode (Aseprite
+composes those by index, which this reader does not reproduce — round 2, kimi F5); a cel with a nonzero z-index; a
 palette chunk in any frame but the first. Transparent pixels are written `(0, 0, 0, 0)`. The
 sheet is the exporter's layout exactly — rows of **`min(frames, 4)` columns** (a one-frame master
 is one cell wide, as every capsule and title in deion_assets is — round 1, gemini F3), the cell
@@ -188,7 +209,8 @@ the day a Deion master wants one, the engine and the exporter grow the grammar t
 master and its PNG + `.sheet.ron` pair and compares: the composed RGBA against the PNG decoded by
 `image` — an alpha-0 pixel compared by alpha alone, since Aseprite's PNG keeps the palette's RGB
 under it (the first differing cell and pixel named), the grid and the clips against
-`parse_sheet_file(...).into_parts(...)` (the first differing clip named). The working-set script
+`parse_sheet_file(...).into_parts(...)` — `fps` within 1e-3, the exporter's own three-decimal
+precision (round 2, gemini F9) — the first differing clip named. The working-set script
 `scripts/check-aseprite-parity.sh` (the mirror of `check-sprite-sync.sh`, beside it) runs the
 example over every master under `deion_assets/` that has a committed pair and exits non-zero on
 the first mismatch; it is the standing gate of every batch here from batch 1 on. The engine's own
@@ -204,7 +226,9 @@ builder in the test module: a wrong magic, a truncated cel, a chunk size past th
 legacy chunk count, a tag past the last frame, a zero duration, a hidden group with a visible
 child, a linked cel and a chained one, a cel at `(-3, -2)`, an indexed pixel at the transparent
 index and the same on a background layer, a refused blend mode, a group with opacity, a
-z-indexed cel, a palette in frame two, a named palette entry, a compact file declaring a huge
+z-indexed cel, a palette in frame two, a named palette entry, a partial palette starting at index 16, an
+indexed cel at opacity 128, a 64×64 cel at `(-16, -16)` on a 32×32 canvas, a compact file
+declaring a huge
 canvas and one declaring a huge frame count (each refused before allocating), a one-, three- and
 five-frame master's cell positions. Reference fixtures exported by `aseprite -b` for the group,
 the z-index and the indexed-background cases pin the refusals to what Aseprite draws.
@@ -219,57 +243,76 @@ arm load those pixels through a new `AssetManager::load_texture_rgba_at_path(pat
 width, height, &rgba)` that records `handle_to_path` and `loaded_by_path` exactly as a file load
 does — the `"#rgba"` sentinel stays for procedural textures — so the scene serializer writes the
 master's path, the dedupe serves one handle per `(path, filter)`, and the thumbnail shares it.
-**A plain `Sprite` given a master shows its first cell** (round 1, kimi F3, gemini F6, codex F4):
-at a viewport drop, a texture-field assignment, and a scene load whose `Sprite` names a master
-with no authored `tex_region`, the first cell's region is set through the existing undoable
-`SetComponentCommand` path — `assign_sprite_texture` and the drop's spawn carry the region with
-the handle; a `Sprite` that has a `SpriteAnimation` is left to it. The asset browser's `Aseprite`
+**A plain `Sprite` given a master shows its first cell** (round 1, kimi F3, gemini F6, codex F4;
+round 2, kimi F6, gemini F2): at a viewport drop and a texture-field assignment the first cell's
+region is set through the existing undoable `SetComponentCommand` path — `assign_sprite_texture`
+and the drop's spawn carry the region with the handle; at a scene load **the loader itself** sets
+it, in `engine_core`, never through an editor command (which would dirty a freshly opened scene
+and cannot run in a game build). The scene wire stores `tex_region` by value with the full
+texture as its default and no presence flag (`scene_data.rs:174-179`), so the rule is by value:
+**a full-texture region on a master means the first cell**, documented in `training.md`; a
+`Sprite` that has a `SpriteAnimation` is left to it. The asset browser's `Aseprite`
 kind draws its tile like an image (the thumbnail is the composed sheet's first cell, a
 `tex_region` on the tile's `ui.image`) and drags as a texture with its first cell; External
-Tools' Enter and double-click open it in the Art tool. The playground's upload allowlist gains
-the two extensions; the archive already carries a master as opaque bytes, and `check_wasm.sh`
-proves the reader builds for wasm32. A scene-round-trip test: a `SpriteAnimation` on a master,
+Tools' Enter and double-click open it in the Art tool. The playground's upload pipeline gains
+`UploadKind::Sprite` for the two extensions: destination `sprites/`, the encoded 64 MiB limit, and
+a full reader validation before any byte is written, as the song upload validates today (round
+2, kimi F7); a successful upload of a master or an image that is already loaded calls the same
+`reload_texture` path Rescan uses, since the watcher never runs on wasm (round 2, kimi F3; a
+same-name re-import after the master has rendered is the test). The archive already carries a
+master as opaque bytes, and `check_wasm.sh` proves the reader builds for wasm32. A scene-round-trip test: a `SpriteAnimation` on a master,
 saved, reloaded with the sidecar cache cleared, plays the same clip; a plain-sprite test at each
 of the three entries, with undo and save/reload.
 
 ### The texture reload (the other half of #180)
 
-`Renderer::replace_texture(handle, width, height, &rgba)` — the renderer, because it owns both
-`SpritePipeline`s (`renderer.rs:334-335`) and the replacement must evict the handle from **both**
-bind-group caches before either draws again (round 1, kimi F6, gemini F1): same size → one
-`queue.write_texture` into the existing texture (`COPY_DST` is set); a new size → a new
-`TextureResource` under the same handle and the evictions. A bind group still holding the old
-view keeps it alive through wgpu's reference counting (nothing in the crate calls `destroy`), so a
-missed eviction is a stale image, never a validation error — which is why both are evicted, and
-tested with both cached. Headless validates the byte count and the limit as `insert_rgba` does
-and uploads nothing; a handle not live is an error. `AssetManager::reload_texture(path)` re-reads
-the file, decodes it — PNG and the rest through `image`, a master through the reader — and
-replaces every `(path, filter)` entry's handle, so sprites, thumbnails and `SpriteAnimation`s all
-see it. **The order is metadata first, GPU last**: everything that can fail — the parse, the
-compose, the clip validation — runs before the first component is touched, and the pixel write is
-the last step, so there is nothing to roll back after it (gemini F1). A decode failure keeps the
-old pixels and reports one sentence; a `Truncated` failure says "half-written?" and the next poll
-whose stamp differs retries (round 1, gemini F5 — the watcher already holds a stamp for one
-further poll before dispatching).
+**The transaction lives at the host** — External Tools' `hot_reload.rs` in `editor_integration`
+— because the asset manager owns the `TextureManager` (`assets.rs:132`) and the `RenderManager`
+owns both `SpritePipeline`s (`render_manager.rs:32-39`), and no one existing owner holds both
+halves (round 2, kimi F2). Its steps, in order, for one path: **prepare** — the encoded size
+checked, the file re-read, decoded (PNG and the rest through `image`, a master through the
+reader), and for a sheet the clips and the grid validated, everything that can fail before
+anything is touched; **replace** — `TextureManager::replace_rgba(handle, width, height, &rgba)`
+for every `(path, filter)` entry (same size → one `queue.write_texture`; a new size → a new
+`TextureResource` under the same handle); **evict** — `RenderManager::evict_texture(handle)`
+over both pipelines' bind-group caches, so a stale image can never follow a resize (round 1,
+kimi F6; a bind group still holding the old view keeps it alive through wgpu's reference
+counting, so a missed eviction is a stale image, never a validation error); **commit** — the
+prepared-sheet cache entry replaced (kept on failure — round 2, gemini F4, codex F2) and the
+world reconciled. Headless, `replace_rgba` validates the byte count and the limit as
+`insert_rgba` does and uploads nothing; a handle not live is an error. A decode failure keeps
+the old pixels, the old metadata and the old cache entry, and reports one sentence; a
+`Truncated` failure says "half-written?", and the finished file's stamp differs by its length
+(`ChangeStamp` is the byte length and the modified time), so the next poll retries (round 1,
+gemini F5; round 2, gemini F5 rebutted on that).
 
-In External Tools' table: `Image → ReloadTexture`, which is pixels only **unless the PNG has a
-usable sidecar**, in which case it runs the sheet transaction with the grid re-derived from the
-new dimensions (round 1, kimi F5); and `Aseprite → ReloadSheet` as **one transaction over one
-file** — parse and compose first, then the clips and the grid for every `SpriteAnimation` naming
-it, then the pixels. **Reconciliation** (round 1, kimi F7, codex F5, F6): an animation's current
-clip is matched by name — present, its position clamped to the clip's new length; absent, the
-animation stops with `current_clip` cleared, `finished` and timing reset, and a console line
-naming the tag; and a plain `Sprite` whose texture is the master and whose region equals exactly
-one cell of the old grid is re-mapped to the same cell index in the new grid, an authored crop
-that is not a cell left alone — no new state. Stop re-applies the on-disk state as External Tools
-batch 3 wrote it. The watcher's registered set gains every `handle_to_path` entry **and every path
-a texture load failed on, as a tombstone**, a stamp change clearing the browser's `load_failed`
-and retrying (round 1, kimi F8); the asset browser's Rescan calls `reload_texture` for every
-registered path whose stamp changed, which closes #180 whole (External Tools batch 4 closes its
-sound half). **A limit, said plainly** (round 1, kimi F4): the live-update guarantee covers
-components in the world; a `SpriteSheet` a game holds from `load_sprite_sheet` is the game's copy,
-refreshed when its `init` runs again (Stop → Play) — the limit the PNG sheet reload already has,
-written into `training.md` and pinned by a test.
+**Reconciliation**, the commit step's world half (round 1, kimi F7, codex F5, F6; round 2, kimi
+F4, gemini F1, F3, codex F1, F3): for every `SpriteAnimation` naming the master, the new grid
+and clips; its current clip matched by name — present, the position clamped to the clip's new
+length; **absent, the clip keeps its name and stops** (`playing: false`, `finished` and timing
+reset, a console line naming the tag), so a renamed tag loses no authored binding and resolves
+again, stopped, when it returns — never `None`, never serialized away. Then **the displayed
+region is written for every sprite on the master**, independently of playback: an animation
+with a resolved frame shows that frame's new cell; one with no resolvable frame shows the first
+cell; a plain `Sprite` whose region equals exactly one cell of the old grid is re-mapped to the
+same cell index in the new grid, or to the first cell with a console line when that index no
+longer exists; an authored crop that is not a cell is left alone. No new state.
+
+In External Tools' table: `Image → ReloadTexture` and `Aseprite → ReloadSheet` both run the
+transaction above. For a PNG the loader remembers whether the texture was loaded **as a sheet**
+(a sidecar was present at load): a sheet's PNG keeps both pixels and metadata until the PNG and
+its sidecar validate as a pair — an absent sidecar is a plain image, a present-but-invalid one
+is a failure that changes nothing (round 1, kimi F5; round 2, codex F4; both write orders and a
+permanently malformed sidecar are tests); a texture never loaded as a sheet is pixels only. Stop
+re-applies the on-disk state as External Tools batch 3 wrote it. The watcher's registered set
+gains every `handle_to_path` entry **and every path a texture load failed on, as a tombstone**, a
+stamp change clearing the browser's `load_failed` and retrying (round 1, kimi F8); the asset
+browser's Rescan, and a successful playground upload, call the transaction for every registered
+path whose stamp changed, which closes #180 whole (External Tools batch 4 closes its sound half).
+**A limit, said plainly** (round 1, kimi F4): the live-update guarantee covers components in the
+world; a `SpriteSheet` a game holds from `load_sprite_sheet` is the game's copy, refreshed when
+its `init` runs again (Stop → Play) — the limit the PNG sheet reload already has, written into
+`training.md` and pinned by a test.
 
 ### The deion_assets half (ruling (a))
 
@@ -327,16 +370,19 @@ asset manager. Under 900 lines.
 
 **Batch 2 — the loader seams.** `prepare_sheet`'s branch and the pixels on the cache entry,
 `load_texture_rgba_at_path`, `resolve_texture`'s arm, `load_sprite_sheet` on a master, the
-first-cell rule at the three entries, the asset browser's kind and thumbnail, the playground's
-upload allowlist, the scene round-trip and plain-sprite tests, the `hello_world` golden or a
+first-cell rule at the three entries (the loader's by value), the encoded size check, the asset
+browser's kind and thumbnail, the playground's `UploadKind::Sprite`, the scene round-trip and
+plain-sprite tests, the `hello_world` golden or a
 sibling test over the fixture master. Target shapes: § The loader seams.
 Reviewers: kimi, codex (one still: a master's tile beside its PNG twin, the same first frame).
 Leaves out: any reload.
 
-**Batch 3 — the texture reload.** `Renderer::replace_texture` and both evictions,
-`reload_texture`, the `ReloadTexture` row with its sidecar rule and the master's `ReloadSheet`
-transaction in External Tools' `hot_reload.rs`, the reconciliation by clip name and by cell,
-the registered set with its tombstones, Rescan, the held-sheet limit's test. **Needs External Tools batch 3.** Target shapes:
+**Batch 3 — the texture reload.** `TextureManager::replace_rgba`, `RenderManager::evict_texture`
+over both pipelines, the host transaction in External Tools' `hot_reload.rs` (prepare, replace,
+evict, commit) for the `ReloadTexture` and `ReloadSheet` rows with the as-a-sheet rule, the
+reconciliation by clip name and the displayed region for every sprite, the cache entry's
+replacement, the registered set with its tombstones, Rescan and the upload calling it, the
+held-sheet limit's test. **Needs External Tools batch 3.** Target shapes:
 § The texture reload. Reviewers: kimi, gemini (the renderer seam), codex (two stills: Aseprite
 open on a sheet from the tile, and the viewport after a four-to-five-frame save — a plain
 sprite, a paused animation and the thumbnail in one frame). Leaves out: the
@@ -368,9 +414,12 @@ expansions — is the planner's.
 - After batch 3: Aseprite opened from a tile, a pixel changed and saved → the viewport and the
   thumbnail change within a second with no Stop; a frame added to a tag → the clip plays it at
   once, a plain sprite still shows its cell, a paused animation holds its frame; the active tag
-  shortened → the position clamps; deleted → the animation stops and the console names it; a
+  shortened → the position clamps; deleted → the animation stops on the first cell, keeps its
+  clip name and the console names it, and resolves again when the tag returns; a plain sprite on
+  a removed cell → the first cell; a duplicate made after the reload carries the new clips; a
   corrupt save keeps the old pixels and the console names the offset; a PNG with a sidecar
-  resized → its grid follows.
+  resized → its grid follows; a PNG whose sidecar is mid-write → nothing changes until both
+  validate.
 - After batch 4: pong's `assets/sprites/` holds masters only; `check-sprite-sync.sh` and the
   wasm bundle gate green; a reader with no context follows `training.md` to load either form.
 
