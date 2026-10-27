@@ -824,7 +824,8 @@ browser holding the keyboard). Leaves out: the console (2b); a `.mid` tile's tra
 Edit in MIDI Evil (batch 4); keyboard-only entry into a panel, which no panel has yet (#144's gap);
 the inspector's script rows.
 
-**Batch 2b — the console: #207 (E5).** Re-verified 2026-10-27 against 69d9e3f.
+**Batch 2b — the console: #207 (E5). DONE 2026-10-27, insiculous_2d b73f8a6, after code
+rounds 11, 12 and 13.** Re-verified 2026-10-27 against 69d9e3f.
 `editor/src/console.rs`: `ConsoleLog`, bounded to 500 entries with the oldest dropped first, each
 a severity, its text, an optional location — the `OpenRequest` its click files: the path at
 `Location::Line { line, column: None }`, or at `Location::None` for a line of 0 — and a repeat
