@@ -1,0 +1,13 @@
+(
+    version: 1,
+    soundfont: "soundfonts/cast.sf2",
+    looping: true,
+    parts: [],
+    instruments: [],
+    bindings: [],
+    provenance: Some((
+        author: "jesse",
+        license: "MIT",
+    )),
+    midi_fingerprint: Some(12284158888098071116),
+)

@@ -1,13 +1,15 @@
 {
   "camera_position": [
-    302.5529,
-    108.591705
+    -303.20044,
+    -80.12799
   ],
-  "camera_zoom": 0.38554332,
+  "camera_zoom": 1.0,
   "last_scene_path": null,
-  "snap_to_grid": false,
   "grid_size": 32.0,
   "grid_visible": true,
+  "colliders_visible": true,
+  "game_frame_visible": true,
+  "snap_to_grid": false,
   "panels": [
     {
       "id": 2,
@@ -25,8 +27,15 @@
       "id": 3,
       "visible": true,
       "collapsed": false,
-      "size": 212.22156
+      "size": 211.11548
+    },
+    {
+      "id": 5,
+      "visible": true,
+      "collapsed": false,
+      "size": 260.0
     }
   ],
-  "ide_command": null
+  "ide_command": null,
+  "collapsed_components": []
 }
