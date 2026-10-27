@@ -20,6 +20,8 @@ pub(super) enum KeyRoute {
     Editor { action: EditorAction, shift: bool },
     /// A row of the composer's key table, while the composer holds the keyboard.
     Composer(editor::composer::ComposerKeyAction),
+    /// The open context menu's key, or the asset browser's while it holds the keyboard.
+    AssetBrowser(super::asset_browser_keys::BrowserKey),
 }
 
 impl<G: Game> EditorGame<G> {
@@ -88,6 +90,11 @@ impl<G: Game> EditorGame<G> {
             return KeyRoute::Consumed;
         }
 
+        // An open context menu, then the asset browser holding the keyboard, decide before
+        // the composer and the editor: an arrow steps the tiles and never nudges an entity.
+        if let Some(route) = self.asset_browser_key_route(key, modifiers) {
+            return route;
+        }
         // The composer holding the keyboard decides first, Escape included; a play
         // session clears its focus, so the controls above and the game below keep theirs.
         if let Some(route) = self.composer_key_route(key, modifiers) {
@@ -138,6 +145,7 @@ impl<G: Game> EditorGame<G> {
                 self.dispatch_editor_action(action, shift, ctx);
             }
             KeyRoute::Composer(action) => self.run_composer_key(action),
+            KeyRoute::AssetBrowser(browser_key) => self.run_asset_browser_key(browser_key),
         }
     }
 

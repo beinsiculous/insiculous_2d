@@ -11,6 +11,7 @@ use ecs::{EntityId, Name, Scripts, World, WorldHierarchyExt};
 use glam::Vec2;
 
 use crate::drag_drop::{DragDropState, DragPayload};
+pub use script_open::{open_from_script_rows, ScriptRowButton, ScriptRowPress, ScriptRowPresses};
 use crate::layout::{LINE_HEIGHT, PADDING};
 use crate::theme::EditorTheme;
 use crate::Selection;
@@ -92,6 +93,8 @@ pub struct HierarchyPanel {
     /// splitter dragged through zero is a frame or two; a panel left at
     /// zero would otherwise hold the keyboard for as long as it sits there.
     empty_passes: u8,
+    /// The last left press on a `Scripts` pseudo-row, waiting for its second.
+    pub script_presses: ScriptRowPresses,
     /// Every row of the last render pass in draw order — collapsed
     /// subtrees excluded, off-panel rows included. Shift-click ranges are
     /// computed over it.
@@ -118,6 +121,8 @@ pub struct HierarchyResponse {
     pub rename_committed: Option<(EntityId, String)>,
     /// A script asset dropped onto an entity row (entity, asset-relative path).
     pub script_dropped: Option<(EntityId, String)>,
+    /// Left and right presses on `Scripts` pseudo-rows: double-clicks and context menus.
+    pub script_presses: Vec<ScriptRowPress>,
 }
 
 /// Shared state for one hierarchy render pass, threaded through the node recursion.
@@ -132,6 +137,7 @@ struct NodeRenderCtx<'a> {
     clicked: &'a mut Vec<HierarchyClick>,
     rename_committed: &'a mut Option<(EntityId, String)>,
     script_dropped: &'a mut Option<(EntityId, String)>,
+    script_presses: &'a mut Vec<ScriptRowPress>,
 }
 
 impl HierarchyPanel {
@@ -146,6 +152,7 @@ impl HierarchyPanel {
             rows_drawn: 0,
             empty_passes: 0,
             visible_order: Vec::new(),
+            script_presses: ScriptRowPresses::default(),
         }
     }
 
@@ -230,6 +237,7 @@ impl HierarchyPanel {
         let mut clicked = Vec::new();
         let mut rename_committed = None;
         let mut script_dropped = None;
+        let mut script_presses = Vec::new();
 
         // A renamed entity that no longer exists (deleted mid-rename, or a
         // scene swap) must not leave the panel armed — a recycled id could
@@ -262,6 +270,7 @@ impl HierarchyPanel {
             clicked: &mut clicked,
             rename_committed: &mut rename_committed,
             script_dropped: &mut script_dropped,
+            script_presses: &mut script_presses,
         };
 
         // Render each root and its descendants with top padding, offset by
@@ -284,6 +293,7 @@ impl HierarchyPanel {
             clicked,
             rename_committed,
             script_dropped,
+            script_presses,
         }
     }
 
@@ -348,6 +358,14 @@ impl HierarchyPanel {
 
         if row_interaction.clicked && !ctx.drag_drop.suppresses_click() {
             ctx.clicked.push(HierarchyClick::Script { entity, index });
+        }
+        let left = row_interaction.state == ui::WidgetState::Active && ctx.ui.mouse_just_pressed();
+        let right = row_interaction.state == ui::WidgetState::Hovered && ctx.ui.mouse_right_just_pressed();
+        if left || right {
+            let button = if left { ScriptRowButton::Left } else { ScriptRowButton::Right };
+            let (script_id, source_path) = (script.script_id.clone(), script.source_path.clone());
+            let position = ctx.ui.mouse_pos();
+            ctx.script_presses.push(ScriptRowPress { entity, index, script_id, source_path, button, position });
         }
 
         if row_interaction.state == ui::WidgetState::Hovered {
@@ -549,6 +567,7 @@ fn script_display_label(script: &ecs::ScriptRef) -> String {
 }
 
 mod rename;
+mod script_open;
 
 #[cfg(test)]
 mod tests;

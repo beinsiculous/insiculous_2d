@@ -3,7 +3,7 @@
 //! menu's check marks and disabled entries are what the host set.
 
 use super::*;
-use crate::test_support::{frame, press_at, release, WINDOW};
+use crate::test_support::{frame, press_at, press_button, release, WINDOW};
 use crate::theme::EditorTheme;
 
 /// A bar with one open "File" menu: an enabled item, a separator and a
@@ -97,6 +97,11 @@ fn test_outside_press_closes_the_menu_but_the_open_title_waits_for_release() {
     let clicked = press_at(&mut ui, &mut input, Vec2::new(700.0, 500.0), |ui| bar.render(ui, WINDOW.x, &theme));
     assert_eq!(clicked, None);
     assert_eq!(bar.open_menu, None, "a press outside must close the dropdown");
+
+    bar.open_menu = Some(0);
+    press_button(&mut input, input::prelude::MouseButton::Right, Vec2::new(700.0, 500.0));
+    frame(&mut ui, &input, |ui| bar.render(ui, WINDOW.x, &theme));
+    assert_eq!(bar.open_menu, None, "a right press outside closes it too: it may open a context menu there");
 }
 
 /// The View menu carries a check mark per toggle the host sets, and the

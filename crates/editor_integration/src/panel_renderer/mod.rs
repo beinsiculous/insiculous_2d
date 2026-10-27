@@ -214,6 +214,8 @@ fn render_hierarchy(
     if let Some((entity, path)) = response.script_dropped {
         apply_script_drop(editor, ctx.world, command_history, entity, &path);
     }
+    let desktop = cfg!(not(target_arch = "wasm32"));
+    editor::open_from_script_rows(editor, response.script_presses, common::clock::Instant::now(), desktop);
 
     let clicked = response.clicked;
     if !clicked.is_empty() {

@@ -167,7 +167,7 @@ impl UIContext {
             && !input.escape_pressed
             && !input.enter_pressed
             && !input.tab_pressed
-            && (!input.mouse_just_pressed || mouse_in_bounds)
+            && (!(input.mouse_just_pressed || input.mouse_right_just_pressed) || mouse_in_bounds)
             && (input.up_pressed || input.down_pressed)
         {
             if let Ok(current) = self.interaction.get_state(id).edit.text.parse::<f32>() {

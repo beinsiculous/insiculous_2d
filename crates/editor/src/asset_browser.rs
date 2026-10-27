@@ -9,9 +9,13 @@
 //! repo's sync script copies, never links — so a linked tree is not a supported
 //! layout; it lists as empty, not as an error.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use crate::external_tools::{is_daw_project_path, is_midi_path};
+use common::clock::Instant;
+use glam::Vec2;
+
+use crate::double_click::DoubleClick;
+use crate::external_tools::{is_daw_project_path, is_midi_path, Location, OpenRequest};
 
 /// What kind of asset a scanned file is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -63,6 +67,27 @@ pub struct AssetBrowserState {
     pub selected: Option<usize>,
     /// Vertical scroll (shared panel pattern)
     pub scroll: crate::ScrollState,
+    /// The last left press on a tile, by relative path, waiting for its second
+    pub last_press: DoubleClick<String>,
+    /// Whether the browser holds the keyboard: a press inside the panel takes it, and
+    /// while it does its keys decide before the editor's
+    pub holds_keyboard: bool,
+    /// The grid's columns when it was last drawn: Up and Down step a row of them
+    pub columns: usize,
+    /// Scroll the selected tile wholly into view at the next render
+    pub reveal_selected: bool,
+    /// Open the selected tile's context menu at the tile at the next render, which
+    /// knows where the tile is
+    pub menu_requested: bool,
+}
+
+/// One arrow key's step through the grid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TileStep {
+    Left,
+    Right,
+    Up,
+    Down,
 }
 
 impl AssetBrowserState {
@@ -96,6 +121,54 @@ impl AssetBrowserState {
     pub fn selected_entry(&self) -> Option<&AssetEntry> {
         self.selected.and_then(|index| self.entries.get(index))
     }
+
+    /// Record a left press on tile `index`; a press completing a double-click returns
+    /// the request that opens the tile's file, whatever its kind.
+    pub fn press_tile(&mut self, index: usize, at: Instant, position: Vec2) -> Option<OpenRequest> {
+        let path = self.entries.get(index)?.relative_path.clone();
+        self.last_press.press(path.clone(), at, position).then(|| open_file_request(&path))
+    }
+
+    /// The request that opens the selected tile's file — Enter's, the double-click's twin.
+    pub fn open_selected(&self) -> Option<OpenRequest> {
+        self.selected_entry().map(|entry| open_file_request(&entry.relative_path))
+    }
+
+    /// Move the selection one step through the grid, a row being [`Self::columns`]
+    /// tiles, held inside the grid; with nothing selected the first tile is. The tile
+    /// is scrolled into view at the next render.
+    pub fn step_selection(&mut self, step: TileStep) {
+        let Some(last) = self.entries.len().checked_sub(1) else {
+            return;
+        };
+        let columns = self.columns.max(1);
+        self.selected = Some(match (self.selected.filter(|&index| index <= last), step) {
+            (None, _) => 0,
+            (Some(index), TileStep::Left) => index.saturating_sub(1),
+            (Some(index), TileStep::Right) => (index + 1).min(last),
+            (Some(index), TileStep::Up) => index.checked_sub(columns).unwrap_or(index),
+            (Some(index), TileStep::Down) => if index + columns <= last { index + columns } else { index },
+        });
+        self.reveal_selected = true;
+    }
+
+    /// Let the keyboard go, with any request for a menu it made.
+    pub fn release_keyboard(&mut self) {
+        self.holds_keyboard = false;
+        self.menu_requested = false;
+    }
+}
+
+/// The request that opens an asset by its relative path, at no particular place in it.
+pub fn open_file_request(relative_path: &str) -> OpenRequest {
+    OpenRequest { path: PathBuf::from(relative_path), location: Location::None }
+}
+
+/// The request that opens the folder holding an asset; a file at the asset root opens
+/// the root.
+pub fn open_folder_request(relative_path: &str) -> OpenRequest {
+    let folder = Path::new(relative_path).parent().filter(|parent| !parent.as_os_str().is_empty());
+    OpenRequest { path: folder.map_or_else(|| PathBuf::from("."), Path::to_path_buf), location: Location::None }
 }
 
 /// Classify a file by extension (case-insensitive); `daw_project_extensions` is the
@@ -286,6 +359,65 @@ mod tests {
         assert_eq!(state.entries[0].texture_handle, Some(5), "a rescan must not reload what is already on the GPU");
         assert_eq!(state.entries[1].texture_handle, None, "a new entry starts unloaded");
         assert!(state.scanned);
+    }
+
+    fn browser_of(count: usize, columns: usize) -> AssetBrowserState {
+        let mut state = AssetBrowserState::default();
+        state.apply_scan((0..count).map(|index| image_entry(&format!("tile_{index}.png"))).collect());
+        state.columns = columns;
+        state
+    }
+
+    #[test]
+    fn test_a_double_click_files_one_request_for_the_tiles_path_and_a_triple_press_still_one() {
+        let mut state = browser_of(2, 2);
+        let start = Instant::now();
+        let at = Vec2::new(50.0, 50.0);
+        let presses: Vec<Option<OpenRequest>> = (0..3)
+            .map(|press| state.press_tile(1, start + std::time::Duration::from_millis(press * 150), at))
+            .collect();
+        assert_eq!(presses, vec![None, Some(open_file_request("tile_1.png")), None]);
+        assert_eq!(presses[1].as_ref().map(|request| &request.location), Some(&Location::None));
+    }
+
+    #[test]
+    fn test_a_press_on_another_tile_or_after_a_drag_started_files_nothing() {
+        let mut state = browser_of(2, 2);
+        let start = Instant::now();
+        let at = Vec2::new(50.0, 50.0);
+        state.press_tile(0, start, at);
+        assert_eq!(state.press_tile(1, start, at), None, "the second press was on another tile");
+
+        state.press_tile(0, start, at);
+        state.last_press.forget();
+        assert_eq!(state.press_tile(0, start, at), None, "a drag started between the presses");
+    }
+
+    #[test]
+    fn test_the_arrows_step_a_tile_and_a_row_and_stop_at_the_grids_edges() {
+        let mut state = browser_of(5, 2);
+        state.step_selection(TileStep::Down);
+        assert_eq!(state.selected, Some(0), "with nothing selected the first tile is");
+        let steps = [TileStep::Right, TileStep::Down, TileStep::Down, TileStep::Right, TileStep::Up, TileStep::Left];
+        let walked: Vec<Option<usize>> = steps
+            .iter()
+            .map(|&step| {
+                state.step_selection(step);
+                state.selected
+            })
+            .collect();
+        assert_eq!(
+            walked,
+            vec![Some(1), Some(3), Some(3), Some(4), Some(2), Some(1)],
+            "Down from the last full row stays when no tile is under it; Right wraps into the next row"
+        );
+        assert!(state.reveal_selected, "a step asks the render to bring the tile into view");
+    }
+
+    #[test]
+    fn test_a_folder_request_names_the_tiles_folder_and_the_root_for_a_top_level_file() {
+        assert_eq!(open_folder_request("sprites/nested/coin.png").path, PathBuf::from("sprites/nested"));
+        assert_eq!(open_folder_request("hero.png").path, PathBuf::from("."));
     }
 
     #[test]

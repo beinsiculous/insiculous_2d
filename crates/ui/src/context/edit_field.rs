@@ -168,10 +168,12 @@ impl UIContext {
                 return EditFieldEvent::Cancelled;
             }
 
-            // Commit on Enter, Tab, or click outside
+            // Commit on Enter, Tab, or a press of either button outside: a right
+            // press that opens a context menu must not leave the field holding the
+            // keys the menu answers.
             if input.enter_pressed
                 || input.tab_pressed
-                || (input.mouse_just_pressed && !mouse_in_bounds)
+                || ((input.mouse_just_pressed || input.mouse_right_just_pressed) && !mouse_in_bounds)
             {
                 let text = self.interaction.get_state(id).edit.text.clone();
                 self.interaction.clear_focus();

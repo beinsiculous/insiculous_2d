@@ -52,6 +52,18 @@ impl Default for ExternalToolsConfig {
 }
 
 impl ExternalToolsConfig {
+    /// The choice that opens `file_type`: its override if one is present, whatever it
+    /// says, else its category's.
+    pub fn choice_for(&self, file_type: FileType) -> &ToolChoice {
+        self.overrides.get(&file_type).unwrap_or_else(|| self.category_choice(file_type.category()))
+    }
+
+    /// What the tool opening `file_type` is called, for the context menu's item and
+    /// for `resolve`'s messages alike.
+    pub fn tool_name(&self, file_type: FileType) -> ToolName {
+        ToolName::of(self.choice_for(file_type))
+    }
+
     /// The choice a category falls back to when its file type has no override.
     pub fn category_choice(&self, category: ToolCategory) -> &ToolChoice {
         match category {
@@ -108,6 +120,44 @@ fn literal_word(word: &str) -> String {
     quoted
 }
 
+/// What a tool choice is called. The one naming the context menu's "Open in …" item
+/// and `resolve`'s messages share, so the two never disagree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolName {
+    Preset(&'static str),
+    CustomCommand,
+    SystemDefault,
+}
+
+impl ToolName {
+    pub fn of(choice: &ToolChoice) -> Self {
+        match choice {
+            ToolChoice::Preset(id) => ToolName::Preset(id.preset().name),
+            ToolChoice::Custom(_) => ToolName::CustomCommand,
+            ToolChoice::OsDefault => ToolName::SystemDefault,
+        }
+    }
+
+    /// The name as a sentence's subject: "RustRover", "The custom command", "The system default".
+    pub fn subject(self) -> &'static str {
+        match self {
+            ToolName::Preset(name) => name,
+            ToolName::CustomCommand => "The custom command",
+            ToolName::SystemDefault => "The system default",
+        }
+    }
+
+    /// The context menu's item: "Open in RustRover", "Open with the custom command",
+    /// "Open with the system default".
+    pub fn open_item(self) -> String {
+        match self {
+            ToolName::Preset(name) => format!("Open in {name}"),
+            ToolName::CustomCommand => "Open with the custom command".to_string(),
+            ToolName::SystemDefault => "Open with the system default".to_string(),
+        }
+    }
+}
+
 /// A program and its arguments, ready to spawn without a shell.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Launch {
@@ -128,6 +178,10 @@ pub enum Location {
     /// is named exactly; a nameless track opens by index alone
     Track { name: Option<String>, index: usize },
 }
+
+/// Why nothing opens on the web, where no program can be launched: shown for a request
+/// and beside the context menu's disabled items alike.
+pub const DESKTOP_ONLY_HINT: &str = "external tools open it from the desktop editor";
 
 /// A file to open in its external tool. Requests queue on the editor's context and
 /// the host drains them once a frame.
@@ -188,22 +242,19 @@ pub enum ResolveError {
 
 /// Resolve `target` to a command line or `platform`'s default opener.
 pub fn resolve(config: &ExternalToolsConfig, target: LaunchTarget, platform: Platform) -> Result<Resolution, ResolveError> {
-    let choice = config
-        .overrides
-        .get(&target.file_type)
-        .unwrap_or_else(|| config.category_choice(target.file_type.category()));
+    let choice = config.choice_for(target.file_type);
+    let tool = ToolName::of(choice).subject();
     match choice {
         ToolChoice::Preset(id) => {
             let preset = id.preset();
             let template = if *target.location == Location::Project {
-                preset.project_template.ok_or_else(|| ResolveError::NoProjectCommand { tool: preset.name.to_string() })?
+                preset.project_template.ok_or_else(|| ResolveError::NoProjectCommand { tool: tool.to_string() })?
             } else {
                 preset.file_template
             };
-            tool_launch(&CommandTemplate(template.to_string()), target, Some(*id), preset.name)
+            tool_launch(&CommandTemplate(template.to_string()), target, Some(*id), tool)
         }
         ToolChoice::Custom(template) => {
-            let tool = "The custom command";
             if *target.location == Location::Project {
                 return Err(ResolveError::NoProjectCommand { tool: tool.to_string() });
             }
@@ -211,7 +262,7 @@ pub fn resolve(config: &ExternalToolsConfig, target: LaunchTarget, platform: Pla
         }
         ToolChoice::OsDefault => {
             if *target.location == Location::Project {
-                return Err(ResolveError::NoProjectCommand { tool: "The system default".to_string() });
+                return Err(ResolveError::NoProjectCommand { tool: tool.to_string() });
             }
             Ok(Resolution::OsDefault(os_default(platform, target.file)))
         }
@@ -231,7 +282,8 @@ fn tool_launch(
     Ok(Resolution::Tool(Launch { program, args: argv, preset }))
 }
 
-fn os_default(platform: Platform, file: &Path) -> OsDefault {
+/// How `platform` opens `file` by its association; a folder opens the same way.
+pub fn os_default(platform: Platform, file: &Path) -> OsDefault {
     let opener = |program: &str| {
         OsDefault::Program(Launch {
             program: program.to_string(),
@@ -376,6 +428,37 @@ mod tests {
             resolve_at(&config, FileType::Midi, &track, Platform::Linux),
             Ok(tool("midi-evil", &["--project", PROJECT, "--track", "drums", "--track-index", "2", FILE], Some(PresetId::MidiEvil)))
         );
+    }
+
+    #[test]
+    fn test_the_open_item_names_what_the_file_resolves_to_as_resolves_messages_do() {
+        let mut config = ExternalToolsConfig {
+            code: ToolChoice::Preset(PresetId::RustRover),
+            music: ToolChoice::Custom(CommandTemplate("player {file}".to_string())),
+            ..Default::default()
+        };
+        config.overrides.insert(FileType::Image, ToolChoice::Preset(PresetId::Aseprite));
+        let items: Vec<String> = [FileType::RhaiScript, FileType::Image, FileType::Midi, FileType::AudioSample]
+            .into_iter()
+            .map(|file_type| config.tool_name(file_type).open_item())
+            .collect();
+        assert_eq!(
+            items,
+            ["Open in RustRover", "Open in Aseprite", "Open with the custom command", "Open with the system default"],
+            "a preset, an override, Custom and OsDefault"
+        );
+
+        let refusal = |choice: ToolChoice| {
+            let config = ExternalToolsConfig { code: choice.clone(), ..Default::default() };
+            let Err(error) = resolve_at(&config, FileType::RustSource, &Location::Project, Platform::Linux) else {
+                panic!("{choice:?} opens no project here");
+            };
+            (error.to_string(), ToolName::of(&choice).subject())
+        };
+        for choice in [ToolChoice::Custom(CommandTemplate("edit {file}".to_string())), ToolChoice::OsDefault] {
+            let (message, subject) = refusal(choice);
+            assert!(message.starts_with(subject), "the error names the tool as the menu does: {message}");
+        }
     }
 
     #[test]

@@ -97,6 +97,8 @@ pub struct EditorContext {
     pub inspector_scroll_request: Option<&'static str>,
     /// Files asked to open in their external tools this frame; the host drains them.
     pub open_requests: Vec<crate::external_tools::OpenRequest>,
+    /// The context menu a tile or a `Scripts` pseudo-row opened, drawn over everything
+    pub context_menu: crate::context_menu::ContextMenu,
     /// Which tool opens which file, loaded from and saved to the preferences.
     pub external_tools: crate::external_tools::ExternalToolsConfig,
     /// Available scripts from registry and scanned assets.
@@ -188,6 +190,7 @@ impl EditorContext {
             inspector_scroll_entity: None,
             inspector_scroll_request: None,
             open_requests: Vec::new(),
+            context_menu: crate::context_menu::ContextMenu::default(),
             external_tools: crate::external_tools::ExternalToolsConfig::default(),
             drag_drop: crate::DragDropState::new(),
             asset_browser: crate::AssetBrowserState::default(),

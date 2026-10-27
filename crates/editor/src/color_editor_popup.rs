@@ -41,7 +41,7 @@ const ANCHOR_GAP: f32 = 2.0;
 pub struct ColorEditorFrame {
     /// The edited colour, when a channel or the hex field changed it.
     pub result: EditResult<Vec4>,
-    /// The popup asked to close: a click landed outside it.
+    /// The popup asked to close: a press of either button landed outside it.
     pub close: bool,
     /// Text committed in the hex field that is not a colour — the host says
     /// so on the status bar, where every other rejected inspector input goes.
@@ -115,10 +115,12 @@ pub fn render_color_editor(
     style: &EditableFieldStyle,
 ) -> ColorEditorFrame {
     let bounds = color_editor_bounds(anchor, ui.window_size());
-    // A click that lands neither on the popup nor back on the swatch that
-    // opened it is the ordinary way out of a popup.
+    // A press of either button that lands neither on the popup nor back on
+    // the swatch that opened it is the ordinary way out of a popup; a right
+    // one may open the context menu, which shares the Modal band.
     let pointer = ui.mouse_pos();
-    let close = ui.mouse_just_pressed() && !bounds.contains(pointer) && !anchor.contains(pointer);
+    let pressed = ui.mouse_just_pressed() || ui.mouse_right_just_pressed();
+    let close = pressed && !bounds.contains(pointer) && !anchor.contains(pointer);
 
     ui.begin_overlay_in(ui::UiLayer::Modal, bounds);
     ui.panel_styled(bounds, style.slot_bg, style.label_color, 1.0);

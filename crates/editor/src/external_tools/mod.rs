@@ -8,8 +8,8 @@ mod presets;
 mod template;
 
 pub use config::{
-    resolve, ExternalToolsConfig, Launch, LaunchTarget, Location, OpenRequest, OsDefault, Platform,
-    Resolution, ResolveError, ToolChoice,
+    os_default, resolve, ExternalToolsConfig, Launch, LaunchTarget, Location, OpenRequest, OsDefault, Platform,
+    Resolution, ResolveError, ToolChoice, ToolName, DESKTOP_ONLY_HINT,
 };
 pub use file_type::{
     is_daw_project_path, is_midi_path, midi_sidecar_path, FileType, ProjectBase, ReloadPolicy, ToolCategory,

@@ -138,6 +138,8 @@ impl<G: Game> EditorGame<G> {
     /// rename field keeps focus and eats the game's keys.
     fn enter_playing(&mut self) {
         self.leave_composer();
+        self.editor.asset_browser.release_keyboard();
+        self.editor.context_menu.close();
         self.editor.set_play_state(EditorPlayState::Playing);
         self.editor.close_add_component_popup();
         self.editor.script_picker_open = false;

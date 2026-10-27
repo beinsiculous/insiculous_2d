@@ -8,6 +8,8 @@
 use std::sync::mpsc;
 
 use editor::external_tools::OpenRequest;
+#[cfg(not(target_arch = "wasm32"))]
+use editor::external_tools::Resolution;
 use engine_core::Game;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -54,14 +56,31 @@ impl<G: Game> super::EditorGame<G> {
     fn open_in_external_tool(&mut self, request: OpenRequest) {
         let resolved = self.resolve_asset_path(&request.path);
         self.editor.status_bar.show_message(format!(
-            "Source: {} (external tools open it from the desktop editor)",
-            resolved.display()
+            "Source: {} ({})",
+            resolved.display(),
+            editor::external_tools::DESKTOP_ONLY_HINT
         ));
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     fn open_in_external_tool(&mut self, request: OpenRequest) {
-        use editor::external_tools::{resolve, FileType, LaunchTarget, Location, ProjectBase};
+        let launched = self
+            .resolve_open_request(&request)
+            .and_then(|(file, resolution)| Ok((file, spawn::launch(resolution, &self.launcher.reports)?)));
+        match launched {
+            Ok((file, tool)) => {
+                let name = file.file_name().map_or_else(|| file.display().to_string(), |name| name.to_string_lossy().into_owned());
+                self.editor.status_bar.show_message(format!("Opened {name} in {tool}"));
+            }
+            Err(message) => self.editor.status_bar.show_error(message),
+        }
+    }
+
+    /// The absolute path a request names and what opens it, or why nothing does. A folder
+    /// goes straight to the platform's opener, never through a file type.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn resolve_open_request(&self, request: &OpenRequest) -> Result<(std::path::PathBuf, Resolution), String> {
+        use editor::external_tools::{os_default, resolve, FileType, LaunchTarget, Location, ProjectBase};
 
         let asset_base = spawn::absolute(&self.asset_base);
         // A project request opens the code tool on the workspace, so it is resolved
@@ -70,11 +89,12 @@ impl<G: Game> super::EditorGame<G> {
             (spawn::workspace_root(&asset_base), FileType::RustSource)
         } else {
             let file = spawn::absolute(&self.resolve_asset_path(&request.path));
+            if file.is_dir() {
+                let opener = Resolution::OsDefault(os_default(self.launcher.platform, &file));
+                return Ok((file, opener));
+            }
             let Some(file_type) = FileType::of(&file, &self.editor.external_tools.daw_project_extensions) else {
-                self.editor
-                    .status_bar
-                    .show_error(format!("No external tool opens {}: its type is unknown", file.display()));
-                return;
+                return Err(format!("No external tool opens {}: its type is unknown", file.display()));
             };
             (file, file_type)
         };
@@ -83,16 +103,8 @@ impl<G: Game> super::EditorGame<G> {
             ProjectBase::AssetBase => asset_base,
         };
         let target = LaunchTarget { file_type, file: &file, project: &project, location: &request.location };
-        let launched = resolve(&self.editor.external_tools, target, self.launcher.platform)
-            .map_err(|error| error.to_string())
-            .and_then(|resolution| spawn::launch(resolution, &self.launcher.reports));
-        match launched {
-            Ok(tool) => {
-                let name = file.file_name().map_or_else(|| file.display().to_string(), |name| name.to_string_lossy().into_owned());
-                self.editor.status_bar.show_message(format!("Opened {name} in {tool}"));
-            }
-            Err(message) => self.editor.status_bar.show_error(message),
-        }
+        let resolution = resolve(&self.editor.external_tools, target, self.launcher.platform).map_err(|error| error.to_string())?;
+        Ok((file, resolution))
     }
 }
 
@@ -120,6 +132,24 @@ mod tests {
         );
         assert!(session.editor.status_bar.is_showing_error());
         assert!(session.editor.open_requests.is_empty(), "a request that cannot open is dropped, not retried");
+    }
+
+    #[test]
+    fn test_a_folder_request_on_linux_goes_to_the_opener_not_through_a_file_type() -> std::io::Result<()> {
+        use editor::external_tools::{Launch, OsDefault, Platform, Resolution};
+
+        let project = tempfile::tempdir()?;
+        std::fs::create_dir_all(project.path().join("sprites"))?;
+        let mut session = editor_game();
+        session.asset_base = project.path().to_path_buf();
+        session.launcher.platform = Platform::Linux;
+
+        let resolved = session.resolve_open_request(&request("sprites"));
+
+        let folder = project.path().join("sprites");
+        let opener = Launch { program: "xdg-open".to_string(), args: vec![folder.to_string_lossy().into_owned()], preset: None };
+        assert_eq!(resolved, Ok((folder, Resolution::OsDefault(OsDefault::Program(opener)))));
+        Ok(())
     }
 
     #[test]

@@ -362,15 +362,17 @@ impl MenuBar {
     }
 
     /// Phase 4 — render the dropdown for the open menu (if any) and handle
-    /// item clicks. A click on an item — or a press outside the dropdown —
-    /// closes the menu; an item click returns its label.
+    /// item clicks. A click on an item — or a press of either button outside
+    /// the dropdown — closes the menu; an item click returns its label.
     fn render_open_dropdown(&mut self, ui: &mut UIContext, theme: &EditorTheme) -> Option<String> {
         let open_index = self.open_menu?;
         self.menus[open_index].dropdown_width = Self::measured_width(ui, &self.menus[open_index], theme);
         let menu = &self.menus[open_index];
         let dropdown_bounds = Self::dropdown_bounds(menu, menu.bounds);
 
-        if ui.mouse_just_pressed()
+        // Either button: a right press beside the dropdown opens a context menu, and
+        // the two must never be open together, the hidden one taking the click.
+        if (ui.mouse_just_pressed() || ui.mouse_right_just_pressed())
             && Self::should_close_on_press(ui.mouse_pos(), dropdown_bounds, menu.bounds)
         {
             self.open_menu = None;
@@ -389,8 +391,9 @@ impl MenuBar {
         clicked
     }
 
-    /// Compute the dropdown bounds for a menu anchored below its title.
-    fn dropdown_bounds(menu: &Menu, anchor: Rect) -> Rect {
+    /// Compute the dropdown bounds for a menu anchored below its title — or below any
+    /// rect: the context menu anchors at a point.
+    pub(crate) fn dropdown_bounds(menu: &Menu, anchor: Rect) -> Rect {
         let dropdown_height = menu.items.len() as f32 * ROW_HEIGHT + 8.0;
         Rect::new(
             anchor.x,
@@ -400,10 +403,10 @@ impl MenuBar {
         )
     }
 
-        /// The width at which every item's centred label clears its shortcut, drawn at the
+    /// The width at which every item's centred label clears its shortcut, drawn at the
     /// row's right edge: twice the shortcut and its gaps, either side of the label; a label
     /// with no shortcut needs its own width and the padding.
-    fn measured_width(ui: &UIContext, menu: &Menu, theme: &EditorTheme) -> f32 {
+    pub(crate) fn measured_width(ui: &UIContext, menu: &Menu, theme: &EditorTheme) -> f32 {
         menu.items
             .iter()
             .filter_map(|item| match item {
@@ -429,23 +432,27 @@ impl MenuBar {
         !dropdown.contains(mouse) && !title.contains(mouse)
     }
 
-    /// Render a dropdown menu (static method to avoid borrow issues).
-    fn render_dropdown_static(ui: &mut UIContext, menu: &Menu, dropdown_bounds: Rect, theme: &EditorTheme) -> Option<String> {
+    /// The row a dropdown draws item `index` in; a separator takes a row too.
+    pub(crate) fn dropdown_item_bounds(dropdown_bounds: Rect, index: usize) -> Rect {
+        Rect::new(
+            dropdown_bounds.x + 4.0,
+            dropdown_bounds.y + 4.0 + index as f32 * ROW_HEIGHT,
+            dropdown_bounds.width - 8.0,
+            ROW_HEIGHT,
+        )
+    }
+
+    /// Render a dropdown menu (static method to avoid borrow issues), returning the
+    /// label of the item clicked this frame.
+    pub(crate) fn render_dropdown_static(ui: &mut UIContext, menu: &Menu, dropdown_bounds: Rect, theme: &EditorTheme) -> Option<String> {
         // Floating surface + bounded border: a dropdown must
         // read as an object ABOVE the panel, not blend into it.
         ui.panel_styled(dropdown_bounds, theme.surface_4, theme.popup_border, 1.0);
 
-        // Draw items
-        let mut y = dropdown_bounds.y + 4.0;
         for (i, item) in menu.items.iter().enumerate() {
+            let item_bounds = Self::dropdown_item_bounds(dropdown_bounds, i);
             match item {
                 MenuItem::Action { label, shortcut, enabled, checked } => {
-                    let item_bounds = Rect::new(
-                        dropdown_bounds.x + 4.0,
-                        y,
-                        dropdown_bounds.width - 8.0,
-                        ROW_HEIGHT,
-                    );
 
                     let id = format!("menu_item_{}_{}", menu.title, i);
 
@@ -486,31 +493,20 @@ impl MenuBar {
                             0.0,
                         );
                     }
-
-                    y += ROW_HEIGHT;
                 }
                 MenuItem::Separator => {
-                    let sep_y = y + ROW_HEIGHT / 2.0;
+                    let sep_y = item_bounds.center().y;
                     ui.line(
                         Vec2::new(dropdown_bounds.x + 8.0, sep_y),
                         Vec2::new(dropdown_bounds.x + dropdown_bounds.width - 8.0, sep_y),
                         theme.menu_separator,
                         1.0,
                     );
-                    y += ROW_HEIGHT;
                 }
                 MenuItem::Submenu { label, .. } => {
                     // For now, just render the label with an arrow indicator
-                    let item_bounds = Rect::new(
-                        dropdown_bounds.x + 4.0,
-                        y,
-                        dropdown_bounds.width - 8.0,
-                        ROW_HEIGHT,
-                    );
-
                     let id = format!("menu_submenu_{}_{}", menu.title, i);
                     ui.button(id.as_str(), &format!("{} >", label), item_bounds);
-                    y += ROW_HEIGHT;
                 }
             }
         }

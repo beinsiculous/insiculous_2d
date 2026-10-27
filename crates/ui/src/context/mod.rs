@@ -194,6 +194,15 @@ impl UIContext {
         self.interaction.input().mouse_just_pressed
     }
 
+    /// Whether the right mouse button was pressed this frame: the press that opens a
+    /// context menu. A focused edit field commits on it outside its bounds, and a pending
+    /// Tab traversal is dropped by it, as on a left press; no other widget reacts to it, so
+    /// a caller tests its own bounds and
+    /// [`Self::is_input_blocked_at`].
+    pub fn mouse_right_just_pressed(&self) -> bool {
+        self.interaction.input().mouse_right_just_pressed
+    }
+
     /// Whether the left mouse button is currently held down.
     pub fn mouse_down(&self) -> bool {
         self.interaction.input().mouse_down

@@ -25,6 +25,7 @@ use crate::constants::EDITOR_PREFS_PATH;
 use crate::panel_renderer;
 
 mod api;
+mod asset_browser_keys;
 mod composer_drag;
 mod composer_keys;
 mod game_impl;
@@ -499,6 +500,8 @@ mod test_support;
 mod tests;
 #[cfg(test)]
 mod api_tests;
+#[cfg(test)]
+mod asset_browser_keys_tests;
 #[cfg(test)]
 mod camera_follow_tests;
 #[cfg(test)]

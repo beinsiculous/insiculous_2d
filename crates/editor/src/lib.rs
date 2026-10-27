@@ -39,12 +39,14 @@ mod script_editor;
 mod collider_overlay;
 pub mod color_editor_popup;
 pub mod color_hex;
+mod double_click;
 mod drag_drop;
 pub mod commands;
 pub mod composer;
 mod component_editors;
 mod composite_rows;
 mod context;
+pub mod context_menu;
 mod dock;
 mod editable_inspector;
 mod field_style;
@@ -95,7 +97,9 @@ pub mod world_snapshot;
 mod test_support;
 
 // Re-export main types
-pub use asset_browser::{fit_rect, scan_assets, AssetBrowserState, AssetEntry, AssetKind};
+pub use asset_browser::{
+    fit_rect, open_file_request, open_folder_request, scan_assets, AssetBrowserState, AssetEntry, AssetKind, TileStep,
+};
 pub use behavior_editor::edit_behavior;
 pub use confirm_dialog::{ConfirmChoice, ConfirmDialog};
 pub use drag_drop::{DragDropState, DragPayload, DRAG_THRESHOLD};
@@ -135,8 +139,8 @@ pub use editor_input::{
 pub use entity_names::entity_display_name;
 pub use gizmo::{Corner, Gizmo, GizmoHandle, GizmoInteraction, GizmoMode, GizmoPalette};
 pub use hierarchy::{
-    normalized_rename, HierarchyClick, HierarchyPanel, HierarchyResponse, NameResolution,
-    SelectionRowFills, PRIMARY_ACCENT_WIDTH,
+    normalized_rename, open_from_script_rows, HierarchyClick, HierarchyPanel, HierarchyResponse, NameResolution,
+    ScriptRowButton, ScriptRowPress, SelectionRowFills, PRIMARY_ACCENT_WIDTH,
 };
 pub use clipboard::{
     capture_entity_tree, spawn_entity_tree, uncaptured_component_names, ClipboardEntity,

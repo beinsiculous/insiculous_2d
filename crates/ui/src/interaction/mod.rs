@@ -239,11 +239,12 @@ impl InteractionManager {
         self.previous_frame_order.clear();
         std::mem::swap(&mut self.previous_frame_order, &mut self.current_frame_order);
 
-        // A click always wins over a traversal still waiting to resolve: a
-        // fresh press is newer intent than the Tab that scheduled it, and
-        // leaving it standing would focus a field the user just clicked away
-        // from on a later frame.
-        if self.input.mouse_just_pressed {
+        // A press of either button always wins over a traversal still waiting
+        // to resolve: a fresh press is newer intent than the Tab that
+        // scheduled it. Left standing, it would focus a field the user just
+        // clicked away from on a later frame — or, on a right press, focus the
+        // target and commit its seeded value in that same frame.
+        if self.input.mouse_just_pressed || self.input.mouse_right_just_pressed {
             self.pending_focus_target = None;
         }
         // Reset for this frame; the target's own registration (if it draws)

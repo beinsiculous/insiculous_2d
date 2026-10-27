@@ -18,8 +18,9 @@ use renderer::texture::TextureHandle;
 
 use crate::entity_ops;
 
+mod keyboard;
 mod tile;
-use tile::tile_interaction;
+use tile::{tile_interaction, TilePresses};
 
 /// Thumbnail tile edge in pixels.
 const TILE_SIZE: f32 = 72.0;
@@ -107,6 +108,7 @@ pub(super) fn render_asset_browser(
     // The grid's height is known up front (entry count), so record it
     // BEFORE consuming the wheel — this panel clamps lag-free.
     editor.asset_browser.scroll.end_frame(content_height, viewport_height);
+    keyboard::follow_grid(editor, columns, viewport_height);
     let scroll = editor.asset_browser.scroll.begin_frame(
         bounds,
         ctx.ui.mouse_pos(),
@@ -116,7 +118,7 @@ pub(super) fn render_asset_browser(
 
     let is_playing = editor.is_playing();
     let mouse_pos = ctx.ui.mouse_pos();
-    let mut clicked_tile: Option<usize> = None;
+    let mut presses = TilePresses::default();
 
     for index in 0..editor.asset_browser.entries.len() {
         let slot = tile_rect(index, columns, grid_origin, scroll);
@@ -133,15 +135,15 @@ pub(super) fn render_asset_browser(
             let tile = tile_interaction(
                 ctx.ui, &mut editor.drag_drop, &editor.theme, entry, index, slot, mouse_pos,
             );
-            if tile.clicked {
-                clicked_tile = Some(index);
-            }
+            presses.record(index, &tile);
         }
     }
 
-    if let Some(index) = clicked_tile {
+    if let Some(index) = presses.clicked {
         select_tile(editor, index);
     }
+    tile::open_from_presses(editor, &presses, mouse_pos);
+    keyboard::mark_selected_tile(editor, ctx.ui, |index| tile_rect(index, columns, grid_origin, scroll));
 
     if assign_clicked {
         assign_selected_texture(editor, ctx.world, command_history);

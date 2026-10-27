@@ -89,8 +89,9 @@ impl<G: Game> EditorGame<G> {
     }
 
     /// Frame start, before any chrome handles this frame's press: follow the song, then
-    /// drop the keyboard (and a drag) when the panel is gone or a press landed elsewhere in
-    /// the dock — never on a menu, whose dropdown is chrome, nor under a dialog.
+    /// drop the keyboard (and a drag) when the panel is gone or a press of either button
+    /// landed elsewhere in the dock — never on a menu, whose dropdown is chrome, nor under
+    /// a dialog.
     pub(super) fn settle_composer(&mut self, ui: &ui::UIContext) {
         self.follow_song();
         let panel = self
@@ -108,10 +109,11 @@ impl<G: Game> EditorGame<G> {
         let panel_bounds = ui::Rect::new(content.x, content.y - header, content.width, content.height + header);
         let mouse = ui.mouse_pos();
         let dialog_up = self.scene_confirm.pending_action.is_some() || self.stop_confirm.pending;
-        let pressed_elsewhere = ui.mouse_just_pressed()
+        let pressed_elsewhere = (ui.mouse_just_pressed() || ui.mouse_right_just_pressed())
             && !panel_bounds.contains(mouse)
             && self.editor.dock_area.bounds().contains(mouse)
             && !self.editor.menu_bar.is_open()
+            && !self.editor.context_menu.is_open()
             && !dialog_up;
         if pressed_elsewhere && (self.composer_holds_focus() || self.composer_drag.is_some()) {
             self.leave_composer();

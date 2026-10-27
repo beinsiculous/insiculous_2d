@@ -353,6 +353,22 @@ fn test_text_input_escape_cancels_and_click_away_commits() {
 }
 
 #[test]
+fn test_a_right_press_outside_a_focused_field_commits_it_and_releases_the_keyboard() {
+    let mut ui = UIContext::new();
+    let mut input = input::InputHandler::new();
+    let field = |ui: &mut UIContext| ui.text_input("txt_right_away", "keep me", FIELD);
+
+    focus_field(&mut ui, &mut input, FIELD, field);
+    type_key(&mut ui, &mut input, KeyCode::KeyZ, field);
+    input.update();
+    input.mouse_mut().update_position(500.0, 400.0);
+    input.mouse_mut().handle_button_press(input::prelude::MouseButton::Right);
+    let committed = frame(&mut ui, &input, field);
+    assert_eq!(committed, Some("z".to_string()), "a right press away commits as a left press does");
+    assert!(!ui.wants_keyboard(), "the keys go to whatever the right press opened, not the field");
+}
+
+#[test]
 fn test_float_input_edits_at_the_cursor_and_commits_on_enter() {
     let mut ui = UIContext::new();
     let mut input = input::InputHandler::new();

@@ -7,10 +7,10 @@
 //! where the target id came from instead, and reasoning that reads correctly
 //! still cascaded through every field after the first on one Tab press.
 
-use input::prelude::KeyCode;
+use input::prelude::{KeyCode, MouseButton};
 
 use super::*;
-use crate::test_support::{focus_field, idle, press_at, release, type_key};
+use crate::test_support::{focus_field, frame, idle, press_at, release, type_key};
 use crate::UiLayer;
 
 /// Three stacked rows, the shape a top-to-bottom inspector has.
@@ -126,6 +126,31 @@ fn test_a_click_discards_a_pending_traversal_instead_of_focusing_it_later() {
     idle(&mut ui, &mut input, fields);
     assert!(ui.is_focused("first"), "the discarded traversal never resurfaces");
     assert!(!ui.is_focused("third"));
+}
+
+#[test]
+fn test_a_right_press_discards_a_pending_traversal_as_a_left_press_does() {
+    let mut ui = UIContext::new();
+    let mut input = input::InputHandler::new();
+
+    focus_field(&mut ui, &mut input, ROW_2, fields);
+    idle(&mut ui, &mut input, fields);
+    type_key(&mut ui, &mut input, KeyCode::Tab, fields);
+
+    // A right press away from every field, before the traversal resolves.
+    input.update();
+    input.mouse_mut().update_position(500.0, 400.0);
+    input.mouse_mut().handle_button_press(MouseButton::Right);
+    let commits = frame(&mut ui, &input, fields);
+    assert_eq!(
+        commits,
+        [None, None, None],
+        "the target must not take focus and commit its seeded value in one frame"
+    );
+    assert!(!ui.wants_keyboard(), "the keys go to whatever the right press opened");
+
+    idle(&mut ui, &mut input, fields);
+    assert!(!ui.wants_keyboard(), "the discarded traversal never resurfaces");
 }
 
 #[test]

@@ -3,7 +3,7 @@
 //! state, and the display suffix.
 
 use glam::Vec2;
-use input::prelude::KeyCode;
+use input::prelude::{KeyCode, MouseButton};
 
 use crate::test_support::{focus_field, frame, move_to, press_at, release, type_key};
 use crate::{DrawCommand, FloatFieldOpts, FloatInputResult, Rect, UIContext};
@@ -147,6 +147,23 @@ fn test_float_arrow_up_down_steps_the_value_and_shift_is_10x() {
     input.keyboard_mut().handle_key_press(KeyCode::ShiftLeft);
     let r = type_key(&mut ui, &mut input, KeyCode::ArrowDown, field(5.5, stepped));
     assert_eq!(r.value, 0.5, "Shift+ArrowDown nudges by 10× the step");
+}
+
+#[test]
+fn test_an_arrow_on_the_frame_of_a_right_press_outside_commits_the_field_instead_of_nudging_it() {
+    let mut ui = UIContext::new();
+    let mut input = input::InputHandler::new();
+    focus_field(&mut ui, &mut input, BOUNDS, field(5.0, opts()));
+
+    // A held arrow's repeat lands on the frame a right press opens a context menu elsewhere.
+    input.update();
+    input.keyboard_mut().handle_key_press(KeyCode::ArrowUp);
+    input.mouse_mut().update_position(500.0, 400.0);
+    input.mouse_mut().handle_button_press(MouseButton::Right);
+    let result = frame(&mut ui, &input, field(5.0, opts()));
+    assert!(result.committed && !result.changed, "the right press away commits the field untouched");
+    assert_eq!(result.value, 5.0, "a field being committed is not nudged");
+    assert!(!ui.wants_keyboard(), "the keys go to whatever the right press opened, not the field");
 }
 
 // ================== Typed commits ==================

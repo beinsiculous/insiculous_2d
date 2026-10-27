@@ -317,6 +317,25 @@ fn test_a_click_away_commits_the_focused_field_before_the_popup_closes() {
 }
 
 #[test]
+fn test_a_right_press_outside_closes_the_popup_as_a_left_one_does() {
+    // A right press away may open the context menu, which shares the popup's
+    // Modal band: the two are never open together.
+    let mut editor = EditorContext::new();
+    let mut world = world_with_selection(&mut editor);
+    let mut history = CommandHistory::new();
+    let mut input = input::InputHandler::new();
+    let mut ui = UIContext::new();
+    open_color_editor(&mut ui, &mut editor, &mut world, &mut input, &mut history, FrameShape::default());
+
+    input.update();
+    input.mouse_mut().update_position(WINDOW.x - 5.0, WINDOW.y - 5.0);
+    input.mouse_mut().handle_button_press(input::prelude::MouseButton::Right);
+    frame_on(&mut ui, &mut editor, &mut world, &input, &mut history, FrameShape::default(), |_| {});
+
+    assert!(editor.inspector_state.color_editor().is_none(), "the right press away closed the popup");
+}
+
+#[test]
 fn test_a_confirm_dialog_closes_the_popup_and_a_close_leaves_another_fields_focus_alone() {
     // A dialog owns the frame, so the popup goes; and a close never takes
     // the keyboard from a field that is not its own — the one a click-away

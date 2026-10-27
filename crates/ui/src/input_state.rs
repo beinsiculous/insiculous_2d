@@ -23,6 +23,8 @@ pub struct InputState {
     pub mouse_just_pressed: bool,
     /// Whether left mouse button was just released this frame
     pub mouse_just_released: bool,
+    /// Whether the right mouse button was just pressed this frame (a context menu's press)
+    pub mouse_right_just_pressed: bool,
     /// Mouse scroll delta
     pub scroll_delta: f32,
     /// Characters typed this frame (for text input widgets)
@@ -63,6 +65,7 @@ impl Default for InputState {
             mouse_down: false,
             mouse_just_pressed: false,
             mouse_just_released: false,
+            mouse_right_just_pressed: false,
             scroll_delta: 0.0,
             typed_chars: Vec::new(),
             enter_pressed: false,
@@ -182,6 +185,7 @@ impl InputState {
             mouse_down: mouse.is_button_pressed(MouseButton::Left),
             mouse_just_pressed: mouse.is_button_just_pressed(MouseButton::Left),
             mouse_just_released: mouse.is_button_just_released(MouseButton::Left),
+            mouse_right_just_pressed: mouse.is_button_just_pressed(MouseButton::Right),
             scroll_delta: mouse.wheel_delta(),
             typed_chars,
             enter_pressed: keyboard.is_key_just_pressed(KeyCode::Enter)
@@ -292,6 +296,21 @@ mod tests {
         assert!(!released.mouse_down && !released.mouse_just_pressed);
         assert!(released.mouse_just_released);
         assert_eq!(released.scroll_delta, 0.0, "the wheel delta is per frame");
+    }
+
+    #[test]
+    fn test_a_right_press_is_its_own_edge_and_never_a_left_press() {
+        let mut input = InputHandler::new();
+        input.mouse_mut().handle_button_press(MouseButton::Right);
+        let pressed = InputState::from_input_handler(&input);
+        assert!(pressed.mouse_right_just_pressed);
+        assert!(
+            !pressed.mouse_just_pressed && !pressed.mouse_down,
+            "a right press must never activate a widget or arm a drag"
+        );
+
+        input.end_frame();
+        assert!(!InputState::from_input_handler(&input).mouse_right_just_pressed, "the edge lasts one frame");
     }
 
     #[test]
