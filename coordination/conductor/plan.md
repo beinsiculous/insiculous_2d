@@ -4191,7 +4191,7 @@ by the 2026-10-13 ruling, codex judging both from stills;
 **(z)** the pause menu keeps the engine's labels in both games until #202 decides the hint;
 **(aa)** each game's page gains the one sentence of correction 8.
 
-## Batch 15 — K6: Meatieroids and Chicken Coop (#65)
+## Batch 15 — K6: Meatieroids and Chicken Coop (#65) — DONE 2026-10-26: 15a Meatieroids (asteroids 8709a58; site 87a940f; stills 9bdc7fa), 15b Chicken Coop (frogger b8008c4; site 21c60ae; stills 7b980b2)
 
 **Re-verified 2026-10-26 against the tree at 88ebe82** (engine), `games/asteroids` f8cab8e,
 `games/frogger` d9ae20c and `insiculous_web` 8cf69f6, after batch 14 landed (two more worked games,
@@ -4225,6 +4225,31 @@ before the throttled boot — a locked run took 63 s against 17 s unlocked; the 
 menu in each browser (`wraps=1`, `pulsed` held); the method's tools and logs for 15b are
 `review/conductor/batch15a-tools/` and `batch15a-logs/`; the stills are
 `coordination/conductor/screenshots/batch-15/meatieroids-pulse-{peak,rest}.png` (9bdc7fa).
+
+**What 15b left (2026-10-26).** Chicken Coop landed from `report-15b.md` (COMPLETE) after code
+round 69 — frogger b8008c4, site 21c60ae, stills 7b980b2 — (kimi 3, none real: the draft diff's
+deliberate omissions twice, and "a same-frame `home` and `death` overwrite each other" against the
+slots' isolation; gemini 2, none real: the two-name contract for the third round running and a
+two-element `Vec` a frame with no failure; codex 1, real: the restart test's `(bar, beat) == (0, 0)`
+after a wall-time `settle`, applied; the site's content diff kimi 2 — none, its "every nest filled
+sounds the fanfare" line ruled (ag) — codex 0); `rebuttal-69.md`, `review-69-claude.md`. One
+deviation accepted: **the song is in D major**, the score's E a tone down, so the galop's climb
+fits the G4–G5 register the trumpet and the piccolo share. Jesse's listen check passed. **Batch 15
+is done; #65's six boxes are ticked, and the close-out closes it.** What the close-out carries: **a match start is asserted by the
+seek, not by the clock** — the restart test now reads the conductor's `reconstructions` before the
+second `start_game` and asserts it rose by one, with `bar == 0` as the sanity; the same `(0, 0)`
+shape sits in 15a's test 4 (`games/asteroids/src/music_tests.rs:399-403`) and may in 14a's and
+14b's, a line for batch 16, not a reopening of a landed batch. **A tall canvas's stills want a
+window where the canvas lays out at its own size**: at the section's 720 × 768 CDP viewport the
+site's page laid Chicken Coop's canvas out at 631 × 673 under the header, so every check ran there
+while the stills were taken in Chromium's default window (`surface config: 720x768`), and the
+driver's gesture click goes to the canvas's bottom-left, below the header — the method, not a
+fail. **A throttled boot that never booted**: the first run's page went to
+`chrome-error://chromewebdata/` at 13.25 s before the wasm's first line with the preview up; two
+reruns booted in 19.15 s and 19.14 s (median 19.15 s against 25 s); not reproduced, a line if it
+recurs. The handoff's "six parts" was five parts and six bindings; the sidecar is right. The
+method's tools and logs are `review/conductor/batch15b-tools/` and `batch15b-logs/`; the stills
+are `coordination/conductor/screenshots/batch-15/chicken-coop-pulse-{peak,rest}.png` (7b980b2).
 
 Executor: the Opus session, **one handoff per game, in order** (ruling (t) stands): **15a
 Meatieroids** in `games/asteroids` + `insiculous_web`, then **15b Chicken Coop** in `games/frogger`
