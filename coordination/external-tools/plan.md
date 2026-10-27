@@ -824,30 +824,52 @@ browser holding the keyboard). Leaves out: the console (2b); a `.mid` tile's tra
 Edit in MIDI Evil (batch 4); keyboard-only entry into a panel, which no panel has yet (#144's gap);
 the inspector's script rows.
 
-**Batch 2b — the console: #207 (E5).** `editor/src/console.rs`: `ConsoleLog`, a bounded `Vec` of
-500 entries, each a severity, its text, an optional location (a path and `Location::Line`) and a
-repeat count; an entry collapses into the last when its location, severity and text match with
-runs of digits normalized, so an error every frame is one line whatever number it carries and a
-different message at one location is a new entry. `panel_renderer/console.rs` draws it; the
-reserved `PanelId::CONSOLE` (`dock/mod.rs:40`, "no panel implementation yet" at `:53`) becomes a
-panel, hidden by default, docked at the bottom beside Assets; View → Console is enabled
-(`menu/mod.rs:225` draws it disabled today; `panel_id_for_menu_label` maps it, `dock/mod.rs:55-63`);
-the tests that pin its absence today (`dock/tests.rs:118-120`, `menu/tests.rs:117`) change with it,
-and a prefs file written before it existed leaves it hidden (the composer's precedent, its test in
-`context/tests.rs`). What lands in it: every script error (`editor_game/script_status.rs` shows them
-on the status bar one at a time today; `ScriptError { file, line, kind, message }`,
-`engine_core/src/scripting/runner.rs:39-44`, a line of 0 meaning none — `ScriptErrors` keeps one
-per file, line and kind a session, so the repeat count serves the launcher's lines and batch 3's
-reload notices), and every launch result (the launcher's status-bar lines and its reaper's
-reports, `editor_game/external_tools.rs`). An entry with a location draws underlined and opens on
-click as `OpenRequest { path, Location::Line { line, column: None } }`; the console holds the
-keyboard on 2a's model, Up and Down walking its entries and Enter opening the focused one's
-location; the shared `ScrollState`, a Clear button, the "Error: " prefix and the status bar's
-`status_error` amber for an error (the a11y rule of #195). The status bar's current error, when it
-carries a location, opens on click too: the bar keeps the location beside its message and reports
-the click, and the host queues the request. Reviewers: kimi, codex (one still: the console with a
-clickable error and a collapsed repeat). Leaves out: filters, log levels; batch 3's reload notices
-(the console takes them when they exist).
+**Batch 2b — the console: #207 (E5).** Re-verified 2026-10-27 against 69d9e3f.
+`editor/src/console.rs`: `ConsoleLog`, bounded to 500 entries with the oldest dropped first, each
+a severity, its text, an optional location — the `OpenRequest` its click files: the path at
+`Location::Line { line, column: None }`, or at `Location::None` for a line of 0 — and a repeat
+count; an entry collapses into the last when its location, severity and text match with runs of
+digits normalized, keeping the newest text, so an error every frame is one line whatever number it
+carries and a different message at one location is a new entry. `panel_renderer/console.rs` draws
+it, one arm in `render_panel_body` (`panel_renderer/mod.rs:46-68`). The reserved
+`PanelId::CONSOLE` (`dock/mod.rs:40`; "no panel implementation yet" in `panel_id_for_menu_label`'s
+doc, `:53-54`) becomes a panel, hidden by default, on the bottom edge: the dock lays an edge's
+panels one after another and never side by side or as tabs (`dock/mod.rs:430-439`), so the console
+is added after the composer in `default_dock_area` (`context/mod.rs:122-154`) and stacks above
+whichever bottom panels show. View → Console is enabled (`menu/mod.rs:225` draws it disabled, the
+comment at `:216-217` saying why; `panel_id_for_menu_label` maps it, `dock/mod.rs:55-63`) and
+carries its check mark (the label list at `editor_game/menu_actions.rs:16`). The tests that pin its
+absence (`dock/tests.rs:118-120`, `menu/tests.rs:122`) and the default layout
+(`context/tests.rs:47`) change with it, and a prefs file written before it existed leaves it hidden
+(the composer's precedent, `context/tests.rs:65`). What lands in it: every script error
+(`editor_game/script_status.rs` shows them on the status bar one at a time; `ScriptError { file,
+line, kind, message }`, `engine_core/src/scripting/runner.rs:39-44`, a line of 0 meaning none;
+`file` is the `.rhai` source path, except for an unresolved native script, where it is the script
+id and the entry carries no location, `runner.rs:286-291`; `ScriptErrors` keeps one per file, line
+and kind a session, so the repeat count serves the launcher's lines and batch 3's reload notices),
+and every launch result (the launcher's status-bar lines, its reaper's reports and the web's
+desktop hint, `editor_game/external_tools.rs:46-77`). Both reach the status bar and the console
+through one host function, so neither surface misses a line the other shows; the bar's other lines
+stay the bar's. An entry with a location draws underlined, asks for `CursorIcon::Pointer` and opens
+on click. The console holds the keyboard on 2a's model (`editor_game/asset_browser_keys.rs`): a
+press of either button in the panel takes it; one elsewhere in the dock, the panel hidden or
+collapsed, the composer taking the keyboard, Escape and a play session's entry (`enter_playing`,
+`play_session.rs:139-148`) let it go — so it never holds while a session runs, and a click on an
+entry still opens. While it holds the keyboard, Up and Down walk its entries (the focused one
+scrolled into view) and Enter opens the focused one's location. The shared `ScrollState`, a Clear
+button, the "Error: " prefix and the status bar's `status_error` amber for an error (the a11y rule
+of #195). The status bar's current error, when it carries a location, opens on click too, and its
+tooltip says so: the bar keeps the location beside its message (a message that replaces the error
+drops it) and reports the click, and the host queues the request; the next frame's drain launches
+it, because the bar renders after `open_requested_files` (`editor_game/mod.rs:422-424`). The
+files 2b touches, measured at 69d9e3f: `context/mod.rs` 575 (a field and the dock panel; moving
+`default_dock_area` into its own file is in scope if they would cross 590), `editor_game/mod.rs`
+534, `panel_renderer/mod.rs` 528, `editor_game/shortcuts.rs` 523 and `menu/mod.rs` 519 each take a
+line or an arm; the host's console code (its settle, its key route, the one reporting function)
+goes in a new `editor_game/` file, with one `KeyRoute` arm and one call in `route_editor_key`.
+Reviewers: kimi, codex (one still: the console with a clickable error and a collapsed repeat).
+Leaves out: filters, log levels; batch 3's reload notices (the console takes them when they
+exist); the status bar's other lines.
 
 **Batch 3 — the watcher and code reload: #208 (E6), #209 (E7), #210 (E8); #211 (E9) closed
 won't-do by ruling (l).** `FileWatch`
