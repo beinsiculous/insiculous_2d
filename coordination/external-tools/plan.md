@@ -276,6 +276,11 @@ planner left its agents is `../midi-evil/docs/insiculous-crossing.md`.
   change to how art enters a game are `coordination/aseprite-native/plan.md`, reviewed in
   parallel and built after batch 3; its `.aseprite` row and `ReloadTexture` policy join this
   table when it lands.
+- **(n) No `$VISUAL`/`$EDITOR` fallback** (Jesse, 2026-10-27, batch 1's code round, kimi F2 and
+  gemini F3). Both name a terminal editor on most machines, which cannot run under the launcher's
+  null stdio, so `EDITOR=vim` turned the first Open Source into an error. Code's `OsDefault` is
+  the platform's opener like every category's; a GUI editor in `$VISUAL` is chosen as a Custom
+  tool. Ruling (d)'s Helix preset stands.
 
 ## What the tree holds (verified 2026-10-26 by the note's author; the files re-checked by the planner)
 
@@ -332,7 +337,7 @@ advertised extension reaches a tile and the context menu; a launch test per exte
 pub enum ToolCategory { Code, Music, Sample, Art }
 pub enum ToolChoice { Preset(PresetId), Custom(CommandTemplate), OsDefault }
 pub struct ExternalToolsConfig {            // on EditorPreferences, #[serde(default)]
-    pub code: ToolChoice,                    // default: OsDefault (so $VISUAL/$EDITOR is tried first)
+    pub code: ToolChoice,                    // default: OsDefault (the platform's opener, ruling (n))
     pub music: ToolChoice,                   // default: OsDefault
     pub sample: ToolChoice,                  // default: OsDefault
     pub art: ToolChoice,                     // default: OsDefault
@@ -350,9 +355,8 @@ pub enum ReloadPolicy { None, RecompileScript, ReloadDocument, ReloadSheet, Relo
 
 Resolution (`config.rs`, pure, tested), in order: `overrides[file_type]` **if present** — an
 absent entry inherits the category, a present one is honoured whatever it says, an explicit
-`OsDefault` included (round 3, codex F6); the category's choice if not `OsDefault`; **Code only**: `$VISUAL`, then `$EDITOR`,
-each tokenized as a template with `{file}` appended (no line — these editors are unknown; a
-terminal editor fails at spawn and the status bar says so); the OS default: Linux `xdg-open
+`OsDefault` included (round 3, codex F6); the category's choice if not `OsDefault`; no
+environment variable is read (ruling (n)); the OS default: Linux `xdg-open
 {file}`, macOS `open {file}`, Windows the shell association through `ShellExecuteW` (ruling (h); no
 trampoline process at all, so nothing to reap or report).
 
@@ -742,7 +746,8 @@ Jesse's word. Issue numbers are the milestone's; the batch names what the issues
 every touched `.rs`; `scripts/check_audio_provenance.sh` when a fixture lands. The planner reruns
 every gate on the staged tree before the code round.
 
-**Batch 1 — the foundation: #203 (E1), #204 (E2), #205 (E3).** The pure half (the type table with
+**Batch 1 — the foundation: #203 (E1), #204 (E2), #205 (E3). DONE 2026-10-27, insiculous_2d
+378f4c2.** The pure half (the type table with
 the `Art` category and its `Image` row, `ReloadPolicy` without `RebuildNotice`, the group-first
 templates, the config with its `art` choice, the presets with MIDI Evil's and Aseprite's rows, the
 `{track_index}` placeholder and the preset fallback locations, the resolution order, the MIDI
@@ -760,6 +765,19 @@ Vec<OpenRequest>`), `script_editor.rs`. Target shapes: § One table, § Types, �
 are a seam). Leaves out: every entry point but the button, the watcher, the settings UI. Under
 1,300 lines.
 
+**What batch 1 left (2026-10-27).** Landed from `report-1.md` (COMPLETE) after code rounds 6 and 7
+(kimi 4 then 1, gemini 6, the planner's own 3; `rebuttal-6.md`, `rebuttal-7.md`). Ruling (n)
+removed the `$VISUAL`/`$EDITOR` fallback; the planner fixed a tools section that fails to parse
+(now defaulted alone, the rest of the prefs kept), the terminal wording (a custom command or a
+`needs_terminal` preset only) and the legacy migration (each word carried literally, a `{file}`
+inside one kept). The executor's own calls stand: `windows-sys` needs
+`Win32_UI_WindowsAndMessaging` beside `Win32_UI_Shell`; `workspace_root` is computed per launch; a
+project request resolves as `RustSource`; stdin is null too; an opener's fast failure is told
+plainly. What it left is written into the batches that act on it — the MIDI helper's other callers
+(3, 4, 5), the Custom tool's on-disk shape (6), the WSL `.exe` rule, the first Windows compile and
+the `ShellExecuteW` stall check (8). 2,254 lines inserted against the 1,300 target, about 800 of
+them tests.
+
 **Batch 2 — code entry points and the console: #206 (E4), #207 (E5).** Double-click on tiles and
 Scripts rows, Enter on a focused tile, the first context menu whose items name the resolved tool (keyboard-reachable: the menu key, Shift+F10, arrows), the
 Console panel as § Entry points describes it, repeats collapsed, the status bar's error clickable.
@@ -769,7 +787,8 @@ error and a collapsed repeat). Leaves out: Edit in MIDI Evil (batch 4), filters 
 **Batch 3 — the watcher and code reload: #208 (E6), #209 (E7), #210 (E8); #211 (E9) closed
 won't-do by ruling (l).** `FileWatch`
 on its worker thread with its registered set, debounced tombstones, companion files and
-`note_written` baselines; `hot_reload.rs`
+`note_written` baselines, its MIDI and sidecar rules batch 1's `external_tools::is_midi_path` and
+`midi_sidecar_path`, never its own; `hot_reload.rs`
 with the registered set's rebuild rules; Rhai recompile on save in a Play session
 (`ScriptRunner::reload_source`, the AST swapped, blackboards kept, a syntax error keeping the old
 AST and linking the line); scene and sheet reload through the existing guards and dialog, the sheet as a transaction and
@@ -779,7 +798,9 @@ runner's swap and Stop's re-apply are harness and seam). Leaves out: the song an
 (batches 4 and 5), any `cargo` spawn.
 
 **Batch 4 — music entry points and the sample reload: #212 (E10), #215 (E13).** `scan_songs`
-salvaged into `external_tools/songs.rs`; the Edit in MIDI Evil button on a `Binding` emitter with
+salvaged into `external_tools/songs.rs` and pointed at `is_midi_path` (`composer/state.rs:399`
+accepts `mid` alone, so a `.midi` the asset browser lists since batch 1 is missing from File →
+Open Song until then); the Edit in MIDI Evil button on a `Binding` emitter with
 the action → part → track resolution; `.mid`, `DawProject` and sample tiles opening with their
 tools; the context menu's item enabled; recorded sounds reloading in place behind their handle, the
 library's loaded and failed paths registered, a failure cleared on success (the sound half of #180,
@@ -793,7 +814,12 @@ the loaded bytes, Save As writing the whole song, the transition's score-authori
 Overwrite / Cancel prompt before a sidecar write and its headless error, recovery that keeps and
 never promotes, the prune moved after the finals with recoveries as roots, the map edits on mixed-channel MIDI,
 `song init`, and the panel's Save dispatching the reload, with their migration tests (§ The open
-song document); the silent part in `music_midi`'s `validate` and trigger engine;
+song document); the song's files through batch 1's helper — `plan_save`'s `NotMidi` check
+(`song/io.rs:347`, `mid` alone), the sidecar names (`with_suffix(.., ".ron")` at
+`song/io.rs:335,411,456`, `song/io/open.rs:76,247`, `editor_game/song_io.rs:249`) through
+`midi_sidecar_path`, and the web upload's kind (`playground/src/upload.rs:38`) through
+`is_midi_path` — with an end-to-end `.midi` open → edit → save test (batch 1 lists a `.midi` as a
+Song tile, which the composer opens and Save refuses until this lands); the silent part in `music_midi`'s `validate` and trigger engine;
 `replace_song_at_seam` with the worker's `PreparedPlayback` and its request id, the host's swap
 on an observed bar-line crossing with the bar-and-fraction conversion, the stationary-transport,
 stopped-at-end, end-while-pending, short-loop and staged-refusal rules, the host's re-asserted
@@ -811,7 +837,9 @@ in MIDI Evil's repo; the fixture pair until MIDI Evil ships it (a hand-made pair
 **Batch 6 — the settings panel: #216 (E14).** `settings_panel.rs` over `EditableInspector`: a
 cycle row per category for the preset, a string field for the Custom template with the inline red
 invalid state, per-type overrides, the MIDI Evil binary field, the DAW project extensions, a Test
-button per category; Edit → External Tools…; keyboard-walkable with a visible focus ring, labelled
+button per category; Edit → External Tools… (every launch error since batch 1 points there);
+`ToolChoice::Custom`'s second, project field reading batch 1's on-disk shape
+`{"Custom": "<template>"}` still, as a project-less custom tool (a test loads that JSON); keyboard-walkable with a visible focus ring, labelled
 controls, no colour-only state; narrow mode as the dock's overlay. Closes #102. Target shapes:
 § Types. Reviewers: kimi, codex (two stills: the panel at rest; a template error shown). Leaves
 out: nothing of the brief's settings.
@@ -831,7 +859,16 @@ panel. Reviewers: kimi, gemini (the API's refusals and the playground's export a
 ruling (e)'s gain field unless Jesse rules it in. If the gate is not met when batch 6 lands, batch
 8 goes first and batch 7 waits; the sprint does not close without it.
 
-**Batch 8 — platform polish and the docs: #219 (E17), #220 (E18).** WSL paths and `wslview`, the Flatpak hint,
+**Batch 8 — platform polish and the docs: #219 (E17), #220 (E18).** WSL paths and `wslview` —
+batch 1 shipped `wslview` only, and § Cross-platform rules' `.exe` rule (every path placeholder
+through `wslpath -w` for a program ending in `.exe`) needs the program found before the template
+expands, a two-phase resolution batch 1's shapes lack — the Flatpak hint; the first Windows
+compile of `spawn.rs`'s `cfg(windows)` hunk (`windows-sys` 0.61 declares `ShellExecuteW` only with
+`Win32_UI_WindowsAndMessaging` beside `Win32_UI_Shell`); `ShellExecuteW` on the frame thread checked
+by opening an unassociated type (a `.rhai` on a fresh profile) and a file on an offline network
+share — a stalled frame moves it to a worker thread with `CoInitializeEx`, its result through the
+launcher's channel (batch 1's code round, gemini F2); `code` resolving to `code.cmd` through
+`PATHEXT`, and `cmd.exe`'s argument escaping, on the matrix;
 the three OS-default fallbacks and the WSL one exercised by hand on a Linux, macOS and Windows
 machine with a path containing a space and an `&` (the results recorded in the issue); `docs/EXTERNAL_TOOLS.md` (the presets with
 their sources and dates, Aseprite's among them, the template grammar, the resolution order, the
