@@ -17,7 +17,7 @@ Before starting, ensure you have read:
 
 Open work is grouped into **sprint milestones** (Aug 29 2026). Pick a sprint,
 then take its next unblocked issue — each milestone's description records the
-internal order and gates (e.g. K1 gates all of Conductor; F3 gates E5):
+internal order and gates (e.g. F3 gates E5):
 
 ```bash
 gh api repos/beinsiculous/insiculous_2d/milestones \

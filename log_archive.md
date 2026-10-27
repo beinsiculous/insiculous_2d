@@ -778,6 +778,65 @@ Closed as part of the universal controller/2-player feature:
 - The standalone editor binary cannot see game-registered types; such scenes refuse
   to load there with a clear error (edit from the game's binary instead).
 
+## Conductor effort (Phase K) — DONE Oct 26 2026
+
+Fifteen batches in seven days, planned by Claude Fable and built by an Opus session from handoff
+docs, reviewed by kimi, gemini and codex at every plan round and code round (69 rounds; the
+scorecard is `coordination/conductor/reviewer-comparison.md`, the plan and every batch's done note
+`coordination/conductor/plan.md`, the review record `review/_archive/conductor/`, untracked). What
+landed: `music_midi` (the `.mid.ron` sidecar, owned MIDI data, the tempo map, the background
+sequencer, the conductor with its slots, ledger, sources and triggers, sample instruments), the
+audio crate's song seam, `GameMusic` and `SoundSources` in `engine_core`, scene-authored
+`SoundEmitter`s, the composer in the editor and on the web playground, and a song for each of the
+six games. The lessons that outlive the plan:
+
+- **A song's rules live in the engine, a game names its moments.** `GameMusic` carries the request,
+  the match start's identity rule (decide by the song in the slot, never by a flag `init` set — that
+  is what lets the editor stop and replay the slot around the game), the jam's latch, the beat and
+  the telemetry; a game's `music.rs` is constants, a `Moment` enum, counts and a pulse, under 190
+  lines. Six games later nothing in `GameMusic` changed after batch 13.
+- **Headless, a song renders on the game thread by wall time.** The disabled audio manager advances
+  a virtual clock by the time since the last `update`, in 64-frame blocks with the remainder
+  carried, so a descheduled test renders more blocks, never fewer. Tests that wait on the song poll
+  with a bound (`poll`, a frame cap on every loop over beats — the reviewers caught an unbounded
+  `while beats < 2` the gate did not, so the executor greps its own test file for `while`/`loop`),
+  and a match start is asserted by the seek's `reconstructions` count, not by the song still sitting
+  on its first beat after a wall-time wait (round 69; the five earlier games carry the old shape on
+  their boards).
+- **A cue is a note or a chord, never a phrase.** `Loop` plays one unit a trigger; a one-shot moment
+  (a death, a fanfare, a cadence) is one unit on its own track, and the fifth nest plays the cadence
+  alone — a fanfare under it is two chords with one meaning. A quantized trigger in the loop's last
+  beat is parked on the seam and dropped, so every game part is `quantize: Off` (#201 is the fix).
+- **Two source kinds, chosen by lifetime.** An entity's source ends in the frame tail when the entity
+  goes, so a note that must ring on (a brick's explosion, a chicken's death — the chicken is hidden,
+  never destroyed) goes on the game's source. Two instruments are two slots and a lane releases only
+  on a same-key strike, so same-frame moments never overwrite each other (round 69's misread).
+- **The loop's end is a written note's end**, so a song whose last bar is a rest wraps early; the
+  bass holds its last note to the bar line, and a test asserts `end_tick`. The meter is written at
+  tick 0 or the pulse's bars land on every other bar line (a song without one is 4/4).
+- **`song new`'s `melody` track ships empty** (program 0, and the banks have no preset 0): a tune
+  goes on its own named track (#223).
+- **Per-game FluidR3 subsets under 4 MiB**, cut by one engine script through a one-line wrapper per
+  game, sha256s in the LICENSE beside the bank, the source bank fetched by `apt download` and checked
+  against the pin; no strings or horns fit beside a timpani. The provenance gate names every audio
+  file in a LICENSE.
+- **The web proof is a method, not a feeling**: each bundle built once with `--sync`, one preview
+  stopped by its recorded pid, a throttled cold boot under 25 s (the display's lock checked first —
+  a locked run took 63 s against 17), a two-minute stress run with the floors read from the run's own
+  page load and no two consecutive drain gaps over 92 ms, the five zero counters quoted verbatim, one
+  loop wrap recorded under the pause menu, the pause confirmed before its moves, and two stills for
+  codex. A tall canvas's stills want a window where the canvas lays out at its own size.
+- **Reviewers, by the totals**: kimi 85 % real, gemini 54 %, codex 97 %. Gemini's confident misreads
+  repeat (the site's two-name contract, the audio thread headless, the instrument slots); a fast
+  reviewer's file leaks into a slow one's round, so codex is dispatched after kimi exits; kimi
+  streams its file, so a waiter never polls non-emptiness; kimi reviews a draft diff as the whole
+  change, so a draft that omits binaries and the lockfile says so in its prompt or eats two
+  Criticals.
+- **The planner's gates run on the staged tree, never from the report**: `cargo test`, clippy with
+  and without `--features editor`, the provenance script, the comment-tag grep, the line caps, the
+  bank's sha256 against its LICENSE, and `status --porcelain` matched line for line against the
+  report's § 11.
+
 ## Physics System Pass-Through and Velocity Semantics (recorded Sep 2026; the `apply_impulse` removal itself predates this entry and was moved here from the `physics_system` module doc)
 
 `PhysicsSystem` provides pass-through methods (`set_velocity`, `take_collision_events`, `destroy_entity`, `reset_body`) delegating to `PhysicsWorld` for ergonomics. `set_velocity` is the single, universal launch/movement API, buffering operations on bodies spawned in the current frame until they are synchronized with Rapier. The legacy `apply_impulse` pass-through was removed because all call sites across the workspace intended "start this body at velocity V" rather than a mass-aware momentum delta, creating a footgun where impulse silently no-oped on same-frame spawns. `PhysicsWorld::apply_impulse` remains available for cases requiring mass-aware momentum changes on live bodies.

@@ -207,3 +207,26 @@ is wall clock from the dispatch timestamp to the review file's mtime.
 | batch 15b code round (draft-15b.diff, with the two pulse stills) | codex | 1 | 1 | 0 | 0 | real: the restart test's `(bar, beat) == (0, 0)` after a wall-time `settle` — a stall over a beat fails a correct seek; applied by the planner (the seek asserted by the `reconstructions` count), and the same shape sits in 15a's test 4 for the close-out; nothing on the stills; dispatched after kimi exited | 0 m 39 s |
 | batch 15b code round (draft-15b-web.diff, the content file) | kimi | 2 | 0 | 1 | 1 | false: "the bundle URLs advance without their assets" (111 synced files staged); policy: "every nest filled sounds the fanfare" overstates the fifth nest (correction 8's sentence verbatim, ruled (ag)) | 0 m 39 s |
 | batch 15b code round (draft-15b-web.diff) | codex | 0 | 0 | 0 | 0 | "No concrete findings in the supplied diff" | 0 m 19 s |
+
+## Totals (2026-10-26, the effort closed)
+
+Two hundred rows, rounds 1 to 69, summed by the `findings`, `real`, `false` and `policy` columns
+(a row's "0 written" counts as 0; `real + false + policy` can differ from `findings` where a row
+split one finding or scored a line the reviewer never wrote).
+
+| reviewer | rows | findings | real | false | policy | real share |
+|---|---|---|---|---|---|---|
+| kimi | 77 | 332 | 281 | 27 | 25 | 85 % |
+| gemini | 67 | 392 | 213 | 133 | 46 | 54 % |
+| codex | 56 | 145 | 140 | 1 | 4 | 97 % |
+
+What each is good for, read from the rows: **kimi** finds the most that holds and misreads the
+runtime least, but writes nothing when it deliberates past its budget (round 67) and
+reviews the diff as the whole change (the deliberate omissions of a draft diff came back as
+Criticals in 69); **gemini** finds the most and is wrong a third of the time, with a fixed set of
+confident misreads — the site's two-name contract three rounds running (68, 69), the audio thread
+headless, the instrument slots — and its real finds are often the ones that reshape a section (the
+shared parts' register, the fifth nest's two chords); **codex** says little and is almost never
+wrong, judges a screen from stills well, and is the one to dispatch last (a fast reviewer's file
+leaks into a slow one's round — round 52).
+

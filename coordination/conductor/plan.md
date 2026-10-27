@@ -4744,7 +4744,27 @@ recommended: two voices for one bad hop); **(ag)** each game's page gains the on
 correction 8; **(ah)** Mars loops at sixty seconds (alternative: twenty-four bars, forty-five
 seconds — a shorter crescendo under a long match).
 
-## Batch 16 — planner only: close-out
+## Batch 16 — planner only: close-out — DONE 2026-10-26
+
+**What the close-out did (2026-10-26).** The final gates: the retired-name grep shows
+`scene_retired_components.rs`, the retirement's own test fixture
+(`scene_serializer/dynamic_and_scripts_tests.rs`) and its doc comment (`scene_data.rs:407`) — the
+machinery that drops those components, no use of them; `check_audio_provenance.sh` clean over the
+seven repos (22 files in the engine, 3 in each game); the working set's `check-skill-parity.sh`
+green after its root commit bc5269e named two root-only scripts the coverage line read as
+uncovered. `PROJECT_ROADMAP.md` row K ☑ COMPLETE and row J's gate reworded; the "K1 gates all of
+Conductor" clause dropped from `CLAUDE.md`; `log_archive.md` § Conductor carries the lessons; the
+scorecard's totals are appended (kimi 332 findings / 281 real, gemini 392 / 213, codex 145 / 140,
+with what each is good for). The review record — every round's draft, review, rebuttal, dispatch
+log, the batches' tools, logs and stills — moved to `review/_archive/conductor/` (773 entries,
+734 MB), the six games' round files under `games/<game>/` beneath it. Follow-ups filed: #225
+(the beat visual leads the heard beat by the output latency), #226 (on the web a Play after Stop
+re-reads and re-fingerprints the bank), #201 commented (the cross-wrap re-aim is that issue), #213
+commented (the song-swap position folds into the swap's contract), the six promotions of each
+`ai_` song to `music/` (pong#6, breakout#8, snake#5, space_invaders#5, asteroids#5, frogger#7),
+and the restart tests' first-beat assertion (round 69) on four new Low-priority backlogs (pong#7,
+snake#6, space_invaders#6, asteroids#6) and breakout#4. The milestone's eight open issues (#60–#63,
+#65, #140, #141, #174) close with the close-out commit; #64 closed with its batch.
 
 The milestone's nine issues closed by their commits; `PROJECT_ROADMAP.md` row K and
 `CLAUDE.md`'s "K1 gates all of Conductor" line updated; `log_archive.md` lessons; the

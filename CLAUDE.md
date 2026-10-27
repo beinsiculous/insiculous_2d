@@ -121,7 +121,7 @@ a bare `gh` command resolves against the session's working directory, which is o
 working-set root, so it lists and files against the wrong repository.
 
 Open work is grouped into **sprint milestones**; each description records the batch's
-internal order and its gates (K1 gates all of Conductor; F3 gates E5). Take the next
+internal order and its gates (F3 gates E5). Take the next
 unblocked issue in a sprint, not an arbitrary one — `/continue` §1 walks the selection.
 A sprint can span repos: the milestone is its per-repo half, the board's `Sprint` field
 the half that crosses, and `scripts/check-sprint-sync.sh` in the working set holds the two
