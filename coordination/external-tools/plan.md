@@ -431,11 +431,11 @@ project with no manifest, the project directory. Computed at init, recomputed on
 
 | entry | where | request |
 |---|---|---|
-| Double-click a tile in the asset browser | `panel_renderer/asset_browser/tile.rs` — a second press within 400 ms and 4 px of the first, on the same tile, with no drag **started** between them (the tile arms a drag on every press, `tile.rs:14`; a drag that passed the threshold suppresses the click, and the double-click with it); the tile's own state remembers the last press; the `ui` crate gains nothing | `OpenRequest { path, Location::None }`; a `.mid` tile → `Location::Track` of the first part's track when the sidecar has one; a `DawProject` tile → the Music tool; an `Image` tile → the Art tool |
-| Enter on a focused tile | the same tile state — the keyboard twin of the double-click, so every tile opens without a pointer (ruling (m)) | as the double-click |
-| Double-click a Scripts row (inspector, hierarchy pseudo-row) | `script_editor.rs`, `hierarchy/` | the script's `source_path`, `Location::None` |
+| Double-click a tile in the asset browser | `panel_renderer/asset_browser/tile.rs` — a second press within 400 ms and 4 px of the first, on the same tile, with no drag **started** between them (the tile arms a drag on every press, `tile.rs:14`; a drag that passed the threshold suppresses the click, and the double-click with it); the tile's own state remembers the last press; the `ui` crate gains nothing | `OpenRequest { path, Location::None }`; a `.mid` tile → `Location::Track` of the first part's track when the sidecar has one (batch 4; batch 2a opens every tile at `Location::None`); a `DawProject` tile → the Music tool; an `Image` tile → the Art tool |
+| Enter on a focused tile | the asset browser holds the keyboard as the composer does (Jesse, 2026-10-27, at batch 2's re-verification: no tile could take focus — Tab traversal reaches only edit fields): a press in the Assets panel takes it; arrows move the selected tile, Enter opens it, the menu key or Shift+F10 opens its context menu, Escape or a press elsewhere lets it go; the selected tile draws the focus ring — the keyboard twin of the double-click (ruling (m)) | as the double-click |
+| Double-click a hierarchy `Scripts` pseudo-row | `hierarchy/` — not the inspector's script rows, which are the "Script id" and "Source" text fields, where a double-click selects a word; those keep the Open Source button | the script's `source_path`, `Location::None` |
 | Open Source button (exists) | `script_editor.rs` | as above, through the new request type |
-| Context menu: Open in <tool> (the item names the resolved tool — "Open in Aseprite", "Open in RustRover", "Open with the system default") / Open containing folder / Edit in MIDI Evil | a first `ContextMenu` widget on `UiLayer::Floating` (the menu bar's dropdown geometry reused), right-press on a tile or a Scripts row; the menu key and Shift+F10 open it from the keyboard | per item |
+| Context menu: Open in <tool> (the item names the resolved tool — "Open in Aseprite", "Open in RustRover", "Open with the system default") / Open containing folder / Edit in MIDI Evil | a first `ContextMenu` widget on `UiLayer::Floating` (the menu bar's dropdown geometry reused), right-press on a tile or a Scripts row (the `ui` input gains the right button's press, its one change); the menu key and Shift+F10 open it from the keyboard | per item |
 | Click a `file:line` in the console | `panel_renderer/console.rs` — an entry with a `Location` draws underlined; Enter on the focused entry does the same; the status bar's current error, when it carries a location, opens on click too | `Location::Line` |
 | Edit in MIDI Evil on an entity's sound settings | `component_editors/sound_emitter.rs`: a `SoundEmitter` whose sound is `Binding(action)` gets the button; the song (below) → `bindings[action].part` → `parts[part].track` → `Location::Track { name, index }` — the track's name and its index in the file, so the second of two `drums` is named exactly (round 4, kimi F4) | `OpenRequest { song.mid, Location::Track { name, index } }` |
 | Edit → Open project in code tool | menu action | `OpenRequest { project, Location::Project }`, expanded through the preset's project template, never the file template |
@@ -778,11 +778,75 @@ plainly. What it left is written into the batches that act on it — the MIDI he
 the `ShellExecuteW` stall check (8). 2,254 lines inserted against the 1,300 target, about 800 of
 them tests.
 
-**Batch 2 — code entry points and the console: #206 (E4), #207 (E5).** Double-click on tiles and
-Scripts rows, Enter on a focused tile, the first context menu whose items name the resolved tool (keyboard-reachable: the menu key, Shift+F10, arrows), the
-Console panel as § Entry points describes it, repeats collapsed, the status bar's error clickable.
-Reviewers: kimi, codex (two stills: the context menu open over a tile; the console with a clickable
-error and a collapsed repeat). Leaves out: Edit in MIDI Evil (batch 4), filters or log levels.
+**Batch 2, split at its re-verification (Jesse, 2026-10-27): 2a the entry points, 2b the console**
+— batch 1 ran 2,254 lines against a 1,300 target, and the two halves share nothing but the
+launcher. The tree as batch 1 left it: `OpenRequest`, `Location` and `EditorContext.open_requests`
+exist and the launcher resolves every file type; the status bar is the launch's only report.
+Files near the 600-line ceiling, so new state goes in new files or the sub-states named:
+`editor/src/context/mod.rs` 572, `panel_renderer/asset_browser.rs` 581, `editor/src/hierarchy/mod.rs`
+554, `editor_game/composer_keys.rs` 537, `editor_game/mod.rs` 531, `panel_renderer/mod.rs` 526,
+`editor/src/menu/mod.rs` 523, `editor_game/shortcuts.rs` 515.
+
+**Batch 2a — the entry points: #206 (E4).** A **double-click** — a second left press on the same
+asset tile within 400 ms and 4 px of the first, with no drag started between them (the tile arms a
+drag on every press, `panel_renderer/asset_browser/tile.rs`; `DragDropState::suppresses_click`
+already suppresses a click after a drag, and the double-click goes with it) — files
+`OpenRequest { path: <the tile's relative path>, Location::None }` for **every tile kind** (Jesse,
+2026-10-27); the last press (which tile, when by `common::clock::Instant`, where) lives in
+`AssetBrowserState`, and the `ui` crate gains nothing for it. The same rule on a hierarchy `Scripts`
+pseudo-row (`HierarchyClick::Script { entity, index }` reports its click today,
+`hierarchy/mod.rs:349-350`) opens the script's `source_path`; a script with none is a native one
+and says so on the status bar. **The asset browser holds the keyboard** on the composer's model
+(`KeyRoute::Composer`, `settle_composer`): a press inside the Assets panel takes it; a press
+elsewhere in the dock, the panel hidden or collapsed, Escape, and a play session's entry let it go;
+while it holds it, its keys decide before the editor's — Left and Right step the selected tile, Up
+and Down step a row of the grid (the selection scrolled wholly into view through the panel's
+`ScrollState`), Enter opens it as the double-click does, the menu key (`KeyCode::ContextMenu`) or
+Shift+F10 opens its context menu at the tile — so an arrow never nudges a scene entity behind it;
+a key it does not use goes on to the editor; the selected tile draws the focus ring
+(`style.focus_ring`, `ui/src/context/edit_field.rs:236-241` is the ring's model) only while the
+browser holds the keyboard. **The first context menu**: `editor/src/context_menu.rs`, a
+`ContextMenu` on `UiLayer::Floating` that reuses the menu bar's dropdown — `dropdown_bounds`,
+`measured_width` and `render_dropdown_static` (`menu/mod.rs:393-433`, private to `MenuBar` today)
+made shareable, not copied — opened by a right press on a tile or a `Scripts` pseudo-row (the `ui`
+input reads the left button alone, `ui/src/input_state.rs:183`; it gains the right button's press,
+the batch's one `ui` change) or from the keyboard as above; Up and Down walk its enabled items,
+Enter chooses, Escape or a press outside closes it, and it blocks input beneath it as the
+dropdown does. Its items: **Open in <tool>**, naming what the file resolves to — "Open in
+RustRover", "Open in Aseprite", "Open with the custom command", "Open with the system default" —
+from one pure function in `external_tools/config.rs` that `resolve`'s own messages share; and
+**Open containing folder**, an `OpenRequest` for the file's folder, which the launcher sends
+straight to the platform's opener when the path is a directory, never through a file type. On the
+web both items draw disabled with the Open Source button's desktop hint. Target shapes: § Entry
+points rows 1 to 5. Reviewers: kimi, codex (one still: the context menu open over a tile, the
+browser holding the keyboard). Leaves out: the console (2b); a `.mid` tile's track location and
+Edit in MIDI Evil (batch 4); keyboard-only entry into a panel, which no panel has yet (#144's gap);
+the inspector's script rows.
+
+**Batch 2b — the console: #207 (E5).** `editor/src/console.rs`: `ConsoleLog`, a bounded `Vec` of
+500 entries, each a severity, its text, an optional location (a path and `Location::Line`) and a
+repeat count; an entry collapses into the last when its location, severity and text match with
+runs of digits normalized, so an error every frame is one line whatever number it carries and a
+different message at one location is a new entry. `panel_renderer/console.rs` draws it; the
+reserved `PanelId::CONSOLE` (`dock/mod.rs:40`, "no panel implementation yet" at `:53`) becomes a
+panel, hidden by default, docked at the bottom beside Assets; View → Console is enabled
+(`menu/mod.rs:225` draws it disabled today; `panel_id_for_menu_label` maps it, `dock/mod.rs:55-63`);
+the tests that pin its absence today (`dock/tests.rs:118-120`, `menu/tests.rs:117`) change with it,
+and a prefs file written before it existed leaves it hidden (the composer's precedent, its test in
+`context/tests.rs`). What lands in it: every script error (`editor_game/script_status.rs` shows them
+on the status bar one at a time today; `ScriptError { file, line, kind, message }`,
+`engine_core/src/scripting/runner.rs:39-44`, a line of 0 meaning none — `ScriptErrors` keeps one
+per file, line and kind a session, so the repeat count serves the launcher's lines and batch 3's
+reload notices), and every launch result (the launcher's status-bar lines and its reaper's
+reports, `editor_game/external_tools.rs`). An entry with a location draws underlined and opens on
+click as `OpenRequest { path, Location::Line { line, column: None } }`; the console holds the
+keyboard on 2a's model, Up and Down walking its entries and Enter opening the focused one's
+location; the shared `ScrollState`, a Clear button, the "Error: " prefix and the status bar's
+`status_error` amber for an error (the a11y rule of #195). The status bar's current error, when it
+carries a location, opens on click too: the bar keeps the location beside its message and reports
+the click, and the host queues the request. Reviewers: kimi, codex (one still: the console with a
+clickable error and a collapsed repeat). Leaves out: filters, log levels; batch 3's reload notices
+(the console takes them when they exist).
 
 **Batch 3 — the watcher and code reload: #208 (E6), #209 (E7), #210 (E8); #211 (E9) closed
 won't-do by ruling (l).** `FileWatch`
@@ -801,8 +865,10 @@ runner's swap and Stop's re-apply are harness and seam). Leaves out: the song an
 salvaged into `external_tools/songs.rs` and pointed at `is_midi_path` (`composer/state.rs:399`
 accepts `mid` alone, so a `.midi` the asset browser lists since batch 1 is missing from File →
 Open Song until then); the Edit in MIDI Evil button on a `Binding` emitter with
-the action → part → track resolution; `.mid`, `DawProject` and sample tiles opening with their
-tools; the context menu's item enabled; recorded sounds reloading in place behind their handle, the
+the action → part → track resolution; a `.mid` tile opening at its first part's track
+(`Location::Track` from its sidecar) through every entry batch 2a gave it — the double-click,
+Enter and the context menu's Open in <tool> — where 2a opens it at `Location::None` (every tile
+kind opens from 2a on); recorded sounds reloading in place behind their handle, the
 library's loaded and failed paths registered, a failure cleared on success (the sound half of #180,
 that issue updated). Target shapes: § Entry points rows 1 and 6, "Which song is the song", the
 `ReloadSample` row. Reviewers: kimi, gemini (the sound library's reload), codex (one still: the
@@ -880,7 +946,7 @@ nothing; this closes the sprint, and the close-out (the milestone's issues close
 the lessons to `log_archive.md`, `review/external-tools/` archived, the scorecard's totals) is the
 planner's.
 
-**Order.** 1 → 2 → 3 in sequence (each builds on the last's types and console); 4 after 2; 5 after
+**Order.** 1 → 2a → 2b → 3 in sequence (each builds on the last's types and console); 4 after 2b; 5 after
 3 and 4; 6 any time after 1; 7 after 4 and 5 and its gate; 8 after 6, before 7 if 7's gate is not
 yet met. One batch out at a time, as the Conductor ran it.
 
