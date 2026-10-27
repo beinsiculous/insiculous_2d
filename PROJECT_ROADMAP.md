@@ -88,6 +88,15 @@ Engine status, test counts, and per-system capability detail live in
 | K | Conductor — shared MIDI parts, custom instruments and in-editor composition | ☑ COMPLETE Oct 26 2026 — fifteen batches over seven days (Oct 20–26): the song core and the conductor, the audio seam, sample instruments, scene sounds, the composer and its web playground, and the six games' music (Tong, the Food Pyramid, Bratdog, Toast Busters, Meatieroids, Chicken Coop, each with a public-domain song sequenced through the composer's API and a FluidR3 subset under 4 MiB); the follow-ups are on the board | `coordination/conductor/plan.md` (the plan, every batch's done note, the rulings), `reviewer-comparison.md` (the scorecard), `log_archive.md` § Conductor; the review record at `review/_archive/conductor/` (untracked) |
 | C/D | Games 7–20 | PAUSED until Phase G and J1 are done (below) | This file § Paused phases |
 
+**Oct 26 2026 (Jesse): composition leaves the engine for MIDI Evil.** The music maker is
+`../midi-evil` (Dr. Maxwell's workstation); the engine keeps the conductor's half. The composer
+panel becomes the **Conductor panel**: a `.mid` comes in, and the panel tells the engine when to
+play what sound, at what note and at what volume — parts, instruments, bindings, audition, Save of
+the sidecar and its LICENSE stanza. The note editing (the piano roll, the note list, `song new` and
+the `AddNote` family) is MIDI Evil's. The Sep 25 "K8 is not a cut candidate" ruling stands for the
+half that stays; External Tools #217 is the re-scope, and the rename follows it
+(`coordination/external-tools/plan.md`).
+
 **Editor**: the Playground UX sprint shipped Sep 12 2026 (its own section below); no
 editor sprint is queued next. **Web Playground** shipped Sep 2026; `docs/WEB_PLAYGROUND.md`.
 
