@@ -1,5 +1,39 @@
 # External Tools — the plan
 
+**v7 — 2026-10-27, after round 5** (`review/external-tools/rebuttal-5.md`: kimi 11, gemini 8,
+codex 6 — twenty-five findings, twenty-one accepted, two rebutted against the tree and the
+standard library, two put to Jesse as arguments against rulings (i) and (k)). What moved: **the
+score and the map are guarded separately** — an external score change is always adopted, the map
+kept with its unsaved edits, and Overwrite / Cancel is the sidecar's prompt alone; **Save As writes
+the whole song** (the loaded score's exact bytes and the map), in-place Save the map; the web
+re-import keeps the sidecar; a headless conflict is a structured error answered by `overwrite`;
+one helper owns the MIDI extensions and the sidecar suffix, recovered names included; recovered
+sidecars are roots for the prune; **the swap is due on a bar-line crossing observed between two
+updates**, the wrap included, a seek resetting the baseline; **every preparation carries a request
+id** and older results are dropped; the host re-asserts its transport and lifecycle queue on the
+new source; a refused preparation stays staged for the next stationary transport; retired sources
+drop on a worker; the closure re-registers after every preparation; `{track_index}` joins the
+placeholders and the MIDI Evil preset; a launch's exit is reported only in its first five seconds;
+WSL's OS default is `wslview`; and ruling (k)'s cost is restated in gemini F1's words — the swap
+lands a frame plus the device's lead after the bar line, cutting the old downbeat and skipping
+the new one — for Jesse to weigh now.
+
+**v6 — 2026-10-27, Jesse's simplicity pass and the art half** (no round between v5 and v6; round 5
+reviews this). Jesse asked for a once-over against the house ideals — simple, accessible, clean — and
+took four simplifications the planner proposed, each reversing findings accepted in rounds 1–4
+(§ The rulings, (i)–(l)): **two writers, two files** — the crossing lock and the conflict files go,
+because after batch 7 no file has two writers; **recovery keeps, never promotes** — the `.new.prev`
+journal and its three-state table go, an interrupted save's journal is kept under a recovered name,
+and batch 7 deletes the journal with the trim; **the bar swap is the host's first** — the new song is
+prepared on a worker and the host swaps the source at the first frame at or past the next bar line,
+so the `Replace` command, the revisions and their five states, the seqlock, the `ActionId` and the
+retired slot go, the v5 text held in § Appendix for the day the listen check fails; **the Rust
+rebuild notice goes** (#211 closes as won't-do). Also: **art joins the table** — an `Art` tool
+category, an `Image` row and an Aseprite preset (ruling (m)), and Enter on a focused tile as the
+double-click's keyboard twin, the one accessibility gap the pass found. **Native `.aseprite` loading
+and the texture reload are their own effort**, `coordination/aseprite-native/plan.md`, reviewed in
+parallel with batches 1–3 and built after batch 3; nothing here decodes one.
+
 **v5 — 2026-10-26, after round 4** (`review/external-tools/rebuttal-4.md`: kimi 8, gemini 8,
 codex 5 — twenty-one findings, every one accepted; the planner recommends settling here). What
 moved: two rulings for Jesse — **(g) a lock in the crossing's contract**, because check-then-write
@@ -95,8 +129,8 @@ console, the settings panel, the Conductor panel. A vendor never reviews its own
 Sprint: milestone "Sprint: External Tools" on `beinsiculous/insiculous_2d`, #203–#220 (E1–E18 in
 the note's lettering, kept here so the issues read against the plan), plus one issue this plan
 files at settling: the rename of the composer to the Conductor panel. The milestone's description
-and #217/#218 are reworded when the plan settles (§ The rulings, (c)); nothing on the board moves
-before Jesse has ruled.
+and #217/#218 are reworded when the plan settles (§ The rulings, (c)), and #211 closes as won't-do
+(ruling (l)); nothing on the board moves before Jesse has ruled.
 
 ## Context
 
@@ -179,15 +213,9 @@ planner left its agents is `../midi-evil/docs/insiculous-crossing.md`.
   velocity scale, with a sidebar row in the Conductor panel — a Small addition to batch 7, not to
   the audio seam. The planner recommends waiting for a game to want it; the field is cheap to add
   later and nothing shipped needs it.
-- **(g) A lock in the crossing's contract — proposed, Jesse's call** (round 4). Check-then-write
-  is not atomic on any filesystem, and four rounds found the race between the engine's fingerprint
-  check and its write. `<file>.mid.lock`, created `O_EXCL` with the writer's name, pid and stamp
-  inside, stale after 30 s: the engine takes it around every write of a `.mid` or `.mid.ron` (the
-  finals, a journal's promotion, a conflict file), MIDI Evil around its export (its contract).
-  Inside the lock the comparison is exact; a lock held by the other side makes the engine wait up
-  to two seconds, then refuse with "MIDI Evil is writing the score; try again". A writer that does
-  not take the lock (a hand edit in a text editor) is outside the guarantee, which the docs say;
-  the conflict file still catches it after the fact.
+- **(g) A lock in the crossing's contract — withdrawn by (i)** (round 4 proposed `<file>.mid.lock`,
+  `O_EXCL`, stale after 30 s, around every write of either file; v6 removes the second writer
+  instead of locking against it).
 - **(h) Windows opens a file through `ShellExecuteW` — proposed, Jesse's call** (round 4). The
   OS-default launch on Windows has failed three ways in review — `cmd /C start` re-splits the
   path, `explorer.exe` opens a folder and exits 1, `rundll32 url.dll,FileProtocolHandler`
@@ -200,8 +228,47 @@ planner left its agents is `../midi-evil/docs/insiculous-crossing.md`.
   The engine's Save keeps writing `midi_fingerprint`: it is what the `.new` save journal pairs a
   recovered MIDI with its sidecar by (`song/io/open.rs:161-173`). MIDI Evil never touches the
   sidecar, so after an export the fingerprint no longer matches the bytes — and that is read as
-  "the score changed outside", not as a refusal: § The open song document. Recovery of an
-  interrupted save decides by the fingerprints of both finals, never by stamps (rounds 2 and 3).
+  "the score changed outside", not as a refusal: § The open song document. An interrupted save's
+  journal is kept, never promoted (ruling (j)).
+- **(i) Two writers, two files** (Jesse, 2026-10-27). After batch 7 the engine writes only the
+  `.mid.ron` and MIDI Evil only the `.mid`, so no file has two writers and nothing needs a lock.
+  The lock of (g) and the conflict files of v4–v5 go. A change found under a dirty document
+  immediately before a write prompts Overwrite / Cancel through the existing `ConfirmDialog`;
+  never a third file, never a knowing overwrite — the window between that compare and the
+  rename is the accepted cost, and two engine instances on one project are unsupported (round 5,
+  kimi F3, rebutted as this ruling). In the transition — before batch 7 — a
+  score-authoring save keeps its fingerprint precheck and the window between the check and the
+  write is accepted and documented: it is one developer's machine for a few weeks, and the
+  recovered file is what it costs.
+- **(j) Recovery keeps, never promotes** (Jesse, 2026-10-27). The `.new.prev` journal and its
+  three-state classification go. On open, a `.new` journal — the pair, or a lone sidecar — is
+  renamed to `<stem>.recovered-<fingerprint>.<ext>` with a notice and the finals open as they
+  are; nothing is deleted, nothing is promoted. After batch 7 a save is one file by
+  temp-and-rename and the journal is deleted with the trim.
+- **(k) The bar swap is the host's first** (Jesse, 2026-10-27). The new song is prepared on a
+  worker (kept) and the host swaps the playback's source at the first `update` at or past the
+  next bar line, the position carried as the bar and the fraction of the bar converted with
+  both tempo maps on the host. Gone: the `Replace` lifecycle command, the revisions and their
+  five states, the seqlock snapshot, the stable `ActionId`, the retired slot, the seam's
+  allocation-free re-check and the acknowledgement window. Kept: the worker preparation, the
+  track diff, the host's generation, the stationary-transport and stopped-at-end rules, the
+  shorter-song rule. The cost, said plainly (round 5, gemini F1 names it exactly): the swap
+  lands up to one frame plus the device's lead after the bar line — the old score's downbeat has
+  begun and is cut with the seek's release, and the new score's notes that began at the bar line
+  are skipped. The batch-5 listen check
+  decides; if Jesse hears it, the audio-thread seam of v5 returns as its own batch — its text
+  is held verbatim in § Appendix, not deleted. The simplest thing that works, machinery only
+  after the simple version has actually failed.
+- **(l) The Rust rebuild notice goes** (Jesse, 2026-10-27). #211 closes as won't-do; the `.rs`
+  tree listing, the five watched roots and the sticky notice leave the watcher;
+  `RebuildNotice` leaves `ReloadPolicy`; a `.rs` opens in the Code tool with policy `None`.
+  You edited the Rust; you know it needs a rebuild.
+- **(m) Art joins the table; the native half is its own effort** (Jesse, 2026-10-27). An `Art`
+  tool category with an `Image` row and an Aseprite preset land here, as table rows in the one
+  mechanism. Reading `.aseprite` files directly, the texture reload behind a handle and the
+  change to how art enters a game are `coordination/aseprite-native/plan.md`, reviewed in
+  parallel and built after batch 3; its `.aseprite` row and `ReloadTexture` policy join this
+  table when it lands.
 
 ## What the tree holds (verified 2026-10-26 by the note's author; the files re-checked by the planner)
 
@@ -216,10 +283,10 @@ planner left its agents is `../midi-evil/docs/insiculous-crossing.md`.
 | File watching | None. `common::vfs::change_stamp` (length + mtime, `None` on wasm) exists; the audio dependency cache keys freshness on it (`audio/src/manager/song/load.rs`) | **Build** a polling watcher over it, no dependency |
 | Songs | `AudioManager::play_song(path)` reads `.mid` + `<path>.ron`, prepares the whole closure through the stamp-fresh cache, builds a conductor **off the audio thread** and a `ConductorSource` for it (`song.rs:284`; one conductor a song), then swaps the source; `SongPlayback` (`:135-148`) holds the `Arc<Song>`, the binding table, the handle, the requested transport, the pending lifecycle queue and the `BeatEdges`; `Conductor::load` allocates (slots, two background synthesizers, the trigger engine) | **Extend**: a prepared replacement conductor swapped at the bar, the host's state moved as one generation |
 | The sidecar | `music_midi/src/song_file.rs`, `docs/SONG_FORMAT.md`: `parts` (name → `Name(..)` or `Index(n)`), `instruments`, `bindings`, provenance, `midi_fingerprint` (optional on read); `validate` refuses a part whose track has no notes (`EmptyTriggerPart`, `song_file/validate.rs:96-103`) | **One change**: a selected track with no notes becomes a silent part (ruling (a)'s muted track); otherwise the manifest the track diff validates against |
-| The song document | `editor/src/song/`: `SongDocument` with its own `SongData`; `save` (`io.rs:310`) writes the `.mid` and the sidecar from memory with the fingerprint (`:281`); `open` (`io/open.rs:89`) promotes a `.new` journal pair that matches itself (`recover_pair`, `:161-173`, without looking at the finals) and refuses finals whose fingerprint differs (`MismatchedFinals`, `:130-133`); `apply` refuses every `SongEdit` under `EditingPolicy::Refused` (`song/mod.rs:172-179`, mixed-channel tracks) | **Extend**: the document follows the score, a map save is sidecar-only, recovery by fingerprint, map edits on any playable MIDI (§ The open song document) |
+| The song document | `editor/src/song/`: `SongDocument` with its own `SongData`; `save` (`io.rs:310`) writes the `.mid` and the sidecar from memory with the fingerprint (`:281`); `open` (`io/open.rs:89`) promotes a `.new` journal pair that matches itself (`recover_pair`, `:161-173`, without looking at the finals) and refuses finals whose fingerprint differs (`MismatchedFinals`, `:130-133`); `apply` refuses every `SongEdit` under `EditingPolicy::Refused` (`song/mod.rs:172-179`, mixed-channel tracks) | **Extend**: the document follows the score, a map save is sidecar-only, a journal is kept rather than promoted, map edits on any playable MIDI (§ The open song document) |
 | Recorded sounds | `AssetManager::resolve_sound` caches handles by path and remembers failures until the base path changes (`sound_library.rs:21-26`); never invalidates (#180) | **Fix** the sound half as the sample reload, failures included |
 | Which song is the project's | `init_music.rs` captures the song the game's `init` asked for; the composer scans `music/` and `ai/music/` for its Songs list | **Keep** both; the scan is salvaged into `external_tools/songs.rs` |
-| The build | Decision of record (`docs/EDITOR_COMMAND_API.md`, "the editor does not own the build"): any rebuild is "spawn cargo, relaunch self"; no build-system work | **Notice only** for `.rs` changes |
+| The build | Decision of record (`docs/EDITOR_COMMAND_API.md`, "the editor does not own the build"): any rebuild is "spawn cargo, relaunch self"; no build-system work | **Nothing** for `.rs` changes (ruling (l)) |
 | The composer | 8,322 lines incl. tests across three layers: the GUI (`editor/src/composer/`, 21 files: state, layout, keys, piano roll, note list, sidebar, sound_fonts, transport; `editor_integration`'s `composer_keys.rs`, `composer_drag.rs`, `panel_renderer/composer.rs`), the song document (above), the command API (`command_api/song.rs`: `song new\|edit\|save\|open\|close\|play\|stop\|seek\|trigger`, `song`, `song notes`) | **Re-scope** into the Conductor panel (§ The Conductor panel): the map stays, the score's authoring goes — once the round trip exists |
 | `song_preview.rs`, `init_music.rs` | the preview transport and the session's music; the Conductor effort's close-out landed 2026-10-26 (8061b1c), so this effort may edit them | **Keep**; the session-music half is how Play hears the game's song |
 
@@ -230,20 +297,21 @@ planner left its agents is `../midi-evil/docs/insiculous-crossing.md`.
 ```
 FileType  ──►  ToolCategory  ──►  ToolChoice (per category, overridable per type)  ──►  Launch
    │                 │
-   └── ReloadPolicy  └── Code | Music | Sample     (the category decides the presets and the env fallback)
+   └── ReloadPolicy  └── Code | Music | Sample | Art     (the category decides the presets and the env fallback)
 ```
 
 `FileType` (`crates/editor/src/external_tools/file_type.rs`, the one place the mapping lives):
 
 | type | extensions | category | `{project}` | reload policy |
 |---|---|---|---|---|
-| `RustSource` | `.rs` | Code | Cargo workspace root | `RebuildNotice` |
+| `RustSource` | `.rs` | Code | Cargo workspace root | `None` (ruling (l)) |
 | `RhaiScript` | `.rhai` | Code | Cargo workspace root | `RecompileScript` |
 | `Ron` | `.ron` (scene), `.sheet.ron`, `.mid.ron` | Code | Cargo workspace root | `ReloadDocument` (scene) / `ReloadSheet` / `ReloadSong` (by sidecar suffix) |
-| `Midi` | `.mid`, `.midi` | Music | asset base | `ReloadSong` |
+| `Midi` | `.mid`, `.midi` — one helper decides the MIDI extension, case-insensitive, and its sidecar suffix `<name>.<ext>.ron`, used by save (`io.rs:347` accepts `mid` alone today), the Songs scan, the watcher, the upload, this table and the recovered names (round 5, kimi F7, gemini F6) | Music | asset base | `ReloadSong` |
 | `AudioSample` | `.wav`, `.ogg`, `.flac`, `.mp3` | Sample | asset base | `ReloadSample` |
 | `DawProject` | `.evil`, `.prj`, `.nsp` by default, editable (ruling (d)) | Music | asset base | `None` |
 | `SoundFont` | `.sf2` | Music | asset base | `ReloadSong` (for every song whose closure names it — round 2, codex F7) |
+| `Image` | `.png`, `.jpg`, `.jpeg`, `.bmp`, `.gif` (the asset browser's list, `asset_browser.rs:98-108`) | **Art** | asset base | `None` here; the Aseprite effort adds `ReloadTexture` and its own `.aseprite` row |
 
 The reload policy is data in this table, not a setting: users pick tools; the engine knows what a
 file means. The asset browser's `AssetKind` follows the table: `Song` gains `midi`, and a
@@ -254,12 +322,13 @@ advertised extension reaches a tile and the context menu; a launch test per exte
 
 ```rust
 // crates/editor/src/external_tools/
-pub enum ToolCategory { Code, Music, Sample }
+pub enum ToolCategory { Code, Music, Sample, Art }
 pub enum ToolChoice { Preset(PresetId), Custom(CommandTemplate), OsDefault }
 pub struct ExternalToolsConfig {            // on EditorPreferences, #[serde(default)]
     pub code: ToolChoice,                    // default: OsDefault (so $VISUAL/$EDITOR is tried first)
     pub music: ToolChoice,                   // default: OsDefault
     pub sample: ToolChoice,                  // default: OsDefault
+    pub art: ToolChoice,                     // default: OsDefault
     pub overrides: BTreeMap<FileType, ToolChoice>,
     pub daw_project_extensions: Vec<String>, // default [".evil", ".prj", ".nsp"]
 }
@@ -269,7 +338,7 @@ pub struct Launch { pub program: String, pub args: Vec<String>, pub preset: Opti
 pub struct OpenRequest { pub path: PathBuf, pub location: Location }     // replaces pending_open_source
 pub enum Location { None, Project, Line { line: usize, column: Option<usize> }, Track { name: Option<String>, index: usize } }
 
-pub enum ReloadPolicy { None, RecompileScript, ReloadDocument, ReloadSheet, ReloadSong, ReloadSample, RebuildNotice }
+pub enum ReloadPolicy { None, RecompileScript, ReloadDocument, ReloadSheet, ReloadSong, ReloadSample }
 ```
 
 Resolution (`config.rs`, pure, tested), in order: `overrides[file_type]` **if present** — an
@@ -293,8 +362,9 @@ expanded text is split into argv **per span**: a bare group's spans become their
 value is substituted whole and never re-split, so `{file}` never needs quoting. Tests: a path with
 spaces survives; RustRover's template with no line yields `[rustrover, file]`; `{file}[:{line}]`
 with a line yields `file:42`; `[--line {line}]` with a line yields two tokens; a quoted program
-path tokenizes as one program. An unknown `{name}` is an error at config time (the settings panel
-shows it; the launcher refuses). `{file}` is always absolute (`resolve_asset_path`); `{project}` per
+path tokenizes as one program. The placeholders are `{file}`, `{project}`, `{line}`, `{column}`, `{track}` and
+`{track_index}` (round 5, gemini F4, codex F5). An unknown `{name}` is an error at config time
+(the settings panel shows it; the launcher refuses). `{file}` is always absolute (`resolve_asset_path`); `{project}` per
 the table. About 90 lines, no dependency.
 
 ### Presets — verified 2026-10-26 against the vendors' pages
@@ -306,30 +376,34 @@ the table. About 90 lines, no dependency.
 | VSCodium | `codium` | as VS Code | github.com/VSCodium/vscodium/blob/master/docs/usage.md; the flags being VS Code's is not stated there — manual test |
 | Zed | `zed` (Linux "commonly `zed` or `zeditor`") | `zed {project} {file}[:{line}[:{column}]]` | zed.dev/docs/reference/cli.md, verbatim `zed myfile.txt:42:10` |
 | Helix | `hx` | `hx [-w {project}] {file}[:{line}[:{column}]]` | helix-term's help text `file[:row[:col]]`, `-w, --working-dir`; a terminal editor, ruling (d) |
-| **MIDI Evil** | `midi-evil` (the desktop crate's binary; `cargo run -p midi-evil` today) | `midi-evil [--project {project}] [--track {track}] {file}` | § MIDI Evil's half, the contract this plan defines; until MIDI Evil has the flags, the Custom field with `{file}` alone works |
+| **MIDI Evil** | `midi-evil` (the desktop crate's binary; `cargo run -p midi-evil` today) | `midi-evil [--project {project}] [--track {track}] [--track-index {track_index}] {file}` | § MIDI Evil's half, the contract this plan defines; until MIDI Evil has the flags, the Custom field with `{file}` alone works |
 | Audacity | `audacity` (Flatpak `org.audacityteam.Audacity`) | `audacity {file}` | `AudacityApp::ParseCommandLine` (3.7.8): a file-name parameter, no time-position option; re-verify at Audacity 4 |
+| **Aseprite** | `aseprite`; after `PATH`, the Steam install `~/.steam/root/steamapps/common/Aseprite/aseprite` (the path `deion_assets/scripts/export_sheet.py:28` already tries); the not-found message names the Flatpak id `org.aseprite.Aseprite` | `aseprite {file}` | aseprite.org/docs/cli: a file argument opens it in the GUI; `--frame-range` and `--tag` act only in batch mode (`-b`), so there is no location placeholder — re-verify at the next Aseprite release (1.3.18 at writing) |
 | Custom command | any | the user's template | — |
 
 The preset table is data (`presets.rs`), each row's source URL in a doc comment, so the next
 verification is a diff against the page. **Each Code preset carries a second, `project`
 template** for Edit → Open project (round 3, kimi F8): RustRover `rustrover {project}`, VS Code
 `code {project}`, VSCodium `codium {project}`, Zed `zed {project}`, Helix `hx -w {project}`; a
-Custom tool's project template is a second field, empty meaning the action is disabled; Music and
-Sample tools have none. A test per preset.
+Custom tool's project template is a second field, empty meaning the action is disabled; Music,
+Sample and Art tools have none. A test per preset.
 
 ### The launcher (`editor_integration/src/editor_game/external_tools.rs`, replaces `open_source.rs`)
 
 Per frame, drain `EditorContext.open_requests: Vec<OpenRequest>` (a Vec: a context menu and a
 console click can land in one frame). For each: resolve `FileType` → `Launch`; find the program —
 **a program containing a path separator is checked as a file first** (round 1, gemini F8), else
-looked up on `PATH` yourself (iterate `PATH`, honour `PATHEXT` on Windows) so a missing binary
+looked up on `PATH` yourself (iterate `PATH`, honour `PATHEXT` on Windows), then at the preset's
+fallback locations if it names any (Aseprite's Steam install), so a missing binary
 reads `rustrover: not found on PATH (searched 11 directories) — set the tool in Edit → External
 Tools…` rather than the OS's `No such file`; spawn with `std::process::Command` (argv, never a
 shell), **stdout to null and stderr piped**; **two threads per launch** (round 1, gemini F7;
 round 2, gemini F6): one reads stderr into a bounded buffer (the last 4 KiB) until EOF, so a
 long-lived GUI child never blocks on a full pipe and a descendant holding the pipe blocks only
 that reader; the other waits the child, as today's reaper does (`open_source.rs:43`), **joins the reader
-(bounded at 200 ms)** and then reports every non-zero exit whenever it comes, the first 500 ms
+(bounded at 200 ms, through a channel's `recv_timeout` — std has no timed join)** and reports a
+non-zero exit only within the first five seconds, reaping a later one silently (a GUI closed
+hours later is not news — round 5, gemini F3), the first 500 ms
 choosing the wording "exited at once — a terminal editor needs a terminal; set a tool in Edit →
 External Tools…" with the buffer's first line (round 4, gemini F6). A legacy `ide_command` migrates into
 `code: Custom(..)` with ` {file}` appended when it has no file placeholder, so `code --wait` keeps
@@ -346,10 +420,11 @@ project with no manifest, the project directory. Computed at init, recomputed on
 
 | entry | where | request |
 |---|---|---|
-| Double-click a tile in the asset browser | `panel_renderer/asset_browser/tile.rs` — a second press within 400 ms and 4 px of the first, on the same tile, with no drag **started** between them (the tile arms a drag on every press, `tile.rs:14`; a drag that passed the threshold suppresses the click, and the double-click with it); the tile's own state remembers the last press; the `ui` crate gains nothing | `OpenRequest { path, Location::None }`; a `.mid` tile → `Location::Track` of the first part's track when the sidecar has one; a `DawProject` tile → the Music tool |
+| Double-click a tile in the asset browser | `panel_renderer/asset_browser/tile.rs` — a second press within 400 ms and 4 px of the first, on the same tile, with no drag **started** between them (the tile arms a drag on every press, `tile.rs:14`; a drag that passed the threshold suppresses the click, and the double-click with it); the tile's own state remembers the last press; the `ui` crate gains nothing | `OpenRequest { path, Location::None }`; a `.mid` tile → `Location::Track` of the first part's track when the sidecar has one; a `DawProject` tile → the Music tool; an `Image` tile → the Art tool |
+| Enter on a focused tile | the same tile state — the keyboard twin of the double-click, so every tile opens without a pointer (ruling (m)) | as the double-click |
 | Double-click a Scripts row (inspector, hierarchy pseudo-row) | `script_editor.rs`, `hierarchy/` | the script's `source_path`, `Location::None` |
 | Open Source button (exists) | `script_editor.rs` | as above, through the new request type |
-| Context menu: Open in external tool / Open containing folder / Edit in MIDI Evil | a first `ContextMenu` widget on `UiLayer::Floating` (the menu bar's dropdown geometry reused), right-press on a tile or a Scripts row; the menu key and Shift+F10 open it from the keyboard | per item |
+| Context menu: Open in <tool> (the item names the resolved tool — "Open in Aseprite", "Open in RustRover", "Open with the system default") / Open containing folder / Edit in MIDI Evil | a first `ContextMenu` widget on `UiLayer::Floating` (the menu bar's dropdown geometry reused), right-press on a tile or a Scripts row; the menu key and Shift+F10 open it from the keyboard | per item |
 | Click a `file:line` in the console | `panel_renderer/console.rs` — an entry with a `Location` draws underlined; Enter on the focused entry does the same; the status bar's current error, when it carries a location, opens on click too | `Location::Line` |
 | Edit in MIDI Evil on an entity's sound settings | `component_editors/sound_emitter.rs`: a `SoundEmitter` whose sound is `Binding(action)` gets the button; the song (below) → `bindings[action].part` → `parts[part].track` → `Location::Track { name, index }` — the track's name and its index in the file, so the second of two `drums` is named exactly (round 4, kimi F4) | `OpenRequest { song.mid, Location::Track { name, index } }` |
 | Edit → Open project in code tool | menu action | `OpenRequest { project, Location::Project }`, expanded through the preset's project template, never the file template |
@@ -394,11 +469,10 @@ closure whether or not anything plays** (round 1, codex F5) — the `.mid`, the 
 sample and SoundFont they name (the closure the audio cache computed); every `SoundEmitter(Path)`
 sound **and every path the sound library has loaded or failed** (round 1, kimi F12); **every path a
 failed song preparation attempted**, a missing one as a tombstone, so creating the sample a
-hand-edited sidecar named retries the preparation (round 2, kimi F9); every `.sheet.ron` the
-scene's sprites reference; and — for `RebuildNotice` only — the `.rs` files under
-the workspace root's `src/`, `crates/*/src/`, `examples/`, `tests/` and every crate-root `build.rs`
-(listed with `vfs::list_files`, re-listed every 30th poll; manifests stay outside the notice and
-the doc says so — round 1, kimi F14). The mtime-granularity pitfall (same length within the
+hand-edited sidecar named retries the preparation (round 2, kimi F9) — **the closure
+re-registered after every preparation, successful or failed**, so a dependency a sidecar edit
+added is watched from then on (round 5, kimi F11); every `.sheet.ron` the
+scene's sprites reference. No `.rs` is watched (ruling (l)). The mtime-granularity pitfall (same length within the
 filesystem's granularity keeps its stamp) is accepted and documented.
 
 Dispatch (`editor_integration/src/editor_game/hot_reload.rs`), by the table's policy:
@@ -408,15 +482,21 @@ Dispatch (`editor_integration/src/editor_game/hot_reload.rs`), by the table's po
 | `RecompileScript` | a console line (the runner compiles at session start) | `ctx.scripts.reload_source(path)`: recompile; on success swap the AST for every instance of that path, clear its `failed` and quarantine entries, keep blackboards and params; on a syntax error keep the old AST running and put the error, with its line, in the console as a link; a runtime error on the first tick after a reload (the state's shape changed) quarantines as any runtime error does and the console says "reloaded script failed on its first frame — Stop and Play to reset its state", the blackboard kept on purpose (round 2, gemini F7) |
 | `ReloadDocument` (scene) | history clean → `load_scene` from disk (the dry-run guard keeps a bad file from the live world); dirty → `ConfirmDialog` "scene changed on disk: Reload (discard my edits) / Keep mine" | deferred: a notice now, the same rule at Stop |
 | `ReloadSheet` | a transaction: the sidecar parsed and the texture resolved **before** any live state changes, a failure keeping the old sheet and reporting (round 2, kimi F13); then `clear_sidecar_cache()` + the sheet's texture and clips for every `SpriteAnimation` naming it; a clip index past the new frame count clamps and warns | same; **and Stop re-applies the on-disk sheet state to the restored world** (the sidecar is SSOT; the snapshot restore would otherwise bring the old clips back with the stamp already consumed — round 1, kimi F10), guard-tested |
-| `RebuildNotice` | "Rust source changed (N files) — rebuild and relaunch to see it", sticky until relaunch; a console line per file; no `cargo` is spawned | same |
 | `ReloadSong` (the `.mid`, the `.mid.ron`, a SoundFont or a sample in a song's closure — any dispatches the song that owns it) | the open document follows the score (below) and the track diff runs against the last loaded song, so a rename is caught before Play | the open document follows the score; the bar-seam swap below |
 | `ReloadSample` | a recorded sound: the `AudioManager` reloads the bytes behind the same `SoundHandle`, so every emitter and `resolve_sound` entry stays valid (the sound half of #180); **a path the library had marked failed is retried, and a success clears the remembered failure and serves the handle** (round 1, kimi F12); a failed reload keeps the old bytes and reports; a song sample is in the song's closure → the swap | same; a one-shot already playing finishes on the old bytes, a looping instance restarts on the new at its next loop boundary with the engine's fade (round 3, gemini F9) |
 
 #### The open song document follows the score
 
 The Conductor panel's `SongDocument` holds the score it opened; MIDI Evil owns the score from now
-on, so the document **never writes it from memory over a newer file** (rounds 1 to 3):
+on, so the document **never writes it from memory over a newer file** (rounds 1 to 3) — and after
+batch 7 **each file has one writer**, the engine the `.mid.ron` and MIDI Evil the `.mid`, which is
+what lets the rest be simple (ruling (i)):
 
+- **Save As writes the whole song; Save writes the map** (round 5, kimi F2). `song save <path>` to
+  another target, and the panel's Save As, write the loaded score's exact bytes and the map — a
+  copy, the one case the engine writes a `.mid` after batch 7; an existing target needs
+  `overwrite` (the API has it, `song_io.rs:190-194`) and both its files are replaced. Tests for
+  a new and an overwritten target.
 - **A map save is sidecar-only.** Save writes the `.mid.ron` (and the LICENSE stanza) and leaves
   the `.mid` untouched unless the document's score was changed in the engine — which, after batch
   7, nothing can do, and before it only a score-authoring edit does. **The document keeps the
@@ -426,24 +506,25 @@ on, so the document **never writes it from memory over a newer file** (rounds 1 
 - **In the transition, a score-authoring save never overwrites a `.mid` whose bytes are not the
   ones this document loaded or last wrote** (round 3, kimi F1): the fingerprint is compared
   immediately before the finals' write; on a difference the journal's score is kept as
-  `<stem>.recovered.mid` with a notice and the on-disk score is untouched. The window is the write
-  itself; after batch 7 the case does not exist.
-- **The document guards both files by content fingerprint**, not by stamp (round 3, kimi F4): it
-  remembers the `.mid`'s and the `.mid.ron`'s fingerprints from its last read, compared
-  immediately before each write. An external change of either: a clean document reloads that file
-  — the score with the map kept, or the map with the score kept — and the status bar says it was
-  edited outside; a dirty one prompts through the existing `ConfirmDialog` machine ("the score
-  changed on disk: Reload my map onto it / Keep mine", or "the map changed on disk: Reload / Keep
-  mine"). **Every write of either file is taken under the crossing's lock** (ruling (g)), so the comparison
-immediately before the write is exact; a conflict found there (a same-length edit inside the mtime
-granularity, or a writer that took no lock) writes the document's version as
-`<stem>.conflict-<fingerprint>.mid.ron` beside the file — a name that never collides, never
-replacing an existing file (round 4, kimi F3) — with a notice naming both; never silently, never
-over the other writer's. Same-stamp, write-during-commit and locked-by-MIDI-Evil tests. **The document's reload is never
-  gated on the audio swap's validation**: a renamed track refuses the playback replacement, but
-  the document still holds the new score with the old map, shows the diff's lines, and lets the
-  map be fixed and saved — and that Save dispatches the replacement itself (gemini F1 of rounds 2
-  and 3).
+  `<stem>.recovered-<fingerprint>.mid` with a notice and the on-disk score is untouched. The
+  window between that comparison and the write is accepted and written down (ruling (i)): it
+  exists only until batch 7, on one developer's machine, and the recovered file is what it costs.
+- **The document guards the two files by content fingerprint, and separately** (round 3, kimi
+  F4; round 5, gemini F2, kimi F9): it remembers the `.mid`'s and the `.mid.ron`'s fingerprints
+  from its last read. **An external change of the score is always adopted**, clean or dirty —
+  MIDI Evil owns the score (ruling (b)) — the map kept with its unsaved edits, the track diff run
+  and its lines shown, the status bar saying the score was edited outside; there is no "Keep
+  mine" for a score. An external change of the map: a clean document reloads it; a dirty one
+  prompts through the existing `ConfirmDialog` machine ("the map changed on disk: Reload / Keep
+  mine"). **Immediately before each write both fingerprints are compared again**: a changed
+  score is adopted first (reload, keep the map, re-run the diff) and the save then fingerprints
+  the score as it is on disk; a changed sidecar — a same-length edit inside the mtime
+  granularity, a write between the watcher's poll and the Save — prompts "the map changed on
+  disk since you loaded it: Overwrite / Cancel". Never a knowing overwrite, never a third file:
+  ruling (i) retires the conflict file. Same-stamp and write-during-commit tests for each file. **The document's reload is never gated on the audio swap's
+  validation**: a renamed track refuses the playback replacement, but the document still holds
+  the new score with the old map, shows the diff's lines, and lets the map be fixed and saved —
+  and that Save dispatches the replacement itself (gemini F1 of rounds 2 and 3).
 - **Map edits are allowed on any MIDI the loader plays.** `EditingPolicy::Refused` (mixed-channel
   tracks) scopes to score edits; parts, instruments, bindings, provenance and Save work for every
   playable file, with a test on a two-channel track (round 2, kimi F8).
@@ -453,27 +534,360 @@ over the other writer's. Same-stamp, write-during-commit and locked-by-MIDI-Evil
 - **The fingerprint** (ruling (f)): Save keeps writing `midi_fingerprint`; on open, a fingerprint
   that differs from the bytes **with no journal present** means the score changed outside — the
   song opens on the new MIDI with its sidecar, the status bar says so, and the next Save rewrites
-  the fingerprint; a mismatch **with** a journal is an interrupted save.
-- **Recovery decides by fingerprint, never by stamp, over both finals** (round 2, kimi F3; round
-  3, kimi F3, codex F1). The journal gains a third file, `<path>.new.prev`, holding **both finals' previous fingerprints —
-absence included — and the journal's target fingerprints** at the moment the save began. On open
-each final is classified as *previous* (untouched since), *target* (this save's own partial
-commit) or *other* (changed outside): two previous → promote the pair; two targets → the save
-finished, remove the journal; a target and a previous → complete the remaining write; an *other*
-anywhere → open the finals as they are and keep the journal under recovered names
-(`<stem>.recovered-<fingerprint>.mid` and/or `.mid.ron`) with a notice — nothing is deleted
-(round 3, gemini F2; round 4, kimi F2, gemini F1, codex F2–F3). A lone `.mid.ron.new` (a map save
-interrupted before its sidecar write) follows the same table over the one final it would write
-**and the `.mid` it leaves alone**: both must be *previous*. A test per state. **The prune of
-  unreferenced samples moves after the finals are written and the journal removed** (`io.rs:462`
-  prunes between them today; round 3, kimi F2), so an interruption at any step leaves every sample
-  the chosen song names on disk; the existing recovery and prune guard tests keep their contracts
-  and gain the external-export cases: an engine-saved song then a MIDI Evil export then open; an
-  export between an interrupted save and the reopen; a hand-edited sidecar between them.
+  the fingerprint; a mismatch **with** a journal is an interrupted save, below.
+- **Recovery keeps, never promotes** (ruling (j)). On open, a `.new` journal — the pair, or a lone
+  `.mid.ron.new` from a map save — is renamed to `<stem>.recovered-<fingerprint>.mid` and/or
+  `<stem>.recovered-<fingerprint>.mid.ron` — the compound suffix split off first by the MIDI
+  helper, never `theme.mid.recovered-….ron` (round 5, gemini F6); a name that never collides,
+  never replacing an existing file — with a notice naming
+  it, and the finals open as they are. Nothing is deleted, nothing is promoted, and the finals
+  are not classified: the person opens the recovered file if they want that save. This replaces
+  `recover_pair` (`song/io/open.rs:161-173`) and `MismatchedFinals` (`:130-133`) with one rule
+  and one test per journal shape (pair, lone sidecar, journal plus an externally changed `.mid`);
+  the existing recovery and prune guard tests are rewritten to it. **The prune of unreferenced
+  samples runs after the finals are written and the journal removed** (`io.rs:462` prunes between
+  them today; round 3, kimi F2), so an interruption at any step leaves every sample the chosen
+  song names on disk — **and every `<stem>.recovered-*.mid.ron` beside the song is a root for the
+  prune**, so a kept recovery can still be opened (round 5, codex F4; an interruption → recovery
+  → save → open-the-recovery test). **Batch 7 deletes the journal**: once Save writes one file, it is a temp
+  file in the same directory and a rename, and `.new` ceases to exist.
 - **The API** (`song open`, `song save`, `song init`) follows the same rules, so the headless path
-  and the panel cannot disagree.
+  and the panel cannot disagree: `song save` answers a sidecar conflict with a structured error
+  naming both files and each one's state (today it says "the save was parked",
+  `song_io.rs:196-201`); `song save <path> overwrite` is the non-interactive overwrite and `song
+  open` the reload (round 5, kimi F8), tested over `--headless`.
 
 #### MIDI reload: swap at the next bar, keep playing
+
+The replacement is **a prepared source, swapped by the host** (ruling (k)); the audio thread
+learns nothing new. `AudioManager::replace_song_at_seam(path)` prepares the new closure **on a
+worker thread** (the result over a channel, polled from `update`; the game thread only adopts the
+result, so a 48 MiB bank never stalls a frame — round 4, kimi F8) exactly as `play_song` does: the
+same cache, so only the changed file is decoded again; the same `validate`, so a refusal leaves
+the playing song untouched and names the sidecar entry and the track; **a selected track with no
+notes is a silent part** — a trigger on it is a rest, counted in `triggers_silent`, the cursor
+held — so ruling (a)'s muted track passes (round 2, kimi F4); a score with no notes at all,
+`end_tick == 0`, is refused as "the score is empty". The worker builds the whole `ConductorSource`
+— the conductor loaded, its slots and background synthesizers built, its bindings resolved by
+name into its parts, its own command channel and `SharedPosition` — and hands it over as
+`PreparedPlayback { generation, song: Arc<Song>, bindings, beat_edges, source }`, parked on
+`SongPlayback` as `pending_replacement: Option<PreparedPlayback>`. **Every preparation carries a
+monotonically increasing request id** (round 5, kimi F4, codex F3): a result or a failure older
+than the latest request is dropped unread, so a slow bank preparation can never overwrite a
+newer sidecar-only one — the newer wins by request order, never by finish order, with B finishing
+before A as the test; a preparation for another playback generation is dropped the same way.
+Superseded and retired sources are dropped on a worker thread, never on the frame (round 5,
+gemini F7).
+
+**The swap**, on the first `update` where it is due: the host reads the old transport's position
+and converts it as **the bar index and the fraction of the bar in the old map — to the tick at
+that fraction of the same bar in the new map**, the fraction applied to the new bar's actual
+length (a partial last bar included), so bar 4 of the new score follows bar 3 of the old whatever
+the tempo or meter did, a paused half-beat survives, a 4/4 → 3/4 change lands in the same bar at
+the same proportion, and nothing maps past `end_tick`; a looping song takes the bar modulo the new
+song's bar count (the engine's loop is the whole song, `sequencer.rs:61-126`; there is no loop
+start); precedence: clamp inside the bar, then wrap for a looping song, then the non-looping
+refusal. Then the host seeks the new source to that tick with the old transport's play state and
+looping flag, replaces the slot's source — the path `play_song` already takes (`song.rs:340`) —
+and adopts **that preparation's** `Arc<Song>`, binding table and `BeatEdges` on the new tempo map
+as one transition, so `trigger("boom")` after a reordered sidecar reaches the right part, an added
+action resolves, and `beat_crossed` counts on the new map. **When it is due**: a running
+transport — the first `update` that observes a bar-line crossing since the previous `update`,
+forward or by the loop's wrap, so a replacement prepared in a loop's last bar is due at the wrap
+and the swap lands within one frame after the bar line; a seek the host itself sent resets the
+baseline and never counts as a crossing (round 5, kimi F6, codex F1 — backward and forward seeks
+after the preparation, a loop's last bar and a one-bar loop are tests); a stationary
+transport — paused, or stopped at its end — at once, at its held position; a loop shorter than a
+bar at its wrap; a running song that reaches its end with a replacement pending takes it there,
+playing on when the position is inside the new song, else stopped at the new end (round 4,
+gemini F3). For a running non-looping song a mapped position at or past the new end refuses the
+swap — `ReplaceRefused { reason }` to the console, the old playing on, **the preparation kept
+staged and taken by the next stationary transport**, a stop, a seek or a replay (round 5, gemini
+F5) — instead of ending the transport; a transport **stopped at the old song's end takes the
+replacement stopped at the new song's end**, so a seek or a replay plays the new score (round 3,
+gemini F4). `play_song`, `stop_song` and the editor's session end drop a pending preparation
+(round 1, kimi F5; codex F7).
+
+**What it costs, said plainly** (ruling (k); round 5, gemini F1 names the mechanism): the
+published position runs ahead of what is heard by `latency_samples` and the device's buffer (up
+to 61 ms in a browser), so at the frame after the bar line the old source has already rendered
+the downbeat: the swap cuts it with the seek's release, and the new source starts past the notes
+that began at the bar line, so the new score's downbeat is skipped — audible once per save, at
+the downbeat. The command channel, the handle and the position reader belong to a source, so the
+swap replaces them with the new source's; **the host re-asserts its own `requested` transport
+(`song.rs:146`) and re-sends its pending lifecycle queue to the new source**, so a seek or a
+pause the old channel accepted and had not drained is not lost; the triggers of the swap frame
+are, once per save, and the doc says so; a deactivation is moot on the new source's fresh table,
+since the host's `SoundSources` knows which sources ended (round 5, kimi F5, codex F2 — tested
+with the old source prevented from draining). Nothing crosses the audio thread but the source swap the engine already does for every
+`play_song`. **The listen check of batch 5 decides**: "heard from the next bar, the hits on the
+beat before and after" passes with that frame of lateness; if Jesse hears the seam, the
+audio-thread swap of v5 — held verbatim in § Appendix — returns as its own batch.
+
+Tests through the public `AudioManager` API, headless on the virtual clock: a reordered binding,
+an added action, a tempo change, a 4/4 → 3/4 change, a ticks-per-quarter change, a seek queued
+before and after the preparation arrives, a replacement prepared for a song that was then
+stopped, a replacement over a transport stopped at its end, a second preparation before the first
+swaps, a shorter looping song, a bank-only edit (the SoundFont changed, the MIDI and the sidecar
+not). The timing fixture is the largest shipped instrument set (Chicken Coop's five): the
+worker's preparation time measured under `cargo test --release` and quoted. The guarantee: the
+background score and every later trigger stay on the same beat grid as before the save, within a
+frame.
+
+#### Manifest validation on reload, and the track diff
+
+Before a replacement is prepared, with both `SongData`s in hand, the host diffs **what each part
+resolves to** (round 1, kimi F4, codex F3), not the name sets alone: for every part **whose selector is
+unchanged between the old sidecar and the new**, its track's identity before and after, **by the
+selector's own semantics** (round 3, codex F4): a `Name` part's identity is its name, so a uniquely
+named track that moved index reloads unchanged; an `Index` part's identity is the name at that
+index, so drift is caught; a part whose selector the author changed is an
+explicit mapping, accepted and reported ("part `flute` now selects `Flute (lead)`"), so the repair
+the diagnostic asks for goes through (round 2, codex F8). A part's track **missing** → `validate`
+refuses, the error shows, the old song plays on; an unchanged selector whose resolved track
+**changed identity** (an `Index(n)` that now lands on a different name) → refused, the message
+naming both; a track **new** in the file that no part selects → "track `X` is new and no part
+selects it; it plays as background" (every unselected track is background by design); a part's
+track missing **and** a new name at the same index → "track `flute` is gone; index 1 is now `Flute
+(lead)` — renamed in MIDI Evil? Edit the sidecar's part"; a `Name(..)` now **ambiguous** →
+`validate` refuses and the message says to use `Index`. Every line to the console, the first to the
+status bar. A `.mid.ron` saved by hand takes the same path. The diff is pure
+(`external_tools/track_diff.rs`) over two resolved part lists.
+
+### MIDI Evil's half — the contract across the crossing
+
+The engine spawns, never waits, never reads stdout:
+
+```
+midi-evil [--project <dir>] [--track <name>] [--track-index <n>] <file.mid>
+```
+
+| element | meaning | required of MIDI Evil |
+|---|---|---|
+| `<file.mid>` | the absolute path of the Standard MIDI File (type 0 or 1) to open — for MIDI Evil, an **import** into a working `.evil` beside it or in its own store | open it; if an instance already shows it, focus that instance (single-instance forwarding is MIDI Evil's job) |
+| `--track <name>`, `--track-index <n>` | the MIDI track-name meta event (`FF 03`) of the track to select (UTF-8, spaces allowed, one argv element) and its 0-based index in the file's track order, the index winning when both are given — the second of two `drums` is named exactly (round 4, kimi F4) | select it and scroll to it; unknown → open anyway, say so, exit 0 |
+| `--project <dir>` | the game's asset base, where the sidecar's samples and SoundFonts resolve | optional; a hint for dialogs |
+| exit status | 0 once accepted (the UI may still be loading), non-zero with one stderr line otherwise | the engine logs stderr's first line |
+| **the export back** | MIDI Evil writes the `.mid` the engine opened: format 1, the tempo and **the time signature as written**, every track's name preserved (the join key to the sidecar), **a muted track as a named track with no notes** (indices hold), a program change at tick 0 and CC 7 / CC 10 from the track's patch, gain and pan, ticks-per-quarter as the author set it (480 default for the engine), complete tracks closed with `EndOfTrack`; written **atomically** (a temp file in the same directory, then rename), so the watcher never reads a half-written file; never `<file>.mid.ron` | hard requirements for hot reload to be trustworthy |
+| not in the contract | bar position, loop range, instruments, the sidecar's fingerprint, a lock (ruling (i): each file has one writer) | — |
+
+MIDI Evil's issues, in its own repo, the contract's other half (`../midi-evil/docs/insiculous-crossing.md`
+carries them for its agents): (0) `.evil` → `.mid` export with the rules above (today's export is
+NanoStudio-only and 4/4-based at 128 ticks); (1) open a `.mid` given positionally and export back to
+it on save; (2) `--track <name>` and `--track-index <n>`; (3) single instance; (4) `--project <dir>`; (5) a fixture pair the
+engine's track diff can use — a `.mid` and the same file with one track renamed — checked into MIDI
+Evil's fixtures and mirrored into `crates/music_midi/fixtures/` with a LICENSE line. Until (0) and
+(1) exist, the engine side works with the Custom field (`cargo run -p midi-evil -- {file}`), and the
+round trip is import → edit → export by hand; **batch 7 waits on (0) and (1)** (§ The batches).
+
+### Cross-platform rules
+
+Argv everywhere; `std::process::Command` quotes for `CreateProcess` itself; **no shell call anywhere** — the Windows OS default is `ShellExecuteW` (ruling (h)), the
+association without a parse and without a trampoline (round 3, kimi F7, codex F5; round 4, gemini
+F5); `windows-sys` is already in `Cargo.lock` four times over through winit, so ruling (h) adds a
+direct dependency on a crate the tree already builds, not new code.
+A Flatpak app is not on `PATH` as its binary name: the "not found" error suggests `flatpak run
+<app-id> …` as a Custom command, and the docs note the sandbox's filesystem grant. Snap binaries
+live in `/snap/bin`. WSL: a resolved program ending in `.exe` on Linux gets every path placeholder
+through `wslpath -w`, a failed conversion an error naming it; the OS default under WSL (`/proc/version` contains "microsoft") is `wslview <translated path>`
+— wslu's launcher, argv, no shell; absent, the not-found message names `wslu` — because a Linux
+binary cannot call `ShellExecuteW` (round 5, gemini F8, codex F6); the manual matrix exercises it
+with a space, an `&` and a comma in the path. macOS: `open -a <App> <file>` is the "an app, not a CLI" escape hatch. A missing binary
+is one sentence, never a panic. Web: the whole module is `cfg(not(target_arch = "wasm32"))` except
+the types; the entry points draw disabled with today's hint.
+
+### Patterns
+
+Command (an `OpenRequest` is data the host executes later; a replacement is a prepared source the
+host swaps when it is due); Observer by polling (the watcher), over OS notification because the rule is no new
+dependency until the simple thing has failed; the type table is a flyweight of behaviour per file
+type. Nothing is a service locator: the host owns the watcher, the config rides the preferences,
+the audio manager owns the swap.
+
+### The Conductor panel (the composer re-scoped, then renamed)
+
+| piece | fate | why |
+|---|---|---|
+| the piano roll, the note list, note editing (keys, drag, the note dialogs), the authoring verbs of the song API (`song new` as a score maker, `AddNote`, `MoveNotes`, `ResizeNotes`, `AddTrack`, `SetTempo`, `SetTimeSignature`) and `song/selection.rs` with the GUI-only helpers — `song init <path.mid>`, the sidecar scaffold, stays | **go — once MIDI Evil's export round-trips a shipped song** (§ The batches, batch 7's gate); until then the authoring verbs stay, and the GUI's piano roll may go first only once the verbs cover what it did headlessly | the score is MIDI Evil's; the engine never has a day with no way to write notes (round 1, gemini F1, codex F9) |
+| the sidebar's parts, instruments and bindings, the SoundFont and Songs scans, the transport and Play audition, Save writing the sidecar and the LICENSE stanza (and the `.mid` only when the document's score is the file's — § The open song document), the song document's history for those edits, the map verbs (`AddPart`, `AddInstrument`, `SetBinding`, `SetProvenance`, `song`, `song notes`, `song save\|open\|close\|play\|stop\|seek\|trigger`) | **stay** | the conductor's half; the six games' songs were mapped through those verbs |
+| `song_preview.rs`, `init_music.rs` | **stay** | how a Play session hears the game's song |
+| `midi_fingerprint` | **kept, written by the engine's Save**; a mismatch with no journal is an external edit (ruling (f)) | the `.new` journal pairs by it |
+| `scan_sound_fonts`, the Songs scan | **salvaged** into `external_tools/songs.rs` first (batch 4), then the panel reads them from there | the entry points need them before the re-scope |
+| `editor/src/composer/` → `conductor/`, `composer_*` files, `PanelId::COMPOSER`, the View item "Composer" → "Conductor", the theme tokens' names, the guides' sections | **renamed** after the trim | ruling (c) |
+| **the web playground** | **keeps the Conductor panel and its `.mid`/`.wav` import**; **a re-imported `.mid` keeps its sidecar** (`upload.rs:191-195` removes it and both journals today) and the open document follows the score as on native, with an end-to-end test that the notes change and the map survives (round 5, kimi F1); score editing on the web is download → MIDI Evil → re-import, and the browser's piano roll goes only with the native one, after the round trip is demonstrated | said plainly (round 1, codex F9): external launch is disabled on the web, so the browser's workflow is the file round trip |
+| `docs/SONG_FORMAT.md` § How the composer saves, `docs/EDITOR_COMMAND_API.md` § Songs, the games' guides' "open the song in the composer" sentences, the roadmap's Phase K row | **rewritten** | the docs follow the ruling |
+
+A song's authoring verbs, once gone, refuse with a message naming MIDI Evil; the open issues #200,
+#197, #188, #187, #186 are re-read at batch 7: closed as superseded where they were the piano
+roll's, kept where they are the map's. #183 and #182 (the song's save files) stay.
+
+## The batches
+
+Each batch is one handoff to the Opus executor from `review/external-tools/handoff-N.md`, reported
+at `review/external-tools/report-N.md`, reviewed in code mode (kimi always; gemini on a harness,
+fixture or seam; codex on a screen, from stills the report names) and committed by the planner on
+Jesse's word. Issue numbers are the milestone's; the batch names what the issues do not.
+
+**Gates, mechanical, every batch:** `cargo test --workspace` (0 failed, 0 ignored), `cargo clippy
+--workspace --all-targets` (0 warnings), the comment-tag grep from `CLAUDE.md` printing nothing,
+`scripts/check_wasm.sh`; `scripts/check_games.sh` when `engine_core` or `audio` changed;
+`scripts/check_guide_tests.sh` when a guide's pitfall table changed; the 600-line ceiling over
+every touched `.rs`; `scripts/check_audio_provenance.sh` when a fixture lands. The planner reruns
+every gate on the staged tree before the code round.
+
+**Batch 1 — the foundation: #203 (E1), #204 (E2), #205 (E3).** The pure half (the type table with
+the `Art` category and its `Image` row, `ReloadPolicy` without `RebuildNotice`, the group-first
+templates, the config with its `art` choice, the presets with MIDI Evil's and Aseprite's rows, the
+`{track_index}` placeholder and the preset fallback locations, the resolution order, the MIDI
+extension helper), the
+asset browser's `midi`, `SoundFont` and `DawProject` kinds, and the launcher replacing
+`open_source.rs` (the path-first program lookup, the two threads with the reaper joining the
+reader, ruling (h)'s Windows default, the project templates, the explicit `OsDefault` override, the
+`ide_command` migration with `{file}` appended, the Open Source button working through it). Files:
+new `crates/editor/src/external_tools/{mod,file_type,template,config,presets}.rs`,
+`editor_preferences.rs` (`ide_command` read into `code: Custom(..)` when set, no longer written),
+`asset_browser.rs`, new `editor_integration/src/editor_game/external_tools.rs` (`open_source.rs`
+deleted, its headless tests carried over), `editor/src/context/mod.rs` (`open_requests:
+Vec<OpenRequest>`), `script_editor.rs`. Target shapes: § One table, § Types, § Command templates,
+§ Presets, § The launcher. Reviewers: kimi, gemini (the launcher's lookup, spawn and stderr drain
+are a seam). Leaves out: every entry point but the button, the watcher, the settings UI. Under
+1,300 lines.
+
+**Batch 2 — code entry points and the console: #206 (E4), #207 (E5).** Double-click on tiles and
+Scripts rows, Enter on a focused tile, the first context menu whose items name the resolved tool (keyboard-reachable: the menu key, Shift+F10, arrows), the
+Console panel as § Entry points describes it, repeats collapsed, the status bar's error clickable.
+Reviewers: kimi, codex (two stills: the context menu open over a tile; the console with a clickable
+error and a collapsed repeat). Leaves out: Edit in MIDI Evil (batch 4), filters or log levels.
+
+**Batch 3 — the watcher and code reload: #208 (E6), #209 (E7), #210 (E8); #211 (E9) closed
+won't-do by ruling (l).** `FileWatch`
+on its worker thread with its registered set, debounced tombstones, companion files and
+`note_written` baselines; `hot_reload.rs`
+with the registered set's rebuild rules; Rhai recompile on save in a Play session
+(`ScriptRunner::reload_source`, the AST swapped, blackboards kept, a syntax error keeping the old
+AST and linking the line); scene and sheet reload through the existing guards and dialog, the sheet as a transaction and
+re-applied on Stop, the first-tick rule after a script reload. Target shapes: § File watching and hot reload (the
+first three policy rows). Reviewers: kimi, gemini (the watcher's debounce and tombstones, the
+runner's swap and Stop's re-apply are harness and seam). Leaves out: the song and sample policies
+(batches 4 and 5), any `cargo` spawn.
+
+**Batch 4 — music entry points and the sample reload: #212 (E10), #215 (E13).** `scan_songs`
+salvaged into `external_tools/songs.rs`; the Edit in MIDI Evil button on a `Binding` emitter with
+the action → part → track resolution; `.mid`, `DawProject` and sample tiles opening with their
+tools; the context menu's item enabled; recorded sounds reloading in place behind their handle, the
+library's loaded and failed paths registered, a failure cleared on success (the sound half of #180,
+that issue updated). Target shapes: § Entry points rows 1 and 6, "Which song is the song", the
+`ReloadSample` row. Reviewers: kimi, gemini (the sound library's reload), codex (one still: the
+emitter's settings with the button). Leaves out: the song swap.
+
+**Batch 5 — the song follows the score: #213 (E11), #214 (E12).** The open song document's
+two-file policy by content fingerprint with the score always adopted, the sidecar-only save over
+the loaded bytes, Save As writing the whole song, the transition's score-authoring rule, the
+Overwrite / Cancel prompt before a sidecar write and its headless error, recovery that keeps and
+never promotes, the prune moved after the finals with recoveries as roots, the map edits on mixed-channel MIDI,
+`song init`, and the panel's Save dispatching the reload, with their migration tests (§ The open
+song document); the silent part in `music_midi`'s `validate` and trigger engine;
+`replace_song_at_seam` with the worker's `PreparedPlayback` and its request id, the host's swap
+on an observed bar-line crossing with the bar-and-fraction conversion, the stationary-transport,
+stopped-at-end, end-while-pending, short-loop and staged-refusal rules, the host's re-asserted
+transport and lifecycle queue, its one-transition adoption, retired sources dropped on a worker,
+the closure re-registered (§ MIDI reload); the
+`conductor_background` example's `--replace-after <bars>` flag; the `ReloadSong` dispatch with the
+debounce → prepare → diff → swap chain and `track_diff.rs` over resolved parts. Reviewers: kimi,
+gemini (the audio seam; the half-written-file and the renamed-track fixtures). Listen check:
+Jesse, Tong in the editor, a note changed in MIDI Evil (or any editor that writes a `.mid`) and
+saved mid-bar, heard from the next bar with the hits on the beat before and after — a frame of
+lateness passes; a seam Jesse hears sends § Appendix to a batch of its own. Leaves out: anything
+in MIDI Evil's repo; the fixture pair until MIDI Evil ships it (a hand-made pair in
+`music_midi/fixtures/` with a LICENSE line stands in); the audio-thread swap.
+
+**Batch 6 — the settings panel: #216 (E14).** `settings_panel.rs` over `EditableInspector`: a
+cycle row per category for the preset, a string field for the Custom template with the inline red
+invalid state, per-type overrides, the MIDI Evil binary field, the DAW project extensions, a Test
+button per category; Edit → External Tools…; keyboard-walkable with a visible focus ring, labelled
+controls, no colour-only state; narrow mode as the dock's overlay. Closes #102. Target shapes:
+§ Types. Reviewers: kimi, codex (two stills: the panel at rest; a template error shown). Leaves
+out: nothing of the brief's settings.
+
+**Batch 7 — the Conductor panel: #217 (E15, reworded), #218 (E16, reworded), the rename (filed at
+settling).** **Gated on MIDI Evil's `.evil` → `.mid` export and positional open round-tripping one
+of the six shipped songs through the engine** — import, a note changed, export, `cargo test` in
+that game green over the exported file and the song opening in the panel — demonstrated and quoted
+in the handoff. Then the trim: the piano roll, note list, note editing and the authoring verbs go;
+the sidebar, transport, audition and Save stay; the authoring verbs refuse naming MIDI Evil; the
+five composer-defect issues re-read; the playground's export still carries the open song's two
+files, its re-import keeps the sidecar, and the browser's reduction is written into
+`docs/WEB_PLAYGROUND.md`. Then the rename, as
+its own commit: module, panel id, View item, theme tokens, guides. Target shapes: § The Conductor
+panel. Reviewers: kimi, gemini (the API's refusals and the playground's export are seams), codex
+(two stills: the Conductor panel on `ai_tong.mid`, native and in the playground). Leaves out:
+ruling (e)'s gain field unless Jesse rules it in. If the gate is not met when batch 6 lands, batch
+8 goes first and batch 7 waits; the sprint does not close without it.
+
+**Batch 8 — platform polish and the docs: #219 (E17), #220 (E18).** WSL paths and `wslview`, the Flatpak hint,
+the three OS-default fallbacks and the WSL one exercised by hand on a Linux, macOS and Windows
+machine with a path containing a space and an `&` (the results recorded in the issue); `docs/EXTERNAL_TOOLS.md` (the presets with
+their sources and dates, Aseprite's among them, the template grammar, the resolution order, the
+reload table with the Art rows and a cross-link to the Aseprite effort's doc, MIDI Evil's
+contract, the platform notes), the SSOT row in `CLAUDE.md`, `training.md`'s directory map, the two
+editor guides, `docs/SCRIPTING.md`, `docs/SONG_FORMAT.md` (the fingerprint's rule; MIDI Evil's
+export rules), the games' guides' composer sentences, the roadmap. Reviewers: kimi. Leaves out:
+nothing; this closes the sprint, and the close-out (the milestone's issues closed by their commits,
+the lessons to `log_archive.md`, `review/external-tools/` archived, the scorecard's totals) is the
+planner's.
+
+**Order.** 1 → 2 → 3 in sequence (each builds on the last's types and console); 4 after 2; 5 after
+3 and 4; 6 any time after 1; 7 after 4 and 5 and its gate; 8 after 6, before 7 if 7's gate is not
+yet met. One batch out at a time, as the Conductor ran it.
+
+## Verification, end to end
+
+- Every batch: the gates above, run by the planner on the staged tree, never from the report.
+- After batch 3: the editor on pong, `touch assets/scripts/paddle.rhai` from a shell → the console
+  says so within a second; Ctrl+S on the scene → no reload; in Play, change `speed` in
+  `paddle.rhai` and save → the paddle moves faster, no Stop; break the syntax → the old speed holds
+  and the console links the line; a sheet changed in Play → still changed after Stop.
+- After batch 5: Tong in the editor, Play; a note changed in MIDI Evil (or any editor that writes a
+  `.mid`) and saved mid-bar → heard from the next bar, the hits on the beat before and after (a
+  frame of lateness at the bar passes; a gap Jesse hears sends § Appendix to a batch); the
+  `flute` track renamed → the status bar says the part's track is gone and the console suggests
+  the rename; the part's selector fixed in the panel and saved → the song swaps at the bar from the
+  panel's own Save; a binding changed in the panel and saved
+  after an export → the exported notes survive.
+- After batch 7: the editor on pong opens `ai_tong.mid`: the sidebar shows its parts, instruments
+  and bindings, Play auditions it, no note can be moved; `song open` / `song notes melody` / `song
+  save` answer over `--headless`; a saved song passes the provenance gate; a `.mid` tile
+  double-clicks into MIDI Evil; the gate's round trip is quoted in the handoff.
+- Final: a reader with no context sets up VS Code from `docs/EXTERNAL_TOOLS.md` alone and opens a
+  script at a line; `scripts/check_wasm.sh`, `check_games.sh`, `check_guide_tests.sh` green; no doc
+  tells a reader to open the composer.
+
+## Out of scope, said plainly
+
+No embedded editor of any kind; no web editor work beyond keeping the gate green and writing the
+browser's reduction down; no MIDI Evil code in this repo; no `cargo` spawn and no rebuild notice
+(ruling (l)); no texture hot reload and no `.aseprite` decoding here — both are the Aseprite
+effort's (`coordination/aseprite-native/plan.md`); no `notify`/inotify dependency until
+polling has failed in practice; no locale or `GameConfig` RON reload; no new sidecar field until
+ruling (e) is taken; no manifest (`Cargo.toml`) watching.
+
+## Carried from the Conductor effort (the lessons that bind every batch here)
+
+The planner's gates run on the staged tree, never from the report; every wait in a test is a
+bounded poll or a step count and the executor greps its own test file for `while`/`loop`; a retry
+loop re-reads every id a restart replaces; a match start or a seek is asserted by the event's
+counter, not by the clock; a draft diff that omits binaries or the lockfile says so in its prompt;
+codex is dispatched after kimi exits; kimi streams its file, so nothing polls non-emptiness; the
+site's two-name contract and the headless virtual clock are the two things gemini misreads every
+round; a CDP-driven menu is confirmed open before its moves; a tall canvas's stills want a window
+where the canvas lays out at its own size; the audio thread never allocates, parses or drops.
+
+## Appendix — the audio-thread seam (held)
+
+The v5 design of the swap, taken only if batch 5's listen check fails ruling (k). Held verbatim
+so nothing the four rounds found is lost; not a target shape for any batch until Jesse says so.
+
+#### MIDI reload (v5): swap at the next bar, keep playing
 
 The replacement is **a prepared conductor, not a rebuild** (round 1, kimi F9, gemini F2, codex F2).
 `AudioManager::replace_song_at_seam(path)` prepares the new closure **on a worker thread** (the
@@ -555,241 +969,3 @@ stopped at its end, B prepared while A swaps, a bank-only edit
 (the SoundFont changed, the MIDI and the sidecar not). The timing fixture is the largest shipped instrument set (Chicken Coop's five) — the seam block's cost and the worker's
 preparation time measured under `cargo test --release` and quoted. The guarantee: the background score and every later trigger stay on the same beat grid
 as before the save.
-
-#### Manifest validation on reload, and the track diff
-
-Before a replacement is prepared, with both `SongData`s in hand, the host diffs **what each part
-resolves to** (round 1, kimi F4, codex F3), not the name sets alone: for every part **whose selector is
-unchanged between the old sidecar and the new**, its track's identity before and after, **by the
-selector's own semantics** (round 3, codex F4): a `Name` part's identity is its name, so a uniquely
-named track that moved index reloads unchanged; an `Index` part's identity is the name at that
-index, so drift is caught; a part whose selector the author changed is an
-explicit mapping, accepted and reported ("part `flute` now selects `Flute (lead)`"), so the repair
-the diagnostic asks for goes through (round 2, codex F8). A part's track **missing** → `validate`
-refuses, the error shows, the old song plays on; an unchanged selector whose resolved track
-**changed identity** (an `Index(n)` that now lands on a different name) → refused, the message
-naming both; a track **new** in the file that no part selects → "track `X` is new and no part
-selects it; it plays as background" (every unselected track is background by design); a part's
-track missing **and** a new name at the same index → "track `flute` is gone; index 1 is now `Flute
-(lead)` — renamed in MIDI Evil? Edit the sidecar's part"; a `Name(..)` now **ambiguous** →
-`validate` refuses and the message says to use `Index`. Every line to the console, the first to the
-status bar. A `.mid.ron` saved by hand takes the same path. The diff is pure
-(`external_tools/track_diff.rs`) over two resolved part lists.
-
-### MIDI Evil's half — the contract across the crossing
-
-The engine spawns, never waits, never reads stdout:
-
-```
-midi-evil [--project <dir>] [--track <name>] [--track-index <n>] <file.mid>
-```
-
-| element | meaning | required of MIDI Evil |
-|---|---|---|
-| `<file.mid>` | the absolute path of the Standard MIDI File (type 0 or 1) to open — for MIDI Evil, an **import** into a working `.evil` beside it or in its own store | open it; if an instance already shows it, focus that instance (single-instance forwarding is MIDI Evil's job) |
-| `--track <name>`, `--track-index <n>` | the MIDI track-name meta event (`FF 03`) of the track to select (UTF-8, spaces allowed, one argv element) and its 0-based index in the file's track order, the index winning when both are given — the second of two `drums` is named exactly (round 4, kimi F4) | select it and scroll to it; unknown → open anyway, say so, exit 0 |
-| `--project <dir>` | the game's asset base, where the sidecar's samples and SoundFonts resolve | optional; a hint for dialogs |
-| exit status | 0 once accepted (the UI may still be loading), non-zero with one stderr line otherwise | the engine logs stderr's first line |
-| **the export back** | MIDI Evil writes the `.mid` the engine opened: format 1, the tempo and **the time signature as written**, every track's name preserved (the join key to the sidecar), **a muted track as a named track with no notes** (indices hold), a program change at tick 0 and CC 7 / CC 10 from the track's patch, gain and pan, ticks-per-quarter as the author set it (480 default for the engine), complete tracks closed with `EndOfTrack`; written **atomically** (a temp file in the same directory, then rename), so the watcher never reads a half-written file; never `<file>.mid.ron` | hard requirements for hot reload to be trustworthy |
-| **the lock** | `<file>.mid.lock`, `O_EXCL`, the writer's name, pid and stamp inside, removed after the rename, stale after 30 s — ruling (g) | taken around every export; the engine takes the same lock around its own writes and waits up to two seconds for MIDI Evil's |
-| not in the contract | bar position, loop range, instruments, the sidecar's fingerprint | — |
-
-MIDI Evil's issues, in its own repo, the contract's other half (`../midi-evil/docs/insiculous-crossing.md`
-carries them for its agents): (0) `.evil` → `.mid` export with the rules above (today's export is
-NanoStudio-only and 4/4-based at 128 ticks); (1) open a `.mid` given positionally and export back to
-it on save; (2) `--track <name>`; (3) single instance; (4) `--project <dir>`; (5) the lock around every export; (6) a fixture pair the
-engine's track diff can use — a `.mid` and the same file with one track renamed — checked into MIDI
-Evil's fixtures and mirrored into `crates/music_midi/fixtures/` with a LICENSE line. Until (0) and
-(1) exist, the engine side works with the Custom field (`cargo run -p midi-evil -- {file}`), and the
-round trip is import → edit → export by hand; **batch 7 waits on (0) and (1)** (§ The batches).
-
-### Cross-platform rules
-
-Argv everywhere; `std::process::Command` quotes for `CreateProcess` itself; **no shell call anywhere** — the Windows OS default is `ShellExecuteW` (ruling (h)), the
-association without a parse and without a trampoline (round 3, kimi F7, codex F5; round 4, gemini
-F5).
-A Flatpak app is not on `PATH` as its binary name: the "not found" error suggests `flatpak run
-<app-id> …` as a Custom command, and the docs note the sandbox's filesystem grant. Snap binaries
-live in `/snap/bin`. WSL: a resolved program ending in `.exe` on Linux gets every path placeholder
-through `wslpath -w`, a failed conversion an error naming it; the OS default under WSL (`/proc/version` contains "microsoft") is ruling (h)'s mechanism on the
-translated path, through `cmd.exe`'s host side only if no Windows binary of the engine is at hand
-— the manual matrix says which. macOS: `open -a <App> <file>` is the "an app, not a CLI" escape hatch. A missing binary
-is one sentence, never a panic. Web: the whole module is `cfg(not(target_arch = "wasm32"))` except
-the types; the entry points draw disabled with today's hint.
-
-### Patterns
-
-Command (an `OpenRequest` is data the host executes later; a replacement is a command in the one
-channel); Observer by polling (the watcher), over OS notification because the rule is no new
-dependency until the simple thing has failed; the type table is a flyweight of behaviour per file
-type. Nothing is a service locator: the host owns the watcher, the config rides the preferences,
-the audio manager owns the swap.
-
-### The Conductor panel (the composer re-scoped, then renamed)
-
-| piece | fate | why |
-|---|---|---|
-| the piano roll, the note list, note editing (keys, drag, the note dialogs), the authoring verbs of the song API (`song new` as a score maker, `AddNote`, `MoveNotes`, `ResizeNotes`, `AddTrack`, `SetTempo`, `SetTimeSignature`) and `song/selection.rs` with the GUI-only helpers — `song init <path.mid>`, the sidecar scaffold, stays | **go — once MIDI Evil's export round-trips a shipped song** (§ The batches, batch 7's gate); until then the authoring verbs stay, and the GUI's piano roll may go first only once the verbs cover what it did headlessly | the score is MIDI Evil's; the engine never has a day with no way to write notes (round 1, gemini F1, codex F9) |
-| the sidebar's parts, instruments and bindings, the SoundFont and Songs scans, the transport and Play audition, Save writing the sidecar and the LICENSE stanza (and the `.mid` only when the document's score is the file's — § The open song document), the song document's history for those edits, the map verbs (`AddPart`, `AddInstrument`, `SetBinding`, `SetProvenance`, `song`, `song notes`, `song save\|open\|close\|play\|stop\|seek\|trigger`) | **stay** | the conductor's half; the six games' songs were mapped through those verbs |
-| `song_preview.rs`, `init_music.rs` | **stay** | how a Play session hears the game's song |
-| `midi_fingerprint` | **kept, written by the engine's Save**; a mismatch with no journal is an external edit (ruling (f)) | the `.new` journal pairs by it |
-| `scan_sound_fonts`, the Songs scan | **salvaged** into `external_tools/songs.rs` first (batch 4), then the panel reads them from there | the entry points need them before the re-scope |
-| `editor/src/composer/` → `conductor/`, `composer_*` files, `PanelId::COMPOSER`, the View item "Composer" → "Conductor", the theme tokens' names, the guides' sections | **renamed** after the trim | ruling (c) |
-| **the web playground** | **keeps the Conductor panel and its `.mid`/`.wav` import**; score editing on the web is download → MIDI Evil → re-import, and the browser's piano roll goes only with the native one, after the round trip is demonstrated | said plainly (round 1, codex F9): external launch is disabled on the web, so the browser's workflow is the file round trip |
-| `docs/SONG_FORMAT.md` § How the composer saves, `docs/EDITOR_COMMAND_API.md` § Songs, the games' guides' "open the song in the composer" sentences, the roadmap's Phase K row | **rewritten** | the docs follow the ruling |
-
-A song's authoring verbs, once gone, refuse with a message naming MIDI Evil; the open issues #200,
-#197, #188, #187, #186 are re-read at batch 7: closed as superseded where they were the piano
-roll's, kept where they are the map's. #183 and #182 (the song's save files) stay.
-
-## The batches
-
-Each batch is one handoff to the Opus executor from `review/external-tools/handoff-N.md`, reported
-at `review/external-tools/report-N.md`, reviewed in code mode (kimi always; gemini on a harness,
-fixture or seam; codex on a screen, from stills the report names) and committed by the planner on
-Jesse's word. Issue numbers are the milestone's; the batch names what the issues do not.
-
-**Gates, mechanical, every batch:** `cargo test --workspace` (0 failed, 0 ignored), `cargo clippy
---workspace --all-targets` (0 warnings), the comment-tag grep from `CLAUDE.md` printing nothing,
-`scripts/check_wasm.sh`; `scripts/check_games.sh` when `engine_core` or `audio` changed;
-`scripts/check_guide_tests.sh` when a guide's pitfall table changed; the 600-line ceiling over
-every touched `.rs`; `scripts/check_audio_provenance.sh` when a fixture lands. The planner reruns
-every gate on the staged tree before the code round.
-
-**Batch 1 — the foundation: #203 (E1), #204 (E2), #205 (E3).** The pure half (the type table, the
-group-first templates, the config, the presets with MIDI Evil's row, the resolution order), the
-asset browser's `midi`, `SoundFont` and `DawProject` kinds, and the launcher replacing
-`open_source.rs` (the path-first program lookup, the two threads with the reaper joining the
-reader, ruling (h)'s Windows default, the project templates, the explicit `OsDefault` override, the
-`ide_command` migration with `{file}` appended, the Open Source button working through it). Files:
-new `crates/editor/src/external_tools/{mod,file_type,template,config,presets}.rs`,
-`editor_preferences.rs` (`ide_command` read into `code: Custom(..)` when set, no longer written),
-`asset_browser.rs`, new `editor_integration/src/editor_game/external_tools.rs` (`open_source.rs`
-deleted, its headless tests carried over), `editor/src/context/mod.rs` (`open_requests:
-Vec<OpenRequest>`), `script_editor.rs`. Target shapes: § One table, § Types, § Command templates,
-§ Presets, § The launcher. Reviewers: kimi, gemini (the launcher's lookup, spawn and stderr drain
-are a seam). Leaves out: every entry point but the button, the watcher, the settings UI. Under
-1,300 lines.
-
-**Batch 2 — code entry points and the console: #206 (E4), #207 (E5).** Double-click on tiles and
-Scripts rows, the first context menu (keyboard-reachable: the menu key, Shift+F10, arrows), the
-Console panel as § Entry points describes it, repeats collapsed, the status bar's error clickable.
-Reviewers: kimi, codex (two stills: the context menu open over a tile; the console with a clickable
-error and a collapsed repeat). Leaves out: Edit in MIDI Evil (batch 4), filters or log levels.
-
-**Batch 3 — the watcher and code reload: #208 (E6), #209 (E7), #210 (E8), #211 (E9).** `FileWatch`
-on its worker thread with its registered set, debounced tombstones, companion files, `note_written`
-baselines and the rebuild roots; `hot_reload.rs`
-with the registered set's rebuild rules; Rhai recompile on save in a Play session
-(`ScriptRunner::reload_source`, the AST swapped, blackboards kept, a syntax error keeping the old
-AST and linking the line); scene and sheet reload through the existing guards and dialog, the sheet as a transaction and
-re-applied on Stop, the first-tick rule after a script reload; the sticky rebuild notice. Target shapes: § File watching and hot reload (the
-first four policy rows). Reviewers: kimi, gemini (the watcher's debounce and tombstones, the
-runner's swap and Stop's re-apply are harness and seam). Leaves out: the song and sample policies
-(batches 4 and 5), any `cargo` spawn.
-
-**Batch 4 — music entry points and the sample reload: #212 (E10), #215 (E13).** `scan_songs`
-salvaged into `external_tools/songs.rs`; the Edit in MIDI Evil button on a `Binding` emitter with
-the action → part → track resolution; `.mid`, `DawProject` and sample tiles opening with their
-tools; the context menu's item enabled; recorded sounds reloading in place behind their handle, the
-library's loaded and failed paths registered, a failure cleared on success (the sound half of #180,
-that issue updated). Target shapes: § Entry points rows 1 and 6, "Which song is the song", the
-`ReloadSample` row. Reviewers: kimi, gemini (the sound library's reload), codex (one still: the
-emitter's settings with the button). Leaves out: the song swap.
-
-**Batch 5 — the song follows the score: #213 (E11), #214 (E12).** The open song document's
-two-file policy by content fingerprint, the sidecar-only save over the loaded bytes, the conflict
-file, the transition's score-authoring rule, the `.new.prev` journal over both finals and the journal's targets with its three states, the
-lone sidecar journal, the lock (ruling (g)), the prune moved after the finals, the map edits on
-mixed-channel MIDI, `song init`, and the panel's Save dispatching the reload, with their migration
-tests (§ The open song document); the silent
-part in `music_midi`'s `validate` and trigger engine; `replace_song_at_seam` with the prepared conductor,
-the `Replace` lifecycle command with its generation and revision and the five states, the armed
-seam, the stationary-transport, stopped-at-end and short-loop rules, the bar-and-fraction crossing, the end-while-armed rule, the seam's own re-check, the stable
-`ActionId` on every trigger, musical-position transport commands, the seqlock snapshot, the
-retired conductor's slot, the worker-thread preparation, the source's ownership of the channel, the retired conductor
-dropped on the game thread, the host's revision transition (§ MIDI reload); the `conductor_background` example's `--replace-after
-<bars>` flag; the `ReloadSong` dispatch with the debounce → prepare → diff → replace chain and
-`track_diff.rs` over resolved parts. Reviewers: kimi, gemini (the audio seam; the half-written-file
-and the renamed-track fixtures). Listen check: Jesse, Tong in the editor, a note changed in MIDI
-Evil (or any editor that writes a `.mid`) and saved mid-bar, heard from the next bar with the hits
-on the beat before and after. Leaves out: anything in MIDI Evil's repo; the fixture pair until MIDI
-Evil ships it (a hand-made pair in `music_midi/fixtures/` with a LICENSE line stands in). The
-largest batch; if the report runs long it splits at the document policy (5a) and the swap (5b).
-
-**Batch 6 — the settings panel: #216 (E14).** `settings_panel.rs` over `EditableInspector`: a
-cycle row per category for the preset, a string field for the Custom template with the inline red
-invalid state, per-type overrides, the MIDI Evil binary field, the DAW project extensions, a Test
-button per category; Edit → External Tools…; keyboard-walkable with a visible focus ring, labelled
-controls, no colour-only state; narrow mode as the dock's overlay. Closes #102. Target shapes:
-§ Types. Reviewers: kimi, codex (two stills: the panel at rest; a template error shown). Leaves
-out: nothing of the brief's settings.
-
-**Batch 7 — the Conductor panel: #217 (E15, reworded), #218 (E16, reworded), the rename (filed at
-settling).** **Gated on MIDI Evil's `.evil` → `.mid` export and positional open round-tripping one
-of the six shipped songs through the engine** — import, a note changed, export, `cargo test` in
-that game green over the exported file and the song opening in the panel — demonstrated and quoted
-in the handoff. Then the trim: the piano roll, note list, note editing and the authoring verbs go;
-the sidebar, transport, audition and Save stay; the authoring verbs refuse naming MIDI Evil; the
-five composer-defect issues re-read; the playground's export still carries the open song's two
-files and the browser's reduction is written into `docs/WEB_PLAYGROUND.md`. Then the rename, as
-its own commit: module, panel id, View item, theme tokens, guides. Target shapes: § The Conductor
-panel. Reviewers: kimi, gemini (the API's refusals and the playground's export are seams), codex
-(two stills: the Conductor panel on `ai_tong.mid`, native and in the playground). Leaves out:
-ruling (e)'s gain field unless Jesse rules it in. If the gate is not met when batch 6 lands, batch
-8 goes first and batch 7 waits; the sprint does not close without it.
-
-**Batch 8 — platform polish and the docs: #219 (E17), #220 (E18).** WSL paths, the Flatpak hint,
-the three OS-default fallbacks and the WSL one exercised by hand on a Linux, macOS and Windows
-machine with a path containing a space and an `&` (the results recorded in the issue); `docs/EXTERNAL_TOOLS.md` (the presets with
-their sources and dates, the template grammar, the resolution order, the reload table, MIDI Evil's
-contract, the platform notes), the SSOT row in `CLAUDE.md`, `training.md`'s directory map, the two
-editor guides, `docs/SCRIPTING.md`, `docs/SONG_FORMAT.md` (the fingerprint's rule; MIDI Evil's
-export rules), the games' guides' composer sentences, the roadmap. Reviewers: kimi. Leaves out:
-nothing; this closes the sprint, and the close-out (the milestone's issues closed by their commits,
-the lessons to `log_archive.md`, `review/external-tools/` archived, the scorecard's totals) is the
-planner's.
-
-**Order.** 1 → 2 → 3 in sequence (each builds on the last's types and console); 4 after 2; 5 after
-3 and 4; 6 any time after 1; 7 after 4 and 5 and its gate; 8 after 6, before 7 if 7's gate is not
-yet met. One batch out at a time, as the Conductor ran it.
-
-## Verification, end to end
-
-- Every batch: the gates above, run by the planner on the staged tree, never from the report.
-- After batch 3: the editor on pong, `touch assets/scripts/paddle.rhai` from a shell → the console
-  says so within a second; Ctrl+S on the scene → no reload; in Play, change `speed` in
-  `paddle.rhai` and save → the paddle moves faster, no Stop; break the syntax → the old speed holds
-  and the console links the line; a sheet changed in Play → still changed after Stop.
-- After batch 5: Tong in the editor, Play; a note changed in MIDI Evil (or any editor that writes a
-  `.mid`) and saved mid-bar → heard from the next bar, the hits on the beat before and after; the
-  `flute` track renamed → the status bar says the part's track is gone and the console suggests
-  the rename; the part's selector fixed in the panel and saved → the song swaps at the bar from the
-  panel's own Save; a binding changed in the panel and saved
-  after an export → the exported notes survive.
-- After batch 7: the editor on pong opens `ai_tong.mid`: the sidebar shows its parts, instruments
-  and bindings, Play auditions it, no note can be moved; `song open` / `song notes melody` / `song
-  save` answer over `--headless`; a saved song passes the provenance gate; a `.mid` tile
-  double-clicks into MIDI Evil; the gate's round trip is quoted in the handoff.
-- Final: a reader with no context sets up VS Code from `docs/EXTERNAL_TOOLS.md` alone and opens a
-  script at a line; `scripts/check_wasm.sh`, `check_games.sh`, `check_guide_tests.sh` green; no doc
-  tells a reader to open the composer.
-
-## Out of scope, said plainly
-
-No embedded editor of any kind; no web editor work beyond keeping the gate green and writing the
-browser's reduction down; no MIDI Evil code in this repo; no `cargo` spawn (#211's follow-up names
-it); no texture hot reload (#180's other half stays open); no `notify`/inotify dependency until
-polling has failed in practice; no locale or `GameConfig` RON reload; no new sidecar field until
-ruling (e) is taken; no manifest (`Cargo.toml`) watching.
-
-## Carried from the Conductor effort (the lessons that bind every batch here)
-
-The planner's gates run on the staged tree, never from the report; every wait in a test is a
-bounded poll or a step count and the executor greps its own test file for `while`/`loop`; a retry
-loop re-reads every id a restart replaces; a match start or a seek is asserted by the event's
-counter, not by the clock; a draft diff that omits binaries or the lockfile says so in its prompt;
-codex is dispatched after kimi exits; kimi streams its file, so nothing polls non-emptiness; the
-site's two-name contract and the headless virtual clock are the two things gemini misreads every
-round; a CDP-driven menu is confirmed open before its moves; a tall canvas's stills want a window
-where the canvas lays out at its own size; the audio thread never allocates, parses or drops.
