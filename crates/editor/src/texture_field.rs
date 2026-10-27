@@ -27,10 +27,10 @@ pub struct InspectorExtras<'a> {
     pub scroll_target: Option<&'static str>,
     /// Top Y position of the target component header, recorded during rendering.
     pub scroll_target_y: Option<f32>,
-    /// Whether opening script source files in an external IDE is supported.
+    /// Whether opening script source files in an external tool is supported.
     pub can_open_source: bool,
-    /// Script source file requested to be opened in the external editor.
-    pub open_source: Option<String>,
+    /// Script source file requested to be opened in its external tool.
+    pub open_source: Option<crate::external_tools::OpenRequest>,
     /// Available scripts from registry and scanned assets.
     pub script_catalog: &'a [crate::script_editor::ScriptCatalogEntry],
     /// Whether the script picker popup is currently open.

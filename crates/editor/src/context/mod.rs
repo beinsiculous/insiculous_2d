@@ -95,8 +95,10 @@ pub struct EditorContext {
     pub inspector_scroll_entity: Option<ecs::EntityId>,
     /// Header title to scroll into view on the next inspector pass.
     pub inspector_scroll_request: Option<&'static str>,
-    /// Source file path requested to be opened in the host's IDE.
-    pub pending_open_source: Option<String>,
+    /// Files asked to open in their external tools this frame; the host drains them.
+    pub open_requests: Vec<crate::external_tools::OpenRequest>,
+    /// Which tool opens which file, loaded from and saved to the preferences.
+    pub external_tools: crate::external_tools::ExternalToolsConfig,
     /// Available scripts from registry and scanned assets.
     pub script_catalog: Vec<crate::script_editor::ScriptCatalogEntry>,
     /// Whether the script picker popup is currently open.
@@ -185,7 +187,8 @@ impl EditorContext {
             inspector_scroll: crate::ScrollState::default(),
             inspector_scroll_entity: None,
             inspector_scroll_request: None,
-            pending_open_source: None,
+            open_requests: Vec::new(),
+            external_tools: crate::external_tools::ExternalToolsConfig::default(),
             drag_drop: crate::DragDropState::new(),
             asset_browser: crate::AssetBrowserState::default(),
             script_catalog: Vec::new(),

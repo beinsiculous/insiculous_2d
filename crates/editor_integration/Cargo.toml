@@ -23,6 +23,12 @@ serde_json = { workspace = true }
 log = { workspace = true }
 winit = { workspace = true }
 
+# The OS default on Windows opens a file through its shell association with
+# ShellExecuteW: `cmd /C start`, `explorer.exe` and `rundll32` each mangle some path.
+# The tree already builds this crate through winit.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+
 [dev-dependencies]
 # Already a workspace dependency everywhere else; needed here only so tests
 # can `define_component!` game-style types for the dynamic-tier ship point.

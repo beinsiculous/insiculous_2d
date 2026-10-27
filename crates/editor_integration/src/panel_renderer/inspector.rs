@@ -251,7 +251,7 @@ fn render_inspector_rows(
         &mut extras,
     );
     let target_y = extras.scroll_target_y;
-    let source_path = extras.open_source.take();
+    let open_request = extras.open_source.take();
     let warnings = std::mem::take(&mut extras.warnings);
     let script_picker_open = extras.script_picker_open;
     drop(extras);
@@ -263,8 +263,8 @@ fn render_inspector_rows(
         editor.inspector_scroll.scroll_to(target_offset);
     }
     editor.inspector_scroll_request = None;
-    if let Some(source_path) = source_path {
-        editor.pending_open_source = Some(source_path);
+    if let Some(open_request) = open_request {
+        editor.open_requests.push(open_request);
     }
 
     warn_after_edit(

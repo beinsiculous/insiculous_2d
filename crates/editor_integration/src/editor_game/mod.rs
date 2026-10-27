@@ -30,8 +30,8 @@ mod composer_keys;
 mod game_impl;
 mod gizmo_drag;
 pub mod headless;
+mod external_tools;
 mod menu_actions;
-mod open_source;
 mod play_session;
 mod preferences;
 mod run_options;
@@ -127,6 +127,8 @@ struct EditorGame<G: Game> {
     pub(super) preview_open: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     /// The open song's `.mid` for a wasm host, when the web bridge installed one.
     pub(super) open_song_mirror: Option<std::sync::Arc<std::sync::Mutex<Option<std::path::PathBuf>>>>,
+    /// Opens requested files in their external tools and collects what the launches report.
+    launcher: external_tools::Launcher,
 }
 
 impl<G: Game> EditorGame<G> {
@@ -169,6 +171,7 @@ impl<G: Game> EditorGame<G> {
             scene_snapshot: None,
             preview_open: None,
             open_song_mirror: None,
+            launcher: external_tools::Launcher::new(),
         }
     }
 
@@ -415,7 +418,7 @@ impl<G: Game> EditorGame<G> {
 
         self.sync_dirty_mirror();
         self.save_preferences_if_changed(ctx.delta_time);
-        self.open_pending_source();
+        self.open_requested_files();
 
         self.render_status_bar(ctx, ctx.window_size);
 

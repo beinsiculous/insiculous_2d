@@ -32,6 +32,7 @@ impl<G: Game> super::EditorGame<G> {
         self.editor
             .inspector_state
             .set_collapsed_names(prefs.collapsed_components.clone());
+        self.editor.external_tools = prefs.external_tools.clone();
         prefs.apply_panels(&mut self.editor.dock_area);
         self.last_saved_prefs = Some(prefs);
         self.pending_prefs = None;
@@ -52,10 +53,7 @@ impl<G: Game> super::EditorGame<G> {
             grid_size: self.editor.grid_size(),
             panels: Vec::new(),
             collapsed_components: self.editor.inspector_state.collapsed_names(),
-            ide_command: self
-                .last_saved_prefs
-                .as_ref()
-                .and_then(|prefs| prefs.ide_command.clone()),
+            external_tools: self.editor.external_tools.clone(),
         };
         prefs.capture_panels(&self.editor.dock_area);
         prefs

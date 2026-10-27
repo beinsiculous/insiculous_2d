@@ -83,6 +83,7 @@ mod toolbar;
 mod viewport;
 mod viewport_input;
 pub mod editor_preferences;
+pub mod external_tools;
 pub mod game_frame_overlay;
 pub mod layout;
 pub mod overflow_menu;

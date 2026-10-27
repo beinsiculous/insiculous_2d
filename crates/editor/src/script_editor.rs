@@ -17,6 +17,7 @@ use ecs::script::{ScriptRef, ScriptValue, Scripts};
 
 use crate::component_editors::ComponentEdit;
 use crate::editable_inspector::EditableInspector;
+use crate::external_tools::{Location, OpenRequest};
 use crate::field_style::EditResult;
 
 /// Range for numeric script params: unconstrained scrub, soft by design —
@@ -140,7 +141,10 @@ fn edit_one_script(
         && !script.source_path.trim().is_empty()
         && inspector.action_button("Open source")
     {
-        extras.open_source = Some(script.source_path.clone());
+        extras.open_source = Some(OpenRequest {
+            path: script.source_path.clone().into(),
+            location: Location::None,
+        });
     }
 
     let keys: Vec<String> = script.params.keys().cloned().collect();
@@ -412,7 +416,7 @@ mod tests {
     }
 
     #[test]
-    fn test_open_source_button_sets_extras_open_source() {
+    fn test_open_source_button_requests_the_script_file_at_no_particular_location() {
         let mut scripts = Scripts(vec![ScriptRef::new("paddle")]);
         scripts.0[0].source_path = "scripts/paddle.rhai".to_string();
 
@@ -434,8 +438,8 @@ mod tests {
 
         assert_eq!(
             inspector_extras.open_source,
-            Some("scripts/paddle.rhai".to_string()),
-            "clicking Open source records the script source path"
+            Some(OpenRequest { path: "scripts/paddle.rhai".into(), location: Location::None }),
+            "clicking Open source asks for the script's file in its external tool"
         );
     }
 }

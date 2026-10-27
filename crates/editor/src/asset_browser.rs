@@ -11,6 +11,8 @@
 
 use std::path::Path;
 
+use crate::external_tools::{is_daw_project_path, is_midi_path};
+
 /// What kind of asset a scanned file is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AssetKind {
@@ -23,8 +25,10 @@ pub enum AssetKind {
     /// A recorded sound the audio manager decodes (wav/mp3/ogg/flac), dropped
     /// on a `SoundEmitter`'s sound slot — or a `.wav` on the composer, as a sample
     Sound,
-    /// A song's MIDI file (.mid), dropped on the composer to open it
+    /// A song's MIDI file (.mid or .midi), dropped on the composer to open it
     Song,
+    /// A music workstation's project file, by the external tools' extension list
+    DawProject,
     /// A SoundFont bank (.sf2), dropped on the composer as an instrument
     SoundFont,
 }
@@ -94,34 +98,35 @@ impl AssetBrowserState {
     }
 }
 
-/// Classify a file by extension (case-insensitive).
-fn kind_for_extension(ext: &str) -> Option<AssetKind> {
-    match ext.to_ascii_lowercase().as_str() {
+/// Classify a file by extension (case-insensitive); `daw_project_extensions` is the
+/// external tools' list.
+fn kind_for_path(path: &Path, daw_project_extensions: &[String]) -> Option<AssetKind> {
+    if is_midi_path(path) {
+        return Some(AssetKind::Song);
+    }
+    let extension = path.extension()?.to_str()?.to_ascii_lowercase();
+    match extension.as_str() {
         "png" | "jpg" | "jpeg" | "bmp" => Some(AssetKind::Image),
         "ron" => Some(AssetKind::Scene),
         "rhai" | "rs" => Some(AssetKind::Script),
         "wav" | "mp3" | "ogg" | "flac" => Some(AssetKind::Sound),
-        "mid" => Some(AssetKind::Song),
         "sf2" => Some(AssetKind::SoundFont),
+        _ if is_daw_project_path(path, daw_project_extensions) => Some(AssetKind::DawProject),
         _ => None,
     }
 }
 
-/// Recursively scan `base` for known asset files. Never panics: missing or
-/// unreadable directories yield an empty list. Results are sorted by (kind, name)
-/// for a stable grid.
-pub fn scan_assets(base: &Path) -> Vec<AssetEntry> {
+/// Recursively scan `base` for known asset files, a DAW project known by
+/// `daw_project_extensions`. Never panics: missing or unreadable directories yield
+/// an empty list. Results are sorted by (kind, name) for a stable grid.
+pub fn scan_assets(base: &Path, daw_project_extensions: &[String]) -> Vec<AssetEntry> {
     let mut entries = Vec::new();
     let Ok(files) = common::vfs::list_files(base) else {
         return entries;
     };
 
     for path in files {
-        let Some(kind) = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .and_then(kind_for_extension)
-        else {
+        let Some(kind) = kind_for_path(&path, daw_project_extensions) else {
             continue;
         };
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
@@ -204,7 +209,7 @@ mod tests {
             touch(&dir.path().join(file))?;
         }
 
-        let entries = scan_assets(dir.path());
+        let entries = scan_assets(dir.path(), &[]);
 
         let listed: Vec<(&str, AssetKind, &str)> = entries
             .iter()
@@ -225,22 +230,48 @@ mod tests {
             "images first by name, then scenes, then scripts, then sounds; nested files have forward-slash relative paths; txt is ignored"
         );
         assert!(
-            scan_assets(Path::new("/definitely/not/a/real/dir")).is_empty(),
+            scan_assets(Path::new("/definitely/not/a/real/dir"), &[]).is_empty(),
             "a missing folder is an empty browser, not a crash"
         );
         Ok(())
     }
 
     #[test]
-    fn test_kind_for_extension_classifies_rhai_and_rs_as_script() {
-        assert_eq!(kind_for_extension("rhai"), Some(AssetKind::Script));
-        assert_eq!(kind_for_extension("RS"), Some(AssetKind::Script));
-        assert_eq!(kind_for_extension("png"), Some(AssetKind::Image));
-        assert_eq!(kind_for_extension("ron"), Some(AssetKind::Scene));
-        assert_eq!(kind_for_extension("FLAC"), Some(AssetKind::Sound));
-        assert_eq!(kind_for_extension("mid"), Some(AssetKind::Song), "a song is listed as a song, not a recorded sound");
-        assert_eq!(kind_for_extension("SF2"), Some(AssetKind::SoundFont));
-        assert_eq!(kind_for_extension("txt"), None);
+    fn test_kind_for_path_classifies_rhai_and_rs_as_script() {
+        let kind = |path: &str| kind_for_path(Path::new(path), &[]);
+        assert_eq!(kind("a.rhai"), Some(AssetKind::Script));
+        assert_eq!(kind("a.RS"), Some(AssetKind::Script));
+        assert_eq!(kind("a.png"), Some(AssetKind::Image));
+        assert_eq!(kind("a.ron"), Some(AssetKind::Scene));
+        assert_eq!(kind("a.FLAC"), Some(AssetKind::Sound));
+        assert_eq!(kind("a.mid"), Some(AssetKind::Song), "a song is listed as a song, not a recorded sound");
+        assert_eq!(kind("a.SF2"), Some(AssetKind::SoundFont));
+        assert_eq!(kind("a.txt"), None);
+    }
+
+    #[test]
+    fn test_every_song_and_daw_project_extension_reaches_a_tile() -> std::io::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let daw_project_extensions = vec![".evil".to_string(), "PRJ".to_string(), ".nsp".to_string()];
+        for file in ["music/a.mid", "music/b.MIDI", "music/c.evil", "music/d.prj", "music/e.NSP", "music/f.als"] {
+            touch(&dir.path().join(file))?;
+        }
+
+        let entries = scan_assets(dir.path(), &daw_project_extensions);
+
+        let listed: Vec<(&str, AssetKind)> = entries.iter().map(|entry| (entry.name.as_str(), entry.kind)).collect();
+        assert_eq!(
+            listed,
+            vec![
+                ("a.mid", AssetKind::Song),
+                ("b.MIDI", AssetKind::Song),
+                ("c.evil", AssetKind::DawProject),
+                ("d.prj", AssetKind::DawProject),
+                ("e.NSP", AssetKind::DawProject),
+            ],
+            "both MIDI extensions are songs; each listed DAW extension, dotted or not, is a tile; an unlisted one is not"
+        );
+        Ok(())
     }
 
     #[test]

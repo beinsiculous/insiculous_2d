@@ -92,7 +92,7 @@ mod tests {
         )
         .expect("write script");
 
-        let entries = editor::scan_assets(temp_dir.path());
+        let entries = editor::scan_assets(temp_dir.path(), &[]);
         let registry = ScriptRegistry::new();
         let catalog = build_script_catalog(&entries, &registry, temp_dir.path().to_str().expect("path str"));
 

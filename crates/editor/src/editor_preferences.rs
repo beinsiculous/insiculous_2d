@@ -1,7 +1,7 @@
 //! Editor preferences for persisting editor state across sessions.
 //!
 //! Stores camera position, zoom level, last opened scene, grid settings,
-//! and per-panel layout (visibility, collapse state, size).
+//! per-panel layout (visibility, collapse state, size) and the external tools.
 
 use serde::{Deserialize, Serialize};
 
@@ -37,9 +37,10 @@ pub struct EditorPreferences {
     /// Per-panel layout state (absent in prefs files from older versions)
     #[serde(default)]
     pub panels: Vec<PanelPrefs>,
-    /// IDE command for opening script source files in an external editor.
+    /// Which program opens which project file. A file from before this field
+    /// carried an `ide_command` string instead, read into the code tool on load.
     #[serde(default)]
-    pub ide_command: Option<String>,
+    pub external_tools: crate::external_tools::ExternalToolsConfig,
     /// Registry type names whose inspector section is collapsed (absent in
     /// prefs files from older versions)
     #[serde(default)]
@@ -55,16 +56,38 @@ impl Default for EditorPreferences {
             grid_size: 32.0,
             view: crate::view_toggles::ViewToggles::default(),
             panels: Vec::new(),
-            ide_command: None,
+            external_tools: crate::external_tools::ExternalToolsConfig::default(),
             collapsed_components: Vec::new(),
         }
     }
 }
 
 impl EditorPreferences {
-    /// Deserialize preferences from JSON text.
+    /// Deserialize preferences from JSON text. A legacy `ide_command` becomes the
+    /// custom code tool and is never written back. An `external_tools` section that
+    /// does not parse — a hand edit gone wrong, or a tool only a newer editor knows —
+    /// is warned about and left at its defaults, so the rest of the preferences survive.
     pub fn from_json(json: &str) -> Result<Self, String> {
-        serde_json::from_str(json).map_err(|e| format!("Failed to parse preferences: {e}"))
+        let mut value: serde_json::Value =
+            serde_json::from_str(json).map_err(|e| format!("Failed to parse preferences: {e}"))?;
+        let (legacy_ide_command, external_tools) = match value.as_object_mut() {
+            Some(fields) => (fields.remove("ide_command"), fields.remove("external_tools")),
+            None => (None, None),
+        };
+        let mut prefs: Self =
+            serde_json::from_value(value).map_err(|e| format!("Failed to parse preferences: {e}"))?;
+        if let Some(external_tools) = external_tools {
+            match serde_json::from_value(external_tools) {
+                Ok(config) => prefs.external_tools = config,
+                Err(error) => log::warn!(
+                    "the editor preferences' external_tools section was ignored and the next save replaces it with the defaults: {error}"
+                ),
+            }
+        }
+        if let Some(serde_json::Value::String(ide_command)) = legacy_ide_command {
+            prefs.external_tools.adopt_legacy_ide_command(&ide_command);
+        }
+        Ok(prefs)
     }
 
     /// Serialize preferences to pretty-printed JSON text.
@@ -153,7 +176,7 @@ mod tests {
                 snap: true,
             },
             panels: Vec::new(),
-            ide_command: None,
+            external_tools: crate::external_tools::ExternalToolsConfig::default(),
             collapsed_components: vec!["Sprite".to_string()],
         };
         prefs.capture_panels(&dock);
@@ -221,7 +244,7 @@ mod tests {
         assert!(prefs.view.grid, "prefs files predating the drawn grid default to visible");
         assert!(prefs.view.colliders, "colliders default to visible");
         assert!(prefs.view.game_frame, "game frame defaults to visible");
-        assert_eq!(prefs.ide_command, None);
+        assert_eq!(prefs.external_tools, crate::external_tools::ExternalToolsConfig::default());
         assert!(prefs.collapsed_components.is_empty(), "prefs files predating collapsible sections open every section");
     }
 
@@ -242,24 +265,60 @@ mod tests {
     }
 
     #[test]
-    fn test_prefs_without_ide_command_loads_with_none_and_roundtrips_when_set() {
-        let without_ide = r#"{
+    fn test_an_old_ide_command_loads_as_the_custom_code_tool_and_is_never_written_again() -> Result<(), String> {
+        use crate::external_tools::{CommandTemplate, ToolChoice};
+        let old = r#"{
             "camera_position": [0.0, 0.0],
             "camera_zoom": 1.0,
             "last_scene_path": null,
-            "snap_to_grid": false,
             "grid_size": 32.0,
-            "grid_visible": true,
-            "panels": []
+            "panels": [],
+            "ide_command": "code --wait"
         }"#;
-        let prefs = EditorPreferences::from_json(without_ide).expect("valid prefs without ide_command");
-        assert_eq!(prefs.ide_command, None);
 
-        let mut with_ide = prefs;
-        with_ide.ide_command = Some("code --wait".to_string());
-        let json = with_ide.to_json().expect("serializes with ide_command");
-        let roundtripped = EditorPreferences::from_json(&json).expect("deserializes with ide_command");
-        assert_eq!(roundtripped.ide_command, Some("code --wait".to_string()));
+        let prefs = EditorPreferences::from_json(old)?;
+        assert_eq!(
+            prefs.external_tools.code,
+            ToolChoice::Custom(CommandTemplate("code --wait {file}".to_string())),
+            "the old command opened the file it was given, so the template names it"
+        );
+        let json = prefs.to_json()?;
+        assert!(!json.contains("ide_command"), "the old field is read once and never written");
+        assert_eq!(EditorPreferences::from_json(&json)?, prefs);
+        Ok(())
+    }
+
+    #[test]
+    fn test_an_unreadable_external_tools_section_keeps_every_other_preference() -> Result<(), String> {
+        let hand_edited = r#"{
+            "camera_position": [0.0, 0.0],
+            "camera_zoom": 2.5,
+            "last_scene_path": null,
+            "grid_size": 32.0,
+            "panels": [],
+            "external_tools": { "code": "RustRover" }
+        }"#;
+
+        let prefs = EditorPreferences::from_json(hand_edited)?;
+
+        assert_eq!(prefs.camera_zoom, 2.5, "a mistake in the tools section costs the camera nothing");
+        assert_eq!(prefs.external_tools, crate::external_tools::ExternalToolsConfig::default());
+        Ok(())
+    }
+
+    #[test]
+    fn test_a_new_prefs_file_round_trips_its_external_tools() -> Result<(), String> {
+        use crate::external_tools::{FileType, PresetId, ToolChoice};
+        let mut prefs = EditorPreferences::default();
+        prefs.external_tools.code = ToolChoice::Preset(PresetId::RustRover);
+        prefs.external_tools.music = ToolChoice::Preset(PresetId::MidiEvil);
+        prefs.external_tools.overrides.insert(FileType::SoundFont, ToolChoice::OsDefault);
+        prefs.external_tools.daw_project_extensions = vec![".evil".to_string(), ".als".to_string()];
+
+        let loaded = EditorPreferences::from_json(&prefs.to_json()?)?;
+
+        assert_eq!(loaded.external_tools, prefs.external_tools);
+        Ok(())
     }
 
     #[test]

@@ -71,7 +71,7 @@ pub(crate) fn refresh_assets(
     assets: &AssetManager,
     registry: &engine_core::scripting::ScriptRegistry,
 ) {
-    let entries = scan_assets(Path::new(assets.base_path()));
+    let entries = scan_assets(Path::new(assets.base_path()), &editor.external_tools.daw_project_extensions);
     editor.asset_browser.apply_scan(entries);
     // The composer's Songs list is a view of the same folders, so Rescan refreshes it too.
     editor.composer.songs_scanned = false;
@@ -291,7 +291,7 @@ fn render_tile(
                 theme.accent_cyan,
             );
         }
-        (AssetKind::Script | AssetKind::Sound | AssetKind::Song | AssetKind::SoundFont, _) => {
+        (AssetKind::Script | AssetKind::Sound | AssetKind::Song | AssetKind::DawProject | AssetKind::SoundFont, _) => {
             let extension = std::path::Path::new(&entry.name)
                 .extension()
                 .and_then(|ext| ext.to_str())
