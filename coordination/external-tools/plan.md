@@ -787,7 +787,8 @@ Files near the 600-line ceiling, so new state goes in new files or the sub-state
 554, `editor_game/composer_keys.rs` 537, `editor_game/mod.rs` 531, `panel_renderer/mod.rs` 526,
 `editor/src/menu/mod.rs` 523, `editor_game/shortcuts.rs` 515.
 
-**Batch 2a — the entry points: #206 (E4).** A **double-click** — a second left press on the same
+**Batch 2a — the entry points: #206 (E4). DONE 2026-10-27, insiculous_2d 69d9e3f, after code
+rounds 8, 9 and 10.** A **double-click** — a second left press on the same
 asset tile within 400 ms and 4 px of the first, with no drag started between them (the tile arms a
 drag on every press, `panel_renderer/asset_browser/tile.rs`; `DragDropState::suppresses_click`
 already suppresses a click after a drag, and the double-click goes with it) — files
