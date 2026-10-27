@@ -1,5 +1,12 @@
 # External Tools — the plan
 
+**Settled at v7 — 2026-10-27, Jesse.** Rounds 1–5 are adjudicated in `review/external-tools/`;
+#211 is closed won't-do, #217 and #218 are reworded, the rename is #227, the milestone's
+description carries the batch order, and the design note `docs/sprints/external-tools.md` is
+folded into § Design and deleted. Ruling (k) stands with the batch-5 listen check as its judge
+(gemini's round-5 F1 put to Jesse, who kept the ruling). Batch 1's handoff is
+`review/external-tools/handoff-1.md`.
+
 **v7 — 2026-10-27, after round 5** (`review/external-tools/rebuttal-5.md`: kimi 11, gemini 8,
 codex 6 — twenty-five findings, twenty-one accepted, two rebutted against the tree and the
 standard library, two put to Jesse as arguments against rulings (i) and (k)). What moved: **the
