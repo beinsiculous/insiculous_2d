@@ -1,5 +1,12 @@
 # Aseprite Native — the plan
 
+**Settled at v3 — 2026-10-27, Jesse.** Rounds 1–2 are adjudicated in `review/aseprite-native/`.
+Sprint: milestone "Sprint: Aseprite Native" on `beinsiculous/insiculous_2d` — #228 (batch 1, the
+reader and the parity gate), #229 (batch 2, the loader seams), #230 (batch 3, the texture reload),
+#231 (batch 4, pong on masters and the docs) — and its art half `beinsiculous/deion_assets#19` in
+that repo's milestone of the same name; the clip expansions are #232, outside the sprint. Nothing
+is handed off before External Tools batch 3 lands (ruling (c)).
+
 **v3 — 2026-10-27, after round 2** (`review/aseprite-native/rebuttal-2.md`: kimi 8, gemini 9,
 codex 4 — twenty-one findings, eighteen accepted, two rebutted against the tree, one in part).
 What moved: **the reload transaction lives at the host**, where the asset manager and the render
