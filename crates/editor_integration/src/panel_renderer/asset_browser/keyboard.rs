@@ -33,7 +33,7 @@ pub(super) fn follow_grid(editor: &mut EditorContext, columns: usize, viewport_h
 }
 
 /// The scroll offset that shows the span `top..bottom` wholly, moving as little as it can.
-fn reveal_offset(top: f32, bottom: f32, offset: f32, viewport_height: f32) -> f32 {
+pub(in crate::panel_renderer) fn reveal_offset(top: f32, bottom: f32, offset: f32, viewport_height: f32) -> f32 {
     if top < offset {
         top
     } else if bottom > offset + viewport_height {

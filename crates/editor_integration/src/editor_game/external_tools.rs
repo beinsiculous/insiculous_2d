@@ -1,12 +1,14 @@
 //! Opening project files in their external tools: each frame the requests queued on
 //! the editor's context are resolved through the configured tools and launched, and
-//! what a launched program reported since the last frame reaches the status bar.
+//! what a launched program reported since the last frame reaches the status bar and the
+//! console, as every launch result does.
 //!
 //! A launch never blocks the frame and never panics: the program is found and
 //! spawned here, and two threads per child read its stderr and reap it.
 
 use std::sync::mpsc;
 
+use editor::console::Severity;
 use editor::external_tools::OpenRequest;
 #[cfg(not(target_arch = "wasm32"))]
 use editor::external_tools::Resolution;
@@ -48,18 +50,15 @@ impl<G: Game> super::EditorGame<G> {
             self.open_in_external_tool(request);
         }
         while let Ok(report) = self.launcher.finished.try_recv() {
-            self.editor.status_bar.show_error(report);
+            self.report(Severity::Error, report, None);
         }
     }
 
     #[cfg(target_arch = "wasm32")]
     fn open_in_external_tool(&mut self, request: OpenRequest) {
         let resolved = self.resolve_asset_path(&request.path);
-        self.editor.status_bar.show_message(format!(
-            "Source: {} ({})",
-            resolved.display(),
-            editor::external_tools::DESKTOP_ONLY_HINT
-        ));
+        let line = format!("Source: {} ({})", resolved.display(), editor::external_tools::DESKTOP_ONLY_HINT);
+        self.report(Severity::Info, line, None);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -70,9 +69,9 @@ impl<G: Game> super::EditorGame<G> {
         match launched {
             Ok((file, tool)) => {
                 let name = file.file_name().map_or_else(|| file.display().to_string(), |name| name.to_string_lossy().into_owned());
-                self.editor.status_bar.show_message(format!("Opened {name} in {tool}"));
+                self.report(Severity::Info, format!("Opened {name} in {tool}"), None);
             }
-            Err(message) => self.editor.status_bar.show_error(message),
+            Err(message) => self.report(Severity::Error, message, None),
         }
     }
 

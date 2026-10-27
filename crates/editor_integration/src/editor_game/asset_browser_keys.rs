@@ -17,6 +17,7 @@ use editor::{Modifiers, PanelId, TileStep};
 use engine_core::Game;
 use winit::keyboard::KeyCode;
 
+use super::panel_press::PanelPress;
 use super::shortcuts::KeyRoute;
 use super::EditorGame;
 
@@ -35,31 +36,16 @@ pub(super) enum BrowserKey {
 
 impl<G: Game> EditorGame<G> {
     /// Frame start, after the composer settles and before any chrome handles this frame's
-    /// press: take or drop the browser's keyboard. A press on the menu bar's dropdown, the
-    /// context menu or under a dialog is chrome's, and moves nothing.
+    /// press: take or drop the browser's keyboard, by `panel_press`'s rule.
     pub(super) fn settle_asset_browser(&mut self, ui: &ui::UIContext) {
-        let panel = self
-            .editor
-            .dock_area
-            .get_panel(PanelId::ASSET_BROWSER)
-            .filter(|panel| panel.visible && !panel.collapsed)
-            .map(|panel| panel.content_bounds());
-        let content = match panel {
-            Some(content) if !self.editor.in_play_session() && !self.composer_holds_focus() => content,
+        let press = match self.panel_press(ui, PanelId::ASSET_BROWSER) {
+            Some(press) if !self.editor.in_play_session() && !self.composer_holds_focus() => press,
             _ => return self.editor.asset_browser.release_keyboard(),
         };
-        let dialog_up = self.scene_confirm.pending_action.is_some() || self.stop_confirm.pending;
-        let chrome_owns_press = self.editor.menu_bar.is_open() || self.editor.context_menu.is_open() || dialog_up;
-        if !(ui.mouse_just_pressed() || ui.mouse_right_just_pressed()) || chrome_owns_press {
-            return;
-        }
-        let header = editor::layout::HEADER_HEIGHT;
-        let panel_bounds = ui::Rect::new(content.x, content.y - header, content.width, content.height + header);
-        let mouse = ui.mouse_pos();
-        if panel_bounds.contains(mouse) {
-            self.editor.asset_browser.holds_keyboard = true;
-        } else if self.editor.dock_area.bounds().contains(mouse) {
-            self.editor.asset_browser.release_keyboard();
+        match press {
+            PanelPress::Inside => self.editor.asset_browser.holds_keyboard = true,
+            PanelPress::Elsewhere => self.editor.asset_browser.release_keyboard(),
+            PanelPress::Neither => {}
         }
     }
 

@@ -90,11 +90,12 @@ impl<G: Game> Game for EditorGame<G> {
         // keeps the composer's keyboard, which the dropdown closing would hide.
         self.settle_composer(ctx.ui);
         self.settle_asset_browser(ctx.ui);
+        self.settle_console(ctx.ui);
         // After the confirm dialogs, which own the frame while they are up,
         // and before every other widget: a blocking rect is consulted at
         // each widget's own interact call, so the popup's rect has to exist
         // before the menu bar, the strip or any panel draws one under it.
-        let dialog_up = self.scene_confirm.pending_action.is_some() || self.stop_confirm.pending;
+        let dialog_up = self.dialog_up();
         panel_renderer::color_editor::render_color_editor_pass(&mut self.editor, ctx.ui, dialog_up);
         self.render_context_menu(ctx.ui, dialog_up);
         self.handle_menu_bar(ctx, window_size);

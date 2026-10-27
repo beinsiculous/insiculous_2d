@@ -185,7 +185,7 @@ fn a_confirm_dialog_coming_up_closes_the_context_menu() {
     let config = editor.editor.external_tools.clone();
     editor.editor.context_menu.open_for_file(Vec2::new(100.0, 400.0), "sprites/a.png", &config, true);
     editor.stop_confirm.pending = true;
-    let dialog_up = editor.scene_confirm.pending_action.is_some() || editor.stop_confirm.pending;
+    let dialog_up = editor.dialog_up();
 
     let mut ui = ui::UIContext::new();
     ui.begin_frame(&input::InputHandler::new(), WINDOW);

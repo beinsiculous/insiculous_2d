@@ -213,8 +213,7 @@ impl MenuBar {
             ]),
         );
 
-        // View menu — Scene View can't be hidden and Console has no panel
-        // implementation yet, so both stay disabled.
+        // View menu — Scene View can't be hidden, so it stays disabled.
         bar.add_menu(
             Menu::new("View").with_items(vec![
                 MenuItem::action("Scene View").with_enabled(false),
@@ -222,7 +221,7 @@ impl MenuBar {
                 MenuItem::action("Hierarchy"),
                 MenuItem::action("Asset Browser"),
                 MenuItem::action("Composer"),
-                MenuItem::action("Console").with_enabled(false),
+                MenuItem::action("Console"),
                 MenuItem::separator(),
                 MenuItem::action_with_shortcut("Toggle Grid", "G"),
                 MenuItem::action_with_shortcut("Toggle Colliders", "C"),

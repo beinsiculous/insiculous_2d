@@ -50,14 +50,14 @@ impl From<PanelId> for WidgetId {
 
 /// Map a View-menu item label to the dock panel it toggles.
 ///
-/// Scene View (always visible) and Console (no panel implementation yet)
-/// deliberately return `None`.
+/// Scene View, which is always visible, deliberately returns `None`.
 pub fn panel_id_for_menu_label(label: &str) -> Option<PanelId> {
     match label {
         "Inspector" => Some(PanelId::INSPECTOR),
         "Hierarchy" => Some(PanelId::HIERARCHY),
         "Asset Browser" => Some(PanelId::ASSET_BROWSER),
         "Composer" => Some(PanelId::COMPOSER),
+        "Console" => Some(PanelId::CONSOLE),
         _ => None,
     }
 }

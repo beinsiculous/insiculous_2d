@@ -18,7 +18,7 @@ use renderer::texture::TextureHandle;
 
 use crate::entity_ops;
 
-mod keyboard;
+pub(super) mod keyboard;
 mod tile;
 use tile::{tile_interaction, TilePresses};
 

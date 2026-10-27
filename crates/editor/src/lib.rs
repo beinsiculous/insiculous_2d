@@ -43,6 +43,7 @@ mod double_click;
 mod drag_drop;
 pub mod commands;
 pub mod composer;
+pub mod console;
 mod component_editors;
 mod composite_rows;
 mod context;

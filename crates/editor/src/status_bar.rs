@@ -2,10 +2,13 @@
 //!
 //! Shows contextual status messages (left), runtime stats (center),
 //! and version info (right). Status messages auto-clear after a timeout.
+//! An error naming a file carries the request that opens it, and a click on
+//! the message reports it.
 
 use glam::Vec2;
 use ui::{Rect, UIContext};
 
+use crate::external_tools::{Location, OpenRequest};
 use crate::theme::EditorTheme;
 
 /// Height of the status bar in pixels.
@@ -32,6 +35,9 @@ pub struct StatusBar {
     message_timer: f32,
     /// Whether the current message should persist (errors).
     message_persistent: bool,
+    /// What a click on the shown error opens; any other message drops it, so a click on
+    /// "Saved" never opens a stale script.
+    link: Option<OpenRequest>,
     /// Version string (right section).
     version: String,
     /// Runtime stats updated each frame.
@@ -51,6 +57,7 @@ impl StatusBar {
             message: None,
             message_timer: 0.0,
             message_persistent: false,
+            link: None,
             version: String::from("v0.1.0"),
             stats: StatusBarStats::default(),
         }
@@ -61,17 +68,24 @@ impl StatusBar {
         self.message = Some(message.into());
         self.message_timer = MESSAGE_TIMEOUT;
         self.message_persistent = false;
+        self.link = None;
     }
 
     /// Show a persistent status message (stays until explicitly cleared or replaced by a
     /// user's action), drawn with an "Error: " prefix and logged at `error`, so the terminal
     /// or the browser's console carries it too.
     pub fn show_error(&mut self, message: impl Into<String>) {
+        self.show_linked_error(message, None);
+    }
+
+    /// [`Self::show_error`], with the request a click on the message files while it shows.
+    pub fn show_linked_error(&mut self, message: impl Into<String>, link: Option<OpenRequest>) {
         let message = message.into();
         log::error!("{message}");
         self.message = Some(message);
         self.message_timer = 0.0;
         self.message_persistent = true;
+        self.link = link;
     }
 
     /// A message the editor shows by itself rather than for a user's action: it never
@@ -100,6 +114,24 @@ impl StatusBar {
         self.message = None;
         self.message_timer = 0.0;
         self.message_persistent = false;
+        self.link = None;
+    }
+
+    /// What a click on the shown message opens, if it names a file.
+    pub fn link(&self) -> Option<&OpenRequest> {
+        self.link.as_ref()
+    }
+
+    /// The message's tooltip: the whole text when it was `ellipsized`, then, for a linked
+    /// error, what a click opens, naming the file and the line.
+    fn message_tooltip(&self, ellipsized: bool) -> Option<String> {
+        let whole = self.shown_text()?;
+        let hint = self.link.as_ref().map(|link| format!("Click to open {}", describe_request(link)));
+        match (ellipsized, hint) {
+            (true, Some(hint)) => Some(format!("{whole} — {hint}")),
+            (true, None) => Some(whole),
+            (false, hint) => hint,
+        }
     }
 
     /// Get the current message, if any.
@@ -131,15 +163,15 @@ impl StatusBar {
         }
     }
 
-    /// Render the status bar. Returns the bar bounds for layout purposes.
-    ///
-    /// The status bar is positioned at the bottom of the given `window_size`.
+    /// Render the status bar at the bottom of the given `window_size`. Returns the request
+    /// a click on a linked error filed this frame, which the host queues. The click goes
+    /// through the ui's interaction, so a dialog's scrim or an open menu blocks it.
     pub fn render(
         &self,
         ui: &mut UIContext,
         window_size: Vec2,
         theme: &EditorTheme,
-    ) -> Rect {
+    ) -> Option<OpenRequest> {
         let bar = Rect::new(0.0, window_size.y - STATUS_BAR_HEIGHT, window_size.x, STATUS_BAR_HEIGHT);
 
         // Background
@@ -175,18 +207,37 @@ impl StatusBar {
         let message_room = (bar.width - measure(&self.version) - 4.0 * padding).max(0.0);
         let shown = crate::row_layout::ellipsize(status_text, message_room, measure);
         let stats_left = bar.center().x - measure(&stats_text) / 2.0;
-        let stats_fit = padding + measure(&shown) + padding <= stats_left;
+        let shown_width = measure(&shown);
+        let stats_fit = padding + shown_width + padding <= stats_left;
         let message_bounds = Rect::new(bar.x, bar.y, message_room + padding, bar.height);
         ui.label_in_bounds_styled(&shown, message_bounds, ui::TextAlign::Left, status_color, font_size, padding);
-        if shown != status_text {
-            ui.tooltip(message_bounds, status_text);
+        // The text's own rect, not the message's room, which runs under the stats: the
+        // tooltip says what a click does, so it must not show where a click does nothing.
+        let text_bounds = Rect::new(bar.x, bar.y, shown_width + 2.0 * padding, bar.height);
+        let clicked = self.link.as_ref().and_then(|link| {
+            let result = ui.interact(ui::WidgetId::hashed("status_bar_link"), text_bounds, true);
+            if matches!(result.state, ui::WidgetState::Hovered | ui::WidgetState::Active) {
+                ui.request_cursor(ui::CursorIcon::Pointer);
+            }
+            result.clicked.then(|| link.clone())
+        });
+        if let Some(tooltip) = self.message_tooltip(shown != status_text) {
+            ui.tooltip(text_bounds, &tooltip);
         }
         if stats_fit {
             ui.label_in_bounds_styled(&stats_text, bar, ui::TextAlign::Center, theme.text_muted, font_size, padding);
         }
         ui.label_in_bounds_styled(&self.version, bar, ui::TextAlign::Right, theme.accent_cyan, font_size, padding);
 
-        bar
+        clicked
+    }
+}
+
+/// A request as the tooltip names it: the file, and its line when it has one.
+fn describe_request(request: &OpenRequest) -> String {
+    match request.location {
+        Location::Line { line, .. } => format!("{} at line {line}", request.path.display()),
+        _ => request.path.display().to_string(),
     }
 }
 
@@ -290,5 +341,100 @@ mod tests {
         assert_eq!(bar.shown_text().as_deref(), Some("Saved"), "a user's action replaces it");
         bar.show_notice("Snapshot warning");
         assert_eq!(bar.message(), Some("Snapshot warning"), "with no error a notice shows like any message");
+    }
+
+    fn paddle_at_line_12() -> OpenRequest {
+        OpenRequest { path: "scripts/paddle.rhai".into(), location: Location::Line { line: 12, column: None } }
+    }
+
+    /// A press then a release on the message, through the ui's interaction; returns what
+    /// the release frame's render reported and the pointer it asked for while hovered.
+    fn click_message(bar: &StatusBar) -> (Option<OpenRequest>, ui::CursorIcon) {
+        let theme = EditorTheme::default();
+        let mut input = input::InputHandler::new();
+        let mut ui = UIContext::new();
+        let on_message = Vec2::new(12.0, crate::test_support::WINDOW.y - STATUS_BAR_HEIGHT / 2.0);
+        let window = crate::test_support::WINDOW;
+        let (_, clicked) =
+            crate::test_support::click_through(&mut ui, &mut input, on_message, |ui| bar.render(ui, window, &theme));
+        let cursor = crate::test_support::move_to(&mut ui, &mut input, on_message, |ui| {
+            bar.render(ui, window, &theme);
+            ui.requested_cursor()
+        });
+        (clicked, cursor)
+    }
+
+    #[test]
+    fn a_click_on_a_linked_error_reports_its_request_and_on_anything_else_nothing() {
+        let mut bar = StatusBar::new();
+        bar.show_linked_error("scripts/paddle.rhai:12: [Syntax] expected ';'", Some(paddle_at_line_12()));
+        assert_eq!(click_message(&bar), (Some(paddle_at_line_12()), ui::CursorIcon::Pointer));
+
+        bar.show_error("Failed to save");
+        assert_eq!(click_message(&bar).0, None, "an unlinked error opens nothing");
+        bar.show_message("Saved");
+        assert_eq!(click_message(&bar), (None, ui::CursorIcon::Default), "nor does a plain message");
+    }
+
+    #[test]
+    fn a_message_replacing_a_linked_error_drops_its_link() {
+        let mut bar = StatusBar::new();
+        bar.show_linked_error("scripts/paddle.rhai:12: [Syntax] expected ';'", Some(paddle_at_line_12()));
+        bar.show_notice("API batch committed by Play");
+        assert_eq!(bar.link(), Some(&paddle_at_line_12()), "a notice leaves the error and its link");
+        bar.show_message("Saved");
+        assert_eq!(bar.link(), None, "a click on \"Saved\" never opens a stale script");
+        bar.show_linked_error("again", Some(paddle_at_line_12()));
+        bar.show_error("Failed to save");
+        assert_eq!(bar.link(), None, "an unlinked error drops it too");
+    }
+
+    /// Rest the pointer at `point` past the tooltip's delay; the text the tooltip band draws.
+    fn tooltip_resting_at(bar: &StatusBar, point: Vec2) -> Vec<String> {
+        let theme = EditorTheme::default();
+        let window = crate::test_support::WINDOW;
+        let mut input = input::InputHandler::new();
+        let mut ui = UIContext::new();
+        input.mouse_mut().update_position(point.x, point.y);
+        for _ in 0..10 {
+            ui.begin_frame_dt(&input, window, 0.1);
+            bar.render(&mut ui, window, &theme);
+            ui.end_frame();
+            input.update();
+        }
+        let band = ui::UiLayer::Tooltip.depth_base()..ui::UiLayer::DragGhost.depth_base();
+        ui.draw_list()
+            .commands()
+            .iter()
+            .filter(|command| band.contains(&command.depth()))
+            .filter_map(|command| match command {
+                ui::DrawCommand::TextPlaceholder { text, .. } => Some(text.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_click_to_open_tooltip_shows_over_the_message_and_not_over_the_stats_beside_it() {
+        let mut bar = StatusBar::new();
+        bar.show_linked_error("scripts/paddle.rhai:12: [Syntax] expected ';'", Some(paddle_at_line_12()));
+        let y = crate::test_support::WINDOW.y - STATUS_BAR_HEIGHT / 2.0;
+        let on_message = tooltip_resting_at(&bar, Vec2::new(12.0, y));
+        assert!(on_message.iter().any(|text| text.contains("Click to open scripts/paddle.rhai at line 12")), "{on_message:?}");
+        let on_stats = tooltip_resting_at(&bar, Vec2::new(crate::test_support::WINDOW.x / 2.0, y));
+        assert!(on_stats.is_empty(), "a click on the stats opens nothing, so no tooltip says it does: {on_stats:?}");
+    }
+
+    #[test]
+    fn the_tooltip_names_the_file_and_line_after_the_whole_text_when_shortened() {
+        let mut bar = StatusBar::new();
+        bar.show_linked_error("scripts/paddle.rhai:12: [Syntax] expected ';'", Some(paddle_at_line_12()));
+        assert_eq!(bar.message_tooltip(false).as_deref(), Some("Click to open scripts/paddle.rhai at line 12"));
+        assert_eq!(
+            bar.message_tooltip(true).as_deref(),
+            Some("Error: scripts/paddle.rhai:12: [Syntax] expected ';' — Click to open scripts/paddle.rhai at line 12")
+        );
+        bar.show_error("Failed to save");
+        assert_eq!(bar.message_tooltip(false), None, "an unlinked message that fits needs none");
     }
 }

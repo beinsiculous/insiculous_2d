@@ -115,9 +115,9 @@ fn test_panel_id_for_menu_label_map() {
         ("Inspector", Some(PanelId::INSPECTOR)),
         ("Hierarchy", Some(PanelId::HIERARCHY)),
         ("Asset Browser", Some(PanelId::ASSET_BROWSER)),
-        // The scene view cannot be hidden; Console has no panel yet.
+        ("Console", Some(PanelId::CONSOLE)),
+        // The scene view cannot be hidden.
         ("Scene View", None),
-        ("Console", None),
         ("Toggle Grid", None),
     ];
     for (label, expected) in table {

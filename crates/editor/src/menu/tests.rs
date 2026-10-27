@@ -119,7 +119,7 @@ fn test_view_menu_check_marks_follow_the_host_and_missing_panels_are_disabled() 
     let view = bar.menus.iter().find(|menu| menu.title == "View").expect("a View menu");
     for item in &view.items {
         if let MenuItem::Action { label, enabled, .. } = item {
-            let expected = !matches!(label.as_str(), "Scene View" | "Console");
+            let expected = label != "Scene View";
             assert_eq!(*enabled, expected, "{label}");
         }
     }

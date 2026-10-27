@@ -110,6 +110,8 @@ pub struct EditorContext {
     pub inspector_state: crate::InspectorState,
     /// The composer panel's view state: its focus, track, scrolls and songs list.
     pub composer: crate::composer::ComposerState,
+    /// The console's log, scroll and keyboard
+    pub console: crate::console::ConsoleState,
 }
 
 impl Default for EditorContext {
@@ -152,6 +154,14 @@ fn default_dock_area() -> DockArea {
         .with_hint("The song: its piano roll, its notes as text, and its parts and instruments.");
     composer.visible = false;
     dock_area.add_panel(composer);
+    // After the composer, so it stacks above whichever bottom panels show; hidden until
+    // View → Console asks for it.
+    let mut console = DockPanel::new(PanelId::CONSOLE, "Console", DockPosition::Bottom)
+        .with_size(160.0)
+        .with_min_size(80.0)
+        .with_hint("What the editor reported: script errors and launch results; click a file:line to open it.");
+    console.visible = false;
+    dock_area.add_panel(console);
     dock_area
 }
 
@@ -198,6 +208,7 @@ impl EditorContext {
             script_picker_open: false,
             inspector_state: crate::InspectorState::default(),
             composer: crate::composer::ComposerState::default(),
+            console: crate::console::ConsoleState::default(),
         };
         // Run the tool→gizmo mapping once so startup state is consistent
         // whatever the defaults are (today both are Move/Translate).

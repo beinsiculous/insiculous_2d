@@ -28,11 +28,13 @@ mod api;
 mod asset_browser_keys;
 mod composer_drag;
 mod composer_keys;
+mod console;
 mod game_impl;
 mod gizmo_drag;
 pub mod headless;
 mod external_tools;
 mod menu_actions;
+mod panel_press;
 mod play_session;
 mod preferences;
 mod run_options;
@@ -350,8 +352,7 @@ impl<G: Game> EditorGame<G> {
         self.editor.status_bar.update_stats(ctx.world.entity_count(), smoothed_fps);
         self.editor.status_bar.update(ctx.delta_time);
 
-        let theme = &self.editor.theme;
-        self.editor.status_bar.render(ctx.ui, window_size, theme);
+        self.draw_status_bar(ctx.ui, window_size);
     }
 
     /// Prepare the frame: freeze engine-side time, re-assert the editor font,
@@ -509,9 +510,13 @@ mod composer_drag_tests;
 #[cfg(test)]
 mod composer_keys_tests;
 #[cfg(test)]
+mod console_tests;
+#[cfg(test)]
 mod gizmo_drag_tests;
 #[cfg(test)]
 mod history_dirty_tests;
+#[cfg(test)]
+mod panel_press_tests;
 #[cfg(test)]
 mod play_session_tests;
 #[cfg(test)]

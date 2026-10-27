@@ -57,6 +57,7 @@ fn test_default_layout_docks_hierarchy_left_inspector_right_scene_center_assets_
             (PanelId::SCENE_VIEW, DockPosition::Center),
             (PanelId::ASSET_BROWSER, DockPosition::Bottom),
             (PanelId::COMPOSER, DockPosition::Bottom),
+            (PanelId::CONSOLE, DockPosition::Bottom),
         ]
     );
 }
@@ -92,6 +93,40 @@ fn test_the_composer_starts_hidden_stacks_above_assets_and_an_old_prefs_file_lea
     assert!(
         saved.panels.iter().any(|panel| panel.id == PanelId::COMPOSER.0 && panel.visible),
         "and a shown composer is written back"
+    );
+}
+
+#[test]
+fn test_the_console_starts_hidden_stacks_above_assets_and_an_old_prefs_file_leaves_it_hidden() {
+    let mut ctx = EditorContext::new();
+    let console = |ctx: &EditorContext| ctx.dock_area.get_panel(PanelId::CONSOLE).cloned().expect("the console panel");
+    assert!(!console(&ctx).visible, "hidden until View → Console asks for it");
+
+    ctx.dock_area.set_bounds(ui::Rect::new(0.0, 0.0, 1280.0, 720.0));
+    assert_eq!(
+        crate::menu::action_for_menu_label("Console"),
+        Some(crate::EditorAction::TogglePanel(PanelId::CONSOLE)),
+        "View → Console is a panel toggle"
+    );
+    ctx.dock_area.toggle_panel_visible(PanelId::CONSOLE);
+    let assets = ctx.dock_area.get_panel(PanelId::ASSET_BROWSER).expect("assets").content_bounds();
+    let shown = console(&ctx).content_bounds();
+    assert!(shown.height > 0.0 && shown.bottom() <= assets.y, "the console sits above Assets");
+
+    // A prefs file written before the console existed: rows for the old panels only.
+    let old_prefs = crate::EditorPreferences {
+        panels: vec![crate::PanelPrefs { id: PanelId::ASSET_BROWSER.0, visible: true, collapsed: false, size: 180.0 }],
+        ..Default::default()
+    };
+    let mut fresh = EditorContext::new();
+    old_prefs.apply_panels(&mut fresh.dock_area);
+    assert!(!console(&fresh).visible, "a file without the console's row leaves it hidden");
+
+    let mut saved = crate::EditorPreferences::default();
+    saved.capture_panels(&ctx.dock_area);
+    assert!(
+        saved.panels.iter().any(|panel| panel.id == PanelId::CONSOLE.0 && panel.visible),
+        "and a shown console is written back"
     );
 }
 
