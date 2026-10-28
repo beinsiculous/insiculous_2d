@@ -490,7 +490,7 @@ Dispatch (`editor_integration/src/editor_game/hot_reload.rs`), by the table's po
 
 | policy | editing | Play / Paused |
 |---|---|---|
-| `RecompileScript` | a console line (the runner compiles at session start) | `ctx.scripts.reload_source(path)`: recompile; on success swap the AST for every instance of that path, clear its `failed` and quarantine entries, keep blackboards and params; on a syntax error keep the old AST running and put the error, with its line, in the console as a link; a runtime error on the first tick after a reload (the state's shape changed) quarantines as any runtime error does and the console says "reloaded script failed on its first frame — Stop and Play to reset its state", the blackboard kept on purpose (round 2, gemini F7) |
+| `RecompileScript` | a console line (the runner compiles at session start) | `ctx.scripts.reload_source(path)`: recompile; on success swap the AST for every instance of that path, clear its `failed` and quarantine entries, keep blackboards and params; on a syntax error keep the old AST running and put the error, with its line, in the console as a link; a runtime error on the first tick after a reload (the state's shape changed) quarantines the instance whatever its kind — elsewhere only a runaway loop or a blown limit does — and the console says "reloaded script failed on its first frame — Stop and Play to reset its state", the blackboard kept on purpose (round 2, gemini F7) |
 | `ReloadDocument` (scene) | history clean → `load_scene` from disk (the dry-run guard keeps a bad file from the live world); dirty → `ConfirmDialog` "scene changed on disk: Reload (discard my edits) / Keep mine" | deferred: a notice now, the same rule at Stop |
 | `ReloadSheet` | a transaction: the sidecar parsed and the texture resolved **before** any live state changes, a failure keeping the old sheet and reporting (round 2, kimi F13); then `clear_sidecar_cache()` + the sheet's texture and clips for every `SpriteAnimation` naming it; a clip index past the new frame count clamps and warns | same; **and Stop re-applies the on-disk sheet state to the restored world** (the sidecar is SSOT; the snapshot restore would otherwise bring the old clips back with the stamp already consumed — round 1, kimi F10), guard-tested |
 | `ReloadSong` (the `.mid`, the `.mid.ron`, a SoundFont or a sample in a song's closure — any dispatches the song that owns it) | the open document follows the score (below) and the track diff runs against the last loaded song, so a rename is caught before Play | the open document follows the score; the bar-seam swap below |
@@ -873,8 +873,18 @@ Leaves out: filters, log levels; batch 3's reload notices (the console takes the
 exist); the status bar's other lines.
 
 **Batch 3 — the watcher and code reload: #208 (E6), #209 (E7), #210 (E8), #235; #211 (E9) closed
-won't-do by ruling (l).** Re-verified 2026-10-27 against b73f8a6. Jesse's two calls that day: the
-watched set is what batch 3 reloads, and #235 is folded in. The issues predate rounds 1 to 5;
+won't-do by ruling (l). DONE 2026-10-28, insiculous_2d 895d7dc, after code rounds 15, 16 and
+17.** Re-verified 2026-10-27 against b73f8a6. Jesse's two calls that day: the
+watched set is what batch 3 reloads, and #235 is folded in. His calls at review, 2026-10-28:
+- the worker acknowledges each noted save on its own channel, and a change for a path is dropped
+  until every save of it is acknowledged, since it was read before; a save before the worker
+  starts is not counted;
+- a save drops the scene's change waiting for it, the parked Reload prompt included;
+- Enter and Escape keep mine on the changed-on-disk prompt, and Reload is a click;
+- the open scene's path reloads as the scene whatever its suffix;
+- a playing clip the reloaded sheet no longer has is named on the console.
+
+An undo across a sheet reload bringing the old cut back is #236. The issues predate rounds 1 to 5;
 where they differ (a `.rs` listing, a poll on the frame) this section and § File watching and hot
 reload win.
 - **The watcher.** `FileWatch` (`editor/src/external_tools/watch.rs`, pure) works over
@@ -940,8 +950,8 @@ reload win.
       syntax error that came back after a fix would otherwise be swallowed.
     - A success also forgets the path's keys in `ScriptErrors.seen`, so the new source's runtime
       errors are reported fresh.
-    - A runtime error on an instance's first tick after a reload quarantines as any does, and its
-      message gains "reloaded script failed on its first frame — Stop and Play to reset its
+    - A runtime error on an instance's first tick after a reload quarantines it whatever its
+      kind — elsewhere only a runaway loop or a blown limit does — and its message gains "reloaded script failed on its first frame — Stop and Play to reset its
       state"; the blackboard is kept on purpose (round 2, gemini F7).
     - **`runner.rs` is 597 lines**, so the reload lives in a child module
       (`scripting/runner/reload.rs`, one `mod` line), which reaches the runner's private fields.
@@ -1008,7 +1018,8 @@ Enter and the context menu's Open in <tool> — where 2a opens it at `Location::
 kind opens from 2a on); recorded sounds reloading in place behind their handle, the
 library's loaded and failed paths and every `SoundEmitter(Path)` sound joining batch 3's watched
 set (it watches only what batch 3 reloads), a failure cleared on success (the sound half of #180,
-that issue updated). Target shapes: § Entry points rows 1 and 6, "Which song is the song", the
+that issue updated). `editor_game/hot_reload_tests.rs` is 577 lines since batch 3: a new host test
+goes in its own `*_tests.rs` sibling, or the file splits first. Target shapes: § Entry points rows 1 and 6, "Which song is the song", the
 `ReloadSample` row. Reviewers: kimi, gemini (the sound library's reload), codex (one still: the
 emitter's settings with the button). Leaves out: the song swap.
 
@@ -1030,7 +1041,10 @@ stopped-at-end, end-while-pending, short-loop and staged-refusal rules, the host
 transport and lifecycle queue, its one-transition adoption, retired sources dropped on a worker,
 the closure re-registered (§ MIDI reload) — the open song document's `.mid` and sidecar, the
 session song's closure and a failed preparation's attempted paths join batch 3's watched set
-here, and every song save calls `note_written`; the
+here, and every song save is noted as the scene's is since batch 3 — `note_scene_written`
+(`editor_game/hot_reload.rs`) widened to any path the editor writes: the worker told, the save
+counted until its `WatchEvent::Noted` and a change for the path dropped until then, a change waiting
+for the path dropped, and a save before the worker starts not counted; the
 `conductor_background` example's `--replace-after <bars>` flag; the `ReloadSong` dispatch with the
 debounce → prepare → diff → swap chain and `track_diff.rs` over resolved parts. Reviewers: kimi,
 gemini (the audio seam; the half-written-file and the renamed-track fixtures). Listen check:
