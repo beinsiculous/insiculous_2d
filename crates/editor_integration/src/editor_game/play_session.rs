@@ -217,6 +217,7 @@ impl<G: Game> EditorGame<G> {
             self.command_history.drop_session_entries();
         }
         let dropped = self.restore_snapshot(world, paused_edits);
+        self.reapply_session_sheets(world);
         let kept = self.command_history.session_entry_count();
         self.command_history.end_session();
         self.restore_editing_camera();

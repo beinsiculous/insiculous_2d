@@ -233,6 +233,19 @@ Shared match state is coordinated via blackboard keys: `left_score` (`i32`), `ri
 - **Runaway Loops**: Rhai execution is bounded by an operations limit (200,000 ops). Scripts exceeding this quota are automatically quarantined for the rest of the Play session to keep the engine and editor responsive.
 - **Size and Depth Limits**: A string may grow to 64 KiB, an array or object map to 10,000 entries, and the call stack to 64 levels. Past any of these the hook fails with a data-size or stack error instead of exhausting memory, and the script is quarantined the same way, because a limit it hits once it hits every frame.
 - **Hook Failure Isolation**: If a script errors mid-hook, any commands queued by that failing hook are discarded without corrupting the ECS world.
+- **Where an error points**: every syntax, header and runtime error names its script and line (`scripts/paddle.rhai:3: [Header] Missing ':' in @param declaration`), and in the native editor a click on it opens that line in your code editor.
+
+## Reloading a script during Play
+
+The native editor watches every `.rhai` the scene's `Scripts` components name. Save one in your code editor and:
+
+- **While editing**, the console says it changed and nothing else happens: the next Play compiles whatever is on disk.
+- **In Play or while Paused**, it is recompiled at once and every entity running it switches to the new source on its next frame. What the session built up is kept: the blackboard, the frame count, and any parameter value the scene set on the component. A changed `@param` default takes effect immediately wherever the scene left that parameter unset.
+- **A syntax or header error** leaves the old version running and shows the error, with its line, in the console. Fixing it and saving reloads; breaking it the same way again reports it again — a reload's error is never hidden by the once-per-session rule above.
+- **A script that was quarantined** (a runaway loop, a blown limit) or that failed to load gets a new try once a good version is saved.
+- **The first frame on the new source** is where old state meets new code: a blackboard key the new version reads differently, say. A runtime error on that frame quarantines the script and its message ends "reloaded script failed on its first frame — Stop and Play to reset its state". The blackboard is kept on purpose; Stop and Play starts it fresh.
+
+The editor's own saves never trigger a reload, and the browser playground does not watch files.
 
 ---
 
@@ -256,9 +269,11 @@ ctx.scripts.update(ctx.world, ctx.input, ctx.players, ctx.delta_time, &collision
 
 A game that never steps the runner runs no scripts, silently; inside the editor the status bar
 says so at Play frame 60 ("scripts attached but the game never ran the script runner").
-A `.rhai` source is compiled when Play starts and runs as compiled until the next Play, so a
-file edited mid-Play takes effect on Stop → Play; a script that is missing or broken when
-Play starts is reported once and likewise not retried until the next Play.
+Outside the native editor — a shipped game, the browser playground — a `.rhai` source is
+compiled when the session starts and runs as compiled until the next `reset`, so a file edited
+mid-session takes effect at the next session; a script that is missing or broken when the
+session starts is reported once and likewise not retried until the next. The native editor
+recompiles a saved script during Play (§ Reloading a script during Play).
 
 ## Architecture: "One Bundle, Many Projects"
 

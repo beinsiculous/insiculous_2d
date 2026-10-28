@@ -34,6 +34,8 @@ pub(super) enum PendingSceneAction {
     StartPlay,
     /// A Save As onto another song's file, waiting for Overwrite or Cancel.
     OverwriteSong(PathBuf),
+    /// The open scene changed on disk under unsaved edits: Reload or Keep mine.
+    ReloadFromDisk(PathBuf),
 }
 
 /// The document whose edits an action would lose.
@@ -54,12 +56,15 @@ impl PendingSceneAction {
             PendingSceneAction::CloseSong => "closing it",
             PendingSceneAction::StartPlay => "Play",
             PendingSceneAction::OverwriteSong(_) => "replacing another song",
+            PendingSceneAction::ReloadFromDisk(_) => "reloading it from disk",
         }
     }
 
     pub(super) fn document(&self) -> Document {
         match self {
-            PendingSceneAction::NewScene | PendingSceneAction::OpenScene(_) => Document::Scene,
+            PendingSceneAction::NewScene
+            | PendingSceneAction::OpenScene(_)
+            | PendingSceneAction::ReloadFromDisk(_) => Document::Scene,
             PendingSceneAction::NewSong
             | PendingSceneAction::OpenSong(_)
             | PendingSceneAction::CloseSong
@@ -123,6 +128,7 @@ impl<G: Game> EditorGame<G> {
         let dialog = match (&action, action.document()) {
             (PendingSceneAction::StartPlay, _) => ConfirmDialog::play_with_unsaved_song(self.song_saved_exists()),
             (PendingSceneAction::OverwriteSong(path), _) => ConfirmDialog::overwrite_song(path),
+            (PendingSceneAction::ReloadFromDisk(path), _) => ConfirmDialog::scene_changed_on_disk(path),
             (_, Document::Song) => ConfirmDialog::unsaved_song(action.phrase()),
             (_, Document::Scene) => ConfirmDialog::unsaved_changes(action.phrase()),
         };
@@ -134,6 +140,10 @@ impl<G: Game> EditorGame<G> {
             if let Some(choice) = choice {
                 self.resolve_song_choice(action, choice);
             }
+            return;
+        }
+        if let (PendingSceneAction::ReloadFromDisk(path), Some(choice)) = (&action, choice) {
+            self.resolve_scene_reload_choice(ctx.world, ctx.assets, path, choice);
             return;
         }
         match choice {
@@ -216,6 +226,25 @@ impl<G: Game> EditorGame<G> {
         }
     }
 
+    /// Route the choice on the changed-on-disk prompt: Reload replaces the edited scene with
+    /// the file; Keep mine — Escape and Enter included — closes the prompt and leaves the scene, its
+    /// edits and the watch as they are.
+    pub(super) fn resolve_scene_reload_choice(
+        &mut self,
+        world: &mut ecs::World,
+        assets: &mut engine_core::assets::AssetManager,
+        path: &std::path::Path,
+        choice: ConfirmChoice,
+    ) {
+        self.scene_confirm.pending_action = None;
+        match choice {
+            ConfirmChoice::Confirm => self.reload_scene_from_disk(world, assets, path),
+            ConfirmChoice::Alt | ConfirmChoice::Cancel => {
+                self.editor.status_bar.show_message("Kept your edits; the scene on disk differs");
+            }
+        }
+    }
+
     /// Execute a (now confirmed) song action, or Play.
     pub(super) fn perform_song_action(&mut self, action: PendingSceneAction) {
         match action {
@@ -236,7 +265,7 @@ impl<G: Game> EditorGame<G> {
                 let result = self.save_song_to(path).map(drop);
                 self.report_song_failure("Song save", result);
             }
-            PendingSceneAction::NewScene | PendingSceneAction::OpenScene(_) => {
+            PendingSceneAction::NewScene | PendingSceneAction::OpenScene(_) | PendingSceneAction::ReloadFromDisk(_) => {
                 log::error!("{action:?} is a scene action, routed by the scene's Save branch");
             }
         }
@@ -249,6 +278,7 @@ impl<G: Game> EditorGame<G> {
             PendingSceneAction::OpenScene(path) => {
                 self.load_scene_with_feedback(ctx.world, ctx.assets, &path);
             }
+            PendingSceneAction::ReloadFromDisk(path) => self.reload_scene_from_disk(ctx.world, ctx.assets, &path),
             song_action => self.perform_song_action(song_action),
         }
     }
@@ -259,15 +289,24 @@ impl<G: Game> EditorGame<G> {
     /// and EVERY other key is swallowed — Ctrl+S or Delete acting under a
     /// modal would mutate state the user is being asked about. Tab cycling
     /// is deliberately out of scope for now (mouse-first).
+    /// The changed-on-disk prompt is the exception: it appears unasked, so an
+    /// Enter meant for something else lands on it, and both keys keep the
+    /// edits — Reload, which discards them past undo, is a click.
     /// Returns whether the key was consumed.
     pub(super) fn confirm_dialog_consumes_key(&mut self, key: winit::keyboard::KeyCode) -> bool {
         if self.stop_dialog_consumes_key(key) {
             return true;
         }
-        if self.scene_confirm.pending_action.is_none() {
+        let Some(action) = &self.scene_confirm.pending_action else {
             return false;
-        }
+        };
+        let reload_prompt = matches!(action, PendingSceneAction::ReloadFromDisk(_));
         match key {
+            winit::keyboard::KeyCode::Escape | winit::keyboard::KeyCode::Enter | winit::keyboard::KeyCode::NumpadEnter
+                if reload_prompt =>
+            {
+                self.scene_confirm.pending_choice = Some(ConfirmChoice::Cancel);
+            }
             winit::keyboard::KeyCode::Escape => {
                 self.scene_confirm.pending_action = None;
                 self.scene_confirm.pending_choice = None;

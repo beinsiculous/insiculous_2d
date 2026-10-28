@@ -3,6 +3,7 @@
 mod clips;
 mod contracts;
 mod lifecycle;
+mod reload;
 mod rhai;
 
 use ecs::World;

@@ -91,7 +91,10 @@ impl RhaiBackend {
         source: &str,
         source_hash: u64,
     ) -> Result<RhaiCompiledScript, ScriptError> {
-        let header_defaults = parse_param_header(source)?;
+        // The header parser is public and knows no path; the error names its script here,
+        // as a syntax error does, so the console can link it at its line.
+        let header_defaults = parse_param_header(source)
+            .map_err(|error| ScriptError { file: source_path.to_string(), ..error })?;
         let ast = engine.compile(source).map_err(|e| {
             let line = e.position().line().unwrap_or(0);
             ScriptError {

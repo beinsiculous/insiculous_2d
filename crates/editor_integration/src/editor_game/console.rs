@@ -95,9 +95,9 @@ impl<G: Game> EditorGame<G> {
 }
 
 /// The request a script error's click files: its `.rhai` source at its line, or at no
-/// line for a line of 0. A missing or ambiguous target's `file` is an entity's name and an
-/// unresolved script's its id, whatever they end in, and a header error's is `header`: none
-/// of them is a file, so those open nothing.
+/// line for a line of 0 — a header error's included, which names its script as a syntax
+/// error does. A missing or ambiguous target's `file` is an entity's name and an unresolved
+/// script's its id, whatever they end in: neither is a file, so those open nothing.
 pub(super) fn script_error_location(error: &ScriptError) -> Option<OpenRequest> {
     let names_its_source = !matches!(
         error.kind,

@@ -18,6 +18,8 @@ use super::registry::{ScriptBehavior, ScriptRegistry};
 use super::rhai_backend::RhaiBackend;
 use super::view::{clip_snapshot, EntityState, ScriptCollision, ScriptView, SelfView};
 
+mod reload;
+
 /// Classification of script execution and compilation errors.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ScriptErrorKind {
@@ -130,6 +132,9 @@ pub struct ScriptRunner {
     /// Refs that failed to resolve this Play, with the identity they failed under: retrying
     /// twice a frame would re-read a missing file forever, but an edited ref gets a new try.
     failed: HashMap<(EntityId, usize), (String, String)>,
+    /// Instances whose source a `reload_source` swapped and that have not finished a frame
+    /// since: an error there is the new source meeting the old state, so it quarantines.
+    reloaded: HashSet<(EntityId, usize)>,
     pub(super) triggers: super::triggers::TriggerQueue,
 }
 
@@ -151,6 +156,7 @@ impl ScriptRunner {
             asset_base: String::new(),
             quarantined: HashSet::new(),
             failed: HashMap::new(),
+            reloaded: HashSet::new(),
             triggers: super::triggers::TriggerQueue::default(),
         }
     }
@@ -189,6 +195,7 @@ impl ScriptRunner {
         self.errors.clear();
         self.quarantined.clear();
         self.failed.clear();
+        self.reloaded.clear();
         self.triggers.clear();
         world.insert_resource(Blackboard::new());
     }
@@ -270,14 +277,7 @@ impl ScriptRunner {
     /// later phase), anything else is a registry id.
     fn resolve_instance(&mut self, script_ref: &ScriptRef) -> Result<ScriptInstance, ScriptError> {
         let kind = if script_ref.source_path.ends_with(".rhai") {
-            let resolved_path = self.resolve_source_path(&script_ref.source_path);
-            let source = common::vfs::read_to_string(std::path::Path::new(&resolved_path))
-                .map_err(|error| ScriptError {
-                    file: script_ref.source_path.clone(),
-                    line: 0,
-                    kind: ScriptErrorKind::Runtime,
-                    message: format!("could not read script at {resolved_path}: {error}"),
-                })?;
+            let source = self.read_source(&script_ref.source_path)?;
             self.rhai.compile(&script_ref.source_path, &source)?;
             InstanceKind::Rhai
         } else if let Some(descriptor) = self.registry.get(&script_ref.script_id) {
@@ -458,8 +458,8 @@ impl ScriptRunner {
                     if self.quarantined.contains(&key) {
                         continue;
                     }
-                    // Compiled once when the instance resolved; a source edited mid-Play
-                    // runs as compiled until the next Play recompiles it.
+                    // The cache holds one unit per path, so a `reload_source` swaps it for
+                    // every instance of that path at once.
                     let Some(compiled) = self.rhai.get(&instance.source_path) else {
                         continue;
                     };
@@ -491,8 +491,8 @@ impl ScriptRunner {
 
                     match call_result {
                         Ok(()) => phase_commands.commands.extend(handle.drain()),
-                        Err(error) => {
-                            if matches!(error.kind, ScriptErrorKind::RunawayLoop | ScriptErrorKind::ResourceLimit) {
+                        Err(mut error) => {
+                            if reload::hook_error_quarantines(&self.reloaded, key, &mut error) {
                                 self.quarantined.insert(key);
                             }
                             self.errors.push(error);
@@ -560,6 +560,7 @@ impl ScriptRunner {
             world,
             physics,
         );
+        self.reloaded.clear();
         self.frames_run += 1;
     }
 }

@@ -102,6 +102,23 @@ impl ConfirmDialog {
         }
     }
 
+    /// The prompt when another program rewrote the open scene while it had unsaved edits:
+    /// Reload / Keep mine, with no alternative. The message says what Reload costs, since a
+    /// button is too narrow to.
+    pub fn scene_changed_on_disk(path: &std::path::Path) -> Self {
+        let name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path.display().to_string());
+        Self {
+            title: "Scene changed on disk".to_string(),
+            message: format!("{name} changed on disk. Reload it and discard your edits?"),
+            confirm_label: "Reload".to_string(),
+            alt_label: None,
+            cancel_label: "Keep mine".to_string(),
+        }
+    }
+
     /// The Stop prompt for edits recorded while the session was paused.
     pub fn keep_paused_edits(count: usize) -> Self {
         Self {

@@ -77,6 +77,25 @@ fn a_syntax_error_lands_linked_at_its_line_on_the_console_and_the_status_bar() {
 }
 
 #[test]
+fn a_header_error_lands_linked_at_its_line_in_its_script() {
+    let project = tempfile::tempdir().expect("a temporary project");
+    let scripts = project.path().join("scripts");
+    std::fs::create_dir_all(&scripts).expect("the scripts folder");
+    let source = "// the paddle\n\n// @param speed f32 = 1.0\nfn update(me, view, params, cmd, dt) {}\n";
+    std::fs::write(scripts.join("paddle.rhai"), source).expect("the script with a broken header");
+    let mut editor = editor_game();
+    let mut world = World::new();
+    script_entity(&mut world, rhai("scripts/paddle.rhai"));
+
+    run_session(&mut editor, &mut world, project.path());
+
+    let paddle = OpenRequest { path: PathBuf::from("scripts/paddle.rhai"), location: Location::Line { line: 3, column: None } };
+    let entry = last_entry(&editor);
+    assert_eq!((entry.severity, entry.location.as_ref()), (Severity::Error, Some(&paddle)), "{}", entry.text);
+    assert!(entry.text.starts_with("scripts/paddle.rhai:3: [Header]"), "{}", entry.text);
+}
+
+#[test]
 fn a_line_of_zero_lands_linked_to_the_file_alone_and_an_unresolved_script_unlinked() {
     let project = tempfile::tempdir().expect("a temporary project");
     let mut editor = editor_game();

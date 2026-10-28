@@ -33,6 +33,7 @@ mod game_impl;
 mod gizmo_drag;
 pub mod headless;
 mod external_tools;
+mod hot_reload;
 mod menu_actions;
 mod panel_press;
 mod play_session;
@@ -132,6 +133,8 @@ struct EditorGame<G: Game> {
     pub(super) open_song_mirror: Option<std::sync::Arc<std::sync::Mutex<Option<std::path::PathBuf>>>>,
     /// Opens requested files in their external tools and collects what the launches report.
     launcher: external_tools::Launcher,
+    /// The watched project files, and what their changes on disk wait on.
+    hot_reload: hot_reload::HotReload,
 }
 
 impl<G: Game> EditorGame<G> {
@@ -175,6 +178,7 @@ impl<G: Game> EditorGame<G> {
             preview_open: None,
             open_song_mirror: None,
             launcher: external_tools::Launcher::new(),
+            hot_reload: hot_reload::HotReload::default(),
         }
     }
 
@@ -419,6 +423,8 @@ impl<G: Game> EditorGame<G> {
         ctx.set_idle_throttle_ok(self.idle_throttle_allowed());
 
         self.sync_dirty_mirror();
+        // After the mirror, so a reload sees this frame's dirty state, and before the bar.
+        self.drain_file_changes(ctx);
         self.save_preferences_if_changed(ctx.delta_time);
         self.open_requested_files();
 
@@ -515,6 +521,10 @@ mod console_tests;
 mod gizmo_drag_tests;
 #[cfg(test)]
 mod history_dirty_tests;
+#[cfg(test)]
+mod hot_reload_tests;
+#[cfg(test)]
+mod hot_reload_sheet_tests;
 #[cfg(test)]
 mod panel_press_tests;
 #[cfg(test)]

@@ -60,7 +60,8 @@ Cross-cutting glue biases toward `engine_core`: `ui` defines `DrawCommand` (rend
 - `assets/sprite_sheet.rs` — `AssetManager::load_sprite_sheet` order: read sidecar, parse, probe PNG dims, validate, then load texture so bad sheets leave no handle.
 - `assets.rs` — asset loading; `create_texture_from_rgba` validates before device with `"#rgba"` sentinel (does not survive save/load).
 - `behavior_runner/` — entity behavior system: runner dispatch loop, handlers, and `CameraFollow` with look-ahead.
-- `scripting/` — game scripting subsystem: `ScriptRegistry`, `ScriptRunner`, Rhai backend, and built-in behaviors.
+- `scripting/` — game scripting subsystem: `ScriptRegistry`, `ScriptRunner`, Rhai backend, and built-in behaviors. A header error names its script: `compile_fresh` gives the public `parse_param_header`'s error the source path, so it reads `scripts/paddle.rhai:3: [Header] …` (the playground's `check_source` keeps `"source"`).
+- `scripting/runner/reload.rs` — `ScriptRunner::reload_source(source_path)`, the editor's mid-session reload: read through the asset base and recompile; a success swaps the one cached unit for every instance of the path, clears its quarantine and failed resolves and forgets its keys in `ScriptErrors`, leaving the blackboard, `frames_run` and the component's params alone; a failure leaves the old unit running and is returned, never recorded. An error on a reloaded instance's first frame quarantines it, its message ending "reloaded script failed on its first frame — Stop and Play to reset its state" (`hook_error_quarantines`).
 - `pause.rs` — shared `PauseMenu`; headless-testable via `&InputSettings + &InputHandler + window_size` (mouse reads live inside paused branch only).
 - `menu_panel.rs` — `MenuPanel` chrome; resting cursor never fights keyboard nav, click selects and confirms.
 - `title_art.rs` — a title screen's art over its menu: `TitleArt::load` measures the art's last content row, `title_layout` places art and panel (or falls back to the centred panel), `draw_title_art` fills and draws; one layout serves drawing and the mouse.
@@ -102,6 +103,8 @@ Cross-cutting glue biases toward `engine_core`: `ui` defines `DrawCommand` (rend
 | A song change flushes nothing: a live entity keeps its `SourceId` and activates lazily in the next song | `tests/song_triggers.rs a_song_change_keeps_each_live_source_and_the_new_song_admits_it` |
 | Delta time is clamped after an engine stall to prevent physics explosions | `src/game_loop_manager.rs test_delta_time_is_clamped_after_a_stall` |
 | Pickups are collected exactly once on contact start and then destroyed | `src/pickups.rs test_each_pickup_is_collected_once_on_a_started_contact_and_destroyed` |
+| A reload's error is returned to its caller, never recorded, so the same syntax error after a fix is reported again instead of being swallowed by the session's one-report-per-line dedup; a successful reload forgets the path's keys, so the new source's errors are new | `src/scripting/tests/reload.rs the_same_syntax_error_after_a_fix_is_returned_again` `src/scripting/tests/reload.rs a_runtime_error_on_the_first_frame_after_a_reload_is_reported_fresh_says_so_and_quarantines` |
+| A reload keeps the session: the blackboard, `frames_run` and the params a component set survive, and a changed `@param` default applies at once because the params are composed every frame | `src/scripting/tests/reload.rs a_reloaded_constant_moves_the_entity_next_frame_and_the_blackboard_and_frame_count_survive` `src/scripting/tests/reload.rs a_changed_param_default_takes_effect_and_a_value_the_component_set_stays` |
 
 
 ## Save/Load Pipeline

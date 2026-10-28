@@ -133,6 +133,7 @@ impl<G: Game> EditorGame<G> {
 
         engine_core::scene_serializer::save_scene_to_file(&scene_data, &path)
             .map_err(SceneIoError::Write)?;
+        self.note_scene_written(&path);
 
         self.editor.set_scene_path(Some(path.clone()));
         // The history is the dirty source of truth; the mirror is set too so
