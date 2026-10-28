@@ -872,18 +872,131 @@ Reviewers: kimi, codex (one still: the console with a clickable error and a coll
 Leaves out: filters, log levels; batch 3's reload notices (the console takes them when they
 exist); the status bar's other lines.
 
-**Batch 3 — the watcher and code reload: #208 (E6), #209 (E7), #210 (E8); #211 (E9) closed
-won't-do by ruling (l).** `FileWatch`
-on its worker thread with its registered set, debounced tombstones, companion files and
-`note_written` baselines, its MIDI and sidecar rules batch 1's `external_tools::is_midi_path` and
-`midi_sidecar_path`, never its own; `hot_reload.rs`
-with the registered set's rebuild rules; Rhai recompile on save in a Play session
-(`ScriptRunner::reload_source`, the AST swapped, blackboards kept, a syntax error keeping the old
-AST and linking the line); scene and sheet reload through the existing guards and dialog, the sheet as a transaction and
-re-applied on Stop, the first-tick rule after a script reload. Target shapes: § File watching and hot reload (the
-first three policy rows). Reviewers: kimi, gemini (the watcher's debounce and tombstones, the
-runner's swap and Stop's re-apply are harness and seam). Leaves out: the song and sample policies
-(batches 4 and 5), any `cargo` spawn.
+**Batch 3 — the watcher and code reload: #208 (E6), #209 (E7), #210 (E8), #235; #211 (E9) closed
+won't-do by ruling (l).** Re-verified 2026-10-27 against b73f8a6. Jesse's two calls that day: the
+watched set is what batch 3 reloads, and #235 is folded in. The issues predate rounds 1 to 5;
+where they differ (a `.rs` listing, a poll on the frame) this section and § File watching and hot
+reload win.
+- **The watcher.** `FileWatch` (`editor/src/external_tools/watch.rs`, pure) works over
+  `common::vfs::change_stamp` (`common/src/vfs/mod.rs:98`: `None` on wasm, a missing file an
+  error), as § File watching and hot reload describes:
+  - the registered set kept apart from the observed stamps;
+  - `poll()` reporting a path once its stamp changed and then held for one further poll;
+  - a gone path kept as a tombstone: reported deleted once it is absent across two polls, and kept
+    as long as the host still wants it, so its return, however late, is a change;
+  - a `.mid` and its `.mid.ron` settling together, by batch 1's `is_midi_path` and
+    `midi_sidecar_path` (`external_tools/file_type.rs:132`, `:140`), never a rule of its own;
+  - `note_written(path, stamp)` taking the stamp the host read right after its own write as the
+    path's last, **and dropping a change pending its debounce**: a poll that caught the write
+    before the note reports nothing, and a write by another program after it still differs from
+    that stamp, so it is reported.
+
+  A worker thread polls every 500 ms on native, so every stat stays off the frame. It takes two
+  messages, a new registered set and a written path; the frame drains its events in
+  `finish_frame`, and nothing runs on wasm. The tests drive `poll()` directly; the worker's own
+  test waits by a bounded poll.
+- **What it watches (Jesse: what batch 3 reloads):**
+  - the open scene's file;
+  - every non-empty `.rhai` `Scripts` source path (a native script's is empty);
+  - the `.sheet.ron` of every non-empty `SpriteAnimation.sheet` (`sheet_file.rs:78`,
+    `sidecar_path_for`).
+
+  Each is resolved against the asset base. The host computes the set from the world on the
+  watcher's tick and hands the worker a new set only when it differs, so there is no hook on a
+  scene load or a history step to miss. The set is of paths, so many entities sharing a script
+  are one entry. The host keeps the set as a map from each watched path to what named it (the
+  scene, the `source_path`s, the sheet's PNG paths), and a dispatch reads its owners from the
+  map. Nothing strips the asset base back off a path, which breaks on a relative base or another
+  separator. The songs, the sound emitters and the sound library's
+  paths join the set with their policies, in batches 4 and 5.
+- **The editor's own writes.** The scene's save (`save_scene_with`, `scene_io.rs:89`, the one
+  choke point) calls `note_written` after a successful write. An event already on its way when
+  the save happened is dropped too: the drain discards events for a path saved since the last
+  drain, since the file now holds the editor's own bytes. Tests: Ctrl+S yields no event, polled
+  directly and with an event already queued. The editor writes no `.sheet.ron` and does not watch `editor_prefs.json`; the song's
+  saves call it from batch 5, once its files are watched.
+- **The console.** Every line goes through 2b's `report` (`editor_game/console.rs`):
+  - "`<path>` changed on disk (<policy>)" as information;
+  - a reload's result;
+  - a reload's error at error severity, linked by `script_error_location` when it is a script's.
+- **`hot_reload.rs`** (`editor_integration/src/editor_game/`) dispatches by
+  `FileType::reload_policy` (`file_type.rs:103`), the first three rows of § File watching and hot
+  reload's table:
+  - **`RecompileScript`, while editing:** the console line only. The next session's `reset`
+    compiles the new source (`runner.rs:185-194`; the backend recompiles a source whose hash
+    changed, `rhai_backend.rs:64-86`), and a guard test pins it.
+  - **`RecompileScript`, in Play or Paused:** `ScriptRunner::reload_source(source_path)` for each
+    `source_path` the host's map gives the watched path, as the `Scripts` components name it.
+    - It reads and recompiles. The backend keeps one cached unit per path and inserts only on
+      success (`rhai_backend.rs:76-78`), so a success swaps every instance and a syntax error
+      leaves the old unit running.
+    - A success clears the path's `failed` entries and the quarantine of its instances
+      (`runner.rs:129-132`), keeps the blackboard (a world resource), and leaves `frames_run`
+      alone. The params need nothing: the runner composes them every frame from the cached unit's
+      header defaults and the component's own values (`runner.rs:467-472`), so a changed `@param`
+      default takes effect at once and a value the scene set stays.
+    - `reload_source` returns its error rather than pushing it, and the host reports it.
+      `ScriptErrors` keeps one error per `(file, line, kind)` a session (`runner.rs:60-94`), so a
+      syntax error that came back after a fix would otherwise be swallowed.
+    - A success also forgets the path's keys in `ScriptErrors.seen`, so the new source's runtime
+      errors are reported fresh.
+    - A runtime error on an instance's first tick after a reload quarantines as any does, and its
+      message gains "reloaded script failed on its first frame — Stop and Play to reset its
+      state"; the blackboard is kept on purpose (round 2, gemini F7).
+    - **`runner.rs` is 597 lines**, so the reload lives in a child module
+      (`scripting/runner/reload.rs`, one `mod` line), which reaches the runner's private fields.
+  - **#235, folded in (Jesse):** a header error carries its script's `source_path`.
+    `param_header.rs:27`, and ten more down to `:136`, build `file: "header"`, and
+    `compile_fresh` passes them on (`rhai_backend.rs:94`). Fixed, the error reads
+    `scripts/paddle.rhai:3: [Header] …` and links at its line. `check_source`'s `"source"`
+    (`param_header.rs:151-164`) is its caller's, the playground's, which knows the path. Tests:
+    one in `engine_core` on the file, one in `console_tests.rs` on the link.
+  - **`ReloadDocument` (the scene).** An event acts only when its path is the open scene's, so
+    one queued before Open Scene never reloads the old file over the new.
+    - It waits out a gesture: while a gizmo or composer drag is live (`take_api_lines`' guard,
+      `api.rs:216`) or an edit field holds the keyboard, it stays queued for the next frame
+      without one.
+    - Editing with a clean history: `load_scene` from disk (`scene_io.rs:156`, whose dry-run
+      keeps a bad file from the live world), reported as reloaded from disk. The undo history
+      goes with the old document (Jesse: no prompt for a clean scene).
+    - Dirty: a new `PendingSceneAction::ReloadFromDisk` on the confirm machine
+      (`scene_confirm.rs:27-37`), "scene changed on disk: Reload (discard my edits) / Keep
+      mine". Keep leaves the file watched and the line in the console.
+    - Play or Paused: a console line now, and the same rule once Stop has restored the world
+      (a guard test, the mid-simulation pitfall).
+  - **`ReloadSheet`.**
+    - A transaction: the sidecar is parsed and its texture resolved before any live state
+      changes, and a failure keeps the old sheet and reports (round 2, kimi F13).
+    - Then `clear_sidecar_cache()` (`assets/sprite_sheet.rs:256`), and the sheet's grid, clips
+      and texture go into every `SpriteAnimation` naming it (`ecs/src/sprite_components.rs:238-249`)
+      together: a new cell size is a new grid. A clip's frame past the new count clamps and warns.
+    - A `Sprite`'s texture changes only where it holds that sheet's old handle (a new filter is a
+      new handle). A sprite showing another texture, one set while Paused and kept included, is
+      left alone.
+    - In Play the same, and **Stop re-applies the on-disk sheet to the restored world** (round 1,
+      kimi F10). The host keeps each sheet the session reloaded (its grid, clips, and old and new
+      texture handles) and applies them by the same rules after `restore_snapshot`
+      (`play_session.rs:171`, inside `stop_with_paused_edits` at `:208`). Stop stays world-only
+      and drivable headless, and is guard-tested with a cell-size change.
+    - The re-apply is no edit and marks nothing dirty: the sidecar is the sheet's source of truth
+      and wins on every load (`training.md` § Sprite Sheet Pattern), so the saved scene opens the
+      same.
+- **Files near the ceiling:**
+  - `runner.rs` 597 (above);
+  - `editor_game/mod.rs` 539: the module lines and the watcher's fields only, the host's code in
+    `hot_reload.rs`;
+  - `sprite_sheet.rs` 428, `play_session.rs` 347, `scene_io.rs` 317.
+- **Docs:** `docs/SCRIPTING.md` (reload in a session, the first-tick rule); both crate guides and
+  `engine_core`'s; pitfall rows for the watcher's baseline, the reload's error reaching the console
+  past the dedup, and the sheet at Stop.
+- **The manual check** (§ Verification) runs on temporary copies, since `games/pong` has no
+  `.rhai`: the playground's pong project (`crates/playground/assets/projects/pong`) for the
+  scripts, and breakout's `assets/` (its scenes name sheets) for the sheet.
+
+Target shapes: § File watching and hot reload (the first three policy rows). Reviewers: kimi, and
+gemini, since the watcher's debounce and tombstones, the runner's swap and Stop's re-apply are
+harness and seam. Leaves out: the song and sample policies, and their paths in the watched set
+(batches 4 and 5); any `cargo` spawn.
 
 **Batch 4 — music entry points and the sample reload: #212 (E10), #215 (E13).** `scan_songs`
 salvaged into `external_tools/songs.rs` and pointed at `is_midi_path` (`composer/state.rs:399`
@@ -893,7 +1006,8 @@ the action → part → track resolution; a `.mid` tile opening at its first par
 (`Location::Track` from its sidecar) through every entry batch 2a gave it — the double-click,
 Enter and the context menu's Open in <tool> — where 2a opens it at `Location::None` (every tile
 kind opens from 2a on); recorded sounds reloading in place behind their handle, the
-library's loaded and failed paths registered, a failure cleared on success (the sound half of #180,
+library's loaded and failed paths and every `SoundEmitter(Path)` sound joining batch 3's watched
+set (it watches only what batch 3 reloads), a failure cleared on success (the sound half of #180,
 that issue updated). Target shapes: § Entry points rows 1 and 6, "Which song is the song", the
 `ReloadSample` row. Reviewers: kimi, gemini (the sound library's reload), codex (one still: the
 emitter's settings with the button). Leaves out: the song swap.
@@ -914,7 +1028,9 @@ Song tile, which the composer opens and Save refuses until this lands); the sile
 on an observed bar-line crossing with the bar-and-fraction conversion, the stationary-transport,
 stopped-at-end, end-while-pending, short-loop and staged-refusal rules, the host's re-asserted
 transport and lifecycle queue, its one-transition adoption, retired sources dropped on a worker,
-the closure re-registered (§ MIDI reload); the
+the closure re-registered (§ MIDI reload) — the open song document's `.mid` and sidecar, the
+session song's closure and a failed preparation's attempted paths join batch 3's watched set
+here, and every song save calls `note_written`; the
 `conductor_background` example's `--replace-after <bars>` flag; the `ReloadSong` dispatch with the
 debounce → prepare → diff → swap chain and `track_diff.rs` over resolved parts. Reviewers: kimi,
 gemini (the audio seam; the half-written-file and the renamed-track fixtures). Listen check:
@@ -977,10 +1093,12 @@ yet met. One batch out at a time, as the Conductor ran it.
 ## Verification, end to end
 
 - Every batch: the gates above, run by the planner on the staged tree, never from the report.
-- After batch 3: the editor on pong, `touch assets/scripts/paddle.rhai` from a shell → the console
-  says so within a second; Ctrl+S on the scene → no reload; in Play, change `speed` in
+- After batch 3: the editor on a temporary copy of the playground's pong project (`games/pong`
+  has no `.rhai`), `touch assets/scripts/paddle.rhai` from a shell → the console says so within
+  a second; Ctrl+S on the scene → no reload; in Play, change `speed` in
   `paddle.rhai` and save → the paddle moves faster, no Stop; break the syntax → the old speed holds
-  and the console links the line; a sheet changed in Play → still changed after Stop.
+  and the console links the line; on a temporary copy of breakout's `assets/`, a sheet changed in
+  Play → still changed after Stop.
 - After batch 5: Tong in the editor, Play; a note changed in MIDI Evil (or any editor that writes a
   `.mid`) and saved mid-bar → heard from the next bar, the hits on the beat before and after (a
   frame of lateness at the bar passes; a gap Jesse hears sends § Appendix to a batch); the
