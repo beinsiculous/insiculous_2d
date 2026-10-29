@@ -1008,8 +1008,9 @@ gemini, since the watcher's debounce and tombstones, the runner's swap and Stop'
 harness and seam. Leaves out: the song and sample policies, and their paths in the watched set
 (batches 4 and 5); any `cargo` spawn.
 
-**Batch 4 — music entry points and the sample reload: #212 (E10), #215 (E13).** Re-verified
-2026-10-29 against 3f8d7fa, the tree batch 3 left. The issues predate rounds 1 to 5; where they
+**Batch 4 — music entry points and the sample reload: #212 (E10), #215 (E13). DONE 2026-10-29,
+insiculous_2d 650bdc8, after code rounds 19, 20 and 21.** Re-verified 2026-10-29 against 3f8d7fa,
+the tree batch 3 left. The issues predate rounds 1 to 5; where they
 differ (`{track}` as the name alone, a nameless track opening unfocused with a notice, a loop
 finishing on its old bytes) this section and the design win, and the issues are reworded at
 close. Four calls are the planner's, made 2026-10-29 for Jesse's word at this section's review:
