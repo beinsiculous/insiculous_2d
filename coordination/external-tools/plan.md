@@ -1188,36 +1188,223 @@ Leaves out: the song swap and the closure (batch 5); the Conductor rename and th
 of the salvaged scans beyond the re-exports (batch 7); any change to how a tile's request is
 built in the `editor` crate.
 
-**Batch 5 — the song follows the score: #213 (E11), #214 (E12).** The open song document's
-two-file policy by content fingerprint with the score always adopted, the sidecar-only save over
-the loaded bytes, Save As writing the whole song, the transition's score-authoring rule, the
-Overwrite / Cancel prompt before a sidecar write and its headless error, recovery that keeps and
-never promotes, the prune moved after the finals with recoveries as roots, the map edits on mixed-channel MIDI,
-`song init`, and the panel's Save dispatching the reload, with their migration tests (§ The open
-song document); the song's files through batch 1's helper — `plan_save`'s `NotMidi` check
-(`song/io.rs:347`, `mid` alone), the sidecar names (`with_suffix(.., ".ron")` at
-`song/io.rs:335,411,456`, `song/io/open.rs:76,247`, `editor_game/song_io.rs:249`) through
-`midi_sidecar_path`, and the web upload's kind (`playground/src/upload.rs:38`) through
-`is_midi_path` — with an end-to-end `.midi` open → edit → save test (batch 1 lists a `.midi` as a
-Song tile, which the composer opens and Save refuses until this lands); the silent part in `music_midi`'s `validate` and trigger engine;
-`replace_song_at_seam` with the worker's `PreparedPlayback` and its request id, the host's swap
-on an observed bar-line crossing with the bar-and-fraction conversion, the stationary-transport,
-stopped-at-end, end-while-pending, short-loop and staged-refusal rules, the host's re-asserted
-transport and lifecycle queue, its one-transition adoption, retired sources dropped on a worker,
-the closure re-registered (§ MIDI reload) — the open song document's `.mid` and sidecar, the
-session song's closure and a failed preparation's attempted paths join batch 3's watched set
-here, and every song save is noted as the scene's is since batch 3 — `note_scene_written`
-(`editor_game/hot_reload.rs`) widened to any path the editor writes: the worker told, the save
-counted until its `WatchEvent::Noted` and a change for the path dropped until then, a change waiting
-for the path dropped, and a save before the worker starts not counted; the
-`conductor_background` example's `--replace-after <bars>` flag; the `ReloadSong` dispatch with the
-debounce → prepare → diff → swap chain and `track_diff.rs` over resolved parts. Reviewers: kimi,
-gemini (the audio seam; the half-written-file and the renamed-track fixtures). Listen check:
-Jesse, Tong in the editor, a note changed in MIDI Evil (or any editor that writes a `.mid`) and
-saved mid-bar, heard from the next bar with the hits on the beat before and after — a frame of
-lateness passes; a seam Jesse hears sends § Appendix to a batch of its own. Leaves out: anything
-in MIDI Evil's repo; the fixture pair until MIDI Evil ships it (a hand-made pair in
-`music_midi/fixtures/` with a LICENSE line stands in); the audio-thread swap.
+**Batch 5, split at its re-verification (Jesse, 2026-10-29, as batch 2 was): 5a the song
+document follows the score, 5b the audio seam, 5c the host's song reload.** Reviewed as round 22
+(rebuttal-22.md). Re-verified against the tree batch 4 leaves (dafb9b7 plus batch 4 staged). The one
+section held three seams nothing forces together — the `editor` crate's document, the
+`audio`/`music_midi` swap, and the host's wiring — and the first two do not depend on each
+other, while the third needs both. `manager/song.rs` is **603 lines**, over the ceiling: 5b
+splits it before it adds a line. Order: 5a → 5b → 5c, one out at a time; the listen check closes
+5c. Where the one section's text and the three below differ, these win.
+
+**Batch 5a — the song document follows the score: #214's document half, the `.midi`
+remainder, `song init`, the track diff.** The `editor` crate, the host's save and the web
+upload; no audio. § The open song document follows the score is the target shape, and § Manifest
+validation on reload names the diff's lines.
+- **The document keeps the bytes it loaded.** `SongDocument` (`song/mod.rs:94-104`) gains
+  `source_bytes: Vec<u8>` and two fingerprints — the `.mid`'s and the `.mid.ron`'s as last read
+  — set by `document_from` (`song/io/open.rs:259-270`) and by every save and adoption. A **map
+  save** writes the sidecar and the home `LICENSE` stanza and leaves the `.mid` alone: `render`
+  (`io.rs:279-281`) fingerprints `write_smf()` today, which can differ from the file's bytes
+  (`music_midi`'s own pitfall: byte-identical only when no status byte repeats); the map save
+  fingerprints `source_bytes`, with a test on a fixture whose export differs (`bach-invention-02`
+  or whichever `write_smf` rewrites — the test asserts the inequality first). **Save As** (another
+  target through `save_song_to`, `editor_game/song_io.rs:62`, and `song save <path> [overwrite]`,
+  `:183-203`) writes `source_bytes` and the map — the one case the engine writes a `.mid` — an
+  existing target still needing `overwrite`; in the transition a document whose score the engine
+  edited writes `write_smf()`'s bytes instead, and `source_bytes` and both fingerprints become
+  what was written (round 22, kimi F1: a Save As of an edited score wrote the loaded one).
+- **The transition's score-authoring rule.** A score edit — `AddNote`, `DeleteNotes`,
+  `MoveNotes`, `ResizeNotes`, `SetVelocity`, `SetPitch`, `AssignPart`, `SetTempo`,
+  `SetTimeSignature`, `AddTrack` (`song/edit.rs:35-73`, `:115`), and a `Batch` with any of
+  them in it, members inspected recursively (round 22, kimi F2: a drag's `Batch` would have
+  passed as a map edit); the rest are map edits — marks the document's score as the engine's. Its save writes the `.mid` only after comparing
+  the on-disk `.mid`'s fingerprint with the one loaded or last written, immediately before the
+  finals; a difference keeps the journal's score as `<stem>.recovered-<fingerprint>.mid` with
+  a notice and leaves the disk's `.mid`. The window between the compare and the write is
+  accepted and written down (ruling (i)).
+- **The two files guarded separately, by content.** `SongDocument::adopt_score(bytes)` —
+  the new `.mid` taken whole, the map and its unsaved edits kept, `EditingPolicy` recomputed
+  from the new report, the history cleared of score entries (a note edit against a score that
+  is gone cannot replay), and the track diff run against the old `SongData`, its lines returned
+  — and `SongDocument::reload_map(text)`, the sidecar re-read. **Immediately before each
+  write** `save_to` (`io.rs:314`) compares both fingerprints again through the store: a changed
+  score is adopted first — for a map-only document; a document whose score the engine edited
+  takes the transition's rule above instead, its score kept as the recovery, so no edit is lost
+  to an adoption (round 22, gemini F1) — and the save then fingerprints the disk's bytes; a
+  changed sidecar refuses with `SongSaveError::SidecarChanged { sidecar, loaded, on_disk }`,
+  which the host turns into "the map changed on disk since you loaded it: Overwrite / Cancel" on
+  the existing `PendingSceneAction::OverwriteSong` prompt (`scene_confirm.rs`) and the API into a
+  structured `refused` naming both files and each one's state (`song_io.rs:196-201` says "the
+  save was parked" today). **The overwrite is an intent `save_to` takes** — `SaveIntent {
+  sidecar: Keep | Overwrite }` — carried by the prompt's Overwrite (`scene_confirm.rs:188-192`
+  calls `save_song_to` with nothing today) and by `song save <path> overwrite`, so both routes
+  pass the compare they asked to pass (round 22, kimi F5); a successful overwrite is tested on
+  each. The watcher's
+  side — when the host learns a file changed — is 5c's; 5a's tests drive the two methods and
+  the compare directly, same-stamp and write-during-commit included.
+- **The diff is pure**: `editor/src/external_tools/track_diff.rs` over two resolved part lists
+  (`part_location`'s shape, batch 4), by each selector's own semantics (§ Manifest validation):
+  unchanged selector, changed identity → refused naming both; a track new and unselected → "plays
+  as background"; gone with a new name at its index → the rename hint; a `Name` now ambiguous →
+  the `Index` hint; a changed selector → accepted and reported. Tests over the Napolitan fixture
+  and a renamed copy built in the test with midly (the hand-made pair, until MIDI Evil ships one).
+- **Map edits on any playable MIDI.** `apply` (`song/mod.rs:173-178`) refuses every edit under
+  `EditingPolicy::Refused` (`:65-72`); it refuses the score edits above only, so parts,
+  instruments, bindings, loop, quantize, modes, provenance and Save work on a mixed-channel file
+  (a two-channel-track fixture built in the test).
+- **Recovery keeps, never promotes.** `open_from` (`song/io/open.rs:100-158`) promotes a `.new`
+  pair (`recover_pair`, `:161-173`), refuses `MismatchedFinals` (`:53`, `:130-136`), opens a
+  differing lone `.mid.new` as an import and removes a lone `.mid.ron.new`
+  (`open_without_finals`, `:204-242`). Replaced by one rule: any journal file is renamed to
+  `<stem>.recovered-<fingerprint>.mid` / `.mid.ron` — the compound suffix split by
+  `midi_sidecar_path`'s inverse, never `theme.mid.recovered-….ron` — under a name that never
+  collides, with a notice naming it; the finals open as they are; a fingerprint that differs
+  from the `.mid` with no journal means the score changed outside: opened on the new bytes with
+  its sidecar, the status bar saying so, the diff's lines shown, the next Save rewriting the
+  fingerprint. **With no final at all** — a first save interrupted before them — the journal is
+  the song's only incarnation, and it becomes the finals: nothing is replaced, which is what
+  ruling (j) forbids, and a note says the save was finished (round 22, gemini F2: the rule as
+  written would have renamed the only copy away and opened nothing). `open_tests.rs` (`:37-200`, seven recovery tests) is rewritten to the rule: one
+  test per journal shape (the pair, a lone sidecar, a lone `.mid.new`, a journal beside an
+  externally changed `.mid`). **The prune moves after the finals**: `commit` (`io.rs:448-470`)
+  prunes at `:462`, between the journal and the finals; it prunes after `:467` and the journal's
+  removal, and every `<stem>.recovered-*.mid.ron` beside the song is a root (an interruption →
+  recovery → save → open-the-recovery test; `every_sample_the_reopened_song_names_is_on_disk…`
+  rewritten).
+- **`song init <path.mid>`** (`command_api/song.rs:82-96` has `new|open|close|save`): a default
+  sidecar — the project's first bank, no parts, no bindings, `looping: true` — written beside an
+  unmapped `.mid`; the panel opens an unmapped `.mid` the same way, in place, the sidecar marked
+  unsaved (today `open_without_finals` imports it with `default_song_file`). `song open` is the
+  reload; the API follows every rule above, tested over `--headless`.
+- **`.midi` everywhere batch 1's helper is not yet used:** `with_suffix(.., ".ron")` at
+  `io.rs:335`, `:411`, `:456`, `open.rs:76`, `:247`; `song_files_exist` (`song_io.rs:245-250`,
+  pushes `.ron`); the playground's `upload.rs:176`, `:193`, `:202` (its own `with_suffix`),
+  `:139` (`.ends_with(".mid.ron")`), `:152` (`trim_end_matches(".ron")`) and `:38` (`"mid"`
+  alone) — the playground depends on `editor` (`playground/Cargo.toml:12`), so `is_midi_path` and
+  `midi_sidecar_path` reach it. **The web re-import keeps the sidecar** (`upload.rs:191-196`
+  removes it and both journals today): a re-imported `.mid` is the score changed outside, the
+  map kept — `sidecar_lost` becomes "the score changed; the map is kept" — with an end-to-end test
+  that the notes change and the map survives (round 5, kimi F1 — the table row at § The
+  Conductor panel, which no batch had claimed). A re-import of **the open song** stays refused
+  here (`upload.rs:184-188`) and is lifted by 5c, which routes it through `adopt_score` — the
+  web has no watcher, so the import is how the open document learns the score changed (round
+  22, kimi F6).
+- **Docs:** `docs/SONG_FORMAT.md` § How the composer saves (`:302-360`) rewritten — a map save,
+  Save As, the transition's rule, recovery keeps; `docs/EDITOR_COMMAND_API.md` § Songs
+  (`:190-191`) — `song init`, the conflict's structured error, `song open` as the reload;
+  `crates/editor/CLAUDE.md`'s `song/` and `external_tools/` rows; pitfall rows citing the
+  migration tests.
+- **Files near the ceiling:** `song/io.rs` 505, `song/mod.rs` 320, `open.rs` 302,
+  `editor_game/song_io.rs` 251, `upload.rs` 209; a rewrite of `open.rs` may want `io/recover.rs`.
+
+Target shapes: § The open song document follows the score, § Manifest validation on reload.
+Reviewers: kimi; gemini (the journal's recovery and the prune order are a seam; the
+write-during-commit fixture). Leaves out: anything the watcher reports (5c); the audio swap
+(5b); the panel's Save dispatching a reload (5c); the composer's rename (batch 7).
+
+**Batch 5b — the audio seam: #213 (E11), the silent part, the example's flag.** `audio` and
+`music_midi`; no host wiring. § MIDI reload: swap at the next bar is the target shape, § Appendix
+held.
+- **`manager/song.rs` is 603 lines**: before anything else it splits — the transport and the
+  queries (`stop_song` … `beat_crossed`, `:352-478`) to `song/transport.rs`, or the swap to
+  `song/replace.rs` with its tests in `song/tests/replace.rs` — its own hunk, behaviour-free,
+  the first thing the report's gates show green.
+- **The silent part** (`song_file/validate.rs:96-103`, `EmptyTriggerPart`): a selected track with
+  no notes is a part whose every trigger is a rest — `triggers.rs` already counts `silent`
+  (`:79`, `:252`; `position.rs:64` publishes it) — so the refusal goes and a part with no units
+  rests; a score with no notes at all is refused as "the score is empty". Tests in `music_midi`.
+- **The worker and the preparation.** `AudioManager::replace_song_at_seam(path)` and its
+  in-memory twin prepare on a worker thread exactly as `play_song` does (`prepare_song`,
+  `:226`; `DependencyCache::prepare`, `load.rs:237`): the worker prepares on a **clone** of the
+  cache (`Songs.cache`, `:86`; `DependencyCache` gains `Clone`, cheap, its entries `Arc`s and
+  `OwnedPcm`s) and hands it back with the result, merged on the frame thread, so `play_song`
+  never waits on a preparation (round 22, gemini F3: a lock held through a 48 MiB decode would
+  stall the frame it exists to spare); the result is `PreparedPlayback { request_id, generation,
+  ready: ReadySong }` (`ReadySong`, `load.rs:65`, already carries the song, the conductor, the
+  handle and a start tick) over a channel polled from `update_song` (`:552`), parked as
+  `pending_replacement`; request ids monotonic, an older result or failure dropped unread, a
+  result for another generation dropped the same way; superseded and retired sources dropped on
+  the worker.
+- **The swap**, in `update_song` on the first update where it is due: the old transport's
+  position as the bar and the fraction (`TempoMap::position_at_tick`, `tempo_map.rs:214`, gives
+  bar and beat; a `bar_span(bar) -> (start, end)` is added beside `tick_at_beat`, `:225`, with its
+  own tests), the fraction applied to the new map's same bar — the design's order verbatim: the
+  fraction clamps inside the new bar, a looping song takes the bar modulo the new song's bar
+  count, and a running non-looping song whose mapped position is at or past the new end refuses
+  the swap (round 22, gemini F8 asked for the sentence); the new source built as `start_song` builds it (`:274-312`: `ConductorSource::new`,
+  `song_output`) with the old playback's `requested` transport (`:145`), `pending_lifecycle`
+  re-sent, `path` and `label` kept, the new `Arc<Song>`, binding table and `BeatEdges`. **When
+  due**: a running transport on the first update whose `edges.crossed(Bar)` (`edges.rs:74`) is
+  true since the preparation arrived — a seek the host sent resets the baseline (`edges.update`
+  sees the transport; a backward seek reports nothing by its pitfall) — a stationary one at once,
+  a loop shorter than a bar at its wrap, the end-while-pending, stopped-at-end and staged-refusal
+  rules as the design says. `play_song`, `stop_song` and the session's end drop a pending
+  preparation.
+- **`conductor_background --replace-after <bars>`** (`examples/conductor_background.rs:100-125`
+  parses `--fixture`, `--background-only`, `--sample`, `--seconds`): after that many bars,
+  `replace_song_at_seam` to the cast fixture (`dansenapolitaine-cast.mid`, the same tracks on
+  other programs), the swap's block and bar logged.
+- **Tests**, through the public API on the virtual clock (`song/tests/`, a new `replace.rs`):
+  the design's list — a reordered binding, an added action, a tempo change, a 4/4 → 3/4 change,
+  a ticks-per-quarter change, seeks before and after the preparation, a replacement over a
+  stopped song and over one stopped at its end, a second preparation before the first swaps (B
+  finishing before A), a shorter looping song, a bank-only edit, the one-bar loop. The timing
+  fixture: the largest shipped instrument set (Chicken Coop's five, `../games/breakout`), the
+  worker's preparation measured under `cargo test --release` and quoted in the report.
+- **Docs:** `crates/audio/CLAUDE.md` (the split, the worker, the swap, its cost as § MIDI reload
+  says it), `crates/music_midi/CLAUDE.md` (the silent part), `training.md` § Conductor Pattern
+  (a sentence: a song reloaded at the bar).
+
+Reviewers: kimi, gemini (the audio seam). Leaves out: every host change (5c); the listen check,
+which needs 5c; the audio-thread swap (§ Appendix).
+
+**Batch 5c — the host's song reload: #214's host half, the watched closure, the panel's Save.**
+`editor_integration`, over 5a's document and 5b's seam. § File watching and hot reload's
+`ReloadSong` row and the paragraph before the table are the target shape.
+- **The watched set gains the songs** (`hot_reload.rs`, `watched_paths`): the open document's
+  `.mid` and sidecar (`EditorGame.song`, `SongDocument::path`); the session song's closure —
+  `AudioManager` exposes it from `DependencyCache.current_closure` (`load.rs:216-218`) plus the
+  `.mid` and the `.mid.ron`; every path a failed preparation attempted (`touched`, `load.rs:245`),
+  the missing ones marked expected absent (batch 4's mark); the closure re-registered after every
+  preparation. `WatchOwner::Song { document | session }`.
+- **Every song save is noted** as the scene's is: `note_scene_written` (`hot_reload.rs:173-193`)
+  splits into the generic `note_written(path)` — the worker told, the save counted until its
+  `Noted`, a change for the path dropped until then, a save before the worker starts not counted
+  — and the scene's own parking; `save_song_to` (`song_io.rs:62`) notes its two files after a
+  successful save, and the web import nothing (no worker).
+- **`ReloadSong` dispatch**: the companion debounce is the watcher's (batch 3); a change in the
+  open document's files → `adopt_score` / `reload_map` (5a), a clean map reloaded, a dirty one
+  prompted through `ConfirmDialog` ("the map changed on disk: Reload / Keep mine"), the diff's
+  lines to the console and the first to the status bar, while Editing too; a change in the
+  session song's closure → **the diff first**: the old session song's resolved parts (the
+  playing `Arc<Song>`'s `SongData` and sidecar, which `AudioManager` exposes) against the new
+  pair read at the path, through `track_diff` — a refusal line keeps the old song playing and
+  says why, an accepted diff goes to `replace_song_at_seam` (5b), whose own `validate` refusal
+  reaches the console the same way; the open document adopts the score either way (round 22,
+  kimi F4: `validate` cannot see an `Index` part whose track changed identity). **The session is
+  read-only, as it has been** (`song_change_refusal`, `song_io.rs:21-26`; the API's refusal at
+  `:149-153`; the Conductor effort's guard test `playing_and_paused_refuse_every_composer_mutation…`):
+  a map repair is an Editing-time act — Stop, fix the selector, Save, Play — and the next session
+  plays the saved song, so no save dispatches a reload and nothing is lost to `note_written`'s
+  silence; the mid-session swap is the external writer's case, which is the feature. This
+  retires the "panel's own Save dispatches the replacement" rule of § File watching and § The
+  open song document (round 3's gemini F1, codex F2), which assumed a save during Play that the
+  session refuses (round 22, kimi F3 found the contradiction; gemini F5 would have moved the
+  dispatch into the common save path, which the retirement makes moot) — Jesse's ruling,
+  2026-10-29. **The web's import** of the open song is accepted and routed to
+  `adopt_score` through a mailbox the host drains in `finish_frame`, since the web has no
+  watcher (5a keeps the refusal until here). Play and Editing alike for the document; the
+  session only while one runs.
+- **The listen check** (§ Verification, "After batch 5") closes this batch, with its repair
+  step read under the rule above: the renamed track's refusal shows during Play; Stop, fix the
+  selector in the panel, Save, Play → the fixed song plays; a binding changed and saved while
+  Editing after an export keeps the exported notes.
+- **Docs:** `crates/editor_integration/CLAUDE.md` (`hot_reload.rs`, `song_io.rs`), the pitfall
+  rows; `docs/SCRIPTING.md` unchanged.
+
+Reviewers: kimi, gemini (the note-written widening and the closure are harness and seam). Leaves
+out: nothing of batch 5 — the three together are the one section above as reviewed.
 
 **Batch 6 — the settings panel: #216 (E14).** `settings_panel.rs` over `EditableInspector`: a
 cycle row per category for the preset, a string field for the Custom template with the inline red
