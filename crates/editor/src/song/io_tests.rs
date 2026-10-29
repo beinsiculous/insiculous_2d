@@ -64,6 +64,27 @@ fn a_saved_song_reopens_with_every_note_and_its_sidecar_and_leaves_no_journal() 
 }
 
 #[test]
+fn a_midi_song_opened_edited_and_saved_lands_beside_its_midi_ron() {
+    let folder = AssetFolder::new();
+    let target = folder.path("music/theme.midi");
+    melody().save(&target, folder.base()).expect("a .midi is a song's name too");
+
+    let mut opened = SongDocument::open(&target, folder.base()).expect("opens").document;
+    opened
+        .apply(SongEdit::SetLoop { looping: false }, Gesture::Discrete)
+        .expect("edits");
+    opened.save(&target, folder.base()).expect("saves in place");
+
+    assert_eq!(
+        folder.files_under("music"),
+        ["LICENSE", "theme.midi", "theme.midi.ron"],
+        "the sidecar takes the whole name, as midi_sidecar_path does"
+    );
+    let reopened = SongDocument::open(&target, folder.base()).expect("reopens");
+    assert!(!reopened.document.file().looping);
+}
+
+#[test]
 fn a_sample_without_provenance_refuses_the_save_naming_the_instrument_and_writes_nothing() {
     let folder = AssetFolder::new();
     folder.write("sounds/blip.wav", BLIP);

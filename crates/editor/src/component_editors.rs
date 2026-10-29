@@ -15,7 +15,7 @@
 pub mod grid_backdrop;
 pub use grid_backdrop::edit_grid_backdrop;
 pub mod sound_emitter;
-pub use sound_emitter::edit_sound_emitter;
+pub use sound_emitter::{edit_sound_emitter, EditBindingState};
 
 use ecs::sprite_components::Sprite;
 use common::Transform2D;

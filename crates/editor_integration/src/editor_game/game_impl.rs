@@ -117,6 +117,8 @@ impl<G: Game> Game for EditorGame<G> {
         } else {
             build_pickable_entities(ctx.world)
         };
+        // Before the inspector draws the emitter's Song row from it.
+        self.offer_song_choices(ctx.world);
         self.render_panels(ctx, &pickables);
         self.handle_viewport_picking(ctx.ui, ctx.input, ctx.world, &pickables);
         self.handle_gizmo(ctx);

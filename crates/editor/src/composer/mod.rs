@@ -13,7 +13,6 @@ pub mod layout;
 pub mod note_list;
 pub mod piano_roll;
 pub mod sidebar;
-pub mod sound_fonts;
 pub mod state;
 pub mod transport;
 
@@ -46,7 +45,8 @@ pub use music_midi::{NoteId, NoteImage};
 
 pub use keys::{resolve as resolve_composer_key, ComposerKeyAction, ComposerKeyRoute, Direction};
 pub use layout::{ComposerLayout, ComposerMode, PianoRollGeometry};
-pub use sound_fonts::{scan_sound_fonts, sound_font_exists, SoundFontScan};
+/// The Songs list's and the SoundFont row's scans, from their home among the external tools.
+pub use crate::external_tools::{scan_songs, scan_sound_fonts, sound_font_exists, SoundFontScan};
 pub use state::{ComposerFocus, ComposerState, ControlRequest, RollCursor, SidebarSection};
 
 /// MIDI's largest delta time: a note may end no later, or no file could write the gap

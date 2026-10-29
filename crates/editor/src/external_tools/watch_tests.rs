@@ -28,7 +28,7 @@ impl FakeDisk {
 
 fn watching(paths: &[&str]) -> FileWatch {
     let mut watch = FileWatch::new();
-    watch.set_registered(paths.iter().map(PathBuf::from).collect::<BTreeSet<_>>());
+    watch.set_registered(paths.iter().map(PathBuf::from).collect::<BTreeSet<_>>(), &BTreeSet::new());
     watch
 }
 
@@ -135,11 +135,38 @@ fn a_path_dropped_from_the_set_is_forgotten_and_re_registered_reads_a_new_baseli
     disk.write("a.rhai", 2);
     poll(&mut watch, &disk);
 
-    watch.set_registered(BTreeSet::new());
+    watch.set_registered(BTreeSet::new(), &BTreeSet::new());
     assert!(poll(&mut watch, &disk).is_empty(), "an unregistered path is never reported");
-    watch.set_registered([PathBuf::from("a.rhai")].into());
+    watch.set_registered([PathBuf::from("a.rhai")].into(), &BTreeSet::new());
     assert!(poll(&mut watch, &disk).is_empty(), "re-registered, it starts from how it stands");
     assert!(poll(&mut watch, &disk).is_empty());
+}
+
+#[test]
+fn a_path_registered_as_expected_absent_and_found_present_is_a_change_from_its_first_poll() {
+    let mut disk = FakeDisk::default();
+    disk.write("sounds/late.wav", 10);
+    disk.write("sounds/known.wav", 10);
+    let mut watch = FileWatch::new();
+    let paths = ["sounds/late.wav", "sounds/known.wav"].map(PathBuf::from);
+    watch.set_registered(paths.iter().cloned().collect(), &[paths[0].clone()].into());
+
+    assert!(poll(&mut watch, &disk).is_empty(), "found present at the first poll, it is held one poll");
+    assert_eq!(
+        poll(&mut watch, &disk),
+        vec![changed("sounds/late.wav")],
+        "the marked path's arrival is a change; the unmarked one's first reading stays its baseline"
+    );
+
+    watch.set_registered(paths.iter().cloned().collect(), &[paths[1].clone()].into());
+    assert!(poll(&mut watch, &disk).is_empty(), "newly marked, the observed path is taken as absent and its presence held one poll");
+    assert_eq!(
+        poll(&mut watch, &disk),
+        vec![changed("sounds/known.wav")],
+        "the host believed it missing after reading it, so the file present is its arrival"
+    );
+    watch.set_registered(paths.iter().cloned().collect(), &[paths[1].clone()].into());
+    assert!(poll(&mut watch, &disk).is_empty(), "the same mark again is no news and reports nothing");
 }
 
 fn write_and_stamp(path: &Path, text: &str) -> ChangeStamp {
@@ -153,7 +180,7 @@ fn the_editors_own_write_noted_after_a_poll_caught_it_reports_nothing_and_a_late
     let scene = project.path().join("level.scene.ron");
     std::fs::write(&scene, "first").expect("the scene");
     let mut watch = FileWatch::new();
-    watch.set_registered([scene.clone()].into());
+    watch.set_registered([scene.clone()].into(), &BTreeSet::new());
     assert!(watch.poll().is_empty());
 
     let saved = write_and_stamp(&scene, "the editor's save");

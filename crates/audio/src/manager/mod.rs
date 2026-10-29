@@ -17,14 +17,18 @@ use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
 use common::clamp_volume;
 
 use crate::error::{AudioError, AudioResult};
+use crate::loop_source::{LoopSlot, LoopSource};
 use crate::pan_source::{PanLevel, PanSource};
-use crate::sound::{Bus, PlaybackId, SoundHandle, SoundSettings};
+use crate::sound::{Bus, PlaybackId, SoundFormat, SoundHandle, SoundSettings};
 
 mod music;
 pub use music::MusicRequest;
 mod playback;
+mod reload;
 pub(crate) mod song;
 
+#[cfg(test)]
+mod reload_tests;
 #[cfg(test)]
 mod tests;
 
@@ -41,6 +45,9 @@ pub(crate) fn effective_volume(base: f32, bus: f32, master: f32) -> f32 {
 fn clamp_speed(speed: f32) -> f32 {
     speed.max(0.1)
 }
+
+/// What a loaded sound plays through: a decoder over its shared bytes.
+type SoundDecoder = Decoder<Cursor<Arc<[u8]>>>;
 
 /// Cached sound data that can be played multiple times.
 struct SoundData {
@@ -61,6 +68,12 @@ struct ActiveSound {
     base_volume: f32,
     /// The pan the playing source reads once a frame.
     pan: Arc<PanLevel>,
+    /// A loop's replacement, which it takes at its next boundary; `None` for a one-shot,
+    /// which finishes on the bytes it started with.
+    slot: Option<LoopSlot<SoundDecoder>>,
+    /// The channels and rate of the bytes the instance plays, or of those it will take at
+    /// its boundary.
+    format: SoundFormat,
 }
 
 /// A caller-built source playing under a bus (see [`AudioManager::play_source`]).
@@ -349,9 +362,9 @@ impl AudioManager {
         Ok(playback)
     }
 
-    /// Decode `held`'s sound and start it on the device. The pan wraps the repeat, never
-    /// the reverse: rodio's repeat buffers its input's samples, and a pan inside it would
-    /// freeze at the first pass's value.
+    /// Decode `held`'s sound and start it on the device. The pan wraps the loop, never
+    /// the reverse: the loop buffers its input's samples, and a pan inside it would freeze
+    /// at the first pass's value.
     fn start_playback(&mut self, held: HeldPlayback) -> AudioResult<()> {
         let sound_data = self.sounds.get(&held.handle.id)
             .ok_or(AudioError::InvalidHandle(held.handle.id))?;
@@ -364,13 +377,15 @@ impl AudioManager {
         let source = Decoder::new(cursor)
             .map_err(|e| AudioError::DecodeError(e.to_string()))?;
 
+        let format = SoundFormat { channels: source.channels(), sample_rate: source.sample_rate() };
         let base_volume = clamp_volume(held.settings.volume);
         let pan = Arc::clone(&held.pan);
-        let sink = if held.settings.looping {
-            let looped = PanSource::new(source.repeat_infinite(), pan);
-            self.start_sink(output, looped, base_volume, self.sfx_volume, false)?
+        let (sink, slot) = if held.settings.looping {
+            let slot: LoopSlot<SoundDecoder> = Arc::default();
+            let looped = PanSource::new(LoopSource::new(source, Arc::clone(&slot)), pan);
+            (self.start_sink(output, looped, base_volume, self.sfx_volume, false)?, Some(slot))
         } else {
-            self.start_sink(output, PanSource::new(source, pan), base_volume, self.sfx_volume, false)?
+            (self.start_sink(output, PanSource::new(source, pan), base_volume, self.sfx_volume, false)?, None)
         };
         sink.set_speed(clamp_speed(held.settings.speed));
 
@@ -380,6 +395,8 @@ impl AudioManager {
             handle: held.handle,
             base_volume,
             pan: held.pan,
+            slot,
+            format,
         });
 
         Ok(())

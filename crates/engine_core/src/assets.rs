@@ -42,6 +42,8 @@ pub mod sheet_spec;
 mod sound_library;
 pub mod sprite_sheet;
 
+pub use sound_library::SoundReload;
+
 /// Asset loading errors
 #[derive(Debug, thiserror::Error)]
 pub enum AssetError {

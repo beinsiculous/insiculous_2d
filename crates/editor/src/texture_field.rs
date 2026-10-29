@@ -31,6 +31,14 @@ pub struct InspectorExtras<'a> {
     pub can_open_source: bool,
     /// Script source file requested to be opened in its external tool.
     pub open_source: Option<crate::external_tools::OpenRequest>,
+    /// The sound emitter's binding button's label: the music tool's name, "Edit in MIDI Evil".
+    pub edit_binding_label: String,
+    /// The songs the emitter's Song row cycles (see `EditBindingState::song_choices`).
+    pub song_choices: Vec<String>,
+    /// The Song row's choice, by path, written back to the context by the host.
+    pub chosen_song: Option<String>,
+    /// The binding action whose part the button asked to open.
+    pub edit_binding: Option<String>,
     /// Available scripts from registry and scanned assets.
     pub script_catalog: &'a [crate::script_editor::ScriptCatalogEntry],
     /// Whether the script picker popup is currently open.

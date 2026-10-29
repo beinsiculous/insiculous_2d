@@ -112,6 +112,8 @@ pub struct EditorContext {
     pub composer: crate::composer::ComposerState,
     /// The console's log, scroll and keyboard
     pub console: crate::console::ConsoleState,
+    /// The sound emitter's binding button: the songs its Song row offers, the choice, a press
+    pub edit_binding: crate::EditBindingState,
 }
 
 impl Default for EditorContext {
@@ -209,6 +211,7 @@ impl EditorContext {
             inspector_state: crate::InspectorState::default(),
             composer: crate::composer::ComposerState::default(),
             console: crate::console::ConsoleState::default(),
+            edit_binding: crate::EditBindingState::default(),
         };
         // Run the tool→gizmo mapping once so startup state is consistent
         // whatever the defaults are (today both are Move/Translate).

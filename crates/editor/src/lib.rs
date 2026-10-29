@@ -113,7 +113,7 @@ pub use collider_overlay::{
 pub use commands::{CommandHistory, EditorCommand};
 pub use component_editors::{
     apply_component_edit, edit_collider, edit_rigid_body, edit_sprite,
-    edit_transform2d, ComponentEdit,
+    edit_transform2d, ComponentEdit, EditBindingState,
 };
 pub use context::{EditorContext, SongMirror};
 pub use editor_preferences::{EditorPreferences, PanelPrefs};

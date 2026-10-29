@@ -1,14 +1,18 @@
 //! The editor's hot reload: which of the project's files are watched, the worker's changes
 //! drained once a frame, and each one dispatched by its file type's reload policy.
 //!
-//! The watched set is what this reloads, computed from the world on the watcher's tick: the
-//! open scene, every `.rhai` a `Scripts` component names, and the `.sheet.ron` beside every
-//! sheet a `SpriteAnimation` names, each resolved against the asset base. It is kept as a
-//! map from each path to what named it, and a change reaches its owners through that map —
+//! The watched set is what this reloads, computed from the world and the sound tier on the
+//! watcher's tick: the open scene, every `.rhai` a `Scripts` component names, the
+//! `.sheet.ron` beside every sheet a `SpriteAnimation` names, every recorded sound a
+//! `SoundEmitter` names and every path the sound tier loaded or failed, each resolved against
+//! the asset base. A failed sound's path goes to the worker marked as expected absent, so its
+//! file arriving before the worker's first look is still a change. The set is kept as a map
+//! from each path to what named it, and a change reaches its owners through that map —
 //! nothing strips the asset base back off a path. The editor's own saves are the watcher's
 //! baseline, and a change the worker read before it took the save's note is dropped, since
 //! the file now holds the editor's own bytes.
 
+mod sample;
 mod sheet;
 mod worker;
 
@@ -17,8 +21,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use ecs::script::Scripts;
+use audio::AudioManager;
 use ecs::sprite_components::SpriteAnimation;
-use ecs::World;
+use ecs::{SoundEmitter, SoundRef, World};
 use editor::console::Severity;
 use editor::external_tools::{FileChange, FileType, ReloadPolicy, WatchEvent};
 use engine_core::assets::AssetManager;
@@ -44,6 +49,8 @@ pub(super) enum WatchOwner {
     Script(String),
     /// A sheet's PNG path, as a `SpriteAnimation` names it; the watched path is its sidecar.
     Sheet(String),
+    /// A recorded sound's path, as a `SoundEmitter` or the sound tier names it.
+    Sound(String),
 }
 
 /// The watcher's side of the editor: its worker, the watched set and what a change waits on.
@@ -52,6 +59,10 @@ pub(super) struct HotReload {
     /// Started at the first frame's drain, so a headless session never starts a thread.
     pub(super) worker: Option<worker::WatchWorker>,
     pub(super) watched: BTreeMap<PathBuf, BTreeSet<WatchOwner>>,
+    /// The watched paths the sound tier had failed to load when the worker last heard the
+    /// set: a path joining them is news the worker must hear, since its file may already be
+    /// there (`FileWatch::set_registered`).
+    pub(super) expected_absent: BTreeSet<PathBuf>,
     since_tick_seconds: f32,
     /// Events taken from the worker and not yet dispatched, in the order it sent them.
     pub(super) incoming: Vec<WatchEvent>,
@@ -75,6 +86,7 @@ pub(super) struct ReloadTargets<'a> {
     pub world: &'a mut World,
     pub assets: &'a mut AssetManager,
     pub scripts: &'a mut ScriptRunner,
+    pub audio: &'a mut AudioManager,
     /// A text field holds the keyboard: an edit is in flight.
     pub edit_field_focused: bool,
 }
@@ -83,7 +95,7 @@ impl<G: Game> EditorGame<G> {
     /// The frame's drain, after the dirty mirror and before the status bar: recompute the
     /// watched set on the tick, take the worker's changes and dispatch them.
     pub(super) fn drain_file_changes(&mut self, ctx: &mut GameContext) {
-        self.tick_file_watch(ctx.world, ctx.delta_time);
+        self.tick_file_watch(ctx.world, ctx.assets, ctx.delta_time);
         if let Some(worker) = &self.hot_reload.worker {
             self.hot_reload.incoming.extend(worker.take_events());
         }
@@ -91,12 +103,13 @@ impl<G: Game> EditorGame<G> {
             world: ctx.world,
             assets: ctx.assets,
             scripts: ctx.scripts,
+            audio: ctx.audio,
             edit_field_focused: ctx.ui.wants_keyboard(),
         };
         self.dispatch_file_changes(&mut targets);
     }
 
-    fn tick_file_watch(&mut self, world: &World, delta_time: f32) {
+    fn tick_file_watch(&mut self, world: &World, assets: &AssetManager, delta_time: f32) {
         if cfg!(target_arch = "wasm32") {
             return;
         }
@@ -106,18 +119,22 @@ impl<G: Game> EditorGame<G> {
             return;
         }
         watch.since_tick_seconds = 0.0;
-        let watched = self.watched_paths(world);
+        let watched = self.watched_paths(world, assets);
+        let expected_absent = self.expected_absent_paths(assets);
         let watch = &mut self.hot_reload;
         let started = watch.worker.is_none();
         let worker = watch.worker.get_or_insert_with(|| worker::WatchWorker::spawn(POLL_INTERVAL));
-        if started || !watched.keys().eq(watch.watched.keys()) {
-            worker.register(watched.keys().cloned().collect());
+        // A path can fail to load after it was registered (a scene's emitter names a file
+        // that is not there yet), so the marks decide with the keys.
+        if started || !watched.keys().eq(watch.watched.keys()) || expected_absent != watch.expected_absent {
+            worker.register(watched.keys().cloned().collect(), expected_absent.clone());
         }
         watch.watched = watched;
+        watch.expected_absent = expected_absent;
     }
 
     /// Every path the editor watches now, each with what named it.
-    pub(super) fn watched_paths(&self, world: &World) -> BTreeMap<PathBuf, BTreeSet<WatchOwner>> {
+    pub(super) fn watched_paths(&self, world: &World, assets: &AssetManager) -> BTreeMap<PathBuf, BTreeSet<WatchOwner>> {
         let mut watched: BTreeMap<PathBuf, BTreeSet<WatchOwner>> = BTreeMap::new();
         if let Some(scene) = self.editor.scene_path() {
             watched.entry(self.resolve_asset_path(scene)).or_default().insert(WatchOwner::Scene);
@@ -135,8 +152,22 @@ impl<G: Game> EditorGame<G> {
                 let path = self.resolve_asset_path(&engine_core::sidecar_path_for(png));
                 watched.entry(path).or_default().insert(WatchOwner::Sheet(png.to_string()));
             }
+            if let Some(SoundEmitter { sound: SoundRef::Path(sound), .. }) = world.get::<SoundEmitter>(entity) {
+                if !sound.is_empty() {
+                    watched.entry(self.resolve_asset_path(Path::new(sound))).or_default().insert(WatchOwner::Sound(sound.clone()));
+                }
+            }
+        }
+        for sound in assets.sound_paths() {
+            let path = self.resolve_asset_path(Path::new(sound));
+            watched.entry(path).or_default().insert(WatchOwner::Sound(sound.to_string()));
         }
         watched
+    }
+
+    /// The watched sounds the sound tier failed to load: missing files, as far as it knows.
+    pub(super) fn expected_absent_paths(&self, assets: &AssetManager) -> BTreeSet<PathBuf> {
+        assets.failed_sound_paths().map(|sound| self.resolve_asset_path(Path::new(sound))).collect()
     }
 
     /// After a successful scene save: the file holds the editor's own bytes, so a change for
@@ -220,6 +251,13 @@ impl<G: Game> EditorGame<G> {
                     }
                 }
             }
+            ReloadPolicy::ReloadSample => {
+                for owner in &owners {
+                    if let WatchOwner::Sound(sound) = owner {
+                        self.reload_sample(targets.assets, targets.audio, sound);
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -230,6 +268,7 @@ impl<G: Game> EditorGame<G> {
         match owners.iter().next() {
             Some(WatchOwner::Script(source_path)) => source_path.clone(),
             Some(WatchOwner::Sheet(png)) => engine_core::sidecar_path_for(png).display().to_string(),
+            Some(WatchOwner::Sound(sound)) => sound.clone(),
             Some(WatchOwner::Scene) => self.editor.scene_path().unwrap_or(path).display().to_string(),
             None => path.display().to_string(),
         }

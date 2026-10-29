@@ -344,7 +344,7 @@ impl SongDocument {
         target: &Path,
         asset_base: &Path,
     ) -> Result<SavePlan, SongSaveError> {
-        if target.extension().is_none_or(|extension| extension != "mid") {
+        if !crate::external_tools::is_midi_path(target) {
             return Err(SongSaveError::NotMidi {
                 path: target.to_path_buf(),
             });

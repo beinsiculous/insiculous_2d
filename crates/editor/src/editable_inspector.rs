@@ -469,6 +469,9 @@ impl<'a> EditableInspector<'a> {
         self.advance(self.style.row_height);
     }
 
+    /// The room an action button's label leaves at its two ends, in pixels.
+    const ACTION_LABEL_INSET: f32 = 12.0;
+
     /// A compact action button in the control column (e.g. "+ Add Script",
     /// "− Remove param" in the scripts editor). Returns whether it was
     /// clicked this frame.
@@ -488,7 +491,13 @@ impl<'a> EditableInspector<'a> {
             (layout.right - layout.control_x).max(60.0),
             height,
         );
-        let clicked = self.ui.button(id, label, rect);
+        // A label wider than the control column ran under the panel's edge, past the
+        // button's own hit rect; shortened, it fits, and the whole of it is the tooltip.
+        let shown = crate::row_layout::ellipsize(label, rect.width - Self::ACTION_LABEL_INSET, |text| self.ui.measure_text(text).x);
+        let clicked = self.ui.button(id, &shown, rect);
+        if shown != label {
+            self.ui.tooltip(rect, label);
+        }
         self.advance(self.style.row_height);
         clicked
     }

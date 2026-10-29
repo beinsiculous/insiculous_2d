@@ -41,6 +41,39 @@ impl PlaybackId {
     }
 }
 
+/// A recorded sound's shape as its decoder reports it at the start: what a loop's swap to
+/// new bytes must keep.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SoundFormat {
+    pub channels: u16,
+    pub sample_rate: u32,
+}
+
+impl std::fmt::Display for SoundFormat {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let channels = match self.channels {
+            1 => "mono".to_string(),
+            2 => "stereo".to_string(),
+            count => format!("{count} channels"),
+        };
+        write!(formatter, "{channels} at {} Hz", self.sample_rate)
+    }
+}
+
+/// A reload whose bytes changed the sound's [`SoundFormat`]: every loop of it was
+/// restarted on the new bytes at once, instead of taking them at its next boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SoundFormatChange {
+    pub before: SoundFormat,
+    pub after: SoundFormat,
+}
+
+impl std::fmt::Display for SoundFormatChange {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{} → {}", self.before, self.after)
+    }
+}
+
 /// The volume bus a caller-built source plays under (see
 /// [`crate::AudioManager::play_source`]): its sink volume is that bus's volume
 /// times master, re-derived whenever either changes.

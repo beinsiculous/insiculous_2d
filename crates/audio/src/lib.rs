@@ -47,6 +47,7 @@
 
 mod conductor_source;
 mod error;
+mod loop_source;
 mod manager;
 mod pan_source;
 mod sample_loader;
@@ -66,4 +67,4 @@ pub use music_midi::{
     PositionSnapshot, Song, SongData, SongFile, SourceId, TransportState,
 };
 pub use sample_loader::{decode_sample_pcm, load_sample_pcm, SampleProblem, SAMPLE_BYTE_LIMIT};
-pub use sound::{Bus, PlaybackId, SoundHandle, SoundSettings};
+pub use sound::{Bus, PlaybackId, SoundFormat, SoundFormatChange, SoundHandle, SoundSettings};

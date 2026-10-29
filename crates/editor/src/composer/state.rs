@@ -6,15 +6,17 @@
 //! time the song is replaced, created or closed, and [`ComposerState::follow`] resets
 //! everything that pointed into the old song when the two differ.
 
-use std::io;
 use std::path::Path;
 
 use music_midi::NoteId;
 use ui::WidgetId;
 
-use super::sound_fonts::{scan_sound_fonts, SoundFontScan};
+use crate::external_tools::{scan_sound_fonts, SoundFontScan};
 use crate::scroll::ScrollState;
-use crate::song::{SongDocument, HOME_DIRECTORIES};
+use crate::song::SongDocument;
+
+/// The Songs list's scan, from its home among the external tools.
+pub use crate::external_tools::scan_songs;
 
 /// The key a new song's cursor starts on: middle C.
 const MIDDLE_C: u8 = 60;
@@ -179,11 +181,15 @@ pub struct ComposerState {
     /// The one area shown below the compact width.
     pub tabs_area: ComposerFocus,
     pub request: Option<ControlRequest>,
-    /// Every `.mid` under the song folders, by its asset-relative path.
+    /// Every MIDI file under the song folders, by its asset-relative path.
     pub songs: Vec<String>,
-    /// Whether `songs` and `sound_fonts` are current; cleared when the panel closes, so
-    /// opening it rescans.
+    /// Whether `songs` and `sound_fonts` are current; cleared once when the panel closes,
+    /// so opening it rescans — the sound emitter's song rule shares the list and its scan.
     pub songs_scanned: bool,
+    /// Whether the panel drew since the host last saw it hidden: the close the clear above
+    /// waits for, once, rather than every hidden frame — and what tells a draw that the
+    /// scan it finds was the rule's, made while the panel was hidden, so it scans again.
+    pub panel_drawn: bool,
     /// Every bank under `soundfonts/`, which the Song section's SoundFont row cycles.
     pub sound_fonts: SoundFontScan,
     /// The program the Parts section's Add-track row gives the next track it adds.
@@ -227,6 +233,7 @@ impl Default for ComposerState {
             request: None,
             songs: Vec::new(),
             songs_scanned: false,
+            panel_drawn: false,
             sound_fonts: SoundFontScan::default(),
             new_track_program: 0,
             preview_playing: false,
@@ -246,12 +253,14 @@ impl ComposerState {
         let songs = std::mem::take(&mut self.songs);
         let sound_fonts = std::mem::take(&mut self.sound_fonts);
         let songs_scanned = self.songs_scanned;
+        let panel_drawn = self.panel_drawn;
         *self = Self {
             generation: Some(generation),
             active_track: song.and_then(default_track),
             songs,
             sound_fonts,
             songs_scanned,
+            panel_drawn,
             ..Self::default()
         };
         true
@@ -307,6 +316,15 @@ impl ComposerState {
     }
 
     /// Find every song in the two song folders under `asset_base` again, and every bank.
+    /// Record a draw of the panel; whether its lists want a scan first: never scanned, or
+    /// scanned while the panel was hidden — the sound emitter's song rule shares the list —
+    /// since opening the panel is when the folders are looked at again.
+    pub fn drawn(&mut self) -> bool {
+        let wants_scan = !self.songs_scanned || !self.panel_drawn;
+        self.panel_drawn = true;
+        wants_scan
+    }
+
     pub fn rescan_songs(&mut self, asset_base: &Path) {
         self.songs = scan_songs(asset_base);
         self.sound_fonts = scan_sound_fonts(asset_base);
@@ -378,40 +396,4 @@ pub fn selected_on_track(song: &SongDocument, track: usize) -> Vec<NoteId> {
                 .is_some_and(|image| image.track == track)
         })
         .collect()
-}
-
-/// Every `.mid` under `music/` and `ai/music/` (subfolders included), by its asset-relative
-/// path with `/` separators, sorted. A missing folder lists nothing.
-pub fn scan_songs(asset_base: &Path) -> Vec<String> {
-    let mut songs = Vec::new();
-    for home in HOME_DIRECTORIES {
-        let listed = match common::vfs::list_files(&asset_base.join(home)) {
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Vec::new(),
-            Err(error) => {
-                log::warn!("listing the songs under {home}/ failed: {error}");
-                Vec::new()
-            }
-            Ok(files) => files,
-        };
-        for path in listed {
-            let is_song = path
-                .extension()
-                .is_some_and(|extension| extension.eq_ignore_ascii_case("mid"));
-            let Ok(relative) = path.strip_prefix(asset_base) else {
-                continue;
-            };
-            if is_song {
-                songs.push(
-                    relative
-                        .components()
-                        .map(|component| component.as_os_str().to_string_lossy())
-                        .collect::<Vec<_>>()
-                        .join("/"),
-                );
-            }
-        }
-    }
-    songs.sort();
-    songs.dedup();
-    songs
 }

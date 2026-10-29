@@ -97,7 +97,12 @@ impl<G: Game> EditorGame<G> {
         self.follow_song();
         let Some(press) = self.panel_press(ui, PanelId::COMPOSER) else {
             self.leave_composer();
-            self.editor.composer.songs_scanned = false;
+            // Once per close: cleared every hidden frame, the list the emitter's song rule
+            // shares would be scanned again each frame the composer stays hidden.
+            if self.editor.composer.panel_drawn {
+                self.editor.composer.songs_scanned = false;
+                self.editor.composer.panel_drawn = false;
+            }
             return;
         };
         if press == PanelPress::Elsewhere && (self.composer_holds_focus() || self.composer_drag.is_some()) {
@@ -383,7 +388,7 @@ impl<G: Game> EditorGame<G> {
         // An API line drained this frame may have undone the selected track; the render
         // must not offer "Add a part" on an index that is gone.
         self.editor.composer.reconcile_active_track(self.song.as_ref());
-        if !self.editor.composer.songs_scanned {
+        if self.editor.composer.drawn() {
             self.editor.composer.rescan_songs(&self.asset_base);
         }
         let default_path = self.asset_relative(&self.default_song_path());

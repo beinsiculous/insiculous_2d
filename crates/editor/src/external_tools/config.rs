@@ -156,6 +156,16 @@ impl ToolName {
             ToolName::SystemDefault => "Open with the system default".to_string(),
         }
     }
+
+    /// The sound emitter's button for a song's binding: "Edit in MIDI Evil", "Edit with
+    /// the custom command", "Edit with the system default".
+    pub fn edit_item(self) -> String {
+        match self {
+            ToolName::Preset(name) => format!("Edit in {name}"),
+            ToolName::CustomCommand => "Edit with the custom command".to_string(),
+            ToolName::SystemDefault => "Edit with the system default".to_string(),
+        }
+    }
 }
 
 /// A program and its arguments, ready to spawn without a shell.
@@ -447,6 +457,8 @@ mod tests {
             ["Open in RustRover", "Open in Aseprite", "Open with the custom command", "Open with the system default"],
             "a preset, an override, Custom and OsDefault"
         );
+        config.music = ToolChoice::Preset(PresetId::MidiEvil);
+        assert_eq!(config.tool_name(FileType::Midi).edit_item(), "Edit in MIDI Evil", "the emitter's button, by the same name");
 
         let refusal = |choice: ToolChoice| {
             let config = ExternalToolsConfig { code: choice.clone(), ..Default::default() };

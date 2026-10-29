@@ -44,8 +44,10 @@ impl Launcher {
 }
 
 impl<G: Game> super::EditorGame<G> {
-    /// Launch every file requested this frame, then show what earlier launches reported.
+    /// Launch every file requested this frame — the emitter's binding among them — then
+    /// show what earlier launches reported.
     pub(super) fn open_requested_files(&mut self) {
+        self.open_requested_binding();
         for request in std::mem::take(&mut self.editor.open_requests) {
             self.open_in_external_tool(request);
         }
@@ -56,13 +58,20 @@ impl<G: Game> super::EditorGame<G> {
 
     #[cfg(target_arch = "wasm32")]
     fn open_in_external_tool(&mut self, request: OpenRequest) {
+        let request = self.at_first_part_track(request);
         let resolved = self.resolve_asset_path(&request.path);
-        let line = format!("Source: {} ({})", resolved.display(), editor::external_tools::DESKTOP_ONLY_HINT);
+        let track = match &request.location {
+            editor::external_tools::Location::Track { name: Some(name), index } => format!(", track '{name}' (index {index})"),
+            editor::external_tools::Location::Track { name: None, index } => format!(", track index {index}"),
+            _ => String::new(),
+        };
+        let line = format!("Source: {}{track} ({})", resolved.display(), editor::external_tools::DESKTOP_ONLY_HINT);
         self.report(Severity::Info, line, None);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     fn open_in_external_tool(&mut self, request: OpenRequest) {
+        let request = self.at_first_part_track(request);
         let launched = self
             .resolve_open_request(&request)
             .and_then(|(file, resolution)| Ok((file, spawn::launch(resolution, &self.launcher.reports)?)));
@@ -78,7 +87,7 @@ impl<G: Game> super::EditorGame<G> {
     /// The absolute path a request names and what opens it, or why nothing does. A folder
     /// goes straight to the platform's opener, never through a file type.
     #[cfg(not(target_arch = "wasm32"))]
-    fn resolve_open_request(&self, request: &OpenRequest) -> Result<(std::path::PathBuf, Resolution), String> {
+    pub(super) fn resolve_open_request(&self, request: &OpenRequest) -> Result<(std::path::PathBuf, Resolution), String> {
         use editor::external_tools::{os_default, resolve, FileType, LaunchTarget, Location, ProjectBase};
 
         let asset_base = spawn::absolute(&self.asset_base);

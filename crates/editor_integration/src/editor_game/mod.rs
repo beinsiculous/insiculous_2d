@@ -42,6 +42,7 @@ mod run_options;
 mod scene_confirm;
 mod scene_io;
 mod snapshot;
+mod song_entry;
 mod song_io;
 mod init_music;
 mod song_preview;
@@ -76,6 +77,8 @@ struct EditorGame<G: Game> {
     pub(super) song_preview: song_preview::SongPreview,
     /// What the game's `init` asked the audio for, asked again by a session with no composer song.
     pub(super) init_music: init_music::InitMusic,
+    /// The song pending or playing in the music slot, as the song phase last read it.
+    pub(super) slot_song: Option<std::path::PathBuf>,
     /// A live drag in the composer's roll: owned here, not by the panel's render, so every
     /// way the composer loses focus can drop it.
     composer_drag: Option<composer_drag::ComposerDrag>,
@@ -150,6 +153,7 @@ impl<G: Game> EditorGame<G> {
             song_generation: 0,
             song_preview: song_preview::SongPreview::default(),
             init_music: init_music::InitMusic::None,
+            slot_song: None,
             composer_drag: None,
             gizmo_drag: None,
             clipboard: Vec::new(),
@@ -526,6 +530,8 @@ mod hot_reload_tests;
 #[cfg(test)]
 mod hot_reload_sheet_tests;
 #[cfg(test)]
+mod hot_reload_sample_tests;
+#[cfg(test)]
 mod panel_press_tests;
 #[cfg(test)]
 mod play_session_tests;
@@ -537,6 +543,8 @@ mod scene_confirm_tests;
 mod scene_io_tests;
 #[cfg(test)]
 mod snapshot_tests;
+#[cfg(test)]
+mod song_entry_tests;
 #[cfg(test)]
 mod song_io_tests;
 #[cfg(test)]

@@ -8,7 +8,7 @@ use input::prelude::KeyCode;
 use ui::{DrawCommand, Rect, UIContext};
 
 use super::sidebar::{render_sidebar, SidebarContext};
-use super::sound_fonts::SoundFontScan;
+use super::SoundFontScan;
 use super::state::{ComposerFocus, ComposerState, ControlRequest, SidebarSection};
 use super::test_support::melody;
 use super::ComposerAction;

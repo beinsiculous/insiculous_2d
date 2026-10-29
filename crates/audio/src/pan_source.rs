@@ -36,7 +36,7 @@ impl PanLevel {
         self.bits.store(pan.to_bits(), Ordering::Release);
     }
 
-    fn get(&self) -> f32 {
+    pub(crate) fn get(&self) -> f32 {
         f32::from_bits(self.bits.load(Ordering::Acquire))
     }
 }

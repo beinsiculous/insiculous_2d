@@ -75,6 +75,8 @@ const SETTLED_AFTER_POLLS: u32 = 2;
 pub struct FileWatch {
     registered: BTreeSet<PathBuf>,
     observed: BTreeMap<PathBuf, Observation>,
+    /// The registered paths the host believes missing, as of the last registration.
+    expected_absent: BTreeSet<PathBuf>,
 }
 
 impl FileWatch {
@@ -83,9 +85,24 @@ impl FileWatch {
     }
 
     /// Watch exactly `paths` from now on. A path kept keeps what was observed of it; a new
-    /// one is read as it stands at the next poll, which reports nothing for it.
-    pub fn set_registered(&mut self, paths: BTreeSet<PathBuf>) {
+    /// one is read as it stands at the next poll, which reports nothing for it — unless it
+    /// is in `expected_absent`, the paths the host believes missing. A path **newly** marked
+    /// (not marked at the last registration) is taken as absent whatever was observed of it,
+    /// so a file found there — at its first reading, or already read as present before the
+    /// host's own read of it failed — is a change, reported once it holds like any other. A
+    /// path marked last time too keeps its observation: the host re-registers whenever its
+    /// marks change, and the mark is only news the first time. Without any of it, a file
+    /// that arrived between the host's failed read and the next poll would be that poll's
+    /// silent baseline.
+    pub fn set_registered(&mut self, paths: BTreeSet<PathBuf>, expected_absent: &BTreeSet<PathBuf>) {
         self.observed.retain(|path, _| paths.contains(path));
+        for path in paths.intersection(expected_absent) {
+            if !self.expected_absent.contains(path) {
+                self.observed
+                    .insert(path.clone(), Observation { settled: Some(Observed::Absent), pending: None });
+            }
+        }
+        self.expected_absent = paths.intersection(expected_absent).cloned().collect();
         self.registered = paths;
     }
 

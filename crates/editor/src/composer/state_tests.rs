@@ -1,7 +1,7 @@
 //! The composer's state: Tab's cycle over the areas, the track a song opens on, the
-//! selector's tracks, the reset when the song is replaced, and the Songs list's scan.
+//! selector's tracks, and the reset when the song is replaced.
 
-use super::state::{default_track, next_track, scan_songs, selectable_tracks, ComposerFocus, ComposerState};
+use super::state::{default_track, next_track, selectable_tracks, ComposerFocus, ComposerState};
 use super::test_support::{melody, second_track_holds_the_notes, timing_only};
 
 #[test]
@@ -74,24 +74,14 @@ fn a_replaced_song_resets_what_pointed_into_the_old_one_and_keeps_the_songs_list
 }
 
 #[test]
-fn the_songs_list_finds_every_mid_in_both_home_folders_by_its_folder_qualified_path() {
-    let folder = tempfile::tempdir().expect("an asset folder");
-    for file in [
-        "music/theme.mid",
-        "music/levels/boss.MID",
-        "ai/music/theme.mid",
-        "music/theme.mid.ron",
-        "music/samples/theme/kick.wav",
-        "sounds/beep.mid",
-    ] {
-        common::vfs::write(&folder.path().join(file), b"x").expect("fixture written");
-    }
-    assert_eq!(
-        scan_songs(folder.path()),
-        vec!["ai/music/theme.mid", "music/levels/boss.MID", "music/theme.mid"],
-        "two same-named songs list apart by folder; a sidecar, a sample and a .mid outside \
-         the song folders are not songs here"
-    );
-    let empty = tempfile::tempdir().expect("an empty asset folder");
-    assert!(scan_songs(empty.path()).is_empty(), "a missing folder is an empty list");
+fn a_draw_after_a_scan_made_while_hidden_scans_again_and_the_next_draw_does_not() {
+    let mut state = ComposerState::default();
+    assert!(state.drawn(), "never scanned: the first draw scans");
+    state.songs_scanned = true;
+    assert!(!state.drawn(), "scanned and drawn: nothing to do");
+
+    state.panel_drawn = false;
+    state.songs_scanned = true;
+    assert!(state.drawn(), "scanned while hidden, by the emitter's song rule: the panel's draw looks again");
+    assert!(!state.drawn(), "and once is enough");
 }

@@ -7,6 +7,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use audio::AudioManager;
 use ecs::script::{ScriptRef, Scripts};
 use ecs::sprite_components::SpriteAnimation;
 use ecs::World;
@@ -37,6 +38,7 @@ pub(super) struct Session {
     pub(super) world: World,
     pub(super) assets: AssetManager,
     pub(super) scripts: ScriptRunner,
+    pub(super) audio: AudioManager,
 }
 
 impl Session {
@@ -53,7 +55,7 @@ impl Session {
         let mut world = World::new();
         let mut scripts = ScriptRunner::new();
         scripts.reset(&mut world, &base);
-        Self { project, editor, world, assets, scripts }
+        Self { project, editor, world, assets, scripts, audio: AudioManager::disabled() }
     }
 
     pub(super) fn path(&self, relative: &str) -> PathBuf {
@@ -94,7 +96,7 @@ impl Session {
 
     /// The watcher's tick: the set as the world names it now.
     pub(super) fn watch_now(&mut self) {
-        self.editor.hot_reload.watched = self.editor.watched_paths(&self.world);
+        self.editor.hot_reload.watched = self.editor.watched_paths(&self.world, &self.assets);
     }
 
     pub(super) fn dispatch(&mut self, changes: &[FileChange], edit_field_focused: bool) {
@@ -108,6 +110,7 @@ impl Session {
             world: &mut self.world,
             assets: &mut self.assets,
             scripts: &mut self.scripts,
+            audio: &mut self.audio,
             edit_field_focused,
         };
         self.editor.dispatch_file_changes(&mut targets);
@@ -156,7 +159,7 @@ fn a_touched_script_is_reported_and_an_unrelated_file_is_not() {
     scripted(&mut session.world, rhai("scripts/paddle.rhai"));
 
     let mut watch = FileWatch::new();
-    watch.set_registered(session.editor.watched_paths(&session.world).into_keys().collect());
+    watch.set_registered(session.editor.watched_paths(&session.world, &session.assets).into_keys().collect(), &Default::default());
     assert!(watch.poll().is_empty());
     session.write("scripts/paddle.rhai", "fn update(me, view, params, cmd, dt) { }\n// edited\n");
     session.write("notes.txt", "edited, and still unwatched");
@@ -175,7 +178,7 @@ fn a_native_script_and_a_placeholder_sheet_watch_nothing() {
     let empty_sheet = world.create_entity();
     world.add_component(&empty_sheet, SpriteAnimation { sheet: Some(String::new()), ..SpriteAnimation::default() }).ok();
 
-    assert!(session.editor.watched_paths(&world).is_empty());
+    assert!(session.editor.watched_paths(&world, &session.assets).is_empty());
 }
 
 #[test]
@@ -188,7 +191,7 @@ fn two_entities_on_one_script_are_one_path_and_a_sheet_is_watched_by_its_sidecar
     let sheet = SpriteAnimation { sheet: Some("sprites/brick.png".to_string()), ..SpriteAnimation::default() };
     world.add_component(&brick, sheet).ok();
 
-    let watched = session.editor.watched_paths(&world);
+    let watched = session.editor.watched_paths(&world, &session.assets);
     let paddle = watched.get(&session.path("scripts/paddle.rhai")).expect("the script is watched");
     assert_eq!(paddle.iter().collect::<Vec<_>>(), vec![&WatchOwner::Script("scripts/paddle.rhai".to_string())]);
     let brick = watched.get(&session.path("sprites/brick.sheet.ron")).expect("the sidecar is watched");
@@ -203,7 +206,7 @@ fn ctrl_s_is_the_watchers_baseline_and_yields_no_change() {
     session.save_scene("scenes/level.scene.ron");
     let scene = session.path("scenes/level.scene.ron");
     let mut watch = FileWatch::new();
-    watch.set_registered(session.editor.watched_paths(&session.world).into_keys().collect());
+    watch.set_registered(session.editor.watched_paths(&session.world, &session.assets).into_keys().collect(), &Default::default());
     watch.poll();
 
     spawn_at(&mut session.world, Vec2::ONE);
@@ -441,7 +444,7 @@ fn a_dirty_scene_asks_and_enter_or_escape_keeps_the_edits_while_reload_is_a_clic
         assert_eq!(session.world.entity_count(), 1, "the edited world stays");
         assert!(session.editor.command_history.is_dirty(), "with its edits");
         assert!(session.console_mentions("changed on disk (reload scene)"), "the line stays in the console");
-        assert!(session.editor.watched_paths(&session.world).contains_key(&path), "and the file stays watched");
+        assert!(session.editor.watched_paths(&session.world, &session.assets).contains_key(&path), "and the file stays watched");
     }
 
     session.changed("level.scene.ron");
@@ -535,7 +538,7 @@ fn the_worker_reports_a_registered_file_written_by_another_program_and_joins_on_
     let unwatched = project.path().join("other.rhai");
     std::fs::write(&watched, "").expect("the watched file");
     let worker = super::hot_reload::spawn_worker(std::time::Duration::from_millis(5));
-    worker.register([watched.clone()].into());
+    worker.register([watched.clone()].into(), Default::default());
 
     let mut changes = Vec::new();
     for attempt in 1..=200 {
@@ -560,7 +563,7 @@ fn the_worker_acknowledges_a_noted_write_whether_or_not_it_had_a_stamp() {
     let written = project.path().join("level.scene.ron");
     std::fs::write(&written, "").expect("the written file");
     let worker = super::hot_reload::spawn_worker(std::time::Duration::from_millis(5));
-    worker.register([written.clone()].into());
+    worker.register([written.clone()].into(), Default::default());
     worker.note_written(written.clone(), common::vfs::change_stamp(&written).ok().flatten());
     worker.note_written(written.clone(), None);
 

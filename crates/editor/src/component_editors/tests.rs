@@ -12,7 +12,7 @@ use physics::components::{Collider, ColliderShape, RigidBody, RigidBodyType};
 use super::{apply_component_edit, edit_collider, edit_entity_tag, edit_rigid_body, edit_sound_emitter, ComponentEdit};
 use crate::commands::{CommandHistory, SetTransformCommand};
 use crate::edit_behavior;
-use crate::test_support::{click_through, extras, frame, setup_entity};
+use crate::test_support::{click_through, drawn_text, extras, frame, setup_entity};
 use crate::{DragDropState, EditResult, EditableFieldStyle, EditableInspector, FieldId};
 
 const ORIGIN: Vec2 = Vec2::new(10.0, 10.0);
@@ -165,6 +165,97 @@ fn test_cycling_a_spatial_loop_to_a_binding_clears_what_a_binding_cannot_have() 
     assert_eq!(edit.field_hint, "sound");
     assert_eq!(edit.new_value.sound, ecs::SoundRef::Binding(String::new()));
     assert_eq!((edit.new_value.looping, edit.new_value.spatial), (false, None), "the loader would refuse either");
+}
+
+/// One frame of `emitter`'s rows with the binding button offered as the desktop host offers
+/// it — the music tool named, `choices` in the Song row — returning the binding the frame
+/// asked the host to open and the Song row's choice.
+fn emitter_rows(
+    ui: &mut ui::UIContext,
+    emitter: &ecs::SoundEmitter,
+    can_open_source: bool,
+    choices: &[&str],
+) -> (Option<String>, Option<String>) {
+    let style = EditableFieldStyle::default();
+    let mut drag_drop = DragDropState::new();
+    let mut inspector_state = crate::InspectorState::default();
+    let mut extras = extras(&mut drag_drop, &mut inspector_state);
+    extras.can_open_source = can_open_source;
+    extras.edit_binding_label = "Edit in MIDI Evil".to_string();
+    extras.song_choices = choices.iter().map(|choice| choice.to_string()).collect();
+    // Wider than the default 300: the headless text estimate at the ui's default font puts
+    // "Edit in MIDI Evil" past the default control column, where `action_button` would
+    // shorten it; the arrows' geometry (`first_row`) is the same, the value column clamping
+    // at 120 either way.
+    let mut inspector = EditableInspector::new(ui, &style, ORIGIN.x, ORIGIN.y).with_width(EMITTER_INSPECTOR_WIDTH);
+    edit_sound_emitter(&mut inspector, emitter, &mut extras);
+    (extras.edit_binding, extras.chosen_song)
+}
+
+/// The inspector width the emitter's rows are drawn at in these tests.
+const EMITTER_INSPECTOR_WIDTH: f32 = 400.0;
+
+fn binding(action: &str) -> ecs::SoundEmitter {
+    ecs::SoundEmitter { sound: ecs::SoundRef::Binding(action.into()), ..ecs::SoundEmitter::default() }
+}
+
+/// The centre of the control column `rows` rows under the kind row.
+fn control_at_row(rows: f32) -> Vec2 {
+    let style = EditableFieldStyle::default();
+    let row = first_row();
+    Vec2::new(row.prev_btn_center.x + 4.0, row.row_y + rows * style.row_height + 2.0 + style.field_height() / 2.0)
+}
+
+#[test]
+fn test_a_named_binding_draws_the_music_tools_button_and_a_press_asks_the_host_for_its_part() {
+    let mut ui = ui::UIContext::new();
+    let mut input = input::InputHandler::new();
+    let emitter = binding("brick");
+
+    frame(&mut ui, &input, |ui| emitter_rows(ui, &emitter, true, &[]));
+    assert!(drawn_text(&ui).contains("Edit in MIDI Evil"), "{}", drawn_text(&ui));
+
+    let (press, release) = click_through(&mut ui, &mut input, control_at_row(2.0), |ui| emitter_rows(ui, &emitter, true, &[]));
+    assert_eq!(press.0, None, "the press frame asks nothing");
+    assert_eq!(release.0.as_deref(), Some("brick"), "the release asks for the binding's part");
+}
+
+#[test]
+fn test_a_path_an_unnamed_binding_and_a_host_that_cannot_open_files_draw_no_button() {
+    let mut ui = ui::UIContext::new();
+    let input = input::InputHandler::new();
+    let path = ecs::SoundEmitter { sound: ecs::SoundRef::Path("sounds/beep.wav".into()), ..ecs::SoundEmitter::default() };
+    for (emitter, can_open_source, case) in [
+        (path, true, "a recorded sound has no song"),
+        (binding(""), true, "an empty name binds nothing"),
+        (binding("  "), true, "nor does a blank one"),
+        (binding("brick"), false, "the web opens no external tool"),
+    ] {
+        frame(&mut ui, &input, |ui| emitter_rows(ui, &emitter, can_open_source, &["music/a.mid", "music/b.mid"]));
+        let drawn = drawn_text(&ui);
+        assert!(!drawn.contains("Edit in MIDI Evil"), "{case}: {drawn}");
+        assert!(!drawn.contains("music/a.mid"), "{case}: no Song row either: {drawn}");
+    }
+}
+
+#[test]
+fn test_two_songs_draw_the_song_row_above_the_button_and_its_arrow_writes_the_choice_back() {
+    let mut ui = ui::UIContext::new();
+    let mut input = input::InputHandler::new();
+    let emitter = binding("brick");
+    let songs = ["music/a.mid", "music/b.mid"];
+
+    frame(&mut ui, &input, |ui| emitter_rows(ui, &emitter, true, &songs));
+    let drawn = drawn_text(&ui);
+    assert!(drawn.contains("Song < music/a.mid > Edit in MIDI Evil"), "the first song until one is chosen: {drawn}");
+
+    let style = EditableFieldStyle::default();
+    let next_arrow = first_row().next_btn_center + Vec2::new(0.0, 2.0 * style.row_height);
+    let (_, release) = click_through(&mut ui, &mut input, next_arrow, |ui| emitter_rows(ui, &emitter, true, &songs));
+    assert_eq!(release, (None, Some("music/b.mid".to_string())), "the arrow chooses; only the button asks");
+
+    let (_, release) = click_through(&mut ui, &mut input, control_at_row(3.0), |ui| emitter_rows(ui, &emitter, true, &songs));
+    assert_eq!(release.0.as_deref(), Some("brick"), "the button sits under the Song row");
 }
 
 #[test]

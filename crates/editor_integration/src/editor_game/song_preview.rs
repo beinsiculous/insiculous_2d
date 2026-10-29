@@ -354,6 +354,7 @@ impl<G: Game> EditorGame<G> {
     ) -> DrainReport {
         let report = self.drain_song_intents(audio, sources);
         self.follow_song_slot(SlotReadings::read(audio));
+        self.keep_slot_song(audio);
         report
     }
 

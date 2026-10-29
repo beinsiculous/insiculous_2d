@@ -72,6 +72,10 @@ pub(crate) fn extras<'a>(
         scroll_target_y: None,
         can_open_source: false,
         open_source: None,
+        edit_binding_label: String::new(),
+        song_choices: Vec::new(),
+        chosen_song: None,
+        edit_binding: None,
         script_catalog: &[],
         script_picker_open: false,
     }
@@ -111,6 +115,19 @@ pub(crate) fn release_mouse(input: &mut InputHandler) {
 pub(crate) fn move_mouse(input: &mut InputHandler, pos: Vec2) {
     next_frame(input);
     input.mouse_mut().update_position(pos.x, pos.y);
+}
+
+/// Every text the last frame drew, joined by spaces as a reader would run the lines together.
+pub(crate) fn drawn_text(ui: &UIContext) -> String {
+    ui.draw_list()
+        .commands()
+        .iter()
+        .filter_map(|command| match command {
+            ui::DrawCommand::TextPlaceholder { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Run one UI frame at [`WINDOW`] around `body` and return what it returned.

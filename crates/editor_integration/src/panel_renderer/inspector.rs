@@ -155,6 +155,10 @@ fn build_inspector_extras<'a>(
         scroll_target_y: None,
         can_open_source: cfg!(not(target_arch = "wasm32")),
         open_source: None,
+        edit_binding_label: editor.external_tools.tool_name(editor::external_tools::FileType::Midi).edit_item(),
+        song_choices: editor.edit_binding.song_choices.clone(),
+        chosen_song: editor.edit_binding.chosen_song.clone(),
+        edit_binding: None,
         script_catalog: &editor.script_catalog,
         script_picker_open: editor.script_picker_open,
     }
@@ -252,6 +256,8 @@ fn render_inspector_rows(
     );
     let target_y = extras.scroll_target_y;
     let open_request = extras.open_source.take();
+    let chosen_song = extras.chosen_song.take();
+    let edit_binding = extras.edit_binding.take();
     let warnings = std::mem::take(&mut extras.warnings);
     let script_picker_open = extras.script_picker_open;
     drop(extras);
@@ -265,6 +271,11 @@ fn render_inspector_rows(
     editor.inspector_scroll_request = None;
     if let Some(open_request) = open_request {
         editor.open_requests.push(open_request);
+    }
+    // The host resolves the song and the track after the panels, where its rule's state is.
+    editor.edit_binding.chosen_song = chosen_song;
+    if edit_binding.is_some() {
+        editor.edit_binding.requested = edit_binding;
     }
 
     warn_after_edit(

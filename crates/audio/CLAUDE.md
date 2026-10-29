@@ -13,8 +13,27 @@ on its own. **The crate knows no scene and no space**: the scene's `SoundEmitter
 ## Files
 - `manager/mod.rs` — **the device**: `AudioManager`, its output (`enable_output`, the
   disabled and gesture-gated modes), sound loading and SFX playback (`play_with_settings`
-  mints the `PlaybackId`), `play_source` (any rodio `Source` on a bus), `update`/`update_at`,
-  and the `PendingMusic` slot both kinds of music share.
+  mints the `PlaybackId`; a loop plays through `LoopSource`, and each `ActiveSound` keeps
+  its loop's slot and the format of what it plays), `play_source` (any rodio `Source` on a
+  bus), `update`/`update_at`, and the `PendingMusic` slot both kinds of music share.
+- `manager/reload.rs` — **the reload**: `reload_sound(handle, bytes)` replaces a loaded
+  sound's bytes behind its handle, decoded once on the calling thread and pulled to their
+  end — streamed and dropped when no loop will take them, kept as the buffer the loops read
+  when one will, so the audio thread decodes nothing at the boundary and a reload nothing
+  plays holds no decoded copy (a stream that does not open or yields no sample is
+  `DecodeError`, the old bytes kept; an unknown handle `InvalidHandle`); a same-format loop
+  takes the new bytes at its next boundary through its slot, a loop whose channels or rate
+  change is restarted on a fresh sink under its own `PlaybackId`, volume, pan and speed —
+  started before the old sink is stopped, so a start that fails leaves the old loop playing,
+  never silence under a trusted id — and the returned `SoundFormatChange` says so; a
+  one-shot finishes on the old bytes. Tests in
+  `manager/reload_tests.rs`.
+- `loop_source.rs` — `LoopSource`, a looping recorded sound that can be handed new bytes:
+  rodio's `Repeat` shape (two `Buffered` clones of one decode) plus a `LoopSlot` the frame
+  thread fills, `try_lock`ed only when a pass runs out — a replacement there becomes the pass
+  every later one restarts from; a slot held at the boundary plays the old pass once more.
+  Same format only: rodio rebuilds its resampler at a span's end from what the source
+  reports, which is the old pass until the slot is taken.
 - `manager/playback.rs` — **each playing instance**: `stop_playback`, `set_playback_mix`
   (base volume under the sfx bus and master, and the pan), `is_playing`, and the playbacks
   a disabled manager holds (`HeldPlayback`): a loop until it is stopped, started by
@@ -74,7 +93,8 @@ on its own. **The crate knows no scene and no space**: the scene's `SoundEmitter
 | `_stream: OutputStream` on `AudioManager` must be kept alive; dropping it kills all audio playback | — none |
 | `AudioManager` on wasm32 must start disabled because browsers gate audio behind a user gesture, enabling on first user interaction | `src/manager/tests.rs test_enable_output_keeps_handles_ids_buses_and_pending_music_whatever_the_outcome` |
 | Clamping volume and speed at point of use: `SoundSettings` fields are public, so out-of-range volume or speed must be clamped before reaching sinks | `src/manager/tests.rs test_sound_settings_clamp_volume_to_unit_range_and_floor_speed_at_a_tenth` |
-| A pan inside rodio's `repeat_infinite` freezes at the first pass's value, because the repeat buffers its input's samples: a looping play wraps the repeat in the pan, never the reverse | — none |
+| A pan inside the loop freezes at the first pass's value, because the loop buffers its input's samples: a looping play wraps `LoopSource` in the pan, never the reverse | — none |
+| A reloaded sound reaches what already plays by kind: a looping instance takes its new bytes at its next boundary, its pass in progress never cut and never waiting on the frame thread (a slot held at the boundary plays the old pass again); a one-shot finishes on the old bytes its sink holds; new bytes of another channel count or sample rate restart each loop at once under its own id instead, since the boundary would convert one span as the old format; a header with no body behind it is refused, the old bytes kept | `src/manager/reload_tests.rs a_filled_slot_lets_the_old_pass_finish_whole_and_every_later_pass_is_the_new_sound` `src/manager/reload_tests.rs a_slot_held_at_the_boundary_plays_the_old_pass_again_and_is_taken_at_the_next` `src/manager/reload_tests.rs a_stereo_or_forty_eight_kilohertz_replacement_is_told_apart_from_a_same_format_one` `src/manager/reload_tests.rs a_header_with_no_body_or_bytes_that_do_not_decode_are_refused_and_the_old_bytes_kept` |
 | One contract with or without a device: a disabled manager mints a `PlaybackId` and reports a loop playing until it is stopped and a one-shot ended at the next `update`; before the web's gesture a loop is held, survives a failed `enable_output`, starts on a good one with the mix set while it waited, and a one-shot from before the gesture is dropped | `src/manager/tests.rs without_a_device_a_loop_plays_until_stopped_and_a_one_shot_ends_at_the_next_update` `src/manager/tests.rs a_loop_played_before_the_gesture_is_held_through_a_failed_enable_and_starts_on_a_good_one` |
 | A centred pan passes every sample untouched — a default play is what it was before the pan existed — and a pan out of range is clamped, a non-finite one centred | `src/pan_source.rs a_centred_play_passes_every_sample_untouched` `src/pan_source.rs a_pan_beyond_the_range_is_clamped_and_a_non_finite_one_centred` |
 | Unloaded sound handle must be rejected and its ID never recycled | `src/manager/tests.rs test_unloaded_handle_is_rejected_and_its_id_is_never_recycled` |
@@ -127,7 +147,8 @@ on its own. **The crate knows no scene and no space**: the scene's `SoundEmitter
   API works on both targets. Recorded music decodes from an in-memory `Cursor`
   (eager, like all audio here).
 - Sound bytes cached as `Arc<[u8]>`; each play decodes from
-  `Cursor<Arc<[u8]>>` — no buffer copy per play.
+  `Cursor<Arc<[u8]>>` — no buffer copy per play. `reload_sound(handle, bytes)` swaps the
+  Arc behind the same handle (`manager/reload.rs`).
 - Volume model: sink volume = `base * bus * master`, re-applied to all live
   sinks (music + SFX + sources) by `set_master_volume` / `set_sfx_volume` / `set_music_volume`.
   A song's sink carries master alone; its music and sfx gains reach the source
