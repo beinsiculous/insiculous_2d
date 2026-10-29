@@ -1008,20 +1008,184 @@ gemini, since the watcher's debounce and tombstones, the runner's swap and Stop'
 harness and seam. Leaves out: the song and sample policies, and their paths in the watched set
 (batches 4 and 5); any `cargo` spawn.
 
-**Batch 4 — music entry points and the sample reload: #212 (E10), #215 (E13).** `scan_songs`
-salvaged into `external_tools/songs.rs` and pointed at `is_midi_path` (`composer/state.rs:399`
-accepts `mid` alone, so a `.midi` the asset browser lists since batch 1 is missing from File →
-Open Song until then); the Edit in MIDI Evil button on a `Binding` emitter with
-the action → part → track resolution; a `.mid` tile opening at its first part's track
-(`Location::Track` from its sidecar) through every entry batch 2a gave it — the double-click,
-Enter and the context menu's Open in <tool> — where 2a opens it at `Location::None` (every tile
-kind opens from 2a on); recorded sounds reloading in place behind their handle, the
-library's loaded and failed paths and every `SoundEmitter(Path)` sound joining batch 3's watched
-set (it watches only what batch 3 reloads), a failure cleared on success (the sound half of #180,
-that issue updated). `editor_game/hot_reload_tests.rs` is 577 lines since batch 3: a new host test
-goes in its own `*_tests.rs` sibling, or the file splits first. Target shapes: § Entry points rows 1 and 6, "Which song is the song", the
-`ReloadSample` row. Reviewers: kimi, gemini (the sound library's reload), codex (one still: the
-emitter's settings with the button). Leaves out: the song swap.
+**Batch 4 — music entry points and the sample reload: #212 (E10), #215 (E13).** Re-verified
+2026-10-29 against 3f8d7fa, the tree batch 3 left. The issues predate rounds 1 to 5; where they
+differ (`{track}` as the name alone, a nameless track opening unfocused with a notice, a loop
+finishing on its old bytes) this section and the design win, and the issues are reworded at
+close. Four calls are the planner's, made 2026-10-29 for Jesse's word at this section's review:
+- a looping instance takes the new bytes **at its next loop boundary, with no fade**: the
+  recorded tier has none (the 5 ms fade is the sample voice's, `music_midi`'s), and the boundary
+  is the seam the loop already has;
+- a `.mid` opens at its first part's track from **one point, the host's launcher**, so the
+  double-click, Enter and the context menu's item all gain it with no change to the `editor`
+  crate's requests;
+- a part selecting a nameless track by index opens **by the index alone**, no notice: round 4's
+  `{track_index}` placeholder supersedes the issue's line;
+- the emitter's button is named by the resolved tool, "Edit in MIDI Evil" / "Edit in Reaper" /
+  "Edit with the system default", from the same `ToolName` the context menu's item uses;
+- (round 18, gemini F1 and codex F3) a reload that changes a sound's **channel count or sample
+  rate** restarts each active loop on a fresh sink at the reload instead of the boundary swap:
+  rodio rebuilds its converter from the source's reported format only at a span boundary, and
+  `Repeat`'s shape reports the old pass's format there, so a new format would play one span
+  wrong; the same-format case keeps the boundary.
+
+- **The scans, salvaged** (`editor/src/external_tools/songs.rs`, pure): `scan_songs` moves from
+  `composer/state.rs:385` and reads `is_midi_path` (`file_type.rs:132`) in place of its own
+  `eq_ignore_ascii_case("mid")` (`state.rs:399`), so a `.midi` the asset browser has listed since
+  batch 1 reaches the Songs list and File → Open Song, and the song's save accepts the same
+  (`plan_save`, `song/io.rs:347`, refuses every extension but `mid`; its journal already names
+  by the whole name plus `.ron`, `with_suffix`, so nothing else changes — round 18, codex F1);
+  `composer/sound_fonts.rs` (139 lines,
+  tests included) moves to `external_tools/sound_fonts.rs` unchanged. `composer/mod.rs:49` and
+  `state.rs:15` re-export from the new homes, so the five `rescan_songs` callers
+  (`composer_keys.rs:350`, `:387`, `song_io.rs:71`, `:98`, `:117`) and `song_io.rs:91`'s bank
+  lookup do not move; `HOME_DIRECTORIES` stays `song`'s. The composer's `songs` list
+  (`state.rs:183`, refreshed on open, save and the browser's Rescan, `asset_browser.rs:77`) is
+  the one song list the chooser below reads — rescanned first when `songs_scanned` is false
+  (`composer_keys.rs:386`'s own call), since the list is empty until the composer has drawn
+  (round 18, kimi F1, gemini F5).
+- **The track resolution** (`songs.rs`, pure over `music_midi`): `Part::resolve_track`
+  (`song_file.rs:303`) gives the index, `SongData::tracks()[index].name()` (`song_data.rs:329`,
+  `:122`) the name, and the pair is `Location::Track { name, index }` (`config.rs:179`; a
+  nameless track `name: None`, so `{track}`'s group drops and `{track_index}` carries it,
+  `config.rs:314-317`). Three functions: a part's location; a binding's — action →
+  `bindings[action].part` → `parts[part]` → the part's, an unknown action an error naming the
+  sidecar and listing its actions, an unknown part an error naming both, a `resolve_track`
+  problem passed through; and the first part's, `None` when the sidecar has no parts. The pair
+  is read without the document: `common::vfs::read` on the `.mid`, `SongData::from_smf`
+  (`song_data.rs:316`), the sidecar at `midi_sidecar_path` through `parse_song_file`
+  (`song_file.rs:251`) — never `SongDocument::open` (`song/io/open.rs:89`), which settles an
+  interrupted save and refuses a path outside the song folders. Tests over the Napolitan fixture
+  (`crates/music_midi/fixtures/dansenapolitaine.mid`, the sidecar built in code as
+  `song_file/tests.rs` does): an `Index` part resolves to its track's name and index; a `Name`
+  part moved to another index resolves there; an unknown action names the actions; a nameless
+  track gives `name: None`.
+- **A `.mid` opens at its first part's track.** `open_in_external_tool`
+  (`editor_game/external_tools.rs:65`) — the one point every request passes, the double-click
+  (`asset_browser.rs:129`), Enter (`:134`) and the context menu's Open in <tool>
+  (`context_menu.rs:98-102`) included — takes a request for a MIDI path at `Location::None`, reads
+  the pair and upgrades it to the first part's location before resolving; a missing or
+  unparseable sidecar, or one with no parts, opens at `Location::None` with the reason as an
+  information line. A new host file holds it with the rule below (`editor_game/song_entry.rs`;
+  `editor_game/mod.rs` is 549 lines, module line and fields only). Batch 2a's test that a
+  double-click files one request for its path whatever the kind (`tile.rs:181`) stands: the
+  upgrade is the launcher's. Tests: a `.mid` beside a sidecar launches with the track; a `.mid`
+  alone launches at none and says why; a `.midi` the same; a non-MIDI request is untouched.
+- **Which song is "the" song**, the design's order, on the host: during a play session the slot's
+  song (`song_request()`, `manager/song/telemetry.rs:38`; the inspector pass has no `ctx.audio`,
+  so the song phase that already reads the slot in `finish_frame` keeps the path on the host each
+  frame), else what the game's `init` asked for (`InitMusic::Song(path)`,
+  `editor_game/init_music.rs`, `mod.rs:78`), else the open document's path (`EditorGame.song`,
+  `SongDocument::path`, `song/mod.rs:153`), else the composer's Songs list: one → it, several →
+  a chooser, none → "no song in this project" as an error. The chooser is an
+  `inspector.cycle("Song", …)` row over the list, drawn only when the rule reaches it, its choice
+  kept on `EditorContext` for the session and never written to the preferences.
+- **The button** (`component_editors/sound_emitter.rs:43`, the `Binding` arm): under the Binding
+  row, `inspector.action_button(label)` gated as the Open source button is
+  (`script_editor.rs:140-148`: `extras.can_open_source`, which is `cfg!(not(wasm32))`;
+  `editable_inspector.rs:475`'s rule draws nothing live while read-only). `InspectorExtras`
+  (`texture_field.rs:16`) gains the label the host computed (`ExternalToolsConfig::tool_name
+  (FileType::Midi)`, as `context_menu.rs:92` does), the song list and the chooser's state, and
+  `edit_binding: Option<String>`, the action the button asked for; the host builds them at
+  `panel_renderer/inspector.rs:149` and takes `edit_binding` beside `open_source` at `:254`. The
+  host then resolves: the song by the rule, the binding's location by `songs.rs`, and pushes
+  `OpenRequest { song's .mid relative to the asset base, Location::Track { name, index } }` onto
+  `editor.open_requests` — or reports the error through `report` at error severity, naming the
+  sidecar. An empty binding name draws no button, and the web draws none, as it draws no Open
+  source button (round 18, kimi F4: the gate hides, it does not disable). Tests: the button files
+  the request for a known action; an unknown action is an error naming the sidecar; no song is
+  the error above, and a list never scanned is scanned first; several songs draw the chooser and
+  the choice decides; a `Path` emitter draws no button; the web draws none.
+- **The recorded tier reloads behind its handle.**
+  - `AudioManager::reload_sound(handle, bytes) -> AudioResult<()>` (`manager/mod.rs`, 484
+    lines): the new bytes are decoded once, on the frame thread, and **pulled to the end** —
+    `Decoder::new` parses headers alone (`:76`), so a stream that fails or yields no sample is
+    refused as `DecodeError` with the old bytes kept, while a shorter body than before is the
+    author's shorter sound (a half-written file is the debounce's to hold back — round 18, kimi
+    F3); an unknown handle is `InvalidHandle`; on success the `SoundData.bytes` Arc is replaced.
+    A one-shot sink already playing holds the old Arc and finishes on it. A looping instance
+    plays through a repeat of the manager's own, `audio/src/loop_source.rs`: rodio's `Repeat`
+    (`repeat.rs`, `inner` and `next` as `Buffered` clones of one decode) cannot be handed a
+    second source, so the manager's keeps the same two fields and a slot
+    (`Arc<Mutex<Option<Buffered<Decoder<…>>>>>`) it `try_lock`s only when `inner` runs out:
+    a filled slot becomes `next`, `inner` its clone, so every later pass is the new sound (round
+    18, gemini F2 asked); `WouldBlock` — the frame thread is filling it — plays the old `next`
+    once more and tries again at the following boundary, so the loop never stops (round 18, kimi
+    F2). The reload compares the new decode's channels and sample rate with the old's: equal →
+    the slot of every active loop of the handle is filled, and each takes the new sound where its
+    old pass ends; different → each active loop is restarted on a fresh sink at the reload under
+    its own `PlaybackId`, pan, volume and speed (`start_playback`, `:355-383`, over the entry's
+    fields), with a console line saying the format changed — the fifth call above. `ActiveSound`
+    (`:53-66`) gains the slot, `None` for a one-shot. A held loop (the disabled manager's,
+    `playback.rs`) needs nothing: `start_held_loops` decodes the bytes current when the device
+    arrives. Tests in a new `manager/reload_tests.rs` (`manager/tests.rs` is 573 lines): the
+    pure source — pulled past its boundary with the slot filled, the samples after it are the new
+    source's and the pass before it is uncut, and the pass after that is still the new source's;
+    an empty slot repeats as before; a slot held locked at the boundary plays the old pass again
+    and takes the new one at the next — and the manager headless: a reload keeps the handle valid
+    for `play`, an unknown handle is refused, a header-only or empty stream keeps the old bytes
+    (the test reads the private field, as `tests.rs` does), a format change is told apart from a
+    same-format reload.
+  - `AssetManager::reload_sound(path, audio)` (`assets/sound_library.rs`, 146 lines): a path in
+    `loaded` → the bytes read through the asset base and `audio.reload_sound(handle, bytes)`, the
+    handle unchanged so every `resolve_sound` caller (`sound_emitters.rs:363`) and emitter stays
+    valid; a path in `failed` → the failure forgotten and `resolve_sound` run again, a success
+    serving the handle from then on, a failure remembered again; a path in neither → nothing to
+    do, reported so. `sound_paths()` lists `loaded`'s and `failed`'s keys for the watched set.
+    Tests beside the existing two: a changed file is served from the same handle; a failed path
+    that appears is retried once and serves; a reload that fails to decode keeps the old sound
+    and the path loaded.
+- **The watched set gains the sounds** (`hot_reload.rs:120-141`, `watched_paths`, which now takes
+  the asset manager too — `tick_file_watch` and the tests' `watch_now` with it): every non-empty
+  `SoundEmitter { sound: Path(p) }` (`ecs/src/sound_emitter.rs:21`) and every path
+  `sound_paths()` names, as `WatchOwner::Sound(p)`, each through `resolve_asset_path`. A failed
+  path registers as **expected absent**: `FileWatch::set_registered` (`watch.rs:87`) takes,
+  beside the set, which paths the host believes missing, and seeds their observation as absent,
+  so a file present at the worker's first look is a change — left to the plain first observation
+  (`poll_with`, `:115`, a baseline with no event) a file that arrived between the failed load and
+  the first poll would stay failed for the session (round 18, codex F2). The worker's set message
+  carries the marks. The mirror window — a loaded sound's file rewritten between its load and the
+  watcher's first observation — is accepted and documented beside the stamp granularity. A song's
+  samples and SoundFonts are batch 5's closure and are not watched here; a `.wav` nothing names
+  and nothing loaded is not watched, and one an emitter names that nothing has played needs no
+  reload when it arrives — the next play reads it (round 18, gemini F7). Tests: an emitter's
+  sound and a loaded path are watched, a `.wav` nobody names is not, a failed path whose file is
+  present at the first poll is reported as a change.
+- **`ReloadSample`** (`dispatch_file_change`, `hot_reload.rs:186-224`; `ReloadTargets` at `:73`
+  gains `audio: &mut AudioManager` from `ctx.audio`, `contexts.rs:66`): for each
+  `WatchOwner::Sound(path)`, `assets.reload_sound(path, audio)`, its result a line through
+  `report` — reloaded (the format change named when there was one), now loads, not loaded yet,
+  or the error at error severity with the old sound kept. Editing, Playing and Paused alike; nothing at Stop, since a sound is not in the
+  snapshot. Tests in a new `editor_game/hot_reload_sample_tests.rs` over `Session`
+  (`hot_reload_tests.rs` is 577 lines): a changed `.wav` is served from the same handle after the
+  dispatch; a failed path that appears serves after it; a bad file keeps the old sound and
+  reports; the same in a play session.
+- **Rebutted at round 18, so not rebuilt:** the song is the one that plays, so an action another
+  song defines is an error naming the sidecar and listing its actions, never a search of every
+  sidecar (gemini F3); the track index is `resolve_track`'s, bounds-checked at
+  `song_file.rs:310-312` (gemini F4); the pair is read at the resolved path (gemini F6).
+- **Files near the ceiling:** `hot_reload_tests.rs` 577, `manager/tests.rs` 573, `editor_game/
+  mod.rs` 549, `song_preview.rs` 591 (the slot's path is read where the song phase already reads
+  it; a new line or two, or the reading moves into `song_entry.rs`), `manager/mod.rs` 484,
+  `asset_browser.rs` 433.
+- **Docs:** `crates/audio/CLAUDE.md` (the reload and the loop source); `crates/engine_core/
+  CLAUDE.md` (the sound tier's reload, and a pitfall row: a failed path is retried when its file
+  arrives); `crates/editor/CLAUDE.md` (`external_tools/` for `songs.rs` and `sound_fonts.rs`,
+  the composer row's scan, the emitter editor's button); `crates/editor_integration/CLAUDE.md`
+  (the launcher's upgrade, `song_entry.rs`, the hot reload's sounds, and a pitfall row: a loop
+  takes its new bytes at the boundary, a one-shot finishes on the old).
+- **The still**, for codex: the emitter's settings with the button and a console line from its
+  click, on a temporary copy of `../games/breakout/assets` (its scenes, and
+  `ai/music/ai_food_pyramid.mid` with six bindings: `brick`, `armor`, `paddle`, `loss`, `clear`,
+  `menu`) — no shipped scene carries a `Binding` emitter, so the executor adds one in the editor.
+- **#180:** the sound half closes with this batch, the texture half stays; the planner updates the
+  issue at the commit.
+
+Target shapes: § Entry points rows 1 and 6, "Which song is the song", the `ReloadSample` row.
+Reviewers: kimi, gemini (the sound library's reload, the loop source's seam), codex (the still).
+Leaves out: the song swap and the closure (batch 5); the Conductor rename and the panel's reads
+of the salvaged scans beyond the re-exports (batch 7); any change to how a tile's request is
+built in the `editor` crate.
 
 **Batch 5 — the song follows the score: #213 (E11), #214 (E12).** The open song document's
 two-file policy by content fingerprint with the score always adopted, the sidecar-only save over
