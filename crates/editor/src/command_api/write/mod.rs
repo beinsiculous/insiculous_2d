@@ -198,6 +198,10 @@ fn sanitize(stored: StoredComponent) -> StoredComponent {
             crate::physical_floors::clamp_sprite(&mut sp);
             StoredComponent::Sprite(sp)
         }
+        StoredComponent::SpriteTiling(mut tiling) => {
+            tiling.normalize();
+            StoredComponent::SpriteTiling(tiling)
+        }
         StoredComponent::Collider(mut c) => {
             crate::physical_floors::clamp_collider(&mut c);
             StoredComponent::Collider(c)

@@ -329,6 +329,7 @@ fn global() -> &'static RwLock<ComponentRegistry> {
         use crate::ui_components::{UiButton, UiLabel, UiPanel};
         registry.register::<Transform2D>();
         registry.register::<Sprite>();
+        registry.register::<crate::SpriteTiling>();
         registry.register::<SpriteAnimation>();
         registry.register::<Camera>();
         registry.register::<Name>();

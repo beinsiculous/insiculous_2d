@@ -204,9 +204,12 @@ impl EditorCommand for SetComponentValueCommand {
             return Rebase::DROP;
         };
         let patched = patch_changed_leaves(&authored_value, &before, &after);
-        let Ok(rebased) = crate::stored_component::stored_component_from_json(&name, patched) else {
+        let Ok(mut rebased) = crate::stored_component::stored_component_from_json(&name, patched) else {
             return Rebase::DROP;
         };
+        if let StoredComponent::SpriteTiling(tiling) = &mut rebased {
+            tiling.normalize();
+        }
         if !stored_script_references_resolve(&rebased, world) {
             return Rebase::DROP;
         }

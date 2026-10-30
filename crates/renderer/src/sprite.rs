@@ -46,6 +46,9 @@ pub struct Sprite {
     pub border_width: f32,
     /// Texture handle
     pub texture_handle: TextureHandle,
+    /// Shared pixel-snapping origin for pieces of one sprite; `None` uses this
+    /// sprite's own position. The anchor moves with its patches through batching.
+    pub snap_anchor: Option<Vec2>,
 }
 
 /// SDF shape kinds a sprite can render as (fragment-shader masked).
@@ -85,6 +88,7 @@ impl Default for Sprite {
             corner_radius: 0.0,
             border_width: 0.0,
             texture_handle: TextureHandle::default(),
+            snap_anchor: None,
         }
     }
 }
@@ -167,7 +171,7 @@ impl Sprite {
 
     /// Convert to sprite instance for batching
     pub fn to_instance(&self) -> SpriteInstance {
-        SpriteInstance::with_emissive(
+        let mut instance = SpriteInstance::with_emissive(
             self.position,
             self.rotation,
             self.scale,
@@ -181,7 +185,12 @@ impl Sprite {
             self.corner_radius,
             self.border_width,
             0.0,
-        ])
+        ]);
+        if let Some(anchor) = self.snap_anchor {
+            instance.snap_anchor = anchor.to_array();
+            instance.has_snap_anchor = 1;
+        }
+        instance
     }
 }
 

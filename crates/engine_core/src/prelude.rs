@@ -2,7 +2,7 @@
 
 pub use crate::{
     // Simple game API (recommended)
-    game::{Game, run_game},
+    game::{Game, run_game, append_tiled_sprite},
     contexts::{GameContext, RenderContext, GlyphCacheKey},
     game_config::GameConfig,
     chaos_mode::ChaosMode,
@@ -60,6 +60,7 @@ pub use ecs::sprite_components::{
     set_sprites_visible, AnimationClip, Name, SheetGrid, Sprite, SpriteAnimation,
 };
 pub use ecs::Tilemap;
+pub use ecs::SpriteTiling;
 // Animation state as data and the scene-authored spring grid: a game declares both without
 // depending on `ecs`, the way it does `Lifetime` and `SpriteAnimation`.
 pub use ecs::clip_state_machine::{

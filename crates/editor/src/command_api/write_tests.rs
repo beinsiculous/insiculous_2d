@@ -18,6 +18,25 @@ use crate::test_support::named_entity;
 
 const PLAYER_POS: Vec2 = Vec2::new(1.0, 2.0);
 
+#[test]
+fn tiled_sprite_settings_are_editable_undoable_and_sanitized() -> Result<(), ApiError> {
+    let mut rig = Rig::new();
+    let entity = rig.spawn_player();
+    rig.run(r#"add Player SpriteTiling {"source_size": [96.0,192.0], "borders": [48.0,80.0,16.0,80.0]}"#)?;
+    let initial = *rig.world.get::<ecs::SpriteTiling>(entity).expect("added");
+    rig.run(r#"set Player SpriteTiling {"borders": [48.0,80.0,200.0,-5.0]}"#)?;
+    let changed = *rig.world.get::<ecs::SpriteTiling>(entity).expect("changed");
+    assert!(changed.is_valid());
+    assert_eq!(changed.borders, glam::Vec4::new(48.0,80.0,47.0,0.0));
+    rig.run("undo")?;
+    assert_eq!(rig.world.get::<ecs::SpriteTiling>(entity), Some(&initial));
+    rig.run("redo")?;
+    assert_eq!(rig.world.get::<ecs::SpriteTiling>(entity), Some(&changed));
+    rig.run(r#"set Player SpriteTiling {"source_size": [1e40, 33554432.0]}"#)?;
+    assert!(rig.world.get::<ecs::SpriteTiling>(entity).expect("overflow is repaired").is_valid());
+    Ok(())
+}
+
 struct Rig {
     world: World,
     history: CommandHistory,

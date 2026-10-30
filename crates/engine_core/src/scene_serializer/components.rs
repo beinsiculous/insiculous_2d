@@ -35,6 +35,10 @@ pub(super) fn concrete_components() -> Vec<ConcreteComponent> {
             extract: extract_sprite,
         },
         ConcreteComponent {
+            registry_name: "SpriteTiling",
+            extract: extract_sprite_tiling,
+        },
+        ConcreteComponent {
             registry_name: "Camera",
             extract: extract_camera,
         },
@@ -221,6 +225,21 @@ fn extract_grid_backdrop(
         activity_release: grid.activity_release,
         activity_displacement_ref: grid.activity_displacement_ref,
         activity_velocity_ref: grid.activity_velocity_ref,
+    })
+}
+
+fn extract_sprite_tiling(
+    world: &World,
+    entity: EntityId,
+    _texture_path_fn: &dyn Fn(u32) -> String,
+) -> Option<ComponentData> {
+    world.get::<ecs::SpriteTiling>(entity).map(|tiling| {
+        let mut tiling = *tiling;
+        tiling.normalize();
+        ComponentData::SpriteTiling {
+            source_size: tiling.source_size.into(),
+            borders: tiling.borders.into(),
+        }
     })
 }
 

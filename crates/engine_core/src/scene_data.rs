@@ -249,6 +249,15 @@ pub enum ComponentData {
         #[serde(default)]
         restitution: f32,
     },
+    /// Native-size repetition within the Sprite's current animation frame.
+    SpriteTiling {
+        #[serde(default = "default_sprite_tiling_source_size")]
+        source_size: (f32, f32),
+        /// Fixed source margins, ordered left, top, right, bottom.
+        #[serde(default)]
+        borders: (f32, f32, f32, f32),
+    },
+
     /// Tilemap component - grid of tile indices drawn from a tileset
     Tilemap {
         /// Tileset texture reference: "#white", "#solid:RRGGBB", or file path
@@ -417,6 +426,10 @@ pub enum ComponentData {
         /// Component data as JSON
         data: serde_json::Value,
     },
+}
+
+fn default_sprite_tiling_source_size() -> (f32, f32) {
+    ecs::SpriteTiling::default().source_size.into()
 }
 
 // Default value functions

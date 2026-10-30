@@ -21,6 +21,7 @@ Query types: Single<T>, Pair<T, U>, Triple<T, U, V>
 - `Transform2D` — position (Vec2), rotation (f32), scale (Vec2)
 - `GlobalTransform2D` — computed world-space transform
 - `Sprite` — texture_handle, offset, rotation, scale, color, depth, tex_region
+- `SpriteTiling` — source-frame pixel size and fixed left/top/right/bottom borders; `tiles()` repeats the interior at native pixel size within the destination rectangle, including animated atlas regions.
 - `Camera` / `Camera2D` — viewport, zoom, main camera flag
 - `Name` — entity display name
 - `SpriteAnimation` — named-clip animation over a `SheetGrid` (`clips: Vec<(String, AnimationClip)>`, played by name via `play`/`ensure_playing`). `AnimationClip` is NOT a component — it lives inside. While a clip is selected and its frame resolves, the component owns `Sprite.tex_region`

@@ -19,6 +19,13 @@ Core engine: Game trait, run_game(), managers, scene loading/saving, asset manag
 - Managers: `GameLoopManager`, `RenderManager`, `WindowManager`
 
 ## Crate Boundaries
+
+Sprites carrying `SpriteTiling` use their usual Transform2D/Sprite scale as the
+destination footprint, while border and repeated interior pixels retain native
+size. `game/tiled_sprite.rs` expands the active animation UV into patches; ordinary
+sprites keep their single-quad render path. The component persists in scene RON and
+is editable in the inspector. See `docs/SPRITE_TILING.md` at the repository root.
+
 Cross-cutting glue biases toward `engine_core`: `ui` defines `DrawCommand` (renderer-agnostic), `renderer` defines `Sprite` (UI-agnostic), and `engine_core` owns the bridge in `ui_integration`. This keeps `renderer` and `ui` independently testable and prevents either crate from depending on the other transitively through `engine_core`. The dual glyph cache is intentional: `ui` caches rasterized bitmaps (`font/glyph_cache.rs`) to avoid re-rasterization, while `engine_core` caches GPU textures (`glyph_texture_cache.rs`) to avoid re-uploads.
 
 ## File Map

@@ -152,6 +152,7 @@ fn test_global_registry_has_builtin_components() {
     let roster = [
         ("Transform2D", true),
         ("Sprite", true),
+        ("SpriteTiling", true),
         ("SpriteAnimation", true),
         ("Camera", true),
         ("Name", true),

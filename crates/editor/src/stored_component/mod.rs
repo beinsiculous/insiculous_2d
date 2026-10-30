@@ -12,6 +12,7 @@ use ecs::grid_backdrop::GridBackdrop;
 use ecs::hierarchy::GlobalTransform2D;
 use ecs::sound_emitter::SoundEmitter;
 use ecs::sprite_components::{Name, Sprite, SpriteAnimation};
+use ecs::SpriteTiling;
 use ecs::tilemap::Tilemap;
 use ecs::ui_components::{UiButton, UiLabel, UiPanel};
 use ecs::{EntityId, World};
@@ -24,7 +25,7 @@ use crate::behavior_editor::edit_behavior;
 use crate::commands::{CommandHistory, RemoveComponentCommand};
 use crate::component_editors::{
     edit_collider, edit_entity_tag, edit_grid_backdrop, edit_name,
-    edit_rigid_body, edit_sound_emitter, edit_sprite, edit_transform2d,
+    edit_rigid_body, edit_sound_emitter, edit_sprite, edit_sprite_tiling, edit_transform2d,
 };
 use crate::script_editor::edit_scripts;
 use crate::ui_component_editors::{edit_ui_button, edit_ui_label, edit_ui_panel};
@@ -496,6 +497,7 @@ editor_component_registry! {
     removable: [
         Camera          => common::Camera : Core { readonly },
         Sprite          => Sprite : Rendering { edit edit_sprite },
+        SpriteTiling    => SpriteTiling : Rendering { edit edit_sprite_tiling },
         SpriteAnimation => SpriteAnimation : Rendering { readonly },
         ClipStateMachine => ClipStateMachine : Gameplay { readonly },
         Tilemap         => Tilemap : Rendering { readonly },

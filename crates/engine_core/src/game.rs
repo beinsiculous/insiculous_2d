@@ -41,12 +41,14 @@ mod headless;
 mod game_trait;
 mod locale_font;
 mod render;
+mod tiled_sprite;
 mod save_documents;
 mod startup_frame;
 #[cfg(target_arch = "wasm32")]
 mod web;
 
 pub use game_trait::Game;
+pub use tiled_sprite::append_tiled_sprite;
 
 use crate::GameLoopManager;
 use crate::game_config::GameConfig;

@@ -25,6 +25,7 @@ fn entity_with_every_registry_type(world: &mut World) -> EntityId {
     world.add_component(&entity, Name::new("All")).ok();
     world.add_component(&entity, common::Camera::default()).ok();
     world.add_component(&entity, Sprite::new(7)).ok();
+    world.add_component(&entity, ecs::SpriteTiling::default()).ok();
     world.add_component(&entity, SpriteAnimation::default()).ok();
     world.add_component(&entity, Tilemap::default()).ok();
     world.add_component(&entity, RigidBody::default()).ok();

@@ -234,8 +234,21 @@ impl SpriteBatcher {
         };
         for batch in self.batches.values_mut() {
             for instance in &mut batch.instances {
-                let snapped = snap.snap(Vec2::from(instance.position));
-                instance.position = [snapped.x, snapped.y];
+                let position = Vec2::from(instance.position);
+                let anchor = if instance.has_snap_anchor != 0 {
+                    Vec2::from(instance.snap_anchor)
+                } else {
+                    position
+                };
+                let snapped = snap.snap(anchor);
+                instance.position = if position == anchor {
+                    snapped.to_array()
+                } else {
+                    (position + (snapped - anchor)).to_array()
+                };
+                if instance.has_snap_anchor != 0 {
+                    instance.snap_anchor = snapped.to_array();
+                }
             }
         }
     }
@@ -267,8 +280,7 @@ impl SpriteBatcher {
         self.current_clip = None;
     }
 
-    /// Get total sprite count (used by tests)
-    #[cfg(test)]
+    /// Total instances across every texture and clip batch.
     pub fn sprite_count(&self) -> usize {
         self.batches.values().map(|batch| batch.len()).sum()
     }
@@ -281,6 +293,18 @@ mod tests {
 
     fn depths(batch: &SpriteBatch) -> Vec<f32> {
         batch.instances.iter().map(|instance| instance.depth).collect()
+    }
+
+    #[test]
+    fn pixel_snapping_uses_the_current_position_of_an_ordinary_instance() {
+        let texture = TextureHandle::WHITE;
+        let mut batcher = SpriteBatcher::new();
+        batcher.add_sprite(&Sprite::new(texture));
+        let instance = &mut batcher.batches.get_mut(&(texture, None)).expect("batch").instances[0];
+        instance.position = [10.6, -3.2];
+        batcher.snap_origins(&Camera::new(Vec2::ZERO, Vec2::new(800.0, 600.0)));
+        let position = batcher.batch_for(texture).expect("batch").instances[0].position;
+        assert!((Vec2::from(position) - Vec2::new(11.0, -3.0)).length() < 0.0001);
     }
 
     // === SpriteBatch: depth order ===

@@ -72,7 +72,11 @@ pub trait Game: Sized + 'static {
                     .with_depth(ecs_sprite.depth)
                     .with_emissive(ecs_sprite.emissive);
 
-                ctx.sprites.add_sprite(&renderer_sprite);
+                if let Some(tiling) = ctx.world.get::<ecs::SpriteTiling>(entity_id) {
+                    super::tiled_sprite::append_tiled_sprite(&renderer_sprite, tiling, ctx.sprites);
+                } else {
+                    ctx.sprites.add_sprite(&renderer_sprite);
+                }
             }
         }
 

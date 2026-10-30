@@ -404,3 +404,40 @@ fn test_rebase_counts_every_child_of_a_macro_that_lost_all_of_them() {
     assert_eq!(unapplied, 3, "three edits were lost, not one entry");
     assert!(!history.can_undo(), "the empty macro is not retained");
 }
+
+#[test]
+fn kept_tiling_edits_fit_the_authored_source_and_undo_restores_it() {
+    use ecs::SpriteTiling;
+    use glam::Vec4;
+    use crate::StoredComponent;
+    use super::{SetComponentCommand, SetComponentValueCommand};
+
+    for typed_inspector in [true, false] {
+        let authored = SpriteTiling::default();
+        let simulated = SpriteTiling { source_size: Vec2::splat(128.0), ..authored };
+        let edited = SpriteTiling { borders: Vec4::splat(40.0), ..simulated };
+        let mut world = World::new();
+        let entity = world.spawn().with(edited).id();
+        let command: Box<dyn EditorCommand> = if typed_inspector {
+            Box::new(SetComponentCommand::new(entity, simulated, edited, "borders"))
+        } else {
+            Box::new(SetComponentValueCommand::new(entity,
+                StoredComponent::SpriteTiling(simulated), StoredComponent::SpriteTiling(edited)))
+        };
+        let mut history = CommandHistory::new();
+        history.begin_session();
+        history.push_already_executed(command);
+        let dropped = history.rebase_session_entries(&mut world, |restored| {
+            *restored.get_mut::<SpriteTiling>(entity).expect("authored tiling") = authored;
+        });
+        history.end_session();
+        assert_eq!(dropped, 0);
+        let kept = world.get::<SpriteTiling>(entity).expect("kept tiling");
+        assert_eq!(kept.source_size, authored.source_size);
+        assert!(kept.is_valid());
+        assert!(history.undo(&mut world));
+        assert_eq!(world.get::<SpriteTiling>(entity), Some(&authored));
+        assert!(history.redo(&mut world));
+        assert!(world.get::<SpriteTiling>(entity).expect("redone tiling").is_valid());
+    }
+}

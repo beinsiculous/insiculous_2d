@@ -33,6 +33,7 @@ impl SceneLoader {
         match component {
             ComponentData::Transform2D { .. } => "Transform2D",
             ComponentData::Sprite { .. } => "Sprite",
+            ComponentData::SpriteTiling { .. } => "SpriteTiling",
             ComponentData::Camera2D { .. } => "Camera2D",
             ComponentData::Tilemap { .. } => "Tilemap",
             ComponentData::GridBackdrop { .. } => "GridBackdrop",
@@ -96,6 +97,19 @@ impl SceneLoader {
                     tex_region: [tex_region.0, tex_region.1, tex_region.2, tex_region.3],
                 };
                 Self::add_component_logged(world, entity_id, sprite);
+            }
+
+            ComponentData::SpriteTiling { source_size, borders } => {
+                let tiling = ecs::SpriteTiling {
+                    source_size: (*source_size).into(),
+                    borders: (*borders).into(),
+                };
+                if !tiling.is_valid() {
+                    return Err(SceneLoadError::ComponentError(
+                        "SpriteTiling needs finite source dimensions and nonnegative borders leaving at least one interior pixel per axis".into(),
+                    ));
+                }
+                Self::add_component_logged(world, entity_id, tiling);
             }
 
             ComponentData::Camera2D {

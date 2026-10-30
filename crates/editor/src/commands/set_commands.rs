@@ -68,9 +68,12 @@ impl<T: ecs::Component + ComponentMeta + Clone + Send + serde::Serialize + serde
             return Rebase::DROP;
         };
         let patched = patch_changed_leaves(&authored_value, &before, &after);
-        let Ok(rebased) = serde_json::from_value::<T>(patched) else {
+        let Ok(mut rebased) = serde_json::from_value::<T>(patched) else {
             return Rebase::DROP;
         };
+        if let Some(tiling) = (&mut rebased as &mut dyn Any).downcast_mut::<ecs::SpriteTiling>() {
+            tiling.normalize();
+        }
         if !script_references_resolve(&rebased, world) {
             return Rebase::DROP;
         }

@@ -67,6 +67,11 @@ pub struct SpriteInstance {
     /// kind 0 = plain textured quad (default, zeroed == legacy behavior),
     /// 1 = rounded rect, 2 = circle. Radius/border are in local pixels.
     pub shape: [f32; 4],
+    /// CPU-only snapping origin. Related patches share it so sorting and pixel
+    /// snapping cannot separate their edges; no shader attribute consumes it.
+    pub snap_anchor: [f32; 2],
+    /// Nonzero only for an explicit shared anchor; zero snaps the current position.
+    pub has_snap_anchor: u32,
 }
 
 impl SpriteInstance {
@@ -89,6 +94,8 @@ impl SpriteInstance {
             depth,
             emissive,
             shape: [0.0; 4],
+            snap_anchor: [0.0; 2],
+            has_snap_anchor: 0,
         }
     }
 
@@ -232,9 +239,8 @@ mod tests {
     use std::mem::{offset_of, size_of};
     use wgpu::{VertexFormat, VertexStepMode};
 
-    /// `shaders/sprite_instanced.wgsl` reads these buffers by stride and the
-    /// camera uniform by size; a struct that grows a field without the shader
-    /// following it renders garbage with no error.
+    /// Attribute offsets and stride must agree with the instance buffer. Trailing
+    /// CPU snap metadata changes the stride without adding a shader attribute.
     #[test]
     fn test_gpu_structs_match_shader_layout() {
         let vertex = SpriteVertex::desc();
@@ -244,8 +250,8 @@ mod tests {
         assert_eq!(vertex.array_stride, 36);
         assert_eq!(vertex.step_mode, VertexStepMode::Vertex);
 
-        assert_eq!(size_of::<SpriteInstance>(), 76, "2 + 1 + 2 + 4 + 4 + 1 + 1 + 4 floats");
-        assert_eq!(instance.array_stride, 76);
+        assert_eq!(size_of::<SpriteInstance>(), 88, "19 shader floats plus 3 CPU snap-anchor words");
+        assert_eq!(instance.array_stride, 88);
         assert_eq!(instance.step_mode, VertexStepMode::Instance);
 
         assert_eq!(size_of::<CameraUniform>(), 80, "mat4x4 + vec2 position + vec2 padding");
