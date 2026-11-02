@@ -1198,8 +1198,12 @@ splits it before it adds a line. Order: 5a → 5b → 5c, one out at a time; the
 5c. Where the one section's text and the three below differ, these win.
 
 **Batch 5a — the song document follows the score: #214's document half, the `.midi`
-remainder, `song init`, the track diff.** The `editor` crate, the host's save and the web
-upload; no audio. § The open song document follows the score is the target shape, and § Manifest
+remainder, `song init`, the track diff. DONE 2026-11-02, insiculous_2d 21e05ab, after code
+rounds 23 to 27** (the dirty rule's lesson: a flag derived from the history is wrong three ways —
+a merged gesture, the cap's eviction, an undo past a save — so the score is the engine's exactly
+while the data's export differs from the export at its last load or write; a score the data
+cannot export is the file's for good, `EditingPolicy::for_score` the one rule). The `editor`
+crate, the host's save and the web upload; no audio. § The open song document follows the score is the target shape, and § Manifest
 validation on reload names the diff's lines.
 - **The document keeps the bytes it loaded.** `SongDocument` (`song/mod.rs:94-104`) gains
   `source_bytes: Vec<u8>` and two fingerprints — the `.mid`'s and the `.mid.ron`'s as last read
@@ -1307,25 +1311,39 @@ write-during-commit fixture). Leaves out: anything the watcher reports (5c); the
 `music_midi`; no host wiring. § MIDI reload: swap at the next bar is the target shape, § Appendix
 held.
 - **`manager/song.rs` is 603 lines**: before anything else it splits — the transport and the
-  queries (`stop_song` … `beat_crossed`, `:352-478`) to `song/transport.rs`, or the swap to
-  `song/replace.rs` with its tests in `song/tests/replace.rs` — its own hunk, behaviour-free,
-  the first thing the report's gates show green.
+  queries (`stop_song` … `beat_crossed`, `:352-478`, 127 lines) to `song/transport.rs` as a
+  child module reaching the private fields, which leaves `song.rs` at about 476 — its own
+  hunk, behaviour-free, the first thing the report's gates show green; the swap then lives in
+  `song/replace.rs` with its tests in `song/tests/replace.rs` (`song/tests.rs` declares
+  `loading` and `telemetry` the same way).
 - **The silent part** (`song_file/validate.rs:96-103`, `EmptyTriggerPart`): a selected track with
   no notes is a part whose every trigger is a rest — `triggers.rs` already counts `silent`
-  (`:79`, `:252`; `position.rs:64` publishes it) — so the refusal goes and a part with no units
-  rests; a score with no notes at all is refused as "the score is empty". Tests in `music_midi`.
+  (`:79`, `:252`; `position.rs:64` publishes it; `triggers/cursor.rs:31` already names "a part
+  with no notes" a rest) — so the refusal goes and a part with no units rests; a score with no
+  notes at all (`BackgroundScore::end_tick`, `sequencer/score.rs:247`, reached by
+  `song.background()`, is 0) is refused as "the score is empty". Tests in `music_midi`: the
+  refusal's case in `song_file/tests.rs:268-271` ("parts['lead'] plays track 0, which has no
+  notes") flips to an acceptance, and a trigger on the silent part counts in `silent`.
 - **The worker and the preparation.** `AudioManager::replace_song_at_seam(path)` and its
   in-memory twin prepare on a worker thread exactly as `play_song` does (`prepare_song`,
   `:226`; `DependencyCache::prepare`, `load.rs:237`): the worker prepares on a **clone** of the
-  cache (`Songs.cache`, `:86`; `DependencyCache` gains `Clone`, cheap, its entries `Arc`s and
-  `OwnedPcm`s) and hands it back with the result, merged on the frame thread, so `play_song`
+  cache (`SongDeck.cache`, `:84-86`; `DependencyCache` gains `Clone`, cheap: its `CachedFile`s
+  hold an `Arc<SoundFont>` with its `PresetLayering` — a `BTreeMap<(u16, u8), usize>`,
+  `load.rs:157` — or an `OwnedPcm`, whose samples are an `Arc<[f32]>`, `pcm.rs:29`; the two
+  closure sets and the decode count copy) and hands it back with the result, merged on the
+  frame thread, so `play_song`
   never waits on a preparation (round 22, gemini F3: a lock held through a 48 MiB decode would
   stall the frame it exists to spare); the result is `PreparedPlayback { request_id, generation,
   ready: ReadySong }` (`ReadySong`, `load.rs:65`, already carries the song, the conductor, the
   handle and a start tick) over a channel polled from `update_song` (`:552`), parked as
   `pending_replacement`; request ids monotonic, an older result or failure dropped unread, a
   result for another generation dropped the same way; superseded and retired sources dropped on
-  the worker.
+  the worker. **On wasm32 there is no thread**: `audio` is in every game's web bundle and
+  `std::thread::spawn` panics there, so the worker is `cfg(not(target_arch = "wasm32"))` and on
+  wasm32 `replace_song_at_seam` prepares on the frame at the call, as `play_song` does today,
+  and parks the same `PreparedPlayback` — the swap's code is one path either way (the watcher
+  makes the same cut: `hot_reload.rs:113` returns on wasm32). `scripts/check_wasm.sh` and
+  `scripts/check_games.sh`'s wasm checks are the gate.
 - **The swap**, in `update_song` on the first update where it is due: the old transport's
   position as the bar and the fraction (`TempoMap::position_at_tick`, `tempo_map.rs:214`, gives
   bar and beat; a `bar_span(bar) -> (start, end)` is added beside `tick_at_beat`, `:225`, with its
@@ -1336,13 +1354,25 @@ held.
   `song_output`) with the old playback's `requested` transport (`:145`), `pending_lifecycle`
   re-sent, `path` and `label` kept, the new `Arc<Song>`, binding table and `BeatEdges`. **When
   due**: a running transport on the first update whose `edges.crossed(Bar)` (`edges.rs:74`) is
-  true since the preparation arrived — a seek the host sent resets the baseline (`edges.update`
-  sees the transport; a backward seek reports nothing by its pitfall) — a stationary one at once,
+  true since the preparation arrived — the host keeps the `(sample_position, loop_wraps)` the
+  snapshot held when the preparation arrived, and a seek the host sent re-seeds it; `BeatEdges`
+  has no reset today, and seeding its `seen` with `None` would report a crossing on the next
+  update (`edges.rs:100`, `None => true`), so the re-seed is a `BeatEdges::reseed(snapshot)`
+  that takes the current reading, never `None`; a backward seek reports nothing by the edges'
+  own rule (`:102`), a forward one counts, which is why the host's seek re-seeds — a stationary
+  one at once,
   a loop shorter than a bar at its wrap, the end-while-pending, stopped-at-end and staged-refusal
   rules as the design says. `play_song`, `stop_song` and the session's end drop a pending
-  preparation.
-- **`conductor_background --replace-after <bars>`** (`examples/conductor_background.rs:100-125`
-  parses `--fixture`, `--background-only`, `--sample`, `--seconds`): after that many bars,
+  preparation. **The host learns the outcome by draining** (added at the re-verification,
+  2026-11-02: the design names `ReplaceRefused { reason }` "to the console" and the example
+  logs the swap, and neither had a path out of the manager): `AudioManager::take_song_replacements()
+  -> Vec<SongReplacement>`, `Swapped { bar, position: SongPosition }`, `Refused { reason }`,
+  `Failed(AudioError)` (the worker's refusal, the sidecar entry and path named as `play_song`
+  names them), `Dropped` (superseded or dropped by a stop) — the example drains it each frame;
+  5c routes it to the console and the status bar.
+- **`conductor_background --replace-after <bars>`** (`examples/conductor_background.rs:97-130`,
+  `Settings::from_arguments`, parses `--fixture`, `--background-only`, `--sample`, `--seconds`;
+  the file is 431 lines): after that many bars,
   `replace_song_at_seam` to the cast fixture (`dansenapolitaine-cast.mid`, the same tracks on
   other programs), the swap's block and bar logged.
 - **Tests**, through the public API on the virtual clock (`song/tests/`, a new `replace.rs`):
@@ -1350,11 +1380,21 @@ held.
   a ticks-per-quarter change, seeks before and after the preparation, a replacement over a
   stopped song and over one stopped at its end, a second preparation before the first swaps (B
   finishing before A), a shorter looping song, a bank-only edit, the one-bar loop. The timing
-  fixture: the largest shipped instrument set (Chicken Coop's five, `../games/breakout`), the
-  worker's preparation measured under `cargo test --release` and quoted in the report.
-- **Docs:** `crates/audio/CLAUDE.md` (the split, the worker, the swap, its cost as § MIDI reload
-  says it), `crates/music_midi/CLAUDE.md` (the silent part), `training.md` § Conductor Pattern
-  (a sentence: a song reloaded at the bar).
+  fixture: the largest shipped instrument set (Chicken Coop's five,
+  `../games/frogger/assets/ai/music/ai_chicken_coop.mid` with its sidecar, five SoundFont
+  instruments — Bratdog's, `../games/snake/assets/ai/music/ai_bratdog.mid`, has five too; the
+  Food Pyramid's four, Tong's two), the worker's preparation measured under `cargo test
+  --release` and quoted in the report. The tests drive the clock with `update_at`
+  (`manager/mod.rs:486`, `pub(crate)`) as `song/tests.rs` does; `SongOutput::Detached`
+  (`song.rs:130`, test-only) stands for a device dropping the source. Near the ceiling:
+  `song/tests.rs` 477 (which is why the new tests are a child file), `load.rs` 467,
+  `manager/mod.rs` 501, `manager/tests.rs` 573.
+- **Docs:** `crates/audio/CLAUDE.md` (the `manager/song.rs` row and a row for each new file; the
+  worker, the swap and its cost as § MIDI reload says it; pitfall rows for the swap's rules,
+  each citing a test), `crates/music_midi/CLAUDE.md` (the silent part), `docs/SONG_FORMAT.md`
+  (`:228` lists "a part whose track has no notes" among `validate`'s refusals; it becomes the
+  silent part, and the empty score joins the list), `training.md` § Conductor Pattern (`:926`; a
+  sentence: a song reloaded at the bar).
 
 Reviewers: kimi, gemini (the audio seam). Leaves out: every host change (5c); the listen check,
 which needs 5c; the audio-thread swap (§ Appendix).
