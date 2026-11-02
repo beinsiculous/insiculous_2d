@@ -1499,15 +1499,97 @@ dispatches the song once per owner per frame. Near the ceiling: `song_preview.rs
 Reviewers: kimi, gemini (the note-written widening and the closure are harness and seam). Leaves
 out: nothing of batch 5 — the three together are the one section above as reviewed.
 
-**Batch 6 — the settings panel: #216 (E14).** `settings_panel.rs` over `EditableInspector`: a
+**Batch 6 — the settings panel: #216 (E14).** `settings_panel.rs` over the inspector's widgets: a
 cycle row per category for the preset, a string field for the Custom template with the inline red
-invalid state, per-type overrides, the MIDI Evil binary field, the DAW project extensions, a Test
-button per category; Edit → External Tools… (every launch error since batch 1 points there);
-`ToolChoice::Custom`'s second, project field reading batch 1's on-disk shape
-`{"Custom": "<template>"}` still, as a project-less custom tool (a test loads that JSON); keyboard-walkable with a visible focus ring, labelled
-controls, no colour-only state; narrow mode as the dock's overlay. Closes #102. Target shapes:
-§ Types. Reviewers: kimi, codex (two stills: the panel at rest; a template error shown). Leaves
-out: nothing of the brief's settings.
+invalid state, per-type overrides, a preset's program field (MIDI Evil's binary among them), the
+DAW project extensions, a Test button per category; Edit → External Tools… (every launch error
+since batch 1 points there) and, beside it, Edit → Open Project (§ Entry points row 7, claimed by
+no batch until now); `ToolChoice::Custom`'s second, project field reading batch 1's on-disk shape
+`{"Custom": "<template>"}` still, as a project-less custom tool (a test loads that JSON);
+keyboard-walkable with a visible focus ring, labelled controls, no colour-only state; narrow mode
+as the dock's overlay. Closes #216 and #102. Target shapes: § Types and the re-verification below.
+Reviewers: kimi, codex (two stills: the panel at rest; a template error shown). Leaves out:
+nothing of the brief's settings.
+
+**Re-verified 2026-11-02 against 24b27b2 (the tree batch 5c left).** Where this and § Types
+disagree, this wins. The handoff carries the `file:line`s.
+- **What exists.** `ExternalToolsConfig` (`external_tools/config.rs`: the four category choices,
+  `overrides`, `daw_project_extensions` defaulting to `.evil .prj .nsp` — ruling (d); #216's body
+  says "empty by default" from the deleted note, and the plan wins); `ToolChoice` externally
+  tagged (`{"Preset": "Zed"}`, `{"Custom": "<template>"}`); `resolve` refusing `Location::Project`
+  for Custom and OsDefault with `NoProjectCommand`, whose message — and the launcher's not-found
+  sentence — already sends the user to "Edit → External Tools…", an item no menu has;
+  `CommandTemplate::validate` and `names_file` are the field's check; `PRESETS` (eight rows with
+  `category`, `project_template`, `fallback_locations`, `needs_terminal`) is the cycle rows' data.
+  No settings panel, no `PanelId` past `COMPOSER = 5`, no caller of `Location::Project` outside
+  the launcher.
+- **The program field.** No row carries a program override: MIDI Evil's `midi-evil` is `cargo run
+  -p midi-evil` today and Aseprite's Steam path is a fallback location. So the "MIDI Evil binary
+  field" is a per-preset program: `ExternalToolsConfig.programs: BTreeMap<PresetId, String>`
+  (`#[serde(default)]`; a path or another name), applied by `resolve` after expansion as
+  `Launch.program` with `preset` kept, so the launcher's `find` still checks a path as a file and
+  a name on `PATH` then the fallbacks. Drawn under any preset row, blank meaning the preset's own.
+- **The Custom tool's project field.** `ToolChoice::Custom(CustomTool)`, `CustomTool { file:
+  CommandTemplate, project: Option<CommandTemplate> }` in a new `external_tools/custom_tool.rs`
+  (`config.rs` is at 540 lines): serialized as the struct, deserialized through an untagged shape
+  that reads batch 1's bare string as `{ file, project: None }`; `resolve`'s Custom arm expands
+  `project` for `Location::Project`, `NoProjectCommand` when `None`; `adopt_legacy_ide_command`
+  builds `project: None`. Seventeen `ToolChoice::Custom(` sites in four files;
+  `CustomTool::file_only(template)` is the one-line migration.
+- **Edit → Open Project** joins, or that field ships unreachable: "Open Project in <tool>" above
+  "External Tools…", named by `tool_name(FileType::RustSource)` as the context menu names its
+  item (the system default's draws disabled, as does the item on the web; a Custom with no
+  project command draws enabled and reports `NoProjectCommand`); `EditorAction::OpenProject` →
+  `OpenRequest { path: PathBuf::new(), location: Location::Project }`.
+- **The panel.** `PanelId::SETTINGS = PanelId(6)`, "External Tools", `DockPosition::Right`, added
+  after the console in `context/mod.rs`'s build so a prefs file from before leaves it hidden (the
+  composer's test is the model; `visible = false`; 320 wide, 240 minimum). The dock's first pass
+  gives each visible right panel the full remaining height, so a second right panel sits beside
+  the Inspector, not under it — accepted for this batch; a stacked right edge is its own issue if
+  Jesse wants one. Shown by Edit → External Tools… (`EditorAction::ShowExternalTools`: visible,
+  uncollapsed, the narrow overlay when the dock is narrow); hidden by its header as any panel; no
+  View item. `panel_renderer/mod.rs`'s match gains an arm into a new `panel_renderer/settings.rs`.
+- **Over the inspector's widgets, with the sidebar's cursor.** `EditableInspector` (596 lines, its
+  walk private) has no cursor, and the ui's Tab traversal reaches edit fields alone, so
+  "keyboard-walkable" is the composer sidebar's model (`composer/sidebar/walk.rs`: a control
+  counter, `take_control`, `ring` in `theme.focus_ring` at 2 px, `inside`): the panel is a walk of
+  its own in `crates/editor/src/settings_panel.rs` (`SettingsPanelState` on
+  `EditorContext.settings`; rows split into `settings_panel/rows.rs` before 600 nears) laying the
+  inspector's widgets — `field_widgets::edit_cycle`, `text_field::edit_string`, `ui.button` —
+  with `theme.editable_field_style()`. Keys routed as the console's (`KeyRoute::Settings` after
+  `Console`; `editor_game/settings_keys.rs`; `settle_settings` after `settle_console` by
+  `panel_press`'s rule): Up and Down move the cursor, Enter activates (a button presses, a field
+  takes focus through `focus_text_input`, a cycle steps forward), Left and Right step a cycle row,
+  Escape releases; never during a play session.
+- **The rows**, top to bottom, every one labelled: per category (Code, Music, Sample, Art) a cycle
+  row over "System default", the category's presets and "Custom command"; under a preset its
+  Program field; under Custom its Command field and, for Code, its Project command field; a Test
+  button. Then **Overrides**: one cycle row per `FileType` over "Inherit (<the category's tool>)",
+  the presets, "Custom command", "System default" — a present entry honoured whatever it says
+  (round 3, codex F6) — with the same sub-rows. Then **DAW project extensions**: one field, split
+  on whitespace and commas, dots optional. Every edit writes `EditorContext.external_tools`; the
+  settle rule captures it, and `save_preferences_now` at Stop lands an edit made during Play.
+- **The invalid state.** `UIContext::text_input` passes `|_| true` to `edit_field`, whose
+  `is_valid` draws `border_invalid` while editing: the ui gains `text_input_validated(id, value,
+  bounds, is_valid)` and `text_input` becomes its `|_| true` call — the one `ui` change;
+  `text_field.rs` gains `edit_string_validated`. A template field validates by `validate` plus
+  `names_file` as the user types; a commit that fails leaves the config untouched, keeps the
+  draft in the field (`focus_text_input(id, draft)`), and draws a note row under it reading
+  "Error: <TemplateError>" in `status_error` — words, not colour alone.
+- **Test.** The button pushes its category onto `EditorContext.tool_tests: Vec<ToolCategory>`; the
+  launcher drains it beside `open_requests`. The fixture is the first entry of the category in
+  the browser's scan (scanned first when it has not run: Code → `Script` else `Scene`; Music →
+  `Song` else `DawProject` else `SoundFont`; Sample → `Sound`; Art → `Image`), none → an error
+  line "no <category> file in this project to test with"; Code at line 1 column 1, a `.mid`
+  through `at_first_part_track` as every request, the rest `Location::None`. Before spawning, an
+  information line "Test <category>: <program> <args>" (a token with a space quoted) or "Test
+  <category>: the system default opens <file>" through `report`, then `spawn::launch` — a missing
+  binary is the launcher's own sentence. On the web the button draws disabled over the hint.
+- **Docs.** `crates/editor/CLAUDE.md` (the Panels line, a `settings_panel.rs` row, the
+  `external_tools/` row, the `menu/` row, the pitfall table); `crates/editor_integration/CLAUDE.md`
+  (the `external_tools.rs` row — delete "so a hand edit of `editor_prefs.json` … is overwritten by
+  the next autosave", name the panel and the Test drain — the `panel_renderer/` row, `shortcuts.rs`'s
+  route list, a `settings_keys.rs` row). #102's second "done looks like" bullet is this panel.
 
 **Batch 7 — the Conductor panel: #217 (E15, reworded), #218 (E16, reworded), the rename (filed at
 settling).** **Gated on MIDI Evil's `.evil` → `.mid` export and positional open round-tripping one
