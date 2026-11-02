@@ -88,13 +88,15 @@ fn single_line(text: &str) -> String {
 
 /// The sample folder's `LICENSE` in the Debian copyright format the provenance gate reads:
 /// a header whose `Source:` names `song`, the folder's owner, then one stanza per
-/// referenced sample, its file named relative to the `LICENSE`.
-pub(super) fn license_text(samples: &[PlacedSample], song: &str) -> String {
+/// referenced sample — each file named relative to the `LICENSE`, the first provenance
+/// given for a name kept.
+pub(super) fn license_text<'a>(
+    samples: impl IntoIterator<Item = (&'a str, &'a Provenance)>,
+    song: &str,
+) -> String {
     let mut stanzas: BTreeMap<&str, &Provenance> = BTreeMap::new();
-    for sample in samples {
-        stanzas
-            .entry(sample.file_name.as_str())
-            .or_insert(&sample.provenance);
+    for (file_name, provenance) in samples {
+        stanzas.entry(file_name).or_insert(provenance);
     }
     let mut text = format!(
         "{FORMAT_LINE}\nSource: {song}\n\
@@ -171,7 +173,7 @@ pub(super) fn home_license(
     home: &str,
     relative: &Path,
     provenance: &Provenance,
-) -> Result<Option<(PathBuf, String)>, SongSaveError> {
+) -> Result<Option<(PathBuf, String, Option<String>)>, SongSaveError> {
     let path = home_directory.join("LICENSE");
     let existing = match store.read(&path) {
         Ok(bytes) => Some(String::from_utf8_lossy(&bytes).into_owned()),
@@ -185,7 +187,8 @@ pub(super) fn home_license(
     };
     let midi = slash_path(relative.strip_prefix(home).unwrap_or(relative));
     let text = rewrite_home_license(existing.as_deref(), &midi, provenance);
-    Ok((existing.as_deref() != Some(text.as_str())).then_some((path, text)))
+    // The previous text rides along, so a save refused after writing the new one can put it back.
+    Ok((existing.as_deref() != Some(text.as_str())).then_some((path, text, existing)))
 }
 
 /// See [`home_license`]; `midi` is the song's `.mid` relative to the home folder.

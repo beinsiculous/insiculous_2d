@@ -84,6 +84,7 @@ pub(super) fn parse(line: &str) -> Result<Request, ApiError> {
             path: path.clone(),
             discard,
         }),
+        (Some("init"), [path]) if !discard => hosted(HostedWrite::SongInit { path: path.clone() }),
         (Some("close"), []) => hosted(HostedWrite::SongClose { discard }),
         (Some("save"), [] | [_]) if !discard => hosted(HostedWrite::SongSave {
             path: arguments.first().cloned(),
@@ -110,7 +111,8 @@ pub(super) fn parse(line: &str) -> Result<Request, ApiError> {
         _ => Err(ApiError::Parse(
             "usage: song | song notes [part] | song edit <json> | song undo | song redo | \
              song select <note>…|none | song new [discard] | song open <path> [discard] | \
-             song save [path [overwrite]] | song close [discard] | song play [beat] | song stop | \
+             song init <path> | song save [path [overwrite]] | song close [discard] | \
+             song play [beat] | song stop | \
              song seek <beat> | song trigger <action>"
                 .to_string(),
         )),

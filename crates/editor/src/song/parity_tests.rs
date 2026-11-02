@@ -1,8 +1,9 @@
 //! GUI and command API are one mutation path: for one row per [`SongEdit`] variant, the
 //! composer's call (`SongDocument::apply`) and a `song edit <json>` line leave the same
 //! song, the same history, and undo back to the same song. A variant without a row does
-//! not compile ([`variant_index`] matches exhaustively); a song the composer cannot edit is
-//! refused by both paths with the report's reason.
+//! not compile ([`variant_index`] matches exhaustively); a song whose score the composer
+//! cannot edit refuses every score edit by both paths with the report's reason, and takes
+//! its map's edits as any song does.
 
 use ecs::World;
 use music_midi::midly::num::{u15, u28, u4, u7};
@@ -13,7 +14,7 @@ use music_midi::{
     Binding, Instrument, InstrumentSource, Part, PartMode, Provenance, Quantize, TrackSelector,
 };
 
-use super::test_support::{exported, melody, note_numbers};
+use super::test_support::{exported, melody, note_numbers, song_provenance, AssetFolder};
 use super::{default_song_file, Gesture, Meter, SongDocument, SongEdit};
 use crate::command_api::write::{self, WriteCtx};
 use crate::command_api::{parse_line, ApiError, Request, WriteCmd};
@@ -358,27 +359,63 @@ fn mixed_channel_song() -> SongDocument {
 }
 
 #[test]
-fn a_song_the_composer_cannot_edit_is_refused_by_both_paths_with_the_reports_reason() {
+fn a_song_whose_score_the_composer_cannot_edit_refuses_score_edits_by_both_paths_and_takes_map_edits() {
     let gui_song = mixed_channel_song();
     let super::EditingPolicy::Refused { reason } = gui_song.editing().clone() else {
         panic!("a mixed-channel track is not editable");
     };
-    let edit = SongEdit::SetLoop { looping: false };
+    let score_edit = SongEdit::AddNote {
+        track: 0,
+        tick: 0,
+        key: 67,
+        velocity: 100,
+        duration_ticks: 240,
+    };
+    let mut track_zero = part("lead");
+    track_zero.track = TrackSelector::Index(0);
+    let map_edits = [
+        SongEdit::AddInstrument {
+            instrument: organ("organ", 19),
+        },
+        SongEdit::AddPart { part: track_zero },
+        SongEdit::SetBinding {
+            binding: binding("coin"),
+        },
+    ];
 
     let mut gui = gui_song.clone();
     let gui_error = gui
-        .apply(edit.clone(), Gesture::Discrete)
-        .expect_err("refused");
+        .apply(score_edit.clone(), Gesture::Discrete)
+        .expect_err("a score edit is refused");
     assert!(gui_error.to_string().contains(&reason), "{gui_error}");
-
     let mut api = ApiRig::with(gui_song);
-    let line = format!(
-        "song edit {}",
-        serde_json::to_string(&edit).expect("serializes")
-    );
-    match api.run(&line) {
+    let line = |edit: &SongEdit| format!("song edit {}", serde_json::to_string(edit).expect("serializes"));
+    match api.run(&line(&score_edit)) {
         Err(ApiError::Refused(message)) => assert!(message.contains(&reason), "{message}"),
         other => panic!("the API path must refuse with the reason: {other:?}"),
     }
     assert_eq!(api.song().history().undo_count(), 0);
+
+    for edit in &map_edits {
+        gui.apply(edit.clone(), Gesture::Discrete)
+            .unwrap_or_else(|error| panic!("{} lands: {error}", edit.name()));
+        api.run(&line(edit))
+            .unwrap_or_else(|error| panic!("{} lands over the API: {error:?}", edit.name()));
+    }
+    assert_eq!(gui.file(), api.song().file(), "both paths land the same map");
+    assert_eq!(gui.file().bindings, [binding("coin")]);
+    assert!(!gui.is_score_authored(), "a map edit leaves the score the file's");
+
+    let folder = AssetFolder::new();
+    let target = folder.path("music/mixed.mid");
+    let provenance = song_provenance();
+    gui.apply(SongEdit::SetProvenance { provenance }, Gesture::Discrete)
+        .expect("the song's provenance is a map edit");
+    gui.save(&target, folder.base()).expect("a song with an uneditable score saves");
+    let loaded = gui.source_bytes().to_vec();
+    assert_eq!(folder.read("music/mixed.mid"), Some(loaded.clone()), "the loaded bytes, never a re-encoding");
+    gui.apply(SongEdit::SetLoop { looping: false }, Gesture::Discrete)
+        .expect("a map edit");
+    gui.save(&target, folder.base()).expect("and its map saves in place");
+    assert_eq!(folder.read("music/mixed.mid"), Some(loaded));
 }

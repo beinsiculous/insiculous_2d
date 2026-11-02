@@ -1,60 +1,77 @@
 //! Saving a song as a recoverable journal; opening one is [`open`].
 //!
-//! Nothing on either target renames a file, so a save cannot swap its two files in at
-//! once. It writes a journal instead, in this order, and refuses before the first write:
+//! A save is one of two kinds. **A map save** — to the document's own path — writes the
+//! sidecar and the home `LICENSE` stanza and leaves the `.mid` alone: the score belongs to
+//! the program that wrote it, and the sidecar fingerprints the bytes the document loaded,
+//! never a re-encoding of them. **A Save As** — to any other target — copies the whole
+//! song: the loaded bytes, or `write_smf`'s once the engine edited the score, and the map.
+//!
+//! Immediately before its first write a map save reads both files through the store. A
+//! sidecar that changed since the document read it refuses the save with
+//! [`SongSaveError::SidecarChanged`] unless the [`SaveIntent`] overwrites it; the compare
+//! is by content, so a rewrite that kept the file's length and stamp is still caught. A
+//! score that changed is adopted first ([`SongDocument::adopt_score`]) and the sidecar
+//! fingerprints the disk's bytes — unless the engine edited the score, whose save takes the
+//! rule at step 5 instead, so no edit is lost to an adoption. A `.mid` gone from disk is
+//! written again from the document.
+//!
+//! Nothing on either target renames a file, so a save cannot swap its files in at once.
+//! It writes a journal instead, in this order, and refuses before the first write
+//! (`commit.rs` holds steps 2 to 7):
 //!
 //! 1. **Refuse, writing nothing**: a path outside the song folders or against
 //!    [`saveable_song_path`], a song or a `Sample` instrument without provenance, a sidecar
 //!    `check_schema` refuses, a sample that cannot be read, a sample folder another song
-//!    owns.
+//!    owns, a sidecar changed on disk.
 //! 2. **The new samples**, into the song's own folder, [`sample_directory`]. A sample
 //!    whose name is taken there by other bytes gets a content-hash suffix, and its
 //!    instrument's path follows. Nothing is removed yet.
-//! 3. **The pair**: `<stem>.mid.ron.new`, carrying the fingerprint of the MIDI bytes about
-//!    to be written, then `<stem>.mid.new`. The pair is the commit point.
-//! 4. **The prune**: every file of that folder the song no longer names is removed, and its
-//!    `LICENSE` rewritten with exactly the referenced samples' stanzas under a `Source:`
-//!    header naming the song; then the home folder's `LICENSE` gets the song's own stanza,
-//!    written only when it changed.
-//! 5. **The finals**: `<stem>.mid`, then `<stem>.mid.ron`.
-//! 6. **The pair removed**, then the watermark marked saved.
+//! 3. **The journal**: `<name>.ron.new`, carrying the fingerprint of the score the song
+//!    names, then `<name>.new` when the save writes the `.mid`. A map save's journal is
+//!    the sidecar's alone.
+//! 4. **The home folder's `LICENSE`**, the song's own stanza, written only when it changed.
+//! 5. **The finals**: the `.mid` when the save writes it, then the sidecar. Before the
+//!    `.mid` of a score the engine edited, the `.mid` on disk is compared with the one the
+//!    document loaded or last wrote: another program's rewrite is left where it is, the
+//!    engine's score kept beside it as `<stem>.recovered-<fingerprint>.<ext>` with a note,
+//!    and the sidecar saved against the disk's bytes, which the document then adopts. The
+//!    window between that compare and the write is accepted until the engine no longer
+//!    writes scores at all.
+//! 6. **The journal removed.**
+//! 7. **The prune**: every file of the song's sample folder that neither the song nor a
+//!    `<stem>.recovered-*` sidecar beside it names is removed, and the folder's `LICENSE`
+//!    rewritten with exactly those samples' stanzas under a `Source:` header naming the
+//!    song; then the watermark is marked saved.
 //!
-//! The prune waits for the pair: an interruption before the pair leaves the old song with
-//! every sample it names, and one after it is recovered as the new song, which names
-//! nothing the prune removed; pruning before the pair would delete a removed instrument's
-//! sample while the old finals still name it. A prune cut short leaves files the new song
-//! does not name, still listed by the old `LICENSE` and so unseen by the provenance gate,
-//! until the next save's prune removes them; a new sample the old `LICENSE` never named is
-//! what the gate reports meanwhile. Open reads the state any interruption leaves and
-//! settles it (see [`open`]).
+//! The prune runs last, so an interruption at any step leaves every sample each file
+//! beside the song names on disk: an open keeps a journal as a recovery and never promotes
+//! it over the finals ([`open`]), and a kept recovery's samples are the prune's roots. A
+//! prune cut short leaves files nothing names, still listed by the old `LICENSE` and so
+//! unseen by the provenance gate, until the next save's prune removes them; a new sample
+//! the old `LICENSE` never named is what the gate reports meanwhile.
 
+mod commit;
+mod init;
 pub(super) mod open;
+mod paths;
+mod recover;
 mod samples;
 
+pub use init::{init_song, SongInitError};
 pub use open::{OpenedSong, SongOpenError};
+pub use paths::{sample_directory, saveable_song_path, HOME_DIRECTORIES};
+use paths::{home_of, is_grandfathered, is_in_home_directory, slash_path};
 
-use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::io;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use music_midi::{
-    write_song_file, InstrumentSource, Provenance, SongData, SongError, SongFile, SongFileError,
+    write_song_file, InstrumentSource, Provenance, SongError, SongFile, SongFileError,
     SongFileProblem,
 };
 
 use super::SongDocument;
-
-/// The folders a song saves into, under the asset folder: the human's, and the agents'
-/// (whose songs carry the `ai_` prefix until a human pass promotes them).
-pub const HOME_DIRECTORIES: [&str; 2] = ["music", "ai/music"];
-
-/// The folder under each home that holds its songs' samples, one folder a song.
-const SAMPLES_FOLDER: &str = "samples";
-
-/// The separator a song's path under its home is flattened by into its sample folder's
-/// name; [`saveable_song_path`] keeps it unambiguous.
-const FLAT_SEPARATOR: &str = "__";
 
 /// Why a save was refused or stopped.
 #[derive(Debug, thiserror::Error)]
@@ -108,6 +125,45 @@ pub enum SongSaveError {
     SampleFolderUnowned { folder: PathBuf, song: String },
     #[error("writing {} failed: {reason}", path.display())]
     Write { path: PathBuf, reason: String },
+    /// The sidecar on disk is not the one the document read or last wrote: another
+    /// program, or a hand, changed the map. Each fingerprint is `None` for a file absent.
+    #[error(
+        "the map changed on disk since you loaded it: {} — save with Overwrite to replace it with this song's map",
+        sidecar.display()
+    )]
+    SidecarChanged {
+        sidecar: PathBuf,
+        loaded: Option<u64>,
+        on_disk: Option<u64>,
+        midi: PathBuf,
+        score_loaded: u64,
+        score_on_disk: Option<u64>,
+    },
+    #[error("{} changed on disk and cannot be read: {reason}", path.display())]
+    ChangedScoreUnreadable { path: PathBuf, reason: String },
+}
+
+/// Whether a save may replace a sidecar that changed on disk since the document read it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SidecarIntent {
+    /// Refuse with [`SongSaveError::SidecarChanged`]: what a save does unless told.
+    #[default]
+    Keep,
+    /// Write over it: the answer a person gave the conflict's prompt or the API's line.
+    Overwrite,
+}
+
+/// What a save was asked to do past the checks it makes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct SaveIntent {
+    pub sidecar: SidecarIntent,
+}
+
+impl SaveIntent {
+    /// Replace a sidecar changed on disk.
+    pub const OVERWRITE: SaveIntent = SaveIntent {
+        sidecar: SidecarIntent::Overwrite,
+    };
 }
 
 /// The file operations a save and an open make: `common::vfs` on both targets
@@ -163,128 +219,44 @@ pub(super) fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
     PathBuf::from(joined)
 }
 
-/// Whether `path` lies in a song folder under `asset_base`. A path not under
-/// `asset_base` at all — a relative one included — is outside: the samples are placed
-/// under `asset_base`, so a target resolved anywhere else would split a song in two.
-pub(super) fn is_in_home_directory(path: &Path, asset_base: &Path) -> bool {
-    path.strip_prefix(asset_base)
-        .is_ok_and(|relative| home_of(relative).is_some())
-}
-
-/// The song folder `relative` (a path under the asset base) lies in.
-fn home_of(relative: &Path) -> Option<&'static str> {
-    HOME_DIRECTORIES
-        .into_iter()
-        .find(|home| relative.starts_with(home))
-}
-
-/// The path's components as text, the last with its extension dropped.
-fn named_components(path: &Path) -> Vec<String> {
-    let mut names: Vec<String> = path
-        .components()
-        .filter_map(|component| match component {
-            Component::Normal(name) => Some(name.to_string_lossy().into_owned()),
-            _ => None,
-        })
-        .collect();
-    if let (Some(last), Some(stem)) = (names.last_mut(), path.file_stem()) {
-        *last = stem.to_string_lossy().into_owned();
-    }
-    names
-}
-
-/// Whether a song at `relative` (a `.mid` under the asset base) may be saved by name: in a
-/// song folder, not under that folder's `samples/` (a song there would sit inside another
-/// song's sample folder, which a save prunes), and with no component starting or ending
-/// with `_`, no `__` and no whitespace — so the `__` that flattens a song's path into its
-/// sample folder's name is never ambiguous, and the provenance gate, which splits a
-/// `Files:` field on whitespace, can name its files. The refusal says what to change.
-pub fn saveable_song_path(relative: &Path) -> Result<(), String> {
-    let shown = relative.display();
-    let Some(home) = home_of(relative) else {
-        return Err(format!(
-            "{shown} is outside the song folders; save the song under music/ or ai/music/"
-        ));
-    };
-    if relative.starts_with(Path::new(home).join(SAMPLES_FOLDER)) {
-        return Err(format!(
-            "{shown} is inside {home}/{SAMPLES_FOLDER}/, which holds the songs' samples; Save As to a path outside it"
-        ));
-    }
-    for name in named_components(relative) {
-        if name.chars().any(char::is_whitespace) {
-            return Err(format!(
-                "{shown} has whitespace in '{name}'; Save As to a name without it (write _ instead)"
-            ));
-        }
-        if name.starts_with('_') || name.ends_with('_') || name.contains(FLAT_SEPARATOR) {
-            return Err(format!(
-                "{shown}: '{name}' starts or ends with _ or holds __, which name a song's sample folder; Save As to a name without them"
-            ));
-        }
-    }
-    Ok(())
-}
-
-/// Whether Save takes `relative` on the older, looser rule: a song directly in its home
-/// keys its sample folder by its stem alone, so no flattening is involved — short of
-/// whitespace, which the provenance gate cannot name.
-fn is_grandfathered(relative: &Path) -> bool {
-    let flat = home_of(relative).is_some_and(|home| relative.parent() == Some(Path::new(home)));
-    flat && !relative.to_string_lossy().chars().any(char::is_whitespace)
-}
-
-/// Where the song at `relative` (a `.mid` under the asset base) keeps its samples, under
-/// the asset base: `<home>/samples/<flat>`, `<flat>` its path under its home, extension
-/// dropped, each `/` made `__` — `music/theme.mid` → `music/samples/theme`,
-/// `music/a/theme.mid` → `music/samples/a__theme`. `None` outside the song folders.
-pub fn sample_directory(relative: &Path) -> Option<String> {
-    let home = home_of(relative)?;
-    let under_home = relative.strip_prefix(home).ok()?;
-    let flat = named_components(under_home).join(FLAT_SEPARATOR);
-    Some(format!("{home}/{SAMPLES_FOLDER}/{flat}"))
-}
-
-/// `path` as the sidecar and the `LICENSE` files write it: `/`-separated, whatever the target.
-pub(super) fn slash_path(path: &Path) -> String {
-    path.components()
-        .filter_map(|component| match component {
-            Component::Normal(name) => Some(name.to_string_lossy().into_owned()),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("/")
-}
-
 /// Everything a save writes, prepared before the first write.
 struct SavePlan {
     sample_directory: PathBuf,
     /// The song's `.mid` under the asset base, as its sample folder's `Source:` names it.
     song: String,
     samples: Vec<samples::PlacedSample>,
-    /// The home folder's `LICENSE`, when the song's stanza changed it.
-    home_license: Option<(PathBuf, String)>,
+    /// The home folder's `LICENSE`, when the song's stanza changed it: its path, the text to
+    /// write, and the text it held — `None` for no file — which a refusal after the write puts back.
+    home_license: Option<(PathBuf, String, Option<String>)>,
     rendered: RenderedFiles,
+    /// For a score the engine edited, saved in place: the fingerprint the `.mid` on disk
+    /// must still have when the finals are written.
+    score_guard: Option<u64>,
+    /// For a save in place that keeps the sidecar: what the sidecar on disk must still be
+    /// when the finals are written — its fingerprint, or `None` for no file.
+    sidecar_guard: Option<Option<u64>>,
+    /// The fingerprint of the score the document follows, for a refusal's message.
+    score_loaded: u64,
 }
 
-/// A song's two files as bytes, and the sidecar they were rendered from.
+/// A song's files as bytes, and the sidecar they were rendered from.
 struct RenderedFiles {
-    midi_bytes: Vec<u8>,
+    /// `None` for a map save, which leaves the `.mid` alone.
+    midi_bytes: Option<Vec<u8>>,
     sidecar_text: String,
     file: SongFile,
 }
 
-/// Render `file` and `data` as a save writes them: the fingerprint of the MIDI bytes set in
-/// the sidecar. `label` names the sidecar in an error.
-fn render(data: &SongData, mut file: SongFile, label: &str) -> Result<RenderedFiles, SongSaveError> {
-    let midi_bytes = data.write_smf()?;
-    file.midi_fingerprint = Some(midi_fingerprint(&midi_bytes));
-    let sidecar_text = write_song_file(label, &file)?;
-    Ok(RenderedFiles {
-        midi_bytes,
-        sidecar_text,
-        file,
-    })
+/// Render `file` with `midi_fingerprint` set to `fingerprint`, the score it describes.
+/// `label` names the sidecar in an error.
+fn render_sidecar(
+    mut file: SongFile,
+    fingerprint: u64,
+    label: &str,
+) -> Result<(SongFile, String), SongSaveError> {
+    file.midi_fingerprint = Some(fingerprint);
+    let text = write_song_file(label, &file)?;
+    Ok((file, text))
 }
 
 /// The refusal for a provenance missing a field, or `Ok`.
@@ -302,13 +274,36 @@ fn check_provenance<E>(
     Ok(())
 }
 
+/// The file at `path` through the store; `None` when there is none.
+fn read_optional(store: &impl SongStore, path: &Path) -> Result<Option<Vec<u8>>, SongSaveError> {
+    match store.read(path) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(SongSaveError::Write {
+            path: path.to_path_buf(),
+            reason: format!("reading it failed: {error}"),
+        }),
+    }
+}
+
 impl SongDocument {
     /// Save the song to `target` (a `.mid` in a song folder under `asset_base`) through
-    /// `common::vfs`, as the module docs lay out. A refused save writes nothing; a save
-    /// stopped by a failed write leaves files [`SongDocument::open`] settles, and the song
-    /// stays dirty.
-    pub fn save(&mut self, target: &Path, asset_base: &Path) -> Result<(), SongSaveError> {
-        self.save_to(&mut VfsStore, target, asset_base)
+    /// `common::vfs`, as the module docs lay out, refusing over a sidecar changed on disk.
+    /// Returns what the save settled — an adopted score's track diff, a recovery — for the
+    /// status bar. A refused save writes nothing; a save stopped by a failed write leaves
+    /// files [`SongDocument::open`] settles, and the song stays dirty.
+    pub fn save(&mut self, target: &Path, asset_base: &Path) -> Result<Vec<String>, SongSaveError> {
+        self.save_with(target, asset_base, SaveIntent::default())
+    }
+
+    /// [`SongDocument::save`] past the checks `intent` overrides.
+    pub fn save_with(
+        &mut self,
+        target: &Path,
+        asset_base: &Path,
+        intent: SaveIntent,
+    ) -> Result<Vec<String>, SongSaveError> {
+        self.save_to(&mut VfsStore, target, asset_base, intent)
     }
 
     pub(crate) fn save_to(
@@ -316,26 +311,114 @@ impl SongDocument {
         store: &mut impl SongStore,
         target: &Path,
         asset_base: &Path,
-    ) -> Result<(), SongSaveError> {
-        let plan = self.plan_save(store, target, asset_base)?;
-        commit(store, target, &plan)?;
-        self.file = plan.rendered.file;
+        intent: SaveIntent,
+    ) -> Result<Vec<String>, SongSaveError> {
+        let mut notes = Vec::new();
+        let in_place = self
+            .path
+            .as_deref()
+            .is_some_and(|own| own.components().eq(target.components()));
+        let midi_on_disk = if in_place {
+            self.follow_disk(store, target, intent, &mut notes)?
+        } else {
+            false
+        };
+        let score_authored = self.is_score_authored();
+        let writes_midi = !in_place || score_authored || !midi_on_disk;
+        let score_guard = (in_place && score_authored && midi_on_disk).then_some(self.score_fingerprint);
+        // Compared again right before the finals: the samples' reads and the licenses lie
+        // between the look above and the write, and a map rewritten in that span would be
+        // overwritten unseen.
+        let sidecar_guard = (in_place && intent.sidecar == SidecarIntent::Keep).then_some(self.map_fingerprint);
+        let plan = self.plan_save(store, target, asset_base, writes_midi, score_guard, sidecar_guard)?;
+        let committed = commit::commit(store, target, asset_base, &plan)?;
         self.path = Some(target.to_path_buf());
         self.imported_from = None;
+        self.map_fingerprint = Some(midi_fingerprint(committed.sidecar_text.as_bytes()));
+        self.file = committed.file;
+        match committed.recovered {
+            Some(recovered) => {
+                notes.push(format!(
+                    "{} changed on disk before the save could write it: it is left as it is, \
+                     and this song's score is kept as {}",
+                    target.display(),
+                    recovered.path.display()
+                ));
+                match self.adopt_score(recovered.disk_score) {
+                    Ok(lines) => notes.extend(lines),
+                    Err(error) => notes.push(format!(
+                        "{} cannot be read, so the song keeps its own score: {error}",
+                        target.display()
+                    )),
+                }
+            }
+            None => {
+                if let Some(bytes) = plan.rendered.midi_bytes {
+                    // Written from `write_smf` when the score was the engine's: those bytes are
+                    // the export, and the baseline needs no second one.
+                    let export = if score_authored { Some(bytes.clone()) } else { None };
+                    self.take_loaded_score(bytes, export);
+                }
+            }
+        }
         self.history.mark_saved();
-        Ok(())
+        Ok(notes)
     }
 
-    /// The song's two files as the document holds them — the MIDI bytes and the sidecar
-    /// with its fingerprint set — with nothing refused and no sample moved: what a backup
-    /// of an unsaved song carries, rendered as a save renders them.
+    /// A map save's look at disk before its first write: the sidecar refused when it
+    /// changed and `intent` keeps it, then a changed score adopted unless the engine edited
+    /// its own. Returns whether the `.mid` is on disk at all.
+    fn follow_disk(
+        &mut self,
+        store: &impl SongStore,
+        target: &Path,
+        intent: SaveIntent,
+        notes: &mut Vec<String>,
+    ) -> Result<bool, SongSaveError> {
+        let sidecar = crate::external_tools::midi_sidecar_path(target);
+        let sidecar_on_disk = read_optional(store, &sidecar)?.map(|bytes| midi_fingerprint(&bytes));
+        let disk_score = read_optional(store, target)?;
+        if sidecar_on_disk != self.map_fingerprint && intent.sidecar == SidecarIntent::Keep {
+            return Err(SongSaveError::SidecarChanged {
+                sidecar,
+                loaded: self.map_fingerprint,
+                on_disk: sidecar_on_disk,
+                midi: target.to_path_buf(),
+                score_loaded: self.score_fingerprint,
+                score_on_disk: disk_score.as_deref().map(midi_fingerprint),
+            });
+        }
+        let Some(disk_score) = disk_score else {
+            return Ok(false);
+        };
+        if !self.is_score_authored() && midi_fingerprint(&disk_score) != self.score_fingerprint {
+            let lines = self.adopt_score(disk_score).map_err(|error| {
+                SongSaveError::ChangedScoreUnreadable {
+                    path: target.to_path_buf(),
+                    reason: error.to_string(),
+                }
+            })?;
+            notes.push(format!(
+                "{} changed on disk: the song follows it, its map kept",
+                target.display()
+            ));
+            notes.extend(lines);
+        }
+        Ok(true)
+    }
+
+    /// The song's two files as the document holds them — the score it would save and the
+    /// sidecar with its fingerprint set — with nothing refused and no sample moved: what a
+    /// backup of an unsaved song carries, rendered as a save renders them.
     pub fn rendered_files(&self) -> Result<(Vec<u8>, String), SongSaveError> {
         let label = self.path.as_deref().map_or_else(
             || "the song in memory".to_string(),
-            |path| with_suffix(path, ".ron").display().to_string(),
+            |path| crate::external_tools::midi_sidecar_path(path).display().to_string(),
         );
-        let rendered = render(&self.data, self.file.clone(), &label)?;
-        Ok((rendered.midi_bytes, rendered.sidecar_text))
+        let midi_bytes = self.score_bytes()?;
+        let (_, sidecar_text) =
+            render_sidecar(self.file.clone(), midi_fingerprint(&midi_bytes), &label)?;
+        Ok((midi_bytes, sidecar_text))
     }
 
     fn plan_save(
@@ -343,6 +426,9 @@ impl SongDocument {
         store: &impl SongStore,
         target: &Path,
         asset_base: &Path,
+        writes_midi: bool,
+        score_guard: Option<u64>,
+        sidecar_guard: Option<Option<u64>>,
     ) -> Result<SavePlan, SongSaveError> {
         if !crate::external_tools::is_midi_path(target) {
             return Err(SongSaveError::NotMidi {
@@ -408,8 +494,14 @@ impl SongDocument {
             *path = format!("{folder}/{file_name}");
         }
 
-        let label = with_suffix(target, ".ron").display().to_string();
-        let rendered = render(&self.data, file, &label)?;
+        let label = crate::external_tools::midi_sidecar_path(target)
+            .display()
+            .to_string();
+        let midi_bytes = writes_midi.then(|| self.score_bytes()).transpose()?;
+        let fingerprint = midi_bytes
+            .as_deref()
+            .map_or(self.score_fingerprint, midi_fingerprint);
+        let (file, sidecar_text) = render_sidecar(file, fingerprint, &label)?;
         let home_license = match self.file.provenance.as_ref() {
             Some(provenance) => {
                 samples::home_license(store, &asset_base.join(home), home, relative, provenance)?
@@ -421,85 +513,14 @@ impl SongDocument {
             song,
             samples,
             home_license,
-            rendered,
+            rendered: RenderedFiles {
+                midi_bytes,
+                sidecar_text,
+                file,
+            },
+            score_guard,
+            sidecar_guard,
+            score_loaded: self.score_fingerprint,
         })
     }
-}
-
-/// A write that names its file when it fails.
-fn write_file(store: &mut impl SongStore, path: &Path, bytes: &[u8]) -> Result<(), SongSaveError> {
-    store
-        .write(path, bytes)
-        .map_err(|error| SongSaveError::Write {
-            path: path.to_path_buf(),
-            reason: error.to_string(),
-        })
-}
-
-/// A removal that names its file when it fails.
-fn remove_file(store: &mut impl SongStore, path: &Path) -> Result<(), SongSaveError> {
-    store.remove(path).map_err(|error| SongSaveError::Write {
-        path: path.to_path_buf(),
-        reason: format!("removing it failed: {error}"),
-    })
-}
-
-/// Steps 2 to 6 of the module docs; the first failed write stops the save.
-fn commit(store: &mut impl SongStore, target: &Path, plan: &SavePlan) -> Result<(), SongSaveError> {
-    for sample in plan.samples.iter().filter(|sample| !sample.already_there) {
-        write_file(
-            store,
-            &plan.sample_directory.join(&sample.file_name),
-            &sample.bytes,
-        )?;
-    }
-    let sidecar = with_suffix(target, ".ron");
-    let journal_sidecar = with_suffix(&sidecar, ".new");
-    let journal_midi = with_suffix(target, ".new");
-    let rendered = &plan.rendered;
-    write_file(store, &journal_sidecar, rendered.sidecar_text.as_bytes())?;
-    write_file(store, &journal_midi, &rendered.midi_bytes)?;
-    prune(store, plan)?;
-    if let Some((path, text)) = &plan.home_license {
-        write_file(store, path, text.as_bytes())?;
-    }
-    write_file(store, target, &rendered.midi_bytes)?;
-    write_file(store, &sidecar, rendered.sidecar_text.as_bytes())?;
-    remove_file(store, &journal_midi)?;
-    remove_file(store, &journal_sidecar)
-}
-
-/// Step 4: remove what the song no longer names from its folder and rewrite its `LICENSE`
-/// (the folder itself goes with its last sample).
-fn prune(store: &mut impl SongStore, plan: &SavePlan) -> Result<(), SongSaveError> {
-    let referenced: BTreeSet<&str> = plan
-        .samples
-        .iter()
-        .map(|sample| sample.file_name.as_str())
-        .collect();
-    let listed =
-        store
-            .list_files(&plan.sample_directory)
-            .map_err(|error| SongSaveError::Write {
-                path: plan.sample_directory.clone(),
-                reason: format!("listing it failed: {error}"),
-            })?;
-    for path in listed {
-        let relative = path.strip_prefix(&plan.sample_directory).unwrap_or(&path);
-        let relative = relative.to_string_lossy();
-        if relative != "LICENSE" && !referenced.contains(relative.as_ref()) {
-            remove_file(store, &path)?;
-        }
-    }
-    if plan.samples.is_empty() {
-        remove_file(store, &plan.sample_directory)?;
-    } else {
-        let license = samples::license_text(&plan.samples, &plan.song);
-        write_file(
-            store,
-            &plan.sample_directory.join("LICENSE"),
-            license.as_bytes(),
-        )?;
-    }
-    Ok(())
 }

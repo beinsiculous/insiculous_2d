@@ -63,7 +63,7 @@ being ignored.
 | `instruments` | list of `Instrument` | empty | the instruments parts are played on |
 | `bindings` | list of `Binding` | empty | which action plays which part on which instrument |
 | `provenance` | `(author: "…", license: "…")` | absent | who wrote the song and under which license; the composer's Save requires both and writes them into the home folder's `LICENSE` stanza for the song's two files (§ How the composer saves). Loading never requires it |
-| `midi_fingerprint` | integer | absent | written by the composer's Save: FNV-1a (64-bit) over the MIDI file's bytes as it wrote them, so an interrupted save is told from a finished one (§ How the composer saves). Absent from a hand-written sidecar, which is taken as matching its MIDI file; never hand-edit it |
+| `midi_fingerprint` | integer | absent | written by the composer's Save: FNV-1a (64-bit) over the MIDI file's bytes as it loaded or wrote them, so a score changed outside the composer is told on open (§ How the composer saves). Absent from a hand-written sidecar, which is taken as matching its MIDI file; never hand-edit it |
 
 Paths are relative to the game's asset directory, as every other asset path is (the
 audio manager resolves them against `set_asset_base`, which the engine's runner sets from
@@ -303,13 +303,45 @@ lands on; a seek backwards reports none.
 
 The editor's composer saves a song as `<stem>.mid` and `<stem>.mid.ron` under `music/` or
 `ai/music/` in the asset folder (an agent's first cut carries the `ai_` prefix until a
-human pass saves it into `music/` without it). Nothing on either target renames a file, so a
-save is a journal, and it refuses before its first write:
+human pass saves it into `music/` without it). A `.midi` saves the same way beside its
+`<stem>.midi.ron`: a sidecar is always the MIDI file's whole name with `.ron` added.
+
+**The score belongs to whoever wrote the `.mid`; the composer writes the map.** A save is
+one of two kinds:
+
+- **Save** — to the song's own path — is a **map save**: it writes the `.mid.ron` and the
+  home folder's `LICENSE` stanza and leaves the `.mid` alone, its bytes and its stamp. The
+  sidecar's `midi_fingerprint` is the fingerprint of the bytes the composer loaded, never of
+  its own re-encoding of them, which can differ (midly writes running status).
+- **Save As** — to any other path — copies the whole song: the `.mid` exactly as it was
+  loaded, and the map. A target that holds another song's files is replaced only when
+  asked (the composer's Overwrite, the API's `overwrite`).
+
+Until the composer stops editing notes, a song whose score was edited in the composer — a
+note, a tempo, a meter, a track, or a batch holding one — writes `write_smf`'s bytes
+instead, on either kind of save, and the transition's rule guards it (step 5).
+
+**Both files are compared by content immediately before a save writes.** The composer
+remembers the fingerprint of the `.mid` and of the `.mid.ron` as it last read or wrote
+them. A sidecar that changed on disk since — another program, or a hand, rewrote the map,
+even at the same length and the same modified time — refuses the save, writing nothing:
+the composer asks "the map changed on disk since you loaded it: Overwrite / Cancel", and
+the API's `song save` answers with both files and their fingerprints until the line says
+`overwrite`. A `.mid` that changed is taken first: the song follows the new score, its map
+and the map's unsaved edits kept, the track diff's lines shown, and the save fingerprints
+the new bytes. A `.mid` gone from disk is written again from the song. The sidecar is
+compared once more right before the finals are written — the samples' reads and the
+licenses lie between the first look and the write — and a map rewritten in that span
+refuses the save the same way, the journal removed; what remains unguarded is the finals'
+own writes, as for the score.
+
+Nothing on either target renames a file, so a save is a journal, and it refuses before its
+first write:
 
 1. **Refused, writing nothing:** a path outside the two song folders or against the path
    rule below; a song without its own `provenance`, or a `Sample` instrument without one
    (or either with an empty author or license); a sidecar the schema check refuses; a
-   sample that cannot be read; a sample folder another song owns.
+   sample that cannot be read; a sample folder another song owns; a sidecar changed on disk.
 2. **The new samples** are copied into the song's own folder, `<home>/samples/<flat>/`:
    `<home>` is `music` or `ai/music`, and `<flat>` is the song's path under it with the
    extension dropped and every `/` written `__` — `music/theme.mid` → `music/samples/theme/`,
@@ -333,26 +365,55 @@ save is a journal, and it refuses before its first write:
    held to the full rule. One collision is left, and refused: a new song whose flattened
    name is an existing folder it does not own (`music/x/y.mid` beside an older
    `music/x__y.mid`) — Save As elsewhere.
-3. **The pair:** `<stem>.mid.ron.new`, carrying `midi_fingerprint` of the MIDI bytes about
-   to be written, then `<stem>.mid.new`. From here an interruption reopens as the new song.
-4. **The prune:** every file in that folder the song no longer references is removed, and
-   its `LICENSE` rewritten with one stanza per referenced sample (`Files:`, `Copyright:`
-   the author, `License:`), so the provenance gate passes over what the composer wrote.
-   It waits for the pair, so the old song never loses a sample it still names. Then the
-   home folder's `LICENSE` (`music/LICENSE` or `ai/music/LICENSE`) gets the song's own
-   stanza from its `provenance`, naming its `.mid` and `.mid.ron`: the stanza is found by
-   the `.mid` path alone (a stanza naming only the `.mid` is rewritten, not duplicated),
-      a stanza naming another song's files as well keeps them, and every other stanza is
-   left as it is. The song's own stanza is rewritten whole, so a field added to it by hand
-   (a `Comment:`) is lost — put it in a stanza of its own. It is written only when it
-   changed.
-5. **The finals:** `<stem>.mid`, then `<stem>.mid.ron`.
-6. **The pair is removed.**
+3. **The journal:** `<stem>.mid.ron.new`, carrying the `midi_fingerprint` of the score the
+   song names, then `<stem>.mid.new` when the save writes the `.mid`. A map save's journal
+   is the sidecar's alone.
+4. **The home folder's `LICENSE`** (`music/LICENSE` or `ai/music/LICENSE`) gets the song's
+   own stanza from its `provenance`, naming its MIDI file and its sidecar: the stanza is
+   found by the MIDI file's path alone (a stanza naming only the `.mid` is rewritten, not
+   duplicated), a stanza naming another song's files as well keeps them, and every other
+   stanza is left as it is. The song's own stanza is rewritten whole, so a field added to
+   it by hand (a `Comment:`) is lost — put it in a stanza of its own. It is written only
+   when it changed.
+5. **The finals:** the `.mid` when the save writes it, then the `.mid.ron`. **The
+   transition's rule:** before the `.mid` of a score edited in the composer is written over
+   its own path, the `.mid` on disk is compared with the one the song loaded or last wrote.
+   When another program rewrote it, its file is left where it is, the composer's score is
+   kept beside it as `<stem>.recovered-<fingerprint>.mid` with a note naming it, the sidecar
+   is saved against the disk's bytes, and the song follows the disk's score. The moment
+   between that compare and the write is not guarded: it lasts only until the composer no
+   longer writes scores, and the recovered file is what it costs.
+6. **The journal is removed.**
+7. **The prune:** every file in the song's sample folder that neither the song nor a
+   recovery's sidecar beside it (`<stem>.recovered-*.mid.ron`) names is removed, and the
+   folder's `LICENSE` rewritten with one stanza per named sample (`Files:`, `Copyright:`
+   the author, `License:`), so the provenance gate passes over what the composer wrote. It
+   runs last, so an interruption at any step leaves every sample that any file beside the
+   song names on disk; a recovery that cannot be read leaves the folder unpruned.
 
-Opening a song settles whatever an interruption left: a `.new` pair whose MIDI matches its
-own fingerprint is the truth and finishes its save (whatever state the finals are in);
-otherwise finals that match each other stand, a leftover matching them is removed, a lone
-`.mid.new` that differs opens as an unsaved import (the finals untouched, so its work is
-not lost), and a lone `.mid.ron.new` is removed; finals that do not match each other with
-no valid pair are an error naming both files. A sidecar without `midi_fingerprint` — one a
-person wrote — always matches its MIDI file.
+**Opening a song keeps whatever an interruption left, and never promotes it.** Each
+journal file is renamed beside the song — `<stem>.recovered-<fingerprint>.mid` and its
+sidecar `<stem>.recovered-<fingerprint>.mid.ron`, the MIDI file's whole name plus `.ron`
+(never `<stem>.mid.recovered-….ron`) — under a name no file holds (a taken name moves to
+`…-2`, `…-3`), with a note naming it; then the finals open as they are. A journal pair
+takes its MIDI file's fingerprint for both names, so the recovery opens as a song; a lone
+journal file takes its own bytes'. Nothing is deleted and the finals are never judged
+against the journal: open the recovery to see that save. Then:
+
+- **No final at all** — a first save interrupted before them — is the one case a journal
+  becomes the finals: it is the song's only copy, so nothing is replaced, and a note says
+  the save was finished. A lone `<stem>.mid.ron.new` there holds no score and opens nothing.
+- **A `.mid` whose sidecar's `midi_fingerprint` differs** is the score changed outside the
+  composer: it opens on the disk's bytes with its sidecar, a note says so, and the track
+  diff's lines name every part the score no longer plays as written; the next save
+  rewrites the fingerprint. A sidecar without `midi_fingerprint` — one a person wrote —
+  always matches its MIDI file.
+- **A `.mid` with no sidecar** opens in place on a new sidecar — the project's first bank
+  under `soundfonts/`, no parts, no bindings, looping — marked unsaved, so Save writes it.
+  `song init <path>` writes that sidecar without opening the song, and refuses a `.mid`
+  that has one.
+- **A sidecar with no `.mid`** is no song to open.
+
+A song whose MIDI file the composer cannot edit — a track holding two channels' notes —
+refuses only the score's edits: its parts, instruments, bindings, loop, quantize, modes and
+provenance edit and save as on any other song.

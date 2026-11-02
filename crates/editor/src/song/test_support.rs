@@ -1,5 +1,6 @@
-//! Fixtures for the song tests: an asset folder on disk, a short melody, a sample
-//! instrument, and a store that stops after a set number of writes and removals.
+//! Fixtures for the song tests: an asset folder on disk, a short melody, the Napolitan
+//! fixture as a saved song, a sample instrument, a store that stops after a set number of
+//! writes and removals, and one that rewrites a file behind the save's back.
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -8,6 +9,10 @@ use music_midi::{Instrument, InstrumentSource, Provenance, SamplePlayback};
 
 use super::io::{SongStore, VfsStore};
 use super::{Gesture, SongDocument, SongEdit};
+
+/// The Napolitan fixture: its export is not its bytes (midly writes running status), so a
+/// fingerprint of `write_smf` is not the file's.
+pub(super) const NAPOLITAN: &[u8] = include_bytes!("../../../music_midi/fixtures/dansenapolitaine.mid");
 
 /// A temporary asset folder, removed when dropped.
 pub(super) struct AssetFolder {
@@ -152,6 +157,66 @@ impl SongStore for InterruptedStore {
     fn remove(&mut self, path: &Path) -> io::Result<()> {
         self.spend()?;
         VfsStore.remove(path)
+    }
+
+    fn list_files(&self, directory: &Path) -> io::Result<Vec<PathBuf>> {
+        VfsStore.list_files(directory)
+    }
+}
+
+/// The Napolitan fixture saved at `relative` as a person would map it: the `.mid` dropped in,
+/// opened on a scaffold sidecar, its provenance set and saved — a map save, so the `.mid`
+/// on disk stays the fixture's own bytes.
+pub(super) fn napolitan_song(folder: &AssetFolder, relative: &str) -> SongDocument {
+    let path = folder.write(relative, NAPOLITAN);
+    let mut document = SongDocument::open(&path, folder.base())
+        .expect("an unmapped .mid opens in place")
+        .document;
+    document
+        .apply(
+            SongEdit::SetProvenance {
+                provenance: song_provenance(),
+            },
+            Gesture::Discrete,
+        )
+        .expect("the provenance lands");
+    document.save(&path, folder.base()).expect("the map saves");
+    document
+}
+
+/// A store over `common::vfs` that writes `bytes` at `path`, as another program would,
+/// right after the save's own write or removal number `after_operation` (counted from 1).
+pub(super) struct RewritingStore {
+    pub after_operation: usize,
+    pub path: PathBuf,
+    pub bytes: Vec<u8>,
+    pub landed: usize,
+}
+
+impl RewritingStore {
+    fn count(&mut self) {
+        self.landed += 1;
+        if self.landed == self.after_operation {
+            common::vfs::write(&self.path, &self.bytes).expect("the other program's write");
+        }
+    }
+}
+
+impl SongStore for RewritingStore {
+    fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
+        VfsStore.read(path)
+    }
+
+    fn write(&mut self, path: &Path, bytes: &[u8]) -> io::Result<()> {
+        VfsStore.write(path, bytes)?;
+        self.count();
+        Ok(())
+    }
+
+    fn remove(&mut self, path: &Path) -> io::Result<()> {
+        VfsStore.remove(path)?;
+        self.count();
+        Ok(())
     }
 
     fn list_files(&self, directory: &Path) -> io::Result<Vec<PathBuf>> {

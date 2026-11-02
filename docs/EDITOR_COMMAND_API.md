@@ -99,7 +99,9 @@ Exactly one line of JSON per non-blank request, in request order:
 ```
 
 `kind` ∈ `parse` | `not_found` | `ambiguous_name` | `invalid` | `refused`.
-An `ambiguous_name` error additionally carries `"matches":[<id>,...]`.
+An `ambiguous_name` error additionally carries `"matches":[<id>,...]`; a `refused` over
+files that changed on disk since the editor read them (`song save`) carries
+`"files":[{"path","loaded","on_disk"},...]`.
 `invalid` = the arguments are unusable (unknown component/field, bad JSON,
 non-finite number, unissued texture handle); `refused` = the editor's current state forbids the
 request (Playing, batch rules, a write over the read-only dispatch).
@@ -187,8 +189,9 @@ addresses it; none touches the scene's `CommandHistory`, and `undo` /
 | `song undo` / `song redo` | the song's history only: `{"undid"/"redid": <variant>\|null}` |
 | `song select <note>...` / `song select none` | select exactly these notes by id — never on the undo stack (GUI parity) |
 | `song new [discard]` | a new, never-saved song (one tempo track, a `melody` track on channel 1, 120 BPM in 4/4, the background on the asset folder's first `.sf2` under `soundfonts/` in sorted order — `soundfonts/cast.sf2` when it has none, which the composer's Song section then warns about) |
-| `song open <path> [discard]` | open a `.mid` (relative to the asset root), settling what an interrupted save left — the answer's `notes` say what was settled |
-| `song save [path [overwrite]]` | save to `path`, else the song's own path, else — never saved — `music/untitled.mid` (numbered while its `.mid` or its `.mid.ron` is taken). A `path` whose `.mid` or `.mid.ron` exists and is not the song's own file is another song: `refused` unless the line ends in `overwrite` (its own word — it replaces that song's files, where `discard` drops this song's edits); the composer's path field asks Overwrite / Cancel instead |
+| `song open <path> [discard]` | open a `.mid` or `.midi` (relative to the asset root), keeping what an interrupted save left as a recovery beside it — the answer's `notes` name each one, and say when the score changed outside the composer, with the track diff's lines (`docs/SONG_FORMAT.md` § How the composer saves). The open song's own path is **the reload**: both its files are read anew. A `.mid` with no sidecar opens in place on a new one, `"dirty": true` until a save writes it |
+| `song init <path>` | write a new sidecar beside an unmapped `.mid` in a song folder — the project's first bank under `soundfonts/`, no parts, no bindings, looping — without opening it: `{"initialized":"<path>.ron"}`. `refused` for a `.mid` that has a sidecar, one outside the song folders, or one the engine cannot read |
+| `song save [path [overwrite]]` | save to `path`, else the song's own path, else — never saved — `music/untitled.mid` (numbered while its `.mid` or its `.mid.ron` is taken). To the song's own path it is a map save — the sidecar alone, the `.mid` left as it is unless the composer edited the score; to another path it copies the whole song. A `path` whose `.mid` or `.mid.ron` exists and is not the song's own file is another song: `refused` unless the line ends in `overwrite` (its own word — it replaces that song's files, where `discard` drops this song's edits); the composer's path field asks Overwrite / Cancel instead. A sidecar changed on disk since the song read it is `refused` with `"files": [{"path", "loaded", "on_disk"}, …]` — the `.mid` and the `.mid.ron`, each fingerprint 16 hex digits or `null` for a file absent — until `song save <path> overwrite` replaces it; a `.mid` changed on disk is followed, and the answer's `notes` say so. Answers `{"saved":"<path>","notes":[…]}` |
 | `song close [discard]` | close the song |
 | `song play [beat]` | play the song as the document holds it — the composer's preview — from a whole beat counted from zero (from the top without one): `{"preview":"playing","from_tick":<tick>}`. `refused` with no song open; a beat that is fractional, negative or not finite is `invalid`. It is heard on the next frame (before the web's first click it waits, and the composer says so) |
 | `song stop` | stop the preview: `{"preview":"stopped"}`; nothing while it is stopped |

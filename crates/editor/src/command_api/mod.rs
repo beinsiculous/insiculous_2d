@@ -145,11 +145,15 @@ pub enum HostedWrite {
     /// Replace the song with a new, never-saved one; refused over a dirty
     /// song unless `discard`.
     SongNew { discard: bool },
-    /// Open a song by its `.mid`; refused over a dirty song unless `discard`.
+    /// Open a song by its `.mid` — the open song's own path included, which reads both
+    /// its files anew; refused over a dirty song unless `discard`.
     SongOpen { path: String, discard: bool },
+    /// Write a scaffold sidecar beside an unmapped `.mid` in a song folder; refused when
+    /// it has one.
+    SongInit { path: String },
     /// Save the song (to its path, the given one, or the default for a
     /// never-saved song). A given path holding another song is refused unless
-    /// `overwrite`.
+    /// `overwrite`, which also replaces a sidecar changed on disk since the song read it.
     SongSave { path: Option<String>, overwrite: bool },
     /// Close the song; refused when it is dirty unless `discard`.
     SongClose { discard: bool },
@@ -168,6 +172,7 @@ impl HostedWrite {
             HostedWrite::Create { .. } | HostedWrite::Save { .. } => false,
             HostedWrite::SongNew { .. }
             | HostedWrite::SongOpen { .. }
+            | HostedWrite::SongInit { .. }
             | HostedWrite::SongSave { .. }
             | HostedWrite::SongClose { .. }
             | HostedWrite::SongPlay { .. }
@@ -193,6 +198,32 @@ pub enum ApiError {
     /// The editor's current state forbids the request (Playing, open
     /// batch rules, read-only transport).
     Refused(String),
+    /// A refusal over files that changed on disk since the editor read them: each named
+    /// with the fingerprint it was read with and the one it has now.
+    FilesChanged {
+        message: String,
+        files: Vec<ChangedFile>,
+    },
+}
+
+/// One file of [`ApiError::FilesChanged`]. A fingerprint is 16 hex digits, or `None` for a
+/// file that was not there.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct ChangedFile {
+    pub path: String,
+    pub loaded: Option<String>,
+    pub on_disk: Option<String>,
+}
+
+impl ChangedFile {
+    pub fn new(path: &std::path::Path, loaded: Option<u64>, on_disk: Option<u64>) -> Self {
+        let hex = |fingerprint: u64| format!("{fingerprint:016x}");
+        Self {
+            path: path.display().to_string(),
+            loaded: loaded.map(hex),
+            on_disk: on_disk.map(hex),
+        }
+    }
 }
 
 impl ApiError {
@@ -202,7 +233,7 @@ impl ApiError {
             ApiError::NotFound(_) => "not_found",
             ApiError::AmbiguousName { .. } => "ambiguous_name",
             ApiError::Invalid(_) => "invalid",
-            ApiError::Refused(_) => "refused",
+            ApiError::Refused(_) | ApiError::FilesChanged { .. } => "refused",
         }
     }
 
@@ -211,7 +242,8 @@ impl ApiError {
             ApiError::Parse(msg)
             | ApiError::NotFound(msg)
             | ApiError::Invalid(msg)
-            | ApiError::Refused(msg) => msg.clone(),
+            | ApiError::Refused(msg)
+            | ApiError::FilesChanged { message: msg, .. } => msg.clone(),
             ApiError::AmbiguousName { name, matches } => format!(
                 "{} entities are named \"{name}\" — address one by #id",
                 matches.len()
@@ -233,6 +265,9 @@ pub fn error_response(err: &ApiError) -> String {
     });
     if let ApiError::AmbiguousName { matches, .. } = err {
         error["matches"] = serde_json::json!(matches);
+    }
+    if let ApiError::FilesChanged { files, .. } = err {
+        error["files"] = serde_json::json!(files);
     }
     serde_json::json!({ "ok": false, "error": error }).to_string()
 }

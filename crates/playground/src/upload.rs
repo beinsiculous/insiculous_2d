@@ -1,6 +1,6 @@
-//! A file the page imports into the open project: a song (`.mid`), a sample (`.wav`) or a
-//! SoundFont (`.sf2`), written where its kind lives and persisted by the vfs observer like
-//! every other write.
+//! A file the page imports into the open project: a song (`.mid` or `.midi`), a sample
+//! (`.wav`) or a SoundFont (`.sf2`), written where its kind lives and persisted by the vfs
+//! observer like every other write.
 //!
 //! **Nothing is written until the file is known good.** The name is held to
 //! `[A-Za-z0-9._-]+` first — no quote breaks the `song open "…"` the page sends after, and
@@ -10,16 +10,18 @@
 //! own limit, before any decode, and then decoded by the loader that will read it.
 //!
 //! **A taken name is replaced only when asked.** The page asks first, naming every song
-//! whose sidecar names the file. A song's `.mid` is never replaced while it is the song the
-//! composer holds; otherwise its sidecar and its journal pair are removed first and the
-//! MIDI written last, so every state the store passes through opens — the old MIDI as an
-//! import, then the new one.
+//! whose sidecar names the file. A song's MIDI file is never replaced while it is the song
+//! the composer holds; otherwise the new score is written over it and its sidecar is kept:
+//! a re-imported score is the score changed outside, and the song's next open follows it
+//! with its map and the track diff's lines.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use audio::{decode_sample_pcm, SAMPLE_BYTE_LIMIT, SOUND_FONT_BYTE_LIMIT};
 use music_midi::{parse_song_file, parse_sound_font, InstrumentSource, SongData, MIDI_BYTE_LIMIT};
 use serde::Serialize;
+
+use editor::external_tools::{is_midi_path, midi_sidecar_path, sidecar_midi_path};
 
 use crate::bridge::validate_bridge_path;
 
@@ -33,9 +35,11 @@ pub enum UploadKind {
 
 impl UploadKind {
     fn of(name: &str) -> Option<Self> {
+        if is_midi_path(Path::new(name)) {
+            return Some(UploadKind::Song);
+        }
         let extension = Path::new(name).extension()?.to_string_lossy().to_ascii_lowercase();
         match extension.as_str() {
-            "mid" => Some(UploadKind::Song),
             "wav" => Some(UploadKind::Sample),
             "sf2" => Some(UploadKind::SoundFont),
             _ => None,
@@ -76,16 +80,16 @@ pub struct UploadOutcome {
     pub written: bool,
     pub kind: UploadKind,
     pub destination: String,
-    /// Every song whose sidecar names the file, by its `.mid` under the asset folder.
+    /// Every song whose sidecar names the file, by its MIDI file under the asset folder.
     pub referenced_by: Vec<String>,
-    /// For a taken song name: its sidecar, whose bindings and instruments a replace loses.
+    /// For a taken song name with a sidecar: the score changed, and the map is kept.
     pub sidecar_lost: bool,
 }
 
 /// Check `file_name` and `bytes` for an import, writing nothing.
 pub fn plan_upload(file_name: &str, bytes: &[u8]) -> Result<UploadPlan, String> {
     let kind = UploadKind::of(file_name)
-        .ok_or_else(|| format!("{file_name} is not a song, a sample or a SoundFont: import a .mid, a .wav or a .sf2"))?;
+        .ok_or_else(|| format!("{file_name} is not a song, a sample or a SoundFont: import a .mid, a .midi, a .wav or a .sf2"))?;
     let name = upload_name(kind, file_name)?;
     let destination = format!("{}/{name}", kind.folder());
     if kind == UploadKind::Song {
@@ -129,28 +133,28 @@ fn upload_name(kind: UploadKind, file_name: &str) -> Result<String, String> {
 }
 
 /// Every song under the two song folders whose sidecar names the file at `destination`
-/// (relative to the project root), by its `.mid` under the asset folder.
+/// (relative to the project root), by its MIDI file under the asset folder.
 pub fn songs_referencing(project_root: &Path, destination: &str) -> Vec<String> {
     let asset_path = destination.trim_start_matches("assets/");
     let mut songs = Vec::new();
     for home in editor::song::HOME_DIRECTORIES {
         let folder = project_root.join("assets").join(home);
         for sidecar in common::vfs::list_files(&folder).unwrap_or_default() {
-            let Some(sidecar_name) = sidecar.to_str().filter(|name| name.ends_with(".mid.ron")) else {
+            let Some(midi) = sidecar_midi_path(&sidecar) else {
                 continue;
             };
+            let sidecar_name = sidecar.to_string_lossy();
             let Ok(text) = common::vfs::read_to_string(&sidecar) else {
                 continue;
             };
-            let Ok(file) = parse_song_file(sidecar_name, &text) else {
+            let Ok(file) = parse_song_file(&sidecar_name, &text) else {
                 continue;
             };
             let named = file.soundfont == asset_path
                 || file.instruments.iter().any(|instrument| match &instrument.source {
                     InstrumentSource::SoundFont { path, .. } | InstrumentSource::Sample { path, .. } => path == asset_path,
                 });
-            let midi = sidecar_name.trim_end_matches(".ron");
-            if let (true, Ok(relative)) = (named, Path::new(midi).strip_prefix(project_root.join("assets"))) {
+            if let (true, Ok(relative)) = (named, midi.strip_prefix(project_root.join("assets"))) {
                 songs.push(relative.to_string_lossy().replace('\\', "/"));
             }
         }
@@ -161,8 +165,9 @@ pub fn songs_referencing(project_root: &Path, destination: &str) -> Vec<String> 
 }
 
 /// Import `file_name` into the project at `project_root`: checked whole first, then
-/// written — unless its name is taken and `replace` was not asked, or it is the `.mid` of
-/// `open_song`, the song the composer holds.
+/// written — unless its name is taken and `replace` was not asked, or it is the MIDI file
+/// of `open_song`, the song the composer holds. A song's sidecar and any journal it left
+/// are kept: the next open follows the new score with them.
 pub fn import_file(
     project_root: &Path,
     file_name: &str,
@@ -173,7 +178,7 @@ pub fn import_file(
     let plan = plan_upload(file_name, bytes)?;
     let target = validate_bridge_path(project_root, &plan.destination)?;
     let taken = common::vfs::file_size(&target).is_ok();
-    let sidecar = with_suffix(&target, ".ron");
+    let sidecar = midi_sidecar_path(&target);
     let outcome = UploadOutcome {
         written: false,
         kind: plan.kind,
@@ -187,22 +192,8 @@ pub fn import_file(
     if taken && !replace {
         return Ok(outcome);
     }
-    let write_error = |error: std::io::Error| format!("writing {} failed: {error}", plan.destination);
-    if plan.kind == UploadKind::Song {
-        // The store keeps the write order, so each removal lands before the new MIDI does.
-        for leftover in [sidecar.clone(), with_suffix(&sidecar, ".new"), with_suffix(&target, ".new")] {
-            common::vfs::remove_prefix(&leftover).map_err(write_error)?;
-        }
-    }
-    common::vfs::write(&target, bytes).map_err(write_error)?;
+    common::vfs::write(&target, bytes).map_err(|error| format!("writing {} failed: {error}", plan.destination))?;
     Ok(UploadOutcome { written: true, ..outcome })
-}
-
-/// `path` with `suffix` appended to its last component (`theme.mid` → `theme.mid.ron`).
-fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
-    let mut joined = path.as_os_str().to_owned();
-    joined.push(suffix);
-    PathBuf::from(joined)
 }
 
 #[cfg(test)]

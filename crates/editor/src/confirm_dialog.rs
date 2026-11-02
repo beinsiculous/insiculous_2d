@@ -102,6 +102,25 @@ impl ConfirmDialog {
         }
     }
 
+    /// The prompt before a save replaces the song's sidecar that changed on disk since the
+    /// song read it: Overwrite / Cancel, with no alternative. Overwrite discards what the
+    /// other program wrote there, which the message says, since a button is too narrow to.
+    pub fn map_changed_on_disk(sidecar: &std::path::Path) -> Self {
+        let name = sidecar
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| sidecar.display().to_string());
+        Self {
+            title: "Song map changed on disk".to_string(),
+            message: format!(
+                "The map changed on disk since you loaded it: {name}. Overwrite it with this song's map, discarding the change?"
+            ),
+            confirm_label: "Overwrite".to_string(),
+            alt_label: None,
+            cancel_label: "Cancel".to_string(),
+        }
+    }
+
     /// The prompt when another program rewrote the open scene while it had unsaved edits:
     /// Reload / Keep mine, with no alternative. The message says what Reload costs, since a
     /// button is too narrow to.

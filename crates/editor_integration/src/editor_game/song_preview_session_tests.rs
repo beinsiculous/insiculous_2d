@@ -322,7 +322,9 @@ fn a_games_init_time_track_is_asked_for_again_unless_a_composer_song_takes_the_s
     harness.context(|editor, _| {
         editor.song = Some(melody_song());
         editor.follow_song();
-        editor.save_song_to(saved.clone()).expect("the composer's song saves");
+        editor
+            .save_song_to(saved.clone(), editor::song::SaveIntent::default())
+            .expect("the composer's song saves");
     });
     harness.context(|editor, ctx| editor.handle_play_action(PlayControlAction::Play, ctx.world));
     harness.steps(3, FRAME);

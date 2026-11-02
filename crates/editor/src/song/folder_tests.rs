@@ -26,7 +26,7 @@ fn melody_with_a_sample(folder: &AssetFolder) -> SongDocument {
 }
 
 fn save(document: &mut SongDocument, folder: &AssetFolder, relative: &str) -> Result<(), SongSaveError> {
-    document.save(&folder.path(relative), folder.base())
+    document.save(&folder.path(relative), folder.base()).map(drop)
 }
 
 fn text(folder: &AssetFolder, relative: &str) -> String {

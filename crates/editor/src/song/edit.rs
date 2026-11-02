@@ -134,7 +134,7 @@ pub enum SongEdit {
 /// Why an edit was refused. Nothing was changed.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum SongEditError {
-    #[error("the composer cannot edit this song: {reason}")]
+    #[error("the composer cannot edit this song's score: {reason}")]
     Refused { reason: String },
     #[error("note {0} does not exist")]
     UnknownNote(u64),
@@ -197,6 +197,46 @@ impl SongEdit {
             SongEdit::AddTrack { .. } => "AddTrack",
             SongEdit::SetSoundFont { .. } => "SetSoundFont",
             SongEdit::Batch(_) => "Batch",
+        }
+    }
+
+    /// Whether the edit changes what `SongData::write_smf` writes — the notes, the tempo,
+    /// the meter, the tracks — rather than the sidecar alone. A `Batch` does when any of
+    /// its members does, however deep.
+    pub fn changes_score(&self) -> bool {
+        match self {
+            SongEdit::AddNote { .. }
+            | SongEdit::DeleteNotes { .. }
+            | SongEdit::MoveNotes { .. }
+            | SongEdit::ResizeNotes { .. }
+            | SongEdit::SetVelocity { .. }
+            | SongEdit::SetPitch { .. }
+            | SongEdit::AssignPart { .. }
+            | SongEdit::SetTempo { .. }
+            | SongEdit::SetTimeSignature { .. }
+            | SongEdit::AddTrack { .. } => true,
+            SongEdit::SetLoop { .. }
+            | SongEdit::SetQuantize { .. }
+            | SongEdit::SetPartMode { .. }
+            | SongEdit::AddInstrument { .. }
+            | SongEdit::SetInstrument { .. }
+            | SongEdit::RemoveInstrument { .. }
+            | SongEdit::SetBinding { .. }
+            | SongEdit::RemoveBinding { .. }
+            | SongEdit::AddPart { .. }
+            | SongEdit::RemovePart { .. }
+            | SongEdit::SetSoundFont { .. }
+            | SongEdit::SetProvenance { .. } => false,
+            SongEdit::Batch(members) => members.iter().any(SongEdit::changes_score),
+        }
+    }
+
+    /// Whether the edit changes the sidecar: every edit that is not a score edit, and a
+    /// `Batch` holding one. A batch can do both, and then it is either kind's entry.
+    pub(super) fn changes_map(&self) -> bool {
+        match self {
+            SongEdit::Batch(members) => members.iter().any(SongEdit::changes_map),
+            single => !single.changes_score(),
         }
     }
 

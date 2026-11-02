@@ -1,8 +1,9 @@
 //! An imported file: each kind lands in its folder; a name that would break the quoted
 //! `song open`, the provenance gate or the song path rule is refused; every file is refused
 //! by its size before a decode and by its loader before a write; a taken name is replaced
-//! only when asked, never the open song's, a song's leftovers removed first; and a sample
-//! imported, assigned and saved in one session lands in the song's folder.
+//! only when asked, never the open song's, a song's sidecar kept for the next open to follow
+//! the new score with; a `.midi` is a song; and a sample imported, assigned and saved in
+//! one session lands in the song's folder.
 
 use std::path::{Path, PathBuf};
 
@@ -134,26 +135,78 @@ fn a_taken_name_is_replaced_only_when_asked_and_the_answer_names_every_song_usin
 }
 
 #[test]
-fn a_replaced_song_is_refused_while_open_and_otherwise_loses_its_sidecar_and_journal_first() {
+fn a_replaced_song_is_refused_while_open_and_otherwise_keeps_its_sidecar_and_any_journal() {
     let root = project();
     let target = song_naming_the_sample(root.path());
-    for leftover in ["assets/music/theme.mid.new", "assets/music/theme.mid.ron.new"] {
+    let kept = ["assets/music/theme.mid.ron", "assets/music/theme.mid.new", "assets/music/theme.mid.ron.new"];
+    for leftover in &kept[1..] {
         common::vfs::write(&root.path().join(leftover), b"journal").expect("written");
     }
 
     let asked = import_file(root.path(), "theme.mid", &midi(), None, false).expect("asks");
-    assert!(!asked.written && asked.sidecar_lost, "{asked:?}");
+    assert!(!asked.written && asked.sidecar_lost, "the score would change and the map be kept: {asked:?}");
     let open = import_file(root.path(), "theme.mid", &midi(), Some(&target), true).expect_err("the open song");
     assert!(open.contains("close the song first"), "{open}");
 
     let replaced = import_file(root.path(), "theme.mid", &midi(), None, true).expect("replaces");
     assert!(replaced.written);
-    assert!(exists(root.path(), "assets/music/theme.mid"));
-    for gone in ["assets/music/theme.mid.ron", "assets/music/theme.mid.new", "assets/music/theme.mid.ron.new"] {
-        assert!(!exists(root.path(), gone), "{gone}");
+    assert_eq!(common::vfs::read(&target).ok(), Some(midi()));
+    for kept in kept {
+        assert!(exists(root.path(), kept), "{kept} is kept: the open settles a journal, never the import");
     }
-    let opened = SongDocument::open(&target, &root.path().join("assets")).expect("opens as an import");
-    assert!(opened.document.is_dirty());
+}
+
+#[test]
+fn a_reimported_score_keeps_the_saved_map_and_the_next_open_follows_it_with_the_diffs_lines() {
+    let root = project();
+    let asset_base = root.path().join("assets");
+    let napolitan: &[u8] = include_bytes!("../../../music_midi/fixtures/dansenapolitaine.mid");
+    let first = import_file(root.path(), "napolitan.mid", napolitan, None, false).expect("imported");
+    let target = asset_base.join(first.destination.trim_start_matches("assets/"));
+    let mut song = SongDocument::open(&target, &asset_base).expect("opens in place").document;
+    let melody = music_midi::Part {
+        name: "melody".to_string(),
+        track: music_midi::TrackSelector::Name("flute".to_string()),
+        mode: music_midi::PartMode::Loop,
+        quantize: music_midi::Quantize::Off,
+    };
+    for edit in [SongEdit::AddPart { part: melody }, SongEdit::SetProvenance { provenance: provenance() }] {
+        song.apply(edit, Gesture::Discrete).expect("a map edit");
+    }
+    song.save(&target, &asset_base).expect("the map saves");
+    let notes_before = song.data().tracks().iter().map(|track| track.note_count()).sum::<usize>();
+    drop(song);
+
+    let replaced = import_file(root.path(), "napolitan.mid", &midi(), None, true).expect("re-imported");
+    assert!(replaced.written && replaced.sidecar_lost, "{replaced:?}");
+    let opened = SongDocument::open(&target, &asset_base).expect("the composer's next open");
+    let notes_after = opened.document.data().tracks().iter().map(|track| track.note_count()).sum::<usize>();
+    assert_ne!(notes_after, notes_before, "the notes are the new score's");
+    assert_eq!(opened.document.file().parts.len(), 1, "the map survives");
+    assert_eq!(opened.document.file().parts[0].name, "melody");
+    assert!(opened.notes.iter().any(|note| note.contains("changed outside the editor")), "{:?}", opened.notes);
+    assert!(
+        opened.notes.iter().any(|note| note.contains("track `flute` is gone")),
+        "the diff's lines: {:?}",
+        opened.notes
+    );
+}
+
+#[test]
+fn a_midi_song_is_imported_and_listed_by_the_songs_naming_a_file() {
+    let root = project();
+    let imported = import_file(root.path(), "theme.midi", &midi(), None, false).expect("a .midi is a song");
+    assert_eq!((imported.kind, imported.destination.as_str()), (UploadKind::Song, "assets/music/theme.midi"));
+    import_file(root.path(), "blip.wav", SINE_WAV, None, false).expect("the sample");
+    let sidecar = r#"SongFile(version: 1, soundfont: "soundfonts/cast.sf2",
+        instruments: [(name: "blip", source: Sample(path: "music/imports/blip.wav", root_note: 60))])"#;
+    common::vfs::write_string(&root.path().join("assets/music/theme.midi.ron"), sidecar).expect("its sidecar");
+
+    assert_eq!(songs_referencing(root.path(), "assets/music/imports/blip.wav"), ["music/theme.midi"]);
+    let asked = import_file(root.path(), "theme.midi", &midi(), None, false).expect("asks");
+    assert!(asked.sidecar_lost, "the .midi's own sidecar, by the whole name");
+    let open = root.path().join("assets/music/theme.midi");
+    assert!(import_file(root.path(), "theme.midi", &midi(), Some(&open), true).is_err(), "the open song");
 }
 
 #[test]

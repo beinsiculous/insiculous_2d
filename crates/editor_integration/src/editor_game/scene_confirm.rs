@@ -16,6 +16,7 @@
 
 use std::path::PathBuf;
 
+use editor::song::SaveIntent;
 use editor::{ConfirmChoice, ConfirmDialog};
 use engine_core::contexts::GameContext;
 use engine_core::Game;
@@ -32,10 +33,20 @@ pub(super) enum PendingSceneAction {
     CloseSong,
     /// Play over a dirty song: the game must not start against a song it lacks.
     StartPlay,
-    /// A Save As onto another song's file, waiting for Overwrite or Cancel.
-    OverwriteSong(PathBuf),
+    /// A save waiting for Overwrite or Cancel: onto another song's file, or over the song's
+    /// own sidecar changed on disk since it was read.
+    OverwriteSong(PathBuf, OverwriteCause),
     /// The open scene changed on disk under unsaved edits: Reload or Keep mine.
     ReloadFromDisk(PathBuf),
+}
+
+/// Why a save asks before it overwrites.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum OverwriteCause {
+    /// A Save As onto another song's files.
+    AnotherSong,
+    /// The song's own sidecar changed on disk since the song read it.
+    MapChanged,
 }
 
 /// The document whose edits an action would lose.
@@ -55,7 +66,8 @@ impl PendingSceneAction {
             PendingSceneAction::OpenSong(_) => "opening another song",
             PendingSceneAction::CloseSong => "closing it",
             PendingSceneAction::StartPlay => "Play",
-            PendingSceneAction::OverwriteSong(_) => "replacing another song",
+            PendingSceneAction::OverwriteSong(_, OverwriteCause::AnotherSong) => "replacing another song",
+            PendingSceneAction::OverwriteSong(_, OverwriteCause::MapChanged) => "replacing the map on disk",
             PendingSceneAction::ReloadFromDisk(_) => "reloading it from disk",
         }
     }
@@ -69,7 +81,7 @@ impl PendingSceneAction {
             | PendingSceneAction::OpenSong(_)
             | PendingSceneAction::CloseSong
             | PendingSceneAction::StartPlay
-            | PendingSceneAction::OverwriteSong(_) => Document::Song,
+            | PendingSceneAction::OverwriteSong(..) => Document::Song,
         }
     }
 }
@@ -127,7 +139,12 @@ impl<G: Game> EditorGame<G> {
         ctx.ui.clear_text_focus();
         let dialog = match (&action, action.document()) {
             (PendingSceneAction::StartPlay, _) => ConfirmDialog::play_with_unsaved_song(self.song_saved_exists()),
-            (PendingSceneAction::OverwriteSong(path), _) => ConfirmDialog::overwrite_song(path),
+            (PendingSceneAction::OverwriteSong(path, OverwriteCause::AnotherSong), _) => {
+                ConfirmDialog::overwrite_song(path)
+            }
+            (PendingSceneAction::OverwriteSong(path, OverwriteCause::MapChanged), _) => {
+                ConfirmDialog::map_changed_on_disk(&editor::external_tools::midi_sidecar_path(path))
+            }
             (PendingSceneAction::ReloadFromDisk(path), _) => ConfirmDialog::scene_changed_on_disk(path),
             (_, Document::Song) => ConfirmDialog::unsaved_song(action.phrase()),
             (_, Document::Scene) => ConfirmDialog::unsaved_changes(action.phrase()),
@@ -185,8 +202,8 @@ impl<G: Game> EditorGame<G> {
         action: PendingSceneAction,
         choice: ConfirmChoice,
     ) {
-        if let (PendingSceneAction::OverwriteSong(path), ConfirmChoice::Confirm) = (&action, choice) {
-            match self.save_song_to(path.clone()) {
+        if let (PendingSceneAction::OverwriteSong(path, _), ConfirmChoice::Confirm) = (&action, choice) {
+            match self.save_song_to(path.clone(), SaveIntent::OVERWRITE) {
                 Ok(_) => self.scene_confirm.pending_action = None,
                 Err(error) => self.editor.status_bar.show_error(format!("Song save failed: {error}")),
             }
@@ -194,10 +211,16 @@ impl<G: Game> EditorGame<G> {
         }
         match choice {
             ConfirmChoice::Confirm => match self.save_song(None) {
-                Ok(_) => {
+                Ok(Some(_)) => {
                     self.scene_confirm.pending_action = None;
                     self.perform_song_action(action);
                 }
+                // The save parked the sidecar's Overwrite / Cancel prompt in its place:
+                // nothing was written, so the action it was to clear the way for waits.
+                Ok(None) => self
+                    .editor
+                    .status_bar
+                    .show_notice(format!("The map changed on disk; answer the prompt, then {} again", action.phrase())),
                 Err(error) => {
                     self.editor.status_bar.show_error(format!("Song save failed: {error}"));
                     log::error!("Song save before {} failed: {error}", action.phrase());
@@ -211,7 +234,7 @@ impl<G: Game> EditorGame<G> {
             ConfirmChoice::Alt => {
                 // The overwrite prompt and a never-saved song's Play prompt draw no
                 // alternative; this guards a choice arriving some other way.
-                let no_such_arm = matches!(action, PendingSceneAction::OverwriteSong(_))
+                let no_such_arm = matches!(action, PendingSceneAction::OverwriteSong(..))
                     || (action == PendingSceneAction::StartPlay && !self.song_saved_exists());
                 if no_such_arm {
                     return;
@@ -250,19 +273,15 @@ impl<G: Game> EditorGame<G> {
         match action {
             PendingSceneAction::NewSong => self.new_song(),
             PendingSceneAction::OpenSong(path) => {
-                // Reopening the open song's own file would only replace it under its
-                // history, so a clean song is left as it is.
-                if self.song.as_ref().and_then(|song| song.path()) == Some(path.as_path()) {
-                    self.editor.status_bar.show_message("Song already open");
-                    return;
-                }
+                // The open song's own file reads both files anew: the reload of a score or a
+                // map another program rewrote.
                 let result = self.open_song(&path).map(drop);
                 self.report_song_failure("Song open", result);
             }
             PendingSceneAction::CloseSong => self.close_song(),
             PendingSceneAction::StartPlay => self.begin_play(),
-            PendingSceneAction::OverwriteSong(path) => {
-                let result = self.save_song_to(path).map(drop);
+            PendingSceneAction::OverwriteSong(path, _) => {
+                let result = self.save_song_to(path, SaveIntent::OVERWRITE).map(drop);
                 self.report_song_failure("Song save", result);
             }
             PendingSceneAction::NewScene | PendingSceneAction::OpenScene(_) | PendingSceneAction::ReloadFromDisk(_) => {

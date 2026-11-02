@@ -9,7 +9,7 @@ use editor::composer::{drop_action, track_notes, ComposerAction, ComposerFocus, 
 use editor::{ConfirmChoice, DragPayload, EditorAction, Modifiers, PlayControlAction, SongEdit};
 use winit::keyboard::KeyCode;
 
-use super::scene_confirm::PendingSceneAction;
+use super::scene_confirm::{OverwriteCause, PendingSceneAction};
 use super::shortcuts::KeyRoute;
 use super::test_support::{
     api_line, assert_ok, composer_session, dirty_editor, melody_song, second_track_holds_the_notes,
@@ -198,7 +198,7 @@ fn save_as_onto_another_song_parks_cancel_keeps_both_and_overwrite_completes_in_
         // The field's Enter: the key the field owns is consumed, then its commit parks.
         assert_eq!(editor.route_editor_key(KeyCode::Enter, true, PLAIN), KeyRoute::Consumed);
         editor.save_song_from_field(target);
-        let parked = PendingSceneAction::OverwriteSong(folder.path().join(target));
+        let parked = PendingSceneAction::OverwriteSong(folder.path().join(target), OverwriteCause::AnotherSong);
         assert_eq!(editor.scene_confirm.pending_action, Some(parked.clone()), "{final_file}: another song");
         assert_eq!(editor.scene_confirm.pending_choice, None, "the same Enter does not answer the prompt");
 

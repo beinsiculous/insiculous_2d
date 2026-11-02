@@ -143,6 +143,13 @@ pub fn midi_sidecar_path(midi_path: &Path) -> PathBuf {
     PathBuf::from(sidecar)
 }
 
+/// The MIDI file a song sidecar sits beside — [`midi_sidecar_path`]'s inverse: `.ron` taken
+/// off, and `None` unless what is left is a MIDI file's name.
+pub fn sidecar_midi_path(sidecar: &Path) -> Option<PathBuf> {
+    let midi = Path::new(sidecar.to_str()?.strip_suffix(".ron")?);
+    is_midi_path(midi).then(|| midi.to_path_buf())
+}
+
 /// Whether `path`'s extension is on the configured DAW project list (entries with or
 /// without a leading dot, any case).
 pub fn is_daw_project_path(path: &Path, daw_project_extensions: &[String]) -> bool {
@@ -229,5 +236,10 @@ mod tests {
         assert!(!is_midi_path(Path::new("mid")));
         assert_eq!(midi_sidecar_path(Path::new("music/theme.midi")), PathBuf::from("music/theme.midi.ron"));
         assert_eq!(midi_sidecar_path(Path::new("music/theme.mid")), PathBuf::from("music/theme.mid.ron"));
+        for midi in ["music/theme.mid", "music/theme.recovered-00ff.midi"] {
+            assert_eq!(sidecar_midi_path(&midi_sidecar_path(Path::new(midi))), Some(PathBuf::from(midi)));
+        }
+        assert_eq!(sidecar_midi_path(Path::new("scenes/level.ron")), None, "a .ron beside no MIDI file");
+        assert_eq!(sidecar_midi_path(Path::new("music/theme.mid")), None);
     }
 }
