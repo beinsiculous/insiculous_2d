@@ -38,6 +38,9 @@ pub(super) enum PendingSceneAction {
     OverwriteSong(PathBuf, OverwriteCause),
     /// The open scene changed on disk under unsaved edits: Reload or Keep mine.
     ReloadFromDisk(PathBuf),
+    /// The open song's sidecar changed on disk under unsaved edits, the song named by its
+    /// `.mid`: Reload or Keep mine.
+    ReloadSongMap(PathBuf),
 }
 
 /// Why a save asks before it overwrites.
@@ -69,6 +72,7 @@ impl PendingSceneAction {
             PendingSceneAction::OverwriteSong(_, OverwriteCause::AnotherSong) => "replacing another song",
             PendingSceneAction::OverwriteSong(_, OverwriteCause::MapChanged) => "replacing the map on disk",
             PendingSceneAction::ReloadFromDisk(_) => "reloading it from disk",
+            PendingSceneAction::ReloadSongMap(_) => "reloading its map from disk",
         }
     }
 
@@ -81,7 +85,8 @@ impl PendingSceneAction {
             | PendingSceneAction::OpenSong(_)
             | PendingSceneAction::CloseSong
             | PendingSceneAction::StartPlay
-            | PendingSceneAction::OverwriteSong(..) => Document::Song,
+            | PendingSceneAction::OverwriteSong(..)
+            | PendingSceneAction::ReloadSongMap(_) => Document::Song,
         }
     }
 }
@@ -146,6 +151,7 @@ impl<G: Game> EditorGame<G> {
                 ConfirmDialog::map_changed_on_disk(&editor::external_tools::midi_sidecar_path(path))
             }
             (PendingSceneAction::ReloadFromDisk(path), _) => ConfirmDialog::scene_changed_on_disk(path),
+            (PendingSceneAction::ReloadSongMap(path), _) => song_map_changed_on_disk(path),
             (_, Document::Song) => ConfirmDialog::unsaved_song(action.phrase()),
             (_, Document::Scene) => ConfirmDialog::unsaved_changes(action.phrase()),
         };
@@ -202,6 +208,9 @@ impl<G: Game> EditorGame<G> {
         action: PendingSceneAction,
         choice: ConfirmChoice,
     ) {
+        if let PendingSceneAction::ReloadSongMap(path) = &action {
+            return self.resolve_song_map_reload_choice(path, choice);
+        }
         if let (PendingSceneAction::OverwriteSong(path, _), ConfirmChoice::Confirm) = (&action, choice) {
             match self.save_song_to(path.clone(), SaveIntent::OVERWRITE) {
                 Ok(_) => self.scene_confirm.pending_action = None,
@@ -268,6 +277,19 @@ impl<G: Game> EditorGame<G> {
         }
     }
 
+    /// Route the choice on the song map's changed-on-disk prompt as the scene's is routed:
+    /// Reload reads the sidecar anew, dropping the map's unsaved edits and keeping the
+    /// score's; Keep mine — Escape and Enter included — leaves the song as it is.
+    pub(super) fn resolve_song_map_reload_choice(&mut self, midi: &std::path::Path, choice: ConfirmChoice) {
+        self.scene_confirm.pending_action = None;
+        match choice {
+            ConfirmChoice::Confirm => self.reload_song_map(midi),
+            ConfirmChoice::Alt | ConfirmChoice::Cancel => {
+                self.editor.status_bar.show_message("Kept your edits; the song's map on disk differs");
+            }
+        }
+    }
+
     /// Execute a (now confirmed) song action, or Play.
     pub(super) fn perform_song_action(&mut self, action: PendingSceneAction) {
         match action {
@@ -284,6 +306,7 @@ impl<G: Game> EditorGame<G> {
                 let result = self.save_song_to(path, SaveIntent::OVERWRITE).map(drop);
                 self.report_song_failure("Song save", result);
             }
+            PendingSceneAction::ReloadSongMap(path) => self.reload_song_map(&path),
             PendingSceneAction::NewScene | PendingSceneAction::OpenScene(_) | PendingSceneAction::ReloadFromDisk(_) => {
                 log::error!("{action:?} is a scene action, routed by the scene's Save branch");
             }
@@ -308,7 +331,7 @@ impl<G: Game> EditorGame<G> {
     /// and EVERY other key is swallowed — Ctrl+S or Delete acting under a
     /// modal would mutate state the user is being asked about. Tab cycling
     /// is deliberately out of scope for now (mouse-first).
-    /// The changed-on-disk prompt is the exception: it appears unasked, so an
+    /// The changed-on-disk prompts, the scene's and the song map's, are the exception: it appears unasked, so an
     /// Enter meant for something else lands on it, and both keys keep the
     /// edits — Reload, which discards them past undo, is a click.
     /// Returns whether the key was consumed.
@@ -319,7 +342,7 @@ impl<G: Game> EditorGame<G> {
         let Some(action) = &self.scene_confirm.pending_action else {
             return false;
         };
-        let reload_prompt = matches!(action, PendingSceneAction::ReloadFromDisk(_));
+        let reload_prompt = matches!(action, PendingSceneAction::ReloadFromDisk(_) | PendingSceneAction::ReloadSongMap(_));
         match key {
             winit::keyboard::KeyCode::Escape | winit::keyboard::KeyCode::Enter | winit::keyboard::KeyCode::NumpadEnter
                 if reload_prompt =>
@@ -337,5 +360,22 @@ impl<G: Game> EditorGame<G> {
             _ => {}
         }
         true
+    }
+}
+
+/// The prompt when another program rewrote the open song's sidecar while the song had unsaved
+/// edits; `midi` names the song.
+fn song_map_changed_on_disk(midi: &std::path::Path) -> ConfirmDialog {
+    let sidecar = editor::external_tools::midi_sidecar_path(midi);
+    let name = sidecar
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| sidecar.display().to_string());
+    ConfirmDialog {
+        title: "Song map changed on disk".to_string(),
+        message: format!("The map changed on disk: {name}. Reload it and discard your edits to the map?"),
+        confirm_label: "Reload".to_string(),
+        alt_label: None,
+        cancel_label: "Keep mine".to_string(),
     }
 }

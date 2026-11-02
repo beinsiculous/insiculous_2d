@@ -10,10 +10,11 @@
 //! own limit, before any decode, and then decoded by the loader that will read it.
 //!
 //! **A taken name is replaced only when asked.** The page asks first, naming every song
-//! whose sidecar names the file. A song's MIDI file is never replaced while it is the song
-//! the composer holds; otherwise the new score is written over it and its sidecar is kept:
-//! a re-imported score is the score changed outside, and the song's next open follows it
-//! with its map and the track diff's lines.
+//! whose sidecar names the file. The new score is written over the song's MIDI file and its
+//! sidecar is kept: a re-imported score is the score changed outside, and the song follows
+//! it with its map and the track diff's lines — at its next open, or at once when it is the
+//! song the composer holds, whose document the host hands the bytes, since the browser has
+//! no file watcher to tell it.
 
 use std::path::Path;
 
@@ -84,6 +85,8 @@ pub struct UploadOutcome {
     pub referenced_by: Vec<String>,
     /// For a taken song name with a sidecar: the score changed, and the map is kept.
     pub sidecar_lost: bool,
+    /// The import wrote the MIDI file of the song open in the composer, which follows it.
+    pub open_song_replaced: bool,
 }
 
 /// Check `file_name` and `bytes` for an import, writing nothing.
@@ -165,9 +168,9 @@ pub fn songs_referencing(project_root: &Path, destination: &str) -> Vec<String> 
 }
 
 /// Import `file_name` into the project at `project_root`: checked whole first, then
-/// written — unless its name is taken and `replace` was not asked, or it is the MIDI file
-/// of `open_song`, the song the composer holds. A song's sidecar and any journal it left
-/// are kept: the next open follows the new score with them.
+/// written — unless its name is taken and `replace` was not asked. A song's sidecar and any
+/// journal it left are kept: the song follows the new score with them, and the outcome says
+/// when it is `open_song`, the song the composer holds.
 pub fn import_file(
     project_root: &Path,
     file_name: &str,
@@ -185,15 +188,15 @@ pub fn import_file(
         destination: plan.destination.clone(),
         referenced_by: songs_referencing(project_root, &plan.destination),
         sidecar_lost: plan.kind == UploadKind::Song && common::vfs::file_size(&sidecar).is_ok(),
+        open_song_replaced: false,
     };
-    if plan.kind == UploadKind::Song && open_song.is_some_and(|open| open.components().eq(target.components())) {
-        return Err(format!("{} is the song open in the composer: close the song first", plan.destination));
-    }
     if taken && !replace {
         return Ok(outcome);
     }
     common::vfs::write(&target, bytes).map_err(|error| format!("writing {} failed: {error}", plan.destination))?;
-    Ok(UploadOutcome { written: true, ..outcome })
+    let open_song_replaced =
+        plan.kind == UploadKind::Song && open_song.is_some_and(|open| open.components().eq(target.components()));
+    Ok(UploadOutcome { written: true, open_song_replaced, ..outcome })
 }
 
 #[cfg(test)]

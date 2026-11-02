@@ -35,9 +35,20 @@ pub struct EditorRunOptions {
     pub scene_snapshot: Option<Arc<super::SceneSnapshotRequest>>,
     /// Raised while a preview window owns the simulation.
     pub preview_open: Option<Arc<AtomicBool>>,
-    /// The open song's `.mid`, written by `sync_dirty_mirror`, so a host's file import can
-    /// refuse to replace the song the composer holds.
+    /// The open song's `.mid`, written by `sync_dirty_mirror`, so a host's file import knows
+    /// when it replaced the song the composer holds.
     pub open_song: Option<Arc<Mutex<Option<PathBuf>>>>,
+    /// The mailbox a host with no file watcher files an import of the open song's `.mid` in;
+    /// the frame takes it before the watcher's changes and the document adopts its score.
+    pub song_import: Option<Arc<Mutex<Option<SongImport>>>>,
+}
+
+/// A `.mid` a host wrote over the open song's own file, as the bytes it wrote.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SongImport {
+    /// The song's `.mid`, as the open song names it.
+    pub path: PathBuf,
+    pub bytes: Vec<u8>,
 }
 
 /// Run a game with the full editor UI overlay.
@@ -79,6 +90,7 @@ pub fn run_game_with_editor_opts<G: Game>(
     editor_game.scene_snapshot = options.scene_snapshot;
     editor_game.preview_open = options.preview_open;
     editor_game.open_song_mirror = options.open_song;
+    editor_game.song_import = options.song_import;
     engine_core::run_game(editor_game, config)
 }
 

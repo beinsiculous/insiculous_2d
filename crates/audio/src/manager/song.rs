@@ -285,6 +285,35 @@ impl AudioManager {
         Ok(self.prepare_ready(label, file, data)?.song)
     }
 
+    /// The song the live playback plays — playing, paused or at its end — and, after a
+    /// replacement swapped in, the new one. `None` without a song, for one whose output
+    /// died, and while a song waits for the web's first gesture.
+    #[must_use]
+    pub fn playing_song(&self) -> Option<&Arc<Song>> {
+        self.songs
+            .playback
+            .as_ref()
+            .filter(|playback| !playback.is_dead())
+            .map(|playback| &playback.song)
+    }
+
+    /// Every SoundFont and sample path the last song prepared read, joined with the asset
+    /// base, and every one the latest preparation attempted, successful or not — a failed
+    /// one's missing file among them. What a host watches for the song to be prepared again.
+    #[must_use]
+    pub fn song_closure(&self) -> Vec<PathBuf> {
+        self.songs.cache.closure_and_attempted().into_iter().collect()
+    }
+
+    /// The file the latest preparation could not find, joined with the asset base — the
+    /// first missing one, since a preparation stops at it — and nothing after a preparation
+    /// that succeeded or failed for another reason. What a host watching the closure marks
+    /// as expected absent, from the loader's own knowledge rather than a look at the disk.
+    #[must_use]
+    pub fn song_missing_paths(&self) -> Vec<PathBuf> {
+        self.songs.cache.missing().iter().cloned().collect()
+    }
+
     /// Play a song built in memory, as [`AudioManager::play_song`] plays a file.
     pub fn play_song_in_memory(&mut self, song: Arc<Song>) -> AudioResult<()> {
         self.play_song_in_memory_at(song, 0)

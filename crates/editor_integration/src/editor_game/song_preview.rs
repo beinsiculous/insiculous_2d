@@ -36,6 +36,8 @@ use engine_core::Game;
 
 use super::EditorGame;
 
+mod external_change;
+
 /// What the status bar says when a preview ends other than at the score's end.
 const STOPPED_EARLY: &str = "Song preview: playback stopped early";
 const NEVER_REACHED_THE_DEVICE: &str = "Song preview: the song could not reach the device";

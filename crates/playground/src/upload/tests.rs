@@ -1,8 +1,8 @@
 //! An imported file: each kind lands in its folder; a name that would break the quoted
 //! `song open`, the provenance gate or the song path rule is refused; every file is refused
 //! by its size before a decode and by its loader before a write; a taken name is replaced
-//! only when asked, never the open song's, a song's sidecar kept for the next open to follow
-//! the new score with; a `.midi` is a song; and a sample imported, assigned and saved in
+//! only when asked, a song's sidecar kept for its document to follow the new score with —
+//! the open song's import said so, for the host to hand on; a `.midi` is a song; and a sample imported, assigned and saved in
 //! one session lands in the song's folder.
 
 use std::path::{Path, PathBuf};
@@ -135,7 +135,7 @@ fn a_taken_name_is_replaced_only_when_asked_and_the_answer_names_every_song_usin
 }
 
 #[test]
-fn a_replaced_song_is_refused_while_open_and_otherwise_keeps_its_sidecar_and_any_journal() {
+fn a_replaced_song_keeps_its_sidecar_and_any_journal_and_says_when_it_is_the_open_one() {
     let root = project();
     let target = song_naming_the_sample(root.path());
     let kept = ["assets/music/theme.mid.ron", "assets/music/theme.mid.new", "assets/music/theme.mid.ron.new"];
@@ -145,11 +145,12 @@ fn a_replaced_song_is_refused_while_open_and_otherwise_keeps_its_sidecar_and_any
 
     let asked = import_file(root.path(), "theme.mid", &midi(), None, false).expect("asks");
     assert!(!asked.written && asked.sidecar_lost, "the score would change and the map be kept: {asked:?}");
-    let open = import_file(root.path(), "theme.mid", &midi(), Some(&target), true).expect_err("the open song");
-    assert!(open.contains("close the song first"), "{open}");
+    assert!(!asked.open_song_replaced, "nothing was written");
+    let open = import_file(root.path(), "theme.mid", &midi(), Some(&target), true).expect("the open song is replaced");
+    assert!(open.written && open.open_song_replaced, "the composer's document follows it: {open:?}");
 
     let replaced = import_file(root.path(), "theme.mid", &midi(), None, true).expect("replaces");
-    assert!(replaced.written);
+    assert!(replaced.written && !replaced.open_song_replaced);
     assert_eq!(common::vfs::read(&target).ok(), Some(midi()));
     for kept in kept {
         assert!(exists(root.path(), kept), "{kept} is kept: the open settles a journal, never the import");
@@ -206,7 +207,8 @@ fn a_midi_song_is_imported_and_listed_by_the_songs_naming_a_file() {
     let asked = import_file(root.path(), "theme.midi", &midi(), None, false).expect("asks");
     assert!(asked.sidecar_lost, "the .midi's own sidecar, by the whole name");
     let open = root.path().join("assets/music/theme.midi");
-    assert!(import_file(root.path(), "theme.midi", &midi(), Some(&open), true).is_err(), "the open song");
+    let replaced = import_file(root.path(), "theme.midi", &midi(), Some(&open), true).expect("the open song");
+    assert!(replaced.open_song_replaced, "the .midi's open song by its whole name");
 }
 
 #[test]

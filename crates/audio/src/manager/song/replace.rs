@@ -6,7 +6,8 @@
 //! frame, so a missing one is an immediate error, and hands them with a copy of the
 //! decoded-file cache to a thread that prepares the song exactly as `play_song` does —
 //! only a file that changed is decoded again. The result comes back over a channel with
-//! the copy, whose decodes the frame's cache takes in, so `play_song` never waits on a
+//! the copy, whose decodes the frame's cache takes in — a failed preparation's too, with the
+//! paths it attempted — so `play_song` never waits on a
 //! preparation. On wasm32 there is no thread: the preparation runs at the call and its
 //! result takes the same path.
 //!
@@ -363,10 +364,12 @@ impl AudioManager {
                 true
             }
             Err(error) => {
+                if let Some(cache) = cache {
+                    deck.cache.merge_failed(cache);
+                }
                 deck.replacements
                     .outcomes
                     .push(SongReplacement::Failed(error));
-                retire(cache);
                 false
             }
         }

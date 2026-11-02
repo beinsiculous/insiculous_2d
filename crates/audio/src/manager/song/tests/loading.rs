@@ -1,6 +1,7 @@
 //! Loading a song's closure: what refuses it, that a refusal leaves the playing song
 //! alone, and what the decoded-file cache keeps.
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use super::*;
@@ -216,4 +217,68 @@ fn a_recorded_track_that_fails_to_load_leaves_a_playing_or_pending_song_alone() 
     gated.play_music(&missing).expect_err("no such file");
 
     assert!(matches!(gated.pending_music, Some(PendingMusic::Song(_))));
+}
+
+#[test]
+fn a_song_that_loads_reports_its_bank_and_sample_as_its_closure_and_itself_as_playing() {
+    let assets = AssetDirectory::new();
+    let (mut manager, _) = playing(&assets);
+
+    let closure: BTreeSet<_> = manager.song_closure().into_iter().collect();
+    let expected: BTreeSet<_> = [FONT_PATH, SAMPLE_PATH]
+        .iter()
+        .map(|relative| assets.path().join(relative))
+        .collect();
+    assert_eq!(closure, expected);
+    assert!(manager.song_missing_paths().is_empty(), "nothing was missing");
+    let song = manager.playing_song().expect("the song plays");
+    assert!(song.binding_index("blip").is_some(), "the song's own sidecar");
+
+    manager.stop_song();
+    assert!(manager.playing_song().is_none(), "no song once stopped");
+    let mut gated = AudioManager::awaiting_gesture();
+    gated.set_asset_base(assets.path());
+    let pending = assets.write_song("pending", &song_midi(true), &sidecar(None));
+    gated.play_song(&pending).expect("loads and waits");
+    assert!(gated.playing_song().is_none(), "none while it waits for the gesture");
+}
+
+#[test]
+fn a_failed_preparations_missing_sample_joins_the_closure_and_the_song_plays_on() {
+    let assets = AssetDirectory::new();
+    let (mut manager, start) = playing(&assets);
+    let before = Arc::clone(manager.playing_song().expect("the song plays"));
+    let broken = assets.write_song(
+        "broken",
+        &song_midi(true),
+        &sidecar_with(r#"Sample(path: "samples/absent.wav", root_note: 60)"#),
+    );
+
+    manager.replace_song_at_seam(&broken).expect("the files read");
+    manager.wait_for_preparations_newest_first();
+    manager.update_at(start + seconds(0.05));
+
+    let outcomes = manager.take_song_replacements();
+    assert!(
+        matches!(&outcomes[..], [SongReplacement::Failed(_)]),
+        "{outcomes:?}"
+    );
+    let closure = manager.song_closure();
+    assert!(
+        closure.contains(&assets.path().join("samples/absent.wav")),
+        "the missing sample is watched for: {closure:?}"
+    );
+    assert!(
+        closure.contains(&assets.path().join(FONT_PATH)),
+        "the playing song's bank still is: {closure:?}"
+    );
+    assert_eq!(
+        manager.song_missing_paths(),
+        [assets.path().join("samples/absent.wav")],
+        "the one file the preparation could not find"
+    );
+    assert!(Arc::ptr_eq(
+        &before,
+        manager.playing_song().expect("the song plays on")
+    ));
 }

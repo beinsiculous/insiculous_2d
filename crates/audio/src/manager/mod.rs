@@ -482,8 +482,9 @@ impl AudioManager {
         self.update_at(common::clock::Instant::now());
     }
 
-    /// [`AudioManager::update`] at `now`, so a test drives the song's clock.
-    pub(crate) fn update_at(&mut self, now: common::clock::Instant) {
+    /// [`AudioManager::update`] at `now`, so a test — a host's included — drives the song's
+    /// clock instead of the wall's.
+    pub fn update_at(&mut self, now: common::clock::Instant) {
         self.active_sounds.retain(|active| !active.sink.empty());
         self.held_playbacks.retain(|held| held.settings.looping);
         self.active_sources.retain(|active| !active.sink.empty());

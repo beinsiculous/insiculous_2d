@@ -19,8 +19,8 @@ pub type ScriptErrorsFn = Rc<dyn Fn() -> Vec<String>>;
 
 /// The hooks the web entry installs: the syntax check a `.rhai` write runs, the reader of
 /// the runner's error list, the editor's snapshot mailbox, the flag that reserves the
-/// simulation for a preview window, and the open song's `.mid`, which an import may not
-/// replace. All `None` until `set_hooks` runs.
+/// simulation for a preview window, the open song's `.mid`, and the mailbox an import of
+/// that `.mid` is handed to the editor through. All `None` until `set_hooks` runs.
 #[derive(Default)]
 pub struct Hooks {
     pub source_check: Option<SourceCheckFn>,
@@ -28,6 +28,7 @@ pub struct Hooks {
     pub scene_snapshot: Option<std::sync::Arc<editor_integration::SceneSnapshotRequest>>,
     pub preview_open: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     pub open_song: Option<std::sync::Arc<std::sync::Mutex<Option<PathBuf>>>>,
+    pub song_import: Option<std::sync::Arc<std::sync::Mutex<Option<editor_integration::SongImport>>>>,
 }
 
 thread_local! {
@@ -170,7 +171,8 @@ pub fn playground_write_file(path: String, text: String) -> Result<(), JsValue> 
 }
 
 /// Import a song, a sample or a SoundFont the page read from disk (`crate::upload`), as
-/// the JSON of an `UploadOutcome`: a taken name answers unwritten unless `replace`.
+/// the JSON of an `UploadOutcome`: a taken name answers unwritten unless `replace`. A `.mid`
+/// written over the open song's goes to the editor's mailbox, so its document follows it.
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 pub fn playground_write_file_bytes(name: String, bytes: Vec<u8>, replace: bool) -> Result<String, JsValue> {
@@ -180,6 +182,12 @@ pub fn playground_write_file_bytes(name: String, bytes: Vec<u8>, replace: bool) 
         .and_then(|mirror| mirror.lock().ok().and_then(|open_song| open_song.clone()));
     let outcome = crate::upload::import_file(&project_root, &name, &bytes, open_song.as_deref(), replace)
         .map_err(|error| JsValue::from_str(&error))?;
+    let mailbox = HOOKS.with(|hooks_cell| hooks_cell.borrow().song_import.clone());
+    if let (true, Some(path), Some(mailbox)) = (outcome.open_song_replaced, open_song, mailbox) {
+        if let Ok(mut slot) = mailbox.lock() {
+            *slot = Some(editor_integration::SongImport { path, bytes });
+        }
+    }
     serde_json::to_string(&outcome).map_err(|error| JsValue::from_str(&error.to_string()))
 }
 

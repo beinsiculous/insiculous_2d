@@ -1058,7 +1058,9 @@ game's `init` asked for, and a Play session with no composer song open asks for 
 first frame — so a game that starts its music once at `init` is heard in Play, and a match start
 that decides by the slot (Tong's) finds its own song there and seeks it to the top. With a
 composer song open, the saved song is the session's music instead. Stop silences the slot
-whoever filled it; the next Play asks again.
+whoever filled it; the next Play asks again. A saved song changed on disk during Play is heard
+from the next bar line; a new score that renames a track a part selects is refused on the status
+bar and in the console, and the old song plays on.
 
 **A game's music module.** The rules every game with a song carries live in
 `engine_core::game_music::GameMusic` (prelude), so a game's own `music.rs` names only its song and

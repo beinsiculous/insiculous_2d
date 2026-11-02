@@ -107,7 +107,13 @@ impl<G: Game> EditorGame<G> {
             .song
             .as_mut()
             .ok_or_else(|| SongWriteError::Refused("no song is open".to_string()))?;
+        let in_place = song.path().is_some_and(|own| own.components().eq(target.components()));
+        let score_before = song.score_fingerprint();
         let notes = song.save_with(target, &asset_base, intent).map_err(SongWriteError::Save)?;
+        // A save in place leaves the `.mid` unless the score changed: the engine's edit
+        // written, or another program's adopted, both of which move the fingerprint.
+        let wrote_score = !in_place || song.score_fingerprint() != score_before;
+        self.note_song_written(target, wrote_score);
         self.sync_dirty_mirror();
         self.editor.composer.rescan_songs(&self.asset_base);
         let shown = self.asset_relative(target);

@@ -54,7 +54,7 @@ mod shortcuts;
 mod viewport_interaction;
 
 pub(crate) use viewport_interaction::{build_pickable_entities, chrome_owns_mouse};
-pub use run_options::{run_game_with_editor, run_game_with_editor_opts, EditorRunOptions};
+pub use run_options::{run_game_with_editor, run_game_with_editor_opts, EditorRunOptions, SongImport};
 pub use snapshot::{Completion, SceneSnapshot, SceneSnapshotRequest};
 
 /// Wraps a user's `Game` with the full editor UI overlay.
@@ -134,6 +134,8 @@ struct EditorGame<G: Game> {
     pub(super) preview_open: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     /// The open song's `.mid` for a wasm host, when the web bridge installed one.
     pub(super) open_song_mirror: Option<std::sync::Arc<std::sync::Mutex<Option<std::path::PathBuf>>>>,
+    /// The import of the open song's `.mid` a wasm host filed, drained once a frame.
+    pub(super) song_import: Option<std::sync::Arc<std::sync::Mutex<Option<SongImport>>>>,
     /// Opens requested files in their external tools and collects what the launches report.
     launcher: external_tools::Launcher,
     /// The watched project files, and what their changes on disk wait on.
@@ -181,6 +183,7 @@ impl<G: Game> EditorGame<G> {
             scene_snapshot: None,
             preview_open: None,
             open_song_mirror: None,
+            song_import: None,
             launcher: external_tools::Launcher::new(),
             hot_reload: hot_reload::HotReload::default(),
         }
@@ -419,6 +422,7 @@ impl<G: Game> EditorGame<G> {
     /// window title on change, and clip engine UI to the scene viewport.
     fn finish_frame(&mut self, ctx: &mut GameContext) {
         self.apply_song_intents(ctx.audio, ctx.sources);
+        self.report_song_replacements(ctx.audio);
         // Nothing on screen moves outside a play session: `prepare_frame`
         // already froze engine time, so no particle or sprite animation is
         // live in Editing or Paused and a still window can stop asking for
@@ -428,6 +432,7 @@ impl<G: Game> EditorGame<G> {
 
         self.sync_dirty_mirror();
         // After the mirror, so a reload sees this frame's dirty state, and before the bar.
+        self.drain_song_import();
         self.drain_file_changes(ctx);
         self.save_preferences_if_changed(ctx.delta_time);
         self.open_requested_files();
@@ -531,6 +536,8 @@ mod hot_reload_tests;
 mod hot_reload_sheet_tests;
 #[cfg(test)]
 mod hot_reload_sample_tests;
+#[cfg(test)]
+mod hot_reload_song_tests;
 #[cfg(test)]
 mod panel_press_tests;
 #[cfg(test)]

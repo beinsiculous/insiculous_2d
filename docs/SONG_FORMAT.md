@@ -340,6 +340,19 @@ licenses lie between the first look and the write — and a map rewritten in tha
 refuses the save the same way, the journal removed; what remains unguarded is the finals'
 own writes, as for the score.
 
+**The editor watches the open song's two files, and the composer's own save is the
+watcher's baseline:** the sidecar it wrote, and the `.mid` when it wrote that too, never
+come back as a change. Another program's write is followed without a save: a new `.mid` is
+adopted — the song follows the new score with its map and the map's unsaved edits kept,
+the track diff's lines on the status bar and in the console, while editing and during Play
+alike — and a new `.mid.ron` reloads the map when the song has no unsaved edits, or asks
+"the map changed on disk: Reload / Keep mine" when it has (Enter and Escape keep yours).
+During Play the session plays the saved song, and a change to its `.mid`, its sidecar, or a
+SoundFont or sample it names is heard from the next bar line — unless the track diff
+refuses the new score, a renamed track a part selects, and then the old song plays on and
+the console says why. The web playground has no watcher: importing the open song's `.mid`
+again is adopted the same way.
+
 Nothing on either target renames a file, so a save is a journal, and it refuses before its
 first write:
 

@@ -1,19 +1,21 @@
 //! The editor's hot reload: which of the project's files are watched, the worker's changes
 //! drained once a frame, and each one dispatched by its file type's reload policy.
 //!
-//! The watched set is what this reloads, computed from the world and the sound tier on the
-//! watcher's tick: the open scene, every `.rhai` a `Scripts` component names, the
+//! The watched set is what this reloads, computed from the world, the sound tier and the
+//! songs on the watcher's tick: the open scene, every `.rhai` a `Scripts` component names, the
 //! `.sheet.ron` beside every sheet a `SpriteAnimation` names, every recorded sound a
-//! `SoundEmitter` names and every path the sound tier loaded or failed, each resolved against
-//! the asset base. A failed sound's path goes to the worker marked as expected absent, so its
-//! file arriving before the worker's first look is still a change. The set is kept as a map
-//! from each path to what named it, and a change reaches its owners through that map —
-//! nothing strips the asset base back off a path. The editor's own saves are the watcher's
-//! baseline, and a change the worker read before it took the save's note is dropped, since
-//! the file now holds the editor's own bytes.
+//! `SoundEmitter` names and every path the sound tier loaded or failed, the open song's two
+//! files and — in a play session — its song's two files and closure, each resolved against
+//! the asset base. A failed sound's path, and a missing one in the song's closure, go to the
+//! worker marked as expected absent, so a file arriving before the worker's first look is
+//! still a change. The set is kept as a map from each path to what named it, and a change
+//! reaches its owners through that map — nothing strips the asset base back off a path. The
+//! editor's own saves are the watcher's baseline, and a change the worker read before it took
+//! the save's note is dropped, since the file now holds the editor's own bytes.
 
 mod sample;
 mod sheet;
+mod song;
 mod worker;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -36,6 +38,8 @@ use super::scene_confirm::PendingSceneAction;
 use super::EditorGame;
 
 use sheet::ReloadedSheet;
+pub(super) use song::SongOwner;
+use song::SongChanges;
 
 /// How often the worker reads the watched files, and the host recomputes what they are.
 const POLL_INTERVAL: Duration = Duration::from_millis(500);
@@ -51,6 +55,8 @@ pub(super) enum WatchOwner {
     Sheet(String),
     /// A recorded sound's path, as a `SoundEmitter` or the sound tier names it.
     Sound(String),
+    /// A file of a song: the open document's or the play session's.
+    Song(SongOwner),
 }
 
 /// The watcher's side of the editor: its worker, the watched set and what a change waits on.
@@ -71,6 +77,9 @@ pub(super) struct HotReload {
     pub(super) awaiting_note: BTreeMap<PathBuf, u32>,
     /// The open scene's change, waiting for a gesture to end or a play session to stop.
     pub(super) waiting_scene: Option<PathBuf>,
+    /// The open song's `.mid` whose sidecar changed under unsaved edits, waiting to ask as
+    /// the scene's change waits.
+    pub(super) waiting_song_map: Option<PathBuf>,
     /// Each sheet the play session reloaded, by PNG path, for Stop to apply again.
     session_sheets: BTreeMap<String, ReloadedSheet>,
 }
@@ -95,7 +104,7 @@ impl<G: Game> EditorGame<G> {
     /// The frame's drain, after the dirty mirror and before the status bar: recompute the
     /// watched set on the tick, take the worker's changes and dispatch them.
     pub(super) fn drain_file_changes(&mut self, ctx: &mut GameContext) {
-        self.tick_file_watch(ctx.world, ctx.assets, ctx.delta_time);
+        self.tick_file_watch(ctx.world, ctx.assets, ctx.audio, ctx.delta_time);
         if let Some(worker) = &self.hot_reload.worker {
             self.hot_reload.incoming.extend(worker.take_events());
         }
@@ -109,7 +118,7 @@ impl<G: Game> EditorGame<G> {
         self.dispatch_file_changes(&mut targets);
     }
 
-    fn tick_file_watch(&mut self, world: &World, assets: &AssetManager, delta_time: f32) {
+    fn tick_file_watch(&mut self, world: &World, assets: &AssetManager, audio: &AudioManager, delta_time: f32) {
         if cfg!(target_arch = "wasm32") {
             return;
         }
@@ -119,8 +128,10 @@ impl<G: Game> EditorGame<G> {
             return;
         }
         watch.since_tick_seconds = 0.0;
-        let watched = self.watched_paths(world, assets);
-        let expected_absent = self.expected_absent_paths(assets);
+        let mut watched = self.watched_paths(world, assets);
+        let mut expected_absent = self.expected_absent_paths(assets);
+        expected_absent.extend(self.absent_song_paths(audio));
+        self.watch_songs(&mut watched, audio);
         let watch = &mut self.hot_reload;
         let started = watch.worker.is_none();
         let worker = watch.worker.get_or_insert_with(|| worker::WatchWorker::spawn(POLL_INTERVAL));
@@ -133,7 +144,8 @@ impl<G: Game> EditorGame<G> {
         watch.expected_absent = expected_absent;
     }
 
-    /// Every path the editor watches now, each with what named it.
+    /// Every path the world and the sound tier name now, each with what named it; the tick
+    /// adds the songs' (`watch_songs`).
     pub(super) fn watched_paths(&self, world: &World, assets: &AssetManager) -> BTreeMap<PathBuf, BTreeSet<WatchOwner>> {
         let mut watched: BTreeMap<PathBuf, BTreeSet<WatchOwner>> = BTreeMap::new();
         if let Some(scene) = self.editor.scene_path() {
@@ -165,15 +177,15 @@ impl<G: Game> EditorGame<G> {
         watched
     }
 
-    /// The watched sounds the sound tier failed to load: missing files, as far as it knows.
+    /// The watched sounds the sound tier failed to load: missing files, as far as it knows;
+    /// the tick adds the song closure's (`absent_song_paths`).
     pub(super) fn expected_absent_paths(&self, assets: &AssetManager) -> BTreeSet<PathBuf> {
         assets.failed_sound_paths().map(|sound| self.resolve_asset_path(Path::new(sound))).collect()
     }
 
     /// After a successful scene save: the file holds the editor's own bytes, so a change for
-    /// it already waiting is dropped — parked behind a gesture or as the Reload prompt — the
-    /// stamp the file has now is the watcher's baseline, and a change for it is dropped until
-    /// the worker acknowledges the note. The one stamp the frame ever reads.
+    /// it already waiting is dropped — parked behind a gesture or as the Reload prompt — and
+    /// the file is noted as written.
     pub(super) fn note_scene_written(&mut self, path: &Path) {
         let path = self.resolve_asset_path(path);
         if self.hot_reload.waiting_scene.as_deref() == Some(path.as_path()) {
@@ -183,25 +195,36 @@ impl<G: Game> EditorGame<G> {
             self.scene_confirm.pending_action = None;
             self.scene_confirm.pending_choice = None;
         }
+        self.note_written(&path);
+    }
+
+    /// After the editor's own successful write of `path`, resolved: the stamp the file has now
+    /// is the watcher's baseline, and a change for it is dropped until the worker acknowledges
+    /// the note. The one stamp the frame ever reads.
+    pub(super) fn note_written(&mut self, path: &Path) {
         // Before the worker starts nothing it sends can predate the save, and a count no
         // acknowledgement answers would hold back every later change to the file.
         let Some(worker) = &self.hot_reload.worker else { return };
-        let stamp = common::vfs::change_stamp(&path).ok().flatten();
-        worker.note_written(path.clone(), stamp);
-        *self.hot_reload.awaiting_note.entry(path).or_default() += 1;
+        let stamp = common::vfs::change_stamp(path).ok().flatten();
+        worker.note_written(path.to_path_buf(), stamp);
+        *self.hot_reload.awaiting_note.entry(path.to_path_buf()).or_default() += 1;
     }
 
-    /// Dispatch every event taken, in order, then the scene's change if it waits. World-only
-    /// but for the asset manager, so the headless suite drives it.
+    /// Dispatch every event taken, in order — a song's changes once per owner after them —
+    /// then the scene's and the song map's changes if they wait. World-only but for the asset
+    /// manager and the audio, so the headless suite drives it.
     pub(super) fn dispatch_file_changes(&mut self, targets: &mut ReloadTargets<'_>) {
+        let mut songs = SongChanges::default();
         for event in std::mem::take(&mut self.hot_reload.incoming) {
             match event {
                 WatchEvent::Noted(path) => self.acknowledge_note(&path),
                 WatchEvent::Change(change) if self.hot_reload.awaiting_note.contains_key(change.path()) => {}
-                WatchEvent::Change(change) => self.dispatch_file_change(change, targets),
+                WatchEvent::Change(change) => self.dispatch_file_change(change, targets, &mut songs),
             }
         }
+        self.dispatch_song_changes(songs, targets.audio);
         self.try_waiting_scene_reload(targets);
+        self.try_waiting_song_map(targets.edit_field_focused);
     }
 
     fn acknowledge_note(&mut self, path: &Path) {
@@ -214,7 +237,7 @@ impl<G: Game> EditorGame<G> {
         }
     }
 
-    fn dispatch_file_change(&mut self, change: FileChange, targets: &mut ReloadTargets<'_>) {
+    fn dispatch_file_change(&mut self, change: FileChange, targets: &mut ReloadTargets<'_>, songs: &mut SongChanges) {
         let Some(owners) = self.hot_reload.watched.get(change.path()).cloned() else { return };
         let path = change.path().to_path_buf();
         let shown = self.shown_path(&path, &owners);
@@ -223,9 +246,14 @@ impl<G: Game> EditorGame<G> {
             return;
         };
         // The open scene is a scene whatever its name: one saved as `<name>.sheet.ron` reads
-        // as a sheet by its suffix, and no sheet owns it.
+        // as a sheet by its suffix, and no sheet owns it. A sample only a song names is the
+        // song's.
+        let song_only = owners.iter().any(|owner| matches!(owner, WatchOwner::Song(_)))
+            && !owners.iter().any(|owner| matches!(owner, WatchOwner::Sound(_)));
         let policy = if owners.contains(&WatchOwner::Scene) {
             ReloadPolicy::ReloadDocument
+        } else if song_only {
+            ReloadPolicy::ReloadSong
         } else {
             FileType::of(&path, &[]).map_or(ReloadPolicy::None, |file_type| file_type.reload_policy(&path))
         };
@@ -257,7 +285,9 @@ impl<G: Game> EditorGame<G> {
                         self.reload_sample(targets.assets, targets.audio, sound);
                     }
                 }
+                songs.collect(&path, &owners);
             }
+            ReloadPolicy::ReloadSong => songs.collect(&path, &owners),
             _ => {}
         }
     }
@@ -270,6 +300,7 @@ impl<G: Game> EditorGame<G> {
             Some(WatchOwner::Sheet(png)) => engine_core::sidecar_path_for(png).display().to_string(),
             Some(WatchOwner::Sound(sound)) => sound.clone(),
             Some(WatchOwner::Scene) => self.editor.scene_path().unwrap_or(path).display().to_string(),
+            Some(WatchOwner::Song(_)) => self.asset_relative(path),
             None => path.display().to_string(),
         }
     }
@@ -295,9 +326,7 @@ impl<G: Game> EditorGame<G> {
             self.hot_reload.waiting_scene = None;
             return;
         }
-        let gesture_live = self.editor.gizmo_has_priority() || self.composer_drag.is_some() || targets.edit_field_focused;
-        let dialog_up = self.scene_confirm.pending_action.is_some() || self.stop_confirm.pending;
-        if self.editor.in_play_session() || gesture_live || dialog_up {
+        if self.reload_is_held(targets.edit_field_focused) {
             return;
         }
         self.hot_reload.waiting_scene = None;
@@ -306,6 +335,14 @@ impl<G: Game> EditorGame<G> {
             return;
         }
         self.reload_scene_from_disk(targets.world, targets.assets, &path);
+    }
+
+    /// Whether a document's change must wait: a play session, a gizmo or composer drag, a
+    /// focused field or a dialog holds it.
+    fn reload_is_held(&self, edit_field_focused: bool) -> bool {
+        let gesture_live = self.editor.gizmo_has_priority() || self.composer_drag.is_some() || edit_field_focused;
+        let dialog_up = self.scene_confirm.pending_action.is_some() || self.stop_confirm.pending;
+        self.editor.in_play_session() || gesture_live || dialog_up
     }
 
     /// Replace the open scene with the file on disk; a file that does not load leaves the

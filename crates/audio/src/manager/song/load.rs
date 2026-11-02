@@ -218,6 +218,14 @@ pub(crate) struct DependencyCache {
     files: HashMap<PathBuf, CachedFile>,
     current_closure: BTreeSet<PathBuf>,
     previous_closure: BTreeSet<PathBuf>,
+    /// Every dependency the latest preparation read or tried to, whether it succeeded or
+    /// not: a failed one's missing file is among them, so a host watching it hears the
+    /// file arrive.
+    last_attempted: BTreeSet<PathBuf>,
+    /// The file the latest preparation could not find — the first missing one, since a
+    /// preparation stops at it — joined with the asset base; empty after one that succeeded
+    /// or failed for another reason. What a host marks as expected absent.
+    last_missing: BTreeSet<PathBuf>,
     decodes: u64,
 }
 
@@ -252,7 +260,32 @@ impl DependencyCache {
         self.files.extend(worker.files);
         self.previous_closure =
             std::mem::replace(&mut self.current_closure, worker.current_closure);
+        self.last_attempted = worker.last_attempted;
+        self.last_missing = worker.last_missing;
         self.decodes += worker.decodes;
+    }
+
+    /// Take back `worker` after a preparation that failed: its decodes are good and join
+    /// these, and the paths it attempted become the last attempted; both closures stay,
+    /// since the song playing did not change.
+    pub(crate) fn merge_failed(&mut self, worker: DependencyCache) {
+        self.files.extend(worker.files);
+        self.last_attempted = worker.last_attempted;
+        self.last_missing = worker.last_missing;
+        self.decodes += worker.decodes;
+    }
+
+    /// The file the latest preparation could not find, if it failed for that.
+    pub(crate) fn missing(&self) -> &BTreeSet<PathBuf> {
+        &self.last_missing
+    }
+
+    /// The last successful preparation's closure and every path the latest one attempted.
+    pub(crate) fn closure_and_attempted(&self) -> BTreeSet<PathBuf> {
+        self.current_closure
+            .union(&self.last_attempted)
+            .cloned()
+            .collect()
     }
 
     /// Build `file`'s song over `data`: every SoundFont and sample it names loaded through
@@ -282,6 +315,15 @@ impl DependencyCache {
                 })?;
                 ReadySong::new(closure.label, Arc::new(song))
             });
+        self.last_attempted = touched.clone();
+        self.last_missing = match &result {
+            Err(AudioError::Song { path, problem, .. })
+                if matches!(&**problem, SongProblem::Unreadable(error) if error.kind() == io::ErrorKind::NotFound) =>
+            {
+                BTreeSet::from([closure.asset_base.join(path)])
+            }
+            _ => BTreeSet::new(),
+        };
         if result.is_ok() {
             self.previous_closure = std::mem::replace(&mut self.current_closure, touched);
         }

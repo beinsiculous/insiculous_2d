@@ -260,6 +260,7 @@ async fn run_playground() -> Result<(), String> {
     let scene_snapshot = Arc::new(editor_integration::SceneSnapshotRequest::default());
     let preview_open = Arc::new(AtomicBool::new(false));
     let open_song = Arc::new(Mutex::new(None));
+    let song_import = Arc::new(Mutex::new(None));
     let hooks = crate::bridge::Hooks {
         source_check: Some(|source: &str| {
             engine_core::scripting::check_source(source).map_err(|e| e.to_string())
@@ -273,6 +274,7 @@ async fn run_playground() -> Result<(), String> {
         scene_snapshot: Some(Arc::clone(&scene_snapshot)),
         preview_open: Some(Arc::clone(&preview_open)),
         open_song: Some(Arc::clone(&open_song)),
+        song_import: Some(Arc::clone(&song_import)),
     };
     crate::bridge::set_hooks(hooks);
 
@@ -300,6 +302,7 @@ async fn run_playground() -> Result<(), String> {
         scene_snapshot: Some(scene_snapshot),
         preview_open: Some(preview_open),
         open_song: Some(open_song),
+        song_import: Some(song_import),
     };
 
     let config = GameConfig::new("Insiculous Playground")
