@@ -1307,9 +1307,15 @@ Reviewers: kimi; gemini (the journal's recovery and the prune order are a seam; 
 write-during-commit fixture). Leaves out: anything the watcher reports (5c); the audio swap
 (5b); the panel's Save dispatching a reload (5c); the composer's rename (batch 7).
 
-**Batch 5b — the audio seam: #213 (E11), the silent part, the example's flag.** `audio` and
-`music_midi`; no host wiring. § MIDI reload: swap at the next bar is the target shape, § Appendix
-held.
+**Batch 5b — the audio seam: #213 (E11), the silent part, the example's flag. DONE 2026-11-02,
+insiculous_2d 26eb737, after code rounds 28 and 29** (what the rounds taught: a host seek is told
+landed by its ordinal among the host's commands against the conductor's `commands_applied` — the
+sequencer's `reconstructions` also rise on a wrap or a resume, and two seeks before a block renders
+collapse — and the re-seed waits one reading past that, since the conductor publishes its counters
+before its position; the swap waits while a seek is in flight and the landing takes a stationary
+song's or a staged preparation; the fresh conductor publishes zeros until its first block, so the
+queries answer from the landing until then). `audio` and `music_midi`; no host wiring. § MIDI
+reload: swap at the next bar is the target shape, § Appendix held.
 - **`manager/song.rs` is 603 lines**: before anything else it splits — the transport and the
   queries (`stop_song` … `beat_crossed`, `:352-478`, 127 lines) to `song/transport.rs` as a
   child module reaching the private fields, which leaves `song.rs` at about 476 — its own
@@ -1401,18 +1407,53 @@ which needs 5c; the audio-thread swap (§ Appendix).
 
 **Batch 5c — the host's song reload: #214's host half, the watched closure, the panel's Save.**
 `editor_integration`, over 5a's document and 5b's seam. § File watching and hot reload's
-`ReloadSong` row and the paragraph before the table are the target shape.
+`ReloadSong` row and the paragraph before the table are the target shape — minus the sentence
+"`note_written` silences only the watcher … dispatches the song's reload itself", retired by
+Jesse's ruling of 2026-10-29 (below). **Re-verified 2026-11-02 against the tree 5b leaves:**
+`hot_reload.rs` is 333 lines — `WatchOwner { Scene, Script, Sheet, Sound }` (`:45-55`),
+`HotReload` (`:58-78`), `ReloadTargets` (`:86-93`, with `audio`), `drain_file_changes` (`:97-110`,
+called from `finish_frame`, `mod.rs:420-432`, after `apply_song_intents` and the dirty mirror),
+`watched_paths` (`:137-166`, no song yet), `expected_absent_paths` (`:169-171`), `note_scene_written`
+(`:177-194`), `dispatch_file_change` (`:211-263`: `ReloadSong` has no arm and falls to `_ => {}`;
+`policy_label` already says "reload song") — so the song's arm is a child, `hot_reload/song.rs`,
+as `sheet.rs` and `sample.rs` are. `song_io.rs` is 330: `song_change_refusal` `:42-46`, `save_song`
+`:63`, `save_song_to(target, intent)` `:80-91`, `write_song` `:97` (where a successful save notes
+its files), `open_song` `:156-174`; the API's refusal is `command_api/song.rs:19`
+`song_write_refusal`. The session plays the **saved** song by path (`play_armed_song`,
+`song_preview.rs:493`, `audio.play_song(path)`), so `song_request()` names it; the Editing preview
+plays the document in memory (`:452-453`) and owns no files but the document's two. **The manager
+exposes neither the playing song nor the closure yet**: 5c adds `AudioManager::playing_song() ->
+Option<&Arc<Song>>` (its `file()` and `data()`, `conductor/song.rs:141-145`, are what the diff
+reads) and `song_closure()` over `DependencyCache.current_closure` (`load.rs:219`) plus the paths a
+failed preparation attempted — `prepare` keeps `touched` only on success (`:267`, `:285-286`), so the
+cache records `last_attempted` on every call, the worker's copy carrying it back (`Preparation.cache`
+arrives on failure too, `replace.rs` `take_in`). The diff is `editor::external_tools::{diff_tracks,
+TrackListing::of(file, data), TrackDiff::refuses, texts}` (`track_diff.rs:17-96`). The scene's
+"Reload / Keep mine" is `PendingSceneAction::ReloadFromDisk(PathBuf)` (`scene_confirm.rs:40`,
+routed by `resolve_scene_reload_choice`; Enter and Escape keep mine); the song map's prompt is a
+sibling variant. The web: `EditorGame.open_song_mirror` (`mod.rs:136`) is read by the bridge
+(`bridge.rs:179-181`) into `import_file(project_root, name, bytes, open_song, replace)`
+(`upload.rs:171-197`), whose refusal of the open song's `.mid` (`:189-191`) goes; the inverse channel
+is a mailbox beside the mirror in `EditorRunOptions` — `(path, bytes)` the bridge fills and
+`finish_frame` drains before `drain_file_changes` into `adopt_score`. A `.mid` and its `.mid.ron`
+arrive as two `WatchEvent::Change`s in one poll (the watch settles them together): the host
+dispatches the song once per owner per frame. Near the ceiling: `song_preview.rs` 592,
+`hot_reload_tests.rs` 580, `bridge.rs` 569, `mod.rs` 557, `song_io_tests.rs` 434 — the new tests are
+`hot_reload_song_tests.rs`.
 - **The watched set gains the songs** (`hot_reload.rs`, `watched_paths`): the open document's
   `.mid` and sidecar (`EditorGame.song`, `SongDocument::path`); the session song's closure —
-  `AudioManager` exposes it from `DependencyCache.current_closure` (`load.rs:216-218`) plus the
-  `.mid` and the `.mid.ron`; every path a failed preparation attempted (`touched`, `load.rs:245`),
-  the missing ones marked expected absent (batch 4's mark); the closure re-registered after every
-  preparation. `WatchOwner::Song { document | session }`.
-- **Every song save is noted** as the scene's is: `note_scene_written` (`hot_reload.rs:173-193`)
+  `AudioManager::song_closure()` (above) plus the `.mid` and the `.mid.ron` of `song_request()`;
+  every path a failed preparation attempted (`last_attempted`, above), the missing ones marked
+  expected absent (batch 4's mark); the closure re-read on the watch's 500 ms tick, which already
+  re-registers when the keys or the marks differ. `WatchOwner::Song(SongOwner::Document |
+  SongOwner::Session)`.
+- **Every song save is noted** as the scene's is: `note_scene_written` (`hot_reload.rs:177-194`)
   splits into the generic `note_written(path)` — the worker told, the save counted until its
   `Noted`, a change for the path dropped until then, a save before the worker starts not counted
-  — and the scene's own parking; `save_song_to` (`song_io.rs:62`) notes its two files after a
-  successful save, and the web import nothing (no worker).
+  — and the scene's own parking; `write_song` (`song_io.rs:97`, the save every route takes) notes
+  its files after a successful commit — the sidecar always, the `.mid` when the save wrote it —
+  and drops a parked map prompt for the song as the scene's note drops its; the web import notes
+  nothing (no worker).
 - **`ReloadSong` dispatch**: the companion debounce is the watcher's (batch 3); a change in the
   open document's files → `adopt_score` / `reload_map` (5a), a clean map reloaded, a dirty one
   prompted through `ConfirmDialog` ("the map changed on disk: Reload / Keep mine"), the diff's
@@ -1440,8 +1481,14 @@ which needs 5c; the audio-thread swap (§ Appendix).
   step read under the rule above: the renamed track's refusal shows during Play; Stop, fix the
   selector in the panel, Save, Play → the fixed song plays; a binding changed and saved while
   Editing after an export keeps the exported notes.
-- **Docs:** `crates/editor_integration/CLAUDE.md` (`hot_reload.rs`, `song_io.rs`), the pitfall
-  rows; `docs/SCRIPTING.md` unchanged.
+- **The outcomes drained**: `take_song_replacements()` (5b) every frame in `finish_frame`, after
+  `apply_song_intents` — `Swapped { bar, .. }` an information line naming the bar, `Refused` and
+  `Failed` error lines, `Dropped` nothing — through `report`, so the bar and the console agree.
+- **Docs:** `crates/editor_integration/CLAUDE.md` (`hot_reload.rs` — its "a song's samples and
+  SoundFonts are not watched yet" goes — and `song_io.rs`), the pitfall rows; `crates/audio/CLAUDE.md`
+  (`playing_song`, `song_closure`); `training.md` § Conductor Pattern's "In the editor" paragraph
+  (a saved song changed on disk during Play is heard from the next bar); `docs/SCRIPTING.md`
+  unchanged.
 
 Reviewers: kimi, gemini (the note-written widening and the closure are harness and seam). Leaves
 out: nothing of batch 5 — the three together are the one section above as reviewed.
