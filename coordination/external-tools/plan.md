@@ -1405,7 +1405,13 @@ reload: swap at the next bar is the target shape, § Appendix held.
 Reviewers: kimi, gemini (the audio seam). Leaves out: every host change (5c); the listen check,
 which needs 5c; the audio-thread swap (§ Appendix).
 
-**Batch 5c — the host's song reload: #214's host half, the watched closure, the panel's Save.**
+**Batch 5c — the host's song reload: #214's host half, the watched closure, the panel's Save.
+DONE 2026-11-02, insiculous_2d 82b6957, after code rounds 30 and 31** (what the rounds taught: the
+watcher's absent marks come from the loader's own knowledge of the file it could not find, never
+from a stat at the tick — a file arriving inside the poll interval was a silent baseline, and a
+mark once set latched; an external adoption stops a sounding preview explicitly, since a clean
+document's history revision does not move; the listen check, § Verification "After batch 5", is
+Jesse's and still open — a gap he hears sends § Appendix to a batch).
 `editor_integration`, over 5a's document and 5b's seam. § File watching and hot reload's
 `ReloadSong` row and the paragraph before the table are the target shape — minus the sentence
 "`note_written` silences only the watcher … dispatches the song's reload itself", retired by
