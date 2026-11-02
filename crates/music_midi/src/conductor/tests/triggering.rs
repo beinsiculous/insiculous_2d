@@ -417,3 +417,35 @@ fn a_seek_while_stopped_is_where_the_next_play_starts_and_only_that_play() {
         "the start tick is spent by the play it started"
     );
 }
+
+#[test]
+fn a_trigger_on_a_part_whose_track_has_no_notes_is_a_rest_counted_silent() {
+    let song = trigger_song(
+        vec![("melody", melody(&[(A4, 100, QUARTER)])), ("muted", Vec::new())],
+        QUARTER * 8,
+        true,
+        &format!(
+            r#"parts: [
+                   (name: "melody", track: Name("melody"), quantize: Off),
+                   (name: "muted", track: Name("muted"), quantize: Off),
+               ],
+               instruments: [{}],
+               bindings: [
+                   (action: "hit", part: "melody", instrument: "sine"),
+                   (action: "hush", part: "muted", instrument: "sine"),
+               ]"#,
+            sine_instrument("sine")
+        ),
+    );
+    let mut stage = Stage::playing(song);
+    stage.render(whole_blocks(0.1));
+
+    stage.trigger("hush", source(1)).expect("queued");
+    let (output, _) = stage.render(whole_blocks(0.2));
+
+    let snapshot = stage.snapshot();
+    assert_eq!(snapshot.silent_triggers, 1, "{snapshot:?}");
+    assert_eq!(snapshot.accepted_triggers, 0, "{snapshot:?}");
+    assert_eq!(snapshot.rejected_triggers, 0, "{snapshot:?}");
+    assert_eq!(energy(&output), 0.0, "the rest plays nothing");
+}

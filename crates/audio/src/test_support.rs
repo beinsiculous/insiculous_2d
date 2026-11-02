@@ -51,19 +51,46 @@ fn note(channel: u8, key: u8, on: bool) -> TrackEventKind<'static> {
     }
 }
 
+/// The timing and length of a hand-built song.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct SongShape {
+    pub ticks_per_quarter: u32,
+    pub microseconds_per_quarter: u32,
+    /// Quarter notes to the bar: the time signature is this over four.
+    pub beats_per_bar: u8,
+    /// Quarter notes before the song ends.
+    pub beats: u32,
+}
+
+/// [`song_midi`]'s shape: sixteen beats of 4/4 at ten beats a second.
+pub(crate) const SONG_SHAPE: SongShape = SongShape {
+    ticks_per_quarter: QUARTER,
+    microseconds_per_quarter: TEN_BEATS_A_SECOND,
+    beats_per_bar: 4,
+    beats: SONG_BEATS,
+};
+
 /// Sixteen beats of 4/4 at ten beats a second: a control track, a `melody` track of
 /// quarter notes for triggers to walk, and — with `background` — a `pad` track holding
 /// one low note for the background to play.
 pub(crate) fn song_midi(background: bool) -> Vec<u8> {
-    let end_tick = SONG_BEATS * QUARTER;
+    shaped_song_midi(SONG_SHAPE, background)
+}
+
+/// [`song_midi`]'s tracks in another `shape`.
+pub(crate) fn shaped_song_midi(shape: SongShape, background: bool) -> Vec<u8> {
+    let quarter = shape.ticks_per_quarter;
+    let end_tick = shape.beats * quarter;
     let control = vec![
         (
             0,
-            TrackEventKind::Meta(MetaMessage::Tempo(u24::new(TEN_BEATS_A_SECOND))),
+            TrackEventKind::Meta(MetaMessage::Tempo(u24::new(
+                shape.microseconds_per_quarter,
+            ))),
         ),
         (
             0,
-            TrackEventKind::Meta(MetaMessage::TimeSignature(4, 2, 24, 8)),
+            TrackEventKind::Meta(MetaMessage::TimeSignature(shape.beats_per_bar, 2, 24, 8)),
         ),
         (
             end_tick,
@@ -80,10 +107,10 @@ pub(crate) fn song_midi(background: bool) -> Vec<u8> {
     for key in [60, 62, 64, 65]
         .into_iter()
         .cycle()
-        .take(SONG_BEATS as usize)
+        .take(shape.beats as usize)
     {
         melody.push((0, note(0, key, true)));
-        melody.push((QUARTER, note(0, key, false)));
+        melody.push((quarter, note(0, key, false)));
     }
     let mut tracks = vec![control, melody];
     if background {
@@ -93,10 +120,10 @@ pub(crate) fn song_midi(background: bool) -> Vec<u8> {
             (end_tick - 1, note(1, 48, false)),
         ]);
     }
-    write_smf(&tracks)
+    write_smf(&tracks, quarter)
 }
 
-fn write_smf(tracks: &[Vec<(u32, TrackEventKind<'static>)>]) -> Vec<u8> {
+fn write_smf(tracks: &[Vec<(u32, TrackEventKind<'static>)>], ticks_per_quarter: u32) -> Vec<u8> {
     let tracks = tracks
         .iter()
         .map(|steps| {
@@ -116,7 +143,10 @@ fn write_smf(tracks: &[Vec<(u32, TrackEventKind<'static>)>]) -> Vec<u8> {
         .collect();
     let mut bytes = Vec::new();
     Smf {
-        header: Header::new(Format::Parallel, Timing::Metrical(u15::new(QUARTER as u16))),
+        header: Header::new(
+            Format::Parallel,
+            Timing::Metrical(u15::new(ticks_per_quarter as u16)),
+        ),
         tracks,
     }
     .write_std(&mut bytes)

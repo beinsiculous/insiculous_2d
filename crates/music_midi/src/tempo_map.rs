@@ -232,6 +232,28 @@ impl TempoMap {
             .saturating_add((beat - segment.start_beat).saturating_mul(segment.ticks_per_beat))
     }
 
+    /// The ticks bar number `bar` (from zero) spans, as `(start, end)` with the end
+    /// exclusive: a whole bar of its meter, or the partial bar a time signature landing
+    /// mid-bar closes, which ends on that signature's tick. A bar past the last signature
+    /// is a whole bar of the last meter — the map knows no song's end, so a caller holding
+    /// one clamps the last bar to it.
+    pub fn bar_span(&self, bar: u64) -> (u64, u64) {
+        let index = self
+            .meter_segments
+            .partition_point(|segment| segment.start_bar <= bar);
+        let segment = self.meter_segments[index.saturating_sub(1)];
+        let ticks_per_bar = segment.beats_per_bar.saturating_mul(segment.ticks_per_beat);
+        let start = segment
+            .start_tick
+            .saturating_add((bar - segment.start_bar).saturating_mul(ticks_per_bar));
+        let whole_end = start.saturating_add(ticks_per_bar);
+        let end = self
+            .meter_segments
+            .get(index)
+            .map_or(whole_end, |next| whole_end.min(next.start_tick));
+        (start, end)
+    }
+
     /// How many beat boundaries fall in `(from_sample, to_sample]` — each counted once,
     /// on the first sample at or after its exact time. Zero when `to_sample` is not after
     /// `from_sample`.

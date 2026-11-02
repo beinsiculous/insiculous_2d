@@ -33,6 +33,15 @@
 //! command can wait), frame times, the position and the counters, triggers, sample voices
 //! and the limiter's included.
 //!
+//! **A replacement at a bar line.** `--replace-after N` writes the cast fixture beside the
+//! song as `replacement.mid`, under the same sidecar, and once the song reaches bar N + 1
+//! asks for it with `ctx.audio.replace_song_at_seam`; every outcome drained from
+//! `take_song_replacements` is printed, the swap with its bar and the block the new song
+//! starts in. The cast is the type-0 fixture with a program on each melodic channel, so
+//! `--fixture napolitan-type0` with a General MIDI bank hears the swap as the melody
+//! turning from piano to flute at a bar line; the default fixture swaps to itself, and only
+//! the seam is heard.
+//!
 //! Controls (a held key acts once): 1–4 trigger (5 with `--sample`), Left Shift triggers
 //! through the script, Space pauses and
 //! resumes, K seeks to bar 8, L turns looping off and on, M mutes and unmutes the music
@@ -41,7 +50,7 @@
 //!
 //! Run with: cargo run --release --example conductor_background -- [SOUNDFONT]
 //!   [--fixture napolitan|napolitan-type0|egmont] [--background-only] [--sample]
-//!   [--seconds N]
+//!   [--seconds N] [--replace-after N]
 //! The SoundFont defaults to the spike's cast bank when its `prepare_assets.sh` has been
 //! run, and to the sine test bank otherwise; the cast bank has no flute, so its flute
 //! channel falls back to the piano — any General MIDI bank, such as
@@ -54,7 +63,7 @@ use std::path::{Path, PathBuf};
 
 use ecs::script::{ScriptRef, Scripts};
 use engine_core::prelude::*;
-use music_midi::{SongData, SourceId, TempoMap, TransportState};
+use music_midi::{SongData, SourceId, TempoMap, TransportState, BLOCK_FRAMES};
 
 /// Anchor asset paths to the repository so the example runs from any working directory.
 const REPOSITORY_DIR: &str = env!("CARGO_MANIFEST_DIR");
@@ -66,6 +75,8 @@ const NAPOLITAN_DANCE_CAST: &str = "crates/music_midi/fixtures/dansenapolitaine-
 const EGMONT: &str = "crates/music_midi/fixtures/Egmont.mid";
 const SINE_SAMPLE: &str = "crates/music_midi/fixtures/sine_48000_mono.wav";
 const TRIGGER_SCRIPT: &str = "examples/assets/scripts/conductor_trigger.rhai";
+/// The file the replacement is written as, beside the song.
+const REPLACEMENT_FILE: &str = "replacement.mid";
 const REPORT_SECONDS: f32 = 10.0;
 /// Bar 8 as musicians count it; bars count from zero in the tempo map.
 const SEEK_BAR: u64 = 7;
@@ -91,6 +102,8 @@ struct Settings {
     background_only: bool,
     sample: bool,
     quit_after_seconds: Option<f32>,
+    /// Bars of the song before the cast fixture replaces it.
+    replace_after_bars: Option<u64>,
 }
 
 impl Settings {
@@ -100,6 +113,7 @@ impl Settings {
         let mut background_only = false;
         let mut sample = false;
         let mut quit_after_seconds = None;
+        let mut replace_after_bars = None;
         let mut arguments = std::env::args().skip(1);
         while let Some(argument) = arguments.next() {
             match argument.as_str() {
@@ -113,6 +127,9 @@ impl Settings {
                 "--sample" => sample = true,
                 "--seconds" => {
                     quit_after_seconds = arguments.next().and_then(|value| value.parse().ok())
+                }
+                "--replace-after" => {
+                    replace_after_bars = arguments.next().and_then(|value| value.parse().ok())
                 }
                 path => sound_font = Some(PathBuf::from(path)),
             }
@@ -131,6 +148,7 @@ impl Settings {
             background_only,
             sample,
             quit_after_seconds,
+            replace_after_bars,
         }
     }
 
@@ -203,6 +221,8 @@ struct ConductorBackground {
     sfx_muted: bool,
     elapsed_seconds: f32,
     seeked_halfway: bool,
+    /// The replacement's MIDI file until it is asked for; its directory goes then.
+    replacement: Option<PathBuf>,
     window: FrameWindow,
     /// Keys down now: the window system repeats a held key's press, and a held trigger
     /// key would fire at the keyboard's repeat rate.
@@ -219,14 +239,16 @@ impl ConductorBackground {
             sfx_muted: false,
             elapsed_seconds: 0.0,
             seeked_halfway: false,
+            replacement: None,
             window: FrameWindow::default(),
             keys_down: Vec::new(),
         }
     }
 
-    /// Copy the fixture and write its sidecar into a directory of the example's own; the
-    /// path of the copied MIDI file.
-    fn write_song(&self, base_path: &Path) -> Result<PathBuf, String> {
+    /// Copy the fixture and write its sidecar into a directory of the example's own — the
+    /// cast fixture too, as the replacement, with `--replace-after`; the path of the copied
+    /// MIDI file.
+    fn write_song(&mut self, base_path: &Path) -> Result<PathBuf, String> {
         let directory =
             std::env::temp_dir().join(format!("insiculous_conductor_background_{}", std::process::id()));
         let stem = Path::new(self.settings.fixture)
@@ -234,21 +256,61 @@ impl ConductorBackground {
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("song.mid"));
         let midi_path = directory.join(stem);
-        let midi = common::vfs::read(&base_path.join(self.settings.fixture))
-            .map_err(|error| format!("{}: {error}", self.settings.fixture))?;
-        let sound_font_label = self.settings.sound_font.to_string_lossy().into_owned();
-        let mut sidecar_path = midi_path.clone().into_os_string();
-        sidecar_path.push(".ron");
-        let write = |path: &Path, bytes: &[u8]| {
-            common::vfs::write(path, bytes).map_err(|error| format!("{}: {error}", path.display()))
-        };
-        write(&midi_path, &midi)?;
-        write(
-            Path::new(&sidecar_path),
-            self.settings.sidecar(&sound_font_label).as_bytes(),
-        )?;
+        let sidecar = self
+            .settings
+            .sidecar(&self.settings.sound_font.to_string_lossy());
+        write_song_files(base_path, self.settings.fixture, &midi_path, &sidecar)?;
         println!("Song written to {}", midi_path.display());
+        if self.settings.replace_after_bars.is_some() {
+            let replacement = directory.join(REPLACEMENT_FILE);
+            write_song_files(base_path, NAPOLITAN_DANCE_CAST, &replacement, &sidecar)?;
+            self.replacement = Some(replacement);
+        }
         Ok(midi_path)
+    }
+
+    /// Past the bar `--replace-after` names, ask for the replacement once, then drop its
+    /// files: they are read at the request.
+    fn replace_when_due(&mut self, ctx: &mut GameContext) {
+        let (Some(bars), Some(position)) =
+            (self.settings.replace_after_bars, ctx.audio.song_position())
+        else {
+            return;
+        };
+        if position.bar < bars {
+            return;
+        }
+        let Some(replacement) = self.replacement.take() else {
+            return;
+        };
+        match ctx.audio.replace_song_at_seam(&replacement) {
+            Ok(()) => println!("replacement asked for in bar {}", position.bar + 1),
+            Err(error) => println!("the replacement cannot be read: {error}"),
+        }
+        if let Some(directory) = replacement.parent() {
+            common::vfs::remove_prefix(directory).ok();
+        }
+    }
+
+    /// Print every replacement outcome since the last frame.
+    fn log_replacements(ctx: &mut GameContext) {
+        for outcome in ctx.audio.take_song_replacements() {
+            match outcome {
+                SongReplacement::Swapped { bar, position } => {
+                    let start_block = (position.seconds * f64::from(SONG_SAMPLE_RATE)) as u64
+                        / BLOCK_FRAMES as u64;
+                    println!(
+                        "song replaced in bar {}: the new song plays from bar {} beat {}, block {start_block}",
+                        bar + 1,
+                        position.bar + 1,
+                        position.beat_in_bar + 1,
+                    );
+                }
+                SongReplacement::Refused { reason } => println!("replacement refused: {reason}"),
+                SongReplacement::Failed(error) => println!("replacement failed: {error}"),
+                SongReplacement::Dropped => println!("replacement dropped"),
+            }
+        }
     }
 
     fn start(&mut self, ctx: &mut GameContext) -> Result<(), String> {
@@ -262,8 +324,9 @@ impl ConductorBackground {
             .beat;
         let started = common::clock::Instant::now();
         let played = ctx.audio.play_song(&midi_path);
-        // Every byte of the song is in memory once it loads, so its files can go.
-        if let Some(directory) = midi_path.parent() {
+        // Every byte of the song is in memory once it loads, so its files can go — unless
+        // the replacement waits beside them.
+        if let (None, Some(directory)) = (&self.replacement, midi_path.parent()) {
             common::vfs::remove_prefix(directory).ok();
         }
         played.map_err(|error| error.to_string())?;
@@ -309,6 +372,24 @@ impl ConductorBackground {
     }
 }
 
+/// Copy `fixture` from the repository to `midi_path` and write `sidecar` beside it.
+fn write_song_files(
+    base_path: &Path,
+    fixture: &str,
+    midi_path: &Path,
+    sidecar: &str,
+) -> Result<(), String> {
+    let midi = common::vfs::read(&base_path.join(fixture))
+        .map_err(|error| format!("{fixture}: {error}"))?;
+    let mut sidecar_path = midi_path.as_os_str().to_owned();
+    sidecar_path.push(".ron");
+    let write = |path: &Path, bytes: &[u8]| {
+        common::vfs::write(path, bytes).map_err(|error| format!("{}: {error}", path.display()))
+    };
+    write(midi_path, &midi)?;
+    write(Path::new(&sidecar_path), sidecar.as_bytes())
+}
+
 /// The first tick of bar `bar` (from zero), walking beats through every meter change.
 fn bar_start_tick(tempo_map: &TempoMap, bar: u64) -> u64 {
     (0..)
@@ -338,6 +419,8 @@ impl Game for ConductorBackground {
         if self.window.seconds_total >= REPORT_SECONDS {
             self.report(ctx);
         }
+        self.replace_when_due(ctx);
+        Self::log_replacements(ctx);
         if let Some(quit_after) = self.settings.quit_after_seconds {
             if !self.seeked_halfway && self.elapsed_seconds >= quit_after / 2.0 {
                 self.seeked_halfway = true;

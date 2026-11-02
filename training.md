@@ -83,7 +83,7 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
 - **crates/audio/** - Audio playback via rodio, in three seams: the device, recorded sound and music, the song (the only crate that names rodio)
   - `lib.rs` - crate docs + re-exports, `music_midi`'s song types among them
   - `manager/mod.rs` - `AudioManager`: the device/output connection, the gesture-gated `enable_output` (disabled is either gesture-gated, the web, or headless with a virtual song clock), sound loading and SFX playback, `play_source` (any rodio `Source` on a bus), the one `PendingMusic` slot a recorded track and a song share; `manager/music.rs` - recorded music (play/stop/pause/resume) and the master/SFX/music volume buses; `manager/tests.rs` - the first two seams' tests
-  - `manager/song.rs` + `manager/song/{load,edges}.rs` - songs: `play_song(path)` (the `.mid`, its `<path>.ron` sidecar, every SoundFont and sample loaded through `common::vfs` relative to `set_asset_base`, all checked before the playing song is touched; decoded files cached by path, kept fresh by the file's change stamp, or by a content fingerprint where no modified time is kept), `play_song_in_memory`, transport, `song_position`, `beat_crossed(Subdivision)`, `trigger(action, source)`, `deactivate_source`, `stop_all_sources`; one conductor a song; commands a full queue refuses wait and go first from `update()`; tests in `manager/song/tests.rs` + `tests/loading.rs`
+  - `manager/song.rs` + `manager/song/{load,edges,transport,replace}.rs` - songs: `play_song(path)` (the `.mid`, its `<path>.ron` sidecar, every SoundFont and sample loaded through `common::vfs` relative to `set_asset_base`, all checked before the playing song is touched; decoded files cached by path, kept fresh by the file's change stamp, or by a content fingerprint where no modified time is kept), `play_song_in_memory`, `trigger(action, source)`, `deactivate_source`, `stop_all_sources`; the transport, `song_position` and `beat_crossed(Subdivision)` in `transport.rs`; `replace_song_at_seam` — a changed song prepared off the frame and swapped in at the next bar line — in `replace.rs`; one conductor a song; commands a full queue refuses wait and go first from `update()`; tests in `manager/song/tests.rs` + `tests/{loading,telemetry,replace}.rs`
   - `conductor_source.rs` - `ConductorSource`: the conductor as a rodio `Source`, one block per render at its own instant, the music and sfx gains from two atomics, the peak limiter after them (`conductor_source/limiter.rs`: a gain lowered ahead of a peak, the block its look-ahead)
   - `manager/playback.rs` - each playing instance on its own: `stop_playback`, `set_playback_mix` (volume and pan), `is_playing`, and what a disabled manager holds (a loop until stopped, started by `enable_output`; a one-shot until the next `update`)
   - `pan_source.rs` - `PanSource`: a recorded sound's live stereo pan from an atomic, unity at centre
@@ -1038,6 +1038,10 @@ the conductor.
 
 **Volume.** The background plays on the music bus and every triggered note on the sfx bus:
 music at 0 keeps the hits, sfx at 0 keeps the song, and the clock runs at both.
+
+**A song reloaded at the bar.** `ctx.audio.replace_song_at_seam(path)` prepares a changed song
+off the frame and swaps it in at the next bar line, at the same bar and the same fraction of it,
+keeping the transport and the label; `take_song_replacements()` says what happened to each request.
 
 **Beat timing.** `beat_crossed(Subdivision::Bar | Beat | Eighth | Sixteenth)` (the subdivision
 is in the prelude) is latched once an `update`, so a long frame reports one crossing. A

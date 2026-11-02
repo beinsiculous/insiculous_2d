@@ -27,7 +27,7 @@ impl AudioManager {
         self.songs
             .playback
             .as_ref()
-            .filter(|playback| !playback.is_dead() && !playback.handle.position().has_ended())
+            .filter(|playback| !playback.is_dead() && !playback.published_ended())
             .map(|playback| playback.label.as_str())
     }
 
@@ -42,7 +42,7 @@ impl AudioManager {
         self.songs
             .playback
             .as_ref()
-            .filter(|playback| !playback.is_dead() && !playback.handle.position().has_ended())
+            .filter(|playback| !playback.is_dead() && !playback.published_ended())
             .and_then(|playback| playback.path.as_deref())
     }
 

@@ -93,14 +93,12 @@ impl SongFile {
                 path: self.soundfont.clone(),
             });
         }
+        if song.tracks().iter().all(|track| track.note_count() == 0) {
+            return Err(SongFileProblem::EmptyScore);
+        }
+        // A part whose track has no notes is kept: every trigger on it is a rest.
         for part in &self.parts {
-            let track = part.resolve_track(song)?;
-            if song.tracks()[track].note_count() == 0 {
-                return Err(SongFileProblem::EmptyTriggerPart {
-                    part: part.name.clone(),
-                    track,
-                });
-            }
+            part.resolve_track(song)?;
         }
         for binding in &self.bindings {
             self.check_sample_range(song, binding)?;

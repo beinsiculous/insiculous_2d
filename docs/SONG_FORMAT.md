@@ -223,13 +223,18 @@ unknown field; an empty or repeated name in any collection (actions included); a
 path; a binding naming a part or an instrument that is not declared; a gain that is not
 finite or is negative; a root note, bank or preset out of range; more than 8 instruments.
 
-**Against the MIDI file and the loaded resources** (`SongFile::validate`): a background
-SoundFont the loader did not decode; a part whose track does not exist; a part selecting a
-shared name; a part whose track has no notes; a sample-bound part with a note more than 24
-semitones from the root; a SoundFont preset the SoundFont does not have; a preset that
-layers so many voices a note that 24 sounding notes would overflow the synthesizer's
-128-voice pool (a layering of 6 or more); a sample the loader did not decode, or one
-shorter than 1 ms or longer than 10 s.
+**Against the MIDI file and the loaded resources** (`SongFile::validate`): a score with no
+notes on any track ("the score is empty"); a background SoundFont the loader did not
+decode; a part whose track does not exist; a part selecting a shared name; a sample-bound
+part with a note more than 24 semitones from the root; a SoundFont preset the SoundFont
+does not have; a preset that layers so many voices a note that 24 sounding notes would
+overflow the synthesizer's 128-voice pool (a layering of 6 or more); a sample the loader
+did not decode, or one shorter than 1 ms or longer than 10 s.
+
+**A part whose track has no notes is a silent part**, not a refusal — a track muted or
+emptied in the program that wrote the `.mid`, its part still selected here. Every trigger
+on it is a rest: it plays nothing, moves no cursor, and is counted in the conductor's
+`silent_triggers`, as an exhausted `Sequence` is.
 
 The loader — not this crate — reads the files and supplies what it learned as
 `ResourceMetadata` (the SoundFonts it decoded, each preset's layering, each sample's

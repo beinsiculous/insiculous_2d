@@ -42,13 +42,17 @@ use super::{AudioManager, PendingMusic};
 
 mod edges;
 pub(crate) mod load;
+mod replace;
 mod telemetry;
+mod transport;
 #[cfg(test)]
 mod tests;
 mod virtual_clock;
 
 use edges::BeatEdges;
 pub use edges::Subdivision;
+pub use replace::SongReplacement;
+use replace::{PreparedPlayback, Reading, Replacements};
 pub use telemetry::SongMaxima;
 use load::{read_song_files, Closure, DependencyCache, ReadySong};
 use virtual_clock::{duration_of, frames_in, LONGEST_VIRTUAL_STEP};
@@ -89,6 +93,7 @@ pub(super) struct SongDeck {
     /// The highest epoch flushed, sent to every conductor after its `Play`.
     flush_floor: Option<u32>,
     dead_output_warnings: u64,
+    replacements: Replacements,
 }
 
 impl SongDeck {
@@ -100,6 +105,7 @@ impl SongDeck {
             buses: Arc::new(BusLevels::new(music_volume, sfx_volume)),
             flush_floor: None,
             dead_output_warnings: 0,
+            replacements: Replacements::new(),
         }
     }
 
@@ -143,13 +149,59 @@ struct SongPlayback {
     output: SongOutput,
     /// What the game last asked of the transport; the conductor follows at its next block.
     requested: TransportState,
+    /// Whether the transport loops: the sidecar's, until the game sets it. A replacement
+    /// carries it.
+    looping: bool,
     pending_lifecycle: VecDeque<ConductorCommand>,
     edges: BeatEdges,
+    /// Commands the conductor accepted from the host, in order; its `commands_applied`
+    /// reaches each one's ordinal when it lands.
+    commands_sent: u64,
+    /// Where a replacement put the song, answered to the queries until its conductor has
+    /// published a block of its own.
+    landing: Option<Landing>,
+    /// Set by `start_song` and kept by a replacement: a preparation made for another is
+    /// dropped.
+    generation: u64,
+    pending_replacement: Option<PreparedPlayback>,
+}
+
+/// What a replacement's conductor will publish once it renders: the swap's answer to the
+/// queries until then, since a fresh conductor publishes zeros.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Landing {
+    pub(super) sample_position: u64,
+    pub(super) ended: bool,
 }
 
 impl SongPlayback {
     fn tempo_map(&self) -> &TempoMap {
         self.song.background().tempo_map()
+    }
+
+    /// The published sample, or the landing's until the conductor has rendered.
+    fn published_sample(&self) -> u64 {
+        match self.landing {
+            Some(landing) if self.handle.position().snapshot().blocks_rendered == 0 => {
+                landing.sample_position
+            }
+            _ => self.handle.position().sample_position(),
+        }
+    }
+
+    /// Whether the song has ended, by the landing until the conductor has rendered.
+    fn published_ended(&self) -> bool {
+        match self.landing {
+            Some(landing) if self.handle.position().snapshot().blocks_rendered == 0 => {
+                landing.ended
+            }
+            _ => self.handle.position().has_ended(),
+        }
+    }
+
+    /// The ordinal the last command queued will have when the conductor applies it.
+    fn last_queued_ordinal(&self) -> u64 {
+        self.commands_sent + self.pending_lifecycle.len() as u64
     }
 
     fn is_dead(&self) -> bool {
@@ -177,6 +229,7 @@ impl SongPlayback {
             match self.handle.send(command) {
                 Ok(()) => {
                     self.pending_lifecycle.pop_front();
+                    self.commands_sent += 1;
                 }
                 Err(CommandRejected::QueueFull) => return true,
                 Err(CommandRejected::ConductorGone) => return false,
@@ -291,6 +344,7 @@ impl AudioManager {
             label,
             path,
             bindings: binding_table(&song),
+            looping: song.file().looping,
             song,
             handle,
             meters,
@@ -298,6 +352,10 @@ impl AudioManager {
             requested: TransportState::Playing,
             pending_lifecycle: VecDeque::new(),
             edges: BeatEdges::default(),
+            commands_sent: 0,
+            landing: None,
+            generation: self.songs.replacements.next_generation(),
+            pending_replacement: None,
         };
         // A seek while stopped is where the play starts, in whichever block it lands.
         if start_tick > 0 {
@@ -347,131 +405,6 @@ impl AudioManager {
         }
     }
 
-    /// Stop the song and drop its conductor; a song pending the first gesture is
-    /// forgotten too. Recorded music is untouched.
-    pub fn stop_song(&mut self) {
-        if matches!(self.pending_music, Some(PendingMusic::Song(_))) {
-            self.pending_music = None;
-        }
-        if let Some(playback) = self.songs.playback.take() {
-            if let SongOutput::Device(sink) = &playback.output {
-                sink.stop();
-            }
-        }
-    }
-
-    /// Hold the song's clock and release every note; triggers are refused until
-    /// [`AudioManager::resume_song`].
-    pub fn pause_song(&mut self) {
-        self.song_transport(ConductorCommand::Pause, TransportState::Paused);
-    }
-
-    /// Continue a paused song from where it was held.
-    pub fn resume_song(&mut self) {
-        self.song_transport(ConductorCommand::Resume, TransportState::Playing);
-    }
-
-    /// Move the song to the start of beat `beat` (from zero), releasing every triggered
-    /// note. While paused it moves where the song resumes.
-    pub fn seek_song(&mut self, beat: u64) {
-        let Some(playback) = self.songs.playback.as_ref() else {
-            return;
-        };
-        let tick = playback.tempo_map().tick_at_beat(beat);
-        let requested = playback.requested;
-        self.song_transport(ConductorCommand::Seek(tick), requested);
-    }
-
-    /// Loop the song at its end, or let it stop there; takes effect at the next seam.
-    pub fn set_song_looping(&mut self, looping: bool) {
-        self.song_lifecycle(ConductorCommand::SetLooping(looping));
-    }
-
-    fn song_transport(&mut self, command: ConductorCommand, requested: TransportState) {
-        let Some(playback) = self.songs.playback.as_mut() else {
-            return;
-        };
-        if playback.is_dead() {
-            return;
-        }
-        let pausing = command == ConductorCommand::Pause;
-        let resuming = command == ConductorCommand::Resume;
-        if (pausing && playback.requested != TransportState::Playing)
-            || (resuming && playback.requested != TransportState::Paused)
-        {
-            return;
-        }
-        playback.requested = requested;
-        if !playback.send_lifecycle(command) {
-            self.mark_song_output_dead();
-        }
-    }
-
-    /// Whether a song is playing: started, not paused, not played to its end, and its
-    /// output alive. `false` while a song waits for the first gesture.
-    #[must_use]
-    pub fn is_song_playing(&self) -> bool {
-        self.songs.playback.as_ref().is_some_and(|playback| {
-            !playback.is_dead()
-                && playback.requested == TransportState::Playing
-                && !playback.handle.position().has_ended()
-        })
-    }
-
-    /// Whether the song played to its end without looping: what tells a song that
-    /// finished from one whose output died. `false` without a song.
-    #[must_use]
-    pub fn song_ended(&self) -> bool {
-        self.songs
-            .playback
-            .as_ref()
-            .is_some_and(|playback| playback.handle.position().has_ended())
-    }
-
-    /// Where the song is, or `None` without a song, while one waits for the first
-    /// gesture, or once its output died. The position is a block's start — where a
-    /// scheduled trigger fires — so it runs up to 63 frames ahead of the frame playing,
-    /// and `latency_samples` further.
-    #[must_use]
-    pub fn song_position(&self) -> Option<SongPosition> {
-        let playback = self
-            .songs
-            .playback
-            .as_ref()
-            .filter(|playback| !playback.is_dead())?;
-        let sample_position = playback.handle.position().sample_position();
-        let tempo_map = playback.tempo_map();
-        let tick = tempo_map.tick_at_sample(sample_position, SONG_SAMPLE_RATE);
-        let musical = tempo_map.position_at_tick(tick);
-        Some(SongPosition {
-            bar: musical.bar,
-            beat: musical.beat,
-            beat_in_bar: musical.beat_in_bar,
-            seconds: sample_position as f64 / f64::from(SONG_SAMPLE_RATE),
-            latency_samples: playback.meters.readings().undelivered_frames,
-        })
-    }
-
-    /// The conductor's counters and the source's measurements, while a song plays.
-    #[must_use]
-    pub fn song_snapshot(&self) -> Option<SongSnapshot> {
-        let playback = self.songs.playback.as_ref()?;
-        Some(SongSnapshot {
-            conductor: playback.handle.position().snapshot(),
-            source: playback.meters.readings(),
-        })
-    }
-
-    /// Whether the last [`AudioManager::update`] saw the song cross a `subdivision`
-    /// boundary: at most once an update, however long since the one before.
-    #[must_use]
-    pub fn beat_crossed(&self, subdivision: Subdivision) -> bool {
-        self.songs
-            .playback
-            .as_ref()
-            .is_some_and(|playback| playback.edges.crossed(subdivision))
-    }
-
     /// Play the binding `action` names for `source`, stamped now. An action the song does
     /// not bind is an error naming it; so is no song, or one whose output died. While a
     /// song waits for the first gesture a known action is a silent `Ok`. A trigger waits
@@ -512,7 +445,10 @@ impl AudioManager {
             stamp: Instant::now(),
         };
         match playback.handle.send(command) {
-            Ok(()) => Ok(()),
+            Ok(()) => {
+                playback.commands_sent += 1;
+                Ok(())
+            }
             Err(CommandRejected::ConductorGone) => {
                 self.mark_song_output_dead();
                 Err(AudioError::SongNotPlaying)
@@ -548,13 +484,19 @@ impl AudioManager {
     }
 
     /// Advance the song by `now`: the virtual clock without a device, the waiting
-    /// commands retried, a dead output noticed, the beat edges latched.
+    /// commands retried, a dead output noticed, the beat edges latched, a replacement taken
+    /// in and swapped when due.
     pub(super) fn update_song(&mut self, now: Instant) {
-        let Some(playback) = self.songs.playback.as_mut() else {
-            return;
-        };
+        let reading = self.advance_song(now);
+        self.settle_replacement(reading);
+    }
+
+    /// [`AudioManager::update_song`] up to the edges: what they read, `None` without a live
+    /// song.
+    fn advance_song(&mut self, now: Instant) -> Option<Reading> {
+        let playback = self.songs.playback.as_mut()?;
         if playback.is_dead() {
-            return;
+            return None;
         }
         let sent = playback.retry_lifecycle();
         if let SongOutput::Virtual {
@@ -574,18 +516,27 @@ impl AudioManager {
         }
         if !sent || playback.conductor_is_gone() {
             self.mark_song_output_dead();
-            return;
+            return None;
         }
         let snapshot = playback.handle.position().snapshot();
+        if snapshot.blocks_rendered > 0 {
+            playback.landing = None;
+        }
         let tempo_map = playback.song.background().tempo_map();
-        playback
+        let seek_landed = playback
             .edges
             .update(&snapshot, tempo_map, SONG_SAMPLE_RATE);
+        Some(Reading {
+            now,
+            snapshot,
+            seek_landed,
+        })
     }
 
     /// The song's output died — the device dropped its source, or its conductor is gone:
-    /// the song stops, and the first time a warning says so.
+    /// the song stops, a parked replacement is dropped, and the first time a warning says so.
     fn mark_song_output_dead(&mut self) {
+        self.songs.drop_pending_replacement();
         let Some(playback) = self.songs.playback.as_mut() else {
             return;
         };

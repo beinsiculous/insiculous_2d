@@ -5,8 +5,19 @@
 //! An update reports each subdivision at most once, however many of its boundaries the
 //! gap since the last update held — a suspended tab or a long frame never floods a
 //! game with beats. A loop wrap lands on tick 0, a boundary of every subdivision, so it
-//! reports all of them; a seek backwards reports none; the first update of a playing song
-//! reports all of them, for the downbeat it starts on.
+//! reports all of them; the first update of a playing song reports all of them, for the
+//! downbeat it starts on.
+//!
+//! **A seek the host sent is not a crossing**, forward or back: the conductor applies it at
+//! a block boundary, in order, so the edges are told the seek's ordinal among the commands
+//! the host sent and wait for the conductor's applied count to reach it; nothing is a
+//! crossing while a seek is in flight — its position may jump at any block — and the reading
+//! after the one that shows it applied re-seeds: the conductor publishes its counters before
+//! its position, one atomic at a time, so the showing reading may pair the new count with the
+//! old position. The count is the commands', not the sequencer's
+//! reconstructions, which a loop wrap or a resume also raise, and which two seeks sent before
+//! a block renders would collapse into one. A conductor that has rendered nothing yet has
+//! published nothing, so its reading is skipped rather than taken for a song at its start.
 
 use music_midi::{PositionSnapshot, TempoMap, TransportState};
 
@@ -62,6 +73,20 @@ impl Subdivision {
 pub(super) struct BeatEdges {
     seen: Option<Seen>,
     crossed: [bool; 4],
+    /// The host's last seek, from its send until the reading after the one that showed it
+    /// applied.
+    seek: Option<SeekInFlight>,
+}
+
+/// Where the host's last seek stands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SeekInFlight {
+    /// Sent as this ordinal among the host's commands; applied once the conductor's count
+    /// reaches it.
+    Sent { ordinal: u64 },
+    /// Applied under the last reading, whose position may still be the old one: the next
+    /// reading re-seeds.
+    Applied,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -70,22 +95,80 @@ struct Seen {
     loop_wraps: u64,
 }
 
+impl Seen {
+    fn of(snapshot: &PositionSnapshot) -> Self {
+        Self {
+            sample_position: snapshot.sample_position,
+            loop_wraps: snapshot.loop_wraps,
+        }
+    }
+}
+
 impl BeatEdges {
     pub(super) fn crossed(&self, subdivision: Subdivision) -> bool {
         self.crossed[subdivision.index()]
     }
 
-    /// Latch the edges between the last update's position and `snapshot`'s.
+    /// Count from `snapshot`'s reading on, nothing crossed. Never `None`, which would
+    /// report every subdivision at the next update.
+    pub(super) fn reseed(&mut self, snapshot: &PositionSnapshot) {
+        self.seen = Some(Seen::of(snapshot));
+        self.crossed = [false; 4];
+    }
+
+    /// The host sent a seek as the `ordinal`th command the conductor accepted: nothing is
+    /// a crossing until the conductor has applied that many, and the reading that shows it
+    /// has re-seeds instead of counting.
+    pub(super) fn expect_seek(&mut self, ordinal: u64) {
+        self.seek = Some(SeekInFlight::Sent { ordinal });
+    }
+
+    /// Whether a host seek is sent and not yet landed.
+    pub(super) fn seek_in_flight(&self) -> bool {
+        self.seek.is_some()
+    }
+
+    /// The edges a replacement song continues with: this update's crossings kept for the
+    /// game to read, the next update counted from `snapshot`, the replacement's reading on
+    /// its own map.
+    pub(super) fn handed_over(&self, snapshot: &PositionSnapshot) -> Self {
+        let mut edges = Self::default();
+        edges.reseed(snapshot);
+        edges.crossed = self.crossed;
+        edges
+    }
+
+    /// Latch the edges between the last update's position and `snapshot`'s. `true` when
+    /// this reading is the host's seek landing, which re-seeds and crosses nothing.
     pub(super) fn update(
         &mut self,
         snapshot: &PositionSnapshot,
         tempo_map: &TempoMap,
         sample_rate: u32,
-    ) {
-        let now = Seen {
-            sample_position: snapshot.sample_position,
-            loop_wraps: snapshot.loop_wraps,
-        };
+    ) -> bool {
+        if snapshot.blocks_rendered == 0 {
+            self.crossed = [false; 4];
+            return false;
+        }
+        match self.seek {
+            Some(SeekInFlight::Applied) => {
+                self.seek = None;
+                self.reseed(snapshot);
+                return true;
+            }
+            Some(SeekInFlight::Sent { ordinal }) => {
+                if snapshot.commands_applied >= ordinal {
+                    self.seek = Some(SeekInFlight::Applied);
+                }
+                // In flight, or applied under a reading that may pair the new count with
+                // the old position: this reading counts nothing and is kept current.
+                self.crossed = [false; 4];
+                self.seen = Some(Seen::of(snapshot));
+                return false;
+            }
+            None => {}
+        }
+        let now = Seen::of(snapshot);
         let previous = if snapshot.transport == TransportState::Playing {
             self.seen.replace(now)
         } else {
@@ -93,7 +176,7 @@ impl BeatEdges {
             if self.seen.is_some() {
                 self.seen = Some(now);
             }
-            return;
+            return false;
         };
         for subdivision in Subdivision::ALL {
             self.crossed[subdivision.index()] = match previous {
@@ -113,5 +196,6 @@ impl BeatEdges {
                 }
             };
         }
+        false
     }
 }

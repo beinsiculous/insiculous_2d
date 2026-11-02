@@ -156,6 +156,7 @@ fn fingerprint(bytes: &[u8]) -> u64 {
 /// song names the bank.
 type PresetLayering = BTreeMap<(u16, u8), usize>;
 
+#[derive(Clone)]
 enum Decoded {
     SoundFont {
         parsed: Arc<SoundFont>,
@@ -204,13 +205,15 @@ enum Probe {
     Stale { bytes: Vec<u8>, freshness: Freshness },
 }
 
+#[derive(Clone)]
 struct CachedFile {
     freshness: Freshness,
     decoded: Decoded,
 }
 
-/// See the module docs.
-#[derive(Default)]
+/// See the module docs. A clone shares every decoded file: a SoundFont is an `Arc`, a
+/// sample's audio an `Arc` inside its `OwnedPcm`.
+#[derive(Default, Clone)]
 pub(crate) struct DependencyCache {
     files: HashMap<PathBuf, CachedFile>,
     current_closure: BTreeSet<PathBuf>,
@@ -229,6 +232,27 @@ impl DependencyCache {
     #[cfg(test)]
     pub(crate) fn decodes(&self) -> u64 {
         self.decodes
+    }
+
+    /// A copy for a preparation run off the frame: it shares every decoded file and counts
+    /// only its own decodes, so [`DependencyCache::merge`] adds them once.
+    pub(crate) fn for_worker(&self) -> Self {
+        Self {
+            decodes: 0,
+            ..self.clone()
+        }
+    }
+
+    /// Take back `worker`, a [`DependencyCache::for_worker`] copy that prepared the song
+    /// about to play: its files join these — its decode of a path replacing this one's,
+    /// every file only this cache holds kept — its closure becomes the current one, the
+    /// current one the previous, and its decodes are added. The next preparation prunes
+    /// what neither closure names, as it always does.
+    pub(crate) fn merge(&mut self, worker: DependencyCache) {
+        self.files.extend(worker.files);
+        self.previous_closure =
+            std::mem::replace(&mut self.current_closure, worker.current_closure);
+        self.decodes += worker.decodes;
     }
 
     /// Build `file`'s song over `data`: every SoundFont and sample it names loaded through

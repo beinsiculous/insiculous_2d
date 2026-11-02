@@ -57,7 +57,9 @@ the code's.
   `write_song_file`; `SongFile::validate`; `Part::resolve_track`.
 - `song_file/validate.rs` — every sidecar check: the schema checks `parse_song_file`
   runs (`SongFile::check_schema`, public, so the composer runs it on the file an edit
-  would produce) and the checks against `SongData` and `ResourceMetadata`.
+  would produce) and the checks against `SongData` and `ResourceMetadata`. A score with no
+  note on any track is refused as empty; a part whose own track has none is a silent part,
+  every trigger on it a rest.
 - `song_data.rs` — the data model: `SongData`, `SongTrack` (a selectable track),
   `MusicalUnit`, `Note`, `NoteId`, `NoteImage`, `RetainedEvent`, `UnsupportedReport`.
 - `song_data/flatten.rs` — `SongData::from_smf`: limits, type and division checks,
@@ -69,8 +71,8 @@ the code's.
   on the next free channel, skipping 10; `remove_added_track` is its inverse.
 - `song_data/export.rs` — `SongData::write_smf`: retained events minus edited notes'
   original pairs, plus live notes and edited timing, through midly's writer.
-- `tempo_map.rs` — `TempoMap` (exact integer tick ↔ seconds ↔ sample ↔ bar),
-  `TempoChange`, `TimeSignature`, `MusicalPosition`.
+- `tempo_map.rs` — `TempoMap` (exact integer tick ↔ seconds ↔ sample ↔ bar, `bar_span`
+  the ticks one bar covers), `TempoChange`, `TimeSignature`, `MusicalPosition`.
 - `pcm.rs` — `OwnedPcm`: a decoded sample (rate, mono or stereo, interleaved values in an
   `Arc`), refused by `new` outside 8–96 kHz, 1 ms–10 s or with a value not finite;
   `check_format` and `maximum_frames` let a decoder refuse before decoding. Builds
@@ -151,6 +153,8 @@ the code's.
 | 120 BPM and 4/4 hold before the first tempo and time-signature event, and in a file with neither | `src/tempo_map/tests.rs a_file_without_tempo_or_meter_plays_at_120_bpm_in_four_four` |
 | RON parses `inf` and `NaN`, so the gain check must refuse them | `src/song_file/tests.rs schema_errors_fail_loud_naming_the_collection_and_the_entry` |
 | A future sidecar must be refused for its version, not for the fields it added — the version is probed before the full parse | `src/song_file/tests.rs a_future_version_is_refused_for_its_version_not_its_new_fields` |
+| A part on a track with no notes — muted or emptied by the program that wrote the `.mid` — is a silent part, not a refusal: every trigger on it is a rest counted in `silent_triggers`, its cursor held; only a score with no note on any track is refused, as empty | `src/song_file/tests.rs validation_against_the_midi_file_names_the_failing_entry` `src/song_file/tests.rs a_score_without_a_single_note_is_refused_as_empty` `src/conductor/tests/triggering.rs a_trigger_on_a_part_whose_track_has_no_notes_is_a_rest_counted_silent` |
+| A bar a time signature closes mid-bar spans only to that signature's tick, and a bar past the last signature is a whole bar of its meter; the map knows no song's end, so a caller clamps the last bar to it | `src/tempo_map/tests.rs a_bar_a_mid_bar_signature_closes_spans_only_to_that_signature` `src/tempo_map/tests.rs bar_spans_follow_a_four_four_to_three_four_change_and_run_on_past_the_last_signature` `src/tempo_map/tests.rs egmont_bar_spans_tile_the_song_and_agree_with_the_bar_of_every_tick_they_hold` |
 | A shared track name is refused by `Name` and never by `Index` | `src/song_file/tests.rs a_shared_track_name_needs_the_index_escape_hatch_which_is_never_refused` |
 | The documented example must stay valid; the test reads it from `docs/SONG_FORMAT.md` | `src/song_file/tests.rs the_documented_example_parses_validates_and_round_trips` |
 | The composer's three fields — `midi_fingerprint`, the song's `provenance` and a sample's — are optional on read, so a sidecar written by hand loads unchanged, and `write_song_file` writes none when absent | `src/song_file/tests.rs the_composers_three_fields_are_optional_on_read_and_written_back_by_write_song_file` |

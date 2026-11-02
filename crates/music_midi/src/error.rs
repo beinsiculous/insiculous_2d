@@ -177,8 +177,10 @@ pub enum SongFileProblem {
         first: usize,
         second: usize,
     },
-    #[error("parts['{part}'] plays track {track}, which has no notes")]
-    EmptyTriggerPart { part: String, track: usize },
+    /// No track of the MIDI file holds a note: nothing for the background to play or a
+    /// part to walk. A part whose own track has none is a silent part, not a refusal.
+    #[error("the score is empty")]
+    EmptyScore,
     #[error(
         "bindings['{action}'] plays key {key} at tick {tick} on sample instrument '{instrument}', \
          more than {range} semitones from its root note {root_note}"

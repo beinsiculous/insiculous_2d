@@ -48,21 +48,56 @@ on its own. **The crate knows no scene and no space**: the scene's `SoundEmitter
   it and asks again) and the volume buses (`update_all_volumes`, which also hands the music
   and sfx gains to a playing song).
 - `manager/song.rs` — **the song**: `play_song`, `prepare_song`, `play_song_in_memory`,
-  `play_song_in_memory_at(song, tick)`, `stop_song`, `pause_song`, `resume_song`,
-  `seek_song(beat)`, `set_song_looping`, `is_song_playing`, `song_ended`, `song_position`,
-  `song_snapshot`, `beat_crossed`, `trigger`, `deactivate_source`, `stop_all_sources`,
-  `set_asset_base`; `SongPosition`, `SongSnapshot`, `SONG_SAMPLE_RATE` (what a position's
-  `latency_samples` count at); the playback state, the commands waiting for room, the
-  virtual clock, the dead-output path.
+  `play_song_in_memory_at(song, tick)`, `trigger`, `deactivate_source`,
+  `stop_all_sources`, `set_asset_base`; `SongPosition`, `SongSnapshot`, `SONG_SAMPLE_RATE`
+  (what a position's `latency_samples` count at); the deck and the playback state (its
+  generation, its looping flag, its parked replacement), the commands waiting for room,
+  `update_song` (the virtual clock, the retries, the dead-output check, the edges, then the
+  replacement), the dead-output path.
+- `manager/song/transport.rs` — the transport and the queries: `stop_song`, `pause_song`,
+  `resume_song`, `seek_song(beat)` (the edges told to wait for it to land),
+  `set_song_looping` (the flag a replacement carries), `is_song_playing`, `song_ended`,
+  `song_position`, `song_snapshot`, `beat_crossed`.
+- `manager/song/replace.rs` — **the song replaced at a bar line**:
+  `replace_song_at_seam(path)` reads the `.mid` and the `.mid.ron` on the frame (a missing
+  one is an error at the call) and hands them, with a copy of the decoded-file cache, to a
+  worker thread that prepares the song as `play_song` does; `replace_song_in_memory_at_seam`
+  loads a built song's conductor there. The result comes back over a channel the deck owns
+  and `update` takes it in — the worker's decodes merged into the cache, so only a changed
+  file is decoded and `play_song` never waits — and parks it as a `PreparedPlayback`. Every
+  request takes the next id and drops the parked one; a result older than the latest
+  request, or for another playback generation, is dropped unread. The swap is due on the
+  first update after its arrival whose edges cross a bar (a loop's wrap included), at once
+  for a paused song or one stopped at its end, and at the end of a running song that
+  reaches it — never while a host seek is in flight, whose landing takes a stationary song's or a staged one instead; it carries the old position's bar and fraction to the same bar of the new
+  song, builds the new source as `start_song` does, re-sends the transport — the requested
+  play state, the looping flag — the flush floor and the waiting lifecycle commands, and
+  adopts the song, the bindings, the handle, the meters and the edges as one transition.
+  Superseded and retired songs are dropped on a thread of their own. On wasm32 there is no
+  thread: the preparation runs at the call and takes the same path. `SongReplacement`
+  (`Swapped`, `Refused`, `Failed`, `Dropped`) is drained with `take_song_replacements`.
+  **What it costs**: the position runs ahead of the sound by the device's buffer, so at the
+  frame after the bar line the old source has already rendered the downbeat; the swap cuts
+  it and the new source starts past the notes that began on the bar line — the new score's
+  downbeat is skipped once per save, and the triggers of the swap frame, sent to the old
+  source, are lost with it once per save.
+- `manager/song/replace/landing.rs` — where a replacement lands: a song's bars (the last
+  clamped to its end, the count with a partial last bar), the same place in the new song
+  (the fraction clamped inside the bar, then the bar modulo the new count for a looping
+  transport, then `None` for a bar the new song lacks), the commands that start the new
+  conductor there.
 - `manager/song/virtual_clock.rs` — the arithmetic of a song with no device: wall time to
   whole frames, the remainder carried, `LONGEST_VIRTUAL_STEP`.
 - `manager/song/load.rs` — a song's dependency closure through `common::vfs` (the `.mid`,
   the `.mid.ron`, every SoundFont and sample, each refused by size before it is read),
   `ResourceMetadata` filled in, validation, the conductor built; `DependencyCache`
   (decoded SoundFonts and samples by path, kept fresh by the file's `ChangeStamp` where the
-  filesystem keeps one and by a content fingerprint where it does not); `SongProblem`,
+  filesystem keeps one and by a content fingerprint where it does not; `Clone` shares every
+  decode, `for_worker` and `merge` are a replacement's round trip); `SongProblem`,
   `SONG_FILE_BYTE_LIMIT` (256 KiB), `SOUND_FONT_BYTE_LIMIT` (48 MiB).
-- `manager/song/edges.rs` — `Subdivision` and the beat edges latched each update.
+- `manager/song/edges.rs` — `Subdivision` and the beat edges latched each update; `reseed`,
+  the host's seek awaited by its command ordinal until it lands (nothing counts while it is
+  in flight), a fresh conductor's empty reading skipped, and the hand-over to a replacement.
 - `manager/song/telemetry.rs` — what a game reads for its logic and its reports:
   `song_label` (the label the slot's song was requested with while pending, playing or
   paused; `None` once it ended or its output died, which nothing reaps), `song_request` (the
@@ -107,6 +142,14 @@ on its own. **The crate knows no scene and no space**: the scene's `SoundEmitter
 | A song and a recorded track share one music slot: playing either stops the other, and before the web's gesture the last request of either kind is the one pending; a pending song is not playing and has no position | `src/manager/song/tests.rs a_song_and_a_recorded_track_share_one_pending_slot_the_last_request_winning_through_the_gesture` |
 | A disabled manager is one of two things: gesture-gated (the web) holds a song pending, headless (tests, `GameHarness`, no device) plays it on a virtual clock advanced by `update()`'s wall time, capped at one second an update | `src/manager/song/tests.rs without_a_device_a_playing_song_advances_by_the_wall_time_between_updates` |
 | Beat edges are counted on the published sample by integer boundaries and latched once an update: a long gap reports one crossing, not a flood; a wrap reports its downbeat, a seek back nothing | `src/manager/song/tests.rs beat_edges_count_every_boundary_once_and_a_ten_beat_gap_reports_one_crossing` `src/manager/song/tests.rs a_loop_wrap_reports_its_downbeat_and_a_seek_back_reports_nothing` |
+| A seek the host sent is no crossing, forward or back. The conductor applies it at a block boundary, so a reading taken in `seek_song` is the old position and a forward seek would count from it: the edges are told the seek's ordinal among the commands the host sent and wait for the conductor's `commands_applied` to reach it, counting nothing while it is in flight and re-seeding on the reading after the one that shows it applied — the conductor publishes its counters before its position, one atomic at a time, so the showing reading may pair the new count with the old position. The sequencer's `reconstructions` would not do: a loop wrap or a resume raises them too, and two seeks sent before a block renders would collapse into one landing. A parked replacement never swaps while a seek is in flight — the old conductor holds the seek, and a swap would lose it — and where the seek lands a paused song's preparation or a staged refusal is taken (a song stopped at its end, whose seek moved nothing, takes it stopped at the new end), while a running song's un-staged one waits for its next bar line | `src/manager/song/tests/replace.rs a_seek_sent_after_the_preparation_arrived_is_no_crossing_forward_or_back` `src/manager/song/tests/replace.rs a_seek_sent_before_the_preparation_arrives_moves_the_swap_to_the_bar_after_it_lands` `src/manager/song/tests/replace/seeks.rs a_seek_accepted_but_not_yet_applied_defers_a_paused_swap_and_the_landing_takes_it` `src/manager/song/tests/replace/seeks.rs back_to_back_seeks_before_a_block_renders_count_nothing_between_them` `src/manager/song/tests/replace/seeks.rs a_staged_refusal_is_taken_where_a_seek_lands` `src/manager/song/tests/replace/seeks.rs a_seek_on_a_song_stopped_at_its_end_lands_the_replacement_stopped_at_the_new_end` `src/manager/song/tests/replace/seeks.rs a_seek_after_a_swap_is_no_crossing_and_the_next_beat_counts` |
+| A replacement wins by request order, never by finish order: each request drops the parked preparation, and a result older than the latest request, or prepared for a playback since stopped or replaced by `play_song`, is dropped unread and reported `Dropped` | `src/manager/song/tests/replace.rs the_newer_request_wins_when_it_finishes_first_and_the_older_is_dropped` `src/manager/song/tests/replace.rs a_preparation_for_a_song_stopped_before_it_arrives_is_dropped` `src/manager/song/tests/replace.rs stop_song_drops_a_parked_preparation` |
+| A stationary transport swaps at once: a paused song at its held position, by the same bar and the same fraction of it — of a partial last bar's own length — and a song stopped at its end stopped at the new end, so a seek or a replay plays the new score | `src/manager/song/tests/replace.rs four_four_to_three_four_keeps_the_bar_and_its_proportion` `src/manager/song/tests/replace.rs a_partial_last_bar_takes_the_fraction_of_its_own_length` `src/manager/song/tests/replace.rs a_ticks_per_quarter_change_maps_by_the_bar_not_by_the_tick` `src/manager/song/tests/replace.rs a_song_stopped_at_its_end_takes_the_replacement_stopped_at_the_new_end` |
+| A running song that does not loop, in a bar the new song lacks, refuses the swap and plays on; the preparation stays staged — no bar line retries it — and the next pause, the song's end or a seek's landing takes it | `src/manager/song/tests/replace.rs a_running_song_past_the_new_songs_end_refuses_and_its_end_takes_the_staged_preparation` `src/manager/song/tests/replace/seeks.rs a_staged_refusal_is_taken_where_a_seek_lands` |
+| A replacement's conductor publishes zeros until it renders a block, so the frame that swapped would read bar 0 and a song stopped at the new end as playing, and `song_label` and `song_request` would name it: the queries answer from the landing until the first block. A paused song in a bar the new song lacks is paused at the new end, not ended — `Seek`, `Play` and `Pause` land in one drain, a fresh conductor being stopped | `src/manager/song/tests/replace/queries.rs before_the_new_conductors_first_block_the_position_is_the_landing` `src/manager/song/tests/replace/queries.rs before_the_new_conductors_first_block_a_song_stopped_at_the_end_still_reads_ended` `src/manager/song/tests/replace/queries.rs a_paused_song_in_a_bar_the_new_song_lacks_is_paused_at_the_new_end_not_ended` |
+| A swap adopts the song, its binding table, its handle, its meters and its edges as one transition, so a trigger after it resolves against the new sidecar; a looping transport takes the bar modulo the new song's bar count, and a loop of a bar or less swaps at its wrap | `src/manager/song/tests/replace.rs a_reordered_binding_is_resolved_against_the_new_song_after_the_swap` `src/manager/song/tests/replace.rs an_added_action_is_unknown_before_the_swap_and_plays_after_it` `src/manager/song/tests/replace.rs a_shorter_looping_song_takes_the_bar_modulo_its_own_bar_count` `src/manager/song/tests/replace.rs a_loop_of_one_bar_or_less_swaps_at_its_wrap` |
+| The replacement's virtual clock runs from the update that swapped it, which the old source already played to: started at `Instant::now()`, a song driven by `update_at` replayed the gap and crossed a bar early | `src/manager/song/tests/replace.rs a_tempo_change_lands_in_the_same_bar_and_the_next_bar_comes_at_the_new_tempo` |
+| The worker prepares on a copy of the cache and the frame takes its decodes back, so a bank-only edit decodes exactly the bank and `play_song` never waits on a preparation's decode | `src/manager/song/tests/replace.rs a_bank_only_edit_decodes_exactly_the_bank_again` |
 | Transport, deactivations and flushes a full queue refuses wait in the manager and go first, in order, from `update()`; a trigger is refused while one waits, so it never overtakes them | `src/manager/song/tests.rs transport_a_full_queue_refuses_waits_and_is_sent_in_order_before_any_trigger` `src/manager/song/tests.rs ten_thousand_triggers_never_lose_a_deactivation_a_flush_or_a_pause` |
 | A song started part way (`play_song_in_memory_at`) carries its tick in the ready song, and `start_song` sends `Seek` before `Play`, so it starts there whether it starts now or after the web's gesture and never publishes a position before it | `src/manager/song/tests.rs a_song_started_part_way_publishes_no_position_before_its_start` |
 | `is_song_playing` is false for a song that ended, a paused one and a dead one alike; `song_ended` is what tells the end of a song that does not loop from an output that died | `src/manager/song/tests.rs a_song_played_to_its_end_has_ended_and_one_stopped_or_looping_has_not` |
@@ -221,7 +264,12 @@ has none.
 - `cargo test -p audio` — headless (disabled mode + bytes/temp-file APIs +
   enable_output/pending music + the song seam on the virtual clock, driven by
   `update_at`). No audio device needed — enable_output tests match on the result
-  and assert the invariants of whichever branch ran.
+  and assert the invariants of whichever branch ran. The replacement's tests
+  (`manager/song/tests/replace.rs`) wait for the worker with a bounded blocking receive
+  and order its results themselves.
+- `cargo test --release -p audio chicken_coop -- --nocapture` — the worker's preparation
+  of the largest shipped instrument set (`../games/frogger`'s Chicken Coop, copied into a
+  temporary folder), timed and printed; skipped with a message when the games are absent.
 
 ## Godot Oracle
 - Audio architecture: `servers/audio_server.cpp`, `scene/audio/audio_stream_player.cpp`

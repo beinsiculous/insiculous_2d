@@ -265,10 +265,6 @@ fn validation_against_the_midi_file_names_the_failing_entry() {
             song_file(r#"(name: "lead", track: Index(5))"#, &trumpet),
             vec!["parts['lead']", "track index 5"],
         ),
-        (
-            song_file(r#"(name: "lead", track: Index(0))"#, &trumpet),
-            vec!["parts['lead'] plays track 0, which has no notes"],
-        ),
         // The flute plays keys 65 to 79; its first note more than 24 above 40 is named.
         (
             song_file(flute, &sample_at(40)),
@@ -307,6 +303,24 @@ fn validation_against_the_midi_file_names_the_failing_entry() {
         song_file(flute, &sample_at(72)).validate(LABEL, &napolitan),
         Ok(()),
         "65 to 79 is within 24 of 72"
+    );
+    assert_eq!(
+        song_file(r#"(name: "lead", track: Index(0))"#, &trumpet).validate(LABEL, &napolitan),
+        Ok(()),
+        "track 0 holds timing only: a part on it is silent, not refused"
+    );
+}
+
+#[test]
+fn a_score_without_a_single_note_is_refused_as_empty() {
+    let (timing_only, _) = SongData::from_smf(&smf(&[vec![(0, tempo(500_000))]]))
+        .expect("a file of timing alone reads");
+    let file = with_resources(&format!(r#"SongFile(version: 1, soundfont: "{CAST}")"#));
+
+    assert_refused(
+        file.validate(LABEL, &timing_only),
+        "a score with no notes",
+        &["the score is empty"],
     );
 }
 

@@ -236,3 +236,51 @@ fn a_time_signature_landing_mid_bar_closes_the_partial_bar() {
         }
     );
 }
+
+#[test]
+fn bar_spans_follow_a_four_four_to_three_four_change_and_run_on_past_the_last_signature() {
+    let signatures = [
+        TimeSignature::new(0, 4, 4),
+        TimeSignature::new(384 * 8, 3, 4),
+    ];
+    let map = TempoMap::new(384, &[], &signatures);
+
+    assert_eq!(map.bar_span(0), (0, 1_536));
+    assert_eq!(map.bar_span(1), (1_536, 3_072), "the last bar of 4/4");
+    assert_eq!(map.bar_span(2), (3_072, 4_224), "the first bar of 3/4");
+    assert_eq!(
+        map.bar_span(1_000),
+        (3_072 + 998 * 1_152, 3_072 + 999 * 1_152),
+        "a bar far past the last signature is a whole bar of its meter"
+    );
+}
+
+#[test]
+fn a_bar_a_mid_bar_signature_closes_spans_only_to_that_signature() {
+    let signatures = [
+        TimeSignature::new(0, 4, 4),
+        TimeSignature::new(384 * 6, 3, 4),
+    ];
+    let map = TempoMap::new(384, &[], &signatures);
+
+    assert_eq!(map.bar_span(1), (1_536, 2_304), "two beats of 4/4, closed early");
+    assert_eq!(map.bar_span(2), (2_304, 3_456));
+}
+
+#[test]
+fn egmont_bar_spans_tile_the_song_and_agree_with_the_bar_of_every_tick_they_hold() {
+    let map = egmont_map();
+    let last_bar = map.position_at_tick(EGMONT_LAST_TICK).bar;
+
+    let mut expected_start = 0;
+    for bar in 0..=last_bar {
+        let (start, end) = map.bar_span(bar);
+        assert_eq!(start, expected_start, "bar {bar} starts where the last ended");
+        assert!(end > start, "bar {bar} spans ticks");
+        assert_eq!(map.position_at_tick(start).bar, bar);
+        assert_eq!(map.position_at_tick(end - 1).bar, bar);
+        expected_start = end;
+    }
+    assert_eq!(map.bar_span(map.position_at_tick(ALLEGRO_TICK).bar).0, ALLEGRO_TICK);
+    assert_eq!(map.bar_span(map.position_at_tick(CODA_TICK).bar).0, CODA_TICK);
+}

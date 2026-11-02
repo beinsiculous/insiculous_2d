@@ -87,7 +87,10 @@ pub use renderer::{TextureFilter, TextureHandle, TextureLoadConfig};
 pub use renderer::line_pipeline::LineVertex;
 
 // Re-export audio types
-pub use audio::{AudioManager, Bus, SoundHandle, SoundSettings, SourceId, Subdivision};
+pub use audio::{
+    AudioManager, Bus, SongReplacement, SoundHandle, SoundSettings, SourceId, Subdivision,
+    SONG_SAMPLE_RATE,
+};
 pub use crate::sound_emitters::SoundEmitters;
 pub use crate::sound_sources::SoundSources;
 pub use crate::game_music::{BeatPulse, GameMusic};
