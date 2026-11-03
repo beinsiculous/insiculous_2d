@@ -24,6 +24,8 @@ pub(super) enum KeyRoute {
     AssetBrowser(super::asset_browser_keys::BrowserKey),
     /// The console's key, while it holds the keyboard.
     Console(super::console::ConsoleKey),
+    /// The External Tools panel's key, while it holds the keyboard.
+    Settings(super::settings_keys::SettingsKey),
 }
 
 impl<G: Game> EditorGame<G> {
@@ -100,6 +102,9 @@ impl<G: Game> EditorGame<G> {
         if let Some(route) = self.console_key_route(key) {
             return route;
         }
+        if let Some(route) = self.settings_key_route(key) {
+            return route;
+        }
         // The composer holding the keyboard decides first, Escape included; a play
         // session clears its focus, so the controls above and the game below keep theirs.
         if let Some(route) = self.composer_key_route(key, modifiers) {
@@ -152,6 +157,7 @@ impl<G: Game> EditorGame<G> {
             KeyRoute::Composer(action) => self.run_composer_key(action),
             KeyRoute::AssetBrowser(browser_key) => self.run_asset_browser_key(browser_key),
             KeyRoute::Console(console_key) => self.run_console_key(console_key),
+            KeyRoute::Settings(settings_key) => self.run_settings_key(settings_key),
         }
     }
 
@@ -414,6 +420,9 @@ impl<G: Game> EditorGame<G> {
             A::PlayResume => {
                 self.handle_play_action(PlayControlAction::Play, ctx.world);
             }
+
+            A::OpenProject => self.open_project(),
+            A::ShowExternalTools => self.editor.dock_area.show_panel(editor::PanelId::SETTINGS),
 
             // Poll-only actions: CONSUMED here (no-op) so an editor-bound
             // key never also reaches the inner game — the viewport polling

@@ -85,9 +85,9 @@ impl Default for InputState {
     }
 }
 
-/// Map a physical KeyCode to a character for text input.
+/// Map a physical KeyCode to a character for text input, by the US layout.
 /// Returns None for non-character keys. Covers digits, letters (shift =
-/// uppercase), space, and the punctuation text/number fields need.
+/// uppercase), space, and every punctuation key with its shifted symbol.
 pub(crate) fn keycode_to_char(key: KeyCode, shift: bool) -> Option<char> {
     use KeyCode::*;
     if let Some(letter) = letter_keycode_to_char(key) {
@@ -122,6 +122,31 @@ pub(crate) fn keycode_to_char(key: KeyCode, shift: bool) -> Option<char> {
         Period if !shift => Some('.'),
         Minus if shift => Some('_'),
         Minus => Some('-'),
+        // The US layout's remaining keys, each with its shifted symbol: a command
+        // template needs its braces and a program its path.
+        Digit1 => Some('!'),
+        Digit2 => Some('@'),
+        Digit3 => Some('#'),
+        Digit4 => Some('$'),
+        Digit5 => Some('%'),
+        Digit6 => Some('^'),
+        Digit7 => Some('&'),
+        Digit8 => Some('*'),
+        Digit9 => Some('('),
+        Digit0 => Some(')'),
+        Period => Some('>'),
+        Comma => Some(if shift { '<' } else { ',' }),
+        Slash => Some(if shift { '?' } else { '/' }),
+        Semicolon => Some(if shift { ':' } else { ';' }),
+        Quote => Some(if shift { '"' } else { '\'' }),
+        BracketLeft => Some(if shift { '{' } else { '[' }),
+        BracketRight => Some(if shift { '}' } else { ']' }),
+        Backslash => Some(if shift { '|' } else { '\\' }),
+        Equal => Some(if shift { '+' } else { '=' }),
+        Backquote => Some(if shift { '~' } else { '`' }),
+        NumpadAdd => Some('+'),
+        NumpadMultiply => Some('*'),
+        NumpadDivide => Some('/'),
         _ => None,
     }
 }
@@ -323,15 +348,24 @@ mod tests {
             (KeyCode::Space, true, Some(' ')),
             (KeyCode::Digit0, false, Some('0')),
             (KeyCode::Digit9, false, Some('9')),
-            (KeyCode::Digit0, true, None), // Shift+0 = ')', not a digit
+            (KeyCode::Digit0, true, Some(')')), // Shift+0 = ')', not a digit
             (KeyCode::Numpad5, false, Some('5')),
             (KeyCode::Numpad5, true, Some('5')), // the numpad ignores shift
             (KeyCode::Period, false, Some('.')),
-            (KeyCode::Period, true, None), // Shift+. = '>'
+            (KeyCode::Period, true, Some('>')),
             (KeyCode::NumpadDecimal, false, Some('.')),
             (KeyCode::Minus, false, Some('-')),
             (KeyCode::Minus, true, Some('_')),
             (KeyCode::NumpadSubtract, true, Some('-')),
+            (KeyCode::BracketLeft, true, Some('{')), // a command template's placeholder
+            (KeyCode::BracketRight, false, Some(']')),
+            (KeyCode::Slash, false, Some('/')), // a program's path
+            (KeyCode::Slash, true, Some('?')),
+            (KeyCode::Semicolon, true, Some(':')),
+            (KeyCode::Quote, true, Some('"')),
+            (KeyCode::Backslash, false, Some('\\')),
+            (KeyCode::Equal, true, Some('+')),
+            (KeyCode::NumpadDivide, true, Some('/')),
             (KeyCode::Enter, false, None),
             (KeyCode::Backspace, false, None),
             (KeyCode::F1, false, None),

@@ -91,6 +91,7 @@ impl<G: Game> Game for EditorGame<G> {
         self.settle_composer(ctx.ui);
         self.settle_asset_browser(ctx.ui);
         self.settle_console(ctx.ui);
+        self.settle_settings(ctx.ui);
         // After the confirm dialogs, which own the frame while they are up,
         // and before every other widget: a blocking rect is consulted at
         // each widget's own interact call, so the popup's rect has to exist

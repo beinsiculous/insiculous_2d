@@ -141,6 +141,11 @@ pub enum EditorAction {
     ResetLayout,
     /// Cycle the game locale
     CycleGameLocale,
+    /// Open the project in the code tool (Edit → Open Project); a launch changes nothing,
+    /// so it runs during a play session too
+    OpenProject,
+    /// Show the External Tools panel (Edit → External Tools…)
+    ShowExternalTools,
 }
 
 impl EditorAction {

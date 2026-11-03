@@ -98,3 +98,39 @@ fn test_load_preferences_after_settle_restores_camera_from_slot() {
 
     assert_eq!(second_editor.editor.camera_offset(), Vec2::new(314.0, 159.0));
 }
+
+#[test]
+fn test_an_external_tools_edit_settles_into_the_slot_and_one_made_in_play_lands_at_stop() {
+    use editor::external_tools::{PresetId, ToolCategory, ToolChoice};
+    use editor::settings_panel::{choose, write_program, ToolOption, ToolRow};
+
+    let slot = TempSlot::new("prefs_external_tools");
+    let mut editor = editor_game();
+    editor.prefs_slot = slot.0.clone();
+    let read_slot = |editor: &super::EditorGame<super::test_support::DummyGame>| {
+        engine_core::save_store::read(&editor.prefs_slot).ok().flatten().unwrap_or_default()
+    };
+
+    write_program(&mut editor.editor.external_tools, PresetId::MidiEvil, "/opt/midi-evil/midi-evil");
+    let dt = 1.0 / 60.0;
+    for _ in 0..40 {
+        editor.save_preferences_if_changed(dt);
+    }
+    assert!(read_slot(&editor).contains("/opt/midi-evil/midi-evil"), "the panel's edit settles like any preference");
+
+    let mut world = ecs::World::new();
+    press_play(&mut editor, &mut world);
+    choose(&mut editor.editor.external_tools, ToolRow::Category(ToolCategory::Art), ToolOption::Preset(PresetId::Aseprite));
+    for _ in 0..40 {
+        editor.save_preferences_if_changed(dt);
+    }
+    assert!(!read_slot(&editor).contains("Aseprite"), "no settle write during a play session");
+    editor.handle_play_action(editor::PlayControlAction::Stop, &mut world);
+    assert!(read_slot(&editor).contains("Aseprite"), "Stop writes the edit made in Play");
+
+    let mut reopened = editor_game();
+    reopened.prefs_slot = slot.0.clone();
+    reopened.load_preferences();
+    assert_eq!(reopened.editor.external_tools.art, ToolChoice::Preset(PresetId::Aseprite));
+    assert_eq!(reopened.editor.external_tools.programs.get(&PresetId::MidiEvil).map(String::as_str), Some("/opt/midi-evil/midi-evil"));
+}

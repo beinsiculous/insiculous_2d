@@ -59,7 +59,48 @@ pub enum ReloadPolicy {
     ReloadSample,
 }
 
+impl ToolCategory {
+    /// Every category, in the order the settings panel lists them.
+    pub const ALL: [ToolCategory; 4] = [ToolCategory::Code, ToolCategory::Music, ToolCategory::Sample, ToolCategory::Art];
+
+    /// The category's name as the settings panel heads it: "Code", "Music", "Sample", "Art".
+    pub fn name(self) -> &'static str {
+        match self {
+            ToolCategory::Code => "Code",
+            ToolCategory::Music => "Music",
+            ToolCategory::Sample => "Sample",
+            ToolCategory::Art => "Art",
+        }
+    }
+}
+
 impl FileType {
+    /// Every type, in declaration order: the settings panel's override rows.
+    pub const ALL: [FileType; 8] = [
+        FileType::RustSource,
+        FileType::RhaiScript,
+        FileType::Ron,
+        FileType::Midi,
+        FileType::AudioSample,
+        FileType::DawProject,
+        FileType::SoundFont,
+        FileType::Image,
+    ];
+
+    /// What the settings panel calls the type.
+    pub fn name(self) -> &'static str {
+        match self {
+            FileType::RustSource => "Rust source",
+            FileType::RhaiScript => "Rhai script",
+            FileType::Ron => "RON file",
+            FileType::Midi => "MIDI file",
+            FileType::AudioSample => "Audio sample",
+            FileType::DawProject => "DAW project",
+            FileType::SoundFont => "SoundFont",
+            FileType::Image => "Image",
+        }
+    }
+
     /// The type of `path` by its extension (case-insensitive), or `None` for a file no
     /// tool opens. `daw_project_extensions` is the configured list, with or without dots.
     pub fn of(path: &Path, daw_project_extensions: &[String]) -> Option<FileType> {

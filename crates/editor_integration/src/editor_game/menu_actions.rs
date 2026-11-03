@@ -26,11 +26,23 @@ impl<G: Game> EditorGame<G> {
         self.editor.view.sync_menu(&mut self.editor.menu_bar);
     }
 
+    /// Name Edit → Open Project after the code tool — the category's choice, as a project
+    /// request resolves, never a file type's override — which the settings panel may have
+    /// changed since the last frame, and enable it where it can open anything.
+    fn sync_open_project_item(&mut self) {
+        use editor::external_tools::{ToolCategory, ToolName};
+
+        let tool = ToolName::of(self.editor.external_tools.category_choice(ToolCategory::Code));
+        let (label, enabled) = editor::open_project_item(tool, cfg!(not(target_arch = "wasm32")));
+        self.editor.menu_bar.set_action_by_prefix("Edit", editor::OPEN_PROJECT_PREFIX, label, enabled);
+    }
+
     /// Render the menu bar and dispatch the chosen label as an editor
     /// action through the one dispatcher; while Playing only the actions
     /// that allow it run, the rest are dropped silently.
     pub(super) fn handle_menu_bar(&mut self, ctx: &mut GameContext, window_size: Vec2) {
         self.sync_view_menu_checks();
+        self.sync_open_project_item();
         let Some(label) = self.editor.menu_bar.render(ctx.ui, window_size.x, &self.editor.theme) else {
             return;
         };

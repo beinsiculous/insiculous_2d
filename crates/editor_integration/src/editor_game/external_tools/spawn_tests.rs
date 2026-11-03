@@ -1,4 +1,5 @@
 use super::*;
+use editor::external_tools::PresetId;
 
 fn search_over(directories: &[&Path], home: Option<&Path>) -> ProgramSearch {
     ProgramSearch {
@@ -114,8 +115,25 @@ fn test_an_exit_is_news_only_when_it_failed_inside_the_report_window() {
 }
 
 #[test]
+fn test_a_program_named_in_a_presets_place_has_no_fallback_locations_and_keeps_the_preset() {
+    let own = Launch { program: "aseprite".to_string(), args: Vec::new(), preset: Some(PresetId::Aseprite), named_program: false };
+    assert_eq!(fallback_locations(&own), PresetId::Aseprite.preset().fallback_locations);
+    assert_eq!(flatpak_hint(&own), Some("org.aseprite.Aseprite"));
+    let named = Launch { named_program: true, program: "aseprite-beta".to_string(), ..own.clone() };
+    assert!(fallback_locations(&named).is_empty(), "a miss on PATH is a miss, never the preset's own binary under the named program");
+    assert_eq!(flatpak_hint(&named), None, "the preset's Flatpak is not the program the person named");
+    assert_eq!(exit_wording(&named), ExitWording::Plain, "the preset still words a GUI program's early exit");
+    assert_eq!(launched_name(&own), "Aseprite");
+    assert_eq!(launched_name(&named), "aseprite-beta", "the line names what ran, as typed");
+    let custom = Launch { preset: None, ..own };
+    assert!(fallback_locations(&custom).is_empty());
+    assert_eq!(flatpak_hint(&custom), None);
+    assert_eq!(launched_name(&custom), "aseprite");
+}
+
+#[test]
 fn test_only_a_custom_command_or_a_terminal_preset_is_suspected_of_needing_a_terminal() {
-    let launch = |preset| Launch { program: "tool".to_string(), args: Vec::new(), preset };
+    let launch = |preset| Launch { program: "tool".to_string(), args: Vec::new(), preset, named_program: false };
     assert_eq!(exit_wording(&launch(None)), ExitWording::MaybeTerminal, "a custom command is a program the editor does not know");
     assert_eq!(exit_wording(&launch(Some(PresetId::Helix))), ExitWording::MaybeTerminal);
     assert_eq!(
@@ -162,6 +180,7 @@ fn test_a_launched_program_that_fails_at_once_reports_through_the_channel() {
         program: "sh".to_string(),
         args: vec!["-c".to_string(), "echo first line >&2; exit 4".to_string()],
         preset: None,
+        named_program: false,
     };
 
     assert_eq!(run_program(&launch, ExitWording::MaybeTerminal, &reports), Ok("sh".to_string()));

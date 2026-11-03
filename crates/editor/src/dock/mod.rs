@@ -40,6 +40,8 @@ impl PanelId {
     pub const CONSOLE: PanelId = PanelId(4);
     /// The composer: the song's piano roll, note list and sidebar
     pub const COMPOSER: PanelId = PanelId(5);
+    /// The External Tools settings, shown by Edit → External Tools… (no View item)
+    pub const SETTINGS: PanelId = PanelId(6);
 }
 
 impl From<PanelId> for WidgetId {
@@ -263,6 +265,24 @@ impl DockArea {
         }
     }
 
+    /// Show a panel wherever it is reachable: visible and expanded, and a side panel as the
+    /// narrow-mode overlay while the dock is narrow, where it is otherwise only a tab.
+    /// Showing the overlay already open leaves it open.
+    pub fn show_panel(&mut self, id: PanelId) {
+        let Some(panel) = self.get_panel_mut(id) else {
+            return;
+        };
+        panel.visible = true;
+        if panel.is_collapsible() {
+            panel.collapsed = false;
+        }
+        let side = Self::is_side(panel.position);
+        self.layout();
+        if self.narrow && side && self.narrow_overlay != Some(id) {
+            self.open_narrow_overlay(id);
+        }
+    }
+
     /// Toggle a panel's visibility and re-run layout.
     pub fn toggle_panel_visible(&mut self, id: PanelId) {
         if let Some(panel) = self.get_panel_mut(id) {
@@ -320,9 +340,11 @@ impl DockArea {
 
     /// A side panel's header tab while narrow: the edge-anchored strip that
     /// opens it, below the centre's toolbar strip so the play controls stay
-    /// clickable.
-    fn narrow_tab_bounds(panel: &DockPanel, centre: Rect) -> Rect {
-        let y = Self::narrow_top(centre) + PADDING;
+    /// clickable. Tabs sharing an edge stack downward, `slot` being the tab's
+    /// place among them, or two panels on one edge would draw one tab over the
+    /// other and the first drawn would take every click.
+    fn narrow_tab_bounds(panel: &DockPanel, centre: Rect, slot: usize) -> Rect {
+        let y = Self::narrow_top(centre) + PADDING + slot as f32 * (NARROW_TAB_LENGTH + PADDING);
         let x = match panel.position {
             DockPosition::Right => centre.right() - HEADER_HEIGHT,
             _ => centre.x,
@@ -457,16 +479,25 @@ impl DockArea {
         // The narrow side panels sit against the centre they overlay, so they
         // are placed once the centre is known.
         if self.narrow {
+            let mut tabs_on_the_left = 0;
+            let mut tabs_on_the_right = 0;
             for index in 0..self.panels.len() {
                 let panel = &self.panels[index];
                 if !panel.visible || !Self::is_side(panel.position) {
                     continue;
                 }
+                // Every side panel on the edge takes a slot, the overlay's left empty, so
+                // the tabs stay where they are when a neighbour opens or closes.
+                let slot = match panel.position {
+                    DockPosition::Right => &mut tabs_on_the_right,
+                    _ => &mut tabs_on_the_left,
+                };
                 let bounds = if self.narrow_overlay == Some(panel.id) {
                     Self::narrow_overlay_bounds(panel, remaining, self.bounds.bottom())
                 } else {
-                    Self::narrow_tab_bounds(panel, remaining)
+                    Self::narrow_tab_bounds(panel, remaining, *slot)
                 };
+                *slot += 1;
                 self.panels[index].bounds = bounds;
             }
         }

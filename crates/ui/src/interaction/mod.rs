@@ -331,6 +331,11 @@ impl InteractionManager {
         self.focus_widget == Some(id)
     }
 
+    /// The widget holding keyboard focus, if any.
+    pub fn focused_widget(&self) -> Option<WidgetId> {
+        self.focus_widget
+    }
+
     /// Check if any widget has keyboard focus (e.g. a text input being edited).
     pub(crate) fn has_focus(&self) -> bool {
         self.focus_widget.is_some()

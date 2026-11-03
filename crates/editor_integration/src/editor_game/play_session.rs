@@ -140,6 +140,7 @@ impl<G: Game> EditorGame<G> {
         self.leave_composer();
         self.editor.asset_browser.release_keyboard();
         self.editor.console.release_keyboard();
+        self.editor.settings.release_keyboard();
         self.editor.context_menu.close();
         self.editor.set_play_state(EditorPlayState::Playing);
         self.editor.close_add_component_popup();

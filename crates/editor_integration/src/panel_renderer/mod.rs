@@ -64,6 +64,7 @@ fn render_panel_body(
             asset_browser::render_asset_browser(editor, ctx, bounds, command_history)
         }
         PanelId::CONSOLE => console::render_console(editor, ctx.ui, bounds),
+        PanelId::SETTINGS => settings::render_settings(editor, ctx.ui, bounds),
         PanelId::COMPOSER => log::error!("the composer renders through its host, which holds the song"),
         _ => render_default(ctx, content_x, y),
     }
@@ -416,6 +417,7 @@ pub(crate) mod composer;
 mod console;
 mod drag_ghost;
 mod inspector;
+mod settings;
 #[cfg(test)]
 mod scene_view_tests;
 #[cfg(test)]

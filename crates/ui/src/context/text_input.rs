@@ -310,9 +310,23 @@ impl UIContext {
         value: &str,
         bounds: Rect,
     ) -> Option<String> {
+        self.text_input_validated(id, value, bounds, |_| true)
+    }
+
+    /// [`text_input`](Self::text_input) whose edit buffer is checked by `is_valid` every
+    /// frame it is edited: the field draws the theme's invalid border while the check
+    /// fails. The check only draws; a commit returns the text whatever it says, and the
+    /// caller decides what a failing one means.
+    pub fn text_input_validated(
+        &mut self,
+        id: impl Into<WidgetId>,
+        value: &str,
+        bounds: Rect,
+        is_valid: impl Fn(&str) -> bool,
+    ) -> Option<String> {
         let id = id.into();
         let font = self.resolve_font(None);
-        match self.edit_field(id, bounds, font, value, || value.to_string(), |_| true) {
+        match self.edit_field(id, bounds, font, value, || value.to_string(), is_valid) {
             EditFieldEvent::Committed(new_text) => {
                 self.draw_text_input_box(bounds, &new_text, false, font);
                 self.note_edit_commit();

@@ -12,7 +12,7 @@ use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use editor::external_tools::{Launch, OsDefault, Platform, PresetId, Resolution};
+use editor::external_tools::{Launch, OsDefault, Platform, Resolution};
 
 /// How much of a child's stderr is kept: the last 4 KiB.
 const STDERR_TAIL_BYTES: usize = 4096;
@@ -72,14 +72,41 @@ pub(super) fn launch(resolution: Resolution, reports: &mpsc::Sender<String>) -> 
 }
 
 fn run_program(launch: &Launch, wording: ExitWording, reports: &mpsc::Sender<String>) -> Result<String, String> {
-    let preset = launch.preset.map(PresetId::preset);
-    let fallback_locations = preset.map_or(&[][..], |preset| preset.fallback_locations);
     let program = ProgramSearch::from_process()
-        .find(&launch.program, fallback_locations)
-        .map_err(|not_found| not_found.sentence(&launch.program, preset.and_then(|preset| preset.flatpak_id)))?;
+        .find(&launch.program, fallback_locations(launch))
+        .map_err(|not_found| not_found.sentence(&launch.program, flatpak_hint(launch)))?;
     spawn_watched(&program, &launch.args, &launch.program, wording, reports.clone())
         .map_err(|error| format!("Failed to start {}: {error}", launch.program))?;
-    Ok(preset.map_or_else(|| launch.program.clone(), |preset| preset.name.to_string()))
+    Ok(launched_name(launch))
+}
+
+/// What "Opened … in <name>" calls the program: the preset's name for its own program,
+/// the program as typed for one named in its place or a custom command.
+pub(super) fn launched_name(launch: &Launch) -> String {
+    match launch.preset {
+        Some(preset) if !launch.named_program => preset.preset().name.to_string(),
+        _ => launch.program.clone(),
+    }
+}
+
+/// Where a bare name is looked for after `PATH`: the preset's fallback locations for its
+/// own program, and nowhere for a program named in the settings in its place — those
+/// locations hold the preset's binary, which would run under the configured name.
+pub(super) fn fallback_locations(launch: &Launch) -> &'static [&'static str] {
+    match launch.preset {
+        Some(preset) if !launch.named_program => preset.preset().fallback_locations,
+        _ => &[],
+    }
+}
+
+/// The Flatpak id the not-found sentence offers: the preset's, for the preset's own
+/// program — a program named in its place is the person's, and the preset's Flatpak is
+/// not what they asked for.
+pub(super) fn flatpak_hint(launch: &Launch) -> Option<&'static str> {
+    match launch.preset {
+        Some(preset) if !launch.named_program => preset.preset().flatpak_id,
+        _ => None,
+    }
 }
 
 /// Where the launcher looks for a program, captured so a test can name its own.

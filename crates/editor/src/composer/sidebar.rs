@@ -22,6 +22,7 @@ use crate::song::{SongDocument, SongEdit};
 use crate::theme::EditorTheme;
 
 pub use walk::ROW_HEIGHT;
+pub(crate) use walk::wrap_to_width;
 use walk::SidebarWalk;
 
 /// The path field's widget, which Save Song As… puts the keyboard in.

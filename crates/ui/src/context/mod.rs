@@ -194,6 +194,20 @@ impl UIContext {
         self.interaction.input().mouse_just_pressed
     }
 
+    /// Whether a key that commits a focused field — Enter, the numpad's Enter or Tab —
+    /// was pressed this frame, so a walk can tell a keyboard commit from a press away.
+    pub fn commit_key_pressed(&self) -> bool {
+        let input = self.interaction.input();
+        input.enter_pressed || input.tab_pressed
+    }
+
+    /// The widget holding keyboard focus as this frame stands: a walk that draws its
+    /// fields in order reads it once at its start, since a field drawn earlier may take
+    /// the focus a field drawn later still has to commit on.
+    pub fn focused_widget(&self) -> Option<WidgetId> {
+        self.interaction.focused_widget()
+    }
+
     /// Whether the right mouse button was pressed this frame: the press that opens a
     /// context menu. A focused edit field commits on it outside its bounds, and a pending
     /// Tab traversal is dropped by it, as on a left press; no other widget reacts to it, so

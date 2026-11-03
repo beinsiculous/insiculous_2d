@@ -266,7 +266,7 @@ mod tests {
 
     #[test]
     fn test_an_old_ide_command_loads_as_the_custom_code_tool_and_is_never_written_again() -> Result<(), String> {
-        use crate::external_tools::{CommandTemplate, ToolChoice};
+        use crate::external_tools::{CommandTemplate, CustomTool, ToolChoice};
         let old = r#"{
             "camera_position": [0.0, 0.0],
             "camera_zoom": 1.0,
@@ -279,7 +279,7 @@ mod tests {
         let prefs = EditorPreferences::from_json(old)?;
         assert_eq!(
             prefs.external_tools.code,
-            ToolChoice::Custom(CommandTemplate("code --wait {file}".to_string())),
+            ToolChoice::Custom(CustomTool::file_only(CommandTemplate("code --wait {file}".to_string()))),
             "the old command opened the file it was given, so the template names it"
         );
         let json = prefs.to_json()?;

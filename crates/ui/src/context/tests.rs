@@ -402,6 +402,30 @@ fn test_float_input_edits_at_the_cursor_and_commits_on_enter() {
 }
 
 #[test]
+fn test_a_validated_text_input_draws_the_invalid_border_while_its_check_fails_and_still_commits() {
+    let mut ui = UIContext::new();
+    let mut input = input::InputHandler::new();
+    let invalid_border = ui.theme().text_input.border_invalid;
+    let field = |ui: &mut UIContext| ui.text_input_validated("validated_field", "ab", FIELD, |text| text.contains('{'));
+    let draws_invalid = |ui: &UIContext| {
+        ui.draw_list().commands().iter().any(|command| matches!(command, DrawCommand::RectBorder { color, .. } if *color == invalid_border))
+    };
+
+    focus_field(&mut ui, &mut input, FIELD, field);
+    type_key(&mut ui, &mut input, KeyCode::KeyX, field);
+    assert!(draws_invalid(&ui), "\"x\" fails the check: the red border is drawn");
+
+    let unchecked = |ui: &mut UIContext| ui.text_input("plain_field", "ab", FIELD);
+    focus_field(&mut ui, &mut input, FIELD, unchecked);
+    type_key(&mut ui, &mut input, KeyCode::KeyX, unchecked);
+    assert!(!draws_invalid(&ui), "text_input checks nothing");
+
+    focus_field(&mut ui, &mut input, FIELD, field);
+    type_key(&mut ui, &mut input, KeyCode::KeyX, field);
+    assert_eq!(type_key(&mut ui, &mut input, KeyCode::Enter, field), Some("x".to_string()), "the check draws; the caller judges the commit");
+}
+
+#[test]
 fn test_click_inside_a_focused_field_places_the_cursor_at_the_nearest_boundary() -> Result<(), FontError> {
     // Widget-level plumbing of `cursor_from_click`: the prefix widths come
     // from the field's own face, so a click lands where that face drew.

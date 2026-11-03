@@ -5,6 +5,7 @@
 //! touches a process or a thread.
 
 mod config;
+mod custom_tool;
 mod file_type;
 mod presets;
 mod songs;
@@ -14,9 +15,10 @@ mod track_diff;
 mod watch;
 
 pub use config::{
-    os_default, resolve, ExternalToolsConfig, Launch, LaunchTarget, Location, OpenRequest, OsDefault, Platform,
+    os_default, resolve, resolve_with, ExternalToolsConfig, Launch, LaunchTarget, Location, OpenRequest, OsDefault, Platform,
     Resolution, ResolveError, ToolChoice, ToolName, DESKTOP_ONLY_HINT,
 };
+pub use custom_tool::CustomTool;
 pub use file_type::{
     is_daw_project_path, is_midi_path, midi_sidecar_path, sidecar_midi_path, FileType, ProjectBase, ReloadPolicy,
     ToolCategory,

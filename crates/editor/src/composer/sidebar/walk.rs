@@ -269,7 +269,7 @@ impl<'a> SidebarWalk<'a> {
 
 /// `text` broken at spaces into lines no wider than `width` by `measure`; a single word wider
 /// than `width` keeps a line of its own rather than being cut.
-fn wrap_to_width(text: &str, width: f32, measure: impl Fn(&str) -> f32) -> Vec<String> {
+pub(crate) fn wrap_to_width(text: &str, width: f32, measure: impl Fn(&str) -> f32) -> Vec<String> {
     let mut lines: Vec<String> = Vec::new();
     let mut current = String::new();
     for word in text.split(' ') {

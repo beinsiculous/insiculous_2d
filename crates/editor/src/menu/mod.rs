@@ -10,7 +10,7 @@ use crate::theme::EditorTheme;
 use crate::layout::{PADDING, ROW_HEIGHT};
 
 mod actions;
-pub use actions::action_for_menu_label;
+pub use actions::{action_for_menu_label, open_project_item, EXTERNAL_TOOLS_LABEL, OPEN_PROJECT_PREFIX};
 
 /// Menu dropdown layout constants. The row height and the item padding are
 /// the shared layout tokens; only the width is the menu's own, and the
@@ -210,6 +210,9 @@ impl MenuBar {
                 MenuItem::separator(),
                 MenuItem::action_with_shortcut("Delete", "Del"),
                 MenuItem::action_with_shortcut("Duplicate", "Ctrl+D"),
+                MenuItem::separator(),
+                MenuItem::action(open_project_item(crate::external_tools::ToolName::SystemDefault, true).0).with_enabled(false),
+                MenuItem::action(EXTERNAL_TOOLS_LABEL),
             ]),
         );
 
@@ -277,6 +280,23 @@ impl MenuBar {
             if let MenuItem::Action { label: l, checked: c, .. } = item {
                 if l == label {
                     *c = checked;
+                }
+            }
+        }
+    }
+
+    /// Relabel the action item whose label starts with `prefix` and set whether it is
+    /// enabled: an item named after a setting, which a label lookup could not find again.
+    pub fn set_action_by_prefix(&mut self, menu_title: &str, prefix: &str, label: String, enabled: bool) {
+        let Some(menu) = self.menus.iter_mut().find(|menu| menu.title == menu_title) else {
+            return;
+        };
+        for item in &mut menu.items {
+            if let MenuItem::Action { label: current, enabled: current_enabled, .. } = item {
+                if current.starts_with(prefix) {
+                    *current = label;
+                    *current_enabled = enabled;
+                    return;
                 }
             }
         }

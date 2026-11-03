@@ -190,3 +190,42 @@ fn test_every_shortcut_sits_right_of_its_label_inside_the_dropdown() {
     }
     assert!(checked >= 4, "the File menu's shortcuts were all checked");
 }
+
+/// Edit → Open Project names the code tool, so its label changes with the settings: the
+/// item is found by its prefix every frame, every form of it is the one action, and it is
+/// disabled for the system default (which opens no project) and on the web.
+#[test]
+fn test_every_open_project_label_maps_to_the_action_and_follows_the_code_tool() {
+    use crate::external_tools::ToolName;
+
+    let forms = [ToolName::Preset("RustRover"), ToolName::CustomCommand, ToolName::SystemDefault];
+    let labels: Vec<(String, bool)> = forms.into_iter().map(|tool| open_project_item(tool, true)).collect();
+    assert_eq!(
+        labels,
+        [
+            ("Open Project in RustRover".to_string(), true),
+            ("Open Project with the custom command".to_string(), true),
+            ("Open Project with the system default".to_string(), false),
+        ]
+    );
+    for (label, _) in &labels {
+        assert_eq!(action_for_menu_label(label), Some(crate::EditorAction::OpenProject), "{label}");
+    }
+    assert!(!open_project_item(ToolName::Preset("Zed"), false).1, "the web launches nothing, whatever the tool");
+    assert_eq!(action_for_menu_label(EXTERNAL_TOOLS_LABEL), Some(crate::EditorAction::ShowExternalTools));
+
+    let mut bar = MenuBar::editor_default();
+    let edit_item = |bar: &MenuBar, wanted: &str| {
+        bar.menus.iter().find(|menu| menu.title == "Edit").and_then(|menu| {
+            menu.items.iter().find_map(|item| match item {
+                MenuItem::Action { label, enabled, .. } if label.starts_with(wanted) => Some((label.clone(), *enabled)),
+                _ => None,
+            })
+        })
+    };
+    assert_eq!(edit_item(&bar, OPEN_PROJECT_PREFIX), Some(("Open Project with the system default".to_string(), false)));
+    let (label, enabled) = open_project_item(ToolName::Preset("RustRover"), true);
+    bar.set_action_by_prefix("Edit", OPEN_PROJECT_PREFIX, label, enabled);
+    assert_eq!(edit_item(&bar, OPEN_PROJECT_PREFIX), Some(("Open Project in RustRover".to_string(), true)));
+    assert_eq!(edit_item(&bar, EXTERNAL_TOOLS_LABEL), Some((EXTERNAL_TOOLS_LABEL.to_string(), true)));
+}

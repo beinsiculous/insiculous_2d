@@ -72,6 +72,7 @@ mod play_state;
 mod scroll;
 mod selection;
 mod selection_outline;
+pub mod settings_panel;
 pub mod song;
 mod sound_field;
 pub mod status_bar;
@@ -149,7 +150,7 @@ pub use clipboard::{
 };
 pub use grid::{render_grid_overlay, GridColors, GridConfig, GridLineKind, GridRenderer, GridSegment};
 pub use inspector::{component_value, inspect_component, InspectorStyle};
-pub use menu::{action_for_menu_label, Menu, MenuBar, MenuItem};
+pub use menu::{action_for_menu_label, open_project_item, Menu, MenuBar, MenuItem, EXTERNAL_TOOLS_LABEL, OPEN_PROJECT_PREFIX};
 pub use picking::{EntityPicker, PickResult, PickableEntity, AABB};
 pub use play_controls::{PlayControlAction, PlayControls};
 pub use play_state::EditorPlayState;

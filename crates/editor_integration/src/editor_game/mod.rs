@@ -41,6 +41,7 @@ mod preferences;
 mod run_options;
 mod scene_confirm;
 mod scene_io;
+mod settings_keys;
 mod snapshot;
 mod song_entry;
 mod song_io;
@@ -548,6 +549,8 @@ mod preferences_tests;
 mod scene_confirm_tests;
 #[cfg(test)]
 mod scene_io_tests;
+#[cfg(test)]
+mod settings_keys_tests;
 #[cfg(test)]
 mod snapshot_tests;
 #[cfg(test)]

@@ -22,6 +22,20 @@ pub fn edit_string(
     layout: RowLayout,
     style: &EditableFieldStyle,
 ) -> EditResult<String> {
+    edit_string_validated(ui, id, label, value, layout, style, |_| true)
+}
+
+/// [`edit_string`] whose edit buffer draws the ui's invalid border while `is_valid`
+/// fails. The check only draws: a commit is returned whatever it says.
+pub fn edit_string_validated(
+    ui: &mut UIContext,
+    id: FieldId,
+    label: &str,
+    value: &str,
+    layout: RowLayout,
+    style: &EditableFieldStyle,
+    is_valid: impl Fn(&str) -> bool,
+) -> EditResult<String> {
     draw_field_label(ui, label, &layout, style);
 
     // Text input bounds — wider than numeric inputs; strings are longer.
@@ -33,7 +47,7 @@ pub fn edit_string(
         input_height,
     );
 
-    match ui.text_input(id, value, input_bounds) {
+    match ui.text_input_validated(id, value, input_bounds, is_valid) {
         Some(new_value) if new_value != value => EditResult::Changed(new_value),
         _ => EditResult::Unchanged,
     }

@@ -3,6 +3,7 @@
 //! screen placement and drag mapping, and F / Shift+F framing.
 
 use super::*;
+use crate::DockPosition;
 use crate::test_support::{pickable, test_viewport};
 use std::path::PathBuf;
 
@@ -58,6 +59,7 @@ fn test_default_layout_docks_hierarchy_left_inspector_right_scene_center_assets_
             (PanelId::ASSET_BROWSER, DockPosition::Bottom),
             (PanelId::COMPOSER, DockPosition::Bottom),
             (PanelId::CONSOLE, DockPosition::Bottom),
+            (PanelId::SETTINGS, DockPosition::Right),
         ]
     );
 }
@@ -128,6 +130,67 @@ fn test_the_console_starts_hidden_stacks_above_assets_and_an_old_prefs_file_leav
         saved.panels.iter().any(|panel| panel.id == PanelId::CONSOLE.0 && panel.visible),
         "and a shown console is written back"
     );
+}
+
+#[test]
+fn test_external_tools_starts_hidden_shows_beside_the_inspector_and_an_old_prefs_file_leaves_it_hidden() {
+    let mut ctx = EditorContext::new();
+    let settings = |ctx: &EditorContext| ctx.dock_area.get_panel(PanelId::SETTINGS).cloned().expect("the settings panel");
+    assert!(!settings(&ctx).visible, "hidden until Edit → External Tools… asks for it");
+    assert_eq!(crate::menu::action_for_menu_label("External Tools…"), Some(crate::EditorAction::ShowExternalTools));
+    assert_eq!(crate::dock::panel_id_for_menu_label("External Tools"), None, "no View item toggles it");
+
+    ctx.dock_area.set_bounds(ui::Rect::new(0.0, 0.0, 1280.0, 720.0));
+    ctx.dock_area.set_panel_collapsed(PanelId::SETTINGS, true);
+    ctx.dock_area.show_panel(PanelId::SETTINGS);
+    let shown = settings(&ctx);
+    assert!(shown.visible && !shown.collapsed, "the action shows it expanded");
+    let inspector = ctx.dock_area.get_panel(PanelId::INSPECTOR).expect("the inspector").content_bounds();
+    let beside = shown.content_bounds();
+    assert!(beside.width > 0.0 && beside.height > 0.0);
+    assert!(
+        beside.x >= inspector.x + inspector.width || beside.x + beside.width <= inspector.x,
+        "two right panels sit side by side: {beside:?} beside {inspector:?}"
+    );
+
+    let old_prefs = crate::EditorPreferences {
+        panels: vec![crate::PanelPrefs { id: PanelId::INSPECTOR.0, visible: true, collapsed: false, size: 280.0 }],
+        ..Default::default()
+    };
+    let mut fresh = EditorContext::new();
+    old_prefs.apply_panels(&mut fresh.dock_area);
+    assert!(!settings(&fresh).visible, "a file without its row leaves it hidden");
+}
+
+#[test]
+fn test_a_narrow_dock_shows_external_tools_as_the_overlay_and_showing_it_again_keeps_it_open() {
+    let mut ctx = EditorContext::new();
+    ctx.dock_area.set_bounds(ui::Rect::new(0.0, 0.0, 390.0, 720.0));
+    ctx.dock_area.layout();
+    assert!(ctx.dock_area.is_narrow());
+
+    ctx.dock_area.show_panel(PanelId::SETTINGS);
+    assert_eq!(ctx.dock_area.narrow_overlay(), Some(PanelId::SETTINGS));
+    let overlay = ctx.dock_area.get_panel(PanelId::SETTINGS).expect("the settings panel").content_bounds();
+    assert!(overlay.width > 0.0 && overlay.height > 0.0, "the overlay has room to draw in");
+
+    ctx.dock_area.show_panel(PanelId::SETTINGS);
+    assert_eq!(ctx.dock_area.narrow_overlay(), Some(PanelId::SETTINGS), "a second ask does not toggle it shut");
+
+    ctx.dock_area.close_narrow_overlay();
+    ctx.dock_area.layout();
+    let tab = |ctx: &EditorContext, id: PanelId| ctx.dock_area.get_panel(id).expect("a right panel").content_bounds();
+    let (inspector, settings) = (tab(&ctx, PanelId::INSPECTOR), tab(&ctx, PanelId::SETTINGS));
+    assert_eq!(inspector.x, settings.x, "both tabs hang on the right edge");
+    assert!(
+        settings.y >= inspector.bottom() || inspector.y >= settings.bottom(),
+        "two tabs on one edge stack instead of drawing one over the other: {inspector:?} and {settings:?}"
+    );
+
+    ctx.dock_area.open_narrow_overlay(PanelId::INSPECTOR);
+    ctx.dock_area.layout();
+    assert_eq!(ctx.dock_area.narrow_overlay(), Some(PanelId::INSPECTOR));
+    assert_eq!(tab(&ctx, PanelId::SETTINGS), settings, "a neighbour opening as the overlay leaves the tab where it was");
 }
 
 #[test]

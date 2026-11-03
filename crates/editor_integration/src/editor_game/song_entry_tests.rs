@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use ecs::{SoundEmitter, SoundRef, World};
 use editor::console::Severity;
-use editor::external_tools::{CommandTemplate, Launch, Location, OpenRequest, Resolution, ToolChoice};
+use editor::external_tools::{CommandTemplate, CustomTool, Launch, Location, OpenRequest, Resolution, ToolChoice};
 
 use super::hot_reload_tests::Session;
 use super::init_music::InitMusic;
@@ -51,7 +51,7 @@ fn request(path: &str) -> OpenRequest {
 /// `echo` that names the track — resolved, never spawned.
 fn echoed(session: &mut Session, request: OpenRequest) -> Vec<String> {
     session.editor.editor.external_tools.music =
-        ToolChoice::Custom(CommandTemplate("echo {file} [--track {track}] --track-index {track_index}".to_string()));
+        ToolChoice::Custom(CustomTool::file_only(CommandTemplate("echo {file} [--track {track}] --track-index {track_index}".to_string())));
     let upgraded = session.editor.at_first_part_track(request);
     match session.editor.resolve_open_request(&upgraded) {
         Ok((_, Resolution::Tool(Launch { args, .. }))) => args,
