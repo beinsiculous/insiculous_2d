@@ -303,6 +303,8 @@ human pass saves it into `music/` without it). A `.midi` saves the same way besi
 `<stem>.midi.ron`: a sidecar is always the MIDI file's whole name with `.ron` added.
 
 **The score belongs to MIDI Evil, which exports the `.mid`; the Conductor panel writes the map.**
+What the editor starts MIDI Evil with, and what its export must keep, is `EXTERNAL_TOOLS.md`
+§ [MIDI Evil, the contract across the crossing](EXTERNAL_TOOLS.md#midi-evil-the-contract-across-the-crossing).
 The engine writes a `.mid` only as a copy of the bytes it loaded — Save As's, or a map
 save's when the `.mid` is gone from disk. A save is one of two kinds:
 

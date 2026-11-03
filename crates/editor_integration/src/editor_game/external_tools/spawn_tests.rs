@@ -1,5 +1,5 @@
 use super::*;
-use editor::external_tools::PresetId;
+use editor::external_tools::{CommandTemplate, CustomTool, ExternalToolsConfig, FileType, Location, PresetId, ToolChoice};
 
 fn search_over(directories: &[&Path], home: Option<&Path>) -> ProgramSearch {
     ProgramSearch {
@@ -12,11 +12,17 @@ fn search_over(directories: &[&Path], home: Option<&Path>) -> ProgramSearch {
 
 #[cfg(unix)]
 fn write_executable(path: &Path) -> std::io::Result<()> {
+    write_script(path, "")
+}
+
+/// A shell script at `path` running `body`, executable.
+#[cfg(unix)]
+fn write_script(path: &Path, body: &str) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(path, b"#!/bin/sh\n")?;
+    std::fs::write(path, format!("#!/bin/sh\n{body}"))?;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
 }
 
@@ -183,9 +189,93 @@ fn test_a_launched_program_that_fails_at_once_reports_through_the_channel() {
         named_program: false,
     };
 
-    assert_eq!(run_program(&launch, ExitWording::MaybeTerminal, &reports), Ok("sh".to_string()));
+    assert_eq!(run_program(&ProgramSearch::from_process(), &launch, ExitWording::MaybeTerminal, &reports), Ok("sh".to_string()));
 
     let report = finished.recv_timeout(Duration::from_secs(10)).unwrap_or_default();
     assert!(report.starts_with("sh "), "{report}");
     assert!(report.ends_with(" — first line"), "{report}");
+}
+
+#[test]
+fn test_only_a_program_ending_in_exe_under_wsl_takes_windows_paths() {
+    assert!(takes_windows_paths(Platform::Wsl, "notepad.exe"));
+    assert!(takes_windows_paths(Platform::Wsl, "/mnt/c/Program Files/Notepad++/NOTEPAD++.EXE"), "in any case, a path included");
+    assert!(!takes_windows_paths(Platform::Wsl, "code.cmd"), "a .cmd is not translated");
+    assert!(!takes_windows_paths(Platform::Wsl, "build.bat"), "nor a .bat");
+    assert!(!takes_windows_paths(Platform::Wsl, "code"));
+    assert!(!takes_windows_paths(Platform::Linux, "notepad.exe"), "only WSL runs a Windows program from Linux");
+    assert!(!takes_windows_paths(Platform::Windows, "notepad.exe"), "Windows itself names Windows paths");
+}
+
+/// What a custom `tool.exe` would open: the script `paddle.rhai` at line 12, in `root`.
+fn windows_request(root: &Path) -> super::super::WindowsProgramRequest {
+    let template = CommandTemplate("tool.exe --project {project} {file}[:{line}]".to_string());
+    super::super::WindowsProgramRequest {
+        config: ExternalToolsConfig::default(),
+        choice: ToolChoice::Custom(CustomTool::file_only(template)),
+        file_type: FileType::RhaiScript,
+        file: root.join("game/assets/scripts/paddle.rhai"),
+        project: root.join("game"),
+        location: Location::Line { line: 12, column: None },
+        program: "tool.exe".to_string(),
+    }
+}
+
+/// How the fake `wslpath` writes a path: `W:` then the path with each `/` a `\`.
+fn fake_windows_path(path: &Path) -> String {
+    format!("W:{}", path.display()).replace('/', "\\")
+}
+
+#[test]
+#[cfg(unix)]
+fn test_a_windows_program_is_started_on_the_paths_wslpath_gives_with_its_line_glued() -> std::io::Result<()> {
+    let root = tempfile::tempdir()?;
+    let bin = root.path().join("bin");
+    write_script(&bin.join("wslpath"), "[ \"$1\" = -w ] || exit 2\nprintf 'W:%s\\n' \"$2\" | tr / '\\\\'\n")?;
+    // The fake program says its argv on stderr and fails, so the reaper's report carries it.
+    write_script(&bin.join("tool.exe"), "printf '%s|' \"$@\" >&2\nexit 1\n")?;
+    let request = windows_request(root.path());
+    let (file, project) = (request.file.clone(), request.project.clone());
+    let (reports, finished) = mpsc::channel();
+
+    assert_eq!(start_windows_program(request, search_over(&[&bin], None), reports), Ok("tool.exe".to_string()));
+
+    let report = finished.recv_timeout(Duration::from_secs(10)).unwrap_or_default();
+    let argv = format!("--project|{}|{}:12|", fake_windows_path(&project), fake_windows_path(&file));
+    assert!(report.starts_with("tool.exe "), "{report}");
+    assert!(report.ends_with(&format!(" — {argv}")), "the Windows paths, the line glued to the file: {report}");
+    Ok(())
+}
+
+#[test]
+#[cfg(unix)]
+fn test_a_missing_or_failing_wslpath_is_one_sentence_naming_the_path_and_the_program_and_nothing_starts() -> std::io::Result<()> {
+    let root = tempfile::tempdir()?;
+    let without_wslpath = root.path().join("empty");
+    std::fs::create_dir_all(&without_wslpath)?;
+    let failing = root.path().join("failing");
+    write_script(&failing.join("wslpath"), "echo \"wslpath: $2: No such file or directory\" >&2\nexit 1\n")?;
+    for directory in [&without_wslpath, &failing] {
+        // The program is on the search too, so a start would be heard from its reaper.
+        write_script(&directory.join("tool.exe"), "echo started >&2\nexit 1\n")?;
+    }
+    let file = windows_request(root.path()).file;
+
+    let (reports, finished) = mpsc::channel();
+    assert_eq!(start_windows_program(windows_request(root.path()), search_over(&[&without_wslpath], None), reports), Ok("tool.exe".to_string()));
+    assert_eq!(
+        finished.recv_timeout(Duration::from_secs(10)),
+        Ok(format!("wslpath could not translate {} for tool.exe — wslpath: not found on PATH (searched 1 directories)", file.display()))
+    );
+    assert_eq!(finished.recv_timeout(Duration::from_secs(10)), Err(mpsc::RecvTimeoutError::Disconnected), "nothing was started");
+
+    let (reports, finished) = mpsc::channel();
+    assert_eq!(start_windows_program(windows_request(root.path()), search_over(&[&failing], None), reports), Ok("tool.exe".to_string()));
+    assert_eq!(
+        finished.recv_timeout(Duration::from_secs(10)),
+        Ok(format!("wslpath could not translate {0} for tool.exe — wslpath: {0}: No such file or directory", file.display())),
+        "wslpath's own first line says why"
+    );
+    assert_eq!(finished.recv_timeout(Duration::from_secs(10)), Err(mpsc::RecvTimeoutError::Disconnected), "nothing was started");
+    Ok(())
 }

@@ -116,6 +116,21 @@ impl CommandTemplate {
         parse(&self.0).is_ok_and(|spans| names_placeholder(&spans, Placeholder::File))
     }
 
+    /// The program this template runs, read without expanding anything: its first
+    /// argument when that is plain text. `None` when the template does not parse, names
+    /// no program, or builds its program from a placeholder or a group.
+    pub fn literal_program(&self) -> Option<String> {
+        let spans = parse(&self.0).ok()?;
+        let mut program = String::new();
+        for span in spans.iter().skip_while(|span| **span == Span::Break).take_while(|span| **span != Span::Break) {
+            match span {
+                Span::Text(text) => program.push_str(text),
+                _ => return None,
+            }
+        }
+        (!program.is_empty()).then_some(program)
+    }
+
     /// The argv this template expands to; the first element is the program.
     pub fn expand(&self, values: &PlaceholderValues) -> Result<Vec<String>, TemplateError> {
         let spans = parse(&self.0)?;

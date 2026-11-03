@@ -246,6 +246,8 @@ The native editor watches every `.rhai` the scene's `Scripts` components name. S
 - **The first frame on the new source** is where old state meets new code: a blackboard key the new version reads differently, say. A runtime error on that frame quarantines the script and its message ends "reloaded script failed on its first frame — Stop and Play to reset its state". The blackboard is kept on purpose; Stop and Play starts it fresh.
 
 The editor's own saves never trigger a reload, and the browser playground does not watch files.
+To open a script at an error's line, click the error in the console or on the status bar: it
+opens in the code editor [`EXTERNAL_TOOLS.md`](EXTERNAL_TOOLS.md#set-up-vs-code-and-open-a-script-at-a-line) sets up.
 
 ---
 

@@ -104,9 +104,9 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
 - **crates/common/** - Shared types and utilities
   - `rect.rs` / `color.rs` / `transform.rs` / `camera.rs` / `time.rs` / `macros.rs` - Rect, Color, transforms, CameraUniform, Time
 
-- **crates/editor/** - Editor data + widgets (panels, inspector, gizmos, undo/redo). NO engine_core dep. See `crates/editor/CLAUDE.md` for the file map; `stored_component.rs` holds the component registry macro (single source of truth).
+- **crates/editor/** - Editor data + widgets (panels, inspector, gizmos, undo/redo). NO engine_core dep. See `crates/editor/CLAUDE.md` for the file map; `stored_component.rs` holds the component registry macro (single source of truth); `external_tools/` holds which program opens which project file and what reloads on save, pure — `docs/EXTERNAL_TOOLS.md` is the reference.
 
-- **crates/editor_integration/** - Bridges editor and engine_core (`EditorGame<G>` wrapper, `run_game_with_editor()`, panel rendering, inspector writeback). See its `CLAUDE.md`.
+- **crates/editor_integration/** - Bridges editor and engine_core (`EditorGame<G>` wrapper, `run_game_with_editor()`, panel rendering, inspector writeback). See its `CLAUDE.md`; `editor_game/external_tools.rs` and `external_tools/spawn.rs` are the launcher that starts the tools, and `editor_game/hot_reload.rs` the watcher's host — `docs/EXTERNAL_TOOLS.md` is the reference.
 
 - **crates/ecs_macros/** - `#[derive(ComponentMeta)]` proc macro
 
@@ -1000,7 +1000,8 @@ SoundEmitter(
   (`set_playback_mix`, volume and pan) that instance alone.
 
 **Authoring a song.** Songs are composed in MIDI Evil, which exports the `.mid`; the
-editor's Conductor panel maps it. `song init <path.mid>` writes a new sidecar beside an exported
+editor's Conductor panel maps it. With MIDI Evil as the Music tool, a `.mid` tile opens in it
+through External Tools, at its first part's track (`docs/EXTERNAL_TOOLS.md`). `song init <path.mid>` writes a new sidecar beside an exported
 `.mid` (its background on the project's first bank under `soundfonts/`), and an unmapped
 `.mid` opened from the Conductor panel's Songs list or with `song open` starts on the same one.
 The map is the Conductor panel's sidebar, or the command API's `song edit <SongEdit>` with the map

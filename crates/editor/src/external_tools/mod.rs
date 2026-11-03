@@ -15,7 +15,7 @@ mod track_diff;
 mod watch;
 
 pub use config::{
-    os_default, resolve, resolve_with, ExternalToolsConfig, Launch, LaunchTarget, Location, OpenRequest, OsDefault, Platform,
+    os_default, program_of, resolve, resolve_with, ExternalToolsConfig, Launch, LaunchTarget, Location, OpenRequest, OsDefault, Platform,
     Resolution, ResolveError, ToolChoice, ToolName, DESKTOP_ONLY_HINT,
 };
 pub use custom_tool::CustomTool;

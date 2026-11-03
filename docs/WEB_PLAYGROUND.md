@@ -316,7 +316,8 @@ Export project, open the song's `.mid` from the archive in MIDI Evil, export it 
 bring the exported `.mid` back with "Import a song, sample or SoundFont", replacing the file
 of the same name. The song follows the new score with its map kept — at its next open, or at
 once when it is the Conductor panel's open song — and the track diff's lines name every part the
-new score no longer plays as written.
+new score no longer plays as written. The desktop editor hands a song to MIDI Evil itself
+([`EXTERNAL_TOOLS.md`](EXTERNAL_TOOLS.md#midi-evil-the-contract-across-the-crossing)).
 
 ### Validation
 

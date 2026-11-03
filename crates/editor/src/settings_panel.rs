@@ -27,7 +27,7 @@ mod walk;
 
 use ui::{Rect, UIContext, WidgetId};
 
-use crate::external_tools::{CustomTool, ExternalToolsConfig, FileType, ToolCategory, ToolChoice, DESKTOP_ONLY_HINT};
+use crate::external_tools::{CommandTemplate, CustomTool, ExternalToolsConfig, FileType, ToolCategory, ToolChoice, DESKTOP_ONLY_HINT};
 use crate::field_style::FieldId;
 use crate::theme::EditorTheme;
 use crate::ScrollState;
@@ -224,7 +224,7 @@ fn row_fields(walk: &mut SettingsWalk, draft: &mut Option<TemplateDraft>, config
         Some(ToolChoice::Preset(preset)) => {
             let program = config.programs.get(&preset).cloned().unwrap_or_default();
             let outcome = walk.field(field_id(block, PROGRAM_FIELD), "Program", &program, None, |_| true);
-            let own = preset.preset().file_template.split_whitespace().next().unwrap_or_default();
+            let own = CommandTemplate(preset.preset().file_template.to_string()).literal_program().unwrap_or_default();
             walk.tooltip(&format!("A path or a program name; blank runs {}'s own, {own}", preset.preset().name));
             if let Some(text) = outcome.committed {
                 write_program(config, preset, &text);

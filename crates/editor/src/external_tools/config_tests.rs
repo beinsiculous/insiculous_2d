@@ -292,6 +292,40 @@ fn test_an_empty_custom_command_is_refused_naming_no_program_and_never_panics() 
 }
 
 #[test]
+fn test_a_custom_commands_program_is_read_whole_before_anything_expands() {
+    let notepad = custom(r#""/mnt/c/Program Files/Notepad++/notepad++.exe" -n{line} {file}"#);
+    let config = ExternalToolsConfig::default();
+    assert_eq!(program_of(&config, &notepad, &Location::None), Some("/mnt/c/Program Files/Notepad++/notepad++.exe".to_string()));
+
+    let with_project = ToolChoice::Custom(CustomTool {
+        file: CommandTemplate("edit {file}".to_string()),
+        project: Some(CommandTemplate("Code.exe {project}".to_string())),
+    });
+    assert_eq!(program_of(&config, &with_project, &Location::Project), Some("Code.exe".to_string()), "a project opens through its own command");
+    assert_eq!(program_of(&config, &custom("edit {file}"), &Location::Project), None, "a tool without a project command runs nothing for one");
+    assert_eq!(program_of(&config, &custom("{project}/bin/tool.exe {file}"), &Location::None), None, "a program built from a value is not known before it expands");
+}
+
+#[test]
+fn test_a_presets_program_is_the_one_named_in_its_place_else_its_own_and_the_system_default_runs_none() {
+    let mut config = ExternalToolsConfig::default();
+    let vs_code = ToolChoice::Preset(PresetId::VsCode);
+    assert_eq!(program_of(&config, &vs_code, &Location::Line { line: 3, column: None }), Some("code".to_string()));
+
+    config.programs.insert(PresetId::VsCode, " /mnt/c/Users/me/AppData/Local/Programs/Microsoft VS Code/Code.exe ".to_string());
+    assert_eq!(
+        program_of(&config, &vs_code, &Location::Project),
+        Some("/mnt/c/Users/me/AppData/Local/Programs/Microsoft VS Code/Code.exe".to_string()),
+        "the program named in the preset's place, trimmed as resolve trims it"
+    );
+    config.programs.insert(PresetId::VsCode, "  ".to_string());
+    assert_eq!(program_of(&config, &vs_code, &Location::None), Some("code".to_string()), "a blank entry is no entry");
+
+    assert_eq!(program_of(&config, &ToolChoice::Preset(PresetId::Aseprite), &Location::Project), None, "Aseprite has no project command");
+    assert_eq!(program_of(&config, &ToolChoice::OsDefault, &Location::None), None);
+}
+
+#[test]
 fn test_the_config_round_trips_through_json_and_a_partial_one_fills_defaults() -> Result<(), serde_json::Error> {
     let mut config = ExternalToolsConfig { art: ToolChoice::Preset(PresetId::Aseprite), ..Default::default() };
     config.overrides.insert(FileType::SoundFont, ToolChoice::OsDefault);

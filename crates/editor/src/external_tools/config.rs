@@ -79,6 +79,22 @@ impl ExternalToolsConfig {
         }
     }
 
+    /// The choice a request opens through: a project request its category's alone, since
+    /// a project is no file and an override says how a file opens; any other request its
+    /// file type's.
+    pub fn request_choice(&self, file_type: FileType, location: &Location) -> &ToolChoice {
+        if *location == Location::Project {
+            self.category_choice(file_type.category())
+        } else {
+            self.choice_for(file_type)
+        }
+    }
+
+    /// The program the settings name in `preset`'s place; a blank entry is none.
+    pub fn program_in_place_of(&self, preset: PresetId) -> Option<&str> {
+        self.programs.get(&preset).map(|program| program.trim()).filter(|program| !program.is_empty())
+    }
+
     /// Carry a preferences file's old `ide_command` string into the code tool, unless
     /// a code tool is already chosen. The old command was split on whitespace, so each
     /// word's text is carried literally — a Windows path keeps its backslashes — while
@@ -263,12 +279,42 @@ pub enum ResolveError {
 /// own override, else its category's choice; a project request through the category's
 /// choice alone, since a project is no file and an override says how a file opens.
 pub fn resolve(config: &ExternalToolsConfig, target: LaunchTarget, platform: Platform) -> Result<Resolution, ResolveError> {
-    let choice = if *target.location == Location::Project {
-        config.category_choice(target.file_type.category())
+    resolve_with(config, config.request_choice(target.file_type, target.location), target, platform)
+}
+
+/// The program `choice` runs for a request at `location`, read before anything expands,
+/// so the host can tell how that program reads paths before any is put in its command:
+/// the program named in a preset's place, else the preset's own; a custom command's
+/// first argument when that is plain text. `None` for the system default, for a choice
+/// with no command for the request, and for a command that does not parse or builds its
+/// program from a placeholder.
+pub fn program_of(config: &ExternalToolsConfig, choice: &ToolChoice, location: &Location) -> Option<String> {
+    match choice {
+        ToolChoice::Preset(id) => {
+            let template = preset_template(*id, location)?;
+            config.program_in_place_of(*id).map(str::to_string).or_else(|| template.literal_program())
+        }
+        ToolChoice::Custom(custom) => custom_template(custom, location)?.literal_program(),
+        ToolChoice::OsDefault => None,
+    }
+}
+
+/// The template a preset opens `location` with: its project template for a project,
+/// which only a code tool has, its file template otherwise.
+fn preset_template(id: PresetId, location: &Location) -> Option<CommandTemplate> {
+    let preset = id.preset();
+    let template = if *location == Location::Project { preset.project_template? } else { preset.file_template };
+    Some(CommandTemplate(template.to_string()))
+}
+
+/// The command a custom tool opens `location` with: its project command for a project,
+/// which it may lack, its file command otherwise.
+fn custom_template<'a>(custom: &'a CustomTool, location: &Location) -> Option<&'a CommandTemplate> {
+    if *location == Location::Project {
+        custom.project.as_ref()
     } else {
-        config.choice_for(target.file_type)
-    };
-    resolve_with(config, choice, target, platform)
+        Some(&custom.file)
+    }
 }
 
 /// The extensions Windows runs a bare name under, which the preset's own name may carry.
@@ -283,17 +329,12 @@ pub fn resolve_with(
     platform: Platform,
 ) -> Result<Resolution, ResolveError> {
     let tool = ToolName::of(choice).subject();
+    let no_project_command = || ResolveError::NoProjectCommand { tool: tool.to_string() };
     match choice {
         ToolChoice::Preset(id) => {
-            let preset = id.preset();
-            let template = if *target.location == Location::Project {
-                preset.project_template.ok_or_else(|| ResolveError::NoProjectCommand { tool: tool.to_string() })?
-            } else {
-                preset.file_template
-            };
-            let mut resolution = tool_launch(&CommandTemplate(template.to_string()), target, Some(*id), tool)?;
-            let program = config.programs.get(id).map(|program| program.trim()).filter(|program| !program.is_empty());
-            if let (Resolution::Tool(launch), Some(program)) = (&mut resolution, program) {
+            let template = preset_template(*id, target.location).ok_or_else(no_project_command)?;
+            let mut resolution = tool_launch(&template, target, Some(*id), tool)?;
+            if let (Resolution::Tool(launch), Some(program)) = (&mut resolution, config.program_in_place_of(*id)) {
                 // The preset's fallback locations hold its own binary, so another program
                 // named in its place either runs or is reported not found — never
                 // replaced; the preset stays for its not-found hint and its exit wording.
@@ -301,28 +342,24 @@ pub fn resolve_with(
                 // with or without Windows' executable extension, in any case; any other
                 // suffix is another name, and a path is the person's file whatever it is
                 // called.
-                let own = preset.file_template.split_whitespace().next().unwrap_or_default();
+                let own = CommandTemplate(id.preset().file_template.to_string()).literal_program().unwrap_or_default();
                 let bare = Path::new(program).components().count() == 1;
                 let without_extension = program
                     .rsplit_once('.')
                     .filter(|(_, extension)| EXECUTABLE_EXTENSIONS.iter().any(|known| known.eq_ignore_ascii_case(extension)))
                     .map_or(program, |(name, _)| name);
-                launch.named_program = !(bare && without_extension.eq_ignore_ascii_case(own));
+                launch.named_program = !(bare && without_extension.eq_ignore_ascii_case(&own));
                 launch.program = program.to_string();
             }
             Ok(resolution)
         }
         ToolChoice::Custom(custom) => {
-            let template = if *target.location == Location::Project {
-                custom.project.as_ref().ok_or_else(|| ResolveError::NoProjectCommand { tool: tool.to_string() })?
-            } else {
-                &custom.file
-            };
+            let template = custom_template(custom, target.location).ok_or_else(no_project_command)?;
             tool_launch(template, target, None, tool)
         }
         ToolChoice::OsDefault => {
             if *target.location == Location::Project {
-                return Err(ResolveError::NoProjectCommand { tool: tool.to_string() });
+                return Err(no_project_command());
             }
             Ok(Resolution::OsDefault(os_default(platform, target.file)))
         }

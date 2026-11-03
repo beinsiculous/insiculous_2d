@@ -469,6 +469,8 @@ See [PROJECT_ROADMAP.md](PROJECT_ROADMAP.md) for detailed technical debt trackin
 
 [Future features](docs/FUTURE_FEATURES.md) records parked concepts outside the current roadmap.
 
+[External tools](docs/EXTERNAL_TOOLS.md) says which program opens which project file, how to set one up, and what the editor reloads when it saves.
+
 ## Examples
 
 - **hello_world** - Physics platformer with UI, audio, ECS, scene files, and behaviors

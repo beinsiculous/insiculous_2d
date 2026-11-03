@@ -12,7 +12,9 @@ use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use editor::external_tools::{Launch, OsDefault, Platform, Resolution};
+use editor::external_tools::{resolve_with, Launch, LaunchTarget, OsDefault, Platform, Resolution};
+
+use super::WindowsProgramRequest;
 
 /// How much of a child's stderr is kept: the last 4 KiB.
 const STDERR_TAIL_BYTES: usize = 4096;
@@ -63,16 +65,89 @@ pub(super) fn workspace_root(asset_base: &Path) -> PathBuf {
 /// Start `resolution`; `Ok` names the tool for the status bar, `Err` is the sentence
 /// saying why nothing started.
 pub(super) fn launch(resolution: Resolution, reports: &mpsc::Sender<String>) -> Result<String, String> {
+    let search = ProgramSearch::from_process();
     match resolution {
-        Resolution::Tool(launch) => run_program(&launch, exit_wording(&launch), reports),
-        Resolution::OsDefault(OsDefault::Program(launch)) => run_program(&launch, ExitWording::Plain, reports),
+        Resolution::Tool(launch) => run_program(&search, &launch, exit_wording(&launch), reports),
+        Resolution::OsDefault(OsDefault::Program(launch)) => run_program(&search, &launch, ExitWording::Plain, reports),
         Resolution::OsDefault(OsDefault::ShellAssociation(file)) => open_with_shell_association(&file),
         Resolution::OsDefault(OsDefault::WslView(file)) => open_with_wslview(file, reports.clone()),
     }
 }
 
-fn run_program(launch: &Launch, wording: ExitWording, reports: &mpsc::Sender<String>) -> Result<String, String> {
-    let program = ProgramSearch::from_process()
+/// Whether `program`, run under `platform`, is handed Windows paths: under WSL a program
+/// whose name ends in `.exe`, in any case, is a Windows program. Nothing else is — a
+/// `.bat` or a `.cmd` included — and no other platform translates.
+pub(super) fn takes_windows_paths(platform: Platform, program: &str) -> bool {
+    platform == Platform::Wsl && Path::new(program).extension().is_some_and(|extension| extension.eq_ignore_ascii_case("exe"))
+}
+
+/// Start a Windows program under WSL: its request's file and project go through
+/// `wslpath -w` on a thread of its own, since each runs a process, and the request is
+/// resolved and started there. `Ok` names the program for the status bar; what fails
+/// after the thread starts arrives through `reports`, like an exit report.
+pub(super) fn launch_windows_program(request: WindowsProgramRequest, reports: &mpsc::Sender<String>) -> Result<String, String> {
+    start_windows_program(request, ProgramSearch::from_process(), reports.clone())
+}
+
+fn start_windows_program(request: WindowsProgramRequest, search: ProgramSearch, reports: mpsc::Sender<String>) -> Result<String, String> {
+    let program = request.program.clone();
+    std::thread::Builder::new()
+        .name("external-tool-wslpath".to_string())
+        .spawn(move || {
+            if let Err(report) = translate_and_launch(&request, &search, &reports) {
+                let _ = reports.send(report);
+            }
+        })
+        .map_err(|error| format!("Failed to start {program}: {error}"))?;
+    Ok(program)
+}
+
+/// The worker's half: both paths translated, or one sentence naming the path and the
+/// program; then the request resolved on the Windows paths and started.
+fn translate_and_launch(request: &WindowsProgramRequest, search: &ProgramSearch, reports: &mpsc::Sender<String>) -> Result<(), String> {
+    let untranslated = |path: &Path, reason: String| {
+        format!("wslpath could not translate {} for {} — {reason}", path.display(), request.program)
+    };
+    let wslpath = search
+        .find("wslpath", &[])
+        .map_err(|not_found| untranslated(&request.file, format!("wslpath: {}", not_found.reason())))?;
+    let file = windows_path(&wslpath, &request.file).map_err(|reason| untranslated(&request.file, reason))?;
+    let project = if request.project == request.file {
+        file.clone()
+    } else {
+        windows_path(&wslpath, &request.project).map_err(|reason| untranslated(&request.project, reason))?
+    };
+    let target = LaunchTarget {
+        file_type: request.file_type,
+        file: Path::new(&file),
+        project: Path::new(&project),
+        location: &request.location,
+    };
+    match resolve_with(&request.config, &request.choice, target, Platform::Wsl).map_err(|error| error.to_string())? {
+        Resolution::Tool(tool) => run_program(search, &tool, exit_wording(&tool), reports).map(drop),
+        opener => launch(opener, reports).map(drop),
+    }
+}
+
+/// `path` as Windows names it, by `wslpath -w`; else why not: wslpath's first stderr
+/// line, or its exit status.
+fn windows_path(wslpath: &Path, path: &Path) -> Result<String, String> {
+    let output = Command::new(wslpath)
+        .arg("-w")
+        .arg(path)
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|error| error.to_string())?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let first_line = stderr.lines().map(str::trim).find(|line| !line.is_empty());
+        return Err(first_line.map_or_else(|| output.status.to_string(), str::to_string));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn run_program(search: &ProgramSearch, launch: &Launch, wording: ExitWording, reports: &mpsc::Sender<String>) -> Result<String, String> {
+    let program = search
         .find(&launch.program, fallback_locations(launch))
         .map_err(|not_found| not_found.sentence(&launch.program, flatpak_hint(launch)))?;
     spawn_watched(&program, &launch.args, &launch.program, wording, reports.clone())
@@ -126,13 +201,16 @@ pub(super) enum NotFound {
 }
 
 impl NotFound {
+    /// What went unfound, without the advice: "not found on PATH (searched 11 directories)".
+    fn reason(&self) -> String {
+        match self {
+            NotFound::NoSuchFile => "no such file".to_string(),
+            NotFound::NotOnPath { directories_searched } => format!("not found on PATH (searched {directories_searched} directories)"),
+        }
+    }
+
     fn sentence(&self, program: &str, flatpak_id: Option<&str>) -> String {
-        let mut sentence = match self {
-            NotFound::NoSuchFile => format!("{program}: no such file — {SET_THE_TOOL}"),
-            NotFound::NotOnPath { directories_searched } => {
-                format!("{program}: not found on PATH (searched {directories_searched} directories) — {SET_THE_TOOL}")
-            }
-        };
+        let mut sentence = format!("{program}: {} — {SET_THE_TOOL}", self.reason());
         if let Some(flatpak_id) = flatpak_id {
             sentence.push_str(&format!(" (a Flatpak install runs as the Custom command `flatpak run {flatpak_id} {{file}}`)"));
         }
@@ -349,15 +427,11 @@ fn open_with_wslview(file: PathBuf, reports: mpsc::Sender<String>) -> Result<Str
     std::thread::Builder::new()
         .name("external-tool-wslview".to_string())
         .spawn(move || {
-            let translated = Command::new(&wslpath).arg("-w").arg(&file).stdin(Stdio::null()).stderr(Stdio::null()).output();
-            let report = match translated {
-                Ok(output) if output.status.success() => {
-                    let windows_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    spawn_watched(&wslview, &[windows_path], "wslview", ExitWording::Plain, reports.clone())
-                        .err()
-                        .map(|error| format!("Failed to start wslview: {error}"))
-                }
-                Ok(_) | Err(_) => Some(format!("wslpath could not translate {} to a Windows path", file.display())),
+            let report = match windows_path(&wslpath, &file) {
+                Ok(windows_path) => spawn_watched(&wslview, &[windows_path], "wslview", ExitWording::Plain, reports.clone())
+                    .err()
+                    .map(|error| format!("Failed to start wslview: {error}")),
+                Err(_) => Some(format!("wslpath could not translate {} to a Windows path", file.display())),
             };
             if let Some(report) = report {
                 let _ = reports.send(report);

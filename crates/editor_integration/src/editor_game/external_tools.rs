@@ -29,6 +29,34 @@ pub(super) struct Launcher {
     platform: editor::external_tools::Platform,
 }
 
+/// What a request opens with, decided on the frame.
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum Opening {
+    /// Resolved on the frame: the file's absolute path and what opens it
+    Now(std::path::PathBuf, Resolution),
+    /// A Windows program under WSL, which reads Windows paths: resolved and started on a
+    /// worker once `wslpath -w` has translated the file and the project
+    AfterTranslation(Box<WindowsProgramRequest>),
+}
+
+/// A request for a Windows program under WSL, owned by the worker that translates its
+/// paths and then resolves it.
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct WindowsProgramRequest {
+    pub(super) config: editor::external_tools::ExternalToolsConfig,
+    pub(super) choice: editor::external_tools::ToolChoice,
+    pub(super) file_type: editor::external_tools::FileType,
+    /// Absolute, as Linux names it
+    pub(super) file: std::path::PathBuf,
+    /// Absolute, as Linux names it
+    pub(super) project: std::path::PathBuf,
+    pub(super) location: Location,
+    /// The program the choice runs, as the settings name it
+    pub(super) program: String,
+}
+
 impl Launcher {
     pub(super) fn new() -> Self {
         let (reports, finished) = mpsc::channel();
@@ -87,9 +115,27 @@ impl<G: Game> super::EditorGame<G> {
         };
         let request = self.at_first_part_track(OpenRequest { path: fixture, location });
         match self.resolve_open_request_through(&request, Some(category)) {
-            Ok((file, resolution)) => {
-                self.report(Severity::Info, test_line(category, &file, &resolution), None);
-                self.launch_resolved(&file, resolution);
+            Ok(opening) => {
+                let line = match &opening {
+                    Opening::Now(file, resolution) => test_line(category, file, resolution),
+                    Opening::AfterTranslation(windows) => {
+                        // The Windows paths are known only once wslpath answers, so the line
+                        // shows the command on the Linux paths and says each is translated.
+                        use editor::external_tools::{resolve_with, LaunchTarget, Platform};
+                        let target = LaunchTarget {
+                            file_type: windows.file_type,
+                            file: &windows.file,
+                            project: &windows.project,
+                            location: &windows.location,
+                        };
+                        match resolve_with(&windows.config, &windows.choice, target, Platform::Wsl) {
+                            Ok(resolution) => format!("{} — each path as wslpath -w translates it", test_line(category, &windows.file, &resolution)),
+                            Err(error) => format!("Test {}: {} — {error}", category.name(), windows.program),
+                        }
+                    }
+                };
+                self.report(Severity::Info, line, None);
+                self.launch_opening(opening);
             }
             Err(message) => self.report(Severity::Error, message, None),
         }
@@ -139,38 +185,49 @@ impl<G: Game> super::EditorGame<G> {
     fn open_in_external_tool(&mut self, request: OpenRequest) {
         let request = self.at_first_part_track(request);
         match self.resolve_open_request(&request) {
-            Ok((file, resolution)) => self.launch_resolved(&file, resolution),
+            Ok(opening) => self.launch_opening(opening),
             Err(message) => self.report(Severity::Error, message, None),
         }
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn launch_resolved(&mut self, file: &std::path::Path, resolution: Resolution) {
-        match spawn::launch(resolution, &self.launcher.reports) {
+    fn launch_opening(&mut self, opening: Opening) {
+        let (file, deferred, started) = match opening {
+            Opening::Now(file, resolution) => (file, false, spawn::launch(resolution, &self.launcher.reports)),
+            Opening::AfterTranslation(windows) => {
+                (windows.file.clone(), true, spawn::launch_windows_program(*windows, &self.launcher.reports))
+            }
+        };
+        match started {
             Ok(tool) => {
                 let name = file.file_name().map_or_else(|| file.display().to_string(), |name| name.to_string_lossy().into_owned());
-                self.report(Severity::Info, format!("Opened {name} in {tool}"), None);
+                // A deferred launch has started only its worker: nothing is opened yet, and
+                // a failure arrives through the reports as an error.
+                let line = if deferred {
+                    format!("Starting {name} in {tool} once wslpath has translated its paths")
+                } else {
+                    format!("Opened {name} in {tool}")
+                };
+                self.report(Severity::Info, line, None);
             }
             Err(message) => self.report(Severity::Error, message, None),
         }
     }
 
     /// The absolute path a request names and what opens it, or why nothing does. A folder
-    /// goes straight to the platform's opener, never through a file type.
+    /// goes straight to the platform's opener, never through a file type. A Windows
+    /// program under WSL is left for its worker to resolve, since its paths are not
+    /// known until `wslpath` has translated them; every other request resolves here.
     #[cfg(not(target_arch = "wasm32"))]
-    pub(super) fn resolve_open_request(&self, request: &OpenRequest) -> Result<(std::path::PathBuf, Resolution), String> {
+    pub(super) fn resolve_open_request(&self, request: &OpenRequest) -> Result<Opening, String> {
         self.resolve_open_request_through(request, None)
     }
 
     /// [`resolve_open_request`](Self::resolve_open_request) through `category`'s own
     /// tool when one is named, past any override on the file's type: what a Test tries.
     #[cfg(not(target_arch = "wasm32"))]
-    fn resolve_open_request_through(
-        &self,
-        request: &OpenRequest,
-        category: Option<ToolCategory>,
-    ) -> Result<(std::path::PathBuf, Resolution), String> {
-        use editor::external_tools::{os_default, resolve, resolve_with, FileType, LaunchTarget, Location, ProjectBase};
+    fn resolve_open_request_through(&self, request: &OpenRequest, category: Option<ToolCategory>) -> Result<Opening, String> {
+        use editor::external_tools::{os_default, program_of, resolve_with, FileType, LaunchTarget, Location, ProjectBase};
 
         let asset_base = spawn::absolute(&self.asset_base);
         // A project request opens the code tool on the workspace, so it is resolved
@@ -181,7 +238,7 @@ impl<G: Game> super::EditorGame<G> {
             let file = spawn::absolute(&self.resolve_asset_path(&request.path));
             if file.is_dir() {
                 let opener = Resolution::OsDefault(os_default(self.launcher.platform, &file));
-                return Ok((file, opener));
+                return Ok(Opening::Now(file, opener));
             }
             let Some(file_type) = FileType::of(&file, &self.editor.external_tools.daw_project_extensions) else {
                 return Err(format!("No external tool opens {}: its type is unknown", file.display()));
@@ -192,14 +249,27 @@ impl<G: Game> super::EditorGame<G> {
             ProjectBase::CargoWorkspace => spawn::workspace_root(&asset_base),
             ProjectBase::AssetBase => asset_base,
         };
-        let target = LaunchTarget { file_type, file: &file, project: &project, location: &request.location };
         let config = &self.editor.external_tools;
-        let resolution = match category {
-            Some(category) => resolve_with(config, config.category_choice(category), target, self.launcher.platform),
-            None => resolve(config, target, self.launcher.platform),
+        let choice = match category {
+            Some(category) => config.category_choice(category),
+            None => config.request_choice(file_type, &request.location),
+        };
+        let windows_program = program_of(config, choice, &request.location)
+            .filter(|program| spawn::takes_windows_paths(self.launcher.platform, program));
+        if let Some(program) = windows_program {
+            return Ok(Opening::AfterTranslation(Box::new(WindowsProgramRequest {
+                config: config.clone(),
+                choice: choice.clone(),
+                file_type,
+                file,
+                project,
+                location: request.location.clone(),
+                program,
+            })));
         }
-        .map_err(|error| error.to_string())?;
-        Ok((file, resolution))
+        let target = LaunchTarget { file_type, file: &file, project: &project, location: &request.location };
+        let resolution = resolve_with(config, choice, target, self.launcher.platform).map_err(|error| error.to_string())?;
+        Ok(Opening::Now(file, resolution))
     }
 }
 
@@ -269,7 +339,7 @@ mod tests {
             preset: Some(PresetId::RustRover),
             named_program: false,
         };
-        assert_eq!(session.resolve_open_request(&request), Ok((workspace, Resolution::Tool(rustrover))));
+        assert_eq!(session.resolve_open_request(&request), Ok(super::Opening::Now(workspace, Resolution::Tool(rustrover))));
         Ok(())
     }
 
@@ -408,7 +478,38 @@ mod tests {
         let folder = project.path().join("sprites");
         let opener =
             Launch { program: "xdg-open".to_string(), args: vec![folder.to_string_lossy().into_owned()], preset: None, named_program: false };
-        assert_eq!(resolved, Ok((folder, Resolution::OsDefault(OsDefault::Program(opener)))));
+        assert_eq!(resolved, Ok(super::Opening::Now(folder, Resolution::OsDefault(OsDefault::Program(opener)))));
+        Ok(())
+    }
+
+    #[test]
+    fn test_a_windows_program_resolves_on_the_frame_under_linux_and_waits_for_its_paths_under_wsl() -> std::io::Result<()> {
+        use editor::external_tools::{FileType, Platform};
+
+        let project = crate_with_assets(&["scripts/paddle.rhai"])?;
+        let mut session = editor_game();
+        session.asset_base = project.path().join("assets");
+        session.editor.external_tools.code = custom("notepad.exe {file}[:{line}]");
+        let at_line = OpenRequest { path: PathBuf::from("scripts/paddle.rhai"), location: Location::Line { line: 7, column: None } };
+        let script = project.path().join("assets/scripts/paddle.rhai");
+
+        session.launcher.platform = Platform::Linux;
+        let notepad = Launch { program: "notepad.exe".to_string(), args: vec![format!("{}:7", script.display())], preset: None, named_program: false };
+        assert_eq!(
+            session.resolve_open_request(&at_line),
+            Ok(super::Opening::Now(script.clone(), Resolution::Tool(notepad))),
+            "Linux gives a .exe its Linux paths"
+        );
+
+        session.launcher.platform = Platform::Wsl;
+        let Ok(super::Opening::AfterTranslation(windows)) = session.resolve_open_request(&at_line) else {
+            panic!("under WSL a .exe waits for wslpath");
+        };
+        assert_eq!((windows.program.as_str(), windows.file_type), ("notepad.exe", FileType::RhaiScript));
+        assert_eq!((windows.file, windows.project), (script, project.path().to_path_buf()), "the Linux paths, for the worker to translate");
+
+        session.editor.external_tools.code = custom("code.cmd {file}");
+        assert!(matches!(session.resolve_open_request(&at_line), Ok(super::Opening::Now(..))), "a .cmd is not translated");
         Ok(())
     }
 
