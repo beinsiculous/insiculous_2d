@@ -1677,6 +1677,45 @@ file and MIDI Evil's desktop Save-back were not driven headless.
   accessibility tree), #186 (Stop while the song waits) are the map's or the editor's and stay; #141
   is already closed.
 
+**7b re-verified 2026-11-03 against 51fda21, after 7a** — what the rename finds in the tree:
+- **Already gone with 7a, nothing to rename**: the theme tokens and their guard tests, `composer_drag.rs`,
+  `song/selection.rs` — #227's text predates the trim on those three.
+- **The names**: `crates/editor/src/composer/` (`lib.rs:45`) → `conductor/`; `editor_game/composer_keys.rs`
+  + `_tests.rs` → `conductor_keys*.rs`; `panel_renderer/composer.rs` → `conductor.rs`; the types
+  `ComposerState`, `ComposerFocus`, `ComposerAction`, `ComposerKeyAction`, `ComposerKeyRoute`,
+  `ComposerKeyBinding`, `ComposerMode`, `ComposerLayout`, `ComposerView`, `COMPOSER_KEYS`; `PanelId::COMPOSER`
+  (its number 5 stays — the prefs key panels by `PanelId.0`, so an old `editor_prefs.json` keeps the layout);
+  `EditorAction::FocusComposer` (Ctrl+Shift+M stays); `KeyRoute::Composer`; `EditorContext.composer`; the
+  host's `composer_holds_focus`, `show_composer`, `settle_composer`, `leave_composer`, `run_composer_key`,
+  `run_composer_actions`, `composer_write_refusal`, `apply_composer_edit`, `render_composer`,
+  `render_composer_panel`, `resolve_composer_key`; the test helper `composer_session`; 23 widget ids
+  `composer_*`; 22 test names; the label "Composer" at six sites (View, `panel_id_for_menu_label`,
+  `menu_actions.rs:16`, `default_layout.rs:33`, `ComposerFocus::None`, `context/tests.rs`).
+- **No collision**: `music_midi` has `Conductor`, `ConductorConfig`, `ConductorCommand`, `ConductorHandle`,
+  `audio` has `ConductorSource`; none of the editor's new names repeats one. **The prose rule**: the
+  editor's desk is *the Conductor panel*, always with "panel"; *the conductor* bare stays the audio
+  thread's (`music_midi::Conductor`), which the editor crates already name five times.
+- **The word in prose, beyond the plan's list**: doc comments in `audio/src/manager/song.rs:276` (+2 tests),
+  `engine_core/src/game_music.rs:109`, `music_midi/src/{lib.rs:7, song_file.rs ×6, song_file/validate.rs:31,
+  sequencer/score.rs:7}` (`song_data.rs`'s six are `UnsupportedReport`'s, #239's: reworded "the editor" only),
+  `playground/src/{upload.rs ×3, upload/tests.rs ×2, persist/tests/song_saves.rs}`, `scripts/build_wasm.sh:63`,
+  `crates/editor/Cargo.toml:16`; **the LICENSE `Comment:` line the engine's Save writes**
+  (`song/io/samples.rs:103,211`) and its copies in this repo (`examples/music/LICENSE`,
+  `examples/assets/music/LICENSE`, `examples/assets/music/samples/ai_demo/LICENSE`).
+  `music_midi/fixtures/LICENSE:102` ("composers' deaths") names real composers and stays.
+- **Docs in this repo**: `editor_integration/CLAUDE.md` 23, `editor/CLAUDE.md` 22 (citations to
+  `src/composer/*` and `composer_keys_tests.rs` follow the moves — `check_guide_tests.sh`),
+  `docs/SONG_FORMAT.md` 18 (§ How the composer saves → § How the Conductor panel saves), `training.md` 9,
+  `docs/WEB_PLAYGROUND.md` 7, `docs/EDITOR_COMMAND_API.md` 7, `music_midi/CLAUDE.md` 4, `playground/CLAUDE.md` 2,
+  `audio/CLAUDE.md` 1, `CLAUDE.md:53` (the SSOT row), `PROJECT_ROADMAP.md:92` (the paragraph; row K's title
+  is the phase's name as it was and stays, Jesse's dated reversal line being his). `log_archive.md` is history.
+- **One repo, one commit — 7b is `insiculous_2d` alone.** The six games' guides (30 mentions, each with a
+  `song new` sentence that is now history) and their `assets/ai/music/LICENSE` `Comment:` lines are six
+  repos' commits and go with batch 8's docs pass (#220), which already names them; the site's three strings
+  are insiculous_web#78; the readerless `UnsupportedReport` is #239 (the backlog's, outside the sprint).
+- **Stills**: the View menu open on "Conductor" with the panel on `ai_tong.mid`, native; the panel in the
+  playground. Reviewers kimi, gemini, codex. Sizes: a rename grows nothing.
+
 **Batch 7 as settled — the Conductor panel: #217 (E15, reworded), #218 (E16, reworded), the rename (filed at
 settling).** **Gated on MIDI Evil's `.evil` → `.mid` export and positional open round-tripping one
 of the six shipped songs through the engine** — import, a note changed, export, `cargo test` in
