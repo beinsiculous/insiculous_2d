@@ -2,7 +2,7 @@
 //!
 //! The preview window needs the world the visitor is looking at, unsaved
 //! edits included, while the editor keeps owning the file; an Export carries
-//! the song as the composer holds it the same way. The request is a
+//! the song as the Conductor panel holds it the same way. The request is a
 //! mailbox because the two sides run on different clocks: a JavaScript
 //! caller files a generation and polls, and the editor answers on its next
 //! frame.

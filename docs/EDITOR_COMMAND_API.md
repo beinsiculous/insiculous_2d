@@ -176,7 +176,7 @@ the `CommandHistory` watermark (the same source as the title bar's first `*`);
 
 ## Songs
 
-The composer's song is a **second document** beside the scene: its own
+The Conductor panel's song is a **second document** beside the scene: its own
 history and its own save watermark. Every `song …` verb addresses it; none
 touches the scene's `CommandHistory`, and `undo` / `redo` never touch the
 song. The score — the `.mid`'s notes, tempo, meter and tracks — is written
@@ -187,14 +187,14 @@ it and never edit it.
 |---------|-----------------|
 | `song` | the open song (below), or `{"open": false}` |
 | `song notes [part]` | every note, or those of the track `part` plays: `{"notes":[{"id":3,"track":1,"tick":0,"key":60,"velocity":100,"duration_ticks":240}, ...]}` |
-| `song edit <json>` | one `SongEdit` (the REST OF THE LINE, never tokenized) through `SongDocument::apply`, the mutation path the composer's GUI uses — one entry on the song's history. Answers `{"command":"song edit","edit":"<variant>","dirty":<bool>}`. A score edit is `refused` naming MIDI Evil (below) |
+| `song edit <json>` | one `SongEdit` (the REST OF THE LINE, never tokenized) through `SongDocument::apply`, the mutation path the Conductor panel's GUI uses — one entry on the song's history. Answers `{"command":"song edit","edit":"<variant>","dirty":<bool>}`. A score edit is `refused` naming MIDI Evil (below) |
 | `song undo` / `song redo` | the song's history only: `{"undid"/"redid": <variant>\|null}` |
-| `song open <path> [discard]` | open a `.mid` or `.midi` (relative to the asset root) — the answer's `notes` say when the score changed outside the composer, with the track diff's lines (`docs/SONG_FORMAT.md` § How the composer saves). The open song's own path is **the reload**: both its files are read anew. A `.mid` with no sidecar opens in place on a new one — the asset folder's first `.sf2` under `soundfonts/` in sorted order, `soundfonts/cast.sf2` when it has none, which the composer's Song section then warns about — `"dirty": true` until a save writes it |
+| `song open <path> [discard]` | open a `.mid` or `.midi` (relative to the asset root) — the answer's `notes` say when the score changed outside the Conductor panel, with the track diff's lines (`docs/SONG_FORMAT.md` § How the Conductor panel saves). The open song's own path is **the reload**: both its files are read anew. A `.mid` with no sidecar opens in place on a new one — the asset folder's first `.sf2` under `soundfonts/` in sorted order, `soundfonts/cast.sf2` when it has none, which the Conductor panel's Song section then warns about — `"dirty": true` until a save writes it |
 | `song init <path>` | write a new sidecar beside an unmapped `.mid` in a song folder — the project's first bank under `soundfonts/`, no parts, no bindings, looping — without opening it: `{"initialized":"<path>.ron"}`. `refused` for a `.mid` that has a sidecar, one outside the song folders, or one the engine cannot read |
-| `song save [path [overwrite]]` | save to `path`, else the song's own path, else — never saved — `music/untitled.mid` (numbered while its `.mid` or its `.mid.ron` is taken). To the song's own path it is a map save — the sidecar alone, the `.mid` left as it is; to another path it copies the whole song, the `.mid` exactly as it was loaded. A `path` whose `.mid` or `.mid.ron` exists and is not the song's own file is another song: `refused` unless the line ends in `overwrite` (its own word — it replaces that song's files, where `discard` drops this song's edits); the composer's path field asks Overwrite / Cancel instead. A sidecar changed on disk since the song read it is `refused` with `"files": [{"path", "loaded", "on_disk"}, …]` — the `.mid` and the `.mid.ron`, each fingerprint 16 hex digits or `null` for a file absent — until `song save <path> overwrite` replaces it; a `.mid` changed on disk is followed, and the answer's `notes` say so. Answers `{"saved":"<path>","notes":[…]}` |
+| `song save [path [overwrite]]` | save to `path`, else the song's own path, else — never saved — `music/untitled.mid` (numbered while its `.mid` or its `.mid.ron` is taken). To the song's own path it is a map save — the sidecar alone, the `.mid` left as it is; to another path it copies the whole song, the `.mid` exactly as it was loaded. A `path` whose `.mid` or `.mid.ron` exists and is not the song's own file is another song: `refused` unless the line ends in `overwrite` (its own word — it replaces that song's files, where `discard` drops this song's edits); the Conductor panel's path field asks Overwrite / Cancel instead. A sidecar changed on disk since the song read it is `refused` with `"files": [{"path", "loaded", "on_disk"}, …]` — the `.mid` and the `.mid.ron`, each fingerprint 16 hex digits or `null` for a file absent — until `song save <path> overwrite` replaces it; a `.mid` changed on disk is followed, and the answer's `notes` say so. Answers `{"saved":"<path>","notes":[…]}` |
 | `song close [discard]` | close the song |
 | `song new [discard]` | `refused`: "song new makes a score — `song init <path.mid>` maps one MIDI Evil exported; the score is written in MIDI Evil, which exports the .mid the engine plays" |
-| `song play [beat]` | play the song as the document holds it — the composer's preview — from a whole beat counted from zero (from the top without one): `{"preview":"playing","from_tick":<tick>}`. `refused` with no song open; a beat that is fractional, negative or not finite is `invalid`. It is heard on the next frame (before the web's first click it waits, and the composer says so) |
+| `song play [beat]` | play the song as the document holds it — the Conductor panel's preview — from a whole beat counted from zero (from the top without one): `{"preview":"playing","from_tick":<tick>}`. `refused` with no song open; a beat that is fractional, negative or not finite is `invalid`. It is heard on the next frame (before the web's first click it waits, and the Conductor panel says so) |
 | `song stop` | stop the preview: `{"preview":"stopped"}`; nothing while it is stopped |
 | `song seek <beat>` | move the playing preview to a whole beat; `refused` while it is stopped (`song play <beat>` starts there) |
 | `song trigger <action>` | play the binding's part on its instrument as the game's action would: `{"triggered":"<action>"}`. `not_found` for an action no binding has; `refused` until the preview is heard |
@@ -244,7 +244,7 @@ The score's edits — `AddNote`, `DeleteNotes`, `MoveNotes`, `ResizeNotes`,
 `AddTrack` — are `refused` by name, alone or inside a `Batch` however deep,
 and nothing of the line lands: "AddNote is a score edit; the score is written
 in MIDI Evil, which exports the .mid the engine plays". A name that is no
-`SongEdit` at all is serde's error, as before. `SetSoundFont` changes the background's bank; the composer's SoundFont row
+`SongEdit` at all is serde's error, as before. `SetSoundFont` changes the background's bank; the Conductor panel's SoundFont row
 cycles the asset folder's `.sf2`s through it. `Batch` is the song's
 composite: every member is checked before any lands, a refused member lands
 none of it, and the whole is one undo entry. An edit to the sidecar is
@@ -266,7 +266,7 @@ Song semantics worth knowing:
   never saved): a click on Play never discards.
 - **Separate watermarks**: saving the scene never marks the song clean, and
   saving the song never marks the scene clean.
-- **Save is one file** (`docs/SONG_FORMAT.md` § How the composer saves) —
+- **Save is one file** (`docs/SONG_FORMAT.md` § How the Conductor panel saves) —
   the sidecar, for a map save; Save As writes two, the `.mid` first — each
   written to a temporary file beside it and renamed over it:
   the song needs its own `provenance` (author and license — set it with

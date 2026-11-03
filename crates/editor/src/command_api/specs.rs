@@ -177,7 +177,7 @@ pub fn command_docs() -> &'static [CommandDoc] {
             id: "song",
             usage: "song edit <json>",
             example: "song edit {\"SetLoop\": {\"looping\": true}}",
-            summary: "One map edit through the composer's own mutation path — one entry on the SONG's history ({\"Batch\": [...]} for several). Refused in Playing and Paused and inside an open scene batch; a score edit (AddNote, MoveNotes, SetTempo, AddTrack …) is refused naming MIDI Evil, which writes the score.",
+            summary: "One map edit through the Conductor panel's own mutation path — one entry on the SONG's history ({\"Batch\": [...]} for several). Refused in Playing and Paused and inside an open scene batch; a score edit (AddNote, MoveNotes, SetTempo, AddTrack …) is refused naming MIDI Evil, which writes the score.",
             writes: true,
             undoable: true,
         },

@@ -33,10 +33,10 @@ impl<G: Game> Game for EditorGame<G> {
         // Delegate to inner game
         self.inner.init(ctx);
         self.asset_base = std::path::PathBuf::from(ctx.assets.base_path());
-        // The editor starts silent: while editing, music is the composer's to start and
+        // The editor starts silent: while editing, music is the Conductor panel's to start and
         // stop. Whatever the game's init asked for — a song or a recorded track, playing or
         // waiting for the web's first gesture — is remembered and stopped here; a Play
-        // session with no composer song asks for it again.
+        // session with no song in the Conductor panel asks for it again.
         self.init_music = super::init_music::InitMusic::capture(ctx.audio);
         ctx.audio.stop_song();
         ctx.audio.stop_music();
@@ -87,8 +87,8 @@ impl<G: Game> Game for EditorGame<G> {
         self.prepare_frame(ctx);
         self.render_early_overlays(ctx);
         // Before the menu bar handles this frame's press: an open dropdown is chrome and
-        // keeps the composer's keyboard, which the dropdown closing would hide.
-        self.settle_composer(ctx.ui);
+        // keeps the Conductor panel's keyboard, which the dropdown closing would hide.
+        self.settle_conductor(ctx.ui);
         self.settle_asset_browser(ctx.ui);
         self.settle_console(ctx.ui);
         self.settle_settings(ctx.ui);
@@ -153,9 +153,9 @@ impl<G: Game> Game for EditorGame<G> {
 
     fn on_key_released(&mut self, key: KeyCode, ctx: &mut GameContext) {
         // Seal the arrow-nudge merge window: consecutive repeats of a held
-        // arrow merged into one NudgeCommand (or one composer nudge batch);
-        // releasing the key closes that entry so the next hold starts a fresh
-        // undo step.
+        // arrow merged into one NudgeCommand (or, in the Conductor panel's sidebar, one
+        // number field's arrow nudges into one song entry); releasing the key closes that
+        // entry so the next hold starts a fresh undo step.
         if !self.editor.is_playing()
             && matches!(
                 key,

@@ -14,9 +14,9 @@
 //! which owns entity factories and the save choke point. Every path emits
 //! the same envelope via [`ok_response`]/[`error_response`].
 //!
-//! The `song …` verbs address the composer's song, a second document with
+//! The `song …` verbs address the Conductor panel's song, a second document with
 //! its own history: its pure writes run through `SongDocument::apply`, the
-//! one path the composer's GUI uses too, and never touch `CommandHistory`.
+//! one path the Conductor panel's GUI uses too, and never touch `CommandHistory`.
 //!
 //! The protocol contract lives in `docs/EDITOR_COMMAND_API.md`.
 
@@ -44,7 +44,7 @@ pub struct QueryCtx<'a> {
     /// From `CommandHistory::is_dirty()` — the scene's dirty source of truth.
     pub dirty: bool,
     pub play_state: EditorPlayState,
-    /// The composer's song, when one is open.
+    /// The Conductor panel's song, when one is open.
     pub song: Option<&'a SongDocument>,
     /// The status bar, whose message `status` reads back; `None` where nothing draws one.
     pub status_bar: Option<&'a crate::status_bar::StatusBar>,

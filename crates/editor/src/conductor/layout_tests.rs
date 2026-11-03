@@ -1,9 +1,9 @@
-//! The composer's layout: the transport over the sidebar at every width, its section tabs
+//! The Conductor panel's layout: the transport over the sidebar at every width, its section tabs
 //! below the full width.
 
 use ui::Rect;
 
-use super::layout::{compute, ComposerMode, COMPACT_BELOW_WIDTH};
+use super::layout::{compute, ConductorMode, COMPACT_BELOW_WIDTH};
 
 fn panel(width: f32) -> Rect {
     Rect::new(0.0, 400.0, width, 260.0)
@@ -12,13 +12,13 @@ fn panel(width: f32) -> Rect {
 #[test]
 fn the_mode_follows_the_panel_width_at_the_threshold() {
     let cases = [
-        (1280.0, ComposerMode::Full),
-        (COMPACT_BELOW_WIDTH, ComposerMode::Full),
-        (COMPACT_BELOW_WIDTH - 1.0, ComposerMode::Compact),
-        (320.0, ComposerMode::Compact),
+        (1280.0, ConductorMode::Full),
+        (COMPACT_BELOW_WIDTH, ConductorMode::Full),
+        (COMPACT_BELOW_WIDTH - 1.0, ConductorMode::Compact),
+        (320.0, ConductorMode::Compact),
     ];
     for (width, mode) in cases {
-        assert_eq!(ComposerMode::for_width(width), mode, "{width} px");
+        assert_eq!(ConductorMode::for_width(width), mode, "{width} px");
     }
 }
 

@@ -1,12 +1,12 @@
-//! The composer's state: Tab's cycle over the two areas, the track a song opens on, the
+//! The Conductor panel's state: Tab's cycle over the two areas, the track a song opens on, the
 //! selector's tracks, and the reset when the song is replaced.
 
-use super::state::{default_track, next_track, selectable_tracks, ComposerFocus, ComposerState};
+use super::state::{default_track, next_track, selectable_tracks, ConductorFocus, ConductorState};
 use super::test_support::{melody, second_track_holds_the_notes, timing_only};
 
 #[test]
 fn tab_walks_the_transport_and_the_sidebar_in_a_cycle_and_shift_tab_walks_it_back() {
-    let mut focus = ComposerFocus::None;
+    let mut focus = ConductorFocus::None;
     let mut walked = Vec::new();
     for _ in 0..3 {
         focus = focus.next();
@@ -15,15 +15,15 @@ fn tab_walks_the_transport_and_the_sidebar_in_a_cycle_and_shift_tab_walks_it_bac
     assert_eq!(
         walked,
         [
-            ComposerFocus::Transport,
-            ComposerFocus::Sidebar,
-            ComposerFocus::Transport,
+            ConductorFocus::Transport,
+            ConductorFocus::Sidebar,
+            ConductorFocus::Transport,
         ],
         "from no focus Tab enters at the transport and wraps after the sidebar"
     );
-    assert_eq!(ComposerFocus::Transport.previous(), ComposerFocus::Sidebar);
-    assert_eq!(ComposerFocus::None.previous(), ComposerFocus::Sidebar);
-    assert!(!ComposerFocus::None.is_held());
+    assert_eq!(ConductorFocus::Transport.previous(), ConductorFocus::Sidebar);
+    assert_eq!(ConductorFocus::None.previous(), ConductorFocus::Sidebar);
+    assert!(!ConductorFocus::None.is_held());
 }
 
 #[test]
@@ -48,21 +48,21 @@ fn a_song_opens_on_its_first_track_with_a_note_and_the_selector_skips_the_timing
 
 #[test]
 fn a_replaced_song_resets_what_pointed_into_the_old_one_and_keeps_the_songs_list() {
-    let mut state = ComposerState::default();
+    let mut state = ConductorState::default();
     let song = second_track_holds_the_notes();
     assert!(state.follow(1, Some(&song)), "the first song is a change");
     assert_eq!(state.active_track, Some(2));
-    state.focus = ComposerFocus::Sidebar;
+    state.focus = ConductorFocus::Sidebar;
     state.sidebar_control = 3;
     state.songs = vec!["music/theme.mid".to_string()];
     state.songs_scanned = true;
 
     assert!(!state.follow(1, Some(&song)), "the same generation changes nothing");
-    assert_eq!(state.focus, ComposerFocus::Sidebar);
+    assert_eq!(state.focus, ConductorFocus::Sidebar);
 
     let replacement = melody();
     assert!(state.follow(2, Some(&replacement)));
-    assert_eq!(state.focus, ComposerFocus::None, "the keyboard is dropped");
+    assert_eq!(state.focus, ConductorFocus::None, "the keyboard is dropped");
     assert_eq!(state.active_track, Some(1), "the new song's own track");
     assert_eq!(state.sidebar_control, 0, "the cursor back at the top");
     assert_eq!(state.songs, vec!["music/theme.mid".to_string()], "the folders did not change");
@@ -73,7 +73,7 @@ fn a_replaced_song_resets_what_pointed_into_the_old_one_and_keeps_the_songs_list
 
 #[test]
 fn a_draw_after_a_scan_made_while_hidden_scans_again_and_the_next_draw_does_not() {
-    let mut state = ComposerState::default();
+    let mut state = ConductorState::default();
     assert!(state.drawn(), "never scanned: the first draw scans");
     state.songs_scanned = true;
     assert!(!state.drawn(), "scanned and drawn: nothing to do");

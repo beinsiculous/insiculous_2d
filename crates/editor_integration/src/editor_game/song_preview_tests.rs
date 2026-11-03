@@ -7,12 +7,12 @@
 use std::path::Path;
 
 use ecs::World;
-use editor::composer::transport::status_text;
+use editor::conductor::transport::status_text;
 use editor::{Gesture, SongEdit};
 use engine_core::prelude::{AudioManager, SoundSources};
 
 use super::song_preview::{SlotReadings, SongAudioIntent};
-use super::test_support::{api_line, composer_session, melody_song, pad_under_the_lead_song, DummyGame};
+use super::test_support::{api_line, conductor_session, melody_song, pad_under_the_lead_song, DummyGame};
 use super::EditorGame;
 
 /// A manager with no device that plays a song on its virtual clock, its asset base the
@@ -50,7 +50,7 @@ const WAITING_FOR_THE_GESTURE: SlotReadings = SlotReadings {
 
 fn session() -> (tempfile::TempDir, EditorGame<DummyGame>) {
     let folder = tempfile::tempdir().expect("a temporary asset folder");
-    let editor = composer_session(folder.path(), melody_song());
+    let editor = conductor_session(folder.path(), melody_song());
     (folder, editor)
 }
 
@@ -59,31 +59,31 @@ fn the_transport_plays_from_the_top_song_play_from_its_beat_and_stop_ends_each()
     let (_folder, mut editor) = session();
     let (mut audio, mut sources) = (headless_audio(&editor), SoundSources::default());
 
-    editor.run_composer_actions(vec![editor::composer::ComposerAction::PreviewPlayStop]);
-    assert!(editor.editor.composer.preview_playing, "the transport shows it at once");
+    editor.run_conductor_actions(vec![editor::conductor::ConductorAction::PreviewPlayStop]);
+    assert!(editor.editor.conductor.preview_playing, "the transport shows it at once");
     frame(&mut editor, &mut audio, &mut sources);
     assert!(audio.is_song_playing(), "the drain played the document");
-    let playhead = editor.editor.composer.playhead_tick.expect("a sounding preview has a playhead");
+    let playhead = editor.editor.conductor.playhead_tick.expect("a sounding preview has a playhead");
     assert!(playhead < 960, "the transport plays from the top: {playhead}");
-    editor.run_composer_actions(vec![editor::composer::ComposerAction::PreviewPlayStop]);
+    editor.run_conductor_actions(vec![editor::conductor::ConductorAction::PreviewPlayStop]);
     frame(&mut editor, &mut audio, &mut sources);
     assert!(!audio.is_song_playing(), "the transport's Stop ends it");
 
     editor.preview_play(960).expect("song play from beat 2");
     frame(&mut editor, &mut audio, &mut sources);
-    let playhead = editor.editor.composer.playhead_tick.expect("a sounding preview has a playhead");
+    let playhead = editor.editor.conductor.playhead_tick.expect("a sounding preview has a playhead");
     assert!(playhead >= 960, "it starts at its tick, never before: {playhead}");
     let song = editor.song.as_ref().expect("a song");
-    assert!(status_text(song, &editor.editor.composer).starts_with("Playing · bar 1 · beat 3 · 120 BPM · 4/4"));
+    assert!(status_text(song, &editor.editor.conductor).starts_with("Playing · bar 1 · beat 3 · 120 BPM · 4/4"));
     assert!(editor.song_preview.is_audible());
     assert!(!editor.idle_throttle_allowed(), "a moving playhead keeps the page awake");
 
-    editor.run_composer_actions(vec![editor::composer::ComposerAction::PreviewPlayStop]);
+    editor.run_conductor_actions(vec![editor::conductor::ConductorAction::PreviewPlayStop]);
     frame(&mut editor, &mut audio, &mut sources);
     assert!(!audio.is_song_playing());
-    assert_eq!(editor.editor.composer.playhead_tick, None);
+    assert_eq!(editor.editor.conductor.playhead_tick, None);
     let song = editor.song.as_ref().expect("a song");
-    assert!(status_text(song, &editor.editor.composer).starts_with("Playhead bar 1 · beat 1 · tick 0"));
+    assert!(status_text(song, &editor.editor.conductor).starts_with("Playhead bar 1 · beat 1 · tick 0"));
     assert!(editor.idle_throttle_allowed());
 }
 
@@ -96,7 +96,7 @@ fn space_toggles_the_preview_and_a_stop_while_stopped_sends_nothing() {
     frame(&mut editor, &mut audio, &mut sources);
     assert!(!audio.is_song_playing(), "a seek with no preview reaches nothing");
 
-    editor.run_composer_key(editor::composer::ComposerKeyAction::PreviewToggle);
+    editor.run_conductor_key(editor::conductor::ConductorKeyAction::PreviewToggle);
     frame(&mut editor, &mut audio, &mut sources);
     assert!(audio.is_song_playing(), "Space plays");
     editor.dispatch_song_action(editor::EditorAction::SongPlayStop);
@@ -116,7 +116,7 @@ fn a_song_waiting_for_the_first_click_stays_playing_unheard_and_a_seek_plays_it_
     assert!(!editor.song_preview.is_audible());
     assert!(editor.idle_throttle_allowed(), "a song nobody hears holds no frames");
     let song = editor.song.as_ref().expect("a song");
-    assert_eq!(status_text(song, &editor.editor.composer), "Playing · waiting for the first click");
+    assert_eq!(status_text(song, &editor.editor.conductor), "Playing · waiting for the first click");
     let refused = editor.preview_trigger("jump").expect_err("a trigger would be a silent Ok");
     assert!(refused.contains("press Play"), "{refused}");
 
@@ -137,7 +137,7 @@ fn a_song_that_never_reaches_a_connected_device_ends_the_preview_saying_so() {
     editor.follow_song_slot(SlotReadings { enabled: true, ..WAITING_FOR_THE_GESTURE });
 
     assert!(!editor.song_preview.is_playing());
-    assert!(!editor.editor.composer.preview_playing);
+    assert!(!editor.editor.conductor.preview_playing);
     assert!(status(&editor).contains("could not reach the device"), "{}", status(&editor));
 }
 
@@ -154,7 +154,7 @@ fn once_heard_a_song_that_stops_ends_the_preview_silently_at_its_end_and_early_o
         let stopped = SlotReadings { playing: false, ended, ..SlotReadings::read(&audio) };
         editor.follow_song_slot(stopped);
         assert!(!editor.song_preview.is_playing(), "ended: {ended}");
-        assert_eq!(editor.editor.composer.playhead_tick, None);
+        assert_eq!(editor.editor.conductor.playhead_tick, None);
         match word {
             Some(word) => assert!(status(&editor).contains(word), "{}", status(&editor)),
             None => assert_eq!(status(&editor), "before", "the score's end needs no word"),
@@ -173,7 +173,7 @@ fn an_edit_and_an_undo_under_a_playing_preview_each_stop_it_and_say_so() {
         assert!(audio.is_song_playing(), "{change}: playing first");
         match change {
             "edit" => {
-                editor.apply_composer_edit(SongEdit::SetLoop { looping: false }, Gesture::Discrete);
+                editor.apply_conductor_edit(SongEdit::SetLoop { looping: false }, Gesture::Discrete);
             }
             _ => {
                 let response = json(&api_line(&mut editor, &mut world, "song undo"));
@@ -205,7 +205,7 @@ fn a_song_replaced_under_a_playing_preview_stops_it() {
 #[test]
 fn the_api_plays_from_a_whole_beat_triggers_only_a_bound_action_while_heard_and_seeks_only_a_playing_preview() {
     let folder = tempfile::tempdir().expect("a temporary asset folder");
-    let mut editor = composer_session(folder.path(), pad_under_the_lead_song());
+    let mut editor = conductor_session(folder.path(), pad_under_the_lead_song());
     let mut world = World::new();
     // The lead plays the binding's part; the pad's long note is the background the song lasts by.
     let edit = r#"song edit {"Batch": [

@@ -36,6 +36,7 @@ and another program had written.
   panel tells the engine when to play what sound, at what note and at what volume. Ruling (i)
   followed from it: each file has one writer, the engine the `.mid.ron` and MIDI Evil the
   `.mid`, so nothing needs a journal, a lock or a conflict file.
+- Renamed to the Conductor panel in batch 7b (7b's commit).
 
 ## Pattern Audit sprint ☑ Oct 19 2026
 The five tickets the skill filed (#168–#172), with #100, #153 and six backlog ticks, cleared in

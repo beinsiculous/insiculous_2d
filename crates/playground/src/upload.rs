@@ -13,7 +13,7 @@
 //! whose sidecar names the file. The new score is written over the song's MIDI file and its
 //! sidecar is kept: a re-imported score is the score changed outside, and the song follows
 //! it with its map and the track diff's lines — at its next open, or at once when it is the
-//! song the composer holds, whose document the host hands the bytes, since the browser has
+//! song the Conductor panel holds, whose document the host hands the bytes, since the browser has
 //! no file watcher to tell it.
 
 use std::path::Path;
@@ -85,7 +85,7 @@ pub struct UploadOutcome {
     pub referenced_by: Vec<String>,
     /// For a taken song name with a sidecar: the score changed, and the map is kept.
     pub sidecar_lost: bool,
-    /// The import wrote the MIDI file of the song open in the composer, which follows it.
+    /// The import wrote the MIDI file of the song open in the Conductor panel, which follows it.
     pub open_song_replaced: bool,
 }
 
@@ -170,7 +170,7 @@ pub fn songs_referencing(project_root: &Path, destination: &str) -> Vec<String> 
 /// Import `file_name` into the project at `project_root`: checked whole first, then
 /// written — unless its name is taken and `replace` was not asked. A song's sidecar and any
 /// journal it left are kept: the song follows the new score with them, and the outcome says
-/// when it is `open_song`, the song the composer holds.
+/// when it is `open_song`, the song the Conductor panel holds.
 pub fn import_file(
     project_root: &Path,
     file_name: &str,

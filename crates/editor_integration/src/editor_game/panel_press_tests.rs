@@ -2,11 +2,11 @@
 //! bottom panel: a press on the overlay is the overlay's panel's, never the one beneath
 //! it, so it takes no keyboard there and lets a holder beneath it go.
 
-use editor::composer::ComposerFocus;
+use editor::conductor::ConductorFocus;
 use editor::PanelId;
 use glam::Vec2;
 
-use super::test_support::{composer_session, editor_game, melody_song, press_mouse, DummyGame};
+use super::test_support::{conductor_session, editor_game, melody_song, press_mouse, DummyGame};
 use super::EditorGame;
 
 /// Narrow with both side panels shown, and still narrow with the Inspector alone.
@@ -44,7 +44,7 @@ fn press_at(editor: &mut EditorGame<DummyGame>, point: Vec2) {
     let mut ui = ui::UIContext::new();
     press_mouse(&mut input, point);
     ui.begin_frame(&input, WINDOW);
-    editor.settle_composer(&ui);
+    editor.settle_conductor(&ui);
     editor.settle_asset_browser(&ui);
     editor.settle_console(&ui);
 }
@@ -84,14 +84,14 @@ fn an_overlay_hidden_while_the_dock_stays_narrow_covers_nothing() {
 }
 
 #[test]
-fn a_press_on_the_overlay_over_the_composer_lets_its_keyboard_go() {
+fn a_press_on_the_overlay_over_the_conductor_panel_lets_its_keyboard_go() {
     let folder = tempfile::tempdir().expect("an asset folder");
-    let mut editor = composer_session(folder.path(), melody_song());
-    under_the_hierarchy_overlay(&mut editor, &[PanelId::COMPOSER]);
-    assert_eq!(editor.editor.composer.focus, ComposerFocus::Sidebar);
+    let mut editor = conductor_session(folder.path(), melody_song());
+    under_the_hierarchy_overlay(&mut editor, &[PanelId::CONDUCTOR]);
+    assert_eq!(editor.editor.conductor.focus, ConductorFocus::Sidebar);
 
-    let covered = point_in(&editor, PanelId::COMPOSER, true);
+    let covered = point_in(&editor, PanelId::CONDUCTOR, true);
     press_at(&mut editor, covered);
 
-    assert_eq!(editor.editor.composer.focus, ComposerFocus::None, "the overlay's press is elsewhere in the dock");
+    assert_eq!(editor.editor.conductor.focus, ConductorFocus::None, "the overlay's press is elsewhere in the dock");
 }

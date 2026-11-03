@@ -4,7 +4,7 @@
 //! **Playback is what an export would write.** A note still linked to its original MIDI
 //! events plays from them, on the channel the file wrote it on; an edited or added note
 //! plays from the data model on its track's channel; a removed note does not play. So the
-//! composer's preview of an unsaved song sounds exactly like the file it would save.
+//! Conductor panel's preview of an unsaved song sounds exactly like the file it would save.
 //!
 //! **Trigger tracks are left out whole** — their notes and their program, controller and
 //! pitch-bend events — because a part's track plays only on its binding's instrument.

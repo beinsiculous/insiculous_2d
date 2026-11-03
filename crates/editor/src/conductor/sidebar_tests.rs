@@ -11,9 +11,9 @@ use music_midi::InstrumentSource;
 use ui::{DrawCommand, Rect, UIContext};
 
 use super::sidebar::{path_field_id, render_sidebar, song_author_field_id, SidebarContext, ROW_HEIGHT};
-use super::state::{ComposerFocus, ComposerState, ControlRequest, SidebarSection};
+use super::state::{ConductorFocus, ConductorState, ControlRequest, SidebarSection};
 use super::test_support::melody;
-use super::{drop_action, ComposerAction};
+use super::{drop_action, ConductorAction};
 use crate::drag_drop::DragPayload;
 use crate::song::{Gesture, SongDocument, SongEdit};
 use crate::test_support::{click_through, frame, move_to, press_at, release, type_key};
@@ -34,9 +34,9 @@ fn context<'a>(song: Option<&'a SongDocument>, enter_pressed: bool, song_path: O
     }
 }
 
-fn sidebar_state() -> ComposerState {
-    let mut state = ComposerState::default();
-    state.focus = ComposerFocus::Sidebar;
+fn sidebar_state() -> ConductorState {
+    let mut state = ConductorState::default();
+    state.focus = ConductorFocus::Sidebar;
     state.songs = vec!["ai/music/theme.mid".to_string(), "music/theme.mid".to_string()];
     state.songs_scanned = true;
     state
@@ -49,7 +49,7 @@ fn open_song_puts_the_cursor_on_the_songs_list_and_enter_opens_any_row_but_the_o
     let mut state = sidebar_state();
     let mut ui = UIContext::new();
     let input = input::InputHandler::new();
-    let draw = |ui: &mut UIContext, state: &mut ComposerState| {
+    let draw = |ui: &mut UIContext, state: &mut ConductorState| {
         render_sidebar(ui, &theme, state, SIDEBAR, None, &context(Some(&song), false, Some("music/theme.mid")))
     };
 
@@ -59,7 +59,7 @@ fn open_song_puts_the_cursor_on_the_songs_list_and_enter_opens_any_row_but_the_o
     let first = frame(&mut ui, &input, |ui| draw(ui, &mut state));
     assert_eq!(
         first,
-        vec![ComposerAction::OpenSong("ai/music/theme.mid".to_string())],
+        vec![ConductorAction::OpenSong("ai/music/theme.mid".to_string())],
         "the first row, by its folder-qualified path"
     );
 
@@ -83,7 +83,7 @@ fn the_path_fields_enter_saves_there_and_leaving_it_any_other_way_saves_nothing(
     let saved = type_key(&mut ui, &mut input, KeyCode::Enter, |ui| {
         render_sidebar(ui, &theme, &mut state, SIDEBAR, None, &context(Some(&song), true, None))
     });
-    assert_eq!(saved, vec![ComposerAction::SaveSongTo("music/untitled.mid".to_string())]);
+    assert_eq!(saved, vec![ConductorAction::SaveSongTo("music/untitled.mid".to_string())]);
 
     state.request = Some(ControlRequest::FocusPathField);
     frame(&mut ui, &input, |ui| render_sidebar(ui, &theme, &mut state, SIDEBAR, None, &context(Some(&song), false, None)));
@@ -97,7 +97,7 @@ fn the_path_fields_enter_saves_there_and_leaving_it_any_other_way_saves_nothing(
 fn a_sample_without_provenance_shows_the_mark_and_an_author_commits_the_whole_instrument() {
     let mut song = melody();
     let wav = crate::drag_drop::DragPayload::Sound { path: "sounds/kick.wav".to_string() };
-    let ComposerAction::Edit(add) = super::drop_action(Some(&song), &wav) else {
+    let ConductorAction::Edit(add) = super::drop_action(Some(&song), &wav) else {
         panic!("a .wav adds an instrument");
     };
     song.apply(add, Gesture::Discrete).expect("the sample lands");
@@ -106,7 +106,7 @@ fn a_sample_without_provenance_shows_the_mark_and_an_author_commits_the_whole_in
     state.sidebar_section = SidebarSection::Instruments;
     let mut ui = UIContext::new();
     let mut input = input::InputHandler::new();
-    let draw = |ui: &mut UIContext, state: &mut ComposerState, enter: bool| {
+    let draw = |ui: &mut UIContext, state: &mut ConductorState, enter: bool| {
         render_sidebar(ui, &theme, state, SIDEBAR, Some(TABS), &context(Some(&song), enter, None))
     };
 
@@ -124,7 +124,7 @@ fn a_sample_without_provenance_shows_the_mark_and_an_author_commits_the_whole_in
     let committed = type_key(&mut ui, &mut input, KeyCode::Enter, |ui| draw(ui, &mut state, true));
     let instrument = song.file().instruments[0].clone();
     match committed.as_slice() {
-        [ComposerAction::Edit(SongEdit::SetInstrument { name, instrument: edited })] => {
+        [ConductorAction::Edit(SongEdit::SetInstrument { name, instrument: edited })] => {
             assert_eq!(name, &instrument.name);
             assert_eq!(edited.source, instrument.source, "the source rides along unchanged");
             let provenance = edited.provenance.as_ref().expect("the author is set");
@@ -145,7 +145,7 @@ fn save_song_as_scrolls_the_sidebar_to_its_path_field_before_focusing_it() {
     let mut ui = UIContext::new();
     let mut input = input::InputHandler::new();
     let short = Rect { x: 0.0, y: 0.0, width: 300.0, height: 120.0 };
-    let draw = |ui: &mut UIContext, state: &mut ComposerState, enter: bool| {
+    let draw = |ui: &mut UIContext, state: &mut ConductorState, enter: bool| {
         render_sidebar(ui, &theme, state, short, None, &context(Some(&song), enter, None))
     };
 
@@ -160,7 +160,7 @@ fn save_song_as_scrolls_the_sidebar_to_its_path_field_before_focusing_it() {
     assert_eq!(state.sidebar_control, 0, "and puts the cursor on it");
     assert!(ui.is_focused(path_field_id()));
     let saved = type_key(&mut ui, &mut input, KeyCode::Enter, |ui| draw(ui, &mut state, true));
-    assert_eq!(saved, vec![ComposerAction::SaveSongTo("music/untitled.mid".to_string())], "the drawn field takes Enter");
+    assert_eq!(saved, vec![ConductorAction::SaveSongTo("music/untitled.mid".to_string())], "the drawn field takes Enter");
 }
 
 /// Save Song As… from a sidebar showing another section: the field is the Song section's,
@@ -173,7 +173,7 @@ fn save_song_as_switches_the_sidebar_to_the_song_section_before_focusing_the_pat
     state.sidebar_section = SidebarSection::Instruments;
     let mut ui = UIContext::new();
     let mut input = input::InputHandler::new();
-    let draw = |ui: &mut UIContext, state: &mut ComposerState, enter: bool| {
+    let draw = |ui: &mut UIContext, state: &mut ConductorState, enter: bool| {
         render_sidebar(ui, &theme, state, SIDEBAR, Some(TABS), &context(Some(&song), enter, None))
     };
 
@@ -182,13 +182,13 @@ fn save_song_as_switches_the_sidebar_to_the_song_section_before_focusing_the_pat
     assert_eq!(state.sidebar_section, SidebarSection::Song);
     assert!(ui.is_focused(path_field_id()));
     let saved = type_key(&mut ui, &mut input, KeyCode::Enter, |ui| draw(ui, &mut state, true));
-    assert_eq!(saved, vec![ComposerAction::SaveSongTo("music/untitled.mid".to_string())]);
+    assert_eq!(saved, vec![ConductorAction::SaveSongTo("music/untitled.mid".to_string())]);
 }
 
 /// The root note and the gain a number field's frame carries, and whether it is the
 /// gesture's first.
-fn sample_fields(actions: &[ComposerAction]) -> (u8, f32, bool) {
-    let [ComposerAction::FieldEdit { edit: SongEdit::SetInstrument { instrument, .. }, first }] = actions else {
+fn sample_fields(actions: &[ConductorAction]) -> (u8, f32, bool) {
+    let [ConductorAction::FieldEdit { edit: SongEdit::SetInstrument { instrument, .. }, first }] = actions else {
         panic!("one frame of a field's gesture: {actions:?}");
     };
     match instrument.source {
@@ -221,7 +221,7 @@ fn label_position(ui: &UIContext, label: &str) -> Vec2 {
 fn a_number_fields_gesture_opens_discrete_continues_while_live_and_closes_on_release_focus_loss_or_an_undrawn_row() {
     let mut song = melody();
     let wav = DragPayload::Sound { path: "sounds/kick.wav".to_string() };
-    let ComposerAction::Edit(add) = drop_action(Some(&song), &wav) else {
+    let ConductorAction::Edit(add) = drop_action(Some(&song), &wav) else {
         panic!("a .wav adds an instrument");
     };
     song.apply(add, Gesture::Discrete).expect("the sample lands");
@@ -230,11 +230,11 @@ fn a_number_fields_gesture_opens_discrete_continues_while_live_and_closes_on_rel
     state.sidebar_section = SidebarSection::Instruments;
     let mut ui = UIContext::new();
     let mut input = input::InputHandler::new();
-    let draw = |ui: &mut UIContext, state: &mut ComposerState| {
+    let draw = |ui: &mut UIContext, state: &mut ConductorState| {
         render_sidebar(ui, &theme, state, SIDEBAR, Some(TABS), &context(Some(&song), false, None))
     };
     let close = |a: f32, b: f32| (a - b).abs() < 1e-3;
-    let gain_id = ui::WidgetId::from_str_index("composer_instrument_gain", 0);
+    let gain_id = ui::WidgetId::from_str_index("conductor_instrument_gain", 0);
 
     frame(&mut ui, &input, |ui| draw(ui, &mut state));
     let on_gain = Vec2::new(SIDEBAR.right() - 40.0, label_position(&ui, "Gain").y);
@@ -294,7 +294,7 @@ fn a_song_without_its_own_provenance_shows_the_mark_and_its_author_commits_one_s
     let mut state = sidebar_state();
     let mut ui = UIContext::new();
     let mut input = input::InputHandler::new();
-    let draw = |ui: &mut UIContext, state: &mut ComposerState, enter: bool| {
+    let draw = |ui: &mut UIContext, state: &mut ConductorState, enter: bool| {
         render_sidebar(ui, &theme, state, SIDEBAR, None, &context(Some(&song), enter, None))
     };
 
@@ -309,7 +309,7 @@ fn a_song_without_its_own_provenance_shows_the_mark_and_its_author_commits_one_s
     let committed = type_key(&mut ui, &mut input, KeyCode::Enter, |ui| draw(ui, &mut state, true));
     assert_eq!(
         committed,
-        vec![ComposerAction::Edit(SongEdit::SetProvenance {
+        vec![ConductorAction::Edit(SongEdit::SetProvenance {
             provenance: music_midi::Provenance { author: "j".to_string(), license: "MIT".to_string() },
         })],
         "the license rides along unchanged"
@@ -332,14 +332,14 @@ fn a_bindings_trigger_is_live_only_while_the_preview_sounds_and_enter_still_reac
         let (pressed, released) = click_through(&mut ui, &mut input, trigger, |ui| {
             render_sidebar(ui, &theme, &mut state, SIDEBAR, Some(TABS), &sidebar)
         });
-        let clicked: Vec<ComposerAction> = pressed.into_iter().chain(released).collect();
-        let expected = if audible { vec![ComposerAction::PreviewTrigger(0)] } else { Vec::new() };
+        let clicked: Vec<ConductorAction> = pressed.into_iter().chain(released).collect();
+        let expected = if audible { vec![ConductorAction::PreviewTrigger(0)] } else { Vec::new() };
         assert_eq!(clicked, expected, "a click reaches a live Trigger only (audible: {audible})");
 
         state.sidebar_control = 0;
         state.request = Some(ControlRequest::ActivateSidebar);
         let entered = frame(&mut ui, &input, |ui| render_sidebar(ui, &theme, &mut state, SIDEBAR, Some(TABS), &sidebar));
-        assert_eq!(entered, vec![ComposerAction::PreviewTrigger(0)], "Enter reaches the host, which says why when it is not live");
+        assert_eq!(entered, vec![ConductorAction::PreviewTrigger(0)], "Enter reaches the host, which says why when it is not live");
     }
 }
 
@@ -385,7 +385,7 @@ fn walking_down_to_the_last_control_of_a_short_sidebar_rings_it_wholly_inside() 
     let mut ui = UIContext::new();
     let input = input::InputHandler::new();
     let short = Rect { x: 0.0, y: 0.0, width: 300.0, height: 120.0 };
-    let draw = |ui: &mut UIContext, state: &mut ComposerState| {
+    let draw = |ui: &mut UIContext, state: &mut ConductorState| {
         render_sidebar(ui, &theme, state, short, None, &context(Some(&song), false, None))
     };
     frame(&mut ui, &input, |ui| draw(ui, &mut state));
@@ -411,7 +411,7 @@ fn a_provenance_field_committed_with_its_own_value_is_no_edit() {
     let mut state = sidebar_state();
     let mut ui = UIContext::new();
     let mut input = input::InputHandler::new();
-    let draw = |ui: &mut UIContext, state: &mut ComposerState, enter: bool| {
+    let draw = |ui: &mut UIContext, state: &mut ConductorState, enter: bool| {
         render_sidebar(ui, &theme, state, SIDEBAR, None, &context(Some(&song), enter, None))
     };
     state.request = Some(ControlRequest::FocusSongAuthor);
@@ -456,7 +456,7 @@ fn left_and_right_at_the_full_width_move_the_cursor_to_each_sections_first_contr
     let mut state = sidebar_state();
     let mut ui = UIContext::new();
     let input = input::InputHandler::new();
-    let draw = |ui: &mut UIContext, state: &mut ComposerState| {
+    let draw = |ui: &mut UIContext, state: &mut ConductorState| {
         render_sidebar(ui, &theme, state, SIDEBAR, None, &context(Some(&song), false, None))
     };
     frame(&mut ui, &input, |ui| draw(ui, &mut state));

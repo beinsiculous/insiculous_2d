@@ -115,7 +115,7 @@ impl<G: Game> EditorGame<G> {
         let wrote_score = !in_place || song.score_fingerprint() != score_before;
         self.note_song_written(target, wrote_score);
         self.sync_dirty_mirror();
-        self.editor.composer.rescan_songs(&self.asset_base);
+        self.editor.conductor.rescan_songs(&self.asset_base);
         let shown = self.asset_relative(target);
         self.editor.status_bar.show_message(format!("Song saved · {shown}"));
         log::info!("Song saved to: {}", target.display());
@@ -145,7 +145,7 @@ impl<G: Game> EditorGame<G> {
         self.song = Some(opened.document);
         self.song_generation += 1;
         self.follow_song();
-        self.editor.composer.rescan_songs(&self.asset_base);
+        self.editor.conductor.rescan_songs(&self.asset_base);
         self.sync_dirty_mirror();
         // The bar holds the first note; the console keeps them all, the diff's lines with them.
         for note in &opened.notes {
@@ -212,7 +212,7 @@ impl<G: Game> EditorGame<G> {
                 let path = self.resolve_asset_path(Path::new(path));
                 let sidecar = editor::song::init_song(&path, &self.asset_base)
                     .map_err(|error| ApiError::Refused(format!("song init failed: {error}")))?;
-                self.editor.composer.rescan_songs(&self.asset_base);
+                self.editor.conductor.rescan_songs(&self.asset_base);
                 Ok(serde_json::json!({ "initialized": sidecar.display().to_string() }))
             }
             HostedWrite::SongSave { path, overwrite } => {

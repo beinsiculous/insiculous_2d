@@ -110,8 +110,8 @@ pub struct EditorContext {
     /// Inspector view state: collapsed sections, open Advanced
     /// disclosures, and the colour editor's target.
     pub inspector_state: crate::InspectorState,
-    /// The composer panel's view state: its focus, track, sidebar scroll and songs list.
-    pub composer: crate::composer::ComposerState,
+    /// The Conductor panel's view state: its focus, track, sidebar scroll and songs list.
+    pub conductor: crate::conductor::ConductorState,
     /// The console's log, scroll and keyboard
     pub console: crate::console::ConsoleState,
     /// The External Tools panel's cursor, scroll, keyboard, template draft and Test presses
@@ -168,7 +168,7 @@ impl EditorContext {
             script_catalog: Vec::new(),
             script_picker_open: false,
             inspector_state: crate::InspectorState::default(),
-            composer: crate::composer::ComposerState::default(),
+            conductor: crate::conductor::ConductorState::default(),
             console: crate::console::ConsoleState::default(),
             settings: crate::settings_panel::SettingsPanelState::default(),
             edit_binding: crate::EditBindingState::default(),

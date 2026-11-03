@@ -4,8 +4,8 @@
 
 use ui::{FloatFieldOpts, Rect, UIContext, WidgetId};
 
-use crate::composer::state::{ComposerState, ControlRequest};
-use crate::composer::{ComposerAction, ComposerFocus};
+use crate::conductor::state::{ConductorState, ControlRequest};
+use crate::conductor::{ConductorAction, ConductorFocus};
 use crate::theme::EditorTheme;
 
 /// One row of the sidebar.
@@ -17,7 +17,7 @@ const LABEL_WIDTH: f32 = 84.0;
 /// The sidebar's inner margin.
 const INSET: f32 = 6.0;
 
-pub(in crate::composer) struct SidebarWalk<'a> {
+pub(in crate::conductor) struct SidebarWalk<'a> {
     pub ui: &'a mut UIContext,
     theme: &'a EditorTheme,
     area: Rect,
@@ -39,11 +39,11 @@ pub(in crate::composer) struct SidebarWalk<'a> {
     /// Whether that field was drawn this frame focused or scrubbing; otherwise the walk's
     /// end closes the gesture.
     gesture_live: bool,
-    actions: Vec<ComposerAction>,
+    actions: Vec<ConductorAction>,
 }
 
 /// What the walk leaves behind for the state and the render.
-pub(in crate::composer) struct WalkEnd {
+pub(in crate::conductor) struct WalkEnd {
     pub content_height: f32,
     pub control_count: usize,
     /// The cursor, moved by a click or a Songs request.
@@ -60,7 +60,7 @@ impl<'a> SidebarWalk<'a> {
         theme: &'a EditorTheme,
         area: Rect,
         offset: f32,
-        state: &ComposerState,
+        state: &ConductorState,
         request: Option<ControlRequest>,
         read_only: bool,
     ) -> Self {
@@ -74,7 +74,7 @@ impl<'a> SidebarWalk<'a> {
             y: top,
             control: 0,
             cursor: state.sidebar_control,
-            focused: state.focus == ComposerFocus::Sidebar,
+            focused: state.focus == ConductorFocus::Sidebar,
             request,
             read_only,
             reveal: state.reveal_control,
@@ -91,7 +91,7 @@ impl<'a> SidebarWalk<'a> {
         self.control
     }
 
-    pub fn push(&mut self, action: ComposerAction) {
+    pub fn push(&mut self, action: ConductorAction) {
         self.actions.push(action);
     }
 
@@ -254,7 +254,7 @@ impl<'a> SidebarWalk<'a> {
 
     /// End the walk: hand back its actions and what the state keeps. A field gesture whose
     /// field was not drawn live this frame is closed here.
-    pub fn finish(mut self, actions: &mut Vec<ComposerAction>) -> WalkEnd {
+    pub fn finish(mut self, actions: &mut Vec<ConductorAction>) -> WalkEnd {
         self.ui.pop_clip_rect();
         actions.append(&mut self.actions);
         WalkEnd {

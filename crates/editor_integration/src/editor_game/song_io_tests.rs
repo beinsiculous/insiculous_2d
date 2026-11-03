@@ -320,7 +320,7 @@ fn an_unmapped_song_opens_on_the_projects_first_bank_and_on_the_default_when_it_
     editor.open_song(&unmapped).expect("an unmapped song opens in place");
     let song = editor.song.as_ref().expect("the song");
     assert_eq!(song.file().soundfont, editor::song::DEFAULT_SOUND_FONT_PATH);
-    assert!(!editor::external_tools::sound_font_exists(bare.path(), &song.file().soundfont), "which the composer warns about");
+    assert!(!editor::external_tools::sound_font_exists(bare.path(), &song.file().soundfont), "which the Conductor panel warns about");
 }
 
 /// A song saved at `music/theme.mid`, its sidecar then rewritten by another program, and an

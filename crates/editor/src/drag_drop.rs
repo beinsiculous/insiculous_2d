@@ -25,9 +25,9 @@ pub enum DragPayload {
     /// A recorded sound from the asset browser. `path` is the asset-relative
     /// path a `SoundEmitter` names.
     Sound { path: String },
-    /// A song's `.mid` from the asset browser, which the composer opens.
+    /// A song's `.mid` from the asset browser, which the Conductor panel opens.
     Song { path: String },
-    /// A SoundFont from the asset browser, which the composer adds as an instrument.
+    /// A SoundFont from the asset browser, which the Conductor panel adds as an instrument.
     SoundFont { path: String },
 }
 

@@ -60,7 +60,7 @@ set -euo pipefail
 # playground's documented performance numbers are held to; Jesse sets the
 # number after measuring on an ordinary laptop, and it is a one-time value
 # edited here rather than a flag a caller varies per invocation. Raised from
-# 12 on 2026-10-21 for the composer (Conductor batches 10 and 11), with the
+# 12 on 2026-10-21 for the Conductor panel (Conductor batches 10 and 11), with the
 # bundle at 11.83; the platform's own per-file ceiling is well above it.
 PLAYGROUND_SIZE_BUDGET_MIB=16
 

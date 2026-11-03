@@ -278,7 +278,7 @@ pub(super) fn timing_only_song() -> editor::SongDocument {
     editor::SongDocument::from_smf(&bytes, editor::song::default_song_file()).expect("the fixture reads")
 }
 
-/// Hold `song` as the open song, as an open does: a new generation, the composer following
+/// Hold `song` as the open song, as an open does: a new generation, the Conductor panel following
 /// it, the dirty mirrors synced.
 pub(super) fn hold_song<G: Game>(editor: &mut EditorGame<G>, song: editor::SongDocument) {
     editor.song = Some(song);
@@ -287,15 +287,15 @@ pub(super) fn hold_song<G: Game>(editor: &mut EditorGame<G>, song: editor::SongD
     editor.sync_dirty_mirror();
 }
 
-/// A session whose asset base is `folder`, holding `song`, with the composer shown in a
+/// A session whose asset base is `folder`, holding `song`, with the Conductor panel shown in a
 /// 1280 × 720 dock and its sidebar holding the keyboard.
-pub(super) fn composer_session(folder: &std::path::Path, song: editor::SongDocument) -> EditorGame<DummyGame> {
+pub(super) fn conductor_session(folder: &std::path::Path, song: editor::SongDocument) -> EditorGame<DummyGame> {
     let mut editor = editor_game();
     editor.asset_base = folder.to_path_buf();
     stock_sound_font(folder);
     editor.song = Some(song);
     editor.follow_song();
     editor.editor.dock_area.set_bounds(ui::Rect::new(0.0, 24.0, 1280.0, 672.0));
-    editor.show_composer(editor::composer::ComposerFocus::Sidebar);
+    editor.show_conductor(editor::conductor::ConductorFocus::Sidebar);
     editor
 }

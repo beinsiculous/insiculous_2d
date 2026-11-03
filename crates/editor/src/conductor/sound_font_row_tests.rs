@@ -6,9 +6,9 @@ use glam::Vec2;
 use ui::{DrawCommand, Rect, UIContext};
 
 use super::sidebar::{render_sidebar, SidebarContext};
-use super::state::{ComposerFocus, ComposerState};
+use super::state::{ConductorFocus, ConductorState};
 use super::test_support::melody;
-use super::ComposerAction;
+use super::ConductorAction;
 use crate::external_tools::SoundFontScan;
 use crate::song::{Gesture, SongDocument, SongEdit};
 use crate::test_support::{click_through, frame};
@@ -28,9 +28,9 @@ fn context(song: &SongDocument, enter_pressed: bool, sound_font_present: bool) -
     }
 }
 
-fn state_with(banks: &[&str], links_only: bool) -> ComposerState {
-    let mut state = ComposerState::default();
-    state.focus = ComposerFocus::Sidebar;
+fn state_with(banks: &[&str], links_only: bool) -> ConductorState {
+    let mut state = ConductorState::default();
+    state.focus = ConductorFocus::Sidebar;
     state.songs_scanned = true;
     state.sound_fonts = SoundFontScan {
         banks: banks.iter().map(|bank| bank.to_string()).collect(),
@@ -87,7 +87,7 @@ fn a_click_on_the_row_picks_the_next_bank_as_one_undoable_edit() {
     });
 
     let picked = SongEdit::SetSoundFont { path: "soundfonts/b.sf2".to_string() };
-    assert_eq!(clicked, vec![ComposerAction::Edit(picked.clone())]);
+    assert_eq!(clicked, vec![ConductorAction::Edit(picked.clone())]);
     let entries = song.history().undo_count();
     song.apply(picked, Gesture::Discrete).expect("sets the bank");
     assert_eq!(song.history().undo_count(), entries + 1);

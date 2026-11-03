@@ -32,7 +32,7 @@
 //! its own program, channel and controller events. A binding's instrument always wins
 //! over the track's own program.
 //!
-//! The composer writes a sidecar back with [`write_song_file`], adding `midi_fingerprint`
+//! The Conductor panel writes a sidecar back with [`write_song_file`], adding `midi_fingerprint`
 //! (what its save journal checks the MIDI file against), the song's own `provenance` and
 //! each sample instrument's; all are optional on read, so a hand-written sidecar loads
 //! unchanged.
@@ -78,12 +78,12 @@ pub struct SongFile {
     pub instruments: Vec<Instrument>,
     #[serde(default)]
     pub bindings: Vec<Binding>,
-    /// Who wrote the song and under which license, as the composer writes them into the
-    /// `LICENSE` beside the song's two files. The composer requires it before it saves;
+    /// Who wrote the song and under which license, as the Conductor panel writes them into the
+    /// `LICENSE` beside the song's two files. The Conductor panel requires it before it saves;
     /// loading never does, so a hand-written sidecar loads unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provenance: Option<Provenance>,
-    /// FNV-1a over the MIDI file's bytes as the composer last saved them, so a save
+    /// FNV-1a over the MIDI file's bytes as the Conductor panel last saved them, so a save
     /// interrupted between its writes can be told from a finished one. Absent from a
     /// hand-written sidecar, which is taken as matching its MIDI file.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -160,14 +160,14 @@ pub enum Quantize {
 pub struct Instrument {
     pub name: String,
     pub source: InstrumentSource,
-    /// Who made the recording and under which license. The composer requires it of a
+    /// Who made the recording and under which license. The Conductor panel requires it of a
     /// `Sample` instrument before it saves; a SoundFont preset is covered by its bank's
     /// own `LICENSE`. Loading never requires it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provenance: Option<Provenance>,
 }
 
-/// A recording's or a song's author and license, as the composer writes them into the
+/// A recording's or a song's author and license, as the Conductor panel writes them into the
 /// `LICENSE` beside the files they cover.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

@@ -8,8 +8,8 @@
 
 use ui::{Rect, UIContext};
 
-use super::state::{next_track, ComposerState, ControlRequest};
-use super::{position_text, track_label, ComposerAction, ComposerFocus};
+use super::state::{next_track, ConductorState, ControlRequest};
+use super::{position_text, track_label, ConductorAction, ConductorFocus};
 use crate::song::SongDocument;
 use crate::theme::EditorTheme;
 
@@ -35,7 +35,7 @@ pub const TRANSPORT_CONTROLS: [TransportControl; 3] = [
 /// stopped, "Playhead bar 1 · beat 1 · tick 0 · 120 BPM · 4/4"; playing, "Playing · bar 2 ·
 /// beat 3 · 120 BPM · 4/4"; and "Playing · waiting for the first click" while a song waits
 /// for the web's first gesture.
-pub fn status_text(song: &SongDocument, state: &ComposerState) -> String {
+pub fn status_text(song: &SongDocument, state: &ConductorState) -> String {
     let tick = match (state.preview_playing, state.playhead_tick) {
         (true, None) => return "Playing · waiting for the first click".to_string(),
         (true, Some(tick)) => tick,
@@ -64,11 +64,11 @@ pub fn status_text(song: &SongDocument, state: &ComposerState) -> String {
 pub fn render_transport(
     ui: &mut UIContext,
     theme: &EditorTheme,
-    state: &mut ComposerState,
+    state: &mut ConductorState,
     bounds: Rect,
     song: &SongDocument,
     read_only: bool,
-) -> Vec<ComposerAction> {
+) -> Vec<ConductorAction> {
     let mut actions = Vec::new();
     ui.rect(bounds, theme.surface_2);
     ui.push_clip_rect(bounds);
@@ -78,7 +78,7 @@ pub fn render_transport(
     if activate {
         state.request = None;
     }
-    let focused = state.focus == ComposerFocus::Transport;
+    let focused = state.focus == ConductorFocus::Transport;
     let row_y = bounds.y + 3.0;
     let height = (bounds.height - 6.0).max(0.0);
     let mut x = bounds.x + GAP;
@@ -100,7 +100,7 @@ pub fn render_transport(
             TransportControl::Play => ("Play".to_string(), !read_only),
             TransportControl::Stop => ("Stop".to_string(), !read_only),
         };
-        let clicked = ui.button_styled(("composer_transport", index), &label, button, enabled);
+        let clicked = ui.button_styled(("conductor_transport", index), &label, button, enabled);
         match control {
             TransportControl::Play | TransportControl::Stop if read_only => {
                 ui.tooltip(button, "The game plays the saved song during a play session")
@@ -135,14 +135,14 @@ pub fn render_transport(
 }
 
 /// What a transport control does when pressed or activated.
-fn act(state: &ComposerState, song: &SongDocument, control: TransportControl) -> Vec<ComposerAction> {
+fn act(state: &ConductorState, song: &SongDocument, control: TransportControl) -> Vec<ConductorAction> {
     match control {
         TransportControl::TrackSelector => next_track(song, state.active_track, true)
-            .map(ComposerAction::SetActiveTrack)
+            .map(ConductorAction::SetActiveTrack)
             .into_iter()
             .collect(),
-        TransportControl::Play if !state.preview_playing => vec![ComposerAction::PreviewPlayStop],
-        TransportControl::Stop if state.preview_playing => vec![ComposerAction::PreviewPlayStop],
+        TransportControl::Play if !state.preview_playing => vec![ConductorAction::PreviewPlayStop],
+        TransportControl::Stop if state.preview_playing => vec![ConductorAction::PreviewPlayStop],
         TransportControl::Play | TransportControl::Stop => Vec::new(),
     }
 }

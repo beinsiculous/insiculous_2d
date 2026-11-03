@@ -1,4 +1,4 @@
-//! Fixtures for the composer's tests: songs of known shapes, opened from MIDI bytes as an
+//! Fixtures for the Conductor panel's tests: songs of known shapes, opened from MIDI bytes as an
 //! exported file would be.
 
 use music_midi::midly::num::{u15, u24, u28, u4, u7};

@@ -161,7 +161,7 @@ save's removed temporary files and pruned samples leave the store too.
 every removal a tombstone, each its own entry in one FIFO; nothing coalesces, and the next
 issues only when the one before it completes. So whatever the store holds when any
 operation lands is a prefix of the write sequence — the states a native crash leaves, which
-the song's open-time rules (`SONG_FORMAT.md` § How the composer saves) settle: a save's
+the song's open-time rules (`SONG_FORMAT.md` § How the Conductor panel saves) settle: a save's
 final lands whole before the removal of the temporary file it was written from, a Save As's
 `.mid` before its sidecar, and a removal after every put written ahead of it. The base
 revision is read when an operation issues, never when it is queued. A write behind its own
@@ -233,7 +233,7 @@ The command channel is a 1024-line FIFO; responses come back in order.
 | `playground_set_preview_open(open)` | `→ void` | while true, in-editor Play is refused with "A preview window is open — close it to Play here". The page clears it on `preview-failed`, `preview-closed`, or a window it finds closed — never on silence |
 | `playground_import_zip(bytes)` | `→ Promise<string>` | validates, drains, replaces the project in the store, resolves with the slug; the PAGE then sets `?project=<slug>` and reloads — REQUIRED, same slug or not, as for switch and reset: the drain leaves writes refused until the reload |
 | `playground_read_file_bytes(path)` | `→ Result<Uint8Array>` | project-relative binary read through `vfs::read` |
-| `playground_write_file_bytes(name, bytes, replace)` | `→ Result<string>` | imports one song, sample or SoundFont by its file name (`upload.rs`), answering the JSON `{written, kind, destination, referenced_by, sidecar_lost, open_song_replaced}`. The name must match `[A-Za-z0-9._-]+` (a sample's or a SoundFont's whitespace becomes `_`; a song's name is held to the song path rule, `docs/SONG_FORMAT.md` § How the composer saves); the file is refused by its size against its loader's limit (`MIDI_BYTE_LIMIT` 1 MiB, `SAMPLE_BYTE_LIMIT` 4 MiB, `SOUND_FONT_BYTE_LIMIT` 48 MiB) and then by the loader itself before anything is written. A `.mid` or `.midi` lands in `assets/music/`, a `.wav` in `assets/music/imports/`, an `.sf2` in `assets/soundfonts/`. A taken name answers `written: false` unless `replace`; a replaced MIDI file keeps its sidecar: the new score is the score changed outside, which the song follows with its map and the track diff's lines (`sidecar_lost` is `true` when that song has a sidecar — the score changes and the map is kept) — at its next open, or at once when it is the composer's open song (`open_song_replaced`), whose document the editor hands the bytes through its import mailbox, since the browser has no file watcher |
+| `playground_write_file_bytes(name, bytes, replace)` | `→ Result<string>` | imports one song, sample or SoundFont by its file name (`upload.rs`), answering the JSON `{written, kind, destination, referenced_by, sidecar_lost, open_song_replaced}`. The name must match `[A-Za-z0-9._-]+` (a sample's or a SoundFont's whitespace becomes `_`; a song's name is held to the song path rule, `docs/SONG_FORMAT.md` § How the Conductor panel saves); the file is refused by its size against its loader's limit (`MIDI_BYTE_LIMIT` 1 MiB, `SAMPLE_BYTE_LIMIT` 4 MiB, `SOUND_FONT_BYTE_LIMIT` 48 MiB) and then by the loader itself before anything is written. A `.mid` or `.midi` lands in `assets/music/`, a `.wav` in `assets/music/imports/`, an `.sf2` in `assets/soundfonts/`. A taken name answers `written: false` unless `replace`; a replaced MIDI file keeps its sidecar: the new score is the score changed outside, which the song follows with its map and the track diff's lines (`sidecar_lost` is `true` when that song has a sidecar — the score changes and the map is kept) — at its next open, or at once when it is the Conductor panel's open song (`open_song_replaced`), whose document the editor hands the bytes through its import mailbox, since the browser has no file watcher |
 | `playground_sample_references(path)` | `→ Result<string[]>` | every song under `music/` and `ai/music/` whose sidecar names the file at `path`, by its `.mid` |
 | `playground_conflicted_paths()` | `→ string[]` | sorted project-relative paths currently in conflicted state |
 | `playground_script_errors()` | `→ string[]` | runtime errors recorded by `ScriptRunner` during the current Play session |
@@ -289,7 +289,7 @@ takes the viewport), after Stop, and on exit. Nothing is written during Play or 
 
 `playground_export_zip()` is a Promise, and the scene it carries is the live world, not
 the file on disk: the acceptance test is "exports their work", and the saved scene would
-drop the very edit the visitor previewed. The song open in the composer travels the same
+drop the very edit the visitor previewed. The song open in the Conductor panel travels the same
 way: its MIDI file and sidecar as the document holds them, at the song's own path or the
 default a never-saved song would take, over the saved ones; every other file travels as it
 is. For the same reason it is refused during Play or
@@ -315,7 +315,7 @@ it has no MIDI Evil to hand a song to: a song's score is edited by the file roun
 Export project, open the song's `.mid` from the archive in MIDI Evil, export it there, and
 bring the exported `.mid` back with "Import a song, sample or SoundFont", replacing the file
 of the same name. The song follows the new score with its map kept — at its next open, or at
-once when it is the composer's open song — and the track diff's lines name every part the
+once when it is the Conductor panel's open song — and the track diff's lines name every part the
 new score no longer plays as written.
 
 ### Validation
@@ -358,9 +358,9 @@ shortcuts, its own scroll and its own zoom.
 | Audio activation | Load a project with sound and wait: the page starts silent. The first click or key press enables audio, and a preview window's sounds play from then on |
 | Resize | Drag the browser window and open and close a panel. The canvas re-lays out, and the pointer still maps to the same world point — click a sprite where it is drawn, not where it was |
 | Zoom | Browser page zoom (Ctrl/Cmd with `+`/`-`, and Ctrl/Cmd with the wheel), then the editor's own wheel zoom over the viewport. The canvas stays aligned under the pointer, and a gentle trackpad scroll does not compound into a hard zoom |
-| The song preview after the first gesture | Open a project, import a `.mid` with "Import a song, sample or SoundFont" and send `song open music/<its name>` from the command input — the composer's Songs list opens it too, but that click on the canvas would be the first gesture — and before clicking the canvas send `song play`: the transport says "Playing · waiting for the first click" and nothing sounds. Click the canvas: the song is heard, the playhead moves, and Space (with the composer focused) stops it. The playhead may lead the sound by the browser's own output buffer, which the engine cannot measure |
+| The song preview after the first gesture | Open a project, import a `.mid` with "Import a song, sample or SoundFont" and send `song open music/<its name>` from the command input — the Conductor panel's Songs list opens it too, but that click on the canvas would be the first gesture — and before clicking the canvas send `song play`: the transport says "Playing · waiting for the first click" and nothing sounds. Click the canvas: the song is heard, the playhead moves, and Space (with the Conductor panel focused) stops it. The playhead may lead the sound by the browser's own output buffer, which the engine cannot measure |
 | Play hears the saved song | Save the song, play the preview, then press scene Play: the saved song plays as the game's music from the session's first frame. Stop: the music stops, and the transport's Play hears the document again |
-| An imported sample travels | Import a `.wav` with "Import a song, sample or SoundFont", Rescan Assets, drop it on the composer, give it and the song an author and a license, press Trigger while the preview plays, Save, reload the page and reopen the song: the sample plays. Export, import the archive back, and it still plays |
+| An imported sample travels | Import a `.wav` with "Import a song, sample or SoundFont", Rescan Assets, drop it on the Conductor panel, give it and the song an author and a license, press Trigger while the preview plays, Save, reload the page and reopen the song: the sample plays. Export, import the archive back, and it still plays |
 | Typing stays in its field | With a script open in Scripts, and with an inspector text field focused, type Delete, Ctrl/Cmd+Z, letters and spaces. The scene does not change: no entity is deleted, no tool shortcut fires, no undo runs |
 
 ## Budget
@@ -373,7 +373,7 @@ rather than felt.
 
 | number | what it covers | recorded |
 |---|---|---|
-| download size | `game_bg.wasm` of the playground bundle — the `wasm size:` line `scripts/build_wasm.sh` echoes. The only one of the four with a hard gate: `--kind playground` exits non-zero past `PLAYGROUND_SIZE_BUDGET_MIB` at the top of that script | 10.61 MiB (v2, 2026-09-12); 11.11 MiB staged 2026-10-20, when the audio crate's song seam put rustysynth in every bundle (+0.50 MiB); 11.83 MiB at 8929cd6 (2026-10-21, the song document and its JSON derives, +0.54 MiB), when Jesse raised the budget from 12 to 16 MiB for the composer's two remaining batches |
+| download size | `game_bg.wasm` of the playground bundle — the `wasm size:` line `scripts/build_wasm.sh` echoes. The only one of the four with a hard gate: `--kind playground` exits non-zero past `PLAYGROUND_SIZE_BUDGET_MIB` at the top of that script | 10.61 MiB (v2, 2026-09-12); 11.11 MiB staged 2026-10-20, when the audio crate's song seam put rustysynth in every bundle (+0.50 MiB); 11.83 MiB at 8929cd6 (2026-10-21, the song document and its JSON derives, +0.54 MiB), when Jesse raised the budget from 12 to 16 MiB for the Conductor panel's two remaining batches |
 | time to an editable scene | navigation to the first keystroke an inspector field accepts | pending Jesse's measurement |
 | idle CPU | an editor tab left alone in Editing, after the idle throttle has engaged — the number the throttle exists to move | pending Jesse's measurement |
 | memory with a preview open | the editor tab plus a `?mode=preview` window on the same project, as one browser-task-manager reading | pending Jesse's measurement |

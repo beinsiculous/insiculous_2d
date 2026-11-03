@@ -1,4 +1,4 @@
-//! [`SongEdit`]: every change the composer can make to a song's map, as data. The GUI and
+//! [`SongEdit`]: every change the Conductor panel can make to a song's map, as data. The GUI and
 //! the command API's `song edit <json>` both hand one to `SongDocument::apply`, the only
 //! path that mutates a song from the editor, so the two cannot drift. The score is never
 //! one of them: it is written in MIDI Evil, which exports the `.mid` the engine plays.

@@ -1,4 +1,4 @@
-//! The composer's song: a second document beside the scene, with its own history and save
+//! The Conductor panel's song: a second document beside the scene, with its own history and save
 //! watermark.
 //!
 //! A [`SongDocument`] holds the sidecar ([`SongFile`]) it saves as `<stem>.mid.ron` — the
@@ -175,8 +175,8 @@ impl SongDocument {
 }
 
 /// The bank a scaffold sidecar plays its background on: the project's first under
-/// `soundfonts/`, or [`DEFAULT_SOUND_FONT_PATH`] when it has none — which the composer then
-/// warns about.
+/// `soundfonts/`, or [`DEFAULT_SOUND_FONT_PATH`] when it has none — which the
+/// Conductor panel then warns about.
 pub fn first_sound_font(asset_base: &Path) -> String {
     crate::external_tools::scan_sound_fonts(asset_base)
         .banks

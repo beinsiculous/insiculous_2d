@@ -50,7 +50,7 @@ encode lessons already learned here — following them is cheaper than re-learni
 | Scene RON schema (load) | `crates/engine_core/src/scene_data.rs` — `ComponentData` enum + `scene_loader.rs` |
 | `.sheet.ron` sidecar schema | `crates/engine_core/src/sheet_file.rs` — `SheetFile` + `parse_sheet_file` + `into_parts` (validation lives here too) |
 | `.mid.ron` song sidecar schema | `crates/music_midi/src/song_file.rs` — `SongFile` + `parse_song_file` / `write_song_file` + `SongFile::validate` (`song_file/validate.rs` holds every check); `docs/SONG_FORMAT.md` is the author's guide |
-| Editor song mutation | `SongDocument::apply` in `crates/editor/src/song/` — the one path the composer's GUI and the command API's `song edit` both take; the song's own `SongHistory` |
+| Editor song mutation | `SongDocument::apply` in `crates/editor/src/song/` — the one path the Conductor panel's GUI and the command API's `song edit` both take; the song's own `SongHistory` |
 | Animation clip wire format | `ClipData` in `scene_data.rs` — ONE DTO shared by scene RON and `.sheet.ron` |
 | World → RON save | `crates/engine_core/src/scene_serializer/components.rs` — table behind `extract_components()` (the ONLY save pipeline) |
 | Inspector writeback / undo merge | `apply_component_edit()` in `crates/editor/src/component_editors.rs` (called by the registry-generated `edit_all_components`); `SetComponentCommand<T>` (one generic, twelve `Set*Command` aliases, `GIZMO_FIELD_HINT` for drags) in `crates/editor/src/commands/set_commands.rs` |

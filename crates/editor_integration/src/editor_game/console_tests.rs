@@ -216,7 +216,7 @@ fn press_in(editor: &mut EditorGame<DummyGame>, panel: PanelId) {
     let mut ui = ui::UIContext::new();
     press_mouse(&mut input, position);
     ui.begin_frame(&input, WINDOW);
-    editor.settle_composer(&ui);
+    editor.settle_conductor(&ui);
     editor.settle_asset_browser(&ui);
     editor.settle_console(&ui);
 }

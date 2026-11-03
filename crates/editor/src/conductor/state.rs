@@ -1,9 +1,9 @@
-//! What the composer remembers between frames: which of its areas holds the keyboard, the
+//! What the Conductor panel remembers between frames: which of its areas holds the keyboard, the
 //! one track the transport shows, the sidebar's scroll and keyboard cursors, and the songs
 //! found in the two song folders.
 //!
 //! The state follows the document it was built against: the host bumps a generation each
-//! time the song is replaced, created or closed, and [`ComposerState::follow`] resets
+//! time the song is replaced, created or closed, and [`ConductorState::follow`] resets
 //! everything that pointed into the old song when the two differ.
 
 use std::path::Path;
@@ -14,10 +14,10 @@ use crate::external_tools::{scan_songs, scan_sound_fonts, SoundFontScan};
 use crate::scroll::ScrollState;
 use crate::song::SongDocument;
 
-/// Which of the composer's areas holds the keyboard. `None` is the composer unfocused:
-/// every key goes to the editor and the game as before.
+/// Which of the Conductor panel's areas holds the keyboard. `None` is the Conductor panel
+/// unfocused: every key goes to the editor and the game as before.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ComposerFocus {
+pub enum ConductorFocus {
     #[default]
     None,
     Transport,
@@ -25,12 +25,12 @@ pub enum ComposerFocus {
 }
 
 /// The order Tab walks the areas in.
-const FOCUS_CYCLE: [ComposerFocus; 2] = [ComposerFocus::Transport, ComposerFocus::Sidebar];
+const FOCUS_CYCLE: [ConductorFocus; 2] = [ConductorFocus::Transport, ConductorFocus::Sidebar];
 
-impl ComposerFocus {
-    /// Whether the composer holds the keyboard at all.
+impl ConductorFocus {
+    /// Whether the Conductor panel holds the keyboard at all.
     pub fn is_held(self) -> bool {
-        self != ComposerFocus::None
+        self != ConductorFocus::None
     }
 
     /// The area Tab moves to; from `None`, the first.
@@ -54,9 +54,9 @@ impl ComposerFocus {
     /// The area's name, as the status bar and a tab say it.
     pub fn label(self) -> &'static str {
         match self {
-            ComposerFocus::None => "Composer",
-            ComposerFocus::Transport => "Transport",
-            ComposerFocus::Sidebar => "Song",
+            ConductorFocus::None => "Conductor",
+            ConductorFocus::Transport => "Transport",
+            ConductorFocus::Sidebar => "Song",
         }
     }
 }
@@ -108,8 +108,8 @@ pub enum ControlRequest {
 
 /// See the module docs.
 #[derive(Debug, Clone)]
-pub struct ComposerState {
-    pub focus: ComposerFocus,
+pub struct ConductorState {
+    pub focus: ConductorFocus,
     /// The track the transport shows and "Add a part" builds on, an index into
     /// `SongData::tracks`; only a track with a channel, and `None` for a song with none.
     pub active_track: Option<usize>,
@@ -155,10 +155,10 @@ pub struct ComposerState {
     pub playhead_tick: Option<u64>,
 }
 
-impl Default for ComposerState {
+impl Default for ConductorState {
     fn default() -> Self {
         Self {
-            focus: ComposerFocus::None,
+            focus: ConductorFocus::None,
             active_track: None,
             generation: None,
             sidebar_scroll: ScrollState::default(),
@@ -181,7 +181,7 @@ impl Default for ComposerState {
     }
 }
 
-impl ComposerState {
+impl ConductorState {
     /// Reset what pointed into another song when `generation` is not the one this state
     /// was built against; returns whether it reset. The songs and banks lists are the
     /// folders', not the song's, and survive.
@@ -207,7 +207,7 @@ impl ComposerState {
 
     /// Drop the keyboard: every key goes back to the editor and the game.
     pub fn clear_focus(&mut self) {
-        self.focus = ComposerFocus::None;
+        self.focus = ConductorFocus::None;
         self.request = None;
     }
 

@@ -106,7 +106,7 @@ impl GameMusic {
     /// A match starts, decided by the song in the slot: none — a preview that ended took it,
     /// or the output died — requests the game's song again; the game's own, compared as a
     /// whole path, goes back to its top and reports on the next update; another song is left
-    /// alone, since in the editor a song the composer saved is the session's music and a
+    /// alone, since in the editor a song the Conductor panel saved is the session's music and a
     /// match is how it is auditioned. Also clears the pause latch, so a Restart taken from
     /// the pause menu does not read the next pause's opening frame as an open menu.
     pub fn restart(&mut self, ctx: &mut GameContext) {

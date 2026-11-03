@@ -38,7 +38,7 @@ fn test_every_default_chord_resolves_to_its_action() {
         (KeyCode::F5, false, false, A::PlayResume),
         (KeyCode::KeyP, true, false, A::TogglePlayPause),
         (KeyCode::KeyP, true, true, A::StopPlay),
-        (KeyCode::KeyM, true, true, A::FocusComposer),
+        (KeyCode::KeyM, true, true, A::FocusConductor),
         // Any-mods bindings fire whatever is held.
         (KeyCode::Escape, false, false, A::Cancel),
         (KeyCode::Escape, true, true, A::Cancel),
@@ -132,7 +132,7 @@ fn test_modifiers_read_detects_left_and_right_ctrl_and_shift() {
 }
 
 /// The song's actions are refused for the whole play session, as the song is: the song
-/// cannot change under a running game, and focusing the composer would take the arrows
+/// cannot change under a running game, and focusing the Conductor panel would take the arrows
 /// from it.
 #[test]
 fn test_every_song_action_is_denied_while_playing() {
@@ -141,13 +141,13 @@ fn test_every_song_action_is_denied_while_playing() {
         A::SaveSong,
         A::SaveSongAs,
         A::CloseSong,
-        A::FocusComposer,
+        A::FocusConductor,
         A::SongPlayStop,
     ] {
         assert!(!action.allowed_while_playing(), "{action:?}");
     }
     assert!(
-        A::TogglePanel(crate::PanelId::COMPOSER).allowed_while_playing(),
-        "showing the composer is a view change"
+        A::TogglePanel(crate::PanelId::CONDUCTOR).allowed_while_playing(),
+        "showing the Conductor panel is a view change"
     );
 }

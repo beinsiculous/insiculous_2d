@@ -1,5 +1,5 @@
 //! The `song …` verbs: their parser arm, the two song queries, and the pure song writes,
-//! which run through `SongDocument::apply` exactly as the composer's GUI does. The score is
+//! which run through `SongDocument::apply` exactly as the Conductor panel's GUI does. The score is
 //! not the engine's to write: a score edit, and `song new`, are refused naming MIDI Evil.
 //!
 //! Song writes are stricter than scene writes: refused in Playing *and* Paused (a running

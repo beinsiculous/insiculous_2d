@@ -91,7 +91,7 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
   - `sample_loader.rs` - `load_sample_pcm`: a sample instrument's WAV through `common::vfs` and rodio's WAV decoder into `music_midi::OwnedPcm` — the byte limit by the file's size before reading, the RIFF header before decoding, the decode stopped one frame past 10 s
 
 - **crates/music_midi/** - The conductor's song core: no I/O, no rodio — bytes in, data out. See its `CLAUDE.md` for the file map and pitfalls, `docs/SONG_FORMAT.md` for the sidecar grammar
-  - `song_file.rs` + `song_file/validate.rs` - **the `.mid.ron` song sidecar schema** (`SongFile` v1: parts, instruments, bindings, the composer's `midi_fingerprint` and sample `provenance`; `parse_song_file` and its inverse `write_song_file`, `SongFile::validate` against the MIDI data and the loader's `ResourceMetadata`)
+  - `song_file.rs` + `song_file/validate.rs` - **the `.mid.ron` song sidecar schema** (`SongFile` v1: parts, instruments, bindings, the Conductor panel's `midi_fingerprint` and sample `provenance`; `parse_song_file` and its inverse `write_song_file`, `SongFile::validate` against the MIDI data and the loader's `ResourceMetadata`)
   - `song_data.rs` + `song_data/{flatten,edit,export}.rs` - `SongData::from_smf` (owned events, types 0 and 1, notes in `MusicalUnit`s under stable `NoteId`s), the mutation helpers returning before-images, `write_smf`
   - `tempo_map.rs` - `TempoMap`: exact tick ↔ seconds ↔ sample ↔ bar across tempo and time-signature changes; integer beat-crossing counts
   - `pcm.rs` - `OwnedPcm`: a decoded sample, refused outside 8–96 kHz, mono or stereo, 1 ms–10 s, finite values (builds without `synth`)
@@ -1000,15 +1000,15 @@ SoundEmitter(
   (`set_playback_mix`, volume and pan) that instance alone.
 
 **Authoring a song.** Songs are composed in MIDI Evil, which exports the `.mid`; the
-editor's composer maps it. `song init <path.mid>` writes a new sidecar beside an exported
+editor's Conductor panel maps it. `song init <path.mid>` writes a new sidecar beside an exported
 `.mid` (its background on the project's first bank under `soundfonts/`), and an unmapped
-`.mid` opened from the composer's Songs list or with `song open` starts on the same one.
-The map is the composer's sidebar, or the command API's `song edit <SongEdit>` with the map
+`.mid` opened from the Conductor panel's Songs list or with `song open` starts on the same one.
+The map is the Conductor panel's sidebar, or the command API's `song edit <SongEdit>` with the map
 verbs (`AddPart`, `AddInstrument`, `SetBinding`, `SetProvenance`, …) — a score edit such as
 `AddNote` is refused naming MIDI Evil — and `song` and `song notes` check what the document
 holds (`docs/EDITOR_COMMAND_API.md` § Songs). Save writes the sidecar and the song's stanza
 in its home folder's `LICENSE` and copies each sample into the song's own folder, each file
-by a temporary file and a rename (`docs/SONG_FORMAT.md` § How the composer saves). An
+by a temporary file and a rename (`docs/SONG_FORMAT.md` § How the Conductor panel saves). An
 agent's first cut goes under `assets/ai/music/` with the `ai_` prefix; a person's pass
 promotes it to `music/`.
 
@@ -1018,7 +1018,7 @@ loops — a phrase that must not repeat. `AtSongPosition` plays whatever unit is
 song's position — harmony that always fits the chord. A `Loop` or `Sequence` unit plays over
 whatever chord is sounding, so write it to fit every chord or use `AtSongPosition`.
 
-**Custom instruments.** A `.wav` dropped on the composer (or imported on the web playground)
+**Custom instruments.** A `.wav` dropped on the Conductor panel (or imported on the web playground)
 becomes a `Sample(…)` instrument: its root note, gain and one-shot or gated playback in the
 sidebar, and an author and license Save requires before it writes anything; Save copies it to
 `music/samples/<song path, / as __>/` with a `LICENSE` naming it.
@@ -1057,13 +1057,13 @@ holds, every note is released, and a trigger is rejected with its cursor kept un
 `resume_song`. A pause menu that jams over its music wants the first and never the second.
 
 **In the editor.** Editing is silent: `EditorGame::init` remembers and stops whatever music the
-game's `init` asked for, and a Play session with no composer song open asks for it again on its
-first frame — so a game that starts its music once at `init` is heard in Play, and a match start
-that decides by the slot (Tong's) finds its own song there and seeks it to the top. With a
-composer song open, the saved song is the session's music instead. Stop silences the slot
-whoever filled it; the next Play asks again. A saved song changed on disk during Play is heard
-from the next bar line; a new score that renames a track a part selects is refused on the status
-bar and in the console, and the old song plays on.
+game's `init` asked for, and a Play session with no song open in the Conductor panel asks for it
+again on its first frame — so a game that starts its music once at `init` is heard in Play, and a
+match start that decides by the slot (Tong's) finds its own song there and seeks it to the top.
+With a song open in the Conductor panel, the saved song is the session's music instead. Stop
+silences the slot whoever filled it; the next Play asks again. A saved song changed on disk during
+Play is heard from the next bar line; a new score that renames a track a part selects is refused
+on the status bar and in the console, and the old song plays on.
 
 **A game's music module.** The rules every game with a song carries live in
 `engine_core::game_music::GameMusic` (prelude), so a game's own `music.rs` names only its song and
@@ -1089,9 +1089,10 @@ if let Some(pulse) = self.music.game.beat_pulse(ctx) { /* Bar: the full ripple; 
 
 `restart` decides by the song in the slot, never by a flag `init` set: none — a preview that ended
 took it — requests the game's song; the game's own goes back to its top; another is left alone,
-since in the editor it is the composer's audition, unless it played to its end. That is what lets
-the editor stop and replay the slot around the game. `follow_pause` reads `MenuInput`, never the
-menu's selection, which follows a resting pointer, and jams nothing on the frame the menu opens.
+since in the editor it is the Conductor panel's audition, unless it played to its end. That is
+what lets the editor stop and replay the slot around the game. `follow_pause` reads `MenuInput`,
+never the menu's selection, which follows a resting pointer, and jams nothing on the frame the
+menu opens.
 `beat_pulse` answers once an update, the bar before the beat. A song that will not load is
 logged once at error, `song_failed()` stays true, and every `restart` asks again. Tong
 (`../games/pong/src/music.rs`) and The Food Pyramid (`../games/breakout/src/music.rs`) are the

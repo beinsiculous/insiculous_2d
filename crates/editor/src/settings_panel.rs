@@ -15,8 +15,8 @@
 //! in it drops the draft and shows the saved value. A custom tool a row cycles away from
 //! is remembered for the session, so cycling back restores it.
 //!
-//! The keyboard is the composer sidebar's model: the walk counts every control, the
-//! arrows move a cursor over them and the cursor's control wears the focus ring while the
+//! The keyboard is on the model of the Conductor panel's sidebar: the walk counts every control,
+//! the arrows move a cursor over them and the cursor's control wears the focus ring while the
 //! panel holds the keyboard; Enter acts on it and Left and Right step a cycle row. A key
 //! asks through [`SettingsRequest`], which the next render carries out, since only the
 //! walk knows which control sits at the cursor. The host routes the keys

@@ -29,14 +29,14 @@ pub(super) fn default_dock_area() -> DockArea {
             .with_hint("This project's files; drag one into the scene to use it."),
     );
     // After Assets, so the first layout pass stacks it above Assets on the bottom edge;
-    // hidden until a song or View → Composer asks for it.
-    let mut composer = DockPanel::new(PanelId::COMPOSER, "Composer", DockPosition::Bottom)
+    // hidden until a song or View → Conductor asks for it.
+    let mut conductor = DockPanel::new(PanelId::CONDUCTOR, "Conductor", DockPosition::Bottom)
         .with_size(260.0)
         .with_min_size(200.0)
         .with_hint("The song's map: its transport, and its parts, instruments and bindings.");
-    composer.visible = false;
-    dock_area.add_panel(composer);
-    // After the composer, so it stacks above whichever bottom panels show; hidden until
+    conductor.visible = false;
+    dock_area.add_panel(conductor);
+    // After the Conductor panel, so it stacks above whichever bottom panels show; hidden until
     // View → Console asks for it.
     let mut console = DockPanel::new(PanelId::CONSOLE, "Console", DockPosition::Bottom)
         .with_size(160.0)

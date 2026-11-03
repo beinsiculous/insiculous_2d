@@ -62,8 +62,8 @@ being ignored.
 | `parts` | list of `Part` | empty | the musical parts game actions play |
 | `instruments` | list of `Instrument` | empty | the instruments parts are played on |
 | `bindings` | list of `Binding` | empty | which action plays which part on which instrument |
-| `provenance` | `(author: "…", license: "…")` | absent | who wrote the song and under which license; the composer's Save requires both and writes them into the home folder's `LICENSE` stanza for the song's two files (§ How the composer saves). Loading never requires it |
-| `midi_fingerprint` | integer | absent | written by the composer's Save: FNV-1a (64-bit) over the MIDI file's bytes as it loaded or wrote them, so a score changed outside the composer is told on open (§ How the composer saves). Absent from a hand-written sidecar, which is taken as matching its MIDI file; never hand-edit it |
+| `provenance` | `(author: "…", license: "…")` | absent | who wrote the song and under which license; the Conductor panel's Save requires both and writes them into the home folder's `LICENSE` stanza for the song's two files (§ How the Conductor panel saves). Loading never requires it |
+| `midi_fingerprint` | integer | absent | written by the Conductor panel's Save: FNV-1a (64-bit) over the MIDI file's bytes as it loaded or wrote them, so a score changed outside the Conductor panel is told on open (§ How the Conductor panel saves). Absent from a hand-written sidecar, which is taken as matching its MIDI file; never hand-edit it |
 
 Paths are relative to the game's asset directory, as every other asset path is (the
 audio manager resolves them against `set_asset_base`, which the engine's runner sets from
@@ -99,9 +99,9 @@ part shares has one timing policy.
 | `provenance` | `Some((author: "…", license: "…"))`, optional | who made a sample's recording and under which license |
 
 `provenance` is optional when a song loads, and **required of every `Sample` instrument
-before the composer saves**: Save refuses a sample without it, naming the instrument and
+before the Conductor panel saves**: Save refuses a sample without it, naming the instrument and
 the field, and writes the author and license of every sample the song references into the
-`LICENSE` beside them, so the audio provenance gate stays whole over the files the composer
+`LICENSE` beside them, so the audio provenance gate stays whole over the files the Conductor panel
 writes. A SoundFont preset needs none — its bank's own `LICENSE` covers it.
 
 `SoundFont(path: "…", bank: b, preset: p)` — a preset of a SoundFont, which need not be
@@ -182,7 +182,7 @@ authored notes in order whenever the player acts, so a unit written over one cho
 sound over another — the part's notes are guaranteed to be *its* notes, not to fit the
 background at that moment. Write a looping part to suit every chord it may land on (a
 pentatonic riff, a percussion line), or use `AtSongPosition`, which always plays the unit
-written for that moment. The composer is to show this caveat beside the mode.
+written for that moment. The Conductor panel is to show this caveat beside the mode.
 
 ### Timing: the stamp and the grid
 
@@ -261,10 +261,10 @@ its own with all 16 MIDI channels, which any MIDI file fits, so it takes no slot
   whole beats, is refused.
 - **Limits**, checked before anything is built in full: 1 MiB of MIDI, 262 144 events.
 - **Overlapping notes.** A key struck again on its channel before its note-off is paired
-  first-in first-out and reported to the composer as an overlap; nothing is refused.
+  first-in first-out and reported to the Conductor panel as an overlap; nothing is refused.
 - **Several channels on one track.** A type-1 track whose notes play on more than one
   channel loads, plays and maps like any other.
-- **Saving.** The composer never writes the file's events back: a Save As copies the bytes
+- **Saving.** The Conductor panel never writes the file's events back: a Save As copies the bytes
   it loaded, byte for byte, and a map save leaves the file alone.
 
 ## Positions in the music
@@ -295,30 +295,30 @@ update when the song crossed that boundary since the update before — once, how
 boundaries a long frame held. A loop wrap reports every subdivision, for the downbeat it
 lands on; a seek backwards reports none.
 
-## How the composer saves
+## How the Conductor panel saves
 
-The editor's composer saves a song as `<stem>.mid` and `<stem>.mid.ron` under `music/` or
+The editor's Conductor panel saves a song as `<stem>.mid` and `<stem>.mid.ron` under `music/` or
 `ai/music/` in the asset folder (an agent's first cut carries the `ai_` prefix until a
 human pass saves it into `music/` without it). A `.midi` saves the same way beside its
 `<stem>.midi.ron`: a sidecar is always the MIDI file's whole name with `.ron` added.
 
-**The score belongs to MIDI Evil, which exports the `.mid`; the composer writes the map.**
+**The score belongs to MIDI Evil, which exports the `.mid`; the Conductor panel writes the map.**
 The engine writes a `.mid` only as a copy of the bytes it loaded — Save As's, or a map
 save's when the `.mid` is gone from disk. A save is one of two kinds:
 
 - **Save** — to the song's own path — is a **map save**: it writes the `.mid.ron` and the
   home folder's `LICENSE` stanza and leaves the `.mid` alone, its bytes and its stamp. The
-  sidecar's `midi_fingerprint` is the fingerprint of the bytes the composer loaded, never of
+  sidecar's `midi_fingerprint` is the fingerprint of the bytes the Conductor panel loaded, never of
   its own re-encoding of them, which can differ (midly writes running status).
 - **Save As** — to any other path — copies the whole song: the `.mid` exactly as it was
   loaded, and the map. A target that holds another song's files is replaced only when
-  asked (the composer's Overwrite, the API's `overwrite`).
+  asked (the Conductor panel's Overwrite, the API's `overwrite`).
 
-**Both files are compared by content immediately before a save writes.** The composer
+**Both files are compared by content immediately before a save writes.** The Conductor panel
 remembers the fingerprint of the `.mid` and of the `.mid.ron` as it last read or wrote
 them. A sidecar that changed on disk since — another program, or a hand, rewrote the map,
 even at the same length and the same modified time — refuses the save, writing nothing:
-the composer asks "the map changed on disk since you loaded it: Overwrite / Cancel", and
+the Conductor panel asks "the map changed on disk since you loaded it: Overwrite / Cancel", and
 the API's `song save` answers with both files and their fingerprints until the line says
 `overwrite`. A `.mid` that changed is taken first: the song follows the new score, its map
 and the map's unsaved edits kept, the track diff's lines shown, and the save fingerprints
@@ -328,7 +328,7 @@ and the licenses lie between the first look and the write — and a map rewritte
 span refuses the save the same way; what remains unguarded is the moment between that
 compare and the rename, which two writers of one file would race, and each file has one.
 
-**The editor watches the open song's two files, and the composer's own save is the
+**The editor watches the open song's two files, and the Conductor panel's own save is the
 watcher's baseline:** the sidecar it wrote, and the `.mid` when it wrote that too, never
 come back as a change. Another program's write is followed without a save: a new `.mid` is
 adopted — the song follows the new score with its map and the map's unsaved edits kept,
@@ -387,13 +387,13 @@ save refuses before its first write, then goes in this order:
 5. **The prune:** every file in the song's sample folder the song does not name is removed,
    and the folder's `LICENSE` rewritten with one stanza per named sample (`Files:`,
    `Copyright:` the author, `License:`), so the provenance gate passes over what the
-   composer wrote. It runs last, so an interruption at any step leaves every sample the
+   Conductor panel wrote. It runs last, so an interruption at any step leaves every sample the
    finals on disk name.
 
 **Opening a song reads its two files as they are, and writes nothing:**
 
 - **A `.mid` whose sidecar's `midi_fingerprint` differs** is the score changed outside the
-  composer: it opens on the disk's bytes with its sidecar, a note says so, and the track
+  Conductor panel: it opens on the disk's bytes with its sidecar, a note says so, and the track
   diff's lines name every part the score no longer plays as written; the next save
   rewrites the fingerprint. A sidecar without `midi_fingerprint` — one a person wrote —
   always matches its MIDI file.
@@ -403,6 +403,6 @@ save refuses before its first write, then goes in this order:
   that has one.
 - **A sidecar with no `.mid`** is no song to open.
 
-The composer never edits a song's notes, its tempo, its meter or its tracks: those are the
+The Conductor panel never edits a song's notes, its tempo, its meter or its tracks: those are the
 score, written in MIDI Evil. Its parts, instruments, bindings, loop, quantize, modes and
 provenance edit and save on any MIDI file the loader plays.

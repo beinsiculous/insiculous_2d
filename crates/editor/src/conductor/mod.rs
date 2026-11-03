@@ -1,9 +1,9 @@
-//! The composer: the song document's panel — a transport, and a sidebar holding the song's
-//! file, its parts, instruments and bindings. The score is MIDI Evil's: the composer maps
+//! The Conductor panel: the song document's panel — a transport, and a sidebar holding the song's
+//! file, its parts, instruments and bindings. The score is MIDI Evil's: the Conductor panel maps
 //! the `.mid` it exports and never edits its notes.
 //!
 //! Everything here is data and drawing. The host (`editor_integration`) owns the song, the
-//! drag in flight and what each action does: a render returns [`ComposerAction`]s and never
+//! drag in flight and what each action does: a render returns [`ConductorAction`]s and never
 //! touches the document, so every change still goes through `SongDocument::apply`, past
 //! the host's one refusal for a play session. One renderer serves both states — while a
 //! play session runs the host passes `read_only`, and every field draws its value instead
@@ -35,15 +35,15 @@ use music_midi::{Instrument, InstrumentSource, SamplePlayback, TempoMap};
 use crate::drag_drop::DragPayload;
 use crate::song::{SongDocument, SongEdit};
 
-pub use keys::{resolve as resolve_composer_key, ComposerKeyAction, ComposerKeyRoute, Direction};
-pub use layout::{ComposerLayout, ComposerMode};
-pub use state::{ComposerFocus, ComposerState, ControlRequest, SidebarSection};
+pub use keys::{resolve as resolve_conductor_key, ConductorKeyAction, ConductorKeyRoute, Direction};
+pub use layout::{ConductorLayout, ConductorMode};
+pub use state::{ConductorFocus, ConductorState, ControlRequest, SidebarSection};
 
-/// Something the composer's render or keys ask the host to do.
+/// Something the Conductor panel's render or keys ask the host to do.
 #[derive(Debug, Clone, PartialEq)]
-pub enum ComposerAction {
+pub enum ConductorAction {
     /// Give an area the keyboard (a click in it).
-    Focus(ComposerFocus),
+    Focus(ConductorFocus),
     /// One edit through the document.
     Edit(SongEdit),
     /// One frame of a number field's gesture — a scrub, a held arrow. The `first` frame
@@ -100,14 +100,14 @@ pub fn unique_name<'a>(base: &str, taken: impl Iterator<Item = &'a str> + Clone)
         .unwrap_or_else(|| base.to_string())
 }
 
-/// What a payload dropped on the composer asks for. A `.wav` becomes a one-shot sample
+/// What a payload dropped on the Conductor panel asks for. A `.wav` becomes a one-shot sample
 /// instrument rooted on middle C at gain 1.0, named by its file's stem (suffixed while the
 /// song has that name); a SoundFont an instrument on its bank 0, preset 0; a song is
 /// opened. Any other recorded sound is refused naming WAV — the sample player pitches
 /// WAV only — as is anything else, and a sample or a SoundFont with no song open.
-pub fn drop_action(song: Option<&SongDocument>, payload: &DragPayload) -> ComposerAction {
+pub fn drop_action(song: Option<&SongDocument>, payload: &DragPayload) -> ConductorAction {
     let source = match payload {
-        DragPayload::Song { path } => return ComposerAction::OpenSong(path.clone()),
+        DragPayload::Song { path } => return ConductorAction::OpenSong(path.clone()),
         DragPayload::Sound { path } if is_wav(path) => InstrumentSource::Sample {
             path: path.clone(),
             root_note: 60,
@@ -115,7 +115,7 @@ pub fn drop_action(song: Option<&SongDocument>, payload: &DragPayload) -> Compos
             playback: SamplePlayback::OneShot,
         },
         DragPayload::Sound { path } => {
-            return ComposerAction::Refused(format!(
+            return ConductorAction::Refused(format!(
                 "{path} is not a WAV: a sample instrument is pitched from a .wav file"
             ))
         }
@@ -125,13 +125,13 @@ pub fn drop_action(song: Option<&SongDocument>, payload: &DragPayload) -> Compos
             preset: 0,
         },
         DragPayload::Texture { .. } | DragPayload::Script { .. } => {
-            return ComposerAction::Refused(
-                "The composer takes a .wav, a .sf2 or a .mid from Assets".to_string(),
+            return ConductorAction::Refused(
+                "The Conductor panel takes a .wav, a .sf2 or a .mid from Assets".to_string(),
             )
         }
     };
     let Some(song) = song else {
-        return ComposerAction::Refused("Open a song first (File → Open Song...)".to_string());
+        return ConductorAction::Refused("Open a song first (File → Open Song...)".to_string());
     };
     let path = match &source {
         InstrumentSource::Sample { path, .. } | InstrumentSource::SoundFont { path, .. } => path,
@@ -141,7 +141,7 @@ pub fn drop_action(song: Option<&SongDocument>, payload: &DragPayload) -> Compos
         .map(|stem| stem.to_string_lossy().into_owned())
         .unwrap_or_else(|| "instrument".to_string());
     let name = unique_name(&stem, song.file().instruments.iter().map(|instrument| instrument.name.as_str()));
-    ComposerAction::Edit(SongEdit::AddInstrument {
+    ConductorAction::Edit(SongEdit::AddInstrument {
         instrument: Instrument {
             name,
             source,

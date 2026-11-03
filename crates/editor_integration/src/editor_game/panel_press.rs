@@ -1,4 +1,4 @@
-//! The one rule the panels that hold the keyboard — the composer, the asset browser and
+//! The one rule the panels that hold the keyboard — the Conductor panel, the asset browser and
 //! the console — settle by at frame start: where this frame's press landed for a panel,
 //! read from raw mouse state before any chrome handles it.
 //!

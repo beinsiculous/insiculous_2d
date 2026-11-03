@@ -1,7 +1,7 @@
 //! The External Tools panel's keyboard, on the console's model.
 //!
 //! A press of either button inside the panel gives it the keyboard; a press elsewhere in
-//! the dock, the panel hidden or collapsed, the composer taking the keyboard, Escape and
+//! the dock, the panel hidden or collapsed, the Conductor panel taking the keyboard, Escape and
 //! a play session's entry take it away. While the panel holds it, Up and Down move its
 //! cursor — an arrow never nudges a scene entity behind it — Enter acts on the control at
 //! the cursor and Left and Right step a cycle row there, each carried out by the next
@@ -35,7 +35,7 @@ impl<G: Game> EditorGame<G> {
     /// press: take or drop the panel's keyboard, by `panel_press`'s rule.
     pub(super) fn settle_settings(&mut self, ui: &ui::UIContext) {
         let press = match self.panel_press(ui, PanelId::SETTINGS) {
-            Some(press) if !self.editor.in_play_session() && !self.composer_holds_focus() => press,
+            Some(press) if !self.editor.in_play_session() && !self.conductor_holds_focus() => press,
             _ => return self.editor.settings.release_keyboard(),
         };
         match press {

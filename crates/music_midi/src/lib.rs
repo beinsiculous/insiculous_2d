@@ -4,9 +4,10 @@
 //!
 //! The crate does no I/O and never touches rodio: bytes come in, data and samples come out.
 //! The audio crate reads the files, then hands this crate the bytes and a
-//! [`ResourceMetadata`] describing what it loaded; the editor's composer edits a
-//! [`SongData`] and writes it back with [`SongData::write_smf`]. The `synth` feature (on
-//! by default) owns rustysynth and everything that renders; the rest builds without it.
+//! [`ResourceMetadata`] describing what it loaded; the editor's Conductor panel maps a
+//! [`SongData`] and saves the bytes it loaded (MIDI Evil composes; [`SongData::write_smf`]
+//! is its export shape). The `synth` feature (on by default) owns rustysynth and everything
+//! that renders; the rest builds without it.
 //!
 //! The pieces:
 //! - [`SongFile`] — the versioned sidecar: named parts over MIDI tracks, named

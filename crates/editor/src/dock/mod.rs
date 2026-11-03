@@ -38,8 +38,8 @@ impl PanelId {
     pub const ASSET_BROWSER: PanelId = PanelId(3);
     /// Console/output panel
     pub const CONSOLE: PanelId = PanelId(4);
-    /// The composer: the song's transport and sidebar
-    pub const COMPOSER: PanelId = PanelId(5);
+    /// The Conductor panel: the song's transport and sidebar
+    pub const CONDUCTOR: PanelId = PanelId(5);
     /// The External Tools settings, shown by Edit → External Tools… (no View item)
     pub const SETTINGS: PanelId = PanelId(6);
 }
@@ -58,7 +58,7 @@ pub fn panel_id_for_menu_label(label: &str) -> Option<PanelId> {
         "Inspector" => Some(PanelId::INSPECTOR),
         "Hierarchy" => Some(PanelId::HIERARCHY),
         "Asset Browser" => Some(PanelId::ASSET_BROWSER),
-        "Composer" => Some(PanelId::COMPOSER),
+        "Conductor" => Some(PanelId::CONDUCTOR),
         "Console" => Some(PanelId::CONSOLE),
         _ => None,
     }

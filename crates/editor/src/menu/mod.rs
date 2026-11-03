@@ -222,7 +222,7 @@ impl MenuBar {
                 MenuItem::action("Inspector"),
                 MenuItem::action("Hierarchy"),
                 MenuItem::action("Asset Browser"),
-                MenuItem::action("Composer"),
+                MenuItem::action("Conductor"),
                 MenuItem::action("Console"),
                 MenuItem::separator(),
                 MenuItem::action_with_shortcut("Toggle Grid", "G"),
@@ -253,7 +253,7 @@ impl MenuBar {
         bar
     }
 
-    /// Whether a dropdown is open: a click on it is chrome, which leaves the composer's
+    /// Whether a dropdown is open: a click on it is chrome, which leaves the Conductor panel's
     /// keyboard focus where it was.
     pub fn is_open(&self) -> bool {
         self.open_menu.is_some()

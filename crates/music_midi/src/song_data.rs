@@ -34,7 +34,7 @@ mod tests;
 #[cfg(test)]
 mod track_tests;
 
-/// A note's identity, stable across every edit. The composer's selection and undo
+/// A note's identity, stable across every edit. The editor's selection and undo
 /// address notes by it, never by a position in a vector.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NoteId(u64);
@@ -234,18 +234,18 @@ fn with_meta_payload<'a>(meta: MetaMessage<'static>, payload: &'a [u8]) -> MetaM
     }
 }
 
-/// What [`SongData::from_smf`] read but the composer cannot edit, and what it shows
+/// What [`SongData::from_smf`] read but the editor cannot edit, and what it shows
 /// without refusing. Nothing here is dropped from playback or export.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct UnsupportedReport {
-    /// Reasons the composer must refuse to edit the file.
+    /// Reasons the editor must refuse to edit the file.
     pub unsupported: Vec<UnsupportedFeature>,
     /// A note started on a key its channel was already holding — informational.
     pub same_key_overlaps: Vec<SameKeyOverlap>,
 }
 
 impl UnsupportedReport {
-    /// Whether the composer may edit the file.
+    /// Whether the editor may edit the file.
     pub fn is_editable(&self) -> bool {
         self.unsupported.is_empty()
     }
@@ -264,7 +264,7 @@ impl fmt::Display for UnsupportedFeature {
         match self {
             UnsupportedFeature::MixedChannelTrack { track, channels } => write!(
                 formatter,
-                "track {track} plays notes on channels {channels:?}; the composer edits one channel per track"
+                "track {track} plays notes on channels {channels:?}; the editor edits one channel per track"
             ),
         }
     }
@@ -312,7 +312,7 @@ impl SongData {
     /// Refuses a file over [`MIDI_BYTE_LIMIT`](crate::MIDI_BYTE_LIMIT) before parsing and
     /// one over [`MIDI_EVENT_LIMIT`](crate::MIDI_EVENT_LIMIT) while parsing, type 2,
     /// SMPTE division, a zero tempo and a time signature that cannot divide the quarter
-    /// note. The report names what the composer cannot edit.
+    /// note. The report names what the editor cannot edit.
     pub fn from_smf(bytes: &[u8]) -> Result<(SongData, UnsupportedReport), SongError> {
         flatten::flatten(bytes)
     }

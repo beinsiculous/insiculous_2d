@@ -27,13 +27,13 @@ pub enum AssetKind {
     /// A script file (.rhai or .rs)
     Script,
     /// A recorded sound the audio manager decodes (wav/mp3/ogg/flac), dropped
-    /// on a `SoundEmitter`'s sound slot — or a `.wav` on the composer, as a sample
+    /// on a `SoundEmitter`'s sound slot — or a `.wav` on the Conductor panel, as a sample
     Sound,
-    /// A song's MIDI file (.mid or .midi), dropped on the composer to open it
+    /// A song's MIDI file (.mid or .midi), dropped on the Conductor panel to open it
     Song,
     /// A music workstation's project file, by the external tools' extension list
     DawProject,
-    /// A SoundFont bank (.sf2), dropped on the composer as an instrument
+    /// A SoundFont bank (.sf2), dropped on the Conductor panel as an instrument
     SoundFont,
 }
 

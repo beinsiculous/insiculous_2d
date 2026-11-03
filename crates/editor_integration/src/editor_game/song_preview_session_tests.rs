@@ -10,7 +10,7 @@ use engine_core::test_support::GameHarness;
 
 use super::scene_confirm::PendingSceneAction;
 use super::test_support::{
-    api_line, composer_session, editor_game, melody_song, second_track_holds_the_notes, stock_sound_font, DummyGame,
+    api_line, conductor_session, editor_game, melody_song, second_track_holds_the_notes, stock_sound_font, DummyGame,
 };
 use super::EditorGame;
 
@@ -101,7 +101,7 @@ fn stop_while_play_is_armed_drops_it_and_starts_nothing() {
 #[test]
 fn pause_holds_the_song_and_stop_flushes_the_sources_and_returns_a_stopped_preview() {
     let folder = tempfile::tempdir().expect("a temporary asset folder");
-    let mut editor = composer_session(folder.path(), melody_song());
+    let mut editor = conductor_session(folder.path(), melody_song());
     let mut world = World::new();
     assert_eq!(json(&api_line(&mut editor, &mut world, "song save music/theme.mid"))["ok"], true);
     let mut audio = AudioManager::disabled();
@@ -141,7 +141,7 @@ fn pause_holds_the_song_and_stop_flushes_the_sources_and_returns_a_stopped_previ
     assert_eq!(audio.song_position(), None, "Stop stopped the slot it started");
     assert_ne!(sources.menu(), menu, "and flushed every source: the menu activates anew");
     assert!(!editor.song_preview.is_playing());
-    assert_eq!(editor.editor.composer.playhead_tick, None);
+    assert_eq!(editor.editor.conductor.playhead_tick, None);
 
     editor.preview_play(0).expect("the transport's Play hears the document again");
     drain(&mut editor, &mut audio, &mut sources);
@@ -151,7 +151,7 @@ fn pause_holds_the_song_and_stop_flushes_the_sources_and_returns_a_stopped_previ
 #[test]
 fn pause_and_resume_are_refused_while_the_sessions_song_waits_for_the_first_click() {
     let folder = tempfile::tempdir().expect("a temporary asset folder");
-    let mut editor = composer_session(folder.path(), melody_song());
+    let mut editor = conductor_session(folder.path(), melody_song());
     let mut world = World::new();
     assert_eq!(json(&api_line(&mut editor, &mut world, "song save music/theme.mid"))["ok"], true);
     let mut audio = AudioManager::disabled();
@@ -177,9 +177,9 @@ fn pause_and_resume_are_refused_while_the_sessions_song_waits_for_the_first_clic
 #[test]
 fn a_save_refused_for_the_songs_provenance_from_the_play_prompt_opens_its_author_field() {
     let folder = tempfile::tempdir().expect("a temporary asset folder");
-    let mut editor = composer_session(folder.path(), second_track_holds_the_notes());
+    let mut editor = conductor_session(folder.path(), second_track_holds_the_notes());
     let mut world = World::new();
-    editor.leave_composer();
+    editor.leave_conductor();
     editor.handle_play_action(PlayControlAction::Play, &mut world);
     assert_eq!(editor.scene_confirm.pending_action, Some(PendingSceneAction::StartPlay));
 
@@ -188,10 +188,10 @@ fn a_save_refused_for_the_songs_provenance_from_the_play_prompt_opens_its_author
     assert!(status.contains("author and license"), "{status}");
     assert_eq!(editor.scene_confirm.pending_action, None, "the dialog gives the fields the screen");
     assert!(!editor.song_preview.is_armed(), "and Play waits for a save that holds");
-    let composer = &editor.editor.composer;
-    assert_eq!(composer.focus, editor::composer::ComposerFocus::Sidebar);
-    assert_eq!(composer.sidebar_section, editor::composer::SidebarSection::Song);
-    assert_eq!(composer.request, Some(editor::composer::ControlRequest::FocusSongAuthor));
+    let conductor = &editor.editor.conductor;
+    assert_eq!(conductor.focus, editor::conductor::ConductorFocus::Sidebar);
+    assert_eq!(conductor.sidebar_section, editor::conductor::SidebarSection::Song);
+    assert_eq!(conductor.request, Some(editor::conductor::ControlRequest::FocusSongAuthor));
 }
 
 /// A game that asks for its song at `init`, as Tong does, and again on its first frame in a
@@ -299,7 +299,7 @@ impl engine_core::Game for PlaysATrackAtInit {
 }
 
 #[test]
-fn a_games_init_time_track_is_asked_for_again_unless_a_composer_song_takes_the_slot() {
+fn a_games_init_time_track_is_asked_for_again_unless_a_conductor_panel_song_takes_the_slot() {
     const SINE_WAV: &[u8] = include_bytes!("../../../music_midi/fixtures/sine_48000_mono.wav");
     let folder = tempfile::tempdir().expect("a temporary asset folder");
     stock_sound_font(folder.path());
@@ -326,7 +326,7 @@ fn a_games_init_time_track_is_asked_for_again_unless_a_composer_song_takes_the_s
         editor.follow_song();
         editor
             .save_song_to(saved.clone(), editor::song::SaveIntent::default())
-            .expect("the composer's song saves");
+            .expect("the Conductor panel's song saves");
     });
     harness.context(|editor, ctx| editor.handle_play_action(PlayControlAction::Play, ctx.world));
     harness.steps(3, FRAME);

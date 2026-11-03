@@ -1,4 +1,4 @@
-//! The composer's key table, read as data: every row resolves to its own action under
+//! The Conductor panel's key table, read as data: every row resolves to its own action under
 //! exactly its modifiers, no two rows share a chord, and what the table lacks either goes
 //! on to the editor (a Ctrl chord, F5) or is swallowed.
 
@@ -6,7 +6,7 @@ use std::collections::HashSet;
 
 use winit::keyboard::KeyCode;
 
-use super::keys::{resolve, ComposerKeyAction as Action, ComposerKeyRoute as Route, Direction, COMPOSER_KEYS};
+use super::keys::{resolve, ConductorKeyAction as Action, ConductorKeyRoute as Route, Direction, CONDUCTOR_KEYS};
 use crate::editor_input::Modifiers;
 
 fn with(ctrl: bool, shift: bool) -> Modifiers {
@@ -16,14 +16,14 @@ fn with(ctrl: bool, shift: bool) -> Modifiers {
 #[test]
 fn every_row_resolves_to_its_action_and_no_chord_is_bound_twice() {
     let mut chords = HashSet::new();
-    for row in COMPOSER_KEYS {
+    for row in CONDUCTOR_KEYS {
         assert!(chords.insert((row.key, row.ctrl, row.shift)), "{:?} is bound twice", row.key);
-        assert_eq!(resolve(row.key, with(row.ctrl, row.shift)), Route::Composer(row.action));
+        assert_eq!(resolve(row.key, with(row.ctrl, row.shift)), Route::Conductor(row.action));
     }
 }
 
 #[test]
-fn the_table_says_what_each_key_does_while_the_composer_holds_the_keyboard() {
+fn the_table_says_what_each_key_does_while_the_conductor_panel_holds_the_keyboard() {
     let plain = with(false, false);
     let shift = with(false, true);
     let ctrl = with(true, false);
@@ -42,7 +42,7 @@ fn the_table_says_what_each_key_does_while_the_composer_holds_the_keyboard() {
         (KeyCode::Space, plain, Action::PreviewToggle),
     ];
     for (key, modifiers, action) in cases {
-        assert_eq!(resolve(key, modifiers), Route::Composer(action), "{key:?} {modifiers:?}");
+        assert_eq!(resolve(key, modifiers), Route::Conductor(action), "{key:?} {modifiers:?}");
     }
 }
 
@@ -55,7 +55,7 @@ fn a_key_the_table_lacks_goes_to_the_editor_with_ctrl_or_as_f5_and_is_swallowed_
         assert_eq!(
             resolve(toggle, with(false, false)),
             Route::Swallowed,
-            "{toggle:?}: a single-key editor toggle is unreachable while the composer is focused"
+            "{toggle:?}: a single-key editor toggle is unreachable while the Conductor panel is focused"
         );
     }
 }

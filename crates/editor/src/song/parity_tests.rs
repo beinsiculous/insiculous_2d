@@ -1,5 +1,5 @@
 //! GUI and command API are one mutation path: for one row per [`SongEdit`] variant, the
-//! composer's call (`SongDocument::apply`) and a `song edit <json>` line leave the same
+//! Conductor panel's call (`SongDocument::apply`) and a `song edit <json>` line leave the same
 //! song, the same history, and undo back to the same song. A variant without a row does
 //! not compile ([`variant_index`] matches exhaustively).
 

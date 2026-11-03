@@ -1,4 +1,4 @@
-//! The settings panel's downward walk, on the composer sidebar's model: one row after
+//! The settings panel's downward walk, on the model of the Conductor panel's sidebar: one row after
 //! another, every control counted in order so the arrows' cursor names the same control
 //! the render draws, and a row scrolled out of the panel neither drawn nor clickable.
 
@@ -6,7 +6,7 @@ use glam::Vec2;
 use ui::{Rect, UIContext, WidgetId};
 
 use super::SettingsRequest;
-use crate::composer::sidebar::wrap_to_width;
+use crate::conductor::sidebar::wrap_to_width;
 use crate::field_style::{EditResult, EditableFieldStyle, FieldId};
 use crate::field_widgets::{cycle_step, edit_cycle, CycleRow};
 use crate::row_layout::{field_row, RowLayout};

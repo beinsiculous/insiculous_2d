@@ -1,7 +1,7 @@
-//! The asset browser's keyboard, on the composer's model, and the context menu's host.
+//! The asset browser's keyboard, on the Conductor panel's model, and the context menu's host.
 //!
 //! A press inside the Assets panel gives the browser the keyboard; a press elsewhere in
-//! the dock, the panel hidden or collapsed, the composer taking the keyboard, Escape and
+//! the dock, the panel hidden or collapsed, the Conductor panel taking the keyboard, Escape and
 //! a play session's entry take it away. While the browser holds it, its keys decide
 //! before the editor's — so an arrow steps the tiles and never nudges a scene entity
 //! behind them — and a key it does not use goes on. A dialog and a focused text field
@@ -35,11 +35,11 @@ pub(super) enum BrowserKey {
 }
 
 impl<G: Game> EditorGame<G> {
-    /// Frame start, after the composer settles and before any chrome handles this frame's
+    /// Frame start, after the Conductor panel settles and before any chrome handles this frame's
     /// press: take or drop the browser's keyboard, by `panel_press`'s rule.
     pub(super) fn settle_asset_browser(&mut self, ui: &ui::UIContext) {
         let press = match self.panel_press(ui, PanelId::ASSET_BROWSER) {
-            Some(press) if !self.editor.in_play_session() && !self.composer_holds_focus() => press,
+            Some(press) if !self.editor.in_play_session() && !self.conductor_holds_focus() => press,
             _ => return self.editor.asset_browser.release_keyboard(),
         };
         match press {

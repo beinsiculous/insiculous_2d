@@ -171,11 +171,11 @@ fn a_song_built_in_memory_shares_the_decoded_files_of_the_song_on_disk() {
         let song = &manager.songs.playback.as_ref().expect("playing").song;
         Arc::clone(song.sound_font(FONT_PATH).expect("its bank"))
     };
-    let file = music_midi::parse_song_file("composer", &sidecar(None)).expect("parses");
+    let file = music_midi::parse_song_file("conductor panel", &sidecar(None)).expect("parses");
     let (data, _) = SongData::from_smf(&song_midi(false)).expect("reads");
 
     let song = manager
-        .prepare_song("the composer's song", file, data)
+        .prepare_song("the Conductor panel's song", file, data)
         .expect("builds");
     manager
         .play_song_in_memory(Arc::clone(&song))

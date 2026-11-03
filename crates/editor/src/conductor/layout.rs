@@ -1,4 +1,4 @@
-//! Where everything in the composer panel goes: a pure function of the panel's bounds, so
+//! Where everything in the Conductor panel goes: a pure function of the panel's bounds, so
 //! the render, the hit tests and the tests read one geometry.
 //!
 //! The transport runs along the top and the sidebar fills the rest, in either mode. **Full**
@@ -8,7 +8,7 @@
 
 use ui::Rect;
 
-/// Below this panel width the composer is [`ComposerMode::Compact`].
+/// Below this panel width the Conductor panel is [`ConductorMode::Compact`].
 pub const COMPACT_BELOW_WIDTH: f32 = 720.0;
 /// The transport row along the panel's top.
 pub const TRANSPORT_HEIGHT: f32 = 30.0;
@@ -17,25 +17,25 @@ pub const TAB_STRIP_HEIGHT: f32 = 24.0;
 
 /// See the module docs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ComposerMode {
+pub enum ConductorMode {
     Full,
     Compact,
 }
 
-impl ComposerMode {
+impl ConductorMode {
     pub fn for_width(width: f32) -> Self {
         if width < COMPACT_BELOW_WIDTH {
-            ComposerMode::Compact
+            ConductorMode::Compact
         } else {
-            ComposerMode::Full
+            ConductorMode::Full
         }
     }
 }
 
 /// The panel cut into its areas.
 #[derive(Debug, Clone, PartialEq)]
-pub struct ComposerLayout {
-    pub mode: ComposerMode,
+pub struct ConductorLayout {
+    pub mode: ConductorMode,
     pub transport: Rect,
     pub sidebar: Rect,
     /// The section tabs over the sidebar below the full width.
@@ -43,9 +43,9 @@ pub struct ComposerLayout {
 }
 
 /// Lay the panel out: the transport, then the sidebar over the rest of the body — under its
-/// section tabs in [`ComposerMode::Compact`].
-pub fn compute(bounds: Rect) -> ComposerLayout {
-    let mode = ComposerMode::for_width(bounds.width);
+/// section tabs in [`ConductorMode::Compact`].
+pub fn compute(bounds: Rect) -> ConductorLayout {
+    let mode = ConductorMode::for_width(bounds.width);
     let transport = Rect::new(bounds.x, bounds.y, bounds.width, TRANSPORT_HEIGHT.min(bounds.height));
     let body = Rect::new(
         bounds.x,
@@ -53,8 +53,8 @@ pub fn compute(bounds: Rect) -> ComposerLayout {
         bounds.width,
         (bounds.height - transport.height).max(0.0),
     );
-    if mode == ComposerMode::Full {
-        return ComposerLayout {
+    if mode == ConductorMode::Full {
+        return ConductorLayout {
             mode,
             transport,
             sidebar: body,
@@ -62,7 +62,7 @@ pub fn compute(bounds: Rect) -> ComposerLayout {
         };
     }
     let tabs = Rect::new(body.x, body.y, body.width, TAB_STRIP_HEIGHT.min(body.height));
-    ComposerLayout {
+    ConductorLayout {
         mode,
         transport,
         sidebar: Rect::new(

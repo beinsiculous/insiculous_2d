@@ -1,18 +1,18 @@
-//! The composer's host through the real `EditorGame`: who the keys go to, which document
+//! The Conductor panel's host through the real `EditorGame`: who the keys go to, which document
 //! undo undoes, the play session's read-only rule, the active track, the path field's
 //! saves and the overwrite prompt, the Songs list and the drops.
 
 use std::path::Path;
 
 use ecs::World;
-use editor::composer::{drop_action, ComposerAction, ComposerFocus, ComposerKeyAction, Direction};
+use editor::conductor::{drop_action, ConductorAction, ConductorFocus, ConductorKeyAction, Direction};
 use editor::{ConfirmChoice, DragPayload, EditorAction, Modifiers, PlayControlAction, SongEdit};
 use winit::keyboard::KeyCode;
 
 use super::scene_confirm::{OverwriteCause, PendingSceneAction};
 use super::shortcuts::KeyRoute;
 use super::test_support::{
-    api_line, assert_ok, composer_session, dirty_editor, melody_song, second_track_holds_the_notes,
+    api_line, assert_ok, conductor_session, dirty_editor, melody_song, second_track_holds_the_notes,
     timing_only_song, DummyGame,
 };
 use super::EditorGame;
@@ -41,13 +41,13 @@ fn status(editor: &EditorGame<DummyGame>) -> String {
 }
 
 #[test]
-fn composer_keys_never_reach_the_game_while_it_is_focused_and_do_once_it_is_not() {
+fn conductor_keys_never_reach_the_game_while_it_is_focused_and_do_once_it_is_not() {
     let folder = folder();
-    let mut editor = composer_session(folder.path(), melody_song());
+    let mut editor = conductor_session(folder.path(), melody_song());
     let ctrl = Modifiers { ctrl: true, shift: false };
     let cases = [
-        (KeyCode::ArrowLeft, PLAIN, KeyRoute::Composer(ComposerKeyAction::MoveCursor(Direction::Left))),
-        (KeyCode::Space, PLAIN, KeyRoute::Composer(ComposerKeyAction::PreviewToggle)),
+        (KeyCode::ArrowLeft, PLAIN, KeyRoute::Conductor(ConductorKeyAction::MoveCursor(Direction::Left))),
+        (KeyCode::Space, PLAIN, KeyRoute::Conductor(ConductorKeyAction::PreviewToggle)),
         (KeyCode::KeyG, PLAIN, KeyRoute::Consumed),
         (KeyCode::KeyK, ctrl, KeyRoute::Consumed),
         (KeyCode::KeyS, ctrl, KeyRoute::Editor { action: EditorAction::SaveSong, shift: false }),
@@ -56,13 +56,13 @@ fn composer_keys_never_reach_the_game_while_it_is_focused_and_do_once_it_is_not(
     for (key, modifiers, route) in cases {
         assert_eq!(editor.route_editor_key(key, false, modifiers), route, "{key:?} while focused");
     }
-    editor.run_composer_key(ComposerKeyAction::Escape);
-    assert_eq!(editor.editor.composer.focus, ComposerFocus::None);
+    editor.run_conductor_key(ConductorKeyAction::Escape);
+    assert_eq!(editor.editor.conductor.focus, ConductorFocus::None);
     assert_eq!(editor.route_editor_key(KeyCode::KeyK, false, PLAIN), KeyRoute::ForwardToGame, "once unfocused");
     assert_eq!(
         editor.route_editor_key(KeyCode::KeyS, false, ctrl),
         KeyRoute::Editor { action: EditorAction::Save, shift: false },
-        "Ctrl+S is the scene's once the composer lets go"
+        "Ctrl+S is the scene's once the Conductor panel lets go"
     );
     assert_eq!(
         editor.route_editor_key(KeyCode::ArrowLeft, false, PLAIN),
@@ -79,7 +79,7 @@ fn undo_belongs_to_the_focused_document_and_a_click_in_the_scene_moves_it_there(
     editor.song = Some(melody_song());
     editor.follow_song();
     editor.editor.dock_area.set_bounds(ui::Rect::new(0.0, 24.0, 1280.0, 672.0));
-    editor.show_composer(ComposerFocus::Sidebar);
+    editor.show_conductor(ConductorFocus::Sidebar);
     assert!(editor.command_history.can_undo(), "the scene has an entry to undo");
 
     editor.undo_with_feedback(&mut world);
@@ -91,8 +91,8 @@ fn undo_belongs_to_the_focused_document_and_a_click_in_the_scene_moves_it_there(
     let mut ui = ui::UIContext::new();
     super::test_support::press_mouse(&mut input, glam::Vec2::new(640.0, 150.0));
     ui.begin_frame(&input, glam::Vec2::new(1280.0, 720.0));
-    editor.settle_composer(&ui);
-    assert_eq!(editor.editor.composer.focus, ComposerFocus::None, "a press in the scene takes the keyboard back");
+    editor.settle_conductor(&ui);
+    assert_eq!(editor.editor.conductor.focus, ConductorFocus::None, "a press in the scene takes the keyboard back");
     editor.undo_with_feedback(&mut world);
     assert!(!editor.command_history.can_undo(), "now Undo undoes the scene");
     assert!(
@@ -102,60 +102,60 @@ fn undo_belongs_to_the_focused_document_and_a_click_in_the_scene_moves_it_there(
 }
 
 #[test]
-fn a_menu_click_keeps_the_composers_keyboard_and_a_press_in_the_panel_too() {
+fn a_menu_click_keeps_the_conductor_panels_keyboard_and_a_press_in_the_panel_too() {
     let folder = folder();
-    let mut editor = composer_session(folder.path(), melody_song());
-    let composer = editor
+    let mut editor = conductor_session(folder.path(), melody_song());
+    let conductor = editor
         .editor
         .dock_area
-        .get_panel(editor::PanelId::COMPOSER)
-        .expect("the composer")
+        .get_panel(editor::PanelId::CONDUCTOR)
+        .expect("the Conductor panel")
         .content_bounds();
     let mut input = input::InputHandler::new();
     let mut ui = ui::UIContext::new();
-    super::test_support::press_mouse(&mut input, composer.center());
+    super::test_support::press_mouse(&mut input, conductor.center());
     ui.begin_frame(&input, glam::Vec2::new(1280.0, 720.0));
-    editor.settle_composer(&ui);
-    assert_eq!(editor.editor.composer.focus, ComposerFocus::Sidebar, "inside the panel");
+    editor.settle_conductor(&ui);
+    assert_eq!(editor.editor.conductor.focus, ConductorFocus::Sidebar, "inside the panel");
 
     let mut input = input::InputHandler::new();
     let mut ui = ui::UIContext::new();
     super::test_support::press_mouse(&mut input, glam::Vec2::new(30.0, 10.0));
     ui.begin_frame(&input, glam::Vec2::new(1280.0, 720.0));
-    editor.settle_composer(&ui);
-    assert_eq!(editor.editor.composer.focus, ComposerFocus::Sidebar, "the menu bar is chrome");
+    editor.settle_conductor(&ui);
+    assert_eq!(editor.editor.conductor.focus, ConductorFocus::Sidebar, "the menu bar is chrome");
 }
 
 #[test]
-fn playing_and_paused_refuse_every_composer_mutation_and_clear_the_keyboard() {
+fn playing_and_paused_refuse_every_conductor_panel_mutation_and_clear_the_keyboard() {
     let folder = folder();
     let mut world = World::new();
-    let mut editor = composer_session(folder.path(), melody_song());
+    let mut editor = conductor_session(folder.path(), melody_song());
     assert_ok(&api_line(&mut editor, &mut world, "song save music/theme.mid"));
-    editor.show_composer(ComposerFocus::Sidebar);
+    editor.show_conductor(ConductorFocus::Sidebar);
     let entries = editor.song.as_ref().map(|song| song.history().undo_count());
 
     press_play(&mut editor, &mut world);
     for state in ["Playing", "Paused"] {
-        assert_eq!(editor.editor.composer.focus, ComposerFocus::None, "{state}: session entry clears the focus");
+        assert_eq!(editor.editor.conductor.focus, ConductorFocus::None, "{state}: session entry clears the focus");
         assert_eq!(
             editor.route_editor_key(KeyCode::ArrowLeft, false, PLAIN),
             if state == "Playing" { KeyRoute::ForwardToGame } else { KeyRoute::Editor { action: EditorAction::NudgeLeft, shift: false } },
-            "{state}: the arrows are not the composer's"
+            "{state}: the arrows are not the Conductor panel's"
         );
-        editor.show_composer(ComposerFocus::Sidebar);
+        editor.show_conductor(ConductorFocus::Sidebar);
         let wav = DragPayload::Sound { path: "sounds/kick.wav".to_string() };
         let drop = drop_action(editor.song.as_ref(), &wav);
-        editor.run_composer_actions(
+        editor.run_conductor_actions(
             vec![
-                ComposerAction::Focus(ComposerFocus::Sidebar),
-                ComposerAction::Edit(SongEdit::SetLoop { looping: false }),
+                ConductorAction::Focus(ConductorFocus::Sidebar),
+                ConductorAction::Edit(SongEdit::SetLoop { looping: false }),
                 drop,
             ]
         );
-        editor.run_composer_key(ComposerKeyAction::Activate);
-        editor.run_composer_key(ComposerKeyAction::Undo);
-        assert_eq!(editor.editor.composer.focus, ComposerFocus::None, "{state}: no click or menu takes the keyboard");
+        editor.run_conductor_key(ConductorKeyAction::Activate);
+        editor.run_conductor_key(ConductorKeyAction::Undo);
+        assert_eq!(editor.editor.conductor.focus, ConductorFocus::None, "{state}: no click or menu takes the keyboard");
         let song = editor.song.as_ref().expect("a song");
         assert!(song.file().looping && song.file().instruments.is_empty(), "{state}: the sidecar is untouched");
         assert_eq!(Some(song.history().undo_count()), entries, "{state}: nothing recorded or undone");
@@ -167,16 +167,16 @@ fn playing_and_paused_refuse_every_composer_mutation_and_clear_the_keyboard() {
 #[test]
 fn the_song_opens_on_its_note_track_and_a_switch_shows_another_but_never_the_timing_track() {
     let folder = folder();
-    let mut editor = composer_session(folder.path(), second_track_holds_the_notes());
-    assert_eq!(editor.editor.composer.active_track, Some(2), "the lead, not the empty pad");
+    let mut editor = conductor_session(folder.path(), second_track_holds_the_notes());
+    assert_eq!(editor.editor.conductor.active_track, Some(2), "the lead, not the empty pad");
 
-    editor.run_composer_actions(vec![ComposerAction::SetActiveTrack(1)]);
-    assert_eq!(editor.editor.composer.active_track, Some(1));
-    editor.run_composer_actions(vec![ComposerAction::SetActiveTrack(0)]);
-    assert_eq!(editor.editor.composer.active_track, Some(1), "the timing track is never shown");
+    editor.run_conductor_actions(vec![ConductorAction::SetActiveTrack(1)]);
+    assert_eq!(editor.editor.conductor.active_track, Some(1));
+    editor.run_conductor_actions(vec![ConductorAction::SetActiveTrack(0)]);
+    assert_eq!(editor.editor.conductor.active_track, Some(1), "the timing track is never shown");
 
-    let timing = composer_session(folder.path(), timing_only_song());
-    assert_eq!(timing.editor.composer.active_track, None, "a file of timing alone has no track to show");
+    let timing = conductor_session(folder.path(), timing_only_song());
+    assert_eq!(timing.editor.conductor.active_track, None, "a file of timing alone has no track to show");
 }
 
 #[test]
@@ -184,7 +184,7 @@ fn save_as_onto_another_song_parks_cancel_keeps_both_and_overwrite_completes_in_
     let folder = folder();
     let mut world = World::new();
     for final_file in ["music/other.mid", "music/sidecar_only.mid.ron"] {
-        let mut editor = composer_session(folder.path(), melody_song());
+        let mut editor = conductor_session(folder.path(), melody_song());
         common::vfs::write(&folder.path().join(final_file), b"another song").expect("its file");
         let target = final_file.trim_end_matches(".ron");
 
@@ -212,7 +212,7 @@ fn save_as_onto_another_song_parks_cancel_keeps_both_and_overwrite_completes_in_
         let written = common::vfs::read(&folder.path().join(target)).expect("the .mid");
         assert_eq!(written, song.source_bytes(), "Overwrite replaced the file with the bytes the song loaded");
     }
-    let mut editor = composer_session(folder.path(), melody_song());
+    let mut editor = conductor_session(folder.path(), melody_song());
     assert_ok(&api_line(&mut editor, &mut world, "song save music/other.mid overwrite"));
 
     // The song's own file spelt another way is still its own: no prompt.
@@ -226,24 +226,24 @@ fn save_as_onto_another_song_parks_cancel_keeps_both_and_overwrite_completes_in_
 #[test]
 fn the_songs_list_and_the_transport_are_walked_by_the_arrows_with_no_song_open() {
     let folder = folder();
-    let mut editor = composer_session(folder.path(), melody_song());
+    let mut editor = conductor_session(folder.path(), melody_song());
     editor.song = None;
     editor.song_generation += 1;
     editor.follow_song();
     editor.dispatch_song_action(EditorAction::OpenSong);
-    assert_eq!(editor.editor.composer.focus, ComposerFocus::Sidebar);
+    assert_eq!(editor.editor.conductor.focus, ConductorFocus::Sidebar);
     // The render counts the controls; headless, the count is the three rows a list shows.
-    editor.editor.composer.sidebar_control_count = 3;
-    editor.run_composer_key(ComposerKeyAction::MoveCursor(Direction::Down));
-    editor.run_composer_key(ComposerKeyAction::MoveCursor(Direction::Down));
-    assert_eq!(editor.editor.composer.sidebar_control, 2, "Down reaches the third row with no song");
-    editor.run_composer_key(ComposerKeyAction::MoveCursor(Direction::Right));
-    assert_eq!(editor.editor.composer.sidebar_section, editor::composer::SidebarSection::Parts);
+    editor.editor.conductor.sidebar_control_count = 3;
+    editor.run_conductor_key(ConductorKeyAction::MoveCursor(Direction::Down));
+    editor.run_conductor_key(ConductorKeyAction::MoveCursor(Direction::Down));
+    assert_eq!(editor.editor.conductor.sidebar_control, 2, "Down reaches the third row with no song");
+    editor.run_conductor_key(ConductorKeyAction::MoveCursor(Direction::Right));
+    assert_eq!(editor.editor.conductor.sidebar_section, editor::conductor::SidebarSection::Parts);
 
-    editor.editor.composer.focus = ComposerFocus::Transport;
-    editor.editor.composer.transport_control_count = 3;
-    editor.run_composer_key(ComposerKeyAction::MoveCursor(Direction::Right));
-    assert_eq!(editor.editor.composer.transport_control, 1);
+    editor.editor.conductor.focus = ConductorFocus::Transport;
+    editor.editor.conductor.transport_control_count = 3;
+    editor.run_conductor_key(ConductorKeyAction::MoveCursor(Direction::Right));
+    assert_eq!(editor.editor.conductor.transport_control, 1);
 }
 
 /// A number field's first frame opens an entry of its own — sealing one left open — and
@@ -252,10 +252,10 @@ fn the_songs_list_and_the_transport_are_walked_by_the_arrows_with_no_song_open()
 #[test]
 fn a_number_fields_first_frame_opens_an_entry_its_later_frames_continue_it_and_an_edit_after_is_another() {
     let folder = folder();
-    let mut editor = composer_session(folder.path(), melody_song());
+    let mut editor = conductor_session(folder.path(), melody_song());
     let wav = DragPayload::Sound { path: "sounds/kick.wav".to_string() };
     let add = drop_action(editor.song.as_ref(), &wav);
-    editor.run_composer_actions(vec![add]);
+    editor.run_conductor_actions(vec![add]);
     // This crate names no instrument type: the edit is built in the API's JSON grammar.
     let instrument_json = |editor: &EditorGame<DummyGame>| -> serde_json::Value {
         let instrument = &editor.song.as_ref().expect("a song").file().instruments[0];
@@ -272,26 +272,26 @@ fn a_number_fields_first_frame_opens_an_entry_its_later_frames_continue_it_and_a
         instrument_json(editor)["source"]["Sample"]["gain"].as_f64().expect("a sample's gain")
     };
 
-    let frame = |editor: &EditorGame<DummyGame>, gain: f32, first: bool| ComposerAction::FieldEdit { edit: kick(editor, gain), first };
+    let frame = |editor: &EditorGame<DummyGame>, gain: f32, first: bool| ConductorAction::FieldEdit { edit: kick(editor, gain), first };
     let first_gesture = vec![frame(&editor, 1.5, true), frame(&editor, 2.0, false)];
-    editor.run_composer_actions(first_gesture);
+    editor.run_conductor_actions(first_gesture);
     // A second gesture while the first was never closed by a commit: its first frame seals it.
-    editor.run_composer_actions(vec![frame(&editor, 3.0, true)]);
-    editor.run_composer_actions(vec![ComposerAction::Edit(kick(&editor, 3.5))]);
+    editor.run_conductor_actions(vec![frame(&editor, 3.0, true)]);
+    editor.run_conductor_actions(vec![ConductorAction::Edit(kick(&editor, 3.5))]);
     assert_eq!(gain_of(&editor), 3.5);
 
-    editor.run_composer_key(ComposerKeyAction::Undo);
+    editor.run_conductor_key(ConductorKeyAction::Undo);
     assert_eq!(gain_of(&editor), 3.0, "the edit after the gestures was its own entry");
-    editor.run_composer_key(ComposerKeyAction::Undo);
+    editor.run_conductor_key(ConductorKeyAction::Undo);
     assert_eq!(gain_of(&editor), 2.0, "the second gesture was its own entry");
-    editor.run_composer_key(ComposerKeyAction::Undo);
+    editor.run_conductor_key(ConductorKeyAction::Undo);
     assert_eq!(gain_of(&editor), 1.0, "the first gesture's frames undid as one, back to before the first");
 }
 
 #[test]
 fn the_path_fields_enter_saves_there_an_outside_path_is_refused_and_an_orphan_sidecar_moves_the_default_on() {
     let folder = folder();
-    let mut editor = composer_session(folder.path(), melody_song());
+    let mut editor = conductor_session(folder.path(), melody_song());
     common::vfs::write(&folder.path().join("music/untitled.mid.ron"), b"orphan").expect("an orphan sidecar");
     assert_eq!(editor.default_song_path(), folder.path().join("music/untitled_2.mid"), "never over an orphan");
 
@@ -303,14 +303,14 @@ fn the_path_fields_enter_saves_there_an_outside_path_is_refused_and_an_orphan_si
         editor.song.as_ref().and_then(|song| song.path().map(Path::to_path_buf)),
         Some(folder.path().join("music/levels/boss.mid"))
     );
-    assert!(editor.editor.composer.songs.contains(&"music/levels/boss.mid".to_string()), "a save rescans the list");
+    assert!(editor.editor.conductor.songs.contains(&"music/levels/boss.mid".to_string()), "a save rescans the list");
 }
 
 #[test]
 fn a_songs_row_parks_behind_the_dirty_prompt_and_a_failed_open_after_discard_keeps_the_song() {
     let folder = folder();
-    let mut editor = composer_session(folder.path(), melody_song());
-    editor.run_composer_actions(vec![ComposerAction::OpenSong("music/missing.mid".to_string())]);
+    let mut editor = conductor_session(folder.path(), melody_song());
+    editor.run_conductor_actions(vec![ConductorAction::OpenSong("music/missing.mid".to_string())]);
     let parked = PendingSceneAction::OpenSong(folder.path().join("music/missing.mid"));
     assert_eq!(editor.scene_confirm.pending_action, Some(parked.clone()), "the unsaved song asks first");
     editor.resolve_song_choice(parked, ConfirmChoice::Alt);
@@ -321,13 +321,13 @@ fn a_songs_row_parks_behind_the_dirty_prompt_and_a_failed_open_after_discard_kee
 #[test]
 fn each_drop_lands_its_instrument_or_its_open_and_an_mp3_is_refused_naming_wav() {
     let folder = folder();
-    let mut editor = composer_session(folder.path(), melody_song());
+    let mut editor = conductor_session(folder.path(), melody_song());
     for path in ["sounds/kick.wav", "sounds/kick.wav"] {
         let drop = drop_action(editor.song.as_ref(), &DragPayload::Sound { path: path.to_string() });
-        editor.run_composer_actions(vec![drop]);
+        editor.run_conductor_actions(vec![drop]);
     }
     let drop = drop_action(editor.song.as_ref(), &DragPayload::SoundFont { path: "soundfonts/organ.sf2".to_string() });
-    editor.run_composer_actions(vec![drop]);
+    editor.run_conductor_actions(vec![drop]);
     let names: Vec<String> = editor
         .song
         .as_ref()
@@ -336,11 +336,11 @@ fn each_drop_lands_its_instrument_or_its_open_and_an_mp3_is_refused_naming_wav()
     assert_eq!(names, ["kick", "kick_2", "organ"]);
 
     let mp3 = drop_action(editor.song.as_ref(), &DragPayload::Sound { path: "music/loop.mp3".to_string() });
-    editor.run_composer_actions(vec![mp3]);
+    editor.run_conductor_actions(vec![mp3]);
     assert!(status(&editor).contains("WAV"), "{}", status(&editor));
 
     let song = drop_action(editor.song.as_ref(), &DragPayload::Song { path: "music/theme.mid".to_string() });
-    editor.run_composer_actions(vec![song]);
+    editor.run_conductor_actions(vec![song]);
     assert_eq!(
         editor.scene_confirm.pending_action,
         Some(PendingSceneAction::OpenSong(folder.path().join("music/theme.mid"))),

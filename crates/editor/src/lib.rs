@@ -42,7 +42,7 @@ pub mod color_hex;
 mod double_click;
 mod drag_drop;
 pub mod commands;
-pub mod composer;
+pub mod conductor;
 pub mod console;
 mod component_editors;
 mod composite_rows;

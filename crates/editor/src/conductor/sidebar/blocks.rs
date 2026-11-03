@@ -10,11 +10,11 @@ use music_midi::{
 use ui::{FloatFieldOpts, WidgetId};
 
 use super::walk::SidebarWalk;
-use crate::composer::state::selectable_tracks;
-use crate::composer::{note_name, track_label, unique_name, ComposerAction};
+use crate::conductor::state::selectable_tracks;
+use crate::conductor::{note_name, track_label, unique_name, ConductorAction};
 use crate::song::{SongDocument, SongEdit};
 
-/// `docs/SONG_FORMAT.md` § Modes asks the composer to show this beside a Loop part.
+/// `docs/SONG_FORMAT.md` § Modes asks the Conductor panel to show this beside a Loop part.
 const LOOP_CAVEAT: [&str; 3] = [
     "Loop plays this part's notes in order whenever",
     "its action fires, over whatever chord is sounding:",
@@ -71,14 +71,14 @@ pub(super) fn parts(walk: &mut SidebarWalk, song: &SongDocument, active_track: O
             Some(track) => track_label(song, track),
             None => format!("{} (not in this file)", part.track),
         };
-        if walk.button(id("composer_part_track", index), &format!("{} → {target}", part.name), track.is_some()) {
+        if walk.button(id("conductor_part_track", index), &format!("{} → {target}", part.name), track.is_some()) {
             if let Some(track) = track {
-                walk.push(ComposerAction::SetActiveTrack(track));
+                walk.push(ConductorAction::SetActiveTrack(track));
             }
         }
         walk.tooltip("Make this part's track the one the transport shows");
-        if walk.button(id("composer_part_mode", index), &format!("Mode: {}", mode_label(part.mode)), true) {
-            walk.push(ComposerAction::Edit(SongEdit::SetPartMode {
+        if walk.button(id("conductor_part_mode", index), &format!("Mode: {}", mode_label(part.mode)), true) {
+            walk.push(ConductorAction::Edit(SongEdit::SetPartMode {
                 part: part.name.clone(),
                 mode: next_mode(part.mode),
             }));
@@ -88,8 +88,8 @@ pub(super) fn parts(walk: &mut SidebarWalk, song: &SongDocument, active_track: O
                 walk.note(line);
             }
         }
-        if walk.button(id("composer_part_quantize", index), &format!("Quantize: {:?}", part.quantize), true) {
-            walk.push(ComposerAction::Edit(SongEdit::SetQuantize {
+        if walk.button(id("conductor_part_quantize", index), &format!("Quantize: {:?}", part.quantize), true) {
+            walk.push(ConductorAction::Edit(SongEdit::SetQuantize {
                 part: part.name.clone(),
                 quantize: next_quantize(part.quantize),
             }));
@@ -105,8 +105,8 @@ pub(super) fn parts(walk: &mut SidebarWalk, song: &SongDocument, active_track: O
         } else {
             walk.note(&format!("Played by: {}", players.join(", ")));
         }
-        if walk.button(id("composer_part_remove", index), &format!("Remove part {}", part.name), true) {
-            walk.push(ComposerAction::Edit(SongEdit::RemovePart { name: part.name.clone() }));
+        if walk.button(id("conductor_part_remove", index), &format!("Remove part {}", part.name), true) {
+            walk.push(ConductorAction::Edit(SongEdit::RemovePart { name: part.name.clone() }));
         }
     }
     for track in selectable_tracks(song) {
@@ -116,8 +116,8 @@ pub(super) fn parts(walk: &mut SidebarWalk, song: &SongDocument, active_track: O
         }
     }
     if let Some(track) = active_track {
-        if walk.button(WidgetId::hashed("composer_part_add"), "Add a part for the shown track", true) {
-            walk.push(ComposerAction::Edit(SongEdit::AddPart { part: new_part(song, track) }));
+        if walk.button(WidgetId::hashed("conductor_part_add"), "Add a part for the shown track", true) {
+            walk.push(ConductorAction::Edit(SongEdit::AddPart { part: new_part(song, track) }));
         }
     }
 }
@@ -163,12 +163,12 @@ pub(super) fn instruments(walk: &mut SidebarWalk, song: &SongDocument) {
                 instrument: edited,
             };
             walk.push(match landing {
-                Landing::Edit => ComposerAction::Edit(edit),
-                Landing::Field { first } => ComposerAction::FieldEdit { edit, first },
+                Landing::Edit => ConductorAction::Edit(edit),
+                Landing::Field { first } => ConductorAction::FieldEdit { edit, first },
             });
         }
-        if walk.button(id("composer_instrument_remove", index), &format!("Remove instrument {}", instrument.name), true) {
-            walk.push(ComposerAction::Edit(SongEdit::RemoveInstrument { name: instrument.name.clone() }));
+        if walk.button(id("conductor_instrument_remove", index), &format!("Remove instrument {}", instrument.name), true) {
+            walk.push(ConductorAction::Edit(SongEdit::RemoveInstrument { name: instrument.name.clone() }));
         }
     }
 }
@@ -193,9 +193,9 @@ fn sound_font_fields(walk: &mut SidebarWalk, index: usize, instrument: &Instrume
     let InstrumentSource::SoundFont { path, .. } = &instrument.source else {
         return None;
     };
-    let bank_field = walk.number(id("composer_instrument_bank", index), "Bank", f32::from(bank), FloatFieldOpts::hard(0.0, 128.0));
+    let bank_field = walk.number(id("conductor_instrument_bank", index), "Bank", f32::from(bank), FloatFieldOpts::hard(0.0, 128.0));
     walk.note("Bank 128 is General MIDI percussion");
-    let preset_field = walk.number(id("composer_instrument_preset", index), "Preset", f32::from(preset), FloatFieldOpts::hard(0.0, 127.0));
+    let preset_field = walk.number(id("conductor_instrument_preset", index), "Preset", f32::from(preset), FloatFieldOpts::hard(0.0, 127.0));
     // Both fields fold into the one edit: a frame can change both (an arrow in the focused
     // one while the pointer scrubs the other), and the gesture is the first's.
     let (_, first) = bank_field.or(preset_field)?;
@@ -217,19 +217,19 @@ fn sample_fields(
         return None;
     };
     let source = |root_note, gain, playback| InstrumentSource::Sample { path: path.clone(), root_note, gain, playback };
-    let root = walk.number(id("composer_instrument_root", index), "Root note", f32::from(root_note), FloatFieldOpts::hard(0.0, 127.0));
+    let root = walk.number(id("conductor_instrument_root", index), "Root note", f32::from(root_note), FloatFieldOpts::hard(0.0, 127.0));
     walk.note(&format!("Root {} (key {root_note}): played higher it is shorter,", note_name(root_note)));
     walk.note("lower it is longer — pitch changes its duration");
-    let gain_field = walk.number(id("composer_instrument_gain", index), "Gain", gain, FloatFieldOpts::hard(0.0, 8.0).with_step(0.05));
+    let gain_field = walk.number(id("conductor_instrument_gain", index), "Gain", gain, FloatFieldOpts::hard(0.0, 8.0).with_step(0.05));
     walk.note("Gain 1.0 plays a sample near one SoundFont note");
     let playback_label = match playback {
         SamplePlayback::OneShot => "Playback: one-shot (plays to its end)",
         SamplePlayback::Gated => "Playback: gated (fades when the note ends)",
     };
-    let toggled = walk.button(id("composer_instrument_playback", index), playback_label, true);
+    let toggled = walk.button(id("conductor_instrument_playback", index), playback_label, true);
     let provenance = instrument.provenance.clone().unwrap_or(Provenance { author: String::new(), license: String::new() });
-    let author = walk.field(id("composer_instrument_author", index), "Author", &provenance.author);
-    let license = walk.field(id("composer_instrument_license", index), "License", &provenance.license);
+    let author = walk.field(id("conductor_instrument_author", index), "Author", &provenance.author);
+    let license = walk.field(id("conductor_instrument_license", index), "License", &provenance.license);
     if provenance.author.trim().is_empty() || provenance.license.trim().is_empty() {
         walk.warning("Author and license: needed before Save");
     }
@@ -263,16 +263,16 @@ pub(super) fn bindings(walk: &mut SidebarWalk, song: &SongDocument, preview_audi
     }
     for (index, binding) in song.file().bindings.iter().enumerate() {
         walk.note(&format!("{} → part {} on {}", binding.action, binding.part, binding.instrument));
-        if walk.button(id("composer_binding_trigger", index), &format!("Trigger {}", binding.action), preview_audible) {
-            walk.push(ComposerAction::PreviewTrigger(index));
+        if walk.button(id("conductor_binding_trigger", index), &format!("Trigger {}", binding.action), preview_audible) {
+            walk.push(ConductorAction::PreviewTrigger(index));
         }
         walk.tooltip(if preview_audible {
             "Play this binding's part as its action would"
         } else {
             "Triggers sound while the song plays: press Play first"
         });
-        if walk.button(id("composer_binding_remove", index), &format!("Remove binding {}", binding.action), true) {
-            walk.push(ComposerAction::Edit(SongEdit::RemoveBinding { action: binding.action.clone() }));
+        if walk.button(id("conductor_binding_remove", index), &format!("Remove binding {}", binding.action), true) {
+            walk.push(ConductorAction::Edit(SongEdit::RemoveBinding { action: binding.action.clone() }));
         }
     }
 }

@@ -480,7 +480,7 @@ fn the_percussion_channel_of_a_type_zero_file_is_selectable_as_a_part() {
 }
 
 #[test]
-fn the_composers_three_fields_are_optional_on_read_and_written_back_by_write_song_file() {
+fn the_conductor_panels_three_fields_are_optional_on_read_and_written_back_by_write_song_file() {
     let hand_written = parse(
         r#"SongFile(version: 1, soundfont: "a.sf2",
             instruments: [(name: "blip", source: Sample(path: "blip.wav", root_note: 60))])"#,

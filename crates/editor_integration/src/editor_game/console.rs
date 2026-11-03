@@ -3,7 +3,7 @@
 //! keyboard on the asset browser's model.
 //!
 //! A press of either button inside the Console panel gives it the keyboard; a press
-//! elsewhere in the dock, the panel hidden or collapsed, the composer taking the keyboard,
+//! elsewhere in the dock, the panel hidden or collapsed, the Conductor panel taking the keyboard,
 //! Escape and a play session's entry take it away. While the console holds it, Up and
 //! Down walk its entries — an arrow never nudges a scene entity behind them — Enter opens
 //! the focused one, and a key it does not use goes on. A dialog, a focused text field and
@@ -54,7 +54,7 @@ impl<G: Game> EditorGame<G> {
     /// frame's press: take or drop the console's keyboard, by `panel_press`'s rule.
     pub(super) fn settle_console(&mut self, ui: &ui::UIContext) {
         let press = match self.panel_press(ui, PanelId::CONSOLE) {
-            Some(press) if !self.editor.in_play_session() && !self.composer_holds_focus() => press,
+            Some(press) if !self.editor.in_play_session() && !self.conductor_holds_focus() => press,
             _ => return self.editor.console.release_keyboard(),
         };
         match press {

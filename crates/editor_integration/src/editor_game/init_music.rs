@@ -1,8 +1,8 @@
-//! What the wrapped game's `init` asked the audio manager for — a song or a recorded
-//! track — remembered and stopped at boot, since editing is silent until the composer plays,
-//! and asked for again when a Play session starts with no composer song to take the slot. Stop
-//! silences it with the rest of the slot; the next Play asks again. A game that starts its
-//! music once at `init`, as the editor demo's platformer does, is therefore heard in Play.
+//! What the wrapped game's `init` asked the audio manager for — a song or a recorded track —
+//! remembered and stopped at boot, since editing is silent until the Conductor panel plays, and
+//! asked for again when a Play session starts with no song in the Conductor panel to take the
+//! slot. Stop silences it with the rest of the slot; the next Play asks again. A game that starts
+//! its music once at `init`, as the editor demo's platformer does, is therefore heard in Play.
 //!
 //! The request is replayed as the game made it, by path and nothing else: a song built in
 //! memory (`play_song_in_memory`) has no path and is not replayed; a file the game removed

@@ -18,8 +18,8 @@ pub(super) enum KeyRoute {
     PlayControl(PlayControlAction),
     ForwardToGame,
     Editor { action: EditorAction, shift: bool },
-    /// A row of the composer's key table, while the composer holds the keyboard.
-    Composer(editor::composer::ComposerKeyAction),
+    /// A row of the Conductor panel's key table, while the Conductor panel holds the keyboard.
+    Conductor(editor::conductor::ConductorKeyAction),
     /// The open context menu's key, or the asset browser's while it holds the keyboard.
     AssetBrowser(super::asset_browser_keys::BrowserKey),
     /// The console's key, while it holds the keyboard.
@@ -95,7 +95,7 @@ impl<G: Game> EditorGame<G> {
         }
 
         // An open context menu, then the asset browser holding the keyboard, decide before
-        // the composer and the editor: an arrow steps the tiles and never nudges an entity.
+        // the Conductor panel and the editor: an arrow steps the tiles and never nudges an entity.
         if let Some(route) = self.asset_browser_key_route(key, modifiers) {
             return route;
         }
@@ -105,15 +105,15 @@ impl<G: Game> EditorGame<G> {
         if let Some(route) = self.settings_key_route(key) {
             return route;
         }
-        // The composer holding the keyboard decides first, Escape included; a play
+        // The Conductor panel holding the keyboard decides first, Escape included; a play
         // session clears its focus, so the controls above and the game below keep theirs.
-        if let Some(route) = self.composer_key_route(key, modifiers) {
+        if let Some(route) = self.conductor_key_route(key, modifiers) {
             return route;
         }
         // Save follows the focused document as undo does; a menu item keeps the rule it names.
         let action = match action {
-            Some(EditorAction::Save) if self.composer_holds_focus() => Some(EditorAction::SaveSong),
-            Some(EditorAction::SaveAs) if self.composer_holds_focus() => Some(EditorAction::SaveSongAs),
+            Some(EditorAction::Save) if self.conductor_holds_focus() => Some(EditorAction::SaveSong),
+            Some(EditorAction::SaveAs) if self.conductor_holds_focus() => Some(EditorAction::SaveSongAs),
             other => other,
         };
 
@@ -154,7 +154,7 @@ impl<G: Game> EditorGame<G> {
             KeyRoute::Editor { action, shift } => {
                 self.dispatch_editor_action(action, shift, ctx);
             }
-            KeyRoute::Composer(action) => self.run_composer_key(action),
+            KeyRoute::Conductor(action) => self.run_conductor_key(action),
             KeyRoute::AssetBrowser(browser_key) => self.run_asset_browser_key(browser_key),
             KeyRoute::Console(console_key) => self.run_console_key(console_key),
             KeyRoute::Settings(settings_key) => self.run_settings_key(settings_key),
@@ -217,7 +217,7 @@ impl<G: Game> EditorGame<G> {
     }
 
     fn reset_layout_with_feedback(&mut self) {
-        self.leave_composer();
+        self.leave_conductor();
         self.editor.reset_layout();
         self.editor.status_bar.show_message("Layout reset to defaults");
     }
@@ -399,7 +399,7 @@ impl<G: Game> EditorGame<G> {
                 self.dispatch_file_action(action, ctx);
             }
 
-            A::FocusComposer | A::SongPlayStop => self.dispatch_song_action(action),
+            A::FocusConductor | A::SongPlayStop => self.dispatch_song_action(action),
 
             A::ZoomIn
             | A::ZoomOut
@@ -440,9 +440,9 @@ impl<G: Game> EditorGame<G> {
 
     /// Undo the top entry and name it on the status bar ("Undo: Delete
     /// Entity") — Edit → Undo and Ctrl+Z share this, so both report it. While the
-    /// composer holds the keyboard the focused document is the song.
+    /// Conductor panel holds the keyboard the focused document is the song.
     pub(super) fn undo_with_feedback(&mut self, world: &mut ecs::World) {
-        if self.composer_holds_focus() {
+        if self.conductor_holds_focus() {
             return self.undo_song_with_feedback();
         }
         if let Some(message) = self.play_boundary_refusal("Undo") {
@@ -471,7 +471,7 @@ impl<G: Game> EditorGame<G> {
 
     /// Redo counterpart of [`Self::undo_with_feedback`].
     pub(super) fn redo_with_feedback(&mut self, world: &mut ecs::World) {
-        if self.composer_holds_focus() {
+        if self.conductor_holds_focus() {
             return self.redo_song_with_feedback();
         }
         if let Some(message) = self.play_boundary_refusal("Redo") {

@@ -100,7 +100,7 @@ pub(super) fn license_text<'a>(
     }
     let mut text = format!(
         "{FORMAT_LINE}\nSource: {song}\n\
-         Comment: Written by the composer's Save from each sample instrument's provenance,\n \
+         Comment: Written by the Conductor panel's Save from each sample instrument's provenance,\n \
          and rewritten by every save. Edit the provenance in the song, not here.\n",
     );
     for (file_name, provenance) in stanzas {
@@ -208,7 +208,7 @@ fn rewrite_home_license(existing: Option<&str>, midi: &str, provenance: &Provena
             0,
             vec![
                 FORMAT_LINE.to_string(),
-                "Comment: Each song's stanza is written by the composer's Save from the song's".to_string(),
+                "Comment: Each song's stanza is written by the Conductor panel's Save from the song's".to_string(),
                 " provenance and rewritten by every save; edit the provenance in the song.".to_string(),
                 " Stanzas naming anything else are left as they are.".to_string(),
             ],

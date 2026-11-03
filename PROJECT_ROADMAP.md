@@ -89,8 +89,8 @@ Engine status, test counts, and per-system capability detail live in
 | C/D | Games 7–20 | PAUSED until Phase G and J1 are done (below) | This file § Paused phases |
 
 **Oct 26 2026 (Jesse): composition leaves the engine for MIDI Evil.** The music maker is
-`../midi-evil` (Dr. Maxwell's workstation); the engine keeps the conductor's half. The composer
-panel becomes the **Conductor panel**: a `.mid` comes in, and the panel tells the engine when to
+`../midi-evil` (Dr. Maxwell's workstation); the engine keeps the conductor's half. The editor's song
+panel is the **Conductor panel**: a `.mid` comes in, and the panel tells the engine when to
 play what sound, at what note and at what volume — parts, instruments, bindings, audition, Save of
 the sidecar and its LICENSE stanza. The note editing (the piano roll, the note list, `song new` and
 the `AddNote` family) is MIDI Evil's. The Sep 25 "K8 is not a cut candidate" ruling stands for the

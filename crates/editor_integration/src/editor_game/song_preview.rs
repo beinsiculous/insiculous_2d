@@ -8,8 +8,8 @@
 //! a song that stops playing ends the preview — silently at the score's end, with a word on
 //! the status bar otherwise; before then, no position with a device connected means the
 //! song never reached it, and no position without one is the web waiting for its first
-//! click. Any change to the document — an edit, an undo or a redo, from the composer or the
-//! API — stops it, as another song does: the prepared score is the old document.
+//! click. Any change to the document — an edit, an undo or a redo, from the Conductor panel or
+//! the API — stops it, as another song does: the prepared score is the old document.
 //!
 //! **Play hears the saved song.** Scene Play arms a pending play instead of starting the
 //! session: the drain flushes the sources and plays the saved file, the one slot replacing
@@ -18,18 +18,18 @@
 //! all the same, without the editor's music: the editor's Play is never hostage to a
 //! song's bank. Intents pushed while it is armed are dropped.
 //!
-//! **Editing is silent until the composer plays.** The editor remembers and stops whatever
-//! music the wrapped game's `init` asked for (`init_music.rs`); a session with no composer
-//! song asks for it again on its first frame, so a game that starts its music once at `init`
-//! is heard in Play; and Stop flushes the sources and stops the slot whoever filled it — the
-//! saved song, the game's own music, a recorded track — so the only music heard while editing
-//! is the composer's preview, started and stopped by its transport, and the next Play asks
-//! for the game's music again.
+//! **Editing is silent until the Conductor panel plays.** The editor remembers and stops
+//! whatever music the wrapped game's `init` asked for (`init_music.rs`); a session with no song
+//! in the Conductor panel asks for it again on its first frame, so a game that starts its music
+//! once at `init` is heard in Play; and Stop flushes the sources and stops the slot whoever
+//! filled it — the saved song, the game's own music, a recorded track — so the only music heard
+//! while editing is the Conductor panel's preview, started and stopped by its transport, and the
+//! next Play asks for the game's music again.
 
 use std::path::{Path, PathBuf};
 
 use audio::{SongPosition, SONG_SAMPLE_RATE};
-use editor::composer::ControlRequest;
+use editor::conductor::ControlRequest;
 use editor::SongDocument;
 use engine_core::prelude::{AudioManager, SoundSources};
 use engine_core::Game;
@@ -43,7 +43,7 @@ const STOPPED_EARLY: &str = "Song preview: playback stopped early";
 const NEVER_REACHED_THE_DEVICE: &str = "Song preview: the song could not reach the device";
 const STOPPED_BY_THE_EDIT: &str = "Song preview stopped by the edit";
 
-/// Whether the preview is playing, as the composer shows it.
+/// Whether the preview is playing, as the Conductor panel shows it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(super) enum PreviewState {
     #[default]
@@ -217,7 +217,7 @@ impl SongPreview {
 }
 
 impl<G: Game> EditorGame<G> {
-    /// Play the preview from `from_tick`: the composer's Play and Space from the top, the
+    /// Play the preview from `from_tick`: the Conductor panel's Play and Space from the top, the
     /// API's `song play` from a beat. Refused during a play session, with no
     /// song, and while scene Play is starting.
     pub(super) fn preview_play(&mut self, from_tick: u64) -> Result<(), String> {
@@ -420,7 +420,7 @@ impl<G: Game> EditorGame<G> {
             SongAudioIntent::ResumeSession if session_holds_slot => audio.resume_song(),
             SongAudioIntent::StopAll => {
                 sources.flush(audio);
-                // Editing is silent until the composer plays: whoever filled the slot during
+                // Editing is silent until the Conductor panel plays: whoever filled the slot during
                 // the session — the saved song, the game's own music, a recorded track — stops.
                 audio.stop_song();
                 audio.stop_music();
@@ -458,7 +458,7 @@ impl<G: Game> EditorGame<G> {
                 preview.revision = revision;
             }
             Err(error) => {
-                // A preview already sounding would part from the state the composer shows.
+                // A preview already sounding would part from the state the Conductor panel shows.
                 if self.song_preview.slot == SlotHolder::Preview {
                     audio.stop_song();
                     self.song_preview.slot = SlotHolder::Nobody;
@@ -488,9 +488,9 @@ impl<G: Game> EditorGame<G> {
         sources.flush(audio);
         let played = match &song {
             Some(path) => audio.play_song(path).map_err(|error| error.to_string()),
-            // Only with no composer song open at all: an open song, saved or not, is the
-            // editor's claim on the slot, so the editor replays nothing; what the game asks
-            // for itself during the session is the game's own policy.
+            // Only with no song open in the Conductor panel at all: an open song, saved or
+            // not, is the editor's claim on the slot, so the editor replays nothing; what the
+            // game asks for itself during the session is the game's own policy.
             None if self.song.is_some() => Ok(()),
             None => match self.init_music.replay(audio) {
                 Ok(()) => Ok(()),
@@ -560,10 +560,10 @@ impl<G: Game> EditorGame<G> {
         self.sync_preview_view();
     }
 
-    /// Write what the composer shows of the preview.
+    /// Write what the Conductor panel shows of the preview.
     fn sync_preview_view(&mut self) {
-        self.editor.composer.preview_playing = self.song_preview.is_playing();
-        self.editor.composer.playhead_tick = self.song_preview.playhead;
+        self.editor.conductor.preview_playing = self.song_preview.is_playing();
+        self.editor.conductor.playhead_tick = self.song_preview.playhead;
     }
 
     /// Whether the open song lacks the author or the license Save requires of it.
@@ -582,8 +582,8 @@ impl<G: Game> EditorGame<G> {
         if !self.song_lacks_provenance() {
             return;
         }
-        self.editor.composer.sidebar_section = editor::composer::SidebarSection::Song;
-        self.show_composer(editor::composer::ComposerFocus::Sidebar);
-        self.editor.composer.request = Some(ControlRequest::FocusSongAuthor);
+        self.editor.conductor.sidebar_section = editor::conductor::SidebarSection::Song;
+        self.show_conductor(editor::conductor::ConductorFocus::Sidebar);
+        self.editor.conductor.request = Some(ControlRequest::FocusSongAuthor);
     }
 }

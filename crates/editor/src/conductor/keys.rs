@@ -1,10 +1,10 @@
-//! The composer's keys, as one table: what each key does while the composer holds the
-//! keyboard. The host consults it before the editor's own table, so while the composer is
-//! focused these keys never reach the scene or the game; a key the table lacks that carries
-//! Ctrl (Ctrl+S, Ctrl+C …) and F5 go on to the editor as before, and every other key is
-//! swallowed — the single-key editor toggles (G, C, S, Q/W/E/R) are unreachable while the
-//! composer holds the keyboard, deliberately, so a key meant for the composer never moves
-//! the scene.
+//! The Conductor panel's keys, as one table: what each key does while the Conductor panel
+//! holds the keyboard. The host consults it before the editor's own table, so while the
+//! Conductor panel is focused these keys never reach the scene or the game; a key the table
+//! lacks that carries Ctrl (Ctrl+S, Ctrl+C …) and F5 go on to the editor as before, and every
+//! other key is swallowed — the single-key editor toggles (G, C, S, Q/W/E/R) are unreachable
+//! while the Conductor panel holds the keyboard, deliberately, so a key meant for the
+//! Conductor panel never moves the scene.
 
 use winit::keyboard::KeyCode;
 
@@ -19,9 +19,9 @@ pub enum Direction {
     Down,
 }
 
-/// What a composer key does.
+/// What a Conductor panel key does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ComposerKeyAction {
+pub enum ConductorKeyAction {
     /// Drop the keyboard.
     Escape,
     NextArea,
@@ -38,22 +38,22 @@ pub enum ComposerKeyAction {
 
 /// One row of the table: a key with its Ctrl and Shift state, exactly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ComposerKeyBinding {
+pub struct ConductorKeyBinding {
     pub key: KeyCode,
     pub ctrl: bool,
     pub shift: bool,
-    pub action: ComposerKeyAction,
+    pub action: ConductorKeyAction,
 }
 
-const fn bind(key: KeyCode, ctrl: bool, shift: bool, action: ComposerKeyAction) -> ComposerKeyBinding {
-    ComposerKeyBinding { key, ctrl, shift, action }
+const fn bind(key: KeyCode, ctrl: bool, shift: bool, action: ConductorKeyAction) -> ConductorKeyBinding {
+    ConductorKeyBinding { key, ctrl, shift, action }
 }
 
-use ComposerKeyAction as Action;
+use ConductorKeyAction as Action;
 use Direction::{Down, Left, Right, Up};
 
 /// See the module docs.
-pub const COMPOSER_KEYS: &[ComposerKeyBinding] = &[
+pub const CONDUCTOR_KEYS: &[ConductorKeyBinding] = &[
     bind(KeyCode::Escape, false, false, Action::Escape),
     bind(KeyCode::Tab, false, false, Action::NextArea),
     bind(KeyCode::Tab, false, true, Action::PreviousArea),
@@ -70,25 +70,25 @@ pub const COMPOSER_KEYS: &[ComposerKeyBinding] = &[
     bind(KeyCode::Space, false, false, Action::PreviewToggle),
 ];
 
-/// What the composer does with `key`, when it holds the keyboard.
+/// What the Conductor panel does with `key`, when it holds the keyboard.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ComposerKeyRoute {
+pub enum ConductorKeyRoute {
     /// A row of the table.
-    Composer(ComposerKeyAction),
-    /// Not the composer's: the editor's own table resolves it (a Ctrl chord, F5).
+    Conductor(ConductorKeyAction),
+    /// Not the Conductor panel's: the editor's own table resolves it (a Ctrl chord, F5).
     Editor,
-    /// Not the composer's and not let through: nothing happens.
+    /// Not the Conductor panel's and not let through: nothing happens.
     Swallowed,
 }
 
 /// Look `key` up under `modifiers`, exactly.
-pub fn resolve(key: KeyCode, modifiers: Modifiers) -> ComposerKeyRoute {
-    let row = COMPOSER_KEYS.iter().find(|binding| {
+pub fn resolve(key: KeyCode, modifiers: Modifiers) -> ConductorKeyRoute {
+    let row = CONDUCTOR_KEYS.iter().find(|binding| {
         binding.key == key && binding.ctrl == modifiers.ctrl && binding.shift == modifiers.shift
     });
     match row {
-        Some(binding) => ComposerKeyRoute::Composer(binding.action),
-        None if modifiers.ctrl || key == KeyCode::F5 => ComposerKeyRoute::Editor,
-        None => ComposerKeyRoute::Swallowed,
+        Some(binding) => ConductorKeyRoute::Conductor(binding.action),
+        None if modifiers.ctrl || key == KeyCode::F5 => ConductorKeyRoute::Editor,
+        None => ConductorKeyRoute::Swallowed,
     }
 }

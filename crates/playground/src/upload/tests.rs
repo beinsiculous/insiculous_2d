@@ -150,7 +150,7 @@ fn a_replaced_song_keeps_its_sidecar_and_says_when_it_is_the_open_one() {
     assert!(!asked.written && asked.sidecar_lost, "the score would change and the map be kept: {asked:?}");
     assert!(!asked.open_song_replaced, "nothing was written");
     let open = import_file(root.path(), "theme.mid", &midi(), Some(&target), true).expect("the open song is replaced");
-    assert!(open.written && open.open_song_replaced, "the composer's document follows it: {open:?}");
+    assert!(open.written && open.open_song_replaced, "the Conductor panel's document follows it: {open:?}");
 
     let replaced = import_file(root.path(), "theme.mid", &midi(), None, true).expect("replaces");
     assert!(replaced.written && !replaced.open_song_replaced);
@@ -181,7 +181,7 @@ fn a_reimported_score_keeps_the_saved_map_and_the_next_open_follows_it_with_the_
 
     let replaced = import_file(root.path(), "napolitan.mid", &midi(), None, true).expect("re-imported");
     assert!(replaced.written && replaced.sidecar_lost, "{replaced:?}");
-    let opened = SongDocument::open(&target, &asset_base).expect("the composer's next open");
+    let opened = SongDocument::open(&target, &asset_base).expect("the Conductor panel's next open");
     let notes_after = opened.document.data().tracks().iter().map(|track| track.note_count()).sum::<usize>();
     assert_ne!(notes_after, notes_before, "the notes are the new score's");
     assert_eq!(opened.document.file().parts.len(), 1, "the map survives");

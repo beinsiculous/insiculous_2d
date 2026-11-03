@@ -45,7 +45,7 @@ fn press_in(editor: &mut EditorGame<DummyGame>, panel: PanelId) {
     press_in_with(editor, panel, MouseButton::Left);
 }
 
-/// A frame whose only input is a press of `button` in `panel`, the composer settled
+/// A frame whose only input is a press of `button` in `panel`, the Conductor panel settled
 /// before the browser as frame start does.
 fn press_in_with(editor: &mut EditorGame<DummyGame>, panel: PanelId, button: MouseButton) {
     let position = editor.editor.dock_area.get_panel(panel).map(|panel| panel.content_bounds().center());
@@ -62,7 +62,7 @@ fn press_in_with(editor: &mut EditorGame<DummyGame>, panel: PanelId, button: Mou
         input.mouse_mut().handle_button_press(button);
     }
     ui.begin_frame(&input, WINDOW);
-    editor.settle_composer(&ui);
+    editor.settle_conductor(&ui);
     editor.settle_asset_browser(&ui);
 }
 
@@ -163,17 +163,17 @@ fn entering_play_lets_the_keyboard_go_and_closes_the_context_menu() {
 }
 
 #[test]
-fn a_right_press_in_the_browser_takes_the_keyboard_from_the_composer() {
+fn a_right_press_in_the_browser_takes_the_keyboard_from_the_conductor_panel() {
     let mut world = World::new();
     let (mut editor, _) = browser_session(&mut world);
-    // The composer's first follow resets its state, focus included; settle it first.
+    // The Conductor panel's first follow resets its state, focus included; settle it first.
     editor.follow_song();
-    editor.show_composer(editor::composer::ComposerFocus::Sidebar);
-    assert!(editor.composer_holds_focus(), "the composer starts with the keyboard");
+    editor.show_conductor(editor::conductor::ConductorFocus::Sidebar);
+    assert!(editor.conductor_holds_focus(), "the Conductor panel starts with the keyboard");
 
     press_in_with(&mut editor, PanelId::ASSET_BROWSER, MouseButton::Right);
 
-    assert!(!editor.composer_holds_focus(), "a right press elsewhere in the dock takes it from the composer");
+    assert!(!editor.conductor_holds_focus(), "a right press elsewhere in the dock takes it from the Conductor panel");
     assert!(editor.editor.asset_browser.holds_keyboard, "and gives it to the browser it landed in");
     assert!(matches!(press_key(&mut editor, KeyCode::ArrowRight, PLAIN), KeyRoute::AssetBrowser(BrowserKey::Step(_))));
 }

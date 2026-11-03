@@ -16,8 +16,8 @@ mod walk;
 use music_midi::Provenance;
 use ui::{Rect, UIContext, WidgetId};
 
-use super::state::{ComposerState, ControlRequest, SidebarSection};
-use super::{ComposerAction, ComposerFocus};
+use super::state::{ConductorState, ControlRequest, SidebarSection};
+use super::{ConductorAction, ConductorFocus};
 use crate::song::{SongDocument, SongEdit};
 use crate::theme::EditorTheme;
 
@@ -27,13 +27,13 @@ use walk::SidebarWalk;
 
 /// The path field's widget, which Save Song As… puts the keyboard in.
 pub fn path_field_id() -> WidgetId {
-    WidgetId::hashed("composer_song_path")
+    WidgetId::hashed("conductor_song_path")
 }
 
 /// The song's Author field, which a save refused for the song's provenance puts the
 /// keyboard in.
 pub fn song_author_field_id() -> WidgetId {
-    WidgetId::hashed("composer_song_author")
+    WidgetId::hashed("conductor_song_author")
 }
 
 /// The Author field's place among the sidebar's controls: right below the path field.
@@ -61,11 +61,11 @@ pub struct SidebarContext<'a> {
 pub fn render_sidebar(
     ui: &mut UIContext,
     theme: &EditorTheme,
-    state: &mut ComposerState,
+    state: &mut ConductorState,
     bounds: Rect,
     section_tabs: Option<Rect>,
     context: &SidebarContext,
-) -> Vec<ComposerAction> {
+) -> Vec<ConductorAction> {
     let mut actions = Vec::new();
     if let Some(tabs) = section_tabs {
         actions.extend(render_section_tabs(ui, theme, state, tabs));
@@ -145,9 +145,9 @@ pub fn render_sidebar(
 fn render_section_tabs(
     ui: &mut UIContext,
     theme: &EditorTheme,
-    state: &mut ComposerState,
+    state: &mut ConductorState,
     tabs: Rect,
-) -> Vec<ComposerAction> {
+) -> Vec<ConductorAction> {
     let mut actions = Vec::new();
     ui.rect(tabs, theme.surface_2);
     let width = tabs.width / SidebarSection::ALL.len() as f32;
@@ -158,10 +158,10 @@ fn render_section_tabs(
         } else {
             section.label().to_string()
         };
-        if ui.button(("composer_section_tab", index), &label, tab) {
+        if ui.button(("conductor_section_tab", index), &label, tab) {
             state.sidebar_section = section;
             state.sidebar_control = 0;
-            actions.push(ComposerAction::Focus(ComposerFocus::Sidebar));
+            actions.push(ConductorAction::Focus(ConductorFocus::Sidebar));
         }
     }
     actions
@@ -169,7 +169,7 @@ fn render_section_tabs(
 
 /// The song's name and state, the path field, its author and license, the Loop switch and
 /// the Songs list.
-fn song_section(walk: &mut SidebarWalk, state: &ComposerState, context: &SidebarContext) {
+fn song_section(walk: &mut SidebarWalk, state: &ConductorState, context: &SidebarContext) {
     match context.song {
         Some(song) => {
             let name = context.song_path.unwrap_or("Untitled song");
@@ -178,7 +178,7 @@ fn song_section(walk: &mut SidebarWalk, state: &ComposerState, context: &Sidebar
             let shown = context.song_path.unwrap_or(context.default_path);
             if let Some(typed) = walk.field(path_field_id(), "Path", shown) {
                 if context.enter_pressed {
-                    walk.push(ComposerAction::SaveSongTo(typed));
+                    walk.push(ConductorAction::SaveSongTo(typed));
                 }
             }
             walk.note("Enter saves here (Save Song As…); under music/ or ai/music/");
@@ -186,8 +186,8 @@ fn song_section(walk: &mut SidebarWalk, state: &ComposerState, context: &Sidebar
             sound_font_row(walk, song, state, context);
             let looping = song.file().looping;
             let label = if looping { "Song loops: on" } else { "Song loops: off" };
-            if walk.button(WidgetId::hashed("composer_song_loop"), label, true) {
-                walk.push(ComposerAction::Edit(SongEdit::SetLoop { looping: !looping }));
+            if walk.button(WidgetId::hashed("conductor_song_loop"), label, true) {
+                walk.push(ConductorAction::Edit(SongEdit::SetLoop { looping: !looping }));
             }
         }
         None => {
@@ -203,9 +203,9 @@ fn song_section(walk: &mut SidebarWalk, state: &ComposerState, context: &Sidebar
     for (index, path) in state.songs.iter().enumerate() {
         let is_open = context.song_path == Some(path.as_str());
         let label = if is_open { format!("{path} · open") } else { path.clone() };
-        let pressed = walk.button(WidgetId::from_str_index("composer_song_row", index), &label, !is_open);
+        let pressed = walk.button(WidgetId::from_str_index("conductor_song_row", index), &label, !is_open);
         if pressed && !is_open && !context.read_only {
-            walk.push(ComposerAction::OpenSong(path.clone()));
+            walk.push(ConductorAction::OpenSong(path.clone()));
         }
     }
 }
@@ -213,17 +213,17 @@ fn song_section(walk: &mut SidebarWalk, state: &ComposerState, context: &Sidebar
 /// The background's bank: a row that cycles the project's banks, one `SetSoundFont` a
 /// click, drawn disabled naming the sidecar's bank while the project has none, and a
 /// warning while the bank it names is no file under the asset folder.
-fn sound_font_row(walk: &mut SidebarWalk, song: &SongDocument, state: &ComposerState, context: &SidebarContext) {
+fn sound_font_row(walk: &mut SidebarWalk, song: &SongDocument, state: &ConductorState, context: &SidebarContext) {
     let current = &song.file().soundfont;
     let banks = &state.sound_fonts.banks;
     let label = format!("SoundFont: {current}");
-    if walk.button(WidgetId::hashed("composer_song_sound_font"), &label, !banks.is_empty()) {
+    if walk.button(WidgetId::hashed("conductor_song_sound_font"), &label, !banks.is_empty()) {
         let next = banks
             .iter()
             .position(|bank| bank == current)
             .map_or(0, |index| (index + 1) % banks.len());
         if let Some(bank) = banks.get(next) {
-            walk.push(ComposerAction::Edit(SongEdit::SetSoundFont { path: bank.clone() }));
+            walk.push(ConductorAction::Edit(SongEdit::SetSoundFont { path: bank.clone() }));
         }
     }
     walk.tooltip("The bank the song's background plays on: click for the next one under soundfonts/");
@@ -245,7 +245,7 @@ fn song_provenance_fields(walk: &mut SidebarWalk, song: &SongDocument) {
         license: String::new(),
     });
     let author = walk.field(song_author_field_id(), "Author", &provenance.author);
-    let license = walk.field(WidgetId::hashed("composer_song_license"), "License", &provenance.license);
+    let license = walk.field(WidgetId::hashed("conductor_song_license"), "License", &provenance.license);
     if provenance.author.trim().is_empty() || provenance.license.trim().is_empty() {
         walk.warning("Song author and license: needed before Save");
     }
@@ -259,6 +259,6 @@ fn song_provenance_fields(walk: &mut SidebarWalk, song: &SongDocument) {
     // A field left as it was — Enter on it, or a press away — commits its own value back,
     // which is no edit: it would dirty the song and stop a playing preview for nothing.
     if committed != provenance {
-        walk.push(ComposerAction::Edit(SongEdit::SetProvenance { provenance: committed }));
+        walk.push(ConductorAction::Edit(SongEdit::SetProvenance { provenance: committed }));
     }
 }

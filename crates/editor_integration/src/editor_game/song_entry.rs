@@ -3,10 +3,10 @@
 //!
 //! **Which song is "the" song**, in order: during a play session, the song in the music
 //! slot — read where the song phase reads the slot and kept here each frame, since the
-//! inspector's pass has no audio; else the song open in the composer, which is what the next
+//! inspector's pass has no audio; else the song open in the Conductor panel, which is what the next
 //! Play plays (an open song is the editor's claim on the slot); else the song the game's
 //! `init` asked for, which plays when no song is open; else the project's Songs list —
-//! scanned first when the composer never drew it — whose one song is it, whose several the
+//! scanned first when the Conductor panel never drew it — whose one song is it, whose several the
 //! emitter's Song row chooses among, and whose none is an error. Every path is relative to the asset base, as the
 //! editor's open requests are.
 //!
@@ -47,7 +47,7 @@ impl<G: Game> EditorGame<G> {
         self.slot_song = audio.song_request().map(Path::to_path_buf);
     }
 
-    /// The rule's answer, the Songs list scanned first when the composer never drew it.
+    /// The rule's answer, the Songs list scanned first when the Conductor panel never drew it.
     pub(super) fn song_by_rule(&mut self) -> SongByRule {
         let init_song = match &self.init_music {
             InitMusic::Song(path) => Some(path.as_path()),
@@ -62,10 +62,10 @@ impl<G: Game> EditorGame<G> {
         if let Some(path) = earlier {
             return SongByRule::Song(PathBuf::from(self.asset_relative(path)));
         }
-        if !self.editor.composer.songs_scanned {
-            self.editor.composer.rescan_songs(&self.asset_base);
+        if !self.editor.conductor.songs_scanned {
+            self.editor.conductor.rescan_songs(&self.asset_base);
         }
-        match self.editor.composer.songs.as_slice() {
+        match self.editor.conductor.songs.as_slice() {
             [] => SongByRule::None,
             [only] => SongByRule::Song(PathBuf::from(only)),
             several => SongByRule::Choice(several.to_vec()),

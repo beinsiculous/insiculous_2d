@@ -36,7 +36,7 @@ pub struct EditorRunOptions {
     /// Raised while a preview window owns the simulation.
     pub preview_open: Option<Arc<AtomicBool>>,
     /// The open song's `.mid`, written by `sync_dirty_mirror`, so a host's file import knows
-    /// when it replaced the song the composer holds.
+    /// when it replaced the song the Conductor panel holds.
     pub open_song: Option<Arc<Mutex<Option<PathBuf>>>>,
     /// The mailbox a host with no file watcher files an import of the open song's `.mid` in;
     /// the frame takes it before the watcher's changes and the document adopts its score.

@@ -1,6 +1,6 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Source: music/ai_demo.mid
-Comment: Written by the composer's Save from each sample instrument's provenance,
+Comment: Written by the Conductor panel's Save from each sample instrument's provenance,
  and rewritten by every save. Edit the provenance in the song, not here.
 
 Files: ping.wav

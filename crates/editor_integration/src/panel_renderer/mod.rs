@@ -65,7 +65,7 @@ fn render_panel_body(
         }
         PanelId::CONSOLE => console::render_console(editor, ctx.ui, bounds),
         PanelId::SETTINGS => settings::render_settings(editor, ctx.ui, bounds),
-        PanelId::COMPOSER => log::error!("the composer renders through its host, which holds the song"),
+        PanelId::CONDUCTOR => log::error!("the Conductor panel renders through its host, which holds the song"),
         _ => render_default(ctx, content_x, y),
     }
 }
@@ -413,7 +413,7 @@ fn render_default(ctx: &mut GameContext, content_x: f32, y: f32) {
 mod add_component_popup;
 mod asset_browser;
 pub(crate) mod color_editor;
-pub(crate) mod composer;
+pub(crate) mod conductor;
 mod console;
 mod drag_ghost;
 mod inspector;

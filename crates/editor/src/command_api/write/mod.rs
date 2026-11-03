@@ -42,7 +42,7 @@ pub struct WriteCtx<'a> {
     /// `set`/`add` refuse a handle nothing can resolve on save — the
     /// editor crate cannot see the resolver, so the host answers by closure.
     pub texture_known: &'a dyn Fn(u32) -> bool,
-    /// The composer's song, which the `song …` writes edit.
+    /// The Conductor panel's song, which the `song …` writes edit.
     pub song: &'a mut Option<crate::song::SongDocument>,
 }
 

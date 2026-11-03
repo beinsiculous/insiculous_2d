@@ -74,8 +74,8 @@ pub(crate) fn refresh_assets(
 ) {
     let entries = scan_assets(Path::new(assets.base_path()), &editor.external_tools.daw_project_extensions);
     editor.asset_browser.apply_scan(entries);
-    // The composer's Songs list is a view of the same folders, so Rescan refreshes it too.
-    editor.composer.songs_scanned = false;
+    // The Conductor panel's Songs list is a view of the same folders, so Rescan refreshes it too.
+    editor.conductor.songs_scanned = false;
     editor.script_catalog = super::script_catalog::build_script_catalog(
         &editor.asset_browser.entries,
         registry,

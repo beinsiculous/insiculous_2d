@@ -121,7 +121,7 @@ fn the_rule_takes_the_slot_in_a_session_then_the_open_song_then_the_init_song_th
 fn a_list_never_scanned_is_scanned_before_the_rule_reads_it_and_an_empty_project_is_the_error() {
     let mut session = Session::new();
     with_song(&session, "ai/music/only.mid", Some(SIDECAR));
-    assert!(!session.editor.editor.composer.songs_scanned, "the composer never drew");
+    assert!(!session.editor.editor.conductor.songs_scanned, "the Conductor panel never drew");
     assert_eq!(session.editor.the_song(), Ok(PathBuf::from("ai/music/only.mid")));
 
     let mut empty = Session::new();
@@ -183,7 +183,7 @@ fn two_songs_offer_the_song_row_to_a_selected_binding_and_the_choice_decides_whi
 }
 
 #[test]
-fn a_hidden_composer_does_not_make_the_rule_scan_the_song_folders_every_frame() {
+fn a_hidden_conductor_panel_does_not_make_the_rule_scan_the_song_folders_every_frame() {
     let mut session = Session::new();
     with_song(&session, "music/a.mid", Some(SIDECAR));
     with_song(&session, "music/b.mid", Some(SIDECAR));
@@ -193,18 +193,18 @@ fn a_hidden_composer_does_not_make_the_rule_scan_the_song_folders_every_frame() 
     let input = input::InputHandler::new();
     let mut ui = ui::UIContext::new();
     ui.begin_frame(&input, glam::Vec2::new(1280.0, 720.0));
-    assert!(!session.editor.editor.composer.panel_drawn, "the composer never drew");
+    assert!(!session.editor.editor.conductor.panel_drawn, "the Conductor panel never drew");
 
-    session.editor.settle_composer(&ui);
+    session.editor.settle_conductor(&ui);
     session.editor.offer_song_choices(&session.world);
     assert_eq!(session.editor.editor.edit_binding.song_choices, ["music/a.mid", "music/b.mid"]);
-    assert!(session.editor.editor.composer.songs_scanned, "scanned once for the rule");
+    assert!(session.editor.editor.conductor.songs_scanned, "scanned once for the rule");
 
-    session.editor.settle_composer(&ui);
-    assert!(session.editor.editor.composer.songs_scanned, "a hidden frame does not forget the scan: only a close does");
-    session.editor.editor.composer.panel_drawn = true;
-    session.editor.settle_composer(&ui);
-    assert!(!session.editor.editor.composer.songs_scanned, "the frame after the panel drew and is gone is the close");
-    assert!(!session.editor.editor.composer.panel_drawn);
+    session.editor.settle_conductor(&ui);
+    assert!(session.editor.editor.conductor.songs_scanned, "a hidden frame does not forget the scan: only a close does");
+    session.editor.editor.conductor.panel_drawn = true;
+    session.editor.settle_conductor(&ui);
+    assert!(!session.editor.editor.conductor.songs_scanned, "the frame after the panel drew and is gone is the close");
+    assert!(!session.editor.editor.conductor.panel_drawn);
     ui.end_frame();
 }

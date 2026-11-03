@@ -393,7 +393,7 @@ fn an_unknown_action_is_an_error_naming_it_and_no_song_is_its_own() {
 }
 
 /// A headless manager whose sidecar paths resolve in `assets`, with the song's two files
-/// read back as the composer holds them.
+/// read back as the Conductor panel holds them.
 fn song_in_memory(assets: &AssetDirectory, looping: bool) -> (AudioManager, Arc<Song>) {
     let mut manager = AudioManager::disabled();
     manager.set_asset_base(assets.path());

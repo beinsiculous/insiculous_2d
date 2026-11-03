@@ -2,9 +2,9 @@
 //!
 //! A save writes each final to a temporary file beside it and moves it over the final, which
 //! on the web is the final's put, then the temporary file's removal; a Save As does the
-//! `.mid` and then the sidecar (`docs/SONG_FORMAT.md` § How the composer saves). These tests
-//! read the store back after each operation lands and settle it with [`opened_song`], a
-//! model of the open-time rules over bytes that name their version.
+//! `.mid` and then the sidecar (`docs/SONG_FORMAT.md` § How the Conductor panel saves).
+//! These tests read the store back after each operation lands and settle it with
+//! [`opened_song`], a model of the open-time rules over bytes that name their version.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;

@@ -26,7 +26,7 @@ use super::WatchOwner;
 /// Which song a watched path belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(in crate::editor_game) enum SongOwner {
-    /// The song open in the composer: its `.mid` and its sidecar.
+    /// The song open in the Conductor panel: its `.mid` and its sidecar.
     Document,
     /// The song a play session plays from its saved file: its `.mid`, its sidecar, and every
     /// SoundFont and sample its preparations read or tried to.

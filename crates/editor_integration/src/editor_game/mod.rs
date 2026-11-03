@@ -26,7 +26,7 @@ use crate::panel_renderer;
 
 mod api;
 mod asset_browser_keys;
-mod composer_keys;
+mod conductor_keys;
 mod console;
 mod game_impl;
 mod gizmo_drag;
@@ -68,14 +68,15 @@ struct EditorGame<G: Game> {
     entity_counter: u32,
     /// Undo/redo command history for editor actions.
     command_history: editor::CommandHistory,
-    /// The composer's song: a second document with its own history and save watermark.
+    /// The Conductor panel's song: a second document with its own history and save watermark.
     pub(super) song: Option<editor::SongDocument>,
-    /// Bumped each time the song is created, opened or closed, so the composer's state
+    /// Bumped each time the song is created, opened or closed, so the Conductor panel's state
     /// resets instead of pointing into a song that is gone.
     pub(super) song_generation: u64,
     /// The song preview and the session's music: intents drained once a frame.
     pub(super) song_preview: song_preview::SongPreview,
-    /// What the game's `init` asked the audio for, asked again by a session with no composer song.
+    /// What the game's `init` asked the audio for, asked again by a session with no song in
+    /// the Conductor panel.
     pub(super) init_music: init_music::InitMusic,
     /// The song pending or playing in the music slot, as the song phase last read it.
     pub(super) slot_song: Option<std::path::PathBuf>,
@@ -303,9 +304,9 @@ impl<G: Game> EditorGame<G> {
 
         for (panel_id, bounds) in content_areas {
             ctx.ui.push_clip_rect(ui::Rect::new(bounds.x, bounds.y, bounds.width, bounds.height));
-            // The composer renders through its host, which holds the song and the drag.
-            if panel_id == editor::PanelId::COMPOSER {
-                self.render_composer_panel(ctx, bounds);
+            // The Conductor panel renders through its host, which holds the song and the drag.
+            if panel_id == editor::PanelId::CONDUCTOR {
+                self.render_conductor_panel(ctx, bounds);
             } else {
                 panel_renderer::render_panel_content(
                     &mut self.editor,
@@ -476,7 +477,7 @@ impl<G: Game> EditorGame<G> {
     /// The host's two flags carry either document's edits, so the playground's
     /// unsaved-work checks cover the song without a bridge change.
     pub(super) fn sync_dirty_mirror(&mut self) {
-        self.editor.composer.reconcile_active_track(self.song.as_ref());
+        self.editor.conductor.reconcile_active_track(self.song.as_ref());
         let is_command_dirty = self.command_history.is_dirty();
         let is_song_dirty = self.song.as_ref().is_some_and(editor::SongDocument::is_dirty);
         let is_persist_pending = self
@@ -517,7 +518,7 @@ mod asset_browser_keys_tests;
 #[cfg(test)]
 mod camera_follow_tests;
 #[cfg(test)]
-mod composer_keys_tests;
+mod conductor_keys_tests;
 #[cfg(test)]
 mod console_tests;
 #[cfg(test)]

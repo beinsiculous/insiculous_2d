@@ -273,7 +273,7 @@ impl AudioManager {
         Ok(())
     }
 
-    /// Build a song from a sidecar and MIDI data already in memory (the composer's
+    /// Build a song from a sidecar and MIDI data already in memory (the Conductor panel's
     /// unsaved document), its SoundFonts and samples loaded through the same cache as
     /// [`AudioManager::play_song`]'s, ready for [`AudioManager::play_song_in_memory`].
     pub fn prepare_song(
