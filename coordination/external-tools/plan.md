@@ -1824,6 +1824,22 @@ the tree, and the two issue texts corrected where the plan superseded them:
   ../games/<game>` for each of the six. Reviewers kimi and gemini (the `.exe` seam and the cross-compile
   are a harness; no screen, so no codex); the round is 41.
 
+**Batch 8 DONE 2026-11-03: insiculous_2d 42f983b (18 files, 831/79; closes #220 on push), and the six games'
+commits — pong d87bae0, snake f5991b0, breakout 6ecf049, frogger 35cf59a, asteroids 117141f, space_invaders 721280e —
+after code round 41** (kimi 2 / gemini 5 / planner 0; rebuttal-41.md adjudicated by Jesse, "commit as adjudicated"):
+the `.exe` rule landed as `program_of` + `Opening::AfterTranslation` + the wslpath worker; the Windows cross-compile is
+clean for the first time; `docs/EXTERNAL_TOOLS.md` is the user's guide. The planner's six hunks after the review, gated
+and not re-reviewed: a deferred launch says "Starting … once wslpath has translated its paths" rather than "Opened"
+(kimi/gemini F1 — the typed completion event the reviewers asked for is a backlog issue, since the wslview default
+has reported at thread start since batch 1); a WSL `.exe` Test prints the command on the Linux paths and says each is
+translated (F2); the project translation reused when it is the file's path (gemini F5); an unreachable arm folded; two
+doc lines (the Program field is one value, typed bare — gemini F3, false as a regression; the Test and WSL notes).
+Rebutted: gemini F4, the games as scope creep (this paragraph names them). **Left open: #219 for Jesse's hand matrix
+(macOS, Windows, WSL by hand) — the sprint does not close before it is recorded or he waives the two arms — and the
+close-out (milestone, `log_archive.md`, the scorecard's totals, the roadmap's shipped line, the review record archived).**
+Loop lesson: never `cargo fmt` a crate in this tree before staging a fix — the sources are not rustfmt-clean and the
+pass rewrote 250 files; the index was rebuilt from HEAD + the reviewed snapshot + the fix hunks.
+
 **Order.** 1 → 2a → 2b → 3 in sequence (each builds on the last's types and console); 4 after 2b; 5 after
 3 and 4; 6 any time after 1; 7 after 4 and 5 and its gate; 8 after 6, before 7 if 7's gate is not
 yet met. One batch out at a time, as the Conductor ran it.
