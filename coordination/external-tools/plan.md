@@ -1605,7 +1605,15 @@ disagree, this wins. The handoff carries the `file:line`s.
 
 **Batch 7, split at its re-verification (planner, 2026-11-03, on the plan's own "the rename, as its
 own commit"): 7a the trim (#217, #218), 7b the rename (#227), one out at a time, 7b after 7a lands.
-The gate is MET 2026-11-03** (`review/external-tools/roundtrip-7.md`): pong's `ai_tong.mid` imported by
+7a DONE 2026-11-03, insiculous_2d e7dd097, after code round 39** (what the round taught: all three
+reviewers read the retired journal as data loss — a Save As whose sidecar fails after the `.mid`
+landed, a `<stem>.recovered-*` sidecar's samples no longer prune roots, a legacy `.new` pair no
+longer opened — and each is rulings (i) and (j) applied, with no such file in the working set; the
+one accepted finding was `song init` missing from the command docs since batch 5; Ctrl+A now passes
+to the scene's Select All as every unbound Ctrl chord does, a rule for the Editor UX plan to revisit
+in one piece; the executor's one deviation, `ComposerMode::Tabs` removed since it laid out as Compact
+with the roll gone, stands, so #197's "the Tabs layout" now means Compact). **The gate was MET
+2026-11-03** (`review/external-tools/roundtrip-7.md`): pong's `ai_tong.mid` imported by
 MIDI Evil's `oracle project import-midi`, one trombone note added, `export-midi`, pong's 57 tests green
 over the exported file (baseline 57), the committed file restored; the panel's own open of the exported
 file and MIDI Evil's desktop Save-back were not driven headless.
