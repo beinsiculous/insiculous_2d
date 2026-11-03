@@ -1499,7 +1499,16 @@ dispatches the song once per owner per frame. Near the ceiling: `song_preview.rs
 Reviewers: kimi, gemini (the note-written widening and the closure are harness and seam). Leaves
 out: nothing of batch 5 — the three together are the one section above as reviewed.
 
-**Batch 6 — the settings panel: #216 (E14).** `settings_panel.rs` over the inspector's widgets: a
+**Batch 6 — the settings panel: #216 (E14). DONE 2026-11-03, insiculous_2d 50962e2, after code
+rounds 32 to 38** (what the rounds taught: the panel's walk reads the ui's focus once at its start
+and applies a cycle's choice after the row's fields draw — the ui keeps a focus until the field is
+drawn, and an earlier field's click takes it before a later field commits; a failed Enter keeps the
+field, revealed with its error row, while a failed press away lets go, since a re-focus there held
+the game's keys when the press was on Play; a program named in a preset's place skips the preset's
+fallback locations and keeps the preset for its diagnostics; a project request and a Test resolve
+through the category's choice, overrides being a file's; two side panels on one edge stack their
+narrow tabs, each holding its slot; a fixes snapshot stages a new file first or the reviewers read
+it as missing). `settings_panel.rs` over the inspector's widgets: a
 cycle row per category for the preset, a string field for the Custom template with the inline red
 invalid state, per-type overrides, a preset's program field (MIDI Evil's binary among them), the
 DAW project extensions, a Test button per category; Edit → External Tools… (every launch error
@@ -1527,8 +1536,11 @@ disagree, this wins. The handoff carries the `file:line`s.
   -p midi-evil` today and Aseprite's Steam path is a fallback location. So the "MIDI Evil binary
   field" is a per-preset program: `ExternalToolsConfig.programs: BTreeMap<PresetId, String>`
   (`#[serde(default)]`; a path or another name), applied by `resolve` after expansion as
-  `Launch.program` with `preset` kept, so the launcher's `find` still checks a path as a file and
-  a name on `PATH` then the fallbacks. Drawn under any preset row, blank meaning the preset's own.
+  `Launch.program`, the preset kept for its diagnostics and the launch marked `named_program` for a
+  name other than the preset's own bare name, so the launcher checks a path as a file and a name on
+  `PATH` and skips the preset's fallback locations — its own binary's — for it (the rounds' correction
+  of this section's first cut, which kept the fallbacks). Drawn under any preset row, blank meaning
+  the preset's own.
 - **The Custom tool's project field.** `ToolChoice::Custom(CustomTool)`, `CustomTool { file:
   CommandTemplate, project: Option<CommandTemplate> }` in a new `external_tools/custom_tool.rs`
   (`config.rs` is at 540 lines): serialized as the struct, deserialized through an untagged shape
