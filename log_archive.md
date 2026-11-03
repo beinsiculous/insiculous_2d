@@ -12,6 +12,50 @@ TECH_DEBT/ROADMAP docs — is what the sections below refer to.)
 
 ---
 
+## External Tools effort — DONE Nov 3 2026
+
+Eight batches in eight days (Oct 27 – Nov 3), planned by Claude Fable and built by a Claude Opus 5.5
+session from handoff docs, reviewed by kimi and gemini at every round and by codex wherever a screen
+was in it (41 rounds, 92 scorecard rows — `coordination/external-tools/reviewer-comparison.md`; the
+plan with every batch's done note `coordination/external-tools/plan.md`; the review record
+`review/_archive/external-tools/`, untracked). Twelve engine commits, 378f4c2 to 42f983b, and one in
+each of the six games. What landed: the file-type table and the group-first command templates, the
+config with its presets and the resolution order, the launcher (argv, never a shell; two threads a
+child; `ShellExecuteW` on Windows, `wslview` and the `.exe` rule under WSL), the asset browser's
+double-click, Enter and context menu, the console with its `file:line` links, the polling watcher
+and the hot reload of scripts, scenes, sheets, songs and samples, the song replaced at the next bar
+line, the Edit → External Tools… panel, the composer trimmed into the Conductor panel and renamed,
+and `docs/EXTERNAL_TOOLS.md`. The lessons that outlive the plan:
+
+- **Two writers, two files.** The engine writes the `.mid.ron`, MIDI Evil the `.mid`; no lock, no
+  conflict files, a changed score always adopted. That one ruling retired a save journal, a recovery
+  file, a transition guard and twenty-odd accepted review findings — and every later round raised
+  them again. Cite the ruling; never re-litigate it in a rebuttal.
+- **A gate before a deletion.** The score verbs went only after MIDI Evil's export round-tripped a
+  shipped song through the engine's own tests (`roundtrip-7.md`), so the engine never had a day with
+  no way to write notes.
+- **Translate placeholder values before expansion, never tokens after.** `{file}[:{line}]` glues the
+  path to its line in one token; a path translated afterwards cannot be found in it. The `.exe` rule
+  peeks at the program first (`program_of`), then translates, then expands, on a worker.
+- **Dirty is content, not history.** A flag derived from the undo history is wrong on merge, eviction
+  and undo-past-save; the document compares its export now against the bytes it last loaded or wrote.
+- **A seek is landed by its ordinal, not by the clock.** The host counts the commands it sent against
+  the conductor's `commands_applied`, waits one reading past (the atomics publish one at a time), and a
+  fresh conductor publishes zeros until its first block.
+- **Absent marks come from the loader's knowledge, never a stat at the tick.** A file arriving inside
+  the poll would be a silent baseline; the watcher is told what the host believes missing.
+- **A panel with fields**: the walk reads the focus once at its start, a cycle's choice applies after
+  the row draws, a focused field scrolled out is drawn off-screen, a failed Enter re-focuses and
+  reveals both the field and its error row.
+- **A rename is verified by normalising the diff**: with the old and new spellings mapped to one, the
+  residue is the whole review.
+- **Loop lessons**: stage a NEW file before a fixes snapshot or both reviewers call it missing; dispatch
+  codex after kimi exits or a fast reviewer's file leaks into a slow one's; a `git mv` wants the wc
+  gate with `--diff-filter=AMR`; stale artifacts in every game's `target/` after a workspace change
+  want `cargo clean -p` there too; and **never `cargo fmt` in this tree** — the sources are not
+  rustfmt-clean, a pass rewrote 250 files, and the index was rebuilt from HEAD plus the reviewed
+  snapshot plus the fix hunks.
+
 ## The composer re-scoped into the Conductor panel (2026-11-03)
 External Tools batch 7a (#217, #218). **What the composer was:** the Conductor effort's fifteen
 batches built a composing desk in the editor — a piano roll with its drag, nudges and keys, a

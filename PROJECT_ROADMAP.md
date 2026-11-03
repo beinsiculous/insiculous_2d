@@ -97,6 +97,16 @@ the `AddNote` family) is MIDI Evil's. The Sep 25 "K8 is not a cut candidate" rul
 half that stays; External Tools #217 is the re-scope, and the rename follows it
 (`coordination/external-tools/plan.md`).
 
+**Nov 3 2026: External Tools shipped** — eight batches over eight days (Oct 27 – Nov 3; twelve
+engine commits, 378f4c2 to 42f983b, and one in each game): the editor opens a project file in its
+tool at its place (a line for code, a track for MIDI Evil, art in Aseprite) through the
+Edit → External Tools… panel and its presets; scripts, scenes, sheets, songs and samples reload on
+save, a song at its next bar line; the composer is trimmed into the Conductor panel and renamed.
+`docs/EXTERNAL_TOOLS.md` is the user's guide; the plan and the scorecard are
+`coordination/external-tools/`; the review record is `review/_archive/external-tools/` (untracked);
+the lessons are `log_archive.md` § External Tools. Open: #219's hand matrix on macOS and Windows,
+deferred.
+
 **Editor**: the Playground UX sprint shipped Sep 12 2026 (its own section below); no
 editor sprint is queued next. **Web Playground** shipped Sep 2026; `docs/WEB_PLAYGROUND.md`.
 

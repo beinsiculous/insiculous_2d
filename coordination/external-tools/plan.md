@@ -1,5 +1,10 @@
 # External Tools — the plan
 
+**DONE — 2026-11-03.** Eight batches, twelve engine commits (378f4c2 to 42f983b) and one in each of
+the six games, 41 review rounds (the scorecard's § Totals); the review record is archived at
+`review/_archive/external-tools/`; #219's hand matrix on macOS and Windows is deferred by Jesse and the
+issue moved out of the sprint; the lessons are `log_archive.md` § External Tools.
+
 **Settled at v7 — 2026-10-27, Jesse.** Rounds 1–5 are adjudicated in `review/external-tools/`;
 #211 is closed won't-do, #217 and #218 are reworded, the rename is #227, the milestone's
 description carries the batch order, and the design note `docs/sprints/external-tools.md` is

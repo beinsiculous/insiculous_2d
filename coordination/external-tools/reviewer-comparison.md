@@ -101,3 +101,24 @@ totals (`../conductor/reviewer-comparison.md` § Totals) are the baseline: kimi 
 | batch 7b the rename (round 40) | codex | 0 | 0 | 0 | 0 | mergeable; nothing on the two stills — the View menu's "Conductor" item checked over the panel titled "Conductor", native and in the playground | 0 m 47 s |
 | batch 8 polish + docs (round 41) | kimi | 2 | 2 | 0 | 0 | real: a deferred WSL `.exe` launch says "Opened …" at thread start, before wslpath or the spawn (pre-existing on the wslview path; fixed as a "Starting …" log line, the typed completion event a follow-up); a WSL `.exe` Test prints no argv while the doc promises the exact command (fixed: expanded on the Linux paths for display) | 1 m 48 s |
 | batch 8 polish + docs (round 41) | gemini | 5 | 3 | 1 | 1 | real: kimi's two, and `wslpath` run twice on one path for a project request (reused); false: a quoted preset Program field bypasses the translation — the field is one value and never took quotes, a quoted path fails `find` on every platform since batch 6 (a doc line says "typed bare"); policy: the six games' edits are scope creep — the plan's batch 8 names them | 10 m 18 s |
+
+## Totals (2026-11-03, the effort closed)
+
+Ninety-two rows, rounds 1 to 41, summed by the `findings`, `real`, `false` and `policy` columns
+(`real + false + policy` can differ from `findings` where a row split one finding or scored a
+disposition the reviewer never wrote).
+
+| reviewer | rows | findings | real | false | policy | real share |
+|---|---|---|---|---|---|---|
+| kimi | 41 | 129 | 119 | 3 | 7 | 92 % |
+| gemini | 31 | 163 | 97 | 43 | 23 | 59 % |
+| codex | 16 | 61 | 56 | 0 | 5 | 91 % |
+| the planner | 4 | 10 | 9 | 1 | 0 | 90 % |
+
+Against the Conductor's baseline (kimi 85 %, gemini 54 %, codex 97 %): kimi climbed, reading the
+repo since September and converging on policy only where every reviewer did (the retired journal);
+gemini found the most and misread the most — the two things it misreads every round are the
+headless virtual clock and a seam it has not traced to its caller — and is still the one that finds
+the seam nobody else does (the host-level bar swap, the two-phase translation); codex's stills found
+nothing wrong twice, which is what a clean screen looks like. Kimi stays the default; gemini on a
+harness, fixture or seam; codex wherever a screen is.
