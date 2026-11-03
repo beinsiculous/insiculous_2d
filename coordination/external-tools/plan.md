@@ -1612,7 +1612,7 @@ longer opened — and each is rulings (i) and (j) applied, with no such file in 
 one accepted finding was `song init` missing from the command docs since batch 5; Ctrl+A now passes
 to the scene's Select All as every unbound Ctrl chord does, a rule for the Editor UX plan to revisit
 in one piece; the executor's one deviation, `ComposerMode::Tabs` removed since it laid out as Compact
-with the roll gone, stands, so #197's "the Tabs layout" now means Compact). **The gate was MET
+with the roll gone, stands, so #197's "the Tabs layout" now means Compact). **7b DONE 2026-11-03, insiculous_2d 2caecc4, after code round 40** (a rename verified to be only a rename: the planner normalised the staged diff and the sole code residue was nine prose-style test names gaining `_panel`; kimi and codex found nothing, gemini's four were rebutted — no consumer outside the workspace names the old constant or label, widget ids are per-frame and persisted nowhere, and ruling (c) keeps bare `conductor` in identifiers while prose says "the Conductor panel"; two planner doc hunks after the review: `music_midi/src/lib.rs` no longer says the panel writes with `write_smf`, `game_impl.rs`'s seal-on-release comment names the sidebar's number-field nudges; for batch 8: the games' home `LICENSE` Comment lines are edited by hand, since Save writes a header only where none exists, and a handoff with a `git mv` in it runs the wc gate with `--diff-filter=AMR`). **The gate was MET
 2026-11-03** (`review/external-tools/roundtrip-7.md`): pong's `ai_tong.mid` imported by
 MIDI Evil's `oracle project import-midi`, one trombone note added, `export-midi`, pong's 57 tests green
 over the exported file (baseline 57), the committed file restored; the panel's own open of the exported
