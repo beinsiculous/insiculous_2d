@@ -1752,6 +1752,78 @@ nothing; this closes the sprint, and the close-out (the milestone's issues close
 the lessons to `log_archive.md`, `review/external-tools/` archived, the scorecard's totals) is the
 planner's.
 
+**Batch 8 re-verified 2026-11-03 against d1ed108, after 7b** — what the polish and the docs pass find in
+the tree, and the two issue texts corrected where the plan superseded them:
+- **Already shipped by batches 1–6**: the WSL OS default (`spawn.rs:341-366` — `wslview` on the `wslpath -w`
+  path, the translation on its own thread, wslu named when absent); the Flatpak hint (`flatpak_hint`,
+  `spawn.rs:105`: offered for a preset's own program whenever the preset carries a `flatpak_id` — Aseprite,
+  Audacity — the plan's text, not #219's "when `/var/lib/flatpak` exists" condition); `PATHEXT`
+  (`spawn.rs:115-147`), so `code` finds `code.cmd`; `ShellExecuteW` (`spawn.rs:306-333`) with both
+  `windows-sys` features declared (`editor_integration/Cargo.toml:30`: `Win32_UI_Shell` and
+  `Win32_UI_WindowsAndMessaging`), so "the first Windows compile" is a check, not a fix. #219's `cmd /C
+  start ""` fallback is superseded by ruling (h): no `cmd.exe` exists anywhere, its argument escaping is
+  moot, and a `code.cmd` launch gets `std::process::Command`'s own batch-file quoting — a platform note.
+- **The one code item left of #219, the `.exe` rule**: nothing translates a path placeholder for a Windows
+  program under WSL (`grep -rn "exe" crates/editor/src/external_tools crates/editor_integration/src/
+  editor_game/external_tools*` finds `EXECUTABLE_EXTENSIONS` at `config.rs:277`, the preset-name compare,
+  and one template test). `resolve_with` (`config.rs:280`) expands the template in one step from a
+  `LaunchTarget` whose `file` and `project` are Linux paths, so the program is not known before the paths
+  are glued into tokens (`{file}:{line}`) — the two-phase resolution the batch names. Target shape: a
+  pure peek in `editor::external_tools` returning the program a choice would run (the template's first
+  span, `config.programs` applied), so the host decides before expanding; on `Platform::Wsl` with that
+  program ending `.exe` (ASCII case-insensitive) the host translates `target.file` and `target.project`
+  through `wslpath -w` **off the frame, on the worker `open_with_wslview` already uses**, then resolves and
+  spawns there; a failed translation is one sentence naming the path and the program. Only `.exe`: a
+  `.bat`/`.cmd` is out of the rule by the plan's text. Tests: the peek in `config_tests.rs`; the translation
+  against a fake `wslpath` the test puts on a `ProgramSearch` (`spawn_tests.rs` has the pattern).
+- **The Windows compile, here**: no Windows target is installed on Iroh (`rustup target list --installed`:
+  wasm32 and linux-gnu) and no CI runs Windows or macOS (`.github/workflows/`: `wasm-check.yml`,
+  `add-to-project.yml`), so the batch adds `rustup target add x86_64-pc-windows-gnu` and `cargo check -p
+  editor_integration --target x86_64-pc-windows-gnu` as a gate; a failure outside `spawn.rs` is a
+  dependency's, reported and not chased.
+- **The hand matrix is Jesse's**, recorded on #219: Linux `xdg-open`, macOS `open`, Windows `ShellExecuteW`,
+  WSL `wslview`, each on a path with a space, an `&` and a comma; `code.cmd` through `PATHEXT`;
+  `ShellExecuteW` on an unassociated type and an offline share — the worker-thread move is conditional on
+  a stall being seen. Iroh runs the Linux arm (its `/proc/version` has no "microsoft"; the WSL arm wants a
+  WSL shell). **The sprint does not close before the matrix is recorded, or Jesse rules it closes without
+  the macOS and Windows arms.**
+- **The docs, what exists**: `docs/EXTERNAL_TOOLS.md` does not; `CLAUDE.md`'s SSOT table has no
+  external-tools row and `training.md` names neither `external_tools/` nor the panel; the two editor guides
+  carry the file maps and pitfall rows (`editor_integration/CLAUDE.md:31,47,103`; `editor/CLAUDE.md:33,
+  75,143-147`) but no pointer to a user doc; `docs/SCRIPTING.md` § Reloading a script during Play (batch 3)
+  stands; `docs/SONG_FORMAT.md` already carries the fingerprint rule (:66, :395-398), MIDI Evil's ownership
+  (:305) and the temp-and-rename rule (:344) — verified and cross-linked, rewritten nowhere;
+  `docs/EDITOR_COMMAND_API.md` § Songs names MIDI Evil (:183-196) — verify only; `docs/WEB_PLAYGROUND.md:314`
+  says the browser's workflow is the file round trip — cross-link; `README.md`'s docs list (:470) gains the
+  new doc's line. `presets.rs` carries each source URL in a doc comment (`:42,57,71,84,122`) and no date;
+  the doc's table carries 2026-10-26 per row, the acceptance's "page and verification date". The DAW
+  contract is § MIDI Evil's half's table verbatim, with MIDI Evil's 2026-11-03 status
+  (`../midi-evil/docs/insiculous-crossing.md` § 2026-11-03: `--track-index` accepted, the index wins; the
+  binary must be on `PATH` or named in the Program field).
+- **The roadmap is the close-out's, not the executor's**: row K's paragraph (`PROJECT_ROADMAP.md:92-98`) is
+  Jesse's Oct 26 text; the "shipped" line is the planner's when the sprint closes, and Jesse's dated
+  reversal line is his.
+- **The six games, the 7b carry-over, counted**: 30 guide lines (pong `CLAUDE.md:179,182,183,204,208,209,
+  211`; snake :80,82,83,114; breakout :184,186,187,215; frogger :129,131,132,141,175; asteroids
+  :74,76,77,84,121; space_invaders :92,94,95,102,137), **one `.rs`** — pong `src/music_tests.rs:76`'s
+  assertion message "the composer's save requires it" — and six `assets/ai/music/LICENSE:2` Comment lines,
+  hand-edited to `samples.rs:211`'s text because Save writes a header only where none exists
+  (`samples.rs:203-206`). Three kinds of sentence: history ("sequenced through the composer's command API
+  (`song new`, …)") stays past tense and says the score verbs are gone and the score is MIDI Evil's;
+  instruction ("open the song in the composer (`cargo run --features editor`, File → Open Song)") says the
+  Conductor panel — `File → Open Song...` exists (`menu/mod.rs:191`); runtime ("the composer's transport",
+  "a composer song open", "the composer's audition") says the Conductor panel's. `game-template` and the
+  games' `README.md`s have no mention.
+- **Five lockfiles are already dirty**: ` M Cargo.lock` in snake, breakout, frogger, asteroids and
+  space_invaders is one line each — `windows-sys 0.61.2` under `editor_integration`'s dependencies, due
+  since batch 1 added it (pong's went in with its 2026-11-03 work; snake's lock was last committed
+  2026-10-26). They are the batch's, staged and committed with each game's guide.
+- **Seven repos, seven commits, one report**: `insiculous_2d` and the six games; the report carries each
+  repo's own `git status --porcelain` and `--stat`. The games' gates: `scripts/check_games.sh --test`
+  from the engine (pong's test file and five lockfiles changed) and `scripts/check_audio_provenance.sh
+  ../games/<game>` for each of the six. Reviewers kimi and gemini (the `.exe` seam and the cross-compile
+  are a harness; no screen, so no codex); the round is 41.
+
 **Order.** 1 → 2a → 2b → 3 in sequence (each builds on the last's types and console); 4 after 2b; 5 after
 3 and 4; 6 any time after 1; 7 after 4 and 5 and its gate; 8 after 6, before 7 if 7's gate is not
 yet met. One batch out at a time, as the Conductor ran it.
