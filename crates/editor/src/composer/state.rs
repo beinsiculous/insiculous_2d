@@ -1,6 +1,6 @@
 //! What the composer remembers between frames: which of its areas holds the keyboard, the
-//! one track the roll and the note list show, the four scroll states, the zoom, the
-//! keyboard cursors, and the songs found in the two song folders.
+//! one track the transport shows, the sidebar's scroll and keyboard cursors, and the songs
+//! found in the two song folders.
 //!
 //! The state follows the document it was built against: the host bumps a generation each
 //! time the song is replaced, created or closed, and [`ComposerState::follow`] resets
@@ -8,25 +8,11 @@
 
 use std::path::Path;
 
-use music_midi::NoteId;
 use ui::WidgetId;
 
-use crate::external_tools::{scan_sound_fonts, SoundFontScan};
+use crate::external_tools::{scan_songs, scan_sound_fonts, SoundFontScan};
 use crate::scroll::ScrollState;
 use crate::song::SongDocument;
-
-/// The Songs list's scan, from its home among the external tools.
-pub use crate::external_tools::scan_songs;
-
-/// The key a new song's cursor starts on: middle C.
-const MIDDLE_C: u8 = 60;
-
-/// The zoom a song opens at, in pixels per quarter note.
-pub const DEFAULT_PIXELS_PER_QUARTER: f32 = 64.0;
-/// The widest the roll zooms out, in pixels per quarter note.
-pub const MINIMUM_PIXELS_PER_QUARTER: f32 = 4.0;
-/// The closest the roll zooms in, in pixels per quarter note.
-pub const MAXIMUM_PIXELS_PER_QUARTER: f32 = 400.0;
 
 /// Which of the composer's areas holds the keyboard. `None` is the composer unfocused:
 /// every key goes to the editor and the game as before.
@@ -35,18 +21,11 @@ pub enum ComposerFocus {
     #[default]
     None,
     Transport,
-    PianoRoll,
-    NoteList,
     Sidebar,
 }
 
 /// The order Tab walks the areas in.
-const FOCUS_CYCLE: [ComposerFocus; 4] = [
-    ComposerFocus::Transport,
-    ComposerFocus::PianoRoll,
-    ComposerFocus::NoteList,
-    ComposerFocus::Sidebar,
-];
+const FOCUS_CYCLE: [ComposerFocus; 2] = [ComposerFocus::Transport, ComposerFocus::Sidebar];
 
 impl ComposerFocus {
     /// Whether the composer holds the keyboard at all.
@@ -77,8 +56,6 @@ impl ComposerFocus {
         match self {
             ComposerFocus::None => "Composer",
             ComposerFocus::Transport => "Transport",
-            ComposerFocus::PianoRoll => "Piano roll",
-            ComposerFocus::NoteList => "Notes",
             ComposerFocus::Sidebar => "Song",
         }
     }
@@ -112,13 +89,6 @@ impl SidebarSection {
     }
 }
 
-/// Where Enter or Insert adds a note in the roll: a tick and a key.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RollCursor {
-    pub tick: u64,
-    pub key: u8,
-}
-
 /// A keyboard request to a control the next render draws: the render knows which
 /// control sits at a cursor index; the key handler, which runs before it, does not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -140,25 +110,12 @@ pub enum ControlRequest {
 #[derive(Debug, Clone)]
 pub struct ComposerState {
     pub focus: ComposerFocus,
-    /// The track the roll and the note list show, an index into `SongData::tracks`; only
-    /// a track with a channel, and `None` for a song with none.
+    /// The track the transport shows and "Add a part" builds on, an index into
+    /// `SongData::tracks`; only a track with a channel, and `None` for a song with none.
     pub active_track: Option<usize>,
     /// The song generation everything here was built against.
     generation: Option<u64>,
-    pub roll_horizontal: ScrollState,
-    pub roll_vertical: ScrollState,
-    pub note_list_scroll: ScrollState,
     pub sidebar_scroll: ScrollState,
-    pub pixels_per_quarter: f32,
-    pub cursor: RollCursor,
-    /// Whether the roll has been scrolled to its cursor's key once since the song opened.
-    pub roll_centered: bool,
-    /// Bring the cursor into view on the next frame: a key moved it.
-    pub reveal_cursor: bool,
-    /// The note list's keyboard row, an index into the active track's notes.
-    pub note_list_row: usize,
-    /// Bring the note list's row into view on the next frame: a key moved it.
-    pub reveal_row: bool,
     /// The transport control the arrows reached.
     pub transport_control: usize,
     /// How many controls the transport drew last frame, so the arrows stop at the last.
@@ -178,8 +135,6 @@ pub struct ComposerState {
     /// entry its first frame opened. Closed by the field's commit, by its losing focus with
     /// no scrub running, and by a frame that does not draw it.
     pub field_gesture: Option<WidgetId>,
-    /// The one area shown below the compact width.
-    pub tabs_area: ComposerFocus,
     pub request: Option<ControlRequest>,
     /// Every MIDI file under the song folders, by its asset-relative path.
     pub songs: Vec<String>,
@@ -192,8 +147,6 @@ pub struct ComposerState {
     pub panel_drawn: bool,
     /// Every bank under `soundfonts/`, which the Song section's SoundFont row cycles.
     pub sound_fonts: SoundFontScan,
-    /// The program the Parts section's Add-track row gives the next track it adds.
-    pub new_track_program: u8,
     /// Whether the host's song preview is playing, written by the host each frame: the
     /// transport's Play and Stop act on it.
     pub preview_playing: bool,
@@ -208,19 +161,7 @@ impl Default for ComposerState {
             focus: ComposerFocus::None,
             active_track: None,
             generation: None,
-            roll_horizontal: ScrollState::default(),
-            roll_vertical: ScrollState::default(),
-            note_list_scroll: ScrollState::default(),
             sidebar_scroll: ScrollState::default(),
-            pixels_per_quarter: DEFAULT_PIXELS_PER_QUARTER,
-            cursor: RollCursor {
-                tick: 0,
-                key: MIDDLE_C,
-            },
-            roll_centered: false,
-            reveal_cursor: false,
-            note_list_row: 0,
-            reveal_row: false,
             transport_control: 0,
             transport_control_count: 0,
             sidebar_control: 0,
@@ -229,13 +170,11 @@ impl Default for ComposerState {
             sidebar_section: SidebarSection::Song,
             sidebar_section_starts: Vec::new(),
             field_gesture: None,
-            tabs_area: ComposerFocus::PianoRoll,
             request: None,
             songs: Vec::new(),
             songs_scanned: false,
             panel_drawn: false,
             sound_fonts: SoundFontScan::default(),
-            new_track_program: 0,
             preview_playing: false,
             playhead_tick: None,
         }
@@ -304,17 +243,6 @@ impl ComposerState {
         self.sidebar_control = start;
     }
 
-    /// Give `area` the keyboard and, below the compact width, show it.
-    pub fn focus_area(&mut self, area: ComposerFocus) {
-        self.focus = area;
-        if matches!(
-            area,
-            ComposerFocus::PianoRoll | ComposerFocus::NoteList | ComposerFocus::Sidebar
-        ) {
-            self.tabs_area = area;
-        }
-    }
-
     /// Find every song in the two song folders under `asset_base` again, and every bank.
     /// Record a draw of the panel; whether its lists want a scan first: never scanned, or
     /// scanned while the panel was hidden — the sound emitter's song rule shares the list —
@@ -331,9 +259,9 @@ impl ComposerState {
         self.songs_scanned = true;
     }
 
-    /// Keep `active_track` a track the song still has with a channel: an undone `AddTrack`
-    /// shrinks the list under the selector, and a stale index showed an empty roll and let
-    /// "Add a part" build one on a track that was not there.
+    /// Keep `active_track` a track the song still has with a channel: an adopted score may
+    /// have fewer tracks than the one it replaced, and a stale index let "Add a part" build
+    /// one on a track that was not there.
     pub fn reconcile_active_track(&mut self, song: Option<&SongDocument>) {
         let Some(song) = song else {
             self.active_track = None;
@@ -384,16 +312,4 @@ pub fn next_track(song: &SongDocument, current: Option<usize>, forward: bool) ->
         (None, _) => 0,
     };
     Some(tracks[next])
-}
-
-/// The selected notes of the song that sit on `track`.
-pub fn selected_on_track(song: &SongDocument, track: usize) -> Vec<NoteId> {
-    song.selection()
-        .notes()
-        .filter(|note| {
-            song.data()
-                .note_image(*note)
-                .is_some_and(|image| image.track == track)
-        })
-        .collect()
 }

@@ -1,6 +1,6 @@
-//! An archive's songs: Export carries the open song's live files and drops only its own
-//! journal pair; import refuses a final sidecar without its MIDI file and a `.mid` that is
-//! not MIDI, and leaves out a journal leftover that fails the same checks.
+//! An archive's songs: Export carries the open song's live files over its saved ones and
+//! every other file unchanged; import refuses a sidecar without its MIDI file and a `.mid`
+//! that is not MIDI, and takes a `.new` an older project left as any other file.
 
 use super::tests::{create_test_zip, two_scene_project, valid_manifest_ron};
 use super::*;
@@ -15,7 +15,7 @@ fn paths(files: &[crate::store::StoredFile]) -> Vec<&str> {
 }
 
 #[test]
-fn export_carries_the_live_song_over_its_saved_files_and_drops_only_its_own_journal_pair() {
+fn export_carries_the_live_song_over_its_saved_files_and_every_other_file_unchanged() {
     let temp_dir = tempfile::tempdir().unwrap();
     let root = temp_dir.path();
     let manifest = two_scene_project(root);
@@ -25,7 +25,6 @@ fn export_carries_the_live_song_over_its_saved_files_and_drops_only_its_own_jour
         ("theme.mid", MIDI),
         ("theme.mid.ron", SIDECAR),
         ("theme.mid.new", MIDI),
-        ("theme.mid.ron.new", SIDECAR),
         ("other.mid", MIDI),
         ("other.mid.ron", SIDECAR),
         ("other.mid.new", MIDI),
@@ -56,9 +55,10 @@ fn export_carries_the_live_song_over_its_saved_files_and_drops_only_its_own_jour
             "assets/music/other.mid.new",
             "assets/music/other.mid.ron",
             "assets/music/theme.mid",
+            "assets/music/theme.mid.new",
             "assets/music/theme.mid.ron",
         ],
-        "another song's interrupted save keeps its recovery"
+        "a file an older project's save left is carried as any other file"
     );
     let sidecar = files.iter().find(|file| file.path == "assets/music/theme.mid.ron").unwrap();
     assert_eq!(sidecar.bytes, live_sidecar, "the live sidecar, not the saved one");
@@ -106,28 +106,24 @@ fn import_refuses_a_final_sidecar_without_its_midi_file_and_a_mid_that_is_not_mi
 }
 
 #[test]
-fn import_takes_a_lone_journal_sidecar_and_leaves_out_a_truncated_one_with_a_note() {
+fn import_takes_a_new_file_an_older_project_left_as_any_other_file_whatever_it_holds() {
     let manifest = valid_manifest_ron("songs");
-    let lone = create_test_zip(&[("project.ron", manifest.as_bytes()), ("assets/music/theme.mid.ron.new", SIDECAR)]);
-    let (_, files) = import_project(&lone, "v1").unwrap();
-    assert_eq!(paths(&files), ["assets/music/theme.mid.ron.new"], "a journal file needs no pair");
-
-    let mut entries = vec![
-        ("assets/music/theme.mid.new".to_string(), b"MTh".to_vec()),
-        ("assets/music/theme.mid.ron.new".to_string(), b"SongFile(vers".to_vec()),
-        ("assets/music/theme.mid".to_string(), MIDI.to_vec()),
-    ];
-    let notes = songs::check_song_entries(&mut entries).expect("journal leftovers never refuse");
-    assert_eq!(entries.len(), 1, "both truncated journal files are left out");
-    assert_eq!(notes.len(), 2);
-    assert!(notes.iter().all(|note| note.contains("was left out")), "{notes:?}");
-
-    let truncated = create_test_zip(&[
+    let leftovers = create_test_zip(&[
         ("project.ron", manifest.as_bytes()),
         ("assets/music/theme.mid", MIDI),
         ("assets/music/theme.mid.ron", SIDECAR),
         ("assets/music/theme.mid.new", b"MTh"),
+        ("assets/music/theme.mid.ron.new", b"SongFile(vers"),
     ]);
-    let (_, files) = import_project(&truncated, "v1").unwrap();
-    assert_eq!(paths(&files), ["assets/music/theme.mid", "assets/music/theme.mid.ron"]);
+    let (_, files) = import_project(&leftovers, "v1").unwrap();
+    assert_eq!(
+        paths(&files),
+        [
+            "assets/music/theme.mid",
+            "assets/music/theme.mid.new",
+            "assets/music/theme.mid.ron",
+            "assets/music/theme.mid.ron.new",
+        ],
+        "a truncated .new is no song's file, so it neither refuses the archive nor is left out"
+    );
 }

@@ -26,7 +26,6 @@ use crate::panel_renderer;
 
 mod api;
 mod asset_browser_keys;
-mod composer_drag;
 mod composer_keys;
 mod console;
 mod game_impl;
@@ -80,9 +79,6 @@ struct EditorGame<G: Game> {
     pub(super) init_music: init_music::InitMusic,
     /// The song pending or playing in the music slot, as the song phase last read it.
     pub(super) slot_song: Option<std::path::PathBuf>,
-    /// A live drag in the composer's roll: owned here, not by the panel's render, so every
-    /// way the composer loses focus can drop it.
-    composer_drag: Option<composer_drag::ComposerDrag>,
     /// Live gizmo drag: start transforms/colliders for every selection root,
     /// captured when the drag begins (applied idempotently, committed as one
     /// undo entry on release, restored verbatim on Escape).
@@ -157,7 +153,6 @@ impl<G: Game> EditorGame<G> {
             song_preview: song_preview::SongPreview::default(),
             init_music: init_music::InitMusic::None,
             slot_song: None,
-            composer_drag: None,
             gizmo_drag: None,
             clipboard: Vec::new(),
             physics_settings: None,
@@ -521,8 +516,6 @@ mod api_tests;
 mod asset_browser_keys_tests;
 #[cfg(test)]
 mod camera_follow_tests;
-#[cfg(test)]
-mod composer_drag_tests;
 #[cfg(test)]
 mod composer_keys_tests;
 #[cfg(test)]

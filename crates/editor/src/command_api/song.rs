@@ -1,5 +1,6 @@
 //! The `song …` verbs: their parser arm, the two song queries, and the pure song writes,
-//! which run through `SongDocument::apply` exactly as the composer's GUI does.
+//! which run through `SongDocument::apply` exactly as the composer's GUI does. The score is
+//! not the engine's to write: a score edit, and `song new`, are refused naming MIDI Evil.
 //!
 //! Song writes are stricter than scene writes: refused in Playing *and* Paused (a running
 //! game owns the music), and refused while a scene batch is open — that batch is one
@@ -12,7 +13,22 @@ use super::parse::{split_fixed_tokens, tokens};
 use super::write::WriteCtx;
 use super::{ApiError, HostedWrite, PureWrite, Query, QueryCtx, Request, WriteCmd};
 use crate::play_state::EditorPlayState;
-use crate::song::{EditingPolicy, Gesture, SongDocument, SongEdit, SongEditError};
+use crate::song::{Gesture, SongEdit, SongEditError};
+
+/// The score edits the engine once made, by the name `song edit` took them under: the score
+/// is MIDI Evil's now, and each is refused naming it rather than read as an unknown edit.
+const SCORE_EDITS: [&str; 10] = [
+    "AddNote",
+    "DeleteNotes",
+    "MoveNotes",
+    "ResizeNotes",
+    "SetVelocity",
+    "SetPitch",
+    "AssignPart",
+    "SetTempo",
+    "SetTimeSignature",
+    "AddTrack",
+];
 
 /// Why a song write cannot run now, if it cannot: a play session, or an open scene batch.
 /// Hosted song writes ask it too.
@@ -41,9 +57,13 @@ pub(super) fn parse(line: &str) -> Result<Request, ApiError> {
         if rest.is_empty() {
             return Err(ApiError::Parse("usage: song edit <json>".to_string()));
         }
-        let edit: SongEdit = serde_json::from_str(rest).map_err(|error| {
-            ApiError::Parse(format!("song edit needs a SongEdit as JSON: {error}"))
-        })?;
+        let parse_error =
+            |error: serde_json::Error| ApiError::Parse(format!("song edit needs a SongEdit as JSON: {error}"));
+        let value: Value = serde_json::from_str(rest).map_err(parse_error)?;
+        if let Some(name) = score_edit_named(&value) {
+            return Err(written_in_midi_evil(&format!("{name} is a score edit")));
+        }
+        let edit: SongEdit = serde_json::from_value(value).map_err(parse_error)?;
         return Ok(Request::Write(WriteCmd::Pure(PureWrite::SongEdit(edit))));
     }
     let mut words = tokens(line)?.into_iter().skip(1);
@@ -61,25 +81,9 @@ pub(super) fn parse(line: &str) -> Result<Request, ApiError> {
         })),
         (Some("undo"), []) => Ok(Request::Write(WriteCmd::Pure(PureWrite::SongUndo))),
         (Some("redo"), []) => Ok(Request::Write(WriteCmd::Pure(PureWrite::SongRedo))),
-        (Some("select"), [none]) if none == "none" => {
-            Ok(Request::Write(WriteCmd::Pure(PureWrite::SongSelect {
-                notes: Vec::new(),
-            })))
-        }
-        (Some("select"), numbers) if !numbers.is_empty() => {
-            let notes = numbers
-                .iter()
-                .map(|number| {
-                    number
-                        .parse::<u64>()
-                        .map_err(|_| ApiError::Parse(format!("\"{number}\" is not a note number")))
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(Request::Write(WriteCmd::Pure(PureWrite::SongSelect {
-                notes,
-            })))
-        }
-        (Some("new"), []) => hosted(HostedWrite::SongNew { discard }),
+        (Some("new"), []) => Err(written_in_midi_evil(
+            "song new makes a score — `song init <path.mid>` maps one MIDI Evil exported",
+        )),
         (Some("open"), [path]) => hosted(HostedWrite::SongOpen {
             path: path.clone(),
             discard,
@@ -110,13 +114,33 @@ pub(super) fn parse(line: &str) -> Result<Request, ApiError> {
         }),
         _ => Err(ApiError::Parse(
             "usage: song | song notes [part] | song edit <json> | song undo | song redo | \
-             song select <note>…|none | song new [discard] | song open <path> [discard] | \
+             song open <path> [discard] | \
              song init <path> | song save [path [overwrite]] | song close [discard] | \
              song play [beat] | song stop | \
              song seek <beat> | song trigger <action>"
                 .to_string(),
         )),
     }
+}
+
+/// The first score edit `edit` names — a `Batch`'s members searched however deep — when
+/// it names one.
+fn score_edit_named(edit: &Value) -> Option<&'static str> {
+    let Value::Object(fields) = edit else {
+        return None;
+    };
+    fields.iter().find_map(|(name, body)| match name.as_str() {
+        "Batch" => body.as_array()?.iter().find_map(score_edit_named),
+        name => SCORE_EDITS.iter().copied().find(|score_edit| *score_edit == name),
+    })
+}
+
+/// The refusal of what writes a score: `what` names it, the rest says where scores are
+/// written now.
+fn written_in_midi_evil(what: &str) -> ApiError {
+    ApiError::Refused(format!(
+        "{what}; the score is written in MIDI Evil, which exports the .mid the engine plays"
+    ))
 }
 
 /// A whole beat counted from zero: the preview moves to the start of a beat, never inside one.
@@ -132,8 +156,7 @@ fn parse_beat(word: &str) -> Result<u64, ApiError> {
     Ok(beat as u64)
 }
 
-/// The `song` query: the open song's file, tracks, timing, state and selection, or
-/// `{"open": false}`.
+/// The `song` query: the open song's file, tracks, timing and state, or `{"open": false}`.
 pub(super) fn answer_song(ctx: &QueryCtx<'_>) -> Value {
     let Some(song) = ctx.song else {
         return json!({ "open": false });
@@ -175,17 +198,11 @@ pub(super) fn answer_song(ctx: &QueryCtx<'_>) -> Value {
             })
         })
         .collect();
-    let refused_reason = match song.editing() {
-        EditingPolicy::Full => None,
-        EditingPolicy::Refused { reason } => Some(reason.clone()),
-    };
     json!({
         "open": true,
         "path": song.path().map(|path| path.display().to_string()),
         "imported_from": song.imported_from().map(|path| path.display().to_string()),
         "dirty": song.is_dirty(),
-        "editable": refused_reason.is_none(),
-        "refused_reason": refused_reason,
         "ticks_per_quarter": data.ticks_per_quarter(),
         "soundfont": file.soundfont,
         "looping": file.looping,
@@ -196,7 +213,6 @@ pub(super) fn answer_song(ctx: &QueryCtx<'_>) -> Value {
         "tempo_changes": tempo_changes,
         "time_signatures": time_signatures,
         "provenance": serde_json::to_value(&file.provenance).unwrap_or(Value::Null),
-        "selection": song.selection().notes().map(|note| note.number()).collect::<Vec<_>>(),
         "can_undo": song.history().can_undo(),
         "can_redo": song.history().can_redo(),
     })
@@ -252,49 +268,24 @@ pub(super) fn run_write(write: &PureWrite, ctx: &mut WriteCtx<'_>) -> Result<Val
     let song = ctx.song.as_mut().ok_or_else(no_song)?;
     match write {
         PureWrite::SongEdit(edit) => {
-            let before: Vec<u64> = note_numbers(song);
             song.apply(edit.clone(), Gesture::Discrete)
                 .map_err(edit_refusal)?;
-            let added: Vec<u64> = note_numbers(song)
-                .into_iter()
-                .filter(|number| !before.contains(number))
-                .collect();
             Ok(json!({
                 "command": "song edit",
                 "edit": edit.name(),
-                "added_notes": added,
                 "dirty": song.is_dirty(),
             }))
         }
-        PureWrite::SongUndo => Ok(json!({ "undid": song.undo().map_err(edit_refusal)? })),
-        PureWrite::SongRedo => Ok(json!({ "redid": song.redo().map_err(edit_refusal)? })),
-        PureWrite::SongSelect { notes } => {
-            song.select_notes(notes).map_err(edit_refusal)?;
-            let selection: Vec<u64> = song.selection().notes().map(|note| note.number()).collect();
-            Ok(json!({ "selection": selection }))
-        }
+        PureWrite::SongUndo => Ok(json!({ "undid": song.undo() })),
+        PureWrite::SongRedo => Ok(json!({ "redid": song.redo() })),
         other => Err(ApiError::Invalid(format!("{other:?} is not a song write"))),
     }
 }
 
-fn note_numbers(song: &SongDocument) -> Vec<u64> {
-    song.data()
-        .tracks()
-        .iter()
-        .flat_map(|track| track.units())
-        .flat_map(|unit| &unit.notes)
-        .map(|note| note.id.number())
-        .collect()
-}
-
 fn edit_refusal(error: SongEditError) -> ApiError {
-    match error {
-        SongEditError::Refused { .. } => ApiError::Refused(error.to_string()),
-        SongEditError::UnknownNote(_) => ApiError::NotFound(error.to_string()),
-        other => ApiError::Invalid(other.to_string()),
-    }
+    ApiError::Invalid(error.to_string())
 }
 
 fn no_song() -> ApiError {
-    ApiError::Refused("no song is open — `song new` or `song open <path>`".to_string())
+    ApiError::Refused("no song is open — `song open <path>` or `song init <path>`".to_string())
 }

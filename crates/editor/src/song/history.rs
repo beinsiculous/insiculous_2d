@@ -137,7 +137,7 @@ impl SongHistory {
     }
 
     /// Take the entry on top to undo it; give it to [`SongHistory::push_undone`] once
-    /// undone, or back to [`SongHistory::restore_undo`] if undoing failed.
+    /// undone.
     pub(super) fn pop_undo(&mut self) -> Option<SongHistoryEntry> {
         self.undo_stack.pop_back()
     }
@@ -146,12 +146,8 @@ impl SongHistory {
         self.redo_stack.push(entry);
     }
 
-    pub(super) fn restore_undo(&mut self, entry: SongHistoryEntry) {
-        self.undo_stack.push_back(entry);
-    }
-
     /// Take the last undone entry to redo it; it goes back on top, its id with it, through
-    /// [`SongHistory::push_redone`] — or [`SongHistory::restore_redo`] if redoing failed.
+    /// [`SongHistory::push_redone`].
     pub(super) fn pop_redo(&mut self) -> Option<SongHistoryEntry> {
         self.redo_stack.pop()
     }
@@ -160,38 +156,17 @@ impl SongHistory {
         self.undo_stack.push_back(entry);
     }
 
-    pub(super) fn restore_redo(&mut self, entry: SongHistoryEntry) {
-        self.redo_stack.push(entry);
-    }
-
-    /// Drop every entry, undo and redo alike, whose edit `drop_entry` names: what an
-    /// adoption or a reload does once the file such an entry changed is no longer the one
-    /// it changed. The saved position follows the entries that stay: an entry dropped at
-    /// or under it was saved, so the nearest kept entry under it becomes the watermark and
-    /// only kept entries above it leave the history dirty. A watermark already off the
-    /// undo stack stays off it.
-    pub(super) fn drop_entries(&mut self, drop_entry: impl Fn(&SongEdit) -> bool) {
-        let saved_position = self
-            .undo_stack
-            .iter()
-            .position(|entry| entry.id == self.saved_id);
-        let watermark_on_stack = saved_position.is_some() || self.saved_id == 0;
-        let mut new_saved_id = 0;
-        let mut kept = VecDeque::new();
-        for (position, entry) in std::mem::take(&mut self.undo_stack).into_iter().enumerate() {
-            let at_or_under_saved = saved_position.is_some_and(|saved| position <= saved);
-            if drop_entry(&entry.edit) {
-                continue;
-            }
-            if at_or_under_saved {
-                new_saved_id = entry.id;
-            }
-            kept.push_back(entry);
-        }
-        self.undo_stack = kept;
-        self.redo_stack.retain(|entry| !drop_entry(&entry.edit));
+    /// Drop every entry, undo and redo alike: what a reload of the sidecar does, since each
+    /// entry replays a map that is no longer the one on disk. A watermark on the undo stack
+    /// — or at the empty history — becomes the empty history's, so the reloaded map is
+    /// clean; one already evicted off the stack stays off it, and the song stays dirty.
+    pub(super) fn drop_all(&mut self) {
+        let watermark_on_stack =
+            self.saved_id == 0 || self.undo_stack.iter().any(|entry| entry.id == self.saved_id);
+        self.undo_stack.clear();
+        self.redo_stack.clear();
         if watermark_on_stack {
-            self.saved_id = new_saved_id;
+            self.saved_id = 0;
         }
         self.merge_sealed = true;
     }

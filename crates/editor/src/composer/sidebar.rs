@@ -118,10 +118,7 @@ pub fn render_sidebar(
         match (section, context.song) {
             (SidebarSection::Song, _) => song_section(&mut walk, state, context),
             (_, None) => {}
-            (SidebarSection::Parts, Some(song)) => {
-                let draft = blocks::TrackDraft { program: &mut state.new_track_program, enter_pressed: context.enter_pressed };
-                blocks::parts(&mut walk, song, state.active_track, draft)
-            }
+            (SidebarSection::Parts, Some(song)) => blocks::parts(&mut walk, song, state.active_track),
             (SidebarSection::Instruments, Some(song)) => blocks::instruments(&mut walk, song),
             (SidebarSection::Bindings, Some(song)) => blocks::bindings(&mut walk, song, context.preview_audible),
         }
@@ -192,13 +189,10 @@ fn song_section(walk: &mut SidebarWalk, state: &ComposerState, context: &Sidebar
             if walk.button(WidgetId::hashed("composer_song_loop"), label, true) {
                 walk.push(ComposerAction::Edit(SongEdit::SetLoop { looping: !looping }));
             }
-            if let crate::song::EditingPolicy::Refused { reason } = song.editing() {
-                walk.warning(&format!("Not editable: {reason}"));
-            }
         }
         None => {
             walk.heading("No song open");
-            walk.note("File → New Song, or open one below");
+            walk.note("Open one below, or File → Open Song...");
         }
     }
     walk.heading("Songs");

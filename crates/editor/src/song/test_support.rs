@@ -1,14 +1,19 @@
-//! Fixtures for the song tests: an asset folder on disk, a short melody, the Napolitan
-//! fixture as a saved song, a sample instrument, a store that stops after a set number of
-//! writes and removals, and one that rewrites a file behind the save's back.
+//! Fixtures for the song tests: an asset folder on disk, a short melody as MIDI bytes, the
+//! Napolitan fixture as a saved song, a sample instrument, a store that stops after a set
+//! number of writes, renames and removals, one whose renames fail, and one that rewrites a
+//! file behind the save's back.
 
 use std::io;
 use std::path::{Path, PathBuf};
 
-use music_midi::{Instrument, InstrumentSource, Provenance, SamplePlayback};
+use music_midi::midly::num::{u15, u24, u28};
+use music_midi::midly::{Format, Header, MetaMessage, Smf, Timing, TrackEvent, TrackEventKind};
+use music_midi::{
+    Instrument, InstrumentSource, NewNote, NewTrack, Provenance, SamplePlayback, SongData,
+};
 
 use super::io::{SongStore, VfsStore};
-use super::{Gesture, SongDocument, SongEdit};
+use super::{default_song_file, Gesture, SongDocument, SongEdit};
 
 /// The Napolitan fixture: its export is not its bytes (midly writes running status), so a
 /// fingerprint of `write_smf` is not the file's.
@@ -61,17 +66,51 @@ impl AssetFolder {
     }
 }
 
-/// A new song holding three notes on its melody track, at ticks 0, 480 and 960, with the
-/// author and license Save requires — set as an opened song carries them, not as an edit,
-/// so the history holds the three notes alone.
-pub(super) fn melody() -> SongDocument {
-    let mut document = SongDocument::new_song().expect("a blank song");
-    document.file.provenance = Some(song_provenance());
-    for (tick, key) in [(0, 60), (480, 64), (960, 67)] {
-        document
-            .apply(add_note(tick, key), Gesture::Discrete)
-            .expect("the note lands");
+/// A type-1 song as MIDI bytes, at 480 ticks a quarter: the timing track at 120 BPM in
+/// 4/4, then a track named `melody` on channel 1 holding three eighths — C4 at tick 0, E4 at
+/// 480 and G4 at 960.
+pub(super) fn melody_bytes() -> Vec<u8> {
+    let event = |kind| TrackEvent {
+        delta: u28::new(0),
+        kind,
+    };
+    let timing_track = vec![
+        event(TrackEventKind::Meta(MetaMessage::Tempo(u24::new(500_000)))),
+        event(TrackEventKind::Meta(MetaMessage::TimeSignature(4, 2, 24, 8))),
+        event(TrackEventKind::Meta(MetaMessage::EndOfTrack)),
+    ];
+    let mut timing = Vec::new();
+    Smf {
+        header: Header::new(Format::Parallel, Timing::Metrical(u15::new(480))),
+        tracks: vec![timing_track],
     }
+    .write_std(&mut timing)
+    .expect("the timing track writes");
+    let (mut data, _) = SongData::from_smf(&timing).expect("the timing track reads");
+    let melody = NewTrack {
+        name: "melody".to_string(),
+        channel: Some(0),
+        program: 0,
+    };
+    let track = data.add_track(melody).expect("the melody track").track;
+    for (tick, key) in [(0, 60), (480, 64), (960, 67)] {
+        let note = NewNote {
+            tick,
+            key,
+            velocity: 100,
+            duration_ticks: 240,
+        };
+        data.add_note(track, note).expect("the note lands");
+    }
+    data.write_smf().expect("the melody writes")
+}
+
+/// [`melody_bytes`] as a song never saved, with the author and license Save requires — set
+/// as an opened song carries them, not as an edit, so the history is empty.
+pub(super) fn melody() -> SongDocument {
+    let mut document =
+        SongDocument::from_smf(&melody_bytes(), default_song_file()).expect("the melody reads");
+    document.file.provenance = Some(song_provenance());
     document
 }
 
@@ -81,29 +120,6 @@ pub(super) fn song_provenance() -> Provenance {
         author: "2026 Jesse".to_string(),
         license: "CC-BY-4.0".to_string(),
     }
-}
-
-/// An eighth note on the melody track (track 1 of a new song).
-pub(super) fn add_note(tick: u64, key: u8) -> SongEdit {
-    SongEdit::AddNote {
-        track: 1,
-        tick,
-        key,
-        velocity: 100,
-        duration_ticks: 240,
-    }
-}
-
-/// The note numbers of every note in the song, in track, tick and chord order.
-pub(super) fn note_numbers(document: &SongDocument) -> Vec<u64> {
-    document
-        .data()
-        .tracks()
-        .iter()
-        .flat_map(|track| track.units())
-        .flat_map(|unit| &unit.notes)
-        .map(|note| note.id.number())
-        .collect()
 }
 
 /// A one-shot sample instrument playing `path`, with provenance.
@@ -123,12 +139,7 @@ pub(super) fn sample_instrument(name: &str, path: &str) -> Instrument {
     }
 }
 
-/// The song's MIDI bytes as a save would write them.
-pub(super) fn exported(document: &SongDocument) -> Vec<u8> {
-    document.data().write_smf().expect("the song exports")
-}
-
-/// A store over `common::vfs` that refuses every write and removal after the first
+/// A store over `common::vfs` that refuses every write, rename and removal after the first
 /// `operations_left`, as a crash would stop a save there.
 pub(super) struct InterruptedStore {
     pub operations_left: usize,
@@ -154,8 +165,39 @@ impl SongStore for InterruptedStore {
         VfsStore.write(path, bytes)
     }
 
+    fn rename(&mut self, from: &Path, to: &Path) -> io::Result<()> {
+        self.spend()?;
+        VfsStore.rename(from, to)
+    }
+
     fn remove(&mut self, path: &Path) -> io::Result<()> {
         self.spend()?;
+        VfsStore.remove(path)
+    }
+
+    fn list_files(&self, directory: &Path) -> io::Result<Vec<PathBuf>> {
+        VfsStore.list_files(directory)
+    }
+}
+
+/// A store over `common::vfs` whose every rename fails, as a full disk or a lost mount
+/// would stop a save between writing a final's temporary file and moving it into place.
+pub(super) struct RenameFailingStore;
+
+impl SongStore for RenameFailingStore {
+    fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
+        VfsStore.read(path)
+    }
+
+    fn write(&mut self, path: &Path, bytes: &[u8]) -> io::Result<()> {
+        VfsStore.write(path, bytes)
+    }
+
+    fn rename(&mut self, _from: &Path, _to: &Path) -> io::Result<()> {
+        Err(io::Error::other("the rename failed"))
+    }
+
+    fn remove(&mut self, path: &Path) -> io::Result<()> {
         VfsStore.remove(path)
     }
 
@@ -185,7 +227,8 @@ pub(super) fn napolitan_song(folder: &AssetFolder, relative: &str) -> SongDocume
 }
 
 /// A store over `common::vfs` that writes `bytes` at `path`, as another program would,
-/// right after the save's own write or removal number `after_operation` (counted from 1).
+/// right after the save's own write, rename or removal number `after_operation` (counted
+/// from 1).
 pub(super) struct RewritingStore {
     pub after_operation: usize,
     pub path: PathBuf,
@@ -209,6 +252,12 @@ impl SongStore for RewritingStore {
 
     fn write(&mut self, path: &Path, bytes: &[u8]) -> io::Result<()> {
         VfsStore.write(path, bytes)?;
+        self.count();
+        Ok(())
+    }
+
+    fn rename(&mut self, from: &Path, to: &Path) -> io::Result<()> {
+        VfsStore.rename(from, to)?;
         self.count();
         Ok(())
     }

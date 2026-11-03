@@ -38,7 +38,7 @@ impl PanelId {
     pub const ASSET_BROWSER: PanelId = PanelId(3);
     /// Console/output panel
     pub const CONSOLE: PanelId = PanelId(4);
-    /// The composer: the song's piano roll, note list and sidebar
+    /// The composer: the song's transport and sidebar
     pub const COMPOSER: PanelId = PanelId(5);
     /// The External Tools settings, shown by Edit → External Tools… (no View item)
     pub const SETTINGS: PanelId = PanelId(6);

@@ -20,7 +20,7 @@ use super::hot_reload::{SongOwner, WatchOwner};
 use super::hot_reload_tests::Session;
 use super::run_options::SongImport;
 use super::scene_confirm::PendingSceneAction;
-use super::test_support::{api_line, melody_song, stock_sound_font};
+use super::test_support::{api_line, quick_melody_and_bass_song, stock_sound_font};
 
 const SONG: &str = "music/theme.mid";
 
@@ -45,10 +45,8 @@ fn session_with_a_saved_song() -> Session {
     let mut session = Session::new();
     stock_sound_font(session.project.path());
     session.audio.set_asset_base(session.project.path());
-    session.editor.song = Some(melody_song());
+    session.editor.song = Some(quick_melody_and_bass_song());
     session.editor.follow_song();
-    edit(&mut session, r#"song edit {"SetTempo": {"tick": 0, "microseconds_per_quarter": 25000}}"#);
-    edit(&mut session, r#"song edit {"AddTrack": {"name": "bass", "channel": null, "program": 32}}"#);
     edit(&mut session, r#"song edit {"AddPart": {"part": {"name": "lead", "track": {"Name": "melody"}}}}"#);
     edit(&mut session, &format!("song save {SONG}"));
     acknowledge(&mut session);
@@ -121,12 +119,21 @@ fn renamed_score(session: &Session) -> Vec<u8> {
     bytes
 }
 
-/// The open song's score with one more note on the melody, as a save would write it.
-fn score_with_a_note_more(session: &Session) -> Vec<u8> {
-    let mut song = session.editor.song.clone().expect("a song is open");
-    let note = editor::SongEdit::AddNote { track: 1, tick: 1440, key: 72, velocity: 100, duration_ticks: 240 };
-    song.apply(note, editor::Gesture::Discrete).expect("the note lands");
-    song.rendered_files().expect("renders").0
+/// The velocity [`score_with_a_softer_first_note`] gives the melody's first note.
+const SOFTER: u8 = 0x40;
+
+/// The saved score with the melody's first note played softer, as MIDI Evil would export
+/// it: the note-on's velocity replaced in place, the chunk's length unchanged.
+fn score_with_a_softer_first_note(session: &Session) -> Vec<u8> {
+    let mut bytes = std::fs::read(midi_path(session)).expect("the score");
+    let at = bytes.windows(3).position(|window| window == [0x90, 0x3C, 0x64]).expect("C4's note-on");
+    bytes[at + 2] = SOFTER;
+    bytes
+}
+
+/// The velocity of the first note on the melody (track 1) of `data`.
+fn first_melody_velocity(data: &audio::SongData) -> u8 {
+    data.tracks()[1].units()[0].notes[0].velocity
 }
 
 fn console_errors(session: &Session) -> Vec<String> {
@@ -161,22 +168,22 @@ fn the_watched_set_names_the_open_songs_two_files_and_in_a_session_its_saved_son
 fn a_song_save_notes_the_files_it_wrote_and_a_change_already_queued_for_them_reloads_nothing() {
     let mut session = session_with_a_saved_song();
     let (midi, sidecar) = (midi_path(&session), sidecar_path(&session));
-    for path in [&midi, &sidecar] {
-        session.editor.hot_reload.incoming.push(WatchEvent::Change(FileChange::Changed(path.clone())));
-    }
-
-    edit(&mut session, r#"song edit {"AddNote": {"track": 1, "tick": 1440, "key": 72, "velocity": 100, "duration_ticks": 240}}"#);
-    edit(&mut session, &format!("song save {SONG}"));
-    let noted: Vec<PathBuf> = session.editor.hot_reload.awaiting_note.keys().cloned().collect();
-    assert_eq!(noted, [midi.clone(), sidecar.clone()], "a score edit's save writes and notes both files");
-    acknowledge(&mut session);
-    assert!(!session.console_mentions("changed on disk"), "{:?}", session.console());
-    assert_eq!(song(&session).data().note_count(), 4, "the song the editor saved is the one open");
+    session.editor.hot_reload.incoming.push(WatchEvent::Change(FileChange::Changed(sidecar.clone())));
 
     edit(&mut session, r#"song edit {"SetLoop": {"looping": false}}"#);
     edit(&mut session, &format!("song save {SONG}"));
     let noted: Vec<PathBuf> = session.editor.hot_reload.awaiting_note.keys().cloned().collect();
     assert_eq!(noted, [sidecar], "a map save leaves the score, and notes the sidecar alone");
+    acknowledge(&mut session);
+    assert!(!session.console_mentions("changed on disk"), "{:?}", session.console());
+    assert!(!song(&session).file().looping, "the map the editor saved is the one open");
+
+    let copy = session.path("music/copy.mid");
+    edit(&mut session, "song save music/copy.mid");
+    let noted: Vec<PathBuf> = session.editor.hot_reload.awaiting_note.keys().cloned().collect();
+    assert_eq!(noted, [copy.clone(), midi_sidecar_path(&copy)], "a Save As writes and notes both files");
+    let written = std::fs::read(&copy).expect("the copied score");
+    assert_eq!(written, std::fs::read(&midi).expect("the score"), "the copy is the loaded bytes");
 }
 
 #[test]
@@ -250,7 +257,7 @@ fn a_saved_song_rewritten_on_disk_during_play_swaps_at_the_next_bar_and_the_cons
     let mut session = session_with_a_saved_song();
     play(&mut session);
     let before = Arc::clone(session.audio.playing_song().expect("the saved song plays"));
-    std::fs::write(midi_path(&session), score_with_a_note_more(&session)).expect("another program writes the score");
+    std::fs::write(midi_path(&session), score_with_a_softer_first_note(&session)).expect("another program writes the score");
     let mut now = Instant::now();
 
     session.dispatch(&[FileChange::Changed(midi_path(&session))], false);
@@ -259,8 +266,8 @@ fn a_saved_song_rewritten_on_disk_during_play_swaps_at_the_next_bar_and_the_cons
     assert!(session.console_mentions("song replaced in bar"), "{:?}", session.console());
     let after = session.audio.playing_song().expect("the new song plays");
     assert!(!Arc::ptr_eq(&before, after));
-    assert_eq!(after.data().note_count(), 4, "the score on disk is what plays");
-    assert_eq!(song(&session).data().note_count(), 4, "and what the open song follows");
+    assert_eq!(first_melody_velocity(after.data()), SOFTER, "the score on disk is what plays");
+    assert_eq!(first_melody_velocity(song(&session).data()), SOFTER, "and what the open song follows");
 }
 
 #[test]
@@ -332,7 +339,7 @@ fn an_external_change_stops_a_sounding_preview_as_an_edit_does() {
     session.editor.preview_play(0).expect("the preview plays");
     session.editor.apply_song_intents(&mut session.audio, &mut sources);
     assert!(session.editor.song_preview.is_playing(), "the preview sounds the saved score");
-    std::fs::write(midi_path(&session), score_with_a_note_more(&session)).expect("another program writes the score");
+    std::fs::write(midi_path(&session), score_with_a_softer_first_note(&session)).expect("another program writes the score");
 
     session.dispatch(&[FileChange::Changed(midi_path(&session))], false);
 

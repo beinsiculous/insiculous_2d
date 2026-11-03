@@ -188,7 +188,6 @@ impl MenuBar {
                 MenuItem::action_with_shortcut("Save", "Ctrl+S"),
                 MenuItem::action_with_shortcut("Save As...", "Ctrl+Shift+S"),
                 MenuItem::separator(),
-                MenuItem::action("New Song"),
                 MenuItem::action("Open Song..."),
                 MenuItem::action("Save Song"),
                 MenuItem::action("Save Song As..."),

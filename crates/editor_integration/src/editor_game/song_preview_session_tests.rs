@@ -9,7 +9,9 @@ use engine_core::prelude::{AudioManager, GameConfig, SoundSources};
 use engine_core::test_support::GameHarness;
 
 use super::scene_confirm::PendingSceneAction;
-use super::test_support::{api_line, composer_session, editor_game, melody_song, stock_sound_font, DummyGame};
+use super::test_support::{
+    api_line, composer_session, editor_game, melody_song, second_track_holds_the_notes, stock_sound_font, DummyGame,
+};
 use super::EditorGame;
 
 const FRAME: f32 = 1.0 / 60.0;
@@ -175,7 +177,7 @@ fn pause_and_resume_are_refused_while_the_sessions_song_waits_for_the_first_clic
 #[test]
 fn a_save_refused_for_the_songs_provenance_from_the_play_prompt_opens_its_author_field() {
     let folder = tempfile::tempdir().expect("a temporary asset folder");
-    let mut editor = composer_session(folder.path(), editor::SongDocument::new_song().expect("a blank song"));
+    let mut editor = composer_session(folder.path(), second_track_holds_the_notes());
     let mut world = World::new();
     editor.leave_composer();
     editor.handle_play_action(PlayControlAction::Play, &mut world);

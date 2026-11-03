@@ -33,7 +33,7 @@ pub(super) fn default_dock_area() -> DockArea {
     let mut composer = DockPanel::new(PanelId::COMPOSER, "Composer", DockPosition::Bottom)
         .with_size(260.0)
         .with_min_size(200.0)
-        .with_hint("The song: its piano roll, its notes as text, and its parts and instruments.");
+        .with_hint("The song's map: its transport, and its parts, instruments and bindings.");
     composer.visible = false;
     dock_area.add_panel(composer);
     // After the composer, so it stacks above whichever bottom panels show; hidden until

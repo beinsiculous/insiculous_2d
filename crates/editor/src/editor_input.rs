@@ -96,8 +96,6 @@ pub enum EditorAction {
     OpenScene,
 
     // ---- Song file ----
-    /// Replace the song with a new one (prompting over a dirty song)
-    NewSong,
     /// Show the composer with its Songs list focused, where a click opens a song
     OpenSong,
     /// Save the song to its own file (a never-saved song to the default)
@@ -106,7 +104,7 @@ pub enum EditorAction {
     SaveSongAs,
     /// Close the song (prompting over a dirty song)
     CloseSong,
-    /// Show the composer and give its piano roll the keyboard
+    /// Show the composer and give its sidebar the keyboard
     FocusComposer,
     /// Start or stop the song's preview
     SongPlayStop,
@@ -168,7 +166,6 @@ impl EditorAction {
                 | Self::Redo
                 | Self::NewScene
                 | Self::OpenScene
-                | Self::NewSong
                 | Self::OpenSong
                 | Self::SaveSong
                 | Self::SaveSongAs

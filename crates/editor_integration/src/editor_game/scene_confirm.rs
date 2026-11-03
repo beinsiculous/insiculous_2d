@@ -28,7 +28,6 @@ use super::EditorGame;
 pub(super) enum PendingSceneAction {
     NewScene,
     OpenScene(PathBuf),
-    NewSong,
     OpenSong(PathBuf),
     CloseSong,
     /// Play over a dirty song: the game must not start against a song it lacks.
@@ -65,7 +64,6 @@ impl PendingSceneAction {
         match self {
             PendingSceneAction::NewScene => "creating a new scene",
             PendingSceneAction::OpenScene(_) => "opening another scene",
-            PendingSceneAction::NewSong => "creating a new song",
             PendingSceneAction::OpenSong(_) => "opening another song",
             PendingSceneAction::CloseSong => "closing it",
             PendingSceneAction::StartPlay => "Play",
@@ -81,8 +79,7 @@ impl PendingSceneAction {
             PendingSceneAction::NewScene
             | PendingSceneAction::OpenScene(_)
             | PendingSceneAction::ReloadFromDisk(_) => Document::Scene,
-            PendingSceneAction::NewSong
-            | PendingSceneAction::OpenSong(_)
+            PendingSceneAction::OpenSong(_)
             | PendingSceneAction::CloseSong
             | PendingSceneAction::StartPlay
             | PendingSceneAction::OverwriteSong(..)
@@ -293,7 +290,6 @@ impl<G: Game> EditorGame<G> {
     /// Execute a (now confirmed) song action, or Play.
     pub(super) fn perform_song_action(&mut self, action: PendingSceneAction) {
         match action {
-            PendingSceneAction::NewSong => self.new_song(),
             PendingSceneAction::OpenSong(path) => {
                 // The open song's own file reads both files anew: the reload of a score or a
                 // map another program rewrote.

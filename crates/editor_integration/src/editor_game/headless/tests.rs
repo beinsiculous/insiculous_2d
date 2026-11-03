@@ -129,8 +129,10 @@ fn test_headless_assets_round_trip_references_verbatim() {
 }
 
 #[test]
-fn test_the_headless_session_authors_saves_and_reopens_a_song() -> std::io::Result<()> {
+fn test_the_headless_session_maps_saves_and_reopens_a_song() -> std::io::Result<()> {
     let dir = tempfile::tempdir()?;
+    let score = crate::editor_game::test_support::melody_song().source_bytes().to_vec();
+    common::vfs::write(&dir.path().join("music/theme.mid"), &score)?;
     let run = |script: &str| -> Vec<serde_json::Value> {
         let mut out: Vec<u8> = Vec::new();
         run_headless_editor_api(Some(dir.path().to_path_buf()), None, Cursor::new(script.to_string()), &mut out)
@@ -142,17 +144,17 @@ fn test_the_headless_session_authors_saves_and_reopens_a_song() -> std::io::Resu
             .collect()
     };
     let responses = run(concat!(
-        "song new\n",
-        r#"song edit {"AddNote": {"track": 1, "tick": 0, "key": 60, "velocity": 100, "duration_ticks": 480}}"#,
-        "\n",
+        "song open music/theme.mid\n",
         r#"song edit {"SetProvenance": {"provenance": {"author": "2026 Jesse", "license": "MIT"}}}"#,
-        "\nsong save music/theme.mid\n",
+        "\nsong save\n",
         "scene\n",
     ));
     for (index, response) in responses.iter().enumerate() {
         assert_eq!(response["ok"], true, "request {index}: {response}");
     }
-    assert_eq!(responses[4]["data"]["song_dirty"], false);
+    assert_eq!(responses[0]["data"]["dirty"], true, "an unmapped score opens with its map unsaved");
+    assert_eq!(responses[3]["data"]["song_dirty"], false);
+    assert_eq!(std::fs::read(dir.path().join("music/theme.mid"))?, score, "a map save leaves the score as it was");
     assert!(dir.path().join("music/theme.mid.ron").exists());
 
     let reopened = run("song open music/theme.mid\nsong notes\n");

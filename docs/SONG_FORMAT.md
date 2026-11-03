@@ -262,19 +262,10 @@ its own with all 16 MIDI channels, which any MIDI file fits, so it takes no slot
 - **Limits**, checked before anything is built in full: 1 MiB of MIDI, 262 144 events.
 - **Overlapping notes.** A key struck again on its channel before its note-off is paired
   first-in first-out and reported to the composer as an overlap; nothing is refused.
-- **Editing.** A type-1 track whose notes play on more than one channel loads and plays,
-  but the composer refuses to edit the file and says why: a new note would have no single
-  channel to be written on.
-- **Saving.** The composer writes the file back through midly. An unedited file comes back
-  event for event identical — byte for byte when the original never repeats a status
-  byte, shorter when it does (midly always writes running status).
-
-**What an export changes.** An unedited song writes back the same events in the same order
-(byte-identical when the original never repeats a status byte; midly's writer always uses
-running status). Two normalizations are deliberate: every exported track closes with one
-EndOfTrack at its last event or at the original end — a tail of deleted notes leaves the
-song's authored length alone, and a track that had no end gains one — and once a tempo or
-time signature is edited, every timing event is written on the first track.
+- **Several channels on one track.** A type-1 track whose notes play on more than one
+  channel loads, plays and maps like any other.
+- **Saving.** The composer never writes the file's events back: a Save As copies the bytes
+  it loaded, byte for byte, and a map save leaves the file alone.
 
 ## Positions in the music
 
@@ -311,8 +302,9 @@ The editor's composer saves a song as `<stem>.mid` and `<stem>.mid.ron` under `m
 human pass saves it into `music/` without it). A `.midi` saves the same way beside its
 `<stem>.midi.ron`: a sidecar is always the MIDI file's whole name with `.ron` added.
 
-**The score belongs to whoever wrote the `.mid`; the composer writes the map.** A save is
-one of two kinds:
+**The score belongs to MIDI Evil, which exports the `.mid`; the composer writes the map.**
+The engine writes a `.mid` only as a copy of the bytes it loaded — Save As's, or a map
+save's when the `.mid` is gone from disk. A save is one of two kinds:
 
 - **Save** — to the song's own path — is a **map save**: it writes the `.mid.ron` and the
   home folder's `LICENSE` stanza and leaves the `.mid` alone, its bytes and its stamp. The
@@ -322,10 +314,6 @@ one of two kinds:
   loaded, and the map. A target that holds another song's files is replaced only when
   asked (the composer's Overwrite, the API's `overwrite`).
 
-Until the composer stops editing notes, a song whose score was edited in the composer — a
-note, a tempo, a meter, a track, or a batch holding one — writes `write_smf`'s bytes
-instead, on either kind of save, and the transition's rule guards it (step 5).
-
 **Both files are compared by content immediately before a save writes.** The composer
 remembers the fingerprint of the `.mid` and of the `.mid.ron` as it last read or wrote
 them. A sidecar that changed on disk since — another program, or a hand, rewrote the map,
@@ -334,11 +322,11 @@ the composer asks "the map changed on disk since you loaded it: Overwrite / Canc
 the API's `song save` answers with both files and their fingerprints until the line says
 `overwrite`. A `.mid` that changed is taken first: the song follows the new score, its map
 and the map's unsaved edits kept, the track diff's lines shown, and the save fingerprints
-the new bytes. A `.mid` gone from disk is written again from the song. The sidecar is
-compared once more right before the finals are written — the samples' reads and the
-licenses lie between the first look and the write — and a map rewritten in that span
-refuses the save the same way, the journal removed; what remains unguarded is the finals'
-own writes, as for the score.
+the new bytes. A `.mid` gone from disk is written again from the bytes the song loaded.
+The sidecar is compared once more right before the finals are written — the samples' reads
+and the licenses lie between the first look and the write — and a map rewritten in that
+span refuses the save the same way; what remains unguarded is the moment between that
+compare and the rename, which two writers of one file would race, and each file has one.
 
 **The editor watches the open song's two files, and the composer's own save is the
 watcher's baseline:** the sidecar it wrote, and the `.mid` when it wrote that too, never
@@ -353,8 +341,11 @@ refuses the new score, a renamed track a part selects, and then the old song pla
 the console says why. The web playground has no watcher: importing the open song's `.mid`
 again is adopted the same way.
 
-Nothing on either target renames a file, so a save is a journal, and it refuses before its
-first write:
+**Each final is written whole.** It goes to a temporary file in its own folder,
+`.<name>.saving`, and is renamed over its target, so a reader — the editor's watcher,
+another program — never sees half a file, and a save stopped at any write leaves the old
+finals as they were. A map save writes one file; Save As writes two, the `.mid` first. A
+save refuses before its first write, then goes in this order:
 
 1. **Refused, writing nothing:** a path outside the two song folders or against the path
    rule below; a song without its own `provenance`, or a `Sample` instrument without one
@@ -383,44 +374,24 @@ first write:
    held to the full rule. One collision is left, and refused: a new song whose flattened
    name is an existing folder it does not own (`music/x/y.mid` beside an older
    `music/x__y.mid`) — Save As elsewhere.
-3. **The journal:** `<stem>.mid.ron.new`, carrying the `midi_fingerprint` of the score the
-   song names, then `<stem>.mid.new` when the save writes the `.mid`. A map save's journal
-   is the sidecar's alone.
-4. **The home folder's `LICENSE`** (`music/LICENSE` or `ai/music/LICENSE`) gets the song's
+3. **The home folder's `LICENSE`** (`music/LICENSE` or `ai/music/LICENSE`) gets the song's
    own stanza from its `provenance`, naming its MIDI file and its sidecar: the stanza is
    found by the MIDI file's path alone (a stanza naming only the `.mid` is rewritten, not
    duplicated), a stanza naming another song's files as well keeps them, and every other
    stanza is left as it is. The song's own stanza is rewritten whole, so a field added to
    it by hand (a `Comment:`) is lost — put it in a stanza of its own. It is written only
-   when it changed.
-5. **The finals:** the `.mid` when the save writes it, then the `.mid.ron`. **The
-   transition's rule:** before the `.mid` of a score edited in the composer is written over
-   its own path, the `.mid` on disk is compared with the one the song loaded or last wrote.
-   When another program rewrote it, its file is left where it is, the composer's score is
-   kept beside it as `<stem>.recovered-<fingerprint>.mid` with a note naming it, the sidecar
-   is saved against the disk's bytes, and the song follows the disk's score. The moment
-   between that compare and the write is not guarded: it lasts only until the composer no
-   longer writes scores, and the recovered file is what it costs.
-6. **The journal is removed.**
-7. **The prune:** every file in the song's sample folder that neither the song nor a
-   recovery's sidecar beside it (`<stem>.recovered-*.mid.ron`) names is removed, and the
-   folder's `LICENSE` rewritten with one stanza per named sample (`Files:`, `Copyright:`
-   the author, `License:`), so the provenance gate passes over what the composer wrote. It
-   runs last, so an interruption at any step leaves every sample that any file beside the
-   song names on disk; a recovery that cannot be read leaves the folder unpruned.
+   when it changed, and put back when the sidecar's second look refuses the save.
+4. **The finals,** each by its temporary file and a rename: the `.mid` when the save writes
+   it, then the `.mid.ron`. A Save As stopped between the two leaves a `.mid` with no
+   sidecar, which opens in place on a new one (below).
+5. **The prune:** every file in the song's sample folder the song does not name is removed,
+   and the folder's `LICENSE` rewritten with one stanza per named sample (`Files:`,
+   `Copyright:` the author, `License:`), so the provenance gate passes over what the
+   composer wrote. It runs last, so an interruption at any step leaves every sample the
+   finals on disk name.
 
-**Opening a song keeps whatever an interruption left, and never promotes it.** Each
-journal file is renamed beside the song — `<stem>.recovered-<fingerprint>.mid` and its
-sidecar `<stem>.recovered-<fingerprint>.mid.ron`, the MIDI file's whole name plus `.ron`
-(never `<stem>.mid.recovered-….ron`) — under a name no file holds (a taken name moves to
-`…-2`, `…-3`), with a note naming it; then the finals open as they are. A journal pair
-takes its MIDI file's fingerprint for both names, so the recovery opens as a song; a lone
-journal file takes its own bytes'. Nothing is deleted and the finals are never judged
-against the journal: open the recovery to see that save. Then:
+**Opening a song reads its two files as they are, and writes nothing:**
 
-- **No final at all** — a first save interrupted before them — is the one case a journal
-  becomes the finals: it is the song's only copy, so nothing is replaced, and a note says
-  the save was finished. A lone `<stem>.mid.ron.new` there holds no score and opens nothing.
 - **A `.mid` whose sidecar's `midi_fingerprint` differs** is the score changed outside the
   composer: it opens on the disk's bytes with its sidecar, a note says so, and the track
   diff's lines name every part the score no longer plays as written; the next save
@@ -432,6 +403,6 @@ against the journal: open the recovery to see that save. Then:
   that has one.
 - **A sidecar with no `.mid`** is no song to open.
 
-A song whose MIDI file the composer cannot edit — a track holding two channels' notes —
-refuses only the score's edits: its parts, instruments, bindings, loop, quantize, modes and
-provenance edit and save as on any other song.
+The composer never edits a song's notes, its tempo, its meter or its tracks: those are the
+score, written in MIDI Evil. Its parts, instruments, bindings, loop, quantize, modes and
+provenance edit and save on any MIDI file the loader plays.

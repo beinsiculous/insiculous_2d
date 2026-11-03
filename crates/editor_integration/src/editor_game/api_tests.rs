@@ -278,17 +278,3 @@ fn an_error_on_the_status_bar_outlives_the_notice_of_the_batch_play_commits() {
     assert!(status.contains(r#""message":"Error: Play could not start the song: no bank""#), "{status}");
     assert!(status.contains(r#""error":true"#), "{status}");
 }
-
-#[test]
-fn undoing_an_added_track_moves_the_composers_selector_off_the_track_that_is_gone() {
-    let mut editor = editor_game();
-    let mut world = World::new();
-    assert_ok(&api_line(&mut editor, &mut world, "song new"));
-    assert_ok(&api_line(&mut editor, &mut world, r#"song edit {"AddTrack": {"name": "brass", "program": 57}}"#));
-    editor.editor.composer.active_track = Some(2);
-    editor.sync_dirty_mirror();
-    assert_eq!(editor.editor.composer.active_track, Some(2), "the added track is selectable");
-
-    assert_ok(&api_line(&mut editor, &mut world, "song undo"));
-    assert_eq!(editor.editor.composer.active_track, Some(1), "back on the melody, the one track left with a channel, with no frame run");
-}

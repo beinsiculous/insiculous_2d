@@ -999,15 +999,18 @@ SoundEmitter(
   `play_with_settings` returns a `PlaybackId` to stop (`stop_playback`) or re-mix
   (`set_playback_mix`, volume and pan) that instance alone.
 
-**Authoring a song.** Songs are made in the editor's composer: File → New Song (its
-background on the project's first bank under `soundfonts/`), or the command API's `song`
-verbs — `song new`, `song edit <SongEdit>` (`AddTrack`, `AddNote`, `AddPart`,
-`AddInstrument`, `SetBinding`, `SetProvenance`, …), `song` and `song notes` to check what the
-document holds, `song save <path>` (`docs/EDITOR_COMMAND_API.md` § Songs). Save is a journal
-that writes the `.mid`, the sidecar and the song's stanza in its home folder's `LICENSE`, and
-copies each sample into the song's own folder (`docs/SONG_FORMAT.md` § How the composer
-saves). An agent's first cut goes under `assets/ai/music/` with the `ai_` prefix; a person's
-pass promotes it to `music/`.
+**Authoring a song.** Songs are composed in MIDI Evil, which exports the `.mid`; the
+editor's composer maps it. `song init <path.mid>` writes a new sidecar beside an exported
+`.mid` (its background on the project's first bank under `soundfonts/`), and an unmapped
+`.mid` opened from the composer's Songs list or with `song open` starts on the same one.
+The map is the composer's sidebar, or the command API's `song edit <SongEdit>` with the map
+verbs (`AddPart`, `AddInstrument`, `SetBinding`, `SetProvenance`, …) — a score edit such as
+`AddNote` is refused naming MIDI Evil — and `song` and `song notes` check what the document
+holds (`docs/EDITOR_COMMAND_API.md` § Songs). Save writes the sidecar and the song's stanza
+in its home folder's `LICENSE` and copies each sample into the song's own folder, each file
+by a temporary file and a rename (`docs/SONG_FORMAT.md` § How the composer saves). An
+agent's first cut goes under `assets/ai/music/` with the `ai_` prefix; a person's pass
+promotes it to `music/`.
 
 **Shared-part modes** (`docs/SONG_FORMAT.md` § Modes). `Loop` plays the part's units in order
 and wraps — a melody walked by hits. `Sequence` plays them once and is silent until the song

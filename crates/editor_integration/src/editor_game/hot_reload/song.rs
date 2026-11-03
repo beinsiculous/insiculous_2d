@@ -172,8 +172,6 @@ impl<G: Game> EditorGame<G> {
             return self.report(Severity::Error, message, None);
         }
         let diff = diff_tracks(&before, &TrackListing::of(song.file(), song.data()));
-        // A drag holds images of notes the adopted score may not have.
-        self.composer_drag = None;
         self.stop_preview_for_external_change();
         self.sync_dirty_mirror();
         let mut lines = diff_lines(&diff);

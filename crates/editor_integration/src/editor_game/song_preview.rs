@@ -217,8 +217,8 @@ impl SongPreview {
 }
 
 impl<G: Game> EditorGame<G> {
-    /// Play the preview from `from_tick`: the composer's Play and Space from the roll's
-    /// cursor, the API's `song play` from a beat. Refused during a play session, with no
+    /// Play the preview from `from_tick`: the composer's Play and Space from the top, the
+    /// API's `song play` from a beat. Refused during a play session, with no
     /// song, and while scene Play is starting.
     pub(super) fn preview_play(&mut self, from_tick: u64) -> Result<(), String> {
         if let Some(refusal) = self.song_change_refusal() {
@@ -246,19 +246,14 @@ impl<G: Game> EditorGame<G> {
         self.sync_preview_view();
     }
 
-    /// Space and the transport: stop a playing preview, else play it from the roll's
-    /// cursor — from the top when the cursor stands at or past the last note's end, where
-    /// nothing would sound (Enter leaves it there after adding a note); a refusal goes to
-    /// the status bar.
+    /// Space and the transport: stop a playing preview, else play it from the top; a
+    /// refusal goes to the status bar.
     pub(super) fn preview_play_stop(&mut self) {
         if self.song_preview.is_playing() {
             self.preview_stop();
             return;
         }
-        let cursor = self.editor.composer.cursor.tick;
-        let end = self.song.as_ref().map_or(0, editor::composer::piano_roll::song_end_tick);
-        let tick = if cursor >= end { 0 } else { cursor };
-        if let Err(refusal) = self.preview_play(tick) {
+        if let Err(refusal) = self.preview_play(0) {
             self.editor.status_bar.show_error(format!("Song preview: {refusal}"));
         }
     }

@@ -104,10 +104,9 @@ pub fn export_project(
 /// Export the open project with the live scene in place of the one on disk, and the open
 /// song's live files (`live_files`, each at its archive entry) in place of its saved ones.
 ///
-/// Only those entries are replaced, and only the open song's own journal pair is dropped —
-/// its live files are newer than anything the pair holds; every other file is carried over
-/// unchanged, another song's interrupted save included. The export is a project backup, so
-/// dropping anything else would lose authored work the visitor never previewed.
+/// Only those entries are replaced; every other file is carried over unchanged. The export
+/// is a project backup, so dropping anything would lose authored work the visitor never
+/// previewed.
 pub fn export_snapshot(
     project_root: &Path,
     manifest: &ProjectManifest,
@@ -127,11 +126,6 @@ pub fn export_snapshot(
     }
 
     let mut entries = collect_asset_entries(project_root)?;
-    let journal: HashSet<String> = live_files
-        .iter()
-        .map(|(entry, _)| format!("{entry}.new"))
-        .collect();
-    entries.retain(|(entry_path, _)| !journal.contains(entry_path));
     let live = std::iter::once((scene_entry.to_string(), scene_ron.as_bytes().to_vec()))
         .chain(live_files.iter().cloned());
     for (live_entry, live_bytes) in live {
@@ -371,9 +365,7 @@ pub fn import_project(
         }
     }
 
-    for note in songs::check_song_entries(&mut asset_entries)? {
-        log::warn!("import: {note}");
-    }
+    songs::check_song_entries(&asset_entries)?;
 
     let stored_files = asset_entries
         .into_iter()

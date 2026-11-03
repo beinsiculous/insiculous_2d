@@ -130,8 +130,6 @@ pub enum PureWrite {
     /// Undo / redo the song's own history; the scene's is untouched.
     SongUndo,
     SongRedo,
-    /// Select exactly these notes of the song (empty = none). Not undoable.
-    SongSelect { notes: Vec<u64> },
 }
 
 /// Writes only the integration layer can perform.
@@ -142,9 +140,6 @@ pub enum HostedWrite {
     Create { archetype: crate::archetype::Archetype, name: Option<String>, position: Option<(f32, f32)> },
     /// Save the scene (through the mandatory save choke point).
     Save { path: Option<String> },
-    /// Replace the song with a new, never-saved one; refused over a dirty
-    /// song unless `discard`.
-    SongNew { discard: bool },
     /// Open a song by its `.mid` — the open song's own path included, which reads both
     /// its files anew; refused over a dirty song unless `discard`.
     SongOpen { path: String, discard: bool },
@@ -170,8 +165,7 @@ impl HostedWrite {
     pub fn is_song(&self) -> bool {
         match self {
             HostedWrite::Create { .. } | HostedWrite::Save { .. } => false,
-            HostedWrite::SongNew { .. }
-            | HostedWrite::SongOpen { .. }
+            HostedWrite::SongOpen { .. }
             | HostedWrite::SongInit { .. }
             | HostedWrite::SongSave { .. }
             | HostedWrite::SongClose { .. }

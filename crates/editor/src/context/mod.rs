@@ -110,7 +110,7 @@ pub struct EditorContext {
     /// Inspector view state: collapsed sections, open Advanced
     /// disclosures, and the colour editor's target.
     pub inspector_state: crate::InspectorState,
-    /// The composer panel's view state: its focus, track, scrolls and songs list.
+    /// The composer panel's view state: its focus, track, sidebar scroll and songs list.
     pub composer: crate::composer::ComposerState,
     /// The console's log, scroll and keyboard
     pub console: crate::console::ConsoleState,

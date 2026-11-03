@@ -38,7 +38,6 @@ pub fn action_for_menu_label(label: &str) -> Option<EditorAction> {
         "Open Scene..." => EditorAction::OpenScene,
         "Save" => EditorAction::Save,
         "Save As..." => EditorAction::SaveAs,
-        "New Song" => EditorAction::NewSong,
         "Open Song..." => EditorAction::OpenSong,
         "Save Song" => EditorAction::SaveSong,
         "Save Song As..." => EditorAction::SaveSongAs,

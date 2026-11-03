@@ -96,8 +96,8 @@ impl<G: Game> EditorGame<G> {
     }
 
     /// The save itself, refused during a play session or with no song: the status bar says
-    /// it saved, and what the save settled — a score adopted, a recovery kept — goes to the
-    /// bar and the console, the first line on the bar. Returns those lines.
+    /// it saved, and what the save settled — a score adopted — goes to the bar and the
+    /// console, the first line on the bar. Returns those lines.
     pub(super) fn write_song(&mut self, target: &Path, intent: SaveIntent) -> Result<Vec<String>, SongWriteError> {
         if let Some(refusal) = self.song_change_refusal() {
             return Err(SongWriteError::Refused(refusal.to_string()));
@@ -110,8 +110,8 @@ impl<G: Game> EditorGame<G> {
         let in_place = song.path().is_some_and(|own| own.components().eq(target.components()));
         let score_before = song.score_fingerprint();
         let notes = song.save_with(target, &asset_base, intent).map_err(SongWriteError::Save)?;
-        // A save in place leaves the `.mid` unless the score changed: the engine's edit
-        // written, or another program's adopted, both of which move the fingerprint.
+        // A save in place leaves the `.mid`; a score another program wrote under it is
+        // adopted, which moves the fingerprint, and noted as the watcher's baseline.
         let wrote_score = !in_place || song.score_fingerprint() != score_before;
         self.note_song_written(target, wrote_score);
         self.sync_dirty_mirror();
@@ -137,28 +137,8 @@ impl<G: Game> EditorGame<G> {
         !own_file && song_files_exist(target)
     }
 
-    /// Replace the song with a new, never-saved one.
-    /// A new song, its background on the project's first bank under `soundfonts/` — the
-    /// default path, which the composer then warns about, when it has none.
-    pub(super) fn new_song(&mut self) {
-        match SongDocument::new_song_on(&editor::song::first_sound_font(&self.asset_base)) {
-            Ok(song) => {
-                self.song = Some(song);
-                self.song_generation += 1;
-                self.follow_song();
-                self.editor.composer.rescan_songs(&self.asset_base);
-                self.editor.status_bar.show_message("New song");
-            }
-            Err(error) => self
-                .editor
-                .status_bar
-                .show_error(format!("New song failed: {error}")),
-        }
-        self.sync_dirty_mirror();
-    }
-
     /// Open the song at `path` — the open song's own path included, which reads both its
-    /// files anew — keeping what an interrupted save left; returns what the open settled.
+    /// files anew; returns what the open settled.
     pub(super) fn open_song(&mut self, path: &Path) -> Result<Vec<String>, String> {
         let opened =
             SongDocument::open(path, &self.asset_base).map_err(|error| error.to_string())?;
@@ -214,13 +194,6 @@ impl<G: Game> EditorGame<G> {
             ))
         };
         match hosted {
-            HostedWrite::SongNew { discard } => {
-                if dirty && !discard {
-                    return Err(dirty_refusal("new"));
-                }
-                self.new_song();
-                Ok(serde_json::json!({ "song": "new", "dirty": true }))
-            }
             HostedWrite::SongOpen { path, discard } => {
                 if dirty && !discard {
                     return Err(dirty_refusal("open"));

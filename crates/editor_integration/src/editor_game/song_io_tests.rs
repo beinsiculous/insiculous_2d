@@ -10,7 +10,7 @@ use ecs::World;
 use editor::{ConfirmChoice, EditorPlayState, PlayControlAction, SongDocument};
 
 use super::scene_confirm::{OverwriteCause, PendingSceneAction};
-use super::test_support::{api_line, assert_ok, complete_play, dirty_editor, editor_game, signed_song, DummyGame};
+use super::test_support::{api_line, assert_ok, complete_play, dirty_editor, editor_game, hold_song, signed_song, DummyGame};
 use super::EditorGame;
 use super::test_support::press_play;
 
@@ -28,15 +28,6 @@ fn folder() -> tempfile::TempDir {
 
 fn json(response: &str) -> serde_json::Value {
     serde_json::from_str(response).expect("one line of JSON")
-}
-
-/// Give the session's song the author and license Save requires, as the API does.
-fn sign_song(editor: &mut EditorGame<DummyGame>, world: &mut World) {
-    assert_ok(&api_line(
-        editor,
-        world,
-        r#"song edit {"SetProvenance": {"provenance": {"author": "2026 Jesse", "license": "MIT"}}}"#,
-    ));
 }
 
 /// Give the session's song an edit its last save does not hold.
@@ -101,8 +92,7 @@ fn play_over_a_saved_but_dirty_song_offers_play_saved_which_keeps_the_edits() {
     let folder = folder();
     let mut editor = session_in(&folder);
     let mut world = World::new();
-    assert_ok(&api_line(&mut editor, &mut world, "song new"));
-    sign_song(&mut editor, &mut world);
+    hold_song(&mut editor, signed_song());
     assert_ok(&api_line(
         &mut editor,
         &mut world,
@@ -157,14 +147,16 @@ fn a_scene_action_never_prompts_for_the_song_nor_a_song_action_for_the_scene() {
     );
     editor.scene_confirm.pending_action = None;
 
+    let unmapped = folder.path().join("music/theme.mid");
+    common::vfs::write(&unmapped, signed_song().source_bytes()).expect("an unmapped score");
     assert!(
-        editor.request_document_action(PendingSceneAction::NewSong),
-        "a clean song is not asked about the dirty scene"
+        editor.request_document_action(PendingSceneAction::OpenSong(unmapped.clone())),
+        "a song action is not asked about the dirty scene"
     );
-    editor.perform_song_action(PendingSceneAction::NewSong);
+    editor.perform_song_action(PendingSceneAction::OpenSong(unmapped));
     assert!(
         editor.song.as_ref().is_some_and(SongDocument::is_dirty),
-        "a new song is dirty"
+        "an unmapped song opens with its map unsaved"
     );
 
     let mut clean_scene = session_in(&folder);
@@ -192,7 +184,7 @@ fn a_song_action_is_refused_during_a_play_session_with_no_dialog() {
     editor.handle_play_action(PlayControlAction::Pause, &mut world);
     editor.song = Some(signed_song());
 
-    assert!(!editor.request_document_action(PendingSceneAction::NewSong));
+    assert!(!editor.request_document_action(PendingSceneAction::CloseSong));
     assert_eq!(editor.scene_confirm.pending_action, None);
     let response = json(&api_line(
         &mut editor,
@@ -206,13 +198,12 @@ fn a_song_action_is_refused_during_a_play_session_with_no_dialog() {
 }
 
 #[test]
-fn new_open_and_close_refuse_a_dirty_song_over_the_api_unless_the_line_says_discard() {
+fn open_and_close_refuse_a_dirty_song_over_the_api_unless_the_line_says_discard() {
     let folder = folder();
     let mut editor = session_in(&folder);
     let mut world = World::new();
-    assert_ok(&api_line(&mut editor, &mut world, "song new"));
-    sign_song(&mut editor, &mut world);
-    for line in ["song new", "song open music/theme.mid", "song close"] {
+    hold_song(&mut editor, signed_song());
+    for line in ["song open music/theme.mid", "song close"] {
         let response = json(&api_line(&mut editor, &mut world, line));
         assert_eq!(response["error"]["kind"], "refused", "{line}: {response}");
         assert!(editor.song.is_some(), "{line}: the song is still there");
@@ -234,6 +225,10 @@ fn new_open_and_close_refuse_a_dirty_song_over_the_api_unless_the_line_says_disc
     );
     assert_ok(&api_line(&mut editor, &mut world, "song close"));
     assert!(editor.song.is_none(), "a clean song closes without discard");
+    let new = json(&api_line(&mut editor, &mut world, "song new discard"));
+    assert_eq!(new["error"]["kind"], "refused", "{new}");
+    assert!(new["error"]["message"].as_str().is_some_and(|message| message.contains("MIDI Evil")), "{new}");
+    assert!(editor.song.is_none(), "no song is made");
 }
 
 #[test]
@@ -242,8 +237,7 @@ fn scene_and_song_saves_leave_each_others_dirtiness_alone_and_scene_reports_both
     let mut world = World::new();
     let mut editor = dirty_editor(&mut world);
     editor.asset_base = folder.path().to_path_buf();
-    assert_ok(&api_line(&mut editor, &mut world, "song new"));
-    sign_song(&mut editor, &mut world);
+    hold_song(&mut editor, signed_song());
 
     assert_ok(&api_line(&mut editor, &mut world, "save scenes/level.ron"));
     let scene = json(&api_line(&mut editor, &mut world, "scene"));
@@ -281,8 +275,7 @@ fn song_undo_leaves_the_scene_history_and_scene_undo_leaves_the_song() {
     let mut editor = editor_game();
     let mut world = World::new();
     assert_ok(&api_line(&mut editor, &mut world, "create sprite Crate"));
-    assert_ok(&api_line(&mut editor, &mut world, "song new"));
-    sign_song(&mut editor, &mut world);
+    hold_song(&mut editor, signed_song());
     edit_song(&mut editor, &mut world);
 
     let undone = json(&api_line(&mut editor, &mut world, "song undo"));
@@ -306,31 +299,34 @@ fn song_undo_leaves_the_scene_history_and_scene_undo_leaves_the_song() {
 }
 
 #[test]
-fn a_new_song_plays_on_the_projects_first_bank_and_on_the_default_when_it_has_none() {
+fn an_unmapped_song_opens_on_the_projects_first_bank_and_on_the_default_when_it_has_none() {
     let banked = folder();
     let mut editor = editor_game();
     editor.asset_base = banked.path().to_path_buf();
     for bank in ["soundfonts/b.sf2", "soundfonts/a.sf2"] {
         common::vfs::write(&banked.path().join(bank), b"bank").expect("written");
     }
-    editor.new_song();
-    let song = editor.song.as_ref().expect("a new song");
+    let unmapped = banked.path().join("music/theme.mid");
+    common::vfs::write(&unmapped, signed_song().source_bytes()).expect("an unmapped score");
+    editor.open_song(&unmapped).expect("an unmapped song opens in place");
+    let song = editor.song.as_ref().expect("the song");
     assert_eq!(song.file().soundfont, "soundfonts/a.sf2", "the first in sorted order");
 
     let bare = folder();
     let mut editor = editor_game();
     editor.asset_base = bare.path().to_path_buf();
-    editor.new_song();
-    let song = editor.song.as_ref().expect("a new song");
+    let unmapped = bare.path().join("music/theme.mid");
+    common::vfs::write(&unmapped, signed_song().source_bytes()).expect("an unmapped score");
+    editor.open_song(&unmapped).expect("an unmapped song opens in place");
+    let song = editor.song.as_ref().expect("the song");
     assert_eq!(song.file().soundfont, editor::song::DEFAULT_SOUND_FONT_PATH);
-    assert!(!editor::composer::sound_font_exists(bare.path(), &song.file().soundfont), "which the composer warns about");
+    assert!(!editor::external_tools::sound_font_exists(bare.path(), &song.file().soundfont), "which the composer warns about");
 }
 
 /// A song saved at `music/theme.mid`, its sidecar then rewritten by another program, and an
 /// edit of its own unsaved.
 fn song_whose_map_changed_on_disk(editor: &mut EditorGame<DummyGame>, world: &mut World, folder: &tempfile::TempDir) -> std::path::PathBuf {
-    assert_ok(&api_line(editor, world, "song new"));
-    sign_song(editor, world);
+    hold_song(editor, signed_song());
     assert_ok(&api_line(editor, world, "song save music/theme.mid"));
     let sidecar = folder.path().join("music/theme.mid.ron");
     let mut text = common::vfs::read_to_string(&sidecar).expect("the sidecar");
@@ -395,8 +391,7 @@ fn song_open_of_the_open_song_rereads_its_map_from_disk() {
     let folder = folder();
     let mut editor = session_in(&folder);
     let mut world = World::new();
-    assert_ok(&api_line(&mut editor, &mut world, "song new"));
-    sign_song(&mut editor, &mut world);
+    hold_song(&mut editor, signed_song());
     assert_ok(&api_line(&mut editor, &mut world, "song save music/theme.mid"));
     let sidecar = folder.path().join("music/theme.mid.ron");
     let text = common::vfs::read_to_string(&sidecar).expect("the sidecar");
@@ -411,7 +406,7 @@ fn song_init_maps_an_unmapped_midi_and_refuses_a_mapped_one_and_an_unmapped_open
     let folder = folder();
     let mut editor = session_in(&folder);
     let mut world = World::new();
-    let score = SongDocument::new_song().expect("a blank song").data().write_smf().expect("exports");
+    let score = signed_song().source_bytes().to_vec();
     for name in ["lonely", "bare"] {
         common::vfs::write(&folder.path().join(format!("music/{name}.mid")), &score).expect("a .mid");
     }

@@ -161,11 +161,11 @@ impl<G: Game> EditorGame<G> {
         }
     }
 
-    /// Whether a gizmo or a composer drag is live, telling the user to finish or
-    /// Escape it first: a transform- or existence-mutating action — or any history
-    /// operation — landing mid-drag would be swallowed by the drag's one commit.
+    /// Whether a gizmo drag is live, telling the user to finish or Escape it first: a
+    /// transform- or existence-mutating action — or any history operation — landing
+    /// mid-drag would be swallowed by the drag's one commit.
     pub(super) fn refuse_during_drag(&mut self) -> bool {
-        let drag_live = self.gizmo_drag.is_some() || self.composer_drag.is_some();
+        let drag_live = self.gizmo_drag.is_some();
         if drag_live {
             self.editor
                 .status_bar
@@ -318,7 +318,7 @@ impl<G: Game> EditorGame<G> {
                     self.perform_scene_action(ctx, action);
                 }
             }
-            A::NewSong | A::OpenSong | A::SaveSong | A::SaveSongAs | A::CloseSong => {
+            A::OpenSong | A::SaveSong | A::SaveSongAs | A::CloseSong => {
                 self.dispatch_song_action(action);
             }
             A::Exit => ctx.request_exit(),
@@ -391,7 +391,6 @@ impl<G: Game> EditorGame<G> {
             | A::SaveAs
             | A::NewScene
             | A::OpenScene
-            | A::NewSong
             | A::OpenSong
             | A::SaveSong
             | A::SaveSongAs
@@ -488,13 +487,10 @@ impl<G: Game> EditorGame<G> {
     }
 
     /// Escape: cancel the most specific live thing, exactly one per press —
-    /// a composer drag, else a gizmo drag, else a marquee, else the selection. The toolbar's open
+    /// the colour editor, else a gizmo drag, else a marquee, else the selection. The toolbar's open
     /// overflow menu is closed before this, in [`Self::route_editor_key`],
     /// because it must close while Playing too and Playing never reaches here.
     pub(super) fn cancel_cascade(&mut self, world: &mut ecs::World) {
-        if self.drop_composer_drag() {
-            return;
-        }
         if self.editor.inspector_state.close_color_editor() {
             return;
         }

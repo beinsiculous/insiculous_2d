@@ -162,18 +162,6 @@ pub struct EditorTheme {
     /// derive from it in `selection_outline_colors()`)
     pub selection_outline: Color,
 
-    // ── Composer ────────────────────────────────────────────────
-    /// A note in the piano roll — ≥3:1 against the roll's well and its black-key rows.
-    pub note_fill: Color,
-    /// The border a selected note gains, with its glyph — ≥3:1 against a note and the well,
-    /// so selection never rests on the fill's colour alone.
-    pub note_selected_border: Color,
-    /// The rows of the black keys, a step off the roll's well.
-    pub key_black: Color,
-    /// The preview's playhead line across the roll — ≥3:1 against the well, the black-key
-    /// rows and a note's fill, so it reads where it crosses a note too.
-    pub playhead: Color,
-
     // ── Typography ──────────────────────────────────────────────
     /// Font-size tokens — all editor text sizes come from here
     pub fonts: crate::typography::FontSizes,
@@ -296,14 +284,6 @@ impl Default for EditorTheme {
             // Selection outline — orange: distinct from the collider overlay's
             // yellow/green and the grid's cyan
             selection_outline: Color::new(1.0, 0.55, 0.15, 1.0),
-
-            // Composer — the selected border is warm where the fill is blue, and the
-            // playhead a pale pink, light enough to cross a note and apart from every
-            // play-state and selection tone
-            note_fill: Color::from_hex(0x3a7bd5),
-            note_selected_border: Color::from_hex(0xffe066),
-            key_black: Color::from_hex(0x222222),
-            playhead: Color::from_hex(0xffd6f6),
         }
     }
 }

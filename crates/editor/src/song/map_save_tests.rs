@@ -1,12 +1,13 @@
-//! Save writes the map and leaves the score: a map save fingerprints the bytes it loaded,
-//! a Save As copies them, an edited score is written only by the transition's rule — kept
-//! as a recovery when another program rewrote the `.mid` under it — and both files are
-//! compared by content immediately before the save writes.
+//! Save writes the map and leaves the score: a map save fingerprints the bytes it loaded, a
+//! Save As copies them, both files are compared by content immediately before the save
+//! writes, and each final is a temporary file renamed over its target, so a save stopped
+//! at the rename leaves the old finals whole.
 
 use std::time::SystemTime;
 
 use super::test_support::{
-    add_note, exported, melody, napolitan_song, AssetFolder, RewritingStore, NAPOLITAN,
+    melody, melody_bytes, napolitan_song, AssetFolder, RenameFailingStore, RewritingStore,
+    NAPOLITAN,
 };
 use super::{midi_fingerprint, Gesture, SaveIntent, SongEdit, SongSaveError};
 
@@ -64,49 +65,30 @@ fn save_as_to_a_new_and_to_an_overwritten_target_writes_the_loaded_bytes() {
 }
 
 #[test]
-fn save_as_of_an_edited_score_writes_the_edited_score_and_the_document_is_clean_against_it() {
+fn a_save_whose_rename_fails_leaves_the_old_finals_whole_and_no_temporary_file() {
     let folder = AssetFolder::new();
     let mut document = napolitan_song(&folder, SONG);
-    document.apply(add_note(0, 72), Gesture::Discrete).expect("a score edit");
-    let edited = exported(&document);
+    let sidecar_before = folder.read(SIDECAR).expect("the saved sidecar");
+    document
+        .apply(SongEdit::SetLoop { looping: false }, Gesture::Discrete)
+        .expect("a map edit");
 
-    document.save(&folder.path("music/copy.mid"), folder.base()).expect("saves as");
-    assert_eq!(folder.read("music/copy.mid"), Some(edited.clone()));
-    assert_eq!(document.source_bytes(), edited.as_slice());
-    assert_eq!(document.score_fingerprint(), midi_fingerprint(&edited));
-    assert!(!document.is_score_authored() && !document.is_dirty());
-    assert_eq!(folder.read(SONG).as_deref(), Some(NAPOLITAN), "the song it came from is untouched");
-}
-
-#[test]
-fn an_edited_score_saved_over_a_midi_another_program_rewrote_lands_as_a_recovery() {
-    let other_program = exported(&melody());
-    // Rewritten before the save starts, and while it is between its journal and its finals.
-    for after_operation in [None, Some(2)] {
-        let folder = AssetFolder::new();
-        let mut document = napolitan_song(&folder, SONG);
-        document.apply(add_note(0, 72), Gesture::Discrete).expect("a score edit");
-        let edited = exported(&document);
-        let mut store = RewritingStore {
-            after_operation: after_operation.unwrap_or(0),
-            path: folder.path(SONG),
-            bytes: other_program.clone(),
-            landed: 0,
-        };
-        if after_operation.is_none() {
-            folder.write(SONG, &other_program);
-        }
-
-        let notes = document
-            .save_to(&mut store, &folder.path(SONG), folder.base(), SaveIntent::default())
-            .expect("the save lands");
-        let kept = format!("napolitan.recovered-{:016x}.mid", midi_fingerprint(&edited));
-        assert_eq!(folder.read(SONG), Some(other_program.clone()), "{after_operation:?}: the disk's file is untouched");
-        assert_eq!(folder.read(&format!("music/{kept}")), Some(edited), "{after_operation:?}");
-        assert!(notes[0].contains(&kept), "{after_operation:?}: {notes:?}");
-        assert_eq!(sidecar_fingerprint(&folder, SIDECAR), Some(midi_fingerprint(&other_program)));
-        assert_eq!(document.score_fingerprint(), midi_fingerprint(&other_program), "it follows the disk");
-        assert!(!document.is_score_authored() && !document.is_dirty());
+    for target in [SONG, "music/copy.mid"] {
+        let error = document
+            .save_to(&mut RenameFailingStore, &folder.path(target), folder.base(), SaveIntent::default())
+            .expect_err("the rename fails");
+        assert!(matches!(error, SongSaveError::Write { .. }), "{target}: {error}");
+        assert_eq!(folder.read(SIDECAR), Some(sidecar_before.clone()), "{target}: the old map is whole");
+        assert_eq!(folder.read(SONG).as_deref(), Some(NAPOLITAN), "{target}: and the old score");
+        assert_eq!(folder.read("music/copy.mid"), None, "{target}: a Save As target never appears");
+        assert_eq!(folder.read("music/copy.mid.ron"), None, "{target}");
+        let leftovers: Vec<String> = folder
+            .files_under("music")
+            .into_iter()
+            .filter(|name| name.ends_with(".saving"))
+            .collect();
+        assert!(leftovers.is_empty(), "{target}: {leftovers:?}");
+        assert!(document.is_dirty(), "{target}: nothing was saved");
     }
 }
 
@@ -159,7 +141,7 @@ fn a_midi_rewritten_between_the_load_and_a_map_save_is_adopted_and_the_save_fing
     document
         .apply(SongEdit::SetLoop { looping: false }, Gesture::Discrete)
         .expect("a map edit");
-    let other_program = exported(&melody());
+    let other_program = melody_bytes();
     folder.write(SONG, &other_program);
 
     let notes = document.save(&folder.path(SONG), folder.base()).expect("saves");
@@ -190,18 +172,18 @@ fn a_sidecar_rewritten_while_the_home_license_was_being_written_refuses_and_puts
     let sidecar = crate::external_tools::midi_sidecar_path(&folder.path(SONG));
     let mut rewritten = std::fs::read(&sidecar).expect("the sidecar");
     rewritten.extend_from_slice(b"\n// rewritten by another program\n");
-    // The map save's writes: the sidecar's journal, then the home LICENSE; the rewrite
-    // lands right after the LICENSE, where the second look must catch it.
+    // The map save's first write is the home LICENSE; the rewrite lands right after it,
+    // where the second look must catch it.
     let mut store = RewritingStore {
-        after_operation: 2,
+        after_operation: 1,
         path: sidecar.clone(),
-        bytes: rewritten,
+        bytes: rewritten.clone(),
         landed: 0,
     };
 
     let refused = document.save_to(&mut store, &folder.path(SONG), folder.base(), SaveIntent::default());
-    assert!(matches!(refused, Err(super::SongSaveError::SidecarChanged { .. })), "{refused:?}");
+    assert!(matches!(refused, Err(SongSaveError::SidecarChanged { .. })), "{refused:?}");
     assert_eq!(folder.read("music/LICENSE"), Some(license_before), "the LICENSE holds what it held");
-    assert_eq!(folder.read("music/napolitan.mid.ron.new"), None, "this save's journal is gone");
+    assert_eq!(std::fs::read(&sidecar).ok(), Some(rewritten), "the other program's map is left as it wrote it");
     assert!(document.is_dirty(), "nothing was saved");
 }

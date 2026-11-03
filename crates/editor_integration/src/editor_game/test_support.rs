@@ -154,15 +154,32 @@ pub(super) fn ui_frame(
     ui.end_frame();
 }
 
-/// A new song holding three eighths on its melody track (track 1): C4 at tick 0, E4 at
-/// 480 and G4 at 960.
+/// A track named `melody` on channel 1 — its program change at tick 0 — holding three
+/// eighths: C4 at tick 0, E4 at 480 and G4 at 960.
+const THREE_EIGHTHS: &[u8] = &[
+    0x00, 0xFF, 0x03, 0x06, b'm', b'e', b'l', b'o', b'd', b'y', 0x00, 0xC0, 0x00,
+    0x00, 0x90, 0x3C, 0x64, 0x81, 0x70, 0x80, 0x3C, 0x00, // C4 at 0, off an eighth later
+    0x81, 0x70, 0x90, 0x40, 0x64, 0x81, 0x70, 0x80, 0x40, 0x00, // E4 at 480
+    0x81, 0x70, 0x90, 0x43, 0x64, 0x81, 0x70, 0x80, 0x43, 0x00, // G4 at 960
+    0x00, 0xFF, 0x2F, 0x00,
+];
+
+/// The microseconds a quarter lasts at 120 BPM.
+const QUARTER_AT_120_BPM: u32 = 500_000;
+
+/// A song signed as [`signed_song`] is, whose melody track (track 1) holds three eighths:
+/// C4 at tick 0, E4 at 480 and G4 at 960.
 pub(super) fn melody_song() -> editor::SongDocument {
-    let mut song = signed_song();
-    for (tick, key) in [(0, 60), (480, 64), (960, 67)] {
-        let note = editor::SongEdit::AddNote { track: 1, tick, key, velocity: 100, duration_ticks: 240 };
-        song.apply(note, editor::Gesture::Discrete).expect("the note lands");
-    }
-    song
+    signed(&type_one_file(QUARTER_AT_120_BPM, &[THREE_EIGHTHS]))
+}
+
+/// [`melody_song`]'s melody at a quarter every 25 ms — a bar lasts a tenth of a second —
+/// beside an empty track named `bass` (track 2, channel 2, program 32), signed the same.
+pub(super) fn quick_melody_and_bass_song() -> editor::SongDocument {
+    const BASS: &[u8] = &[
+        0x00, 0xFF, 0x03, 0x04, b'b', b'a', b's', b's', 0x00, 0xC1, 0x20, 0x00, 0xFF, 0x2F, 0x00,
+    ];
+    signed(&type_one_file(25_000, &[THREE_EIGHTHS, BASS]))
 }
 
 /// The music crate's one-preset sine bank, under the name a new song plays its background
@@ -172,9 +189,18 @@ pub(super) fn stock_sound_font(folder: &std::path::Path) {
     common::vfs::write(&folder.join(editor::song::DEFAULT_SOUND_FONT_PATH), SINE_FONT).expect("the bank is written");
 }
 
-/// A new song carrying the author and license Save requires: one `SetProvenance` entry.
+/// A song whose one note track, `melody` on channel 1 (track 1), is empty, carrying the
+/// author and license Save requires: one `SetProvenance` entry.
 pub(super) fn signed_song() -> editor::SongDocument {
-    let mut song = editor::SongDocument::new_song().expect("a blank song");
+    const EMPTY_MELODY: &[u8] = &[
+        0x00, 0xFF, 0x03, 0x06, b'm', b'e', b'l', b'o', b'd', b'y', 0x00, 0xC0, 0x00, 0x00, 0xFF, 0x2F, 0x00,
+    ];
+    signed(&type_one_file(QUARTER_AT_120_BPM, &[EMPTY_MELODY]))
+}
+
+/// The song in `bytes`, never saved, signed by one `SetProvenance` entry.
+fn signed(bytes: &[u8]) -> editor::SongDocument {
+    let mut song = editor::SongDocument::from_smf(bytes, editor::song::default_song_file()).expect("the fixture reads");
     let provenance = fixture_provenance();
     song.apply(editor::SongEdit::SetProvenance { provenance }, editor::Gesture::Discrete)
         .expect("the provenance lands");
@@ -197,44 +223,72 @@ fn track_chunk(events: &[u8]) -> Vec<u8> {
     chunk
 }
 
-/// A type-1 file at 480 ticks a quarter: the timing track, then each of `tracks`.
-fn type_one_file(tracks: &[&[u8]]) -> Vec<u8> {
-    const TIMING: &[u8] = &[
-        0x00, 0xFF, 0x51, 0x03, 0x07, 0xA1, 0x20, // 120 BPM
+/// A type-1 file at 480 ticks a quarter: the timing track — a quarter lasting
+/// `microseconds_per_quarter`, in 4/4 — then each of `tracks`.
+fn type_one_file(microseconds_per_quarter: u32, tracks: &[&[u8]]) -> Vec<u8> {
+    let [_, tempo_high, tempo_middle, tempo_low] = microseconds_per_quarter.to_be_bytes();
+    let timing = [
+        0x00, 0xFF, 0x51, 0x03, tempo_high, tempo_middle, tempo_low,
         0x00, 0xFF, 0x58, 0x04, 0x04, 0x02, 0x18, 0x08, // 4/4
         0x00, 0xFF, 0x2F, 0x00,
     ];
     let mut bytes = b"MThd".to_vec();
     bytes.extend_from_slice(&[0, 0, 0, 6, 0, 1, 0, tracks.len() as u8 + 1, 0x01, 0xE0]);
-    bytes.extend(track_chunk(TIMING));
+    bytes.extend(track_chunk(&timing));
     for track in tracks {
         bytes.extend(track_chunk(track));
     }
     bytes
 }
 
+/// A track named `pad` on channel 1, empty.
+const PAD: &[u8] = &[0x00, 0xFF, 0x03, 0x03, b'p', b'a', b'd', 0x00, 0xC0, 0x00, 0x00, 0xFF, 0x2F, 0x00];
+
+/// A track named `lead` on channel 2 holding one C5, a quarter long.
+const LEAD: &[u8] = &[
+    0x00, 0xFF, 0x03, 0x04, b'l', b'e', b'a', b'd', 0x00, 0xC1, 0x00,
+    0x00, 0x91, 0x48, 0x5A, // C5 on, channel 2
+    0x83, 0x60, 0x81, 0x48, 0x00, // off a quarter later
+    0x00, 0xFF, 0x2F, 0x00,
+];
+
 /// A song whose first track with a channel (`pad`, track 1) is empty and whose second
 /// (`lead`, track 2) holds one C5.
 pub(super) fn second_track_holds_the_notes() -> editor::SongDocument {
-    const PAD: &[u8] = &[0x00, 0xFF, 0x03, 0x03, b'p', b'a', b'd', 0x00, 0xC0, 0x00, 0x00, 0xFF, 0x2F, 0x00];
-    const LEAD: &[u8] = &[
-        0x00, 0xFF, 0x03, 0x04, b'l', b'e', b'a', b'd', 0x00, 0xC1, 0x00,
-        0x00, 0x91, 0x48, 0x5A, // C5 on, channel 2
-        0x83, 0x60, 0x81, 0x48, 0x00, // off a quarter later
+    let bytes = type_one_file(QUARTER_AT_120_BPM, &[PAD, LEAD]);
+    editor::SongDocument::from_smf(&bytes, editor::song::default_song_file()).expect("the fixture reads")
+}
+
+/// [`second_track_holds_the_notes`] with a whole C3 on the pad from tick 0 — 1920 ticks, a
+/// background the song lasts by while the lead's part is bound.
+pub(super) fn pad_under_the_lead_song() -> editor::SongDocument {
+    const PAD_WITH_A_WHOLE_NOTE: &[u8] = &[
+        0x00, 0xFF, 0x03, 0x03, b'p', b'a', b'd', 0x00, 0xC0, 0x00,
+        0x00, 0x90, 0x30, 0x5A, // C3 on
+        0x8F, 0x00, 0x80, 0x30, 0x00, // off a whole note later
         0x00, 0xFF, 0x2F, 0x00,
     ];
-    let bytes = type_one_file(&[PAD, LEAD]);
+    let bytes = type_one_file(QUARTER_AT_120_BPM, &[PAD_WITH_A_WHOLE_NOTE, LEAD]);
     editor::SongDocument::from_smf(&bytes, editor::song::default_song_file()).expect("the fixture reads")
 }
 
 /// A song of one track holding timing alone: nowhere a note could land.
 pub(super) fn timing_only_song() -> editor::SongDocument {
-    let bytes = type_one_file(&[]);
+    let bytes = type_one_file(QUARTER_AT_120_BPM, &[]);
     editor::SongDocument::from_smf(&bytes, editor::song::default_song_file()).expect("the fixture reads")
 }
 
+/// Hold `song` as the open song, as an open does: a new generation, the composer following
+/// it, the dirty mirrors synced.
+pub(super) fn hold_song<G: Game>(editor: &mut EditorGame<G>, song: editor::SongDocument) {
+    editor.song = Some(song);
+    editor.song_generation += 1;
+    editor.follow_song();
+    editor.sync_dirty_mirror();
+}
+
 /// A session whose asset base is `folder`, holding `song`, with the composer shown in a
-/// 1280 × 720 dock and its piano roll holding the keyboard.
+/// 1280 × 720 dock and its sidebar holding the keyboard.
 pub(super) fn composer_session(folder: &std::path::Path, song: editor::SongDocument) -> EditorGame<DummyGame> {
     let mut editor = editor_game();
     editor.asset_base = folder.to_path_buf();
@@ -242,6 +296,6 @@ pub(super) fn composer_session(folder: &std::path::Path, song: editor::SongDocum
     editor.song = Some(song);
     editor.follow_song();
     editor.editor.dock_area.set_bounds(ui::Rect::new(0.0, 24.0, 1280.0, 672.0));
-    editor.show_composer(editor::composer::ComposerFocus::PianoRoll);
+    editor.show_composer(editor::composer::ComposerFocus::Sidebar);
     editor
 }

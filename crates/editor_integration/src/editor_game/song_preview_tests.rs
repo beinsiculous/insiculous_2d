@@ -12,7 +12,7 @@ use editor::{Gesture, SongEdit};
 use engine_core::prelude::{AudioManager, SoundSources};
 
 use super::song_preview::{SlotReadings, SongAudioIntent};
-use super::test_support::{api_line, composer_session, melody_song, second_track_holds_the_notes, DummyGame};
+use super::test_support::{api_line, composer_session, melody_song, pad_under_the_lead_song, DummyGame};
 use super::EditorGame;
 
 /// A manager with no device that plays a song on its virtual clock, its asset base the
@@ -55,17 +55,24 @@ fn session() -> (tempfile::TempDir, EditorGame<DummyGame>) {
 }
 
 #[test]
-fn the_transport_plays_the_document_from_the_rolls_cursor_and_stop_ends_it() {
+fn the_transport_plays_from_the_top_song_play_from_its_beat_and_stop_ends_each() {
     let (_folder, mut editor) = session();
     let (mut audio, mut sources) = (headless_audio(&editor), SoundSources::default());
-    editor.editor.composer.cursor.tick = 960;
 
     editor.run_composer_actions(vec![editor::composer::ComposerAction::PreviewPlayStop]);
     assert!(editor.editor.composer.preview_playing, "the transport shows it at once");
     frame(&mut editor, &mut audio, &mut sources);
     assert!(audio.is_song_playing(), "the drain played the document");
     let playhead = editor.editor.composer.playhead_tick.expect("a sounding preview has a playhead");
-    assert!(playhead >= 960, "it starts at the cursor's tick, never before: {playhead}");
+    assert!(playhead < 960, "the transport plays from the top: {playhead}");
+    editor.run_composer_actions(vec![editor::composer::ComposerAction::PreviewPlayStop]);
+    frame(&mut editor, &mut audio, &mut sources);
+    assert!(!audio.is_song_playing(), "the transport's Stop ends it");
+
+    editor.preview_play(960).expect("song play from beat 2");
+    frame(&mut editor, &mut audio, &mut sources);
+    let playhead = editor.editor.composer.playhead_tick.expect("a sounding preview has a playhead");
+    assert!(playhead >= 960, "it starts at its tick, never before: {playhead}");
     let song = editor.song.as_ref().expect("a song");
     assert!(status_text(song, &editor.editor.composer).starts_with("Playing · bar 1 · beat 3 · 120 BPM · 4/4"));
     assert!(editor.song_preview.is_audible());
@@ -182,25 +189,26 @@ fn an_edit_and_an_undo_under_a_playing_preview_each_stop_it_and_say_so() {
 
 #[test]
 fn a_song_replaced_under_a_playing_preview_stops_it() {
-    let (_folder, mut editor) = session();
+    let (folder, mut editor) = session();
     let (mut audio, mut sources) = (headless_audio(&editor), SoundSources::default());
     editor.preview_play(0).expect("plays");
     frame(&mut editor, &mut audio, &mut sources);
-    editor.new_song();
+    let other = folder.path().join("music/other.mid");
+    common::vfs::write(&other, melody_song().source_bytes()).expect("another song's score");
+    editor.open_song(&other).expect("the other song opens");
     frame(&mut editor, &mut audio, &mut sources);
     assert!(!audio.is_song_playing(), "the old song does not play on under the new one");
     assert!(!editor.song_preview.is_playing());
-    assert_eq!(status(&editor), "New song", "a replacement says what replaced it, not an edit");
+    assert!(status(&editor).contains("music/other.mid"), "a replacement says what replaced it, not an edit: {}", status(&editor));
 }
 
 #[test]
 fn the_api_plays_from_a_whole_beat_triggers_only_a_bound_action_while_heard_and_seeks_only_a_playing_preview() {
     let folder = tempfile::tempdir().expect("a temporary asset folder");
-    let mut editor = composer_session(folder.path(), second_track_holds_the_notes());
+    let mut editor = composer_session(folder.path(), pad_under_the_lead_song());
     let mut world = World::new();
     // The lead plays the binding's part; the pad's long note is the background the song lasts by.
     let edit = r#"song edit {"Batch": [
-        {"AddNote": {"track": 1, "tick": 0, "key": 48, "velocity": 90, "duration_ticks": 1920}},
         {"AddPart": {"part": {"name": "lead", "track": {"Index": 2}}}},
         {"AddInstrument": {"instrument": {"name": "sine", "source": {"SoundFont": {"path": "soundfonts/cast.sf2", "bank": 0, "preset": 0}}}}},
         {"SetBinding": {"binding": {"action": "jump", "part": "lead", "instrument": "sine"}}}]}"#;
@@ -317,16 +325,3 @@ fn a_saved_song_that_fails_to_load_leaves_the_games_own_song_playing_through_the
     assert_eq!(audio.song_label(), None, "Stop leaves editing silent, the game's own music included");
 }
 
-#[test]
-fn play_from_a_cursor_past_the_last_note_starts_from_the_top() {
-    let (_folder, mut editor) = session();
-    // Not looping, so a play from the song's end would end at once instead of wrapping.
-    editor.apply_composer_edit(SongEdit::SetLoop { looping: false }, Gesture::Discrete);
-    let (mut audio, mut sources) = (headless_audio(&editor), SoundSources::default());
-    editor.editor.composer.cursor.tick = 1200;
-    editor.preview_play_stop();
-    frame(&mut editor, &mut audio, &mut sources);
-    assert!(editor.song_preview.is_playing(), "{}", status(&editor));
-    let playhead = editor.editor.composer.playhead_tick.expect("sounding");
-    assert!(playhead < 1200, "the last note ends at 1200, so Play starts at the top: {playhead}");
-}

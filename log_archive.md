@@ -12,6 +12,31 @@ TECH_DEBT/ROADMAP docs — is what the sections below refer to.)
 
 ---
 
+## The composer re-scoped into the Conductor panel (2026-11-03)
+External Tools batch 7a (#217, #218). **What the composer was:** the Conductor effort's fifteen
+batches built a composing desk in the editor — a piano roll with its drag, nudges and keys, a
+keyboard-operable note list, the ten score verbs of `song edit` (`AddNote`, `DeleteNotes`,
+`MoveNotes`, `ResizeNotes`, `SetVelocity`, `SetPitch`, `AssignPart`, `SetTempo`,
+`SetTimeSignature`, `AddTrack`), `song new`, File → New Song, a note selection with
+`song select`, and a save journal: a `.new` pair written before the finals, kept by the next open
+as a `<stem>.recovered-<fingerprint>` file, with a transition rule for a score both the composer
+and another program had written.
+- **Moved to MIDI Evil:** the score — notes, tempo, meter and tracks. MIDI Evil exports the
+  `.mid`; the engine reads it and never writes it but as a copy of the bytes it loaded (Save As,
+  or a map save whose `.mid` is gone). The ten verbs and `song new` answer `refused` naming MIDI
+  Evil; on the web the score makes the file round trip, export → MIDI Evil → import.
+- **What stays:** the map — parts, instruments, bindings, loop, quantize, modes and provenance —
+  edited in the sidebar and through `song edit`'s map verbs, with the song's own history; the
+  transport and its audition, the preview and a binding's Trigger; `song init` and an unmapped
+  `.mid` opened in place; and Save of the sidecar and the song's `LICENSE` stanza, now one file
+  written to a temporary file and renamed over it (Save As two, the `.mid` first), the journal,
+  its recoveries and `EditingPolicy` gone with the score's edits.
+- **Why:** ruling (b) of the External Tools plan (Jesse, 2026-10-26) — composition leaves the
+  engine for MIDI Evil, and the engine keeps the conductor's half: a `.mid` comes in, and the
+  panel tells the engine when to play what sound, at what note and at what volume. Ruling (i)
+  followed from it: each file has one writer, the engine the `.mid.ron` and MIDI Evil the
+  `.mid`, so nothing needs a journal, a lock or a conflict file.
+
 ## Pattern Audit sprint ☑ Oct 19 2026
 The five tickets the skill filed (#168–#172), with #100, #153 and six backlog ticks, cleared in
 one day as a handoff loop (`coordination/pattern-audit/plan.md`, the reviewer ledger beside it,

@@ -1,56 +1,40 @@
 //! GUI and command API are one mutation path: for one row per [`SongEdit`] variant, the
 //! composer's call (`SongDocument::apply`) and a `song edit <json>` line leave the same
 //! song, the same history, and undo back to the same song. A variant without a row does
-//! not compile ([`variant_index`] matches exhaustively); a song whose score the composer
-//! cannot edit refuses every score edit by both paths with the report's reason, and takes
-//! its map's edits as any song does.
+//! not compile ([`variant_index`] matches exhaustively).
 
 use ecs::World;
-use music_midi::midly::num::{u15, u28, u4, u7};
-use music_midi::midly::{
-    Format, Header, MetaMessage, MidiMessage, Smf, Timing, TrackEvent, TrackEventKind,
-};
 use music_midi::{
     Binding, Instrument, InstrumentSource, Part, PartMode, Provenance, Quantize, TrackSelector,
 };
 
-use super::test_support::{exported, melody, note_numbers, song_provenance, AssetFolder};
-use super::{default_song_file, Gesture, Meter, SongDocument, SongEdit};
+use super::test_support::melody;
+use super::{Gesture, SongDocument, SongEdit};
 use crate::command_api::write::{self, WriteCtx};
 use crate::command_api::{parse_line, ApiError, Request, WriteCmd};
 use crate::commands::CommandHistory;
 use crate::play_state::EditorPlayState;
 use crate::selection::Selection;
 
-const VARIANT_COUNT: usize = 23;
+const VARIANT_COUNT: usize = 13;
 
 /// Every variant's place in the table. Exhaustive on purpose: a new variant fails to
 /// compile here until it has a row.
 fn variant_index(edit: &SongEdit) -> usize {
     match edit {
-        SongEdit::AddNote { .. } => 0,
-        SongEdit::DeleteNotes { .. } => 1,
-        SongEdit::MoveNotes { .. } => 2,
-        SongEdit::ResizeNotes { .. } => 3,
-        SongEdit::SetVelocity { .. } => 4,
-        SongEdit::SetPitch { .. } => 5,
-        SongEdit::AssignPart { .. } => 6,
-        SongEdit::SetTempo { .. } => 7,
-        SongEdit::SetTimeSignature { .. } => 8,
-        SongEdit::SetLoop { .. } => 9,
-        SongEdit::SetQuantize { .. } => 10,
-        SongEdit::SetPartMode { .. } => 11,
-        SongEdit::AddInstrument { .. } => 12,
-        SongEdit::SetInstrument { .. } => 13,
-        SongEdit::RemoveInstrument { .. } => 14,
-        SongEdit::SetBinding { .. } => 15,
-        SongEdit::RemoveBinding { .. } => 16,
-        SongEdit::AddPart { .. } => 17,
-        SongEdit::RemovePart { .. } => 18,
-        SongEdit::SetProvenance { .. } => 19,
-        SongEdit::Batch(_) => 20,
-        SongEdit::AddTrack { .. } => 21,
-        SongEdit::SetSoundFont { .. } => 22,
+        SongEdit::SetLoop { .. } => 0,
+        SongEdit::SetQuantize { .. } => 1,
+        SongEdit::SetPartMode { .. } => 2,
+        SongEdit::AddInstrument { .. } => 3,
+        SongEdit::SetInstrument { .. } => 4,
+        SongEdit::RemoveInstrument { .. } => 5,
+        SongEdit::SetBinding { .. } => 6,
+        SongEdit::RemoveBinding { .. } => 7,
+        SongEdit::AddPart { .. } => 8,
+        SongEdit::RemovePart { .. } => 9,
+        SongEdit::SetProvenance { .. } => 10,
+        SongEdit::Batch(_) => 11,
+        SongEdit::SetSoundFont { .. } => 12,
     }
 }
 
@@ -108,48 +92,8 @@ fn fixture() -> SongDocument {
     document
 }
 
-fn rows(first_note: u64) -> Vec<SongEdit> {
-    let one = vec![first_note];
+fn rows() -> Vec<SongEdit> {
     vec![
-        SongEdit::AddNote {
-            track: 1,
-            tick: 1440,
-            key: 72,
-            velocity: 80,
-            duration_ticks: 120,
-        },
-        SongEdit::DeleteNotes { notes: one.clone() },
-        SongEdit::MoveNotes {
-            notes: one.clone(),
-            tick_delta: 120,
-        },
-        SongEdit::ResizeNotes {
-            notes: one.clone(),
-            duration_ticks: 120,
-        },
-        SongEdit::SetVelocity {
-            notes: one.clone(),
-            velocity: 90,
-        },
-        SongEdit::SetPitch {
-            notes: one.clone(),
-            key: 62,
-        },
-        SongEdit::AssignPart {
-            notes: one.clone(),
-            part: "lead".to_string(),
-        },
-        SongEdit::SetTempo {
-            tick: 0,
-            microseconds_per_quarter: Some(400_000),
-        },
-        SongEdit::SetTimeSignature {
-            tick: 1920,
-            meter: Some(Meter {
-                numerator: 3,
-                denominator: 4,
-            }),
-        },
         SongEdit::SetLoop { looping: false },
         SongEdit::SetQuantize {
             part: "lead".to_string(),
@@ -185,19 +129,14 @@ fn rows(first_note: u64) -> Vec<SongEdit> {
                 license: "CC-BY-4.0".to_string(),
             },
         },
-        SongEdit::AddTrack {
-            name: "brass".to_string(),
-            channel: None,
-            program: 57,
-        },
         SongEdit::SetSoundFont {
             path: "soundfonts/tong.sf2".to_string(),
         },
         SongEdit::Batch(vec![
             SongEdit::SetLoop { looping: false },
-            SongEdit::SetVelocity {
-                notes: one,
-                velocity: 30,
+            SongEdit::SetQuantize {
+                part: "lead".to_string(),
+                quantize: Quantize::Eighth,
             },
         ]),
     ]
@@ -244,35 +183,11 @@ impl ApiRig {
     }
 }
 
-/// What a song plays: its timing, its tracks and every note under its id. An undone tempo or meter
-/// edit restores these exactly, though `SongData` then writes its timing events in its own
-/// order, so the bytes are compared only between the two paths.
-fn content(document: &SongDocument) -> String {
-    let data = document.data();
-    let notes: Vec<_> = data
-        .tracks()
-        .iter()
-        .flat_map(|track| track.units())
-        .flat_map(|unit| unit.notes.iter().map(move |note| (unit.tick, *note)))
-        .collect();
-    let tracks: Vec<_> = data
-        .tracks()
-        .iter()
-        .map(|track| (track.name(), track.channel()))
-        .collect();
-    format!(
-        "{:?} {:?} {tracks:?} {notes:?}",
-        data.tempo_changes(),
-        data.time_signatures()
-    )
-}
-
 #[test]
 fn every_variant_lands_the_same_through_the_gui_and_the_api_and_undoes_the_same() {
     let pristine = fixture();
-    let rows = rows(note_numbers(&pristine)[0]);
     let mut covered = [false; VARIANT_COUNT];
-    for row in rows {
+    for row in rows() {
         covered[variant_index(&row)] = true;
         let mut gui = fixture();
         gui.apply(row.clone(), Gesture::Discrete)
@@ -288,9 +203,9 @@ fn every_variant_lands_the_same_through_the_gui_and_the_api_and_undoes_the_same(
         let name = row.name();
         assert_eq!(api.song().file(), gui.file(), "{name}: the same sidecar");
         assert_eq!(
-            exported(api.song()),
-            exported(&gui),
-            "{name}: the same notes"
+            api.song().source_bytes(),
+            pristine.source_bytes(),
+            "{name}: and the score untouched"
         );
         assert_eq!(
             api.song().history().undo_count(),
@@ -302,7 +217,7 @@ fn every_variant_lands_the_same_through_the_gui_and_the_api_and_undoes_the_same(
             "{name}: the scene history never moves"
         );
 
-        gui.undo().expect("the GUI undoes");
+        assert_eq!(gui.undo(), Some(name), "{name}: the GUI undoes it");
         api.run("song undo").expect("the API undoes");
         for (path, document) in [("GUI", &gui), ("API", api.song())] {
             assert_eq!(
@@ -310,112 +225,7 @@ fn every_variant_lands_the_same_through_the_gui_and_the_api_and_undoes_the_same(
                 pristine.file(),
                 "{name}: the {path}'s undo restores the sidecar"
             );
-            assert_eq!(
-                content(document),
-                content(&pristine),
-                "{name}: and the music"
-            );
         }
     }
     assert_eq!(covered, [true; VARIANT_COUNT], "a row for every variant");
-}
-
-/// A type-1 file whose one track plays notes on two channels: the editing model has no
-/// single channel to write that track's edits on.
-fn mixed_channel_song() -> SongDocument {
-    let event = |delta, kind| TrackEvent {
-        delta: u28::new(delta),
-        kind,
-    };
-    let note = |channel, key, on| TrackEventKind::Midi {
-        channel: u4::new(channel),
-        message: if on {
-            MidiMessage::NoteOn {
-                key: u7::new(key),
-                vel: u7::new(100),
-            }
-        } else {
-            MidiMessage::NoteOff {
-                key: u7::new(key),
-                vel: u7::new(0),
-            }
-        },
-    };
-    let track = vec![
-        event(0, note(0, 60, true)),
-        event(240, note(0, 60, false)),
-        event(0, note(1, 64, true)),
-        event(240, note(1, 64, false)),
-        event(0, TrackEventKind::Meta(MetaMessage::EndOfTrack)),
-    ];
-    let mut bytes = Vec::new();
-    Smf {
-        header: Header::new(Format::Parallel, Timing::Metrical(u15::new(480))),
-        tracks: vec![track],
-    }
-    .write_std(&mut bytes)
-    .expect("writes");
-    SongDocument::from_smf(&bytes, default_song_file()).expect("reads")
-}
-
-#[test]
-fn a_song_whose_score_the_composer_cannot_edit_refuses_score_edits_by_both_paths_and_takes_map_edits() {
-    let gui_song = mixed_channel_song();
-    let super::EditingPolicy::Refused { reason } = gui_song.editing().clone() else {
-        panic!("a mixed-channel track is not editable");
-    };
-    let score_edit = SongEdit::AddNote {
-        track: 0,
-        tick: 0,
-        key: 67,
-        velocity: 100,
-        duration_ticks: 240,
-    };
-    let mut track_zero = part("lead");
-    track_zero.track = TrackSelector::Index(0);
-    let map_edits = [
-        SongEdit::AddInstrument {
-            instrument: organ("organ", 19),
-        },
-        SongEdit::AddPart { part: track_zero },
-        SongEdit::SetBinding {
-            binding: binding("coin"),
-        },
-    ];
-
-    let mut gui = gui_song.clone();
-    let gui_error = gui
-        .apply(score_edit.clone(), Gesture::Discrete)
-        .expect_err("a score edit is refused");
-    assert!(gui_error.to_string().contains(&reason), "{gui_error}");
-    let mut api = ApiRig::with(gui_song);
-    let line = |edit: &SongEdit| format!("song edit {}", serde_json::to_string(edit).expect("serializes"));
-    match api.run(&line(&score_edit)) {
-        Err(ApiError::Refused(message)) => assert!(message.contains(&reason), "{message}"),
-        other => panic!("the API path must refuse with the reason: {other:?}"),
-    }
-    assert_eq!(api.song().history().undo_count(), 0);
-
-    for edit in &map_edits {
-        gui.apply(edit.clone(), Gesture::Discrete)
-            .unwrap_or_else(|error| panic!("{} lands: {error}", edit.name()));
-        api.run(&line(edit))
-            .unwrap_or_else(|error| panic!("{} lands over the API: {error:?}", edit.name()));
-    }
-    assert_eq!(gui.file(), api.song().file(), "both paths land the same map");
-    assert_eq!(gui.file().bindings, [binding("coin")]);
-    assert!(!gui.is_score_authored(), "a map edit leaves the score the file's");
-
-    let folder = AssetFolder::new();
-    let target = folder.path("music/mixed.mid");
-    let provenance = song_provenance();
-    gui.apply(SongEdit::SetProvenance { provenance }, Gesture::Discrete)
-        .expect("the song's provenance is a map edit");
-    gui.save(&target, folder.base()).expect("a song with an uneditable score saves");
-    let loaded = gui.source_bytes().to_vec();
-    assert_eq!(folder.read("music/mixed.mid"), Some(loaded.clone()), "the loaded bytes, never a re-encoding");
-    gui.apply(SongEdit::SetLoop { looping: false }, Gesture::Discrete)
-        .expect("a map edit");
-    gui.save(&target, folder.base()).expect("and its map saves in place");
-    assert_eq!(folder.read("music/mixed.mid"), Some(loaded));
 }

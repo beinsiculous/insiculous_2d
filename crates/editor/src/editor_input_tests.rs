@@ -137,7 +137,6 @@ fn test_modifiers_read_detects_left_and_right_ctrl_and_shift() {
 #[test]
 fn test_every_song_action_is_denied_while_playing() {
     for action in [
-        A::NewSong,
         A::OpenSong,
         A::SaveSong,
         A::SaveSongAs,

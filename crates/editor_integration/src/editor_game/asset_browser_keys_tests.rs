@@ -168,7 +168,7 @@ fn a_right_press_in_the_browser_takes_the_keyboard_from_the_composer() {
     let (mut editor, _) = browser_session(&mut world);
     // The composer's first follow resets its state, focus included; settle it first.
     editor.follow_song();
-    editor.show_composer(editor::composer::ComposerFocus::PianoRoll);
+    editor.show_composer(editor::composer::ComposerFocus::Sidebar);
     assert!(editor.composer_holds_focus(), "the composer starts with the keyboard");
 
     press_in_with(&mut editor, PanelId::ASSET_BROWSER, MouseButton::Right);

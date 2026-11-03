@@ -1,156 +1,21 @@
-//! Applying a [`SongEdit`]: each variant checked and carried out on the song's data or
-//! its sidecar, returning the exact changes that undo and redo it.
+//! Applying a [`SongEdit`]: each variant checked and carried out on the song's sidecar,
+//! returning the exact changes that undo and redo it.
 
-use music_midi::{
-    EditError, Instrument, NewNote, NewTrack, NoteId, NoteImage, Part, SongData, SongFile,
-    TempoChange, TimeSignature,
-};
+use music_midi::{Instrument, Part, SongData, SongFile};
 
-use super::{note_ids, Applied, SongEdit, SongEditError};
+use super::{Applied, SongEdit, SongEditError};
 use crate::song::change::Change;
 
 impl SongEdit {
-    /// Check and apply the edit to `data` and `file`, returning its undo and redo. A
-    /// refused edit changes neither.
+    /// Check and apply the edit to `file`, returning its undo and redo; `data` is the score
+    /// a part's track name is resolved against. A refused edit changes nothing.
     pub(in crate::song) fn apply_to(
         &self,
-        data: &mut SongData,
+        data: &SongData,
         file: &mut SongFile,
     ) -> Result<Applied, SongEditError> {
-        use SongEdit as E;
         match self {
-            E::AddNote {
-                track,
-                tick,
-                key,
-                velocity,
-                duration_ticks,
-            } => {
-                let new_note = NewNote {
-                    tick: *tick,
-                    key: *key,
-                    velocity: *velocity,
-                    duration_ticks: *duration_ticks,
-                };
-                let id = data.add_note(*track, new_note)?;
-                Ok(Applied {
-                    undo: Change::RemoveNotes(vec![id]),
-                    redo: Change::RestoreNotes(images(data, &[id])),
-                })
-            }
-            E::DeleteNotes { notes } => {
-                let ids = note_ids(data, notes)?;
-                let before = data.remove_notes(&ids)?;
-                Ok(Applied {
-                    undo: Change::RestoreNotes(before),
-                    redo: Change::RemoveNotes(ids),
-                })
-            }
-            E::MoveNotes { notes, tick_delta } => {
-                edit_notes(data, notes, |data, ids| data.move_notes(ids, *tick_delta))
-            }
-            E::ResizeNotes {
-                notes,
-                duration_ticks,
-            } => edit_notes(data, notes, |data, ids| {
-                data.resize_notes(ids, *duration_ticks)
-            }),
-            E::SetVelocity { notes, velocity } => {
-                edit_notes(data, notes, |data, ids| data.set_velocity(ids, *velocity))
-            }
-            E::SetPitch { notes, key } => {
-                edit_notes(data, notes, |data, ids| data.set_pitch(ids, *key))
-            }
-            E::AssignPart { notes, part } => {
-                let part = file
-                    .parts
-                    .iter()
-                    .find(|candidate| candidate.name == *part)
-                    .ok_or_else(|| SongEditError::UnknownPart(part.clone()))?;
-                let track = part.resolve_track(data)?;
-                edit_notes(data, notes, |data, ids| data.assign_part(ids, track))
-            }
-            E::SetTempo {
-                tick,
-                microseconds_per_quarter,
-            } => {
-                let after = microseconds_per_quarter.map(|microseconds| TempoChange {
-                    tick: *tick,
-                    microseconds_per_quarter: microseconds,
-                });
-                let before = match after {
-                    Some(change) => data.set_tempo(change)?,
-                    None => Some(
-                        data.remove_tempo(*tick)
-                            .ok_or(SongEditError::NoTempoChange(*tick))?,
-                    ),
-                };
-                Ok(Applied {
-                    undo: Change::Tempo {
-                        tick: *tick,
-                        change: before,
-                    },
-                    redo: Change::Tempo {
-                        tick: *tick,
-                        change: after,
-                    },
-                })
-            }
-            E::SetTimeSignature { tick, meter } => {
-                let after = meter
-                    .map(|meter| TimeSignature::new(*tick, meter.numerator, meter.denominator));
-                let before = match after {
-                    Some(signature) => data.set_time_signature(signature)?,
-                    None => Some(
-                        data.remove_time_signature(*tick)
-                            .ok_or(SongEditError::NoTimeSignature(*tick))?,
-                    ),
-                };
-                Ok(Applied {
-                    undo: Change::TimeSignature {
-                        tick: *tick,
-                        signature: before,
-                    },
-                    redo: Change::TimeSignature {
-                        tick: *tick,
-                        signature: after,
-                    },
-                })
-            }
-            E::AddTrack {
-                name,
-                channel,
-                program,
-            } => {
-                // A part selecting a name resolves it only while one track carries it: a
-                // second would break a part that worked, through an accepted edit.
-                let carried = data.tracks().iter().any(|track| track.name() == Some(name.as_str()));
-                let selected = file.parts.iter().any(|part| {
-                    matches!(&part.track, music_midi::TrackSelector::Name(selected) if selected == name)
-                });
-                if carried && selected {
-                    return Err(SongEditError::TrackNameSelected(name.clone()));
-                }
-                let channel = match channel {
-                    Some(number @ 1..=16) => Some(number - 1),
-                    Some(number) => return Err(SongEditError::ChannelOutOfRange(*number)),
-                    None => None,
-                };
-                let added = data.add_track(NewTrack {
-                    name: name.clone(),
-                    channel,
-                    program: *program,
-                })?;
-                Ok(Applied {
-                    undo: Change::RemoveAddedTrack(added.track),
-                    redo: Change::AddTrack(NewTrack {
-                        name: name.clone(),
-                        channel: Some(added.channel),
-                        program: *program,
-                    }),
-                })
-            }
-            E::Batch(edits) => apply_batch(edits, data, file),
+            SongEdit::Batch(edits) => apply_batch(edits, data, file),
             sidecar_edit => {
                 let parts_before = file.parts.clone();
                 edit_file(file, |candidate| {
@@ -161,7 +26,7 @@ impl SongEdit {
         }
     }
 
-    /// The sidecar edits, on a candidate copy of the file.
+    /// The edit, on a candidate copy of the file.
     fn apply_to_file(&self, file: &mut SongFile) -> Result<(), SongEditError> {
         use SongEdit as E;
         match self {
@@ -209,47 +74,17 @@ impl SongEdit {
                     .ok_or_else(|| SongEditError::UnknownPart(name.clone()))?;
                 file.parts.remove(index);
             }
-            E::AddNote { .. }
-            | E::DeleteNotes { .. }
-            | E::MoveNotes { .. }
-            | E::ResizeNotes { .. }
-            | E::SetVelocity { .. }
-            | E::SetPitch { .. }
-            | E::AssignPart { .. }
-            | E::SetTempo { .. }
-            | E::SetTimeSignature { .. }
-            | E::AddTrack { .. }
-            | E::Batch(_) => log::error!("{} is not a sidecar edit", self.name()),
+            E::Batch(_) => log::error!("a Batch is applied member by member, never to a file whole"),
         }
         Ok(())
     }
 }
 
-/// The notes' images as they stand now.
-fn images(data: &SongData, ids: &[NoteId]) -> Vec<NoteImage> {
-    ids.iter().filter_map(|id| data.note_image(*id)).collect()
-}
-
-/// A note edit: its before-images undo it, the images after it redo it.
-fn edit_notes(
-    data: &mut SongData,
-    numbers: &[u64],
-    edit: impl FnOnce(&mut SongData, &[NoteId]) -> Result<Vec<NoteImage>, EditError>,
-) -> Result<Applied, SongEditError> {
-    let ids = note_ids(data, numbers)?;
-    let before = edit(data, &ids)?;
-    Ok(Applied {
-        undo: Change::RestoreNotes(before),
-        redo: Change::RestoreNotes(images(data, &ids)),
-    })
-}
-
 /// A part that this edit added or re-pointed must select one track: `check_schema` sees no
-/// tracks, so a part naming a name two tracks carry — a duplicate track added before the part,
-/// the order `AddTrack`'s own guard cannot see — is refused here. A candidate part carrying a
-/// before-part's name and selector is that part untouched (part names are unique, which
-/// `check_schema` holds) and is not re-judged; a part removed and re-added in one batch has no
-/// such twin and is judged as new.
+/// tracks, so a part naming a name two of the score's tracks carry is refused here. A
+/// candidate part carrying a before-part's name and selector is that part untouched (part
+/// names are unique, which `check_schema` holds) and is not re-judged; a part removed and
+/// re-added in one batch has no such twin and is judged as new.
 fn refuse_new_ambiguous_parts(
     parts_before: &[Part],
     candidate: &SongFile,
@@ -291,24 +126,24 @@ fn edit_file(
     })
 }
 
-/// Every member applied to copies; the copies replace the song only when all of them land.
+/// Every member applied to a copy of the file; the copy replaces the file only when all of
+/// them land.
 fn apply_batch(
     edits: &[SongEdit],
-    data: &mut SongData,
+    data: &SongData,
     file: &mut SongFile,
 ) -> Result<Applied, SongEditError> {
     if edits.is_empty() {
         return Err(SongEditError::EmptyBatch);
     }
-    let (mut scratch_data, mut scratch_file) = (data.clone(), file.clone());
+    let mut scratch_file = file.clone();
     let mut undos = Vec::with_capacity(edits.len());
     let mut redos = Vec::with_capacity(edits.len());
     for edit in edits {
-        let applied = edit.apply_to(&mut scratch_data, &mut scratch_file)?;
+        let applied = edit.apply_to(data, &mut scratch_file)?;
         undos.push(applied.undo);
         redos.push(applied.redo);
     }
-    *data = scratch_data;
     *file = scratch_file;
     undos.reverse();
     Ok(Applied {

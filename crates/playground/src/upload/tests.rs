@@ -15,12 +15,19 @@ use super::*;
 const SINE_WAV: &[u8] = include_bytes!("../../../music_midi/fixtures/sine_48000_mono.wav");
 const SINE_FONT: &[u8] = include_bytes!("../../../music_midi/fixtures/sine.sf2");
 
+/// A score as MIDI Evil exports one: a type-1 file at 480 ticks a quarter, its timing track
+/// at 120 BPM in 4/4, then an empty track named `melody` on channel 1.
 fn midi() -> Vec<u8> {
-    SongDocument::new_song()
-        .expect("a blank song")
-        .data()
-        .write_smf()
-        .expect("exports")
+    const BLANK_SONG: &[u8] = &[
+        b'M', b'T', b'h', b'd', 0, 0, 0, 6, 0, 1, 0, 2, 0x01, 0xE0,
+        b'M', b'T', b'r', b'k', 0, 0, 0, 0x13,
+        0x00, 0xFF, 0x51, 0x03, 0x07, 0xA1, 0x20, // 120 BPM
+        0x00, 0xFF, 0x58, 0x04, 0x04, 0x02, 0x18, 0x08, // 4/4
+        0x00, 0xFF, 0x2F, 0x00,
+        b'M', b'T', b'r', b'k', 0, 0, 0, 0x11,
+        0x00, 0xFF, 0x03, 0x06, b'm', b'e', b'l', b'o', b'd', b'y', 0x00, 0xC0, 0x00, 0x00, 0xFF, 0x2F, 0x00,
+    ];
+    BLANK_SONG.to_vec()
 }
 
 fn project() -> tempfile::TempDir {
@@ -135,13 +142,9 @@ fn a_taken_name_is_replaced_only_when_asked_and_the_answer_names_every_song_usin
 }
 
 #[test]
-fn a_replaced_song_keeps_its_sidecar_and_any_journal_and_says_when_it_is_the_open_one() {
+fn a_replaced_song_keeps_its_sidecar_and_says_when_it_is_the_open_one() {
     let root = project();
     let target = song_naming_the_sample(root.path());
-    let kept = ["assets/music/theme.mid.ron", "assets/music/theme.mid.new", "assets/music/theme.mid.ron.new"];
-    for leftover in &kept[1..] {
-        common::vfs::write(&root.path().join(leftover), b"journal").expect("written");
-    }
 
     let asked = import_file(root.path(), "theme.mid", &midi(), None, false).expect("asks");
     assert!(!asked.written && asked.sidecar_lost, "the score would change and the map be kept: {asked:?}");
@@ -152,9 +155,7 @@ fn a_replaced_song_keeps_its_sidecar_and_any_journal_and_says_when_it_is_the_ope
     let replaced = import_file(root.path(), "theme.mid", &midi(), None, true).expect("replaces");
     assert!(replaced.written && !replaced.open_song_replaced);
     assert_eq!(common::vfs::read(&target).ok(), Some(midi()));
-    for kept in kept {
-        assert!(exists(root.path(), kept), "{kept} is kept: the open settles a journal, never the import");
-    }
+    assert!(exists(root.path(), "assets/music/theme.mid.ron"), "the sidecar is kept for the song to follow the new score");
 }
 
 #[test]
@@ -218,7 +219,7 @@ fn a_sample_imported_assigned_and_saved_in_one_session_lands_in_the_songs_folder
     let imported = import_file(root.path(), "kick drum.wav", SINE_WAV, None, false).expect("imported");
     let sample_path = imported.destination.trim_start_matches("assets/").to_string();
 
-    let mut song = SongDocument::new_song().expect("a blank song");
+    let mut song = SongDocument::from_smf(&midi(), editor::song::default_song_file()).expect("the score reads");
     let instrument = Instrument {
         name: "kick".to_string(),
         source: InstrumentSource::Sample {

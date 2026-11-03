@@ -2,26 +2,20 @@
 //! width, the click that gives an area the keyboard, the focus ring on that area, and the
 //! drop site for a `.wav`, a SoundFont or a song from Assets.
 //!
-//! It reads the song and the drag's preview and returns what was asked; the host applies
-//! it (`editor_game/composer_keys.rs`), past the one refusal a play session raises. A
-//! bottom panel is never the dock's narrow overlay, but the composer follows the same rule
-//! as every panel: shown as one, its widgets live on the floating band.
+//! It reads the song and returns what was asked; the host applies it
+//! (`editor_game/composer_keys.rs`), past the one refusal a play session raises. A bottom
+//! panel is never the dock's narrow overlay, but the composer follows the same rule as every
+//! panel: shown as one, its widgets live on the floating band.
 
-use editor::composer::{
-    drop_action, layout, note_list, piano_roll, sidebar, transport, ComposerAction, ComposerFocus,
-    MovePreview, RollPoint,
-};
-use editor::{DragPayload, EditorContext, Modifiers, PanelId, SongDocument};
+use editor::composer::{drop_action, layout, sidebar, transport, ComposerAction, ComposerFocus};
+use editor::{DragPayload, EditorContext, PanelId, SongDocument};
 use ui::{Rect, UIContext};
 
 /// What the composer's host lends its render.
 pub(crate) struct ComposerView<'a> {
     pub song: Option<&'a SongDocument>,
-    pub preview: Option<&'a MovePreview>,
     /// A play session runs: every field draws its value and no click takes the keyboard.
     pub read_only: bool,
-    pub drag_live: bool,
-    pub modifiers: Modifiers,
     /// Enter went down this frame, which makes the path field's commit a save.
     pub enter_pressed: bool,
     /// Where a never-saved song saves, and the song's own file, both asset-relative.
@@ -33,54 +27,42 @@ pub(crate) struct ComposerView<'a> {
     pub sound_font_present: bool,
 }
 
-/// What the composer's render asked for this frame.
-#[derive(Debug, Default)]
-pub(crate) struct ComposerOutput {
-    pub actions: Vec<ComposerAction>,
-    /// The roll's tick and key under the pointer, which a live drag follows.
-    pub pointer: Option<RollPoint>,
-}
-
-/// Draw the composer into `bounds` and take its input. See the module docs.
+/// Draw the composer into `bounds` and take its input, returning what it asked for this
+/// frame. See the module docs.
 pub(crate) fn render_composer(
     editor: &mut EditorContext,
     ui: &mut UIContext,
     bounds: Rect,
     view: &ComposerView,
-) -> ComposerOutput {
+) -> Vec<ComposerAction> {
     let narrow_overlay = editor.dock_area.narrow_overlay() == Some(PanelId::COMPOSER);
     if narrow_overlay {
         ui.begin_overlay_in(ui::UiLayer::Floating, bounds);
     }
-    let output = render_body(editor, ui, bounds, view);
+    let actions = render_body(editor, ui, bounds, view);
     if narrow_overlay {
         ui.end_overlay();
     }
-    output
+    actions
 }
 
-fn render_body(editor: &mut EditorContext, ui: &mut UIContext, bounds: Rect, view: &ComposerView) -> ComposerOutput {
-    let mut output = ComposerOutput::default();
-    let ticks_per_quarter = view.song.map_or(1, |song| song.data().ticks_per_quarter());
-    let first_pass = layout::compute(bounds, &editor.composer, ticks_per_quarter);
-    if let (Some(roll), Some(song)) = (first_pass.roll, view.song) {
-        piano_roll::scroll_roll(&mut editor.composer, ui, roll.bounds, song, view.modifiers);
-    }
-    let composer_layout = layout::compute(bounds, &editor.composer, ticks_per_quarter);
+fn render_body(editor: &mut EditorContext, ui: &mut UIContext, bounds: Rect, view: &ComposerView) -> Vec<ComposerAction> {
+    let mut actions = Vec::new();
+    let composer_layout = layout::compute(bounds);
     if !view.read_only && ui.mouse_just_pressed() && !ui.is_input_blocked_at(ui.mouse_pos()) {
         if let Some(area) = area_at(&composer_layout, ui.mouse_pos()) {
-            output.actions.push(ComposerAction::Focus(area));
+            actions.push(ComposerAction::Focus(area));
         }
     }
     let theme = &editor.theme;
     let state = &mut editor.composer;
 
     match view.song {
-        Some(song) => output.actions.extend(transport::render_transport(ui, theme, state, composer_layout.transport, song, view.read_only)),
+        Some(song) => actions.extend(transport::render_transport(ui, theme, state, composer_layout.transport, song, view.read_only)),
         None => {
             ui.rect(composer_layout.transport, theme.surface_2);
             ui.label_in_bounds_styled(
-                "No song open — File → New Song, or a song from the list",
+                "No song open — a song from the list, or File → Open Song...",
                 composer_layout.transport,
                 ui::TextAlign::Left,
                 theme.text_secondary,
@@ -89,39 +71,23 @@ fn render_body(editor: &mut EditorContext, ui: &mut UIContext, bounds: Rect, vie
             );
         }
     }
-    if let Some(tabs) = composer_layout.area_tabs {
-        output.actions.extend(render_area_tabs(ui, theme, state, tabs));
-    }
-    if let (Some(roll), Some(song)) = (composer_layout.roll, view.song) {
-        let context = piano_roll::RollContext {
-            song,
-            preview: view.preview,
-            read_only: view.read_only,
-            modifiers: view.modifiers,
-            drag_live: view.drag_live,
-        };
-        let roll_output = piano_roll::render_piano_roll(ui, theme, state, &roll, &context);
-        output.actions.extend(roll_output.actions);
-        output.pointer = roll_output.pointer;
-    }
-    if let (Some(list), Some(song)) = (composer_layout.note_list, view.song) {
-        let context = note_list::NoteListContext { song, read_only: view.read_only, modifiers: view.modifiers };
-        output.actions.extend(note_list::render_note_list(ui, theme, state, list, &context));
-    }
-    if let Some(side) = composer_layout.sidebar {
-        let context = sidebar::SidebarContext {
-            song: view.song,
-            read_only: view.read_only,
-            enter_pressed: view.enter_pressed,
-            default_path: view.default_path,
-            song_path: view.song_path,
-            preview_audible: view.preview_audible,
-            sound_font_present: view.sound_font_present,
-        };
-        output
-            .actions
-            .extend(sidebar::render_sidebar(ui, theme, state, side, composer_layout.section_tabs, &context));
-    }
+    let context = sidebar::SidebarContext {
+        song: view.song,
+        read_only: view.read_only,
+        enter_pressed: view.enter_pressed,
+        default_path: view.default_path,
+        song_path: view.song_path,
+        preview_audible: view.preview_audible,
+        sound_font_present: view.sound_font_present,
+    };
+    actions.extend(sidebar::render_sidebar(
+        ui,
+        theme,
+        state,
+        composer_layout.sidebar,
+        composer_layout.section_tabs,
+        &context,
+    ));
     if let Some(focused) = area_rect(&composer_layout, state.focus) {
         ui.rect_border(focused, theme.focus_ring, 2.0, 0.0);
     }
@@ -133,61 +99,28 @@ fn render_body(editor: &mut EditorContext, ui: &mut UIContext, bounds: Rect, vie
         ui.rect_border(bounds, editor.theme.accent_blue, 2.0, 0.0);
     }
     if let Some((payload, _)) = editor.drag_drop.take_drop_in(bounds) {
-        output.actions.push(drop_action(view.song, &payload));
+        actions.push(drop_action(view.song, &payload));
     }
-    output
+    actions
 }
 
-/// The area of the composer under `point`, if any.
+/// The area of the composer under `point`, if any: the transport, or the sidebar with its
+/// section tabs.
 fn area_at(composer_layout: &layout::ComposerLayout, point: glam::Vec2) -> Option<ComposerFocus> {
-    let areas = [
-        (Some(composer_layout.transport), ComposerFocus::Transport),
-        (composer_layout.roll.map(|roll| roll.bounds), ComposerFocus::PianoRoll),
-        (composer_layout.note_list, ComposerFocus::NoteList),
-        (composer_layout.sidebar, ComposerFocus::Sidebar),
-        (composer_layout.section_tabs, ComposerFocus::Sidebar),
-    ];
-    areas
-        .into_iter()
-        .find(|(rect, _)| rect.is_some_and(|rect| rect.contains(point)))
-        .map(|(_, area)| area)
+    if composer_layout.transport.contains(point) {
+        return Some(ComposerFocus::Transport);
+    }
+    let on_tabs = composer_layout.section_tabs.is_some_and(|tabs| tabs.contains(point));
+    (on_tabs || composer_layout.sidebar.contains(point)).then_some(ComposerFocus::Sidebar)
 }
 
-/// The rectangle the focus ring goes round for `focus`, when that area is shown.
+/// The rectangle the focus ring goes round for `focus`.
 fn area_rect(composer_layout: &layout::ComposerLayout, focus: ComposerFocus) -> Option<Rect> {
     match focus {
         ComposerFocus::None => None,
         ComposerFocus::Transport => Some(composer_layout.transport),
-        ComposerFocus::PianoRoll => composer_layout.roll.map(|roll| roll.bounds),
-        ComposerFocus::NoteList => composer_layout.note_list,
-        ComposerFocus::Sidebar => composer_layout.sidebar,
+        ComposerFocus::Sidebar => Some(composer_layout.sidebar),
     }
-}
-
-/// The area tabs of the narrowest mode: one area shown at a time.
-fn render_area_tabs(
-    ui: &mut UIContext,
-    theme: &editor::EditorTheme,
-    state: &mut editor::composer::ComposerState,
-    tabs: Rect,
-) -> Vec<ComposerAction> {
-    let mut actions = Vec::new();
-    ui.rect(tabs, theme.surface_2);
-    let areas = [ComposerFocus::PianoRoll, ComposerFocus::NoteList, ComposerFocus::Sidebar];
-    let width = tabs.width / areas.len() as f32;
-    for (index, area) in areas.into_iter().enumerate() {
-        let tab = Rect::new(tabs.x + index as f32 * width, tabs.y, width, tabs.height);
-        let label = if state.tabs_area == area {
-            format!("▸ {}", area.label())
-        } else {
-            area.label().to_string()
-        };
-        if ui.button(("composer_area_tab", index), &label, tab) {
-            state.tabs_area = area;
-            actions.push(ComposerAction::Focus(area));
-        }
-    }
-    actions
 }
 
 #[cfg(test)]
@@ -198,13 +131,16 @@ mod tests {
 
     const PANEL: Rect = Rect { x: 0.0, y: 400.0, width: 1280.0, height: 260.0 };
 
+    /// A song read from MIDI bytes: the music crate's Napolitan fixture, on a sidecar of its own.
+    fn napolitan_song() -> SongDocument {
+        const NAPOLITAN: &[u8] = include_bytes!("../../../music_midi/fixtures/dansenapolitaine.mid");
+        SongDocument::from_smf(NAPOLITAN, editor::song::default_song_file()).expect("the fixture reads")
+    }
+
     fn view(song: &SongDocument, read_only: bool) -> ComposerView<'_> {
         ComposerView {
             song: Some(song),
-            preview: None,
             read_only,
-            drag_live: false,
-            modifiers: Modifiers::default(),
             enter_pressed: false,
             default_path: "music/untitled.mid",
             song_path: None,
@@ -214,38 +150,41 @@ mod tests {
     }
 
     /// Render one frame with the left button pressed at `point`.
-    fn press(editor: &mut EditorContext, song: &SongDocument, read_only: bool, point: Vec2) -> ComposerOutput {
+    fn press(editor: &mut EditorContext, song: &SongDocument, read_only: bool, point: Vec2) -> Vec<ComposerAction> {
         let mut ui = UIContext::new();
         let mut input = input::InputHandler::new();
         input.mouse_mut().update_position(point.x, point.y);
         input.mouse_mut().handle_button_press(input::prelude::MouseButton::Left);
         ui.begin_frame(&input, Vec2::new(1280.0, 720.0));
-        let output = render_composer(editor, &mut ui, PANEL, &view(song, read_only));
+        let actions = render_composer(editor, &mut ui, PANEL, &view(song, read_only));
         ui.end_frame();
-        output
+        actions
     }
 
     #[test]
     fn a_press_gives_its_area_the_keyboard_but_takes_none_during_a_play_session() {
-        let song = SongDocument::new_song().expect("a blank song");
+        let song = napolitan_song();
         let mut editor = EditorContext::new();
         editor.composer.follow(0, Some(&song));
-        let roll = layout::compute(PANEL, &editor.composer, 480).roll.expect("a roll").grid.center();
+        let composer_layout = layout::compute(PANEL);
+        let sidebar = composer_layout.sidebar.center();
+        let transport = Vec2::new(composer_layout.transport.right() - 20.0, composer_layout.transport.center().y);
 
-        let editing = press(&mut editor, &song, false, roll);
-        assert!(editing.actions.contains(&ComposerAction::Focus(ComposerFocus::PianoRoll)), "{:?}", editing.actions);
+        let editing = press(&mut editor, &song, false, sidebar);
+        assert!(editing.contains(&ComposerAction::Focus(ComposerFocus::Sidebar)), "{editing:?}");
+        let on_transport = press(&mut editor, &song, false, transport);
+        assert!(on_transport.contains(&ComposerAction::Focus(ComposerFocus::Transport)), "{on_transport:?}");
 
-        let playing = press(&mut editor, &song, true, roll);
+        let playing = press(&mut editor, &song, true, sidebar);
         assert!(
-            playing.actions.iter().all(|action| !matches!(action, ComposerAction::Focus(_) | ComposerAction::Select(_))),
-            "read-only: no focus, no selection: {:?}",
-            playing.actions
+            playing.iter().all(|action| !matches!(action, ComposerAction::Focus(_))),
+            "read-only: no focus: {playing:?}"
         );
     }
 
     #[test]
     fn a_wav_released_over_the_panel_asks_for_a_sample_instrument() {
-        let song = SongDocument::new_song().expect("a blank song");
+        let song = napolitan_song();
         let mut editor = EditorContext::new();
         editor.composer.follow(0, Some(&song));
         let centre = PANEL.center();
@@ -256,11 +195,11 @@ mod tests {
         let mut ui = UIContext::new();
         let input = input::InputHandler::new();
         ui.begin_frame(&input, Vec2::new(1280.0, 720.0));
-        let output = render_composer(&mut editor, &mut ui, PANEL, &view(&song, false));
+        let actions = render_composer(&mut editor, &mut ui, PANEL, &view(&song, false));
         ui.end_frame();
-        assert!(output.actions.iter().any(|action| matches!(
+        assert!(actions.iter().any(|action| matches!(
             action,
             ComposerAction::Edit(editor::SongEdit::AddInstrument { instrument }) if instrument.name == "kick"
-        )), "{:?}", output.actions);
+        )), "{actions:?}");
     }
 }

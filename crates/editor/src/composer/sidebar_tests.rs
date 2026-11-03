@@ -358,7 +358,7 @@ fn drawn_text(ui: &UIContext) -> String {
 
 #[test]
 fn every_note_wraps_inside_a_narrow_sidebar_so_none_is_cut_at_its_edge() {
-    let song = SongDocument::new_song().expect("a blank song");
+    let song = melody();
     let theme = EditorTheme::default();
     let mut state = sidebar_state();
     let mut ui = UIContext::new();

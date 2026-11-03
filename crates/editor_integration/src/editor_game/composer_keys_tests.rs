@@ -1,11 +1,11 @@
 //! The composer's host through the real `EditorGame`: who the keys go to, which document
 //! undo undoes, the play session's read-only rule, the active track, the path field's
-//! saves and the overwrite prompt, the Songs list and the drops, and the preview's refusal.
+//! saves and the overwrite prompt, the Songs list and the drops.
 
 use std::path::Path;
 
 use ecs::World;
-use editor::composer::{drop_action, track_notes, ComposerAction, ComposerFocus, ComposerKeyAction, Direction};
+use editor::composer::{drop_action, ComposerAction, ComposerFocus, ComposerKeyAction, Direction};
 use editor::{ConfirmChoice, DragPayload, EditorAction, Modifiers, PlayControlAction, SongEdit};
 use winit::keyboard::KeyCode;
 
@@ -30,6 +30,10 @@ fn json(response: &str) -> serde_json::Value {
 
 fn note_count(editor: &EditorGame<DummyGame>) -> usize {
     editor.song.as_ref().map_or(0, |song| song.data().note_count())
+}
+
+fn song_entries(editor: &EditorGame<DummyGame>) -> usize {
+    editor.song.as_ref().map_or(0, |song| song.history().undo_count())
 }
 
 fn status(editor: &EditorGame<DummyGame>) -> String {
@@ -75,13 +79,13 @@ fn undo_belongs_to_the_focused_document_and_a_click_in_the_scene_moves_it_there(
     editor.song = Some(melody_song());
     editor.follow_song();
     editor.editor.dock_area.set_bounds(ui::Rect::new(0.0, 24.0, 1280.0, 672.0));
-    editor.show_composer(ComposerFocus::PianoRoll);
+    editor.show_composer(ComposerFocus::Sidebar);
     assert!(editor.command_history.can_undo(), "the scene has an entry to undo");
 
     editor.undo_with_feedback(&mut world);
-    assert_eq!(note_count(&editor), 2, "focused, Edit → Undo undoes the song's last add");
+    assert_eq!(song_entries(&editor), 0, "focused, Edit → Undo undoes the song's last edit");
     assert!(editor.command_history.can_undo(), "and leaves the scene alone");
-    assert_eq!(status(&editor), "Undid AddNote (song)");
+    assert_eq!(status(&editor), "Undid SetProvenance (song)");
 
     let mut input = input::InputHandler::new();
     let mut ui = ui::UIContext::new();
@@ -91,7 +95,10 @@ fn undo_belongs_to_the_focused_document_and_a_click_in_the_scene_moves_it_there(
     assert_eq!(editor.editor.composer.focus, ComposerFocus::None, "a press in the scene takes the keyboard back");
     editor.undo_with_feedback(&mut world);
     assert!(!editor.command_history.can_undo(), "now Undo undoes the scene");
-    assert_eq!(note_count(&editor), 2, "and not the song");
+    assert!(
+        editor.song.as_ref().is_some_and(|song| song.history().can_redo()),
+        "and not the song, whose undone edit still waits to be redone"
+    );
 }
 
 #[test]
@@ -109,14 +116,14 @@ fn a_menu_click_keeps_the_composers_keyboard_and_a_press_in_the_panel_too() {
     super::test_support::press_mouse(&mut input, composer.center());
     ui.begin_frame(&input, glam::Vec2::new(1280.0, 720.0));
     editor.settle_composer(&ui);
-    assert_eq!(editor.editor.composer.focus, ComposerFocus::PianoRoll, "inside the panel");
+    assert_eq!(editor.editor.composer.focus, ComposerFocus::Sidebar, "inside the panel");
 
     let mut input = input::InputHandler::new();
     let mut ui = ui::UIContext::new();
     super::test_support::press_mouse(&mut input, glam::Vec2::new(30.0, 10.0));
     ui.begin_frame(&input, glam::Vec2::new(1280.0, 720.0));
     editor.settle_composer(&ui);
-    assert_eq!(editor.editor.composer.focus, ComposerFocus::PianoRoll, "the menu bar is chrome");
+    assert_eq!(editor.editor.composer.focus, ComposerFocus::Sidebar, "the menu bar is chrome");
 }
 
 #[test]
@@ -125,8 +132,7 @@ fn playing_and_paused_refuse_every_composer_mutation_and_clear_the_keyboard() {
     let mut world = World::new();
     let mut editor = composer_session(folder.path(), melody_song());
     assert_ok(&api_line(&mut editor, &mut world, "song save music/theme.mid"));
-    editor.show_composer(ComposerFocus::PianoRoll);
-    let first = track_notes(editor.song.as_ref().expect("a song"), 1)[0];
+    editor.show_composer(ComposerFocus::Sidebar);
     let entries = editor.song.as_ref().map(|song| song.history().undo_count());
 
     press_play(&mut editor, &mut world);
@@ -137,21 +143,19 @@ fn playing_and_paused_refuse_every_composer_mutation_and_clear_the_keyboard() {
             if state == "Playing" { KeyRoute::ForwardToGame } else { KeyRoute::Editor { action: EditorAction::NudgeLeft, shift: false } },
             "{state}: the arrows are not the composer's"
         );
-        editor.show_composer(ComposerFocus::PianoRoll);
+        editor.show_composer(ComposerFocus::Sidebar);
         let wav = DragPayload::Sound { path: "sounds/kick.wav".to_string() };
         let drop = drop_action(editor.song.as_ref(), &wav);
         editor.run_composer_actions(
             vec![
-                ComposerAction::Focus(ComposerFocus::PianoRoll),
+                ComposerAction::Focus(ComposerFocus::Sidebar),
                 ComposerAction::Edit(SongEdit::SetLoop { looping: false }),
                 drop,
-                ComposerAction::BeginDrag { notes: vec![first.id], point: editor::composer::RollPoint { tick: 0, key: 60 } },
             ]
         );
         editor.run_composer_key(ComposerKeyAction::Activate);
         editor.run_composer_key(ComposerKeyAction::Undo);
         assert_eq!(editor.editor.composer.focus, ComposerFocus::None, "{state}: no click or menu takes the keyboard");
-        assert!(editor.composer_drag.is_none(), "{state}: no drag begins");
         let song = editor.song.as_ref().expect("a song");
         assert!(song.file().looping && song.file().instruments.is_empty(), "{state}: the sidecar is untouched");
         assert_eq!(Some(song.history().undo_count()), entries, "{state}: nothing recorded or undone");
@@ -161,29 +165,18 @@ fn playing_and_paused_refuse_every_composer_mutation_and_clear_the_keyboard() {
 }
 
 #[test]
-fn the_song_opens_on_its_note_track_enter_adds_there_and_a_switch_clears_the_selection() {
+fn the_song_opens_on_its_note_track_and_a_switch_shows_another_but_never_the_timing_track() {
     let folder = folder();
     let mut editor = composer_session(folder.path(), second_track_holds_the_notes());
     assert_eq!(editor.editor.composer.active_track, Some(2), "the lead, not the empty pad");
-    editor.editor.composer.cursor = editor::composer::RollCursor { tick: 960, key: 74 };
-    editor.run_composer_key(ComposerKeyAction::Activate);
-    let song = editor.song.as_ref().expect("a song");
-    let lead = track_notes(song, 2);
-    assert_eq!(lead.len(), 2, "Enter added to the shown track");
-    assert!(song.selection().contains(lead[1].id), "and selected the new note");
-    assert_eq!(editor.editor.composer.cursor.tick, 1200, "the cursor moved past it");
 
     editor.run_composer_actions(vec![ComposerAction::SetActiveTrack(1)]);
     assert_eq!(editor.editor.composer.active_track, Some(1));
-    assert!(editor.song.as_ref().is_some_and(|song| song.selection().is_empty()), "no hidden note stays selected");
     editor.run_composer_actions(vec![ComposerAction::SetActiveTrack(0)]);
     assert_eq!(editor.editor.composer.active_track, Some(1), "the timing track is never shown");
 
-    let mut timing = composer_session(folder.path(), timing_only_song());
-    assert_eq!(timing.editor.composer.active_track, None);
-    timing.run_composer_key(ComposerKeyAction::Activate);
-    assert_eq!(note_count(&timing), 0, "a file of timing alone refuses adds");
-    assert!(status(&timing).contains("no note track"), "{}", status(&timing));
+    let timing = composer_session(folder.path(), timing_only_song());
+    assert_eq!(timing.editor.composer.active_track, None, "a file of timing alone has no track to show");
 }
 
 #[test]
@@ -217,7 +210,7 @@ fn save_as_onto_another_song_parks_cancel_keeps_both_and_overwrite_completes_in_
         let song = editor.song.as_ref().expect("a song");
         assert_eq!(song.path(), Some(folder.path().join(target).as_path()));
         let written = common::vfs::read(&folder.path().join(target)).expect("the .mid");
-        assert_eq!(written, song.data().write_smf().expect("exports"), "Overwrite replaced the file");
+        assert_eq!(written, song.source_bytes(), "Overwrite replaced the file with the bytes the song loaded");
     }
     let mut editor = composer_session(folder.path(), melody_song());
     assert_ok(&api_line(&mut editor, &mut world, "song save music/other.mid overwrite"));
@@ -229,7 +222,7 @@ fn save_as_onto_another_song_parks_cancel_keeps_both_and_overwrite_completes_in_
 }
 
 /// The Songs list and the transport are walked with no song open — Open Song… is how
-/// the first song opens — while the roll's cursor, which reads the song, stays put.
+/// the first song opens.
 #[test]
 fn the_songs_list_and_the_transport_are_walked_by_the_arrows_with_no_song_open() {
     let folder = folder();
@@ -247,14 +240,10 @@ fn the_songs_list_and_the_transport_are_walked_by_the_arrows_with_no_song_open()
     editor.run_composer_key(ComposerKeyAction::MoveCursor(Direction::Right));
     assert_eq!(editor.editor.composer.sidebar_section, editor::composer::SidebarSection::Parts);
 
-    editor.editor.composer.focus_area(ComposerFocus::Transport);
-    editor.editor.composer.transport_control_count = 5;
+    editor.editor.composer.focus = ComposerFocus::Transport;
+    editor.editor.composer.transport_control_count = 3;
     editor.run_composer_key(ComposerKeyAction::MoveCursor(Direction::Right));
     assert_eq!(editor.editor.composer.transport_control, 1);
-
-    editor.editor.composer.focus_area(ComposerFocus::PianoRoll);
-    editor.run_composer_key(ComposerKeyAction::MoveCursor(Direction::Right));
-    assert_eq!(editor.editor.composer.cursor.tick, 0, "the roll's cursor reads the song, and there is none");
 }
 
 /// A number field's first frame opens an entry of its own — sealing one left open — and
@@ -357,22 +346,4 @@ fn each_drop_lands_its_instrument_or_its_open_and_an_mp3_is_refused_naming_wav()
         Some(PendingSceneAction::OpenSong(folder.path().join("music/theme.mid"))),
         "a dropped song opens through the dirty prompt like any open"
     );
-}
-
-#[test]
-fn a_held_shift_arrow_nudge_is_one_entry_until_the_key_is_released() {
-    let folder = folder();
-    let mut editor = composer_session(folder.path(), melody_song());
-    let first = track_notes(editor.song.as_ref().expect("a song"), 1)[0];
-    editor.song.as_mut().expect("a song").select([first.id]);
-    let entries = editor.song.as_ref().map_or(0, |song| song.history().undo_count());
-    for _ in 0..3 {
-        editor.run_composer_key(ComposerKeyAction::Nudge(Direction::Right));
-    }
-    editor.song.as_mut().expect("a song").break_merge();
-    editor.run_composer_key(ComposerKeyAction::Nudge(Direction::Up));
-    let song = editor.song.as_ref().expect("a song");
-    assert_eq!(song.history().undo_count(), entries + 2, "one held key, then another");
-    let moved = song.data().note_image(first.id).expect("still there");
-    assert_eq!((moved.tick, moved.key), (360, 61), "three sixteenths right, a semitone up");
 }

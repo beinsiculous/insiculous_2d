@@ -1,24 +1,20 @@
-//! The transport row: the active track's selector, the preview's Play and Stop, the zoom,
-//! and the playhead's position with the tempo and meter, all in text.
+//! The transport row: the active track's selector, the preview's Play and Stop, and the
+//! playhead's position with the tempo and meter, all in text.
 //!
-//! Play starts the host's preview from the roll's cursor and Stop stops it; each does
-//! nothing while the preview is already where it would put it, and both draw disabled while
-//! a play session holds the music. The text says where the
-//! preview is — the roll's line is never the only place the playhead shows. The arrows
-//! walk the controls left to right and Enter acts on the one reached.
+//! Play starts the host's preview from the top and Stop stops it; each does nothing while
+//! the preview is already where it would put it, and both draw disabled while a play session
+//! holds the music. The text says where the preview is. The arrows walk the controls left
+//! to right and Enter acts on the one reached.
 
 use ui::{Rect, UIContext};
 
-use super::state::{next_track, ComposerState, ControlRequest, MAXIMUM_PIXELS_PER_QUARTER, MINIMUM_PIXELS_PER_QUARTER};
+use super::state::{next_track, ComposerState, ControlRequest};
 use super::{position_text, track_label, ComposerAction, ComposerFocus};
 use crate::song::SongDocument;
 use crate::theme::EditorTheme;
 
-/// What one press of a zoom button multiplies the zoom by.
-const ZOOM_STEP: f32 = 1.5;
 const SELECTOR_WIDTH: f32 = 180.0;
 const BUTTON_WIDTH: f32 = 56.0;
-const ZOOM_BUTTON_WIDTH: f32 = 72.0;
 const GAP: f32 = 6.0;
 
 /// The transport's controls, in the order the arrows walk them.
@@ -27,16 +23,12 @@ pub enum TransportControl {
     TrackSelector,
     Play,
     Stop,
-    ZoomOut,
-    ZoomIn,
 }
 
-pub const TRANSPORT_CONTROLS: [TransportControl; 5] = [
+pub const TRANSPORT_CONTROLS: [TransportControl; 3] = [
     TransportControl::TrackSelector,
     TransportControl::Play,
     TransportControl::Stop,
-    TransportControl::ZoomOut,
-    TransportControl::ZoomIn,
 ];
 
 /// Where the preview is, with the tempo and meter there, as the transport says it:
@@ -93,7 +85,6 @@ pub fn render_transport(
     for (index, control) in TRANSPORT_CONTROLS.into_iter().enumerate() {
         let width = match control {
             TransportControl::TrackSelector => SELECTOR_WIDTH,
-            TransportControl::ZoomOut | TransportControl::ZoomIn => ZOOM_BUTTON_WIDTH,
             TransportControl::Play | TransportControl::Stop => BUTTON_WIDTH,
         };
         let button = Rect::new(x, row_y, width, height);
@@ -108,20 +99,17 @@ pub fn render_transport(
             ),
             TransportControl::Play => ("Play".to_string(), !read_only),
             TransportControl::Stop => ("Stop".to_string(), !read_only),
-            TransportControl::ZoomOut => ("Zoom out".to_string(), true),
-            TransportControl::ZoomIn => ("Zoom in".to_string(), true),
         };
         let clicked = ui.button_styled(("composer_transport", index), &label, button, enabled);
         match control {
             TransportControl::Play | TransportControl::Stop if read_only => {
                 ui.tooltip(button, "The game plays the saved song during a play session")
             }
-            TransportControl::Play => ui.tooltip(button, "Play the song from the roll's cursor (Space)"),
+            TransportControl::Play => ui.tooltip(button, "Play the song from the top (Space)"),
             TransportControl::Stop => ui.tooltip(button, "Stop the song (Space)"),
             TransportControl::TrackSelector => {
-                ui.tooltip(button, "The track the roll and the notes show; click for the next")
+                ui.tooltip(button, "The track Add a part builds on; click for the next")
             }
-            TransportControl::ZoomOut | TransportControl::ZoomIn => {}
         }
         if focused && index == state.transport_control {
             ui.rect_border(button, theme.focus_ring, 2.0, 2.0);
@@ -147,7 +135,7 @@ pub fn render_transport(
 }
 
 /// What a transport control does when pressed or activated.
-fn act(state: &mut ComposerState, song: &SongDocument, control: TransportControl) -> Vec<ComposerAction> {
+fn act(state: &ComposerState, song: &SongDocument, control: TransportControl) -> Vec<ComposerAction> {
     match control {
         TransportControl::TrackSelector => next_track(song, state.active_track, true)
             .map(ComposerAction::SetActiveTrack)
@@ -156,13 +144,5 @@ fn act(state: &mut ComposerState, song: &SongDocument, control: TransportControl
         TransportControl::Play if !state.preview_playing => vec![ComposerAction::PreviewPlayStop],
         TransportControl::Stop if state.preview_playing => vec![ComposerAction::PreviewPlayStop],
         TransportControl::Play | TransportControl::Stop => Vec::new(),
-        TransportControl::ZoomOut => {
-            state.pixels_per_quarter = (state.pixels_per_quarter / ZOOM_STEP).max(MINIMUM_PIXELS_PER_QUARTER);
-            Vec::new()
-        }
-        TransportControl::ZoomIn => {
-            state.pixels_per_quarter = (state.pixels_per_quarter * ZOOM_STEP).min(MAXIMUM_PIXELS_PER_QUARTER);
-            Vec::new()
-        }
     }
 }

@@ -1,23 +1,20 @@
-//! The Song section's SoundFont row and the Parts section's Add-track row: the row cycles
-//! the project's banks one edit a click, draws disabled naming the sidecar's bank while the
-//! project has none, and warns while that bank is no file; the Add-track row adds a track
-//! on Enter, playing the program its number field holds.
+//! The Song section's SoundFont row: it cycles the project's banks one edit a click, draws
+//! disabled naming the sidecar's bank while the project has none, and warns while that bank
+//! is no file.
 
 use glam::Vec2;
-use input::prelude::KeyCode;
 use ui::{DrawCommand, Rect, UIContext};
 
 use super::sidebar::{render_sidebar, SidebarContext};
-use super::SoundFontScan;
-use super::state::{ComposerFocus, ComposerState, ControlRequest, SidebarSection};
+use super::state::{ComposerFocus, ComposerState};
 use super::test_support::melody;
 use super::ComposerAction;
+use crate::external_tools::SoundFontScan;
 use crate::song::{Gesture, SongDocument, SongEdit};
-use crate::test_support::{click_through, frame, type_key};
+use crate::test_support::{click_through, frame};
 use crate::theme::EditorTheme;
 
 const SIDEBAR: Rect = Rect { x: 0.0, y: 0.0, width: 320.0, height: 2000.0 };
-const TABS: Rect = Rect { x: 0.0, y: 2000.0, width: 320.0, height: 24.0 };
 
 fn context(song: &SongDocument, enter_pressed: bool, sound_font_present: bool) -> SidebarContext<'_> {
     SidebarContext {
@@ -137,32 +134,4 @@ fn the_warning_clears_once_the_bank_it_names_is_there() {
     state.sound_fonts.banks = vec!["soundfonts/a.sf2".to_string()];
     frame(&mut ui, &input, |ui| render_sidebar(ui, &theme, &mut state, SIDEBAR, None, &context(&song, false, true)));
     assert!(!drawn_text(&ui).contains("No SoundFont"));
-}
-
-#[test]
-fn enter_in_the_add_track_name_adds_one_track_playing_the_programs_number() {
-    let song = melody();
-    let theme = EditorTheme::default();
-    let mut state = state_with(&[], false);
-    state.sidebar_section = SidebarSection::Parts;
-    state.new_track_program = 57;
-    let mut ui = UIContext::new();
-    let mut input = input::InputHandler::new();
-    let draw = |ui: &mut UIContext, state: &mut ComposerState, enter: bool| {
-        render_sidebar(ui, &theme, state, SIDEBAR, Some(TABS), &context(&song, enter, true))
-    };
-
-    frame(&mut ui, &input, |ui| draw(ui, &mut state, false));
-    assert!(drawn_text(&ui).contains("Add track"));
-    // No part and no shown track: the program field, then the name field.
-    state.sidebar_control = 1;
-    state.request = Some(ControlRequest::ActivateSidebar);
-    frame(&mut ui, &input, |ui| draw(ui, &mut state, false));
-    type_key(&mut ui, &mut input, KeyCode::KeyB, |ui| draw(ui, &mut state, false));
-    let added = type_key(&mut ui, &mut input, KeyCode::Enter, |ui| draw(ui, &mut state, true));
-
-    assert_eq!(
-        added,
-        vec![ComposerAction::Edit(SongEdit::AddTrack { name: "b".to_string(), channel: None, program: 57 })]
-    );
 }

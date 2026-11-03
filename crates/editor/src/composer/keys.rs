@@ -3,7 +3,8 @@
 //! focused these keys never reach the scene or the game; a key the table lacks that carries
 //! Ctrl (Ctrl+S, Ctrl+C …) and F5 go on to the editor as before, and every other key is
 //! swallowed — the single-key editor toggles (G, C, S, Q/W/E/R) are unreachable while the
-//! composer holds the keyboard, deliberately, since the composer's own keys reuse them.
+//! composer holds the keyboard, deliberately, so a key meant for the composer never moves
+//! the scene.
 
 use winit::keyboard::KeyCode;
 
@@ -21,27 +22,16 @@ pub enum Direction {
 /// What a composer key does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ComposerKeyAction {
-    /// Drop a drag in flight, else drop the keyboard.
+    /// Drop the keyboard.
     Escape,
     NextArea,
     PreviousArea,
-    /// Move the focused area's cursor: the roll's position, the list's row, the transport's
-    /// or the sidebar's control.
+    /// Move the focused area's cursor: the transport's or the sidebar's control.
     MoveCursor(Direction),
-    /// Move the selected notes a sixteenth in time or a semitone in pitch; a held key is one
-    /// undo entry.
-    Nudge(Direction),
-    /// Add a note at the roll's cursor on the active track; in the transport or the
-    /// sidebar, act on the control at the cursor.
+    /// Act on the control at the cursor.
     Activate,
-    DeleteNotes,
-    Shorten,
-    Lengthen,
-    VelocityUp,
-    VelocityDown,
     Undo,
     Redo,
-    SelectAll,
     /// Start or stop the song's preview.
     PreviewToggle,
 }
@@ -62,8 +52,7 @@ const fn bind(key: KeyCode, ctrl: bool, shift: bool, action: ComposerKeyAction) 
 use ComposerKeyAction as Action;
 use Direction::{Down, Left, Right, Up};
 
-/// See the module docs. `+` is Shift+`=` on most layouts, so both states of `=` raise the
-/// velocity; Backspace deletes as Delete does, as in the scene.
+/// See the module docs.
 pub const COMPOSER_KEYS: &[ComposerKeyBinding] = &[
     bind(KeyCode::Escape, false, false, Action::Escape),
     bind(KeyCode::Tab, false, false, Action::NextArea),
@@ -72,26 +61,12 @@ pub const COMPOSER_KEYS: &[ComposerKeyBinding] = &[
     bind(KeyCode::ArrowRight, false, false, Action::MoveCursor(Right)),
     bind(KeyCode::ArrowUp, false, false, Action::MoveCursor(Up)),
     bind(KeyCode::ArrowDown, false, false, Action::MoveCursor(Down)),
-    bind(KeyCode::ArrowLeft, false, true, Action::Nudge(Left)),
-    bind(KeyCode::ArrowRight, false, true, Action::Nudge(Right)),
-    bind(KeyCode::ArrowUp, false, true, Action::Nudge(Up)),
-    bind(KeyCode::ArrowDown, false, true, Action::Nudge(Down)),
     bind(KeyCode::Enter, false, false, Action::Activate),
     bind(KeyCode::NumpadEnter, false, false, Action::Activate),
     bind(KeyCode::Insert, false, false, Action::Activate),
-    bind(KeyCode::Delete, false, false, Action::DeleteNotes),
-    bind(KeyCode::Backspace, false, false, Action::DeleteNotes),
-    bind(KeyCode::BracketLeft, false, false, Action::Shorten),
-    bind(KeyCode::BracketRight, false, false, Action::Lengthen),
-    bind(KeyCode::Equal, false, false, Action::VelocityUp),
-    bind(KeyCode::Equal, false, true, Action::VelocityUp),
-    bind(KeyCode::NumpadAdd, false, false, Action::VelocityUp),
-    bind(KeyCode::Minus, false, false, Action::VelocityDown),
-    bind(KeyCode::NumpadSubtract, false, false, Action::VelocityDown),
     bind(KeyCode::KeyZ, true, false, Action::Undo),
     bind(KeyCode::KeyZ, true, true, Action::Redo),
     bind(KeyCode::KeyY, true, false, Action::Redo),
-    bind(KeyCode::KeyA, true, false, Action::SelectAll),
     bind(KeyCode::Space, false, false, Action::PreviewToggle),
 ];
 

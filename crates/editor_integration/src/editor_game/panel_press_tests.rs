@@ -88,7 +88,7 @@ fn a_press_on_the_overlay_over_the_composer_lets_its_keyboard_go() {
     let folder = tempfile::tempdir().expect("an asset folder");
     let mut editor = composer_session(folder.path(), melody_song());
     under_the_hierarchy_overlay(&mut editor, &[PanelId::COMPOSER]);
-    assert_eq!(editor.editor.composer.focus, ComposerFocus::PianoRoll);
+    assert_eq!(editor.editor.composer.focus, ComposerFocus::Sidebar);
 
     let covered = point_in(&editor, PanelId::COMPOSER, true);
     press_at(&mut editor, covered);

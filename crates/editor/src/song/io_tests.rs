@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use super::test_support::{exported, melody, sample_instrument, AssetFolder};
+use super::test_support::{melody, melody_bytes, sample_instrument, AssetFolder};
 use super::{midi_fingerprint, Gesture, SongDocument, SongEdit, SongSaveError};
 
 const BLIP: &[u8] = b"RIFF blip recording";
@@ -31,7 +31,7 @@ fn fnv_one_a_is_the_fingerprint_the_sidecar_carries() {
 }
 
 #[test]
-fn a_saved_song_reopens_with_every_note_and_its_sidecar_and_leaves_no_journal() {
+fn a_saved_song_reopens_with_every_note_and_its_sidecar_and_leaves_no_temporary_file() {
     let folder = AssetFolder::new();
     let mut document = melody();
     document
@@ -44,8 +44,9 @@ fn a_saved_song_reopens_with_every_note_and_its_sidecar_and_leaves_no_journal() 
     assert_eq!(
         folder.files_under("music"),
         ["LICENSE", "theme.mid", "theme.mid.ron"],
-        "no .new is left"
+        "no temporary file is left"
     );
+    assert_eq!(folder.read("music/theme.mid"), Some(melody_bytes()), "the loaded bytes");
     let midi = folder.read("music/theme.mid").expect("the MIDI file");
     assert_eq!(
         document.file().midi_fingerprint,
@@ -59,7 +60,8 @@ fn a_saved_song_reopens_with_every_note_and_its_sidecar_and_leaves_no_journal() 
         opened.notes
     );
     assert!(!opened.document.is_dirty());
-    assert_eq!(exported(&opened.document), exported(&document));
+    assert_eq!(opened.document.source_bytes(), document.source_bytes());
+    assert_eq!(opened.document.data().note_count(), 3);
     assert!(!opened.document.file().looping);
 }
 

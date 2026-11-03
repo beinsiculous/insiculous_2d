@@ -63,7 +63,7 @@ fn test_history_dirty_flag_carries_the_songs_edits_so_the_playground_sees_them()
     editor.sync_dirty_mirror();
     assert!(!reads(&history_only), "a clean scene with no song");
 
-    editor.song = Some(editor::SongDocument::new_song().expect("a blank song"));
+    editor.song = Some(super::test_support::melody_song());
     editor.sync_dirty_mirror();
     assert!(reads(&history_only), "a never-saved song is unsaved work beside a clean scene");
     assert!(reads(&combined));

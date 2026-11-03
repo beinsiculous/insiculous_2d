@@ -4,8 +4,9 @@
 //! **Write order is the durable order.** Nothing coalesces — a path written twice is two
 //! puts — so whatever the store holds when any operation completes is a prefix of the
 //! write sequence: the same states a native crash leaves, which the song's open-time
-//! rules were written for. A save's journal pair therefore lands before its finals, and
-//! a removal after every put written ahead of it.
+//! rules settle. A save's final therefore lands whole before the removal of the temporary
+//! file it was written from, a Save As's `.mid` before its sidecar, and a removal after
+//! every put written ahead of it.
 //!
 //! **Failure is head-of-line.** An operation that fails (Backend/Unavailable) strands the
 //! head and nothing behind it issues, so a save whose final failed never reaches its

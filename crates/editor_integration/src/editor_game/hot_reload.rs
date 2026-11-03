@@ -337,10 +337,10 @@ impl<G: Game> EditorGame<G> {
         self.reload_scene_from_disk(targets.world, targets.assets, &path);
     }
 
-    /// Whether a document's change must wait: a play session, a gizmo or composer drag, a
-    /// focused field or a dialog holds it.
+    /// Whether a document's change must wait: a play session, a gizmo drag, a focused field
+    /// or a dialog holds it.
     fn reload_is_held(&self, edit_field_focused: bool) -> bool {
-        let gesture_live = self.editor.gizmo_has_priority() || self.composer_drag.is_some() || edit_field_focused;
+        let gesture_live = self.editor.gizmo_has_priority() || edit_field_focused;
         let dialog_up = self.scene_confirm.pending_action.is_some() || self.stop_confirm.pending;
         self.editor.in_play_session() || gesture_live || dialog_up
     }
