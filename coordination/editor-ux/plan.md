@@ -1059,9 +1059,13 @@ over v3 with the rulings folded in), adjudicated with Jesse, revised until settl
 UX** whose description carries the batch order and the gates, and a board Sprint option; #179
 folded into batch 2's issue; `coordination/editor-ux/reviewer-comparison.md` started with the
 round-1 rows. The plan commits with `ADV_REVIEWED=1` once round 1 is adjudicated (it is over the
-hook's threshold).
+hook's threshold). **Done 2026-11-03:** plan v6 committed (2c4353e); milestone *Sprint: Editor UX*
+on `insiculous_2d` (#15) and `insiculous_web` (#14) with the order and gates in its description;
+the board's Sprint option added with every existing id preserved (35 → 36, 119 values intact);
+issues #240–#248 and insiculous_web#79 filed, fields set, `check-sprint-sync.sh` clean; #179
+commented, left open for #241's commit to close.
 
-**Batch 1 — the toolbar as a toolbar (§ A).** Files: `crates/editor/src/icons.rs` (new),
+**Batch 1 — the toolbar as a toolbar (§ A). Issue #240.** Files: `crates/editor/src/icons.rs` (new),
 `toolbar.rs`, `toolbar_strip.rs`, `play_controls.rs`, `view_toggles.rs`, `overflow_menu.rs` (its
 rows gain the icon before the name), `theme/mod.rs` + `theme/tests.rs` (two tokens, two guard
 rows), `crates/editor/CLAUDE.md` (the strip's paragraph), `coordination/PROGRESS.md`. Target
@@ -1069,7 +1073,7 @@ shapes: § A. Gates: the standard set; `check_games.sh` (the editor crate). Revi
 with the stills § A names. Leaves out: § A's list. Executor's first step: report the measured
 `TOOLBAR_STRIP_MIN_WIDTH` before and after, and the dock's narrow threshold with it.
 
-**Batch 2 — UI scale (§ B), closes #179.** Files: `crates/ui/src/context/mod.rs` (+ the
+**Batch 2 — UI scale (§ B), closes #179. Issue #241.** Files: `crates/ui/src/context/mod.rs` (+ the
 `to_physical`/`to_points` seam; split `context/scale.rs` if `mod.rs` nears the ceiling),
 `context/text.rs`, `context/widgets.rs`, `interaction/` (the tooltip's recorded scale),
 `font/layout.rs`; `crates/engine_core/src/contexts.rs` + `game.rs` (`display_scale`, the
@@ -1090,7 +1094,7 @@ batch 10b that binds here: a gesture that reads raw mouse state must run the blo
 arming press — at scale, in the same units.
 
 **Batch 3 — the dock: tab groups, the Window menu, the keyboard route, the vertical budget
-(§ C). After External Tools batch 7 (ruling (e)).** Files:
+(§ C). After External Tools batch 7 (ruling (e)). Issue #242.** Files:
 `crates/editor/src/dock/{mod,groups,layout,render,focus,tests}.rs` (the split first),
 `context/default_layout.rs`, `context/mod.rs` (`show_panel` callers), `editor_preferences.rs`
 (`GroupPrefs` + the migration), `menu/mod.rs` (Window menu on batch 2's nested dropdown),
@@ -1101,7 +1105,7 @@ asset_browser_keys,console,settings_keys}.rs`, `panel_renderer/mod.rs`, `crates/
 Target shapes: § C. Gates: the standard set; `check_games.sh`. Reviewers: kimi, codex (three
 stills). Leaves out: § C's list. Re-read #233 and #99's Preferences line in the report.
 
-**Batch 4a — the asset browser: folders and create (§ D, the first half).** Files:
+**Batch 4a — the asset browser: folders and create (§ D, the first half). Issue #243.** Files:
 `crates/common/src/vfs/mod.rs` (+ `vfs/entries.rs`: `list_entries`, `create_dir_all`, `exists` —
 424 lines today), `crates/editor/src/asset_browser/{mod,tree}.rs` (the split; the companion
 classification; the router), `icons.rs` (`Folder`, `Up`, `New`), `context_menu.rs`
@@ -1118,7 +1122,7 @@ engine_core); `check_games.sh`. Reviewers: kimi, gemini (the vfs seam, native an
 (batch 6).
 
 **Batch 4b — the asset browser: rename and delete (§ D, *Rename and delete*). Gated on 4a; Jesse
-kept it 2026-11-03.** Files: `vfs/entries.rs` (`remove_file`, `remove_dir_all`, `rename` — the two
+kept it 2026-11-03. Issue #244.** Files: `vfs/entries.rs` (`remove_file`, `remove_dir_all`, `rename` — the two
 native algorithms — the web ordering, the failure-injection hook on the memory store),
 `crates/playground/src/persist/queue.rs` + `store/` (the bundled-only tombstone),
 `crates/editor/src/song/io/` (the `LICENSE` stanza follows the rename),
@@ -1130,7 +1134,8 @@ as recovery). Gates: as 4a, plus `check_audio_provenance.sh` over a renamed song
 gemini (the ordering), codex (the rename prompt and the refusal, two stills). Leaves out: a journal;
 undo.
 
-**Batch 5 — the editor in its own window (§ E). NOT SETTLED — its design continues under
+**Batch 5 — the editor in its own window (§ E). Issues #245 (engine) and insiculous_web#79
+(site). NOT SETTLED — its design continues under
 `review/editor-ux-window/`; its issue is filed blocked on that review. Site + playground crate +
 the retire seam in `editor_integration` (codex F6 round 4), so it queues like every other batch.**
 Files, `insiculous_2d`: `crates/editor_integration/src/editor_game/{mod,run_options}.rs` (the
@@ -1159,7 +1164,7 @@ browser harness if it can host two pages; Jesse's browser check (§ E). Reviewer
 out: § E's list.
 
 **Batch 6 — the convention: `docs/PROJECT_LAYOUT.md`, the checker, the trees (§ D's other
-half).** Files: `docs/PROJECT_LAYOUT.md` (new), `scripts/check_project_layout.sh` (new),
+half). Issue #246.** Files: `docs/PROJECT_LAYOUT.md` (new), `scripts/check_project_layout.sh` (new),
 `scripts/check_games.sh` (calls it per game), `examples/assets/images/` → `sprites/` with
 sidecars for its PNG (`hello_world.scene.ron:73` — resolve the `assets/` prefix question in the
 report), `examples/assets/sounds/snd_jump.wav` → `jump.wav` (its `LICENSE` and every caller),
@@ -1205,14 +1210,14 @@ out: the six games' `sprites/` (DEION_STYLE's); renaming anything under `deion_a
 font's filename (the stated exception).
 
 **Batch 7 — tab drag (§ C, the gesture). Runs in this effort (Jesse, 2026-11-03), after batch 3
-has shipped and Jesse has lived with the menu-driven model for at least one batch.** Drag a
+has shipped and Jesse has lived with the menu-driven model for at least one batch. Issue #247.** Drag a
 tab (press, move past a threshold) shows a ghost on `UiLayer::DragGhost` and drop targets: every
 group's tab strip (join) and four edge zones (new group); drop calls `group_panel_with` or
 `move_panel_to_edge`; Escape cancels; the keyboard path is the menu (batch 3). Files: `dock/drag.rs`
 (new), `render.rs`, `editor_game/mod.rs`, `drag_drop.rs` (a `DragPayload::Panel`), the guide.
 Reviewers: kimi, codex. Leaves out: dragging a panel out to a floating window.
 
-**Batch 8 — close-out (planner).** Milestone closed when `jesse` merges; `log_archive.md` §
+**Batch 8 — close-out (planner). Issue #248.** Milestone closed when `jesse` merges; `log_archive.md` §
 Editor UX with the lessons; the scorecard's totals; the review record archived to
 `review/_archive/editor-ux/`; the follow-ups filed (§ Follow-ups).
 
