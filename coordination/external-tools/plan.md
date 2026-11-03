@@ -1603,7 +1603,73 @@ disagree, this wins. The handoff carries the `file:line`s.
   the next autosave", name the panel and the Test drain — the `panel_renderer/` row, `shortcuts.rs`'s
   route list, a `settings_keys.rs` row). #102's second "done looks like" bullet is this panel.
 
-**Batch 7 — the Conductor panel: #217 (E15, reworded), #218 (E16, reworded), the rename (filed at
+**Batch 7, split at its re-verification (planner, 2026-11-03, on the plan's own "the rename, as its
+own commit"): 7a the trim (#217, #218), 7b the rename (#227), one out at a time, 7b after 7a lands.
+The gate is MET 2026-11-03** (`review/external-tools/roundtrip-7.md`): pong's `ai_tong.mid` imported by
+MIDI Evil's `oracle project import-midi`, one trombone note added, `export-midi`, pong's 57 tests green
+over the exported file (baseline 57), the committed file restored; the panel's own open of the exported
+file and MIDI Evil's desktop Save-back were not driven headless.
+
+**Re-verified 2026-11-03 against 5440b10** — what the section below assumed, corrected:
+- **The score verbs are ten, not six**: `apply.rs:212-222` groups `AddNote`, `DeleteNotes`, `MoveNotes`,
+  `ResizeNotes`, `SetVelocity`, `SetPitch`, `AssignPart`, `SetTempo`, `SetTimeSignature`, `AddTrack` as
+  the score's; `Batch` stays for the map. `song select` / `PureWrite::SongSelect` / `SongSelection`
+  (`song/selection.rs`, 49 lines) are the roll's and go with it; `song undo|redo` stay for the map's history.
+- **`song new` is the score maker**: `HostedWrite::SongNew`, `EditorAction::NewSong`, File → "New Song"
+  (`menu/mod.rs:191`, `actions.rs:41`), `PendingSceneAction::NewSong` (`scene_confirm.rs:31,68,84,296`),
+  `song_io.rs:143 new_song`, `SongDocument::new_song`/`new_song_on` (`song/mod.rs:147,153`) go; `song init`
+  and the unmapped `.mid` opened in place are how a sidecar begins. The test fixtures built on
+  `new_song` + `AddNote` (`song/test_support.rs:68-88`, `composer/test_support.rs:12-20`,
+  `editor_integration/.../test_support.rs:162,177`) become MIDI bytes through `music_midi`'s
+  `SongData` helpers + `write_smf` → `SongDocument::from_smf` (`:227,233` already do).
+- **The journal goes with the trim** (rulings (i), (j); § The open song document's last sentence):
+  `io/commit.rs`'s `.new` pair (`:45-52`), `guard_sidecar`'s journal removal, `recovery_samples`'s
+  journal root (`:242-255`), `io/open.rs`'s `SongFiles.journal_*`, `finish_first_save`, `keep_journals`,
+  `io/recover.rs` whole; the transition's score guard — `is_score_authored`, `baseline_export`
+  (`song/mod.rs:141,228`, `follow.rs:24-28,55,61`), `score_guard` and `committed.recovered` →
+  `adopt_score` (`io.rs:326-350`) — and `EditingPolicy` (`song/mod.rs:75-110`, the sidebar's note
+  `sidebar.rs:195`, `song`'s `editable`/`refused_reason`, `command_api/song.rs:179-180`). A save is
+  each final by temp-and-rename in its own directory (Save As writes two: the loaded bytes and the
+  sidecar). The playground's `.new` branches follow: `archive.rs:130-134`, `archive/songs.rs:26-33`,
+  `archive/song_tests.rs`, the `persist/queue.rs:7-8` sentence, `WEB_PLAYGROUND.md:164,293-295,330`.
+- **The playground's re-import already keeps the sidecar** (5a: `upload.rs:13-14,171-173`, the
+  `sidecar_lost` outcome) **and its export already carries the live song's two files**
+  (`archive.rs:107-134`, `song_tests.rs:18`); 7a changes only the journal rule there and writes the
+  browser's reduction into `docs/WEB_PLAYGROUND.md`.
+- **The GUI**: `composer/` is 18 files, 3,852 lines; goes: `piano_roll.rs` (292) + tests (193),
+  `note_list.rs` (157), `layout.rs`'s `PianoRollGeometry`/`BeatLine` (`:147-260`) and the roll/list
+  areas, `mod.rs`'s `RollPoint`, `MovePreview`, `clamp_move`, `moved_notes_edit`, `track_notes`,
+  `note_images`, `note_name`, `ComposerAction::{Select, BeginDrag}`, `state.rs`'s `RollCursor`,
+  `ComposerFocus::{PianoRoll, NoteList}`, `tabs_area`, the roll scrolls, `cursor`, `note_list_row`,
+  `new_track_program`, `selected_on_track`; `keys.rs`'s `Nudge`, `DeleteNotes`, `Shorten`, `Lengthen`,
+  `VelocityUp/Down`, `SelectAll` rows; the theme's `note_fill`, `note_selected_border`, `key_black`,
+  `playhead` (`theme/mod.rs:165-175,300-304`) with `theme/tests.rs:119-146`. Stays: `transport.rs`,
+  `sidebar.rs` + `sidebar/{blocks,walk}.rs`, the Songs/SoundFont scans, `drop_action` (a `.wav` →
+  sample instrument), `ComposerMode` (Compact's section tabs are the sidebar's).
+- **The host**: goes: `composer_drag.rs` (112) + tests (156), `EditorGame.composer_drag`
+  (`editor_game/mod.rs:85,160`), `drop_composer_drag` (`shortcuts.rs:168,495`), `api.rs`'s
+  composer-drag skip; `composer_keys.rs` (529) loses `move_composer_cursor`, `selected_note_images`,
+  `nudge_notes`, `resize_notes`, `change_velocity`, `add_note_at_cursor`, `move_note_cursor`
+  (`:172-289,507`) and `run_composer_actions`'s `Select`/`BeginDrag` arms; `panel_renderer/composer.rs`
+  (266) loses the roll and list renders and `render_area_tabs`. The salvaged scans are read through
+  `composer/mod.rs:49` and `state.rs:14,19` re-exports — 7a reads `external_tools::{scan_songs,
+  scan_sound_fonts, SoundFontScan}` directly and drops the re-exports.
+- **Docs 7a rewrites** (the name "composer" stays until 7b): `docs/SONG_FORMAT.md` § How the composer
+  saves (`:307-430`: the transition paragraph, steps 3, 5's rule and 6, the recovery paragraph and its
+  "No final at all" bullet go; Save As's two renames said); `docs/EDITOR_COMMAND_API.md` § Songs
+  (`:177-300`: `song edit`'s ten score shapes, `song select`, `song new`, `selection`/`editable`/
+  `refused_reason`, the "Save is a journal" paragraph, `song open`'s recovery clause); `training.md`
+  § Authoring a song (`:1002-1010`); `docs/WEB_PLAYGROUND.md` (`:164,291-295,329-330,354`); both
+  editor guides' rows and pitfall tables (26 + 31 mentions); `log_archive.md`'s dated entry. The
+  games' guides, `PROJECT_ROADMAP.md`, `music_midi/CLAUDE.md` wait for 7b's sweep.
+- **Sizes**: `editor_game/mod.rs` 567, `context/mod.rs` 549, `menu/mod.rs` 538, `shortcuts.rs` 538,
+  `panel_renderer/mod.rs` 532, `song/io.rs` 526 — every one shrinks. `music_midi` is not touched.
+- **Issues re-read, the planner's reading for the take-back**: #200 (the roll's wheel) superseded;
+  #197 (Compact tabs + the sidebar button's clipping), #188 (Add binding), #187 (the canvas's
+  accessibility tree), #186 (Stop while the song waits) are the map's or the editor's and stay; #141
+  is already closed.
+
+**Batch 7 as settled — the Conductor panel: #217 (E15, reworded), #218 (E16, reworded), the rename (filed at
 settling).** **Gated on MIDI Evil's `.evil` → `.mid` export and positional open round-tripping one
 of the six shipped songs through the engine** — import, a note changed, export, `cargo test` in
 that game green over the exported file and the song opening in the panel — demonstrated and quoted
