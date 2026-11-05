@@ -1057,6 +1057,14 @@ dead from sleeping — `ping` is asked only at a boot, with a 2 s answer window,
   `request-review.sh`'s `--image` feeds codex only; whether kimi's CLI reads a PNG from the
   tree is checked at batch 2's dispatch, and a script change to hand kimi images is filed if
   it cannot. Batch 1 ran on the roster as it was (Opus built, codex reviewed).
+  **Corrected after batch 2 (2026-11-05):** kimi's CLI cannot open a PNG at all — its Read
+  tool answers "is an image file. Only text files can be read" (`review/editor-ux/
+  kimi-image-probe.txt`) — so the UI eye over the stills is **the planner's alone**; the
+  handoff still has the executor describe each still beside its path. And gemini's round 7
+  ran blind (agy's reviewer gate denies the tool names the current build calls; 13 min, 3 of 5
+  findings false), so by Jesse's word the same day the second reviewer **from batch 3 on is
+  deepseek** (`--reviewer=deepseek`, Claude Code on DeepSeek's endpoint): the reviewers are
+  **kimi and deepseek**, the planner's own review beside them.
 - A batch section is re-verified against the tree before its handoff is written, and the
   correction committed with its own pathspec.
 
@@ -1231,6 +1239,24 @@ exists yet. #179 is open. What moved or was misread, and binds the executor:
   report beside its path. `editor_prefs.json` is restored after every editor run.
 - **The code review is round 7**; reviewers kimi and gemini (the ui boundary is the seam), the
   planner's own review beside them; codex does not review its own vendor's batch.
+
+**Done 2026-11-05: dc5a7f9** (executor Astra/codex, `report-2.md` COMPLETE, 54 files; code
+round 7 — kimi 3, gemini 5 (2 real, 3 false; its gate denied every repo read), the planner 2 +
+the UI eye over five stills, the executor's three and the planner's two of View ▸ UI Scale
+(`batch2-menu-scale-{100,125}.png`) — and round 8 (kimi 1) on the planner's fix diff). The
+accepted findings, fixed by the planner: a child dropdown opened by the same frame's
+move-and-press took that press on its first row (now a press frame opens no child; the release
+does); Enter with nothing highlighted fired the first row; the four scale actions are refused
+while a pointer gesture is live (gizmo drag, pan, marquee, scrub — round 8 widened it from the
+gizmo alone); the scissor snaps from its edges, not `ceil(width × scale)`; `stepped` keeps the
+preference past 200 % and below 100 %. Rebutted: a physical-pointer caller of
+`is_input_blocked_at` that does not exist, UI Scale "dropped while Playing" (the deny list),
+a divide-by-zero no code path reaches. Closes #241 and #179. Filed: #249 — a Follow-display
+scale change (the window carried to another monitor) during a live gesture still rebases its
+point anchors, cancel or rebase being the design call. Follow-up line for the close-out: the
+inner game's key handlers run at the editor's scale (only `update` is bracketed at 1.0; no game
+draws from one). The gemini gate's stale tool names are insiculous#45 (comment text in the
+planner's scratchpad, the comment itself denied here).
 
 **Batch 3 — the dock: tab groups, the Window menu, the keyboard route, the vertical budget
 (§ C). After External Tools batch 7 (ruling (e)). Issue #242.** Files:
