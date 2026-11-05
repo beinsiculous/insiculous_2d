@@ -1048,6 +1048,15 @@ dead from sleeping — `ping` is asked only at a boot, with a 2 s answer window,
 - Reviewers per batch: kimi always; codex with stills for every batch here but the vfs seam of
   batch 4 is also gemini's; gemini for batches 2 and 5 (a ui seam, a page protocol). The planner's
   own review on every batch. A fix that changes behaviour goes back as its own round.
+  **Amended 2026-11-05 (Jesse): from batch 2 on the executor is Astra (`codex`), in its own
+  session, because the batches are UI work.** A vendor never reviews its own vendor's work, so
+  codex leaves the reviewer seat for batches 2–7: the reviewers are **kimi and gemini** on every
+  batch, and the UI eye over the stills is **the planner's and kimi's** (Jesse: "she's pretty
+  decent at it") — the handoff names the stills' tracked paths so a repo-reading reviewer can
+  open them, and the executor's report describes each still in words beside its path.
+  `request-review.sh`'s `--image` feeds codex only; whether kimi's CLI reads a PNG from the
+  tree is checked at batch 2's dispatch, and a script change to hand kimi images is filed if
+  it cannot. Batch 1 ran on the roster as it was (Opus built, codex reviewed).
 - A batch section is re-verified against the tree before its handoff is written, and the
   correction committed with its own pathspec.
 
@@ -1142,6 +1151,17 @@ or was misread, and binds the executor:
 - **The code review is round 5** of `review/editor-ux/` (plan rounds 1–4 are spent); reviewers
   kimi and codex with the four stills, the planner's own review beside them. **The executor is
   Claude Opus 5.5 in Jesse's other window**, as for every External Tools batch.
+
+**Done 2026-11-05: 4df27b1** (executor Claude Opus 5.5; code round 5 — kimi 1, codex 1 over the
+four stills, the planner 6 — and round 6 on the planner's fix). Widths: `VIEW_GROUP_WIDTH` 140 →
+160, `TOOLBAR_STRIP_MIN_WIDTH` 391 → 312. The one accepted finding: the overflow menu, wider by
+the icon lane and hung from a button that sits further right, ran past a 250 px window — now it
+slides left to the window's edge as it already shifted up (`overflow_menu_bounds`, with a test
+through the real layout). Rebutted as policy in round 6: the narrow-mode side overlay covering
+the menu is #233, batch 3's. Follow-up lines for the close-out: `row_button` in
+`overflow_menu.rs` copies the stock button's painting because `ui.button` draws a placeholder
+bar for an empty label (the ui crate's to fix); an `On` strip button shows no hover feedback
+(Astra's call). Codex raised nothing on the fifteen shapes.
 
 **Batch 2 — UI scale (§ B), closes #179. Issue #241.** Files: `crates/ui/src/context/mod.rs` (+ the
 `to_physical`/`to_points` seam; split `context/scale.rs` if `mod.rs` nears the ceiling),
