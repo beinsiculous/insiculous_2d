@@ -1,13 +1,15 @@
 //! Dockable panel system for the editor.
 //!
 //! Provides a flexible layout system with dockable panels that can be
-//! positioned at different edges of the window or floated. Panels can be
-//! hidden, collapsed to a slim strip, and resized; rendering lives in
-//! [`render`] (chrome, collapse chevrons, resize grabbers).
+//! positioned in tab groups at the edges of the window. Panels can be
+//! hidden, collapsed to a slim strip, and resized. Visibility and collapse
+//! operations live in [`groups`], allocation in [`layout`], and chrome in [`render`].
 
 use ui::{Rect, WidgetId};
 
-use crate::layout::{DEFAULT_PANEL_WIDTH, HEADER_HEIGHT, MIN_PANEL_SIZE, PADDING, RESIZE_HANDLE_SIZE};
+use crate::layout::{DEFAULT_PANEL_WIDTH, HEADER_HEIGHT, MIN_PANEL_SIZE, RESIZE_HANDLE_SIZE};
+
+pub use groups::TabGroup;
 
 /// The narrowest centre the dock will lay out. Below it the side panels stop
 /// taking an edge allocation (see [`DockArea::layout`]): the centre holds the
@@ -15,13 +17,27 @@ use crate::layout::{DEFAULT_PANEL_WIDTH, HEADER_HEIGHT, MIN_PANEL_SIZE, PADDING,
 /// the play controls at all.
 pub const MIN_CENTER_WIDTH: f32 = crate::toolbar_strip::TOOLBAR_STRIP_MIN_WIDTH;
 
+/// Minimum centre height, in points: the scene's header, its toolbar strip and 120 points
+/// of viewport under them.
+pub const MIN_CENTER_HEIGHT: f32 = HEADER_HEIGHT + crate::layout::TOOLBAR_STRIP_HEIGHT + 120.0;
+
 /// Length of a narrow-mode header tab along the edge it sits on.
 const NARROW_TAB_LENGTH: f32 = 96.0;
 
+/// Frames a dragged payload rests on a tab before that tab comes forward: long enough that
+/// a drag crossing a strip on its way to the scene switches nothing, short enough to feel
+/// immediate at 60 Hz.
+pub const DRAG_DWELL_FRAMES: u32 = 12;
+
+mod focus;
+mod groups;
+mod layout;
 mod render;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod group_tests;
 
 /// Unique identifier for a dock panel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -65,7 +81,7 @@ pub fn panel_id_for_menu_label(label: &str) -> Option<PanelId> {
 }
 
 /// Position where a panel can be docked.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum DockPosition {
     /// Panel is docked to the left edge
     Left,
@@ -78,428 +94,195 @@ pub enum DockPosition {
     /// Panel fills the center (main content area)
     #[default]
     Center,
-    /// Panel is floating (not docked)
-    Floating,
 }
 
-/// A dockable panel in the editor.
+/// An action shared by the Window menu and each tab's context menu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DockAction {
+    MoveTo(PanelId, DockPosition),
+    GroupWith(PanelId, PanelId),
+    Show(PanelId),
+    Hide(PanelId),
+}
+
+/// Immutable registration defaults, used when restoring incomplete preferences.
+#[derive(Debug, Clone)]
+pub(crate) struct PanelDefaults {
+    pub id: PanelId,
+    pub position: DockPosition,
+    pub size: f32,
+    pub min_size: f32,
+    pub visible: bool,
+}
+
+/// A panel's identity and visibility. Layout belongs to its tab group.
 #[derive(Debug, Clone)]
 pub struct DockPanel {
-    /// Panel identifier
     pub id: PanelId,
-    /// Panel title displayed in the header
     pub title: String,
-    /// One sentence on what the panel is for, shown as its header's tooltip.
-    /// Empty means the header raises none.
     pub hint: &'static str,
-    /// Where the panel is docked
-    pub position: DockPosition,
-    /// Panel bounds (updated during layout)
-    bounds: Rect,
-    /// Panel size (width for Left/Right, height for Top/Bottom)
-    pub size: f32,
-    /// Minimum size
-    pub min_size: f32,
-    /// Whether the panel is visible
     pub visible: bool,
-    /// Whether the panel can be resized
-    pub resizable: bool,
-    /// Whether the panel is collapsed to a slim strip. `size` is untouched
-    /// while collapsed, so expanding restores the previous size.
-    pub collapsed: bool,
+    bounds: Rect,
+    content: Rect,
+    // Consumed on registration; no panel owns mutable layout after it joins the dock.
+    registration: Option<PanelDefaults>,
 }
 
 impl DockPanel {
-    /// Create a new dock panel.
+    /// Register a panel at its default edge.
     pub fn new(id: PanelId, title: impl Into<String>, position: DockPosition) -> Self {
         Self {
-            id,
-            title: title.into(),
-            hint: "",
-            position,
-            bounds: Rect::default(),
-            size: DEFAULT_PANEL_WIDTH,
-            min_size: MIN_PANEL_SIZE,
-            visible: true,
-            resizable: true,
-            collapsed: false,
+            id, title: title.into(), hint: "", visible: true,
+            bounds: Rect::default(), content: Rect::default(),
+            registration: Some(PanelDefaults {
+                id, position, size: DEFAULT_PANEL_WIDTH, min_size: MIN_PANEL_SIZE, visible: true,
+            }),
         }
     }
 
-    /// Set the panel size.
+    /// Set the preferred size used when this panel starts a default group.
     pub fn with_size(mut self, size: f32) -> Self {
-        self.size = size;
+        if let Some(defaults) = &mut self.registration { defaults.size = size; }
         self
     }
 
-    /// Set the sentence the panel's header explains itself with on hover.
+    /// Set the minimum contributed to any group containing this panel.
+    pub fn with_min_size(mut self, min_size: f32) -> Self {
+        if let Some(defaults) = &mut self.registration { defaults.min_size = min_size; }
+        self
+    }
+
+    /// Set the header's explanatory tooltip.
     pub fn with_hint(mut self, hint: &'static str) -> Self {
         self.hint = hint;
         self
     }
 
-    /// Set the minimum size.
-    pub fn with_min_size(mut self, min_size: f32) -> Self {
-        self.min_size = min_size;
-        self
-    }
+    /// The active panel's content, or an empty rectangle for a hidden, inactive or closed tab.
+    pub fn content_bounds(&self) -> Rect { self.content }
 
-    /// Set whether the panel is resizable.
-    pub fn with_resizable(mut self, resizable: bool) -> Self {
-        self.resizable = resizable;
-        self
-    }
-
-    /// Whether this panel can be collapsed (edge-docked panels only).
-    pub fn is_collapsible(&self) -> bool {
-        matches!(
-            self.position,
-            DockPosition::Left | DockPosition::Right | DockPosition::Top | DockPosition::Bottom
-        )
-    }
-
-    /// The size the panel occupies in the layout: the collapsed strip is
-    /// exactly one header tall/wide.
-    pub fn effective_size(&self) -> f32 {
-        if self.collapsed && self.is_collapsible() {
-            HEADER_HEIGHT
-        } else {
-            self.size
-        }
-    }
-
-    /// Get the content bounds (excluding header).
-    ///
-    /// A collapsed panel has no content area (zero rect).
-    pub fn content_bounds(&self) -> Rect {
-        if self.collapsed && self.is_collapsible() {
-            return Rect::default();
-        }
-        self.expanded_content_bounds()
-    }
-
-    /// The content bounds the panel has when shown expanded, whatever its
-    /// collapse flag says. The narrow-mode overlay renders with these: the
-    /// flag is a desktop-layout preference that the preferences autosave
-    /// persists, so opening a collapsed panel as an overlay must not clear it.
+    /// The panel's allocated bounds below its header, including a temporary overlay.
     pub fn expanded_content_bounds(&self) -> Rect {
-        Rect::new(
-            self.bounds.x,
-            self.bounds.y + HEADER_HEIGHT,
-            self.bounds.width,
-            (self.bounds.height - HEADER_HEIGHT).max(0.0),
-        )
+        if self.bounds == Rect::default() { return Rect::default(); }
+        Rect::new(self.bounds.x, self.bounds.y + HEADER_HEIGHT, self.bounds.width,
+            (self.bounds.height - HEADER_HEIGHT).max(0.0))
     }
 }
 
-/// Manages the layout and rendering of docked panels.
+/// The dock's groups, layout and tab interaction state.
 #[derive(Debug, Clone)]
 pub struct DockArea {
-    /// All panels in the dock area
     panels: Vec<DockPanel>,
-    /// Available area for docking
+    pub(crate) groups: Vec<TabGroup>,
+    pub(crate) defaults: Vec<PanelDefaults>,
     bounds: Rect,
-    /// Resize handle size
     resize_handle_size: f32,
-    /// Whether the last layout went narrow: the side panels left the edge
-    /// allocation because the centre would have fallen below
-    /// [`MIN_CENTER_WIDTH`].
     narrow: bool,
-    /// The one side panel shown as an overlay over the viewport while narrow.
-    narrow_overlay: Option<PanelId>,
+    narrow_overlay: Option<usize>,
+    budget_collapsed: Vec<usize>,
+    focused_tab: Option<PanelId>,
+    context_request: Option<(PanelId, glam::Vec2)>,
+    overflow_group: Option<usize>,
+    /// Each title's measured width in points, taken as the strips draw, so a tab's
+    /// natural width is known to layout calls that have no ui at hand.
+    title_widths: Vec<(PanelId, f32)>,
+    /// The tab a dragged payload rests on and for how many frames.
+    drag_dwell: Option<(PanelId, u32)>,
 }
 
 impl Default for DockArea {
-    fn default() -> Self {
-        Self::new()
-    }
+    fn default() -> Self { Self::new() }
 }
 
 impl DockArea {
-    /// Create a new dock area.
+    /// Create an empty dock; only the scene occupies the centre.
     pub fn new() -> Self {
         Self {
-            panels: Vec::new(),
-            bounds: Rect::default(),
-            resize_handle_size: RESIZE_HANDLE_SIZE,
-            narrow: false,
-            narrow_overlay: None,
+            panels: Vec::new(), groups: Vec::new(), defaults: Vec::new(),
+            bounds: Rect::default(), resize_handle_size: RESIZE_HANDLE_SIZE,
+            narrow: false, narrow_overlay: None, budget_collapsed: Vec::new(),
+            focused_tab: None, context_request: None, overflow_group: None,
+            title_widths: Vec::new(), drag_dwell: None,
         }
     }
 
-    /// Add a panel to the dock area.
-    pub fn add_panel(&mut self, panel: DockPanel) {
+    /// Register a panel, appending it to its edge's default group.
+    pub fn add_panel(&mut self, mut panel: DockPanel) {
+        let Some(mut defaults) = panel.registration.take() else { return; };
+        defaults.visible = panel.visible;
+        if defaults.position != DockPosition::Center {
+            if let Some(group) = self.groups.iter_mut().find(|group| group.position == defaults.position) {
+                group.panels.push(panel.id);
+                group.min_size = group.min_size.max(defaults.min_size);
+                group.size = group.size.max(group.min_size);
+            } else {
+                self.groups.push(TabGroup::new(&defaults));
+            }
+        }
+        self.defaults.push(defaults);
         self.panels.push(panel);
     }
 
-    /// Get a panel by ID.
+    /// Read a panel; its bounds are empty unless it is the group's visible active panel.
     pub fn get_panel(&self, id: PanelId) -> Option<&DockPanel> {
-        self.panels.iter().find(|p| p.id == id)
+        self.panels.iter().find(|panel| panel.id == id)
     }
 
-    /// Get a panel by ID (mutable).
+    /// Mutate panel metadata. Use the dock's visibility methods to reflow layout immediately.
     pub fn get_panel_mut(&mut self, id: PanelId) -> Option<&mut DockPanel> {
-        self.panels.iter_mut().find(|p| p.id == id)
+        self.panels.iter_mut().find(|panel| panel.id == id)
     }
 
-    /// Get all panels.
-    pub fn panels(&self) -> &[DockPanel] {
-        &self.panels
+    /// All registered panels in registration order.
+    pub fn panels(&self) -> &[DockPanel] { &self.panels }
+    /// Edge groups in allocation order; the scene is excluded.
+    pub fn groups(&self) -> &[TabGroup] { &self.groups }
+    pub fn group_of(&self, id: PanelId) -> Option<usize> {
+        self.groups.iter().position(|group| group.panels.contains(&id))
     }
+    /// Available docking rectangle in points.
+    pub fn bounds(&self) -> Rect { self.bounds }
+    pub fn set_bounds(&mut self, bounds: Rect) { self.bounds = bounds; }
+    /// Whether side groups currently use edge tabs instead of taking width.
+    pub fn is_narrow(&self) -> bool { self.narrow }
 
-    /// The dock area bounds.
-    pub fn bounds(&self) -> Rect {
-        self.bounds
-    }
-
-    /// Set the available bounds for the dock area.
-    pub fn set_bounds(&mut self, bounds: Rect) {
-        self.bounds = bounds;
-    }
-
-    /// Set a panel's visibility and re-run layout.
-    pub fn set_panel_visible(&mut self, id: PanelId, visible: bool) {
-        if let Some(panel) = self.get_panel_mut(id) {
-            panel.visible = visible;
-            self.layout();
-        }
-    }
-
-    /// Show a panel wherever it is reachable: visible and expanded, and a side panel as the
-    /// narrow-mode overlay while the dock is narrow, where it is otherwise only a tab.
-    /// Showing the overlay already open leaves it open.
-    pub fn show_panel(&mut self, id: PanelId) {
-        let Some(panel) = self.get_panel_mut(id) else {
-            return;
-        };
-        panel.visible = true;
-        if panel.is_collapsible() {
-            panel.collapsed = false;
-        }
-        let side = Self::is_side(panel.position);
-        self.layout();
-        if self.narrow && side && self.narrow_overlay != Some(id) {
-            self.open_narrow_overlay(id);
-        }
-    }
-
-    /// Toggle a panel's visibility and re-run layout.
-    pub fn toggle_panel_visible(&mut self, id: PanelId) {
-        if let Some(panel) = self.get_panel_mut(id) {
-            panel.visible = !panel.visible;
-            self.layout();
-        }
-    }
-
-    /// Set a panel's collapsed state (edge panels only) and re-run layout.
-    pub fn set_panel_collapsed(&mut self, id: PanelId, collapsed: bool) {
-        if let Some(panel) = self.get_panel_mut(id) {
-            if panel.is_collapsible() {
-                panel.collapsed = collapsed;
-                self.layout();
-            }
-        }
-    }
-
-    /// Toggle a panel's collapsed state (edge panels only) and re-run layout.
-    pub fn toggle_panel_collapsed(&mut self, id: PanelId) {
-        if let Some(panel) = self.get_panel_mut(id) {
-            if panel.is_collapsible() {
-                panel.collapsed = !panel.collapsed;
-                self.layout();
-            }
-        }
-    }
-
-    /// Whether the dock is in narrow mode: the side panels are off the edge
-    /// allocation and reachable one at a time as an overlay.
-    pub fn is_narrow(&self) -> bool {
-        self.narrow
-    }
-
-    /// The side panel currently shown as a narrow-mode overlay, if any. Its
-    /// chrome and its content belong on the floating band, above the
-    /// viewport it covers.
+    /// The active panel of the temporary overlay, whether opened by width or height pressure.
     pub fn narrow_overlay(&self) -> Option<PanelId> {
-        self.narrow.then_some(self.narrow_overlay).flatten()
+        self.narrow_overlay.and_then(|index| self.groups.get(index)).map(|group| group.active)
     }
 
-    /// Show `id` as the narrow-mode overlay, closing whichever panel was
-    /// open — two overlays at once would leave no viewport between them.
-    /// Opening the panel that is already open closes it.
+    /// Toggle the panel's group overlay without changing the saved collapse preference.
     pub fn open_narrow_overlay(&mut self, id: PanelId) {
-        self.narrow_overlay = (self.narrow_overlay != Some(id)).then_some(id);
+        let Some(index) = self.group_of(id) else { return; };
+        if !self.overlay_eligible(index) { return; }
+        self.narrow_overlay = (self.narrow_overlay != Some(index)).then_some(index);
         self.layout();
     }
 
-    /// Close the narrow-mode overlay, leaving the tabs at the edges.
+    /// Close the temporary overlay, leaving its group tab reachable.
     pub fn close_narrow_overlay(&mut self) {
         self.narrow_overlay = None;
         self.layout();
     }
 
-    /// A side panel's header tab while narrow: the edge-anchored strip that
-    /// opens it, below the centre's toolbar strip so the play controls stay
-    /// clickable. Tabs sharing an edge stack downward, `slot` being the tab's
-    /// place among them, or two panels on one edge would draw one tab over the
-    /// other and the first drawn would take every click.
-    fn narrow_tab_bounds(panel: &DockPanel, centre: Rect, slot: usize) -> Rect {
-        let y = Self::narrow_top(centre) + PADDING + slot as f32 * (NARROW_TAB_LENGTH + PADDING);
-        let x = match panel.position {
-            DockPosition::Right => centre.right() - HEADER_HEIGHT,
-            _ => centre.x,
-        };
-        Rect::new(x, y, HEADER_HEIGHT, NARROW_TAB_LENGTH)
+    /// Whether this panel is its group's active visible member (the scene is always active).
+    pub fn is_active(&self, id: PanelId) -> bool {
+        self.get_panel(id).is_some_and(|panel| panel.visible)
+            && self.group_of(id).is_none_or(|index| self.groups[index].active == id)
     }
 
-    /// A side panel's bounds while it is the narrow-mode overlay: its own
-    /// width at its edge, from the centre's toolbar strip down to the
-    /// DOCK's bottom — over a bottom panel, because a short window with the
-    /// assets panel up leaves the centre a few rows tall and a field has to
-    /// be editable there — never wider than the centre.
-    fn narrow_overlay_bounds(panel: &DockPanel, centre: Rect, dock_bottom: f32) -> Rect {
-        let width = panel.size.min(centre.width);
-        let x = match panel.position {
-            DockPosition::Right => centre.right() - width,
-            _ => centre.x,
-        };
-        let top = Self::narrow_top(centre);
-        Rect::new(x, top, width, (dock_bottom - top).max(0.0))
+    fn group_visible(&self, index: usize) -> bool {
+        self.groups[index].panels.iter().any(|id| self.get_panel(*id).is_some_and(|panel| panel.visible))
     }
 
-    /// Where a narrow-mode panel may start: the bottom of the centre panel's
-    /// toolbar strip. The centre has a header like every panel, and the strip
-    /// is the top of the content below it — measuring from the dock's own top
-    /// put the tabs and the overlay over the play controls.
-    fn narrow_top(centre: Rect) -> f32 {
-        let centre_content = Rect::new(
-            centre.x,
-            centre.y + HEADER_HEIGHT,
-            centre.width,
-            (centre.height - HEADER_HEIGHT).max(0.0),
-        );
-        crate::toolbar_strip::split(centre_content).0.bottom()
+    fn overlay_eligible(&self, index: usize) -> bool {
+        (self.narrow && Self::is_side(self.groups[index].position)) || self.budget_collapsed.contains(&index)
     }
 
-    /// Whether `position` is a side (left/right) edge — the panels narrow
-    /// mode moves off the edge allocation.
-    fn is_side(position: DockPosition) -> bool {
-        matches!(position, DockPosition::Left | DockPosition::Right)
-    }
-
-    /// Whether the centre would fall below [`MIN_CENTER_WIDTH`] once the
-    /// visible side panels have taken their width.
-    fn would_squeeze_the_center(&self) -> bool {
-        let side_width: f32 = self
-            .panels
-            .iter()
-            .filter(|panel| panel.visible && Self::is_side(panel.position))
-            .map(DockPanel::effective_size)
-            .sum();
-        self.bounds.width - side_width < MIN_CENTER_WIDTH
-    }
-
-    /// Update panel layouts based on current dock positions.
-    ///
-    /// Below [`MIN_CENTER_WIDTH`] of centre the dock enters **narrow mode**:
-    /// the side panels leave the edge allocation (the centre takes the whole
-    /// width) and one of them at a time is shown as an overlay over the
-    /// viewport, opened from its header tab at the edge. Collapsing them
-    /// instead would thrash — an expanded panel violates the minimum again
-    /// and would collapse on the next frame, so the field a visitor came to
-    /// edit could never be reached.
-    pub fn layout(&mut self) {
-        self.narrow = self.would_squeeze_the_center();
-        if !self.narrow {
-            self.narrow_overlay = None;
-        }
-        let mut remaining = self.bounds;
-
-        // First pass: allocate space for edge-docked panels
-        for index in 0..self.panels.len() {
-            if !self.panels[index].visible {
-                continue;
-            }
-            if self.narrow && Self::is_side(self.panels[index].position) {
-                continue;
-            }
-
-            let panel = &mut self.panels[index];
-            let size = panel.effective_size();
-            match panel.position {
-                DockPosition::Left => {
-                    let width = size.min(remaining.width);
-                    panel.bounds = Rect::new(remaining.x, remaining.y, width, remaining.height);
-                    remaining.x += width;
-                    remaining.width -= width;
-                }
-                DockPosition::Right => {
-                    let width = size.min(remaining.width);
-                    panel.bounds = Rect::new(
-                        remaining.x + remaining.width - width,
-                        remaining.y,
-                        width,
-                        remaining.height,
-                    );
-                    remaining.width -= width;
-                }
-                DockPosition::Top => {
-                    let height = size.min(remaining.height);
-                    panel.bounds = Rect::new(remaining.x, remaining.y, remaining.width, height);
-                    remaining.y += height;
-                    remaining.height -= height;
-                }
-                DockPosition::Bottom => {
-                    let height = size.min(remaining.height);
-                    panel.bounds = Rect::new(
-                        remaining.x,
-                        remaining.y + remaining.height - height,
-                        remaining.width,
-                        height,
-                    );
-                    remaining.height -= height;
-                }
-                DockPosition::Center | DockPosition::Floating => {
-                    // Handled in second pass
-                }
-            }
-        }
-
-        // Second pass: center panels get remaining space
-        for panel in &mut self.panels {
-            if !panel.visible {
-                continue;
-            }
-
-            if panel.position == DockPosition::Center {
-                panel.bounds = remaining;
-            }
-        }
-
-        // The narrow side panels sit against the centre they overlay, so they
-        // are placed once the centre is known.
-        if self.narrow {
-            let mut tabs_on_the_left = 0;
-            let mut tabs_on_the_right = 0;
-            for index in 0..self.panels.len() {
-                let panel = &self.panels[index];
-                if !panel.visible || !Self::is_side(panel.position) {
-                    continue;
-                }
-                // Every side panel on the edge takes a slot, the overlay's left empty, so
-                // the tabs stay where they are when a neighbour opens or closes.
-                let slot = match panel.position {
-                    DockPosition::Right => &mut tabs_on_the_right,
-                    _ => &mut tabs_on_the_left,
-                };
-                let bounds = if self.narrow_overlay == Some(panel.id) {
-                    Self::narrow_overlay_bounds(panel, remaining, self.bounds.bottom())
-                } else {
-                    Self::narrow_tab_bounds(panel, remaining, *slot)
-                };
-                *slot += 1;
-                self.panels[index].bounds = bounds;
-            }
-        }
+    /// Whether the group draws a horizontal strip of tabs: a narrow or collapsed side group
+    /// is one vertical tab instead, unless it is open as the overlay.
+    fn has_tab_strip(&self, index: usize) -> bool {
+        let group = &self.groups[index];
+        !(Self::is_side(group.position) && (self.narrow || group.collapsed) && self.narrow_overlay != Some(index))
     }
 }

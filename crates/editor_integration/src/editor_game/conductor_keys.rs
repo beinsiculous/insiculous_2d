@@ -28,7 +28,7 @@ use crate::panel_renderer::conductor::{render_conductor, ConductorView};
 
 impl<G: Game> EditorGame<G> {
     pub(super) fn conductor_holds_focus(&self) -> bool {
-        self.editor.conductor.focus.is_held()
+        self.editor.dock_area.is_active(PanelId::CONDUCTOR) && self.editor.conductor.focus.is_held()
     }
 
     /// Why no Conductor panel edit may land now, if one may not: the song cannot change during
@@ -68,8 +68,7 @@ impl<G: Game> EditorGame<G> {
     /// Show the Conductor panel, expanded, and give `area` the keyboard — unless a play session
     /// runs, when the panel is read-only and keys belong to the game.
     pub(super) fn show_conductor(&mut self, area: ConductorFocus) {
-        self.editor.dock_area.set_panel_visible(PanelId::CONDUCTOR, true);
-        self.editor.dock_area.set_panel_collapsed(PanelId::CONDUCTOR, false);
+        self.editor.dock_area.show_panel(PanelId::CONDUCTOR);
         if self.conductor_write_refusal().is_none() {
             self.editor.conductor.focus = area;
         }

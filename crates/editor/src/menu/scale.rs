@@ -9,11 +9,16 @@ impl MenuBar {
     pub fn sync_ui_scale(&mut self, preference: UiScale, display_scale: f32) {
         let Some(view) = self.menus.iter_mut().find(|menu| menu.title == "View") else { return; };
         let display_percent = resolve_ui_scale(&UiScale::FollowDisplay, display_scale) * 100.0;
-        let mut items = vec![MenuItem::action(format!("Follow the display ({display_percent:.0} %)"))
+        let mut items = vec![MenuItem::action_with_shortcut(format!("Follow the display ({display_percent:.0} %)"), "Ctrl+0")
             .with_checked(preference == UiScale::FollowDisplay)];
         items.extend(UI_SCALE_PERCENTAGES.into_iter().map(|percent| {
             MenuItem::action(format!("{percent} %")).with_checked(preference == UiScale::Percent(percent))
         }));
+        items.extend([
+            MenuItem::separator(),
+            MenuItem::action_with_shortcut("Larger text", "Ctrl++"),
+            MenuItem::action_with_shortcut("Smaller text", "Ctrl+-"),
+        ]);
         if let Some(MenuItem::Submenu { items: current, .. }) = view.items.iter_mut()
             .find(|item| matches!(item, MenuItem::Submenu { label, .. } if label == "UI Scale"))
         {

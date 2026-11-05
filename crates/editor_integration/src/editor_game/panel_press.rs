@@ -34,7 +34,9 @@ impl<G: Game> EditorGame<G> {
     /// collapsed.
     pub(super) fn panel_press(&self, ui: &ui::UIContext, panel: PanelId) -> Option<PanelPress> {
         let dock = &self.editor.dock_area;
-        let content = dock.get_panel(panel).filter(|shown| shown.visible && !shown.collapsed)?.content_bounds();
+        if !dock.is_active(panel) { return None; }
+        let content = dock.get_panel(panel)?.content_bounds();
+        if content.width <= 0.0 || content.height <= 0.0 { return None; }
         let chrome_owns_press = self.editor.menu_bar.is_open() || self.editor.context_menu.is_open() || self.dialog_up();
         if !(ui.mouse_just_pressed() || ui.mouse_right_just_pressed()) || chrome_owns_press {
             return Some(PanelPress::Neither);

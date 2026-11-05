@@ -65,6 +65,7 @@ fn a_press_on_the_overlay_over_the_console_or_the_assets_takes_neither_and_lets_
     press_at(&mut editor, console_covered);
     assert!(!editor.editor.console.holds_keyboard, "a press on the overlay over it lets it go");
 
+    editor.editor.dock_area.activate(PanelId::ASSET_BROWSER);
     let assets_clear = point_in(&editor, PanelId::ASSET_BROWSER, false);
     press_at(&mut editor, assets_clear);
     assert!(editor.editor.asset_browser.holds_keyboard);

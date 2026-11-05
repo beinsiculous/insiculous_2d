@@ -133,7 +133,7 @@ fn an_open_context_menu_takes_every_key_and_down_then_enter_files_its_second_ite
     editor.editor.context_menu.open_for_file(Vec2::new(100.0, 400.0), "sprites/a.png", &config, true);
 
     for key in [KeyCode::ArrowRight, KeyCode::ArrowLeft, KeyCode::Delete] {
-        assert_eq!(press_key(&mut editor, key, PLAIN), KeyRoute::Consumed, "the open menu swallows {key:?}");
+        assert!(matches!(press_key(&mut editor, key, PLAIN), KeyRoute::Consumed | KeyRoute::AssetBrowser(BrowserKey::Menu(_))), "the open menu swallows {key:?}");
     }
     assert!(world.get::<common::Transform2D>(entity).is_some(), "Delete deleted nothing behind the menu");
     assert_eq!(
@@ -171,6 +171,7 @@ fn a_right_press_in_the_browser_takes_the_keyboard_from_the_conductor_panel() {
     editor.show_conductor(editor::conductor::ConductorFocus::Sidebar);
     assert!(editor.conductor_holds_focus(), "the Conductor panel starts with the keyboard");
 
+    editor.editor.dock_area.activate(PanelId::ASSET_BROWSER);
     press_in_with(&mut editor, PanelId::ASSET_BROWSER, MouseButton::Right);
 
     assert!(!editor.conductor_holds_focus(), "a right press elsewhere in the dock takes it from the Conductor panel");

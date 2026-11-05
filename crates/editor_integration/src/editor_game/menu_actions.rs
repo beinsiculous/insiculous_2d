@@ -11,6 +11,32 @@ use crate::entity_ops;
 use super::EditorGame;
 
 impl<G: Game> EditorGame<G> {
+    pub(super) fn run_context_menu_action(&mut self, action: editor::context_menu::ContextMenuAction) {
+        match action {
+            editor::context_menu::ContextMenuAction::Open(request) => self.editor.open_requests.push(request),
+            editor::context_menu::ContextMenuAction::Dock(action) => self.run_dock_action(action),
+        }
+    }
+
+    fn run_dock_action(&mut self, action: editor::DockAction) {
+        match action {
+            editor::DockAction::MoveTo(id, edge) => {
+                if !self.editor.dock_area.can_move_panel_to_edge(id, edge) {
+                    self.editor.status_bar.show_message("That edge has no room for another group, even collapsed");
+                    return;
+                }
+                self.editor.dock_area.move_panel_to_edge(id, edge);
+                self.editor.dock_area.show_panel(id);
+            }
+            editor::DockAction::GroupWith(id, other) => self.editor.dock_area.group_panel_with(id, other),
+            editor::DockAction::Show(id) => self.editor.dock_area.show_panel(id),
+            editor::DockAction::Hide(id) => self.editor.dock_area.set_panel_visible(id, false),
+        }
+        self.release_inactive_panel_focus();
+        self.sync_view_menu_checks();
+        self.editor.menu_bar.sync_window(&self.editor.dock_area);
+    }
+
     /// Sync View-menu check indicators with the current editor state.
     fn sync_view_menu_checks(&mut self) {
         for label in ["Inspector", "Hierarchy", "Asset Browser", "Conductor", "Console"] {
@@ -41,16 +67,21 @@ impl<G: Game> EditorGame<G> {
     /// action through the one dispatcher; while Playing only the actions
     /// that allow it run, the rest are dropped silently.
     pub(super) fn handle_menu_bar(&mut self, ctx: &mut GameContext, window_size: Vec2) {
+        self.editor.menu_bar.sync_window(&self.editor.dock_area);
         self.editor.menu_bar.sync_ui_scale(self.ui_scale, ctx.display_scale);
         self.sync_view_menu_checks();
         self.sync_open_project_item();
-        let Some(label) = self.editor.menu_bar.render(ctx.ui, window_size.x, &self.editor.theme) else {
-            return;
-        };
-        self.dispatch_menu_label(&label, ctx);
+        if let Some(label) = self.editor.menu_bar.render(ctx.ui, window_size.x, &self.editor.theme) {
+            self.dispatch_menu_label(&label, ctx);
+        }
+        self.release_inactive_panel_focus();
     }
 
     pub(super) fn dispatch_menu_label(&mut self, label: &str, ctx: &mut GameContext) {
+        if let Some(action) = self.editor.menu_bar.take_dock_action() {
+            self.run_dock_action(action);
+            return;
+        }
         log::info!("Menu action: {}", label);
         match editor::action_for_menu_label(label) {
             Some(action) if !self.editor.is_playing() || action.allowed_while_playing() => {

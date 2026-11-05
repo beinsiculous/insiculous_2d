@@ -167,7 +167,7 @@ pub fn render_overflow_menu(
         return None;
     }
 
-    ui.begin_overlay_in(ui::UiLayer::Floating, menu);
+    ui.begin_overlay_in(ui::UiLayer::Modal, menu);
     ui.panel_styled(menu, theme.surface_4, theme.popup_border, 1.0);
 
     let mut picked = None;

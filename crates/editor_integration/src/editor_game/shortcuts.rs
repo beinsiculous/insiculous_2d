@@ -27,6 +27,7 @@ pub(super) enum KeyRoute {
     Console(super::console::ConsoleKey),
     /// The External Tools panel's key, while it holds the keyboard.
     Settings(super::settings_keys::SettingsKey),
+    DockTabs(super::dock_keys::DockKey),
 }
 
 impl<G: Game> EditorGame<G> {
@@ -105,6 +106,8 @@ impl<G: Game> EditorGame<G> {
 
         // An open context menu, then the asset browser holding the keyboard, decide before
         // the Conductor panel and the editor: an arrow steps the tiles and never nudges an entity.
+        self.release_inactive_panel_focus();
+        if let Some(route) = self.dock_key_route(key, modifiers) { return route; }
         if let Some(route) = self.asset_browser_key_route(key, modifiers) {
             return route;
         }
@@ -133,11 +136,13 @@ impl<G: Game> EditorGame<G> {
         }
 
         match action {
+            // A strip key with no strip focused was declined by the dock route and every
+            // holder above; bound or not, Enter and the menu key are the game's then.
+            Some(EditorAction::ActivateDockTab | EditorAction::DockTabMenu) | None => KeyRoute::ForwardToGame,
             Some(action) => KeyRoute::Editor {
                 action,
                 shift: modifiers.shift,
             },
-            None => KeyRoute::ForwardToGame,
         }
     }
 
@@ -172,6 +177,7 @@ impl<G: Game> EditorGame<G> {
             KeyRoute::AssetBrowser(browser_key) => self.run_asset_browser_key(browser_key),
             KeyRoute::Console(console_key) => self.run_console_key(console_key),
             KeyRoute::Settings(settings_key) => self.run_settings_key(settings_key),
+            KeyRoute::DockTabs(key) => self.run_dock_key(key),
         }
     }
 
@@ -376,7 +382,14 @@ impl<G: Game> EditorGame<G> {
                 self.editor.view.toggle(editor::ViewToggle::GameFrame);
             }
             A::ToggleSnap => self.toggle_snap_with_feedback(),
-            A::TogglePanel(id) => self.editor.dock_area.toggle_panel_visible(id),
+            // A visible tab behind its group's active one is brought forward, not hidden:
+            // View → Inspector means "show me the Inspector" until it is the one in front.
+            A::TogglePanel(id) => {
+                if self.editor.dock_area.is_active(id) {
+                    self.editor.dock_area.set_panel_visible(id, false);
+                } else { self.editor.dock_area.show_panel(id); }
+                self.release_inactive_panel_focus();
+            },
             A::ResetLayout => self.reset_layout_with_feedback(),
             A::CycleGameLocale => self.cycle_game_locale_with_feedback(ctx.strings),
             other => log::error!("{other:?} is not a view action"),
@@ -469,7 +482,8 @@ impl<G: Game> EditorGame<G> {
             | A::ToggleSelection => {}
 
             // Peeled off by the caller before dispatch.
-            A::TogglePlayPause | A::StopPlay | A::ToggleCameraFollow => {}
+            A::TogglePlayPause | A::StopPlay | A::ToggleCameraFollow
+            | A::FocusDockTabs | A::ActivateDockTab | A::DockTabMenu => {}
         }
     }
 

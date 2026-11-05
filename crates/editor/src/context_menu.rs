@@ -30,6 +30,8 @@ const CURSOR_RING_ROOM: f32 = 2.0 * CURSOR_RING_WIDTH;
 pub enum ContextMenuAction {
     /// File the request onto the editor's open requests
     Open(OpenRequest),
+    /// Apply a tab layout action.
+    Dock(crate::DockAction),
 }
 
 /// One row of the menu.
@@ -45,6 +47,8 @@ pub struct ContextMenuItem {
 pub enum ContextMenuKey {
     Up,
     Down,
+    Left,
+    Right,
     Choose,
     Close,
 }
@@ -55,6 +59,8 @@ impl ContextMenuKey {
         match key {
             KeyCode::ArrowUp => Some(Self::Up),
             KeyCode::ArrowDown => Some(Self::Down),
+            KeyCode::ArrowLeft => Some(Self::Left),
+            KeyCode::ArrowRight => Some(Self::Right),
             KeyCode::Enter | KeyCode::NumpadEnter => Some(Self::Choose),
             KeyCode::Escape => Some(Self::Close),
             _ => None,
@@ -66,6 +72,7 @@ impl ContextMenuKey {
 #[derive(Debug, Default)]
 pub struct ContextMenu {
     open: Option<OpenMenu>,
+    dock_popup: Option<MenuBar>,
 }
 
 #[derive(Debug)]
@@ -81,6 +88,7 @@ struct OpenMenu {
 impl ContextMenu {
     /// Open the menu with its top-left corner at `anchor`, replacing any menu open.
     pub fn open(&mut self, anchor: Vec2, items: Vec<ContextMenuItem>, note: Option<String>) {
+        self.dock_popup = None;
         let cursor = items.iter().position(|item| item.enabled);
         self.open = Some(OpenMenu { anchor, items, note, cursor });
     }
@@ -109,21 +117,39 @@ impl ContextMenu {
         self.open(anchor, items, (!desktop).then(|| sentence(DESKTOP_ONLY_HINT)));
     }
 
+    /// Open the shared panel actions at the addressed tab.
+    pub fn open_for_tab(&mut self, anchor: Vec2, id: crate::PanelId, dock: &crate::DockArea) {
+        self.open = None;
+        self.dock_popup = Some(MenuBar::dock_popup(anchor, id, dock));
+    }
+
     pub fn is_open(&self) -> bool {
-        self.open.is_some()
+        self.open.is_some() || self.dock_popup.as_ref().is_some_and(MenuBar::is_open)
     }
 
     pub fn close(&mut self) {
+        self.dock_popup = None;
         self.open = None;
     }
 
     /// The labels of the open menu's items, in order.
     pub fn labels(&self) -> Vec<&str> {
+        if let Some(popup) = &self.dock_popup {
+            return popup.menus().iter().flat_map(|menu| menu.items.iter().filter_map(MenuItem::label)).collect();
+        }
         self.open.iter().flat_map(|open| open.items.iter().map(|item| item.label.as_str())).collect()
     }
 
     /// Answer one of the menu's keys; a chosen item closes the menu and returns its action.
     pub fn handle_key(&mut self, key: ContextMenuKey) -> Option<ContextMenuAction> {
+        if let Some(popup) = &mut self.dock_popup {
+            popup.handle_key(match key {
+                ContextMenuKey::Up => KeyCode::ArrowUp, ContextMenuKey::Down => KeyCode::ArrowDown,
+                ContextMenuKey::Left => KeyCode::ArrowLeft, ContextMenuKey::Right => KeyCode::ArrowRight,
+                ContextMenuKey::Choose => KeyCode::Enter, ContextMenuKey::Close => KeyCode::Escape,
+            });
+            return popup.take_dock_action().map(ContextMenuAction::Dock);
+        }
         let open = self.open.as_mut()?;
         match key {
             ContextMenuKey::Up => open.cursor = open.step(-1),
@@ -134,6 +160,7 @@ impl ContextMenu {
                 return action;
             }
             ContextMenuKey::Close => self.open = None,
+            ContextMenuKey::Left | ContextMenuKey::Right => {},
         }
         None
     }
@@ -142,6 +169,9 @@ impl ContextMenu {
     /// them, and return the action of an item clicked this frame. A press outside closes
     /// the menu and is swallowed whole.
     pub fn render(&mut self, ui: &mut UIContext, theme: &EditorTheme) -> Option<ContextMenuAction> {
+        if let Some(popup) = &mut self.dock_popup {
+            return popup.render_popup(ui, theme).map(ContextMenuAction::Dock);
+        }
         let (menu, bounds) = self.layout(ui, theme)?;
 
         let pressed = ui.mouse_just_pressed() || ui.mouse_right_just_pressed();
@@ -174,6 +204,7 @@ impl ContextMenu {
     /// Where the open menu draws: at its anchor, moved inside the window where it would
     /// run past an edge.
     pub fn bounds(&self, ui: &UIContext, theme: &EditorTheme) -> Option<Rect> {
+        if let Some(popup) = &self.dock_popup { return popup.popup_bounds(ui, theme); }
         self.layout(ui, theme).map(|(_, bounds)| bounds)
     }
 

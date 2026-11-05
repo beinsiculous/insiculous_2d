@@ -11,6 +11,7 @@ mod actions;
 mod dropdown;
 mod keyboard;
 mod scale;
+mod window;
 pub use actions::{action_for_menu_label, open_project_item, EXTERNAL_TOOLS_LABEL, OPEN_PROJECT_PREFIX};
 
 /// Menu dropdown layout constants. The row height and the item padding are
@@ -40,6 +41,8 @@ pub enum MenuItem {
         label: String,
         /// Submenu items
         items: Vec<MenuItem>,
+        /// Whether this submenu represents a visible panel.
+        checked: bool,
     },
 }
 
@@ -74,6 +77,7 @@ impl MenuItem {
         MenuItem::Submenu {
             label: label.into(),
             items,
+            checked: false,
         }
     }
 
@@ -87,8 +91,9 @@ impl MenuItem {
 
     /// Set whether the item shows a check indicator.
     pub fn with_checked(mut self, checked: bool) -> Self {
-        if let MenuItem::Action { checked: c, .. } = &mut self {
-            *c = checked;
+        match &mut self {
+            MenuItem::Action { checked: current, .. } | MenuItem::Submenu { checked: current, .. } => *current = checked,
+            MenuItem::Separator => {}
         }
         self
     }
@@ -159,6 +164,9 @@ pub struct MenuBar {
     submenu_path: Vec<usize>,
     keyboard_cursor: Option<usize>,
     last_pointer: Option<glam::Vec2>,
+    dock_entries: Vec<(crate::PanelId, String, bool)>,
+    popup_panel: Option<crate::PanelId>,
+    dock_action: Option<crate::DockAction>,
 }
 
 impl Default for MenuBar {
@@ -179,6 +187,7 @@ impl MenuBar {
             submenu_path: Vec::new(),
             keyboard_cursor: None,
             last_pointer: None,
+            dock_entries: Vec::new(), popup_panel: None, dock_action: None,
         }
     }
 
@@ -241,6 +250,8 @@ impl MenuBar {
                 MenuItem::action("Reset Layout"),
             ]),
         );
+
+        bar.add_menu(Menu::new("Window"));
 
         // Entity menu
         let mut entity_items = Vec::new();
@@ -396,3 +407,6 @@ impl MenuBar {
 mod tests;
 #[cfg(test)]
 mod nested_tests;
+
+#[cfg(test)]
+mod window_tests;

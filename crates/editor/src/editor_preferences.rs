@@ -1,10 +1,14 @@
 //! Editor preferences for persisting editor state across sessions.
 //!
 //! Stores camera position, zoom level, last opened scene, grid settings,
-//! per-panel layout (visibility, collapse state, size) and the external tools.
+//! tab-group layout and panel visibility and the external tools.
 
 use serde::{Deserialize, Serialize};
 
+mod groups;
+pub use groups::{GroupPrefs, PanelPrefs};
+
+#[cfg(test)]
 use crate::dock::{DockArea, DockPosition, PanelId};
 
 /// The editor's scale preference; old documents follow the display.
@@ -66,19 +70,6 @@ impl UiScale {
     }
 }
 
-/// Persisted layout state for one dock panel.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct PanelPrefs {
-    /// Panel identifier (`PanelId.0`)
-    pub id: u32,
-    /// Whether the panel is visible
-    pub visible: bool,
-    /// Whether the panel is collapsed to a slim strip
-    pub collapsed: bool,
-    /// Panel size (width for Left/Right, height for Top/Bottom)
-    pub size: f32,
-}
-
 /// Persistent editor preferences saved between sessions.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EditorPreferences {
@@ -96,8 +87,11 @@ pub struct EditorPreferences {
     /// View toggles (grid, colliders, game frame, snap) flattened into top-level keys
     #[serde(flatten)]
     pub view: crate::view_toggles::ViewToggles,
-    /// Per-panel layout state (absent in prefs files from older versions)
+    /// Tab groups in allocation order, including hidden members.
     #[serde(default)]
+    pub groups: Vec<GroupPrefs>,
+    /// Read-only legacy layout; replaced by groups on capture.
+    #[serde(default, skip_serializing)]
     pub panels: Vec<PanelPrefs>,
     /// Which program opens which project file. A file from before this field
     /// carried an `ide_command` string instead, read into the code tool on load.
@@ -118,6 +112,7 @@ impl Default for EditorPreferences {
             last_scene_path: None,
             grid_size: 32.0,
             view: crate::view_toggles::ViewToggles::default(),
+            groups: Vec::new(),
             panels: Vec::new(),
             external_tools: crate::external_tools::ExternalToolsConfig::default(),
             collapsed_components: Vec::new(),
@@ -137,8 +132,10 @@ impl EditorPreferences {
             Some(fields) => (fields.remove("ide_command"), fields.remove("external_tools")),
             None => (None, None),
         };
+        let has_groups = value.get("groups").is_some();
         let mut prefs: Self =
             serde_json::from_value(value).map_err(|e| format!("Failed to parse preferences: {e}"))?;
+        if has_groups { prefs.panels.clear(); }
         if let Some(external_tools) = external_tools {
             match serde_json::from_value(external_tools) {
                 Ok(config) => prefs.external_tools = config,
@@ -158,41 +155,7 @@ impl EditorPreferences {
         serde_json::to_string_pretty(self).map_err(|e| format!("Failed to serialize preferences: {e}"))
     }
 
-    /// Capture the current panel layout from a dock area.
-    ///
-    /// The Center panel (scene view) is layout-derived and never persisted.
-    pub fn capture_panels(&mut self, dock: &DockArea) {
-        self.panels = dock
-            .panels()
-            .iter()
-            .filter(|p| p.position != DockPosition::Center)
-            .map(|p| PanelPrefs {
-                id: p.id.0,
-                visible: p.visible,
-                collapsed: p.collapsed,
-                size: p.size,
-            })
-            .collect();
-    }
 
-    /// Apply saved panel layout onto a dock area.
-    ///
-    /// Unknown panel ids and Center panels are skipped; sizes are clamped
-    /// to each panel's minimum so a corrupt file can't zero out a panel.
-    pub fn apply_panels(&self, dock: &mut DockArea) {
-        for pref in &self.panels {
-            let Some(panel) = dock.get_panel_mut(PanelId(pref.id)) else {
-                continue;
-            };
-            if panel.position == DockPosition::Center {
-                continue;
-            }
-            panel.visible = pref.visible;
-            panel.collapsed = pref.collapsed && panel.is_collapsible();
-            panel.size = pref.size.max(panel.min_size);
-        }
-        dock.layout();
-    }
 }
 
 #[cfg(test)]
@@ -261,7 +224,8 @@ mod tests {
         let mut dock = test_dock();
         dock.set_panel_collapsed(PanelId::HIERARCHY, true);
         dock.set_panel_visible(PanelId::INSPECTOR, false);
-        dock.get_panel_mut(PanelId::INSPECTOR).expect("inspector").size = 333.0;
+        let inspector_group = dock.group_of(PanelId::INSPECTOR).expect("inspector group");
+        dock.groups[inspector_group].size = 333.0;
         let mut prefs = EditorPreferences {
             ui_scale: UiScale::Percent(150),
             camera_position: (100.0, 200.0),
@@ -274,6 +238,7 @@ mod tests {
                 game_frame: false,
                 snap: true,
             },
+            groups: Vec::new(),
             panels: Vec::new(),
             external_tools: crate::external_tools::ExternalToolsConfig::default(),
             collapsed_components: vec!["Sprite".to_string()],
@@ -295,11 +260,11 @@ mod tests {
         assert!(loaded.view.snap);
         assert_eq!(loaded.collapsed_components, vec!["Sprite".to_string()], "a collapsed section survives a restart");
         // The Center panel is layout-derived and never persisted.
-        assert_eq!(loaded.panels.len(), 2);
-        assert!(loaded.panels.iter().all(|p| p.id != PanelId::SCENE_VIEW.0));
-        assert!(fresh.get_panel(PanelId::HIERARCHY).expect("hierarchy").collapsed);
+        assert_eq!(loaded.groups.len(), 2);
+        assert!(loaded.groups.iter().all(|group| !group.panels.contains(&PanelId::SCENE_VIEW.0)));
+        assert!(fresh.groups()[fresh.group_of(PanelId::HIERARCHY).expect("hierarchy")].collapsed);
         assert!(!fresh.get_panel(PanelId::INSPECTOR).expect("inspector").visible);
-        assert_eq!(fresh.get_panel(PanelId::INSPECTOR).expect("inspector").size, 333.0);
+        assert_eq!(fresh.groups()[fresh.group_of(PanelId::INSPECTOR).expect("inspector")].size, 333.0);
         Ok(())
     }
 
@@ -317,7 +282,7 @@ mod tests {
         prefs.apply_panels(&mut dock);
 
         assert_eq!(
-            dock.get_panel(PanelId::HIERARCHY).expect("hierarchy").size,
+            dock.groups()[dock.group_of(PanelId::HIERARCHY).expect("hierarchy")].size,
             HIERARCHY_MIN_WIDTH,
             "a corrupt file cannot zero out a panel"
         );
@@ -431,3 +396,6 @@ mod tests {
         assert_eq!(fallback.camera_position, (0.0, 0.0), "no partial values leak");
     }
 }
+
+#[cfg(test)]
+mod group_tests;

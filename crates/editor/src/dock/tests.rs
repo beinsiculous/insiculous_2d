@@ -17,15 +17,11 @@ const DOCK: Rect = Rect::new(0.0, 0.0, 1000.0, 800.0);
 /// and nothing at all while the panel is collapsed.
 #[test]
 fn test_content_bounds_sit_below_the_header_and_vanish_when_collapsed() {
-    let mut panel = DockPanel::new(PanelId::INSPECTOR, "Test", DockPosition::Right);
-    panel.bounds = Rect::new(100.0, 50.0, 200.0, 400.0);
-
-    let content = panel.content_bounds();
-    assert_eq!(content, Rect::new(100.0, 50.0 + HEADER_HEIGHT, 200.0, 400.0 - HEADER_HEIGHT));
-
-    panel.collapsed = true;
-    let collapsed = panel.content_bounds();
-    assert_eq!((collapsed.width, collapsed.height), (0.0, 0.0), "a collapsed panel has no content area");
+    let mut area = three_panel_dock();
+    let content = content_of(&area, PanelId::INSPECTOR);
+    assert_eq!(content, Rect::new(750.0, HEADER_HEIGHT, 250.0, 800.0 - HEADER_HEIGHT));
+    area.set_panel_collapsed(PanelId::INSPECTOR, true);
+    assert_eq!(content_of(&area, PanelId::INSPECTOR), Rect::default(), "a collapsed group has no content area");
 }
 
 /// A dock with a 200px left panel, a 250px right panel and a center view.
@@ -73,8 +69,8 @@ fn test_dock_area_layout_collapsed_left_is_slim_strip_and_center_reclaims() {
 
     area.toggle_panel_collapsed(PanelId::HIERARCHY);
     let hierarchy = area.get_panel(PanelId::HIERARCHY).expect("panel exists");
-    assert!(!hierarchy.collapsed);
-    assert_eq!(hierarchy.size, 200.0, "expanding restores the remembered size");
+    assert!(!group_of(&area, PanelId::HIERARCHY).collapsed);
+    assert_eq!(group_of(&area, PanelId::HIERARCHY).size, 200.0, "expanding restores the remembered size");
     assert_eq!(hierarchy.bounds.width, 200.0);
 
     area.toggle_panel_visible(PanelId::HIERARCHY);
@@ -85,7 +81,7 @@ fn test_dock_area_layout_collapsed_left_is_slim_strip_and_center_reclaims() {
     assert_eq!(bounds_of(&area, PanelId::SCENE_VIEW).x, 200.0, "re-showing relayouts immediately");
 
     area.set_panel_collapsed(PanelId::SCENE_VIEW, true);
-    assert!(!area.get_panel(PanelId::SCENE_VIEW).expect("panel exists").collapsed, "the center never collapses");
+    assert!(content_of(&area, PanelId::SCENE_VIEW).height > 0.0, "the center never collapses");
 }
 
 /// A splitter drag clamps to the panel's min size and to half the dock,
@@ -323,7 +319,7 @@ fn test_a_collapsed_panel_opens_as_a_full_overlay_without_losing_its_collapse() 
         "the overlay must have a content rect, got {content:?}"
     );
     assert!(
-        area.get_panel(PanelId::INSPECTOR).expect("panel in the fixture").collapsed,
+        group_of(&area, PanelId::INSPECTOR).collapsed,
         "the desktop collapse preference survives the visit"
     );
 }
@@ -341,7 +337,7 @@ fn test_the_narrow_overlay_runs_to_the_docks_bottom_over_a_bottom_panel() {
             .with_min_size(100.0),
     );
     area.layout();
-    assert!(bounds_of(&area, PanelId::SCENE_VIEW).height < 100.0, "fixture: the centre is short");
+    assert!(bounds_of(&area, PanelId::SCENE_VIEW).height >= MIN_CENTER_HEIGHT, "the vertical budget protects the centre");
 
     area.open_narrow_overlay(PanelId::INSPECTOR);
 
@@ -393,8 +389,7 @@ fn test_a_panels_resize_handle_asks_for_the_cursor_that_matches_its_edge() {
 
 /// Center of a panel's resize handle.
 fn handle_center(area: &DockArea, id: PanelId) -> Vec2 {
-    let panel = area.get_panel(id).expect("panel in the fixture");
-    area.resize_handle_bounds(panel).center()
+    area.resize_handle_bounds(group_of(area, id)).center()
 }
 
 /// The open overlay's chevron closes it. Its tab is gone while it is open,
@@ -408,10 +403,14 @@ fn test_the_overlays_chevron_closes_it_and_brings_its_tab_back() {
     let mut input = input::InputHandler::new();
     area.open_narrow_overlay(PanelId::INSPECTOR);
 
-    let chevron = chevron_bounds(area.get_panel(PanelId::INSPECTOR).expect("panel in the fixture")).center();
+    let chevron = chevron_bounds(group_of(&area, PanelId::INSPECTOR)).center();
     press_at(&mut ui, &mut input, chevron, |ui| area.render(ui, &theme));
     release(&mut ui, &mut input, |ui| area.render(ui, &theme));
 
     assert_eq!(area.narrow_overlay(), None, "the chevron closes the overlay");
     assert_eq!(bounds_of(&area, PanelId::INSPECTOR).width, HEADER_HEIGHT, "the tab is back at the edge");
+}
+
+fn group_of(area: &DockArea, id: PanelId) -> &TabGroup {
+    &area.groups()[area.group_of(id).expect("group exists")]
 }

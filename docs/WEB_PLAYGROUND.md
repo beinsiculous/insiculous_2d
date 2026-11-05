@@ -287,9 +287,23 @@ takes the viewport), after Stop, and on exit. Nothing is written during Play or 
 
 The `ui_scale` key is `"follow"` (also the default when absent), or a numeric percentage.
 View → UI Scale offers Follow the display and 100, 125, 150, 175 and 200 %. Follow shows
-the live display percentage. Ctrl+= / Ctrl+- step the scale; Ctrl+0 returns to Follow.
-The browser may take Ctrl+= first, so the menu is the path that always works. Fonts and
+the live display percentage. Larger text and Smaller text show their Ctrl++ / Ctrl+- shortcuts
+beside the menu rows; Follow the display shows Ctrl+0. Ctrl+= also increases the scale.
+The number pad’s Ctrl+Add and Ctrl+Subtract work too. The browser may take Ctrl++ first, so the menu is the path that always works. Fonts and
 layout scale together; a 1024 px window at 200 % uses the dock's narrow layout.
+
+The `groups` key saves each tab group's `position`, `size`, `collapsed`, ordered `panels`,
+`active` panel and `hidden` panel ids. Scene stays outside those groups. Older `panels`
+records are read into the default groups: the first visible member in registration order
+supplies size, collapse and active tab; size clamps to the group's largest member minimum.
+An all-hidden legacy group keeps its default size and primary tab, expanded but hidden.
+Unknown ids are skipped; newly registered panels missing from the file join their default
+groups with default visibility. New saves write `groups` and omit the old `panels` key.
+Window and each tab's context menu offer Move to, Group with and Show or Hide, plus Window's
+Reset Layout; browsing a Window row changes nothing. A sample dragged from Assets onto the
+Conductor's tab brings the Conductor forward for the drop. F6 reaches the tab strips; arrows walk tabs, Enter activates, Menu/Shift+F10 opens
+the actions and Escape leaves the menu, then the strip. Window size pressure changes only
+effective allocations; the saved sizes return when the window grows.
 
 ## Export and import
 

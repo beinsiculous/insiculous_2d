@@ -247,3 +247,27 @@ fn the_inner_hud_and_bottom_right_scene_button_stay_physical_at_editor_scale() {
     assert!(harness.world().read_events::<engine_core::UiButtonPressed>().iter().any(|event| event.id == "tail"));
     harness.context(|_, context| assert_eq!(context.ui.pixels_per_point(), 1.5));
 }
+
+#[test]
+fn control_plus_and_minus_resize_editor_text_from_the_main_keyboard_and_number_pad() {
+    use input::prelude::KeyCode;
+    for (increase, decrease, shifted) in [
+        (KeyCode::Equal, KeyCode::Minus, true),
+        (KeyCode::NumpadAdd, KeyCode::NumpadSubtract, false),
+    ] {
+        let mut harness = harness(100);
+        let body_size = harness.game().editor.theme.fonts.body;
+        harness.step(STEP, &[InputEvent::KeyPressed(KeyCode::ControlLeft)]);
+        if shifted { harness.step(STEP, &[InputEvent::KeyPressed(KeyCode::ShiftLeft)]); }
+        harness.step(STEP, &[InputEvent::KeyPressed(increase)]);
+        assert_eq!(harness.game().ui_scale, UiScale::Percent(125));
+        harness.step(STEP, &[InputEvent::KeyReleased(increase), InputEvent::KeyReleased(KeyCode::ShiftLeft)]);
+        assert!(harness.ui_commands().iter().any(|command| matches!(command,
+            DrawCommand::Text { data, .. } if data.text == "Hierarchy" && data.font_size == body_size * 1.25)));
+        harness.step(STEP, &[InputEvent::KeyPressed(decrease)]);
+        assert_eq!(harness.game().ui_scale, UiScale::Percent(100));
+        harness.step(STEP, &[InputEvent::KeyReleased(decrease)]);
+        assert!(harness.ui_commands().iter().any(|command| matches!(command,
+            DrawCommand::Text { data, .. } if data.text == "Hierarchy" && data.font_size == body_size)));
+    }
+}

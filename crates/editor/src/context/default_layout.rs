@@ -28,24 +28,19 @@ pub(super) fn default_dock_area() -> DockArea {
             .with_min_size(100.0)
             .with_hint("This project's files; drag one into the scene to use it."),
     );
-    // After Assets, so the first layout pass stacks it above Assets on the bottom edge;
-    // hidden until a song or View → Conductor asks for it.
+    // Hidden tabs join Assets without displacing its initial selection.
     let mut conductor = DockPanel::new(PanelId::CONDUCTOR, "Conductor", DockPosition::Bottom)
         .with_size(260.0)
         .with_min_size(200.0)
         .with_hint("The song's map: its transport, and its parts, instruments and bindings.");
     conductor.visible = false;
     dock_area.add_panel(conductor);
-    // After the Conductor panel, so it stacks above whichever bottom panels show; hidden until
-    // View → Console asks for it.
     let mut console = DockPanel::new(PanelId::CONSOLE, "Console", DockPosition::Bottom)
         .with_size(160.0)
         .with_min_size(80.0)
         .with_hint("What the editor reported: script errors and launch results; click a file:line to open it.");
     console.visible = false;
     dock_area.add_panel(console);
-    // After the console, so a prefs file from before it leaves it hidden; a right panel,
-    // which the first layout pass places beside the Inspector.
     let mut settings = DockPanel::new(PanelId::SETTINGS, "External Tools", DockPosition::Right)
         .with_size(320.0)
         .with_min_size(240.0)

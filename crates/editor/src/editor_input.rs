@@ -110,6 +110,12 @@ pub enum EditorAction {
     SongPlayStop,
 
     // ---- View / play ----
+    /// Cycle focus over the group tab strips.
+    FocusDockTabs,
+    /// Activate the tab addressed by the strip cursor.
+    ActivateDockTab,
+    /// Open the addressed tab's action menu.
+    DockTabMenu,
     /// Raise the editor UI to the next explicit scale step.
     UiScaleUp,
     /// Lower the editor UI to the previous explicit scale step.
@@ -368,8 +374,16 @@ impl EditorInputMapping {
         // event path — F alone still frames the selection.
         self.bind(ToggleCameraFollow, B::ctrl_shift(KeyCode::KeyF));
         self.bind(UiScaleUp, B::ctrl(KeyCode::Equal));
+        self.bind(UiScaleUp, B::ctrl_shift(KeyCode::Equal));
+        self.bind(UiScaleUp, B::ctrl(KeyCode::NumpadAdd));
         self.bind(UiScaleDown, B::ctrl(KeyCode::Minus));
+        self.bind(UiScaleDown, B::ctrl(KeyCode::NumpadSubtract));
         self.bind(UiScaleReset, B::ctrl(KeyCode::Digit0));
+        self.bind(FocusDockTabs, B::key(KeyCode::F6));
+        self.bind(ActivateDockTab, B::key(KeyCode::Enter));
+        self.bind(ActivateDockTab, B::key(KeyCode::NumpadEnter));
+        self.bind(DockTabMenu, B::key(KeyCode::ContextMenu));
+        self.bind(DockTabMenu, B::Chord { key: KeyCode::F10, ctrl: false, shift: true });
     }
 
     /// Bind an input to an action. Rebinding EVICTS only the exact same

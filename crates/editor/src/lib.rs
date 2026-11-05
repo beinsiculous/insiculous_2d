@@ -118,8 +118,8 @@ pub use component_editors::{
     edit_transform2d, ComponentEdit, EditBindingState,
 };
 pub use context::{EditorContext, SongMirror};
-pub use editor_preferences::{EditorPreferences, PanelPrefs};
-pub use dock::{panel_id_for_menu_label, DockArea, DockPanel, DockPosition, PanelId};
+pub use editor_preferences::{EditorPreferences, GroupPrefs, PanelPrefs};
+pub use dock::{panel_id_for_menu_label, DockAction, DockArea, DockPanel, DockPosition, PanelId, TabGroup, DRAG_DWELL_FRAMES};
 pub use editable_inspector::{
     component_header, cycle_step, edit_bool, edit_color, edit_f32, edit_f32_opts, edit_vec2,
     wrap_degrees, EditableFieldStyle, EditableInspector, EditResult, FieldEdit, FieldId,

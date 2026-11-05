@@ -11,7 +11,7 @@ impl MenuBar {
         self.keyboard_cursor = None;
     }
 
-    fn active_items(&self) -> &[MenuItem] {
+    pub(super) fn active_items(&self) -> &[MenuItem] {
         let Some(index) = self.open_menu else { return &[]; };
         let mut items = self.menus[index].items.as_slice();
         for &index in &self.submenu_path {
@@ -58,6 +58,7 @@ impl MenuBar {
                         self.keyboard_cursor = items.iter().position(selectable);
                     }
                     (_, Some(MenuItem::Action { label, enabled: true, .. })) if key != KeyCode::ArrowRight => {
+                        self.record_dock_choice(&label);
                         self.close();
                         return Some(label);
                     }

@@ -127,7 +127,7 @@ fn scale_menu_checks_the_preference_and_names_the_live_display() {
     bar.sync_ui_scale(UiScale::Percent(150), 1.25);
     let scale_items = |bar: &MenuBar| {
         bar.menus.iter().flat_map(|menu| &menu.items).find_map(|item| match item {
-            MenuItem::Submenu { label, items } if label == "UI Scale" => Some(items.clone()),
+            MenuItem::Submenu { label, items, .. } if label == "UI Scale" => Some(items.clone()),
             _ => None,
         }).unwrap()
     };
@@ -138,8 +138,17 @@ fn scale_menu_checks_the_preference_and_names_the_live_display() {
         _ => None,
     }).collect();
     assert_eq!(checked, ["150 %"]);
-    for item in items {
-        assert!(super::action_for_menu_label(item.label().unwrap()).is_some());
+    for item in &items {
+        if let Some(label) = item.label() { assert!(super::action_for_menu_label(label).is_some()); }
+    }
+    for (label, shortcut, action) in [
+        ("Follow the display (125 %)", "Ctrl+0", crate::EditorAction::SetUiScale(UiScale::FollowDisplay)),
+        ("Larger text", "Ctrl++", crate::EditorAction::UiScaleUp),
+        ("Smaller text", "Ctrl+-", crate::EditorAction::UiScaleDown),
+    ] {
+        assert!(items.iter().any(|item| matches!(item,
+            MenuItem::Action { label: text, shortcut: Some(hint), .. } if text == label && hint == shortcut)));
+        assert_eq!(super::action_for_menu_label(label), Some(action));
     }
     bar.sync_ui_scale(UiScale::FollowDisplay, 1.0);
     assert!(matches!(&scale_items(&bar)[0], MenuItem::Action { label, checked: true, .. } if label == "Follow the display (100 %)"));

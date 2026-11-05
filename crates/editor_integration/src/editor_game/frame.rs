@@ -81,9 +81,32 @@ impl<G: Game> EditorGame<G> {
     /// Render the dock panel frames and their content. Picking and the gizmo
     /// take their rect from `scene_view_bounds()`, not from here: the panel's
     /// content area includes the toolbar strip, the viewport does not.
+    /// A drag's target may sit behind a tab: Assets and the Conductor share a group, so a
+    /// sample dragged from one has no content of the other to land on until its tab is
+    /// brought forward. A payload that rests on a tab of a group already showing content
+    /// (`DRAG_DWELL_FRAMES`, so a drag crossing a strip on its way to the scene switches
+    /// nothing) activates that tab; the payload rides on. A collapsed strip or a narrow tab
+    /// stays as the user left it: `show_panel` there would expand the group, and the settle
+    /// rule would save a layout the user never chose. Runs before the dock draws, so the
+    /// strip and the content of one frame come from one layout.
+    fn bring_forward_the_tab_under_a_drag(&mut self, ui: &ui::UIContext) {
+        if self.editor.drag_drop.dragging_payload().is_none() {
+            self.editor.dock_area.end_drag();
+            return;
+        }
+        let Some(id) = self.editor.dock_area.tab_rested_on(ui.mouse_pos()) else { return; };
+        let dock = &self.editor.dock_area;
+        if !dock.is_active(id) && dock.group_shows_content(id) { self.editor.dock_area.activate(id); }
+    }
+
     pub(super) fn render_panels(&mut self, ctx: &mut GameContext, pickables: &[editor::PickableEntity]) {
+        self.bring_forward_the_tab_under_a_drag(ctx.ui);
         let theme = &self.editor.theme;
         let content_areas = self.editor.dock_area.render(ctx.ui, theme);
+        self.release_inactive_panel_focus();
+        if let Some((id, anchor)) = self.editor.dock_area.take_tab_context_request() {
+            self.editor.context_menu.open_for_tab(anchor, id, &self.editor.dock_area);
+        }
         // A panel the dock leaves out — a narrow-mode tab, a hidden panel —
         // never renders, so its rename bookkeeping runs from here instead;
         // an undrawn rename field would otherwise keep the keyboard.

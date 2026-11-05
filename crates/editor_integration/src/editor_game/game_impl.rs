@@ -88,6 +88,7 @@ impl<G: Game> Game for EditorGame<G> {
         self.render_early_overlays(ctx);
         // Before the menu bar handles this frame's press: an open dropdown is chrome and
         // keeps the Conductor panel's keyboard, which the dropdown closing would hide.
+        self.settle_dock_focus(ctx.ui);
         self.settle_conductor(ctx.ui);
         self.settle_asset_browser(ctx.ui);
         self.settle_console(ctx.ui);
@@ -97,6 +98,11 @@ impl<G: Game> Game for EditorGame<G> {
         // each widget's own interact call, so the popup's rect has to exist
         // before the menu bar, the strip or any panel draws one under it.
         let dialog_up = self.dialog_up();
+        if dialog_up {
+            self.editor.menu_bar.close();
+            self.editor.toolbar.close_overflow();
+            self.editor.dock_area.close_tab_overflow();
+        }
         panel_renderer::color_editor::render_color_editor_pass(&mut self.editor, ctx.ui, dialog_up);
         self.render_context_menu(ctx.ui, dialog_up);
         self.handle_menu_bar(ctx, window_size);

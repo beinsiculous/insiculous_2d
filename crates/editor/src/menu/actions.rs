@@ -59,6 +59,8 @@ pub fn action_for_menu_label(label: &str) -> Option<EditorAction> {
         "Snap to Grid" => EditorAction::ToggleSnap,
         "Cycle Game Locale" => EditorAction::CycleGameLocale,
         "Reset Layout" => EditorAction::ResetLayout,
+        "Larger text" => EditorAction::UiScaleUp,
+        "Smaller text" => EditorAction::UiScaleDown,
         EXTERNAL_TOOLS_LABEL => EditorAction::ShowExternalTools,
         _ => return None,
     })

@@ -558,9 +558,9 @@ Across 12 chrome files: **28 distinct pixel literals in 198 occurrences**, inclu
 - **`last_scene_path` is written and never read** (`mod.rs:206-210` vs `:192-199`). The editor always opens empty.
   - **Status (2026-09-10):** open — #99 (the editor backlog) — #53 (d94610f) made the path real, so the preference is written correctly; nothing reads it back on start
 - **`DockPosition::Floating` is unhandled in layout** (`dock/mod.rs:303-305, 315` — second pass only handles `Center`), so a floating panel gets `Rect::default()`. `PanelId::CONSOLE` is declared and never instantiated.
-  - **Status (2026-09-10):** open — #99 (the editor backlog) — the layout's second pass handles `Floating` beside `Center` since 3b136b3; `PanelId::CONSOLE` is still declared with no panel behind it
+  - **Status (2026-11-05):** done — `Floating` is removed; panels move between edge tab groups through Window or the tab context menu. Console is an implemented, initially hidden bottom tab.
 - **Panel resize can zero the viewport.** The clamp is per-panel (`dock/render.rs:16-35`), not global — drag both edge panels to 50% and Center gets a zero-width rect while `scene_view_bounds()` still returns `Some(zero_rect)`.
-  - **Status (2026-09-10):** open — #124 (this sprint) — `scene_view_bounds()` returns `None` for an empty viewport since 0e7c6bd, but the clamp is still per-panel
+  - **Status (2026-11-05):** done — side groups use narrow overlays when the centre would lose its minimum width; top/bottom groups shrink and collapse effectively to protect the toolbar plus 120 points, preserving saved sizes.
 - **Not persisted but expected to be:** selected tool, grid visibility, collider overlay visibility, hierarchy expand state, selection, window geometry, recent files.
   - **Status (2026-09-10):** open — #99 (the editor backlog) — grid visibility, snap, grid size, camera and panel layout persist; the selected tool, collider overlay visibility, hierarchy expand state, selection, window geometry and recent files still do not
 

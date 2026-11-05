@@ -48,7 +48,7 @@ fn test_snapping_rounds_to_the_nearest_grid_cell_only_while_enabled() {
 fn test_default_layout_docks_hierarchy_left_inspector_right_scene_center_assets_bottom() {
     let ctx = EditorContext::new();
 
-    let layout: Vec<(PanelId, DockPosition)> = ctx.dock_area.panels().iter().map(|p| (p.id, p.position)).collect();
+    let layout: Vec<(PanelId, DockPosition)> = ctx.dock_area.panels().iter().map(|panel| (panel.id, ctx.dock_area.group_of(panel.id).map_or(DockPosition::Center, |index| ctx.dock_area.groups()[index].position))).collect();
 
     assert_eq!(
         layout,
@@ -65,7 +65,7 @@ fn test_default_layout_docks_hierarchy_left_inspector_right_scene_center_assets_
 }
 
 #[test]
-fn test_the_conductor_panel_starts_hidden_stacks_above_assets_and_an_old_prefs_file_leaves_it_hidden() {
+fn test_the_conductor_panel_starts_hidden_shares_assets_group_and_an_old_prefs_file_leaves_it_hidden() {
     let mut ctx = EditorContext::new();
     let conductor = |ctx: &EditorContext| ctx.dock_area.get_panel(PanelId::CONDUCTOR).cloned().expect("the Conductor panel");
     assert!(!conductor(&ctx).visible, "hidden until a song or View → Conductor asks for it");
@@ -79,7 +79,8 @@ fn test_the_conductor_panel_starts_hidden_stacks_above_assets_and_an_old_prefs_f
     ctx.dock_area.toggle_panel_visible(PanelId::CONDUCTOR);
     let assets = ctx.dock_area.get_panel(PanelId::ASSET_BROWSER).expect("assets").content_bounds();
     let shown = conductor(&ctx).content_bounds();
-    assert!(shown.height > 0.0 && shown.bottom() <= assets.y, "the Conductor panel sits above Assets");
+    assert!(shown.height > 0.0, "the Conductor tab is active");
+    assert_eq!(assets, ui::Rect::default(), "inactive Assets draws no content");
 
     // A prefs file written before the Conductor panel existed: rows for the old panels only.
     let old_prefs = crate::EditorPreferences {
@@ -93,13 +94,13 @@ fn test_the_conductor_panel_starts_hidden_stacks_above_assets_and_an_old_prefs_f
     let mut saved = crate::EditorPreferences::default();
     saved.capture_panels(&ctx.dock_area);
     assert!(
-        saved.panels.iter().any(|panel| panel.id == PanelId::CONDUCTOR.0 && panel.visible),
+        saved.groups.iter().any(|group| group.panels.contains(&PanelId::CONDUCTOR.0) && !group.hidden.contains(&PanelId::CONDUCTOR.0)),
         "and a shown Conductor panel is written back"
     );
 }
 
 #[test]
-fn test_the_console_starts_hidden_stacks_above_assets_and_an_old_prefs_file_leaves_it_hidden() {
+fn test_the_console_starts_hidden_shares_assets_group_and_an_old_prefs_file_leaves_it_hidden() {
     let mut ctx = EditorContext::new();
     let console = |ctx: &EditorContext| ctx.dock_area.get_panel(PanelId::CONSOLE).cloned().expect("the console panel");
     assert!(!console(&ctx).visible, "hidden until View → Console asks for it");
@@ -113,7 +114,8 @@ fn test_the_console_starts_hidden_stacks_above_assets_and_an_old_prefs_file_leav
     ctx.dock_area.toggle_panel_visible(PanelId::CONSOLE);
     let assets = ctx.dock_area.get_panel(PanelId::ASSET_BROWSER).expect("assets").content_bounds();
     let shown = console(&ctx).content_bounds();
-    assert!(shown.height > 0.0 && shown.bottom() <= assets.y, "the console sits above Assets");
+    assert!(shown.height > 0.0, "the console tab is active");
+    assert_eq!(assets, ui::Rect::default(), "inactive Assets draws no content");
 
     // A prefs file written before the console existed: rows for the old panels only.
     let old_prefs = crate::EditorPreferences {
@@ -127,13 +129,13 @@ fn test_the_console_starts_hidden_stacks_above_assets_and_an_old_prefs_file_leav
     let mut saved = crate::EditorPreferences::default();
     saved.capture_panels(&ctx.dock_area);
     assert!(
-        saved.panels.iter().any(|panel| panel.id == PanelId::CONSOLE.0 && panel.visible),
+        saved.groups.iter().any(|group| group.panels.contains(&PanelId::CONSOLE.0) && !group.hidden.contains(&PanelId::CONSOLE.0)),
         "and a shown console is written back"
     );
 }
 
 #[test]
-fn test_external_tools_starts_hidden_shows_beside_the_inspector_and_an_old_prefs_file_leaves_it_hidden() {
+fn test_external_tools_starts_hidden_shares_the_inspector_group_and_an_old_prefs_file_leaves_it_hidden() {
     let mut ctx = EditorContext::new();
     let settings = |ctx: &EditorContext| ctx.dock_area.get_panel(PanelId::SETTINGS).cloned().expect("the settings panel");
     assert!(!settings(&ctx).visible, "hidden until Edit → External Tools… asks for it");
@@ -144,14 +146,12 @@ fn test_external_tools_starts_hidden_shows_beside_the_inspector_and_an_old_prefs
     ctx.dock_area.set_panel_collapsed(PanelId::SETTINGS, true);
     ctx.dock_area.show_panel(PanelId::SETTINGS);
     let shown = settings(&ctx);
-    assert!(shown.visible && !shown.collapsed, "the action shows it expanded");
+    assert!(shown.visible && shown.content_bounds().height > 0.0, "the action shows it expanded");
     let inspector = ctx.dock_area.get_panel(PanelId::INSPECTOR).expect("the inspector").content_bounds();
     let beside = shown.content_bounds();
     assert!(beside.width > 0.0 && beside.height > 0.0);
-    assert!(
-        beside.x >= inspector.x + inspector.width || beside.x + beside.width <= inspector.x,
-        "two right panels sit side by side: {beside:?} beside {inspector:?}"
-    );
+    assert_eq!(inspector, ui::Rect::default(), "the inactive Inspector yields the shared content area");
+    assert_eq!(ctx.dock_area.group_of(PanelId::SETTINGS), ctx.dock_area.group_of(PanelId::INSPECTOR));
 
     let old_prefs = crate::EditorPreferences {
         panels: vec![crate::PanelPrefs { id: PanelId::INSPECTOR.0, visible: true, collapsed: false, size: 280.0 }],
@@ -178,19 +178,12 @@ fn test_a_narrow_dock_shows_external_tools_as_the_overlay_and_showing_it_again_k
     assert_eq!(ctx.dock_area.narrow_overlay(), Some(PanelId::SETTINGS), "a second ask does not toggle it shut");
 
     ctx.dock_area.close_narrow_overlay();
-    ctx.dock_area.layout();
-    let tab = |ctx: &EditorContext, id: PanelId| ctx.dock_area.get_panel(id).expect("a right panel").content_bounds();
-    let (inspector, settings) = (tab(&ctx, PanelId::INSPECTOR), tab(&ctx, PanelId::SETTINGS));
-    assert_eq!(inspector.x, settings.x, "both tabs hang on the right edge");
-    assert!(
-        settings.y >= inspector.bottom() || inspector.y >= settings.bottom(),
-        "two tabs on one edge stack instead of drawing one over the other: {inspector:?} and {settings:?}"
-    );
-
+    assert_eq!(ctx.dock_area.group_of(PanelId::INSPECTOR), ctx.dock_area.group_of(PanelId::SETTINGS));
+    assert_eq!(ctx.dock_area.get_panel(PanelId::INSPECTOR).unwrap().content_bounds(), ui::Rect::default());
+    ctx.dock_area.activate(PanelId::INSPECTOR);
     ctx.dock_area.open_narrow_overlay(PanelId::INSPECTOR);
-    ctx.dock_area.layout();
     assert_eq!(ctx.dock_area.narrow_overlay(), Some(PanelId::INSPECTOR));
-    assert_eq!(tab(&ctx, PanelId::SETTINGS), settings, "a neighbour opening as the overlay leaves the tab where it was");
+    assert_eq!(ctx.dock_area.get_panel(PanelId::SETTINGS).unwrap().content_bounds(), ui::Rect::default());
 }
 
 #[test]
@@ -297,7 +290,7 @@ fn test_framing_zooms_to_fit_the_entity_extents_and_an_empty_scene_leaves_the_ca
 #[test]
 fn test_a_scene_panel_shorter_than_its_strip_has_a_strip_and_no_viewport() {
     let mut ctx = EditorContext::new();
-    ctx.dock_area.set_bounds(common::Rect::new(0.0, 0.0, 800.0, 230.0));
+    ctx.dock_area.set_bounds(common::Rect::new(0.0, 0.0, 800.0, 55.0));
     ctx.dock_area.layout();
     let scene = ctx.dock_area.get_panel(PanelId::SCENE_VIEW).expect("scene panel").content_bounds();
     assert!(scene.height < crate::layout::TOOLBAR_STRIP_HEIGHT, "fixture: content shorter than the strip");

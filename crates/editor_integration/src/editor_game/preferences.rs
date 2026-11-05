@@ -53,6 +53,7 @@ impl<G: Game> super::EditorGame<G> {
                 .map(|string| string.to_string()),
             view: self.editor.view,
             grid_size: self.editor.grid_size(),
+            groups: Vec::new(),
             panels: Vec::new(),
             collapsed_components: self.editor.inspector_state.collapsed_names(),
             external_tools: self.editor.external_tools.clone(),

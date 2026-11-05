@@ -471,7 +471,7 @@ impl EditorContext {
     fn panel_content_bounds(&self, id: PanelId) -> Option<common::Rect> {
         self.dock_area
             .get_panel(id)
-            .filter(|p| p.visible && !(p.collapsed && p.is_collapsible()))
+            .filter(|panel| panel.visible)
             .map(|p| p.content_bounds())
     }
 

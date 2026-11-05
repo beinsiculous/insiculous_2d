@@ -291,12 +291,15 @@ fn entering_play_lets_the_console_go_and_no_press_takes_it_during_the_session() 
 fn a_press_in_the_console_takes_the_keyboard_from_the_browser_and_a_press_in_the_browser_takes_it_back() {
     let mut world = World::new();
     let (mut editor, _) = console_session(&mut world);
+    editor.editor.dock_area.activate(PanelId::ASSET_BROWSER);
     press_in(&mut editor, PanelId::ASSET_BROWSER);
     assert!(editor.editor.asset_browser.holds_keyboard);
 
+    editor.editor.dock_area.activate(PanelId::CONSOLE);
     press_in(&mut editor, PanelId::CONSOLE);
     assert!(editor.editor.console.holds_keyboard && !editor.editor.asset_browser.holds_keyboard);
 
+    editor.editor.dock_area.activate(PanelId::ASSET_BROWSER);
     press_in(&mut editor, PanelId::ASSET_BROWSER);
     assert!(editor.editor.asset_browser.holds_keyboard && !editor.editor.console.holds_keyboard, "the two never hold at once");
 }

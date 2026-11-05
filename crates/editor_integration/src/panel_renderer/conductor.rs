@@ -3,9 +3,8 @@
 //! drop site for a `.wav`, a SoundFont or a song from Assets.
 //!
 //! It reads the song and returns what was asked; the host applies it
-//! (`editor_game/conductor_keys.rs`), past the one refusal a play session raises. A bottom
-//! panel is never the dock's narrow overlay, but the Conductor panel follows the same rule as every
-//! panel: shown as one, its widgets live on the floating band.
+//! (`editor_game/conductor_keys.rs`), past the one refusal a play session raises. A group opened under width or height pressure draws its
+//! widgets on the floating band, including the focus interaction.
 
 use editor::conductor::{drop_action, layout, sidebar, transport, ConductorAction, ConductorFocus};
 use editor::{DragPayload, EditorContext, PanelId, SongDocument};
@@ -49,11 +48,6 @@ pub(crate) fn render_conductor(
 fn render_body(editor: &mut EditorContext, ui: &mut UIContext, bounds: Rect, view: &ConductorView) -> Vec<ConductorAction> {
     let mut actions = Vec::new();
     let conductor_layout = layout::compute(bounds);
-    if !view.read_only && ui.mouse_just_pressed() && !ui.is_input_blocked_at(ui.mouse_pos()) {
-        if let Some(area) = area_at(&conductor_layout, ui.mouse_pos()) {
-            actions.push(ConductorAction::Focus(area));
-        }
-    }
     let theme = &editor.theme;
     let state = &mut editor.conductor;
 
@@ -88,6 +82,14 @@ fn render_body(editor: &mut EditorContext, ui: &mut UIContext, bounds: Rect, vie
         conductor_layout.section_tabs,
         &context,
     ));
+    // Run after the controls so an empty-area press takes focus without taking a button's
+    // gesture. The interaction respects this overlay's scope and any menu above it.
+    let focus_hit = ui.interact("conductor_focus_area", bounds, !view.read_only);
+    if ui.mouse_just_pressed() && matches!(focus_hit.state, ui::WidgetState::Hovered | ui::WidgetState::Active) {
+        if let Some(area) = area_at(&conductor_layout, ui.mouse_pos()) {
+            actions.push(ConductorAction::Focus(area));
+        }
+    }
     if let Some(focused) = area_rect(&conductor_layout, state.focus) {
         ui.rect_border(focused, theme.focus_ring, 2.0, 0.0);
     }

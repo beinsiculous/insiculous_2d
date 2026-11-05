@@ -40,6 +40,7 @@ mod run_options;
 mod scene_confirm;
 mod scene_io;
 mod settings_keys;
+mod dock_keys;
 mod snapshot;
 mod song_entry;
 mod song_io;
@@ -313,3 +314,6 @@ mod shortcuts_tests;
 mod viewport_interaction_tests;
 #[cfg(test)]
 mod scale_tests;
+
+#[cfg(test)]
+mod dock_keys_tests;

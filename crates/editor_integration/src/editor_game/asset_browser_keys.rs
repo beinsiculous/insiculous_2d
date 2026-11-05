@@ -12,7 +12,7 @@
 //! key, as a confirm dialog does — an arrow it does not use would nudge an entity behind
 //! it, and Delete would delete one.
 
-use editor::context_menu::{ContextMenuAction, ContextMenuKey};
+use editor::context_menu::ContextMenuKey;
 use editor::{Modifiers, PanelId, TileStep};
 use engine_core::Game;
 use winit::keyboard::KeyCode;
@@ -109,9 +109,4 @@ impl<G: Game> EditorGame<G> {
         }
     }
 
-    fn run_context_menu_action(&mut self, action: ContextMenuAction) {
-        match action {
-            ContextMenuAction::Open(request) => self.editor.open_requests.push(request),
-        }
-    }
 }

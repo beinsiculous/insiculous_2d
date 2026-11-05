@@ -836,3 +836,14 @@ scales viewport input and GPU camera/scissor at their seams, and brackets the in
 and engine UI tail at 1.0. Nested View → UI Scale menus support pointer and arrow navigation
 with narrow-window overlap handling. The executor's validation and stills are recorded in
 `review/editor-ux/report-2.md`; the staged batch awaits the planner's independent review.
+
+2026-11-05 — Editor UX dock implementation: edge tab groups, Window and tab action menus,
+F6 navigation, group preferences with legacy migration, effective height budgeting and
+reachable overlays are staged for the planner's review. Jesse resolved the migration
+example in favour of clamping Assets' legacy 180 points to the bottom group's 200-point
+minimum. Menu dropdowns and overflow now use Modal above dock overlays; the Conductor's
+focus interaction respects its own overlay. Jesse also requested Ctrl++ / Ctrl+- text-size
+shortcuts and their menu hints: shifted plus and number-pad keys now step the UI scale,
+and View → UI Scale names Larger text, Smaller text and Follow with their shortcuts.
+The executor's gates, stills and scope details
+are recorded in `review/editor-ux/report-3.md`; no executor commit is made.

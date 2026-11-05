@@ -137,6 +137,8 @@ impl<G: Game> EditorGame<G> {
     /// here: a popup's sliders would write into the live world, and a
     /// rename field keeps focus and eats the game's keys.
     fn enter_playing(&mut self) {
+        self.editor.dock_area.clear_tab_focus();
+        self.editor.dock_area.close_tab_overflow();
         self.leave_conductor();
         self.editor.asset_browser.release_keyboard();
         self.editor.console.release_keyboard();

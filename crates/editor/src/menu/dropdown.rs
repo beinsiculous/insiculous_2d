@@ -16,6 +16,11 @@ impl MenuBar {
             && !levels.iter().skip(1).any(|(_, bounds)| bounds.contains(mouse))
         {
             self.close();
+            if self.popup_panel.is_some() {
+                let window = ui.window_size();
+                ui.begin_overlay_in(ui::UiLayer::Modal, Rect::new(0.0, 0.0, window.x, window.y));
+                ui.end_overlay();
+            }
             return None;
         }
 
@@ -55,12 +60,14 @@ impl MenuBar {
         let mut clicked = None;
         for (depth, (menu, bounds)) in levels.iter().enumerate() {
             let covered = levels.iter().skip(depth + 1).any(|(_, child)| child.contains(mouse));
-            ui.begin_overlay(*bounds);
+            ui.begin_overlay_in(ui::UiLayer::Modal, *bounds);
             ui.push_clip_rect(*bounds);
             ui.panel_styled(*bounds, theme.surface_4, theme.popup_border, 1.0);
             for (index, item) in menu.items.iter().enumerate() {
                 let row = Self::dropdown_item_bounds(*bounds, index);
                 if let Some(label) = Self::render_item(ui, menu, index, row, theme, !covered) {
+                    self.submenu_path.truncate(depth);
+                    self.record_dock_choice(&label);
                     clicked = Some(label);
                 }
                 if depth + 1 == levels.len() && self.keyboard_cursor == Some(index) {
@@ -81,7 +88,7 @@ impl MenuBar {
         clicked
     }
 
-    fn dropdown_levels(&self, ui: &UIContext, theme: &EditorTheme) -> Vec<(Menu, Rect)> {
+    pub(super) fn dropdown_levels(&self, ui: &UIContext, theme: &EditorTheme) -> Vec<(Menu, Rect)> {
         let Some(open_index) = self.open_menu else { return Vec::new(); };
         let root = self.menus[open_index].clone();
         let root_bounds = inside_window(Self::dropdown_bounds(&root, root.bounds), ui.window_size());
@@ -180,9 +187,12 @@ impl MenuBar {
                 let middle = bounds.center().y;
                 ui.line(Vec2::new(bounds.x + 4.0, middle), Vec2::new(bounds.right() - 4.0, middle), theme.menu_separator, 1.0);
             }
-            MenuItem::Submenu { label, .. } => {
+            MenuItem::Submenu { label, checked, .. } => {
                 let id = format!("menu_submenu_{}_{}", menu.title, index);
                 ui.button_styled(id.as_str(), &format!("{label} >"), bounds, interactive);
+                if *checked {
+                    ui.rect(Rect::new(bounds.x + PADDING / 2.0, bounds.center().y - 3.0, 6.0, 6.0), theme.accent_cyan);
+                }
             }
         }
         None
