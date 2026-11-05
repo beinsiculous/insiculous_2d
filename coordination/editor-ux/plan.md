@@ -1270,6 +1270,74 @@ asset_browser_keys,console,settings_keys}.rs`, `panel_renderer/mod.rs`, `crates/
 Target shapes: § C. Gates: the standard set; `check_games.sh`. Reviewers: kimi, codex (three
 stills). Leaves out: § C's list. Re-read #233 and #99's Preferences line in the report.
 
+**Re-verified 2026-11-05 against dc5a7f9 (batch 2 landed; the tree is clean on `jesse`).**
+What moved or was misread since § C was written, and binds the executor:
+
+- **Files.** `composer_keys.rs` is `editor_game/conductor_keys.rs` (the Conductor rename): its
+  dock writes are `:71-72` (`set_panel_visible`, `set_panel_collapsed`), its `settle_conductor`
+  `:87`. The hosts do not each read `get_panel` for bounds and visibility: they all go through
+  `panel_press` (`panel_press.rs:35`, the one `get_panel` reader at `:37` and `:48`; `Neither`
+  at `:40` and `:56`) — `settle_asset_browser` `asset_browser_keys.rs:40`, `settle_console`
+  `console.rs:55`, `settle_settings` `settings_keys.rs:36`. So re-threading the hosts is
+  `panel_press` plus the "active tab" rule in each `settle_*`. The other `get_panel` readers
+  outside tests: `menu_actions.rs:21` (the View checks), `context/mod.rs:473`
+  (`panel_content_bounds`).
+- **The dock today**: `dock/mod.rs` 505 lines (`DockPanel` `:87` with `id, title, hint, position,
+  bounds, size, min_size, visible, resizable, collapsed` — exactly the set § C moves to the
+  group; `DockPosition::Floating` `:82`, matched at `:462` and `render.rs:182`; `MIN_CENTER_WIDTH`
+  `:16` `= TOOLBAR_STRIP_MIN_WIDTH`, 312 points since batch 1 — `MIN_CENTER_HEIGHT` joins it
+  there; `get_panel` `:236`, `set_panel_visible` `:261`, `show_panel` `:271`,
+  `toggle_panel_visible` `:287`, `set_panel_collapsed` `:295`, `is_narrow` `:316`,
+  `narrow_overlay`/`open_`/`close_` `:323-336`, `layout` `:411`, `expanded_content_bounds`
+  `:185`), `dock/render.rs` 411 (`render` `:80`, the narrow overlay at `:97`, `handle_resize`
+  `:153`), `dock/tests.rs` 417 (31 tests, the executor's first gate). The split § C orders
+  (`groups.rs`, `layout.rs`, `focus.rs`) is the first step, before any behaviour changes.
+- **Preferences.** `PanelPrefs { id, visible, collapsed, size }` `editor_preferences.rs:71`,
+  `panels: Vec<PanelPrefs>` `:101`; the file is 433 lines after batch 2's `UiScale`, so
+  `GroupPrefs` and the migration go in a sibling (`editor_preferences/groups.rs`) if they would
+  pass 600. `docs/WEB_PLAYGROUND.md` § Preferences names the panel layout and gets the `groups`
+  key.
+- **The context menu**: `ContextMenuAction` (`context_menu.rs:30`) has one variant,
+  `Open(OpenRequest)`; `Dock(DockAction)` joins it; `open(anchor, items, note)` `:83`; the one
+  dispatch is `asset_browser_keys.rs:114`, and the dock actions dispatch in `menu_actions.rs`
+  as § C says.
+- **The Window menu** goes between View (`menu/mod.rs:227-243`) and Entity (`:258`), on batch 2's
+  nested dropdown (`menu/dropdown.rs`, `menu/keyboard.rs`, `MenuItem::submenu` `:73`); its
+  panel rows are rebuilt each frame from the dock the way `menu/scale.rs`'s `sync_ui_scale`
+  rebuilds the UI Scale rows — that is the model to copy, a `menu/window.rs`. Batch 2's
+  keyboard rule applies: Enter with no row highlighted fires nothing.
+- **The keyboard route.** `F6` is unbound (`editor_input.rs`, 504 lines). The ui has no public
+  traversal walk to ride: `focused_widget` (`ui/src/context/mod.rs:212`), `set_focus` and
+  `clear_focus` (`interaction/mod.rs:407,412`) and the theme's `focus_ring` /
+  `focus_ring_width` (`ui/src/style.rs:141`) are what exists, so the strip focus is the dock's
+  own state (`dock/focus.rs`), drawn with `ui.rect_border(tab, theme.focus_ring, 2.0, 2.0)` as
+  the dropdown draws its cursor. The route is a `KeyRoute::DockTabs(..)` arm beside
+  `Settings(..)` in `shortcuts.rs` — **569 lines, at the ceiling**: the handler lives in a new
+  `editor_game/dock_keys.rs` on `settings_keys.rs`'s model (75 lines), `shortcuts.rs` gains the
+  arm only.
+- **Near the ceiling, besides**: `context/mod.rs` 549 (`show_panel` has one non-test caller,
+  `shortcuts.rs`), `panel_renderer/mod.rs` 532 (the narrow overlay's band at `:20-28`),
+  `overflow_menu.rs` 487 (the `»` shape to reuse: `overflow_menu_bounds` `:36`,
+  `render_overflow_menu` `:104`).
+- **#233, re-read**: still open; nothing in batches 1–2 changed its picture (batch 1's clamp moved
+  the overflow menu along x only). § C's "`narrow_overlay` is per group" is where the band
+  decision falls: the dropdown and the overflow menu either move to `Modal` (and close under a
+  dialog, as the context menu does) or a band between `Floating` and `Modal` is added for the
+  three menus. Decide, and either land it with its test or write the line on #233 in the report.
+  **#99's Preferences line**: the selected tool, collider visibility, hierarchy expand state,
+  selection, window geometry and recent files are still not persisted; batch 3 adds `groups`
+  and touches none of those — say so in the report.
+- **Default layout**: `context/default_layout.rs` (56 lines) adds Hierarchy (Left), Inspector
+  (Right), Scene (Center), Assets (Bottom), Conductor (Bottom, hidden), Console (Bottom,
+  hidden), External Tools (Right, hidden) in that order — ruling (d)'s groups fall out of it.
+- **The stills, under the roster as corrected**: three real screenshots of the editor_demo at
+  1280×800 — the default layout; the bottom group with Console active; a two-tab right group —
+  saved as `review/editor-ux/batch3-dock-{default,console,right-tabs}.png`, copied to
+  `coordination/editor-ux/screenshots/batch-3/` and staged, each described in one line in the
+  report. `editor_prefs.json` is restored after every run.
+- **The code review is round 9**; reviewers kimi and deepseek, the planner's own review and the
+  UI eye beside them; codex does not review its own vendor's batch.
+
 **Batch 4a — the asset browser: folders and create (§ D, the first half). Issue #243.** Files:
 `crates/common/src/vfs/mod.rs` (+ `vfs/entries.rs`: `list_entries`, `create_dir_all`, `exists` —
 424 lines today), `crates/editor/src/asset_browser/{mod,tree}.rs` (the split; the companion
