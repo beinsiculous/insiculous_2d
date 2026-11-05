@@ -9,8 +9,12 @@ use glam::Vec2;
 use super::test_support::{conductor_session, editor_game, melody_song, press_mouse, DummyGame};
 use super::EditorGame;
 
-/// Narrow with both side panels shown, and still narrow with the Inspector alone.
-const WINDOW: Vec2 = Vec2::new(600.0, 720.0);
+/// Narrow with both side panels shown, and still narrow with the Inspector alone: its
+/// default width leaves the centre under the toolbar strip's minimum.
+const WINDOW: Vec2 = Vec2::new(
+    editor::toolbar_strip::TOOLBAR_STRIP_MIN_WIDTH + editor::layout::DEFAULT_PANEL_WIDTH - 40.0,
+    720.0,
+);
 
 /// A dock too narrow for its side panels, with `bottom` shown and the Hierarchy open as
 /// the narrow-mode overlay over it.

@@ -1,10 +1,113 @@
-//! Editor toolbar with tool selection.
+//! The scene view's tool group, and the segmented control every group on
+//! the toolbar strip is drawn as.
 //!
-//! The toolbar provides buttons for switching between editor tools
-//! (Select, Move, Rotate, Scale) and displays the current tool state.
+//! A segment is a row of square icon buttons on one rounded background with
+//! a one-pixel divider between neighbours. The tools are one segment; the
+//! play controls and the view toggles draw theirs with the same buttons, so
+//! the strip's three groups read as one toolbar.
 
 use glam::Vec2;
-use ui::{Rect, UIContext};
+use ui::{Color, Rect, UIContext, WidgetState};
+
+use crate::icons::{draw_icon, Icon};
+use crate::theme::EditorTheme;
+
+/// Side of every button on the toolbar strip: square, room for a 16 px
+/// icon and its margin, and over the 24 px target WCAG 2.5.8 asks for.
+pub const TOOL_BUTTON_SIZE: f32 = 28.0;
+
+/// Space between two neighbouring buttons of a segment; the segment's
+/// one-pixel divider sits at its centre.
+pub const SEGMENT_DIVIDER_GAP: f32 = 4.0;
+
+/// Side of the box a strip icon is drawn in, centred in its button.
+pub const ICON_BOX_SIZE: f32 = 20.0;
+
+/// Width of a strip icon's strokes, in pixels.
+pub const ICON_STROKE_WEIGHT: f32 = 1.5;
+
+/// Corner radius of a segment's background.
+const SEGMENT_CORNER_RADIUS: f32 = 4.0;
+
+/// How far a divider stops short of the segment's top and bottom.
+const DIVIDER_INSET: f32 = 5.0;
+
+/// A strip button's tooltip: its name, its shortcut in parentheses where one
+/// is bound, and one sentence on what it does — "Move (W) — Drag the
+/// gizmo's arrows…". Every group on the strip builds its tooltips here.
+pub fn tooltip_text(name: &str, shortcut: Option<&str>, hint: &str) -> String {
+    match shortcut {
+        Some(key) => format!("{name} ({key}) — {hint}"),
+        None => format!("{name} — {hint}"),
+    }
+}
+
+/// How a strip button looks while the pointer is elsewhere.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum ButtonLook {
+    /// The segment's own background.
+    Plain,
+    /// A fill of its own: Play's and Stop's tints.
+    Tinted(Color),
+    /// On — the live tool, an on toggle, the open overflow menu: filled in
+    /// `toolbar_active` and ringed in `accent_blue`, so the state is never
+    /// told by colour alone.
+    On,
+}
+
+/// Draw a segment's background behind `buttons` — one row, left to right —
+/// and a divider at the centre of each gap between neighbours. Call before
+/// the buttons, which draw over it.
+pub(crate) fn draw_segment(ui: &mut UIContext, theme: &EditorTheme, buttons: &[Rect]) {
+    if let (Some(first), Some(last)) = (buttons.first(), buttons.last()) {
+        let background = Rect::new(first.x, first.y, last.right() - first.x, first.height);
+        ui.rect_rounded(background, theme.toolbar_segment, SEGMENT_CORNER_RADIUS);
+        for neighbours in buttons.windows(2) {
+            let divider_x = (neighbours[0].right() + neighbours[1].x) / 2.0;
+            ui.line(
+                Vec2::new(divider_x, background.y + DIVIDER_INSET),
+                Vec2::new(divider_x, background.bottom() - DIVIDER_INSET),
+                theme.separator,
+                1.0,
+            );
+        }
+    }
+}
+
+/// One icon button of a segment: its fill, its icon in `icon_stroke`, and
+/// its tooltip. A hovered or pressed button that is not on wears the
+/// chevrons' hover fill. Returns true on the click's release frame.
+pub(crate) fn segment_button(
+    ui: &mut UIContext,
+    theme: &EditorTheme,
+    id: &str,
+    icon: Icon,
+    bounds: Rect,
+    look: ButtonLook,
+    tooltip: &str,
+) -> bool {
+    let result = ui.interact(id, bounds, true);
+    let hovered = result.state == WidgetState::Hovered || result.dragging;
+    let corner_radius = SEGMENT_CORNER_RADIUS - 1.0;
+    match look {
+        ButtonLook::On => {
+            ui.rect_rounded(bounds, theme.toolbar_active, corner_radius);
+            ui.rect_border(bounds, theme.accent_blue, 1.0, corner_radius);
+        }
+        _ if hovered => ui.rect_rounded(bounds, theme.menu_open_highlight, corner_radius),
+        ButtonLook::Tinted(fill) => ui.rect_rounded(bounds, fill, corner_radius),
+        ButtonLook::Plain => {}
+    }
+    let icon_bounds = Rect::new(
+        bounds.center().x - ICON_BOX_SIZE / 2.0,
+        bounds.center().y - ICON_BOX_SIZE / 2.0,
+        ICON_BOX_SIZE,
+        ICON_BOX_SIZE,
+    );
+    draw_icon(ui, icon, icon_bounds, theme.icon_stroke, ICON_STROKE_WEIGHT);
+    ui.tooltip(bounds, tooltip);
+    result.clicked
+}
 
 /// Available editor tools for manipulating entities.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -42,9 +145,8 @@ impl EditorTool {
         }
     }
 
-    /// One sentence on what the tool does, for its button's tooltip. The
-    /// button already carries the name and the shortcut, so this says what
-    /// picking it lets you do.
+    /// One sentence on what picking the tool lets you do — the tail of its
+    /// [`tooltip`](Self::tooltip), after the name and the shortcut.
     pub fn hint(&self) -> &'static str {
         match self {
             EditorTool::Select => "Click an entity to select it, or drag a box across several.",
@@ -52,6 +154,22 @@ impl EditorTool {
             EditorTool::Rotate => "Drag the ring around the selection to turn it.",
             EditorTool::Scale => "Drag the gizmo's handles to resize the selection.",
         }
+    }
+
+    /// The icon the tool's button carries.
+    pub fn icon(&self) -> Icon {
+        match self {
+            EditorTool::Select => Icon::Select,
+            EditorTool::Move => Icon::Move,
+            EditorTool::Rotate => Icon::Rotate,
+            EditorTool::Scale => Icon::Scale,
+        }
+    }
+
+    /// The tool button's tooltip: name, shortcut and hint in
+    /// [`tooltip_text`]'s shape — the button itself carries only its icon.
+    pub fn tooltip(&self) -> String {
+        tooltip_text(self.name(), Some(self.shortcut()), self.hint())
     }
 
     /// Get all available tools.
@@ -75,14 +193,6 @@ impl EditorTool {
 pub struct Toolbar {
     /// Current selected tool
     current_tool: EditorTool,
-    /// Button width: one size for every tool, wide enough for the longest
-    /// tool name at the body font size, so the tools keep their positions
-    /// as the selection changes.
-    button_width: f32,
-    /// Button height — the compact strip button, not a square.
-    button_height: f32,
-    /// Spacing between buttons
-    spacing: f32,
     /// Whether the overflow menu of shed tools is open.
     overflow_open: bool,
 }
@@ -98,9 +208,6 @@ impl Toolbar {
     pub fn new() -> Self {
         Self {
             current_tool: EditorTool::default(),
-            button_width: 64.0,
-            button_height: 30.0,
-            spacing: 6.0,
             overflow_open: false,
         }
     }
@@ -115,24 +222,15 @@ impl Toolbar {
         self.current_tool = tool;
     }
 
-    /// Width of one tool button.
+    /// Width of one tool button: [`TOOL_BUTTON_SIZE`], one size for every
+    /// tool, so the tools keep their positions as the selection changes.
     pub fn button_width(&self) -> f32 {
-        self.button_width
-    }
-
-    /// Height of one tool button — the strip sizes its band around it.
-    pub fn button_height(&self) -> f32 {
-        self.button_height
-    }
-
-    /// Gap between two tool buttons.
-    pub fn spacing(&self) -> f32 {
-        self.spacing
+        TOOL_BUTTON_SIZE
     }
 
     /// Distance from one button's left edge to the next one's.
     pub fn button_stride(&self) -> f32 {
-        self.button_width + self.spacing
+        TOOL_BUTTON_SIZE + SEGMENT_DIVIDER_GAP
     }
 
     /// Whether the overflow menu of shed tools is open.
@@ -153,7 +251,8 @@ impl Toolbar {
     }
 
     /// Render the tool buttons the strip has room for, plus the overflow
-    /// button when some tools were shed, and handle tool selection.
+    /// button when some tools were shed, as one segment, and handle tool
+    /// selection.
     ///
     /// Call inside the strip's scope ([`crate::toolbar_strip::begin`]) so the
     /// buttons land on the strip's band. The shed tools' menu is a separate
@@ -164,14 +263,22 @@ impl Toolbar {
     pub fn render(
         &mut self,
         ui: &mut UIContext,
-        theme: &crate::EditorTheme,
+        theme: &EditorTheme,
         layout: &crate::toolbar_strip::StripLayout,
     ) -> Option<EditorTool> {
-        let mut new_tool = None;
+        let visible: Vec<(EditorTool, Rect)> = EditorTool::all()
+            .iter()
+            .take(layout.visible_tools)
+            .enumerate()
+            .map(|(index, &tool)| (tool, self.button_bounds_at(layout.tools_origin, index)))
+            .collect();
+        let mut segment: Vec<Rect> = visible.iter().map(|&(_, bounds)| bounds).collect();
+        segment.extend(layout.overflow_button);
+        draw_segment(ui, theme, &segment);
 
-        for (index, &tool) in EditorTool::all().iter().take(layout.visible_tools).enumerate() {
-            let button_bounds = self.button_bounds_at(layout.tools_origin, index);
-            if self.render_tool_button(ui, theme, tool, button_bounds) {
+        let mut new_tool = None;
+        for (tool, bounds) in visible {
+            if self.render_tool_button(ui, theme, tool, bounds) {
                 new_tool = Some(tool);
             }
         }
@@ -192,68 +299,35 @@ impl Toolbar {
         Rect::new(
             origin.x + index as f32 * self.button_stride(),
             origin.y,
-            self.button_width,
-            self.button_height,
+            TOOL_BUTTON_SIZE,
+            TOOL_BUTTON_SIZE,
         )
     }
 
-    /// One tool button: its name, its shortcut as a small caption in the
-    /// top-right corner (the compact strip has no room for the hint row the
-    /// floating toolbar had), and the active state when it is the live tool.
-    /// Returns true when clicked.
+    /// One tool button: its icon, its tooltip, and the on look when it is
+    /// the live tool. Returns true when clicked.
     fn render_tool_button(
         &mut self,
         ui: &mut UIContext,
-        theme: &crate::EditorTheme,
+        theme: &EditorTheme,
         tool: EditorTool,
         bounds: Rect,
     ) -> bool {
-        let is_selected = tool == self.current_tool;
-
-        // Selection ring: an accent halo slightly larger than the button
-        // (the button's own background is opaque, so anything drawn
-        // directly underneath it would be invisible)
-        if is_selected {
-            ui.rect_rounded(bounds.expand(2.0), theme.toolbar_active, 5.0);
-        }
-
+        let look = if tool == self.current_tool { ButtonLook::On } else { ButtonLook::Plain };
         let id = format!("toolbar_{}", tool.name());
-        let clicked = ui.button(id.as_str(), tool.name(), bounds);
+        let clicked = segment_button(ui, theme, &id, tool.icon(), bounds, look, &tool.tooltip());
         if clicked {
             self.current_tool = tool;
         }
-
-        if is_selected {
-            ui.rect_border(bounds, theme.accent_blue, 1.0, 4.0);
-        }
-
-        let hint_pos = Vec2::new(bounds.right() - 7.0, bounds.y + theme.fonts.small);
-        ui.label_centered_styled(tool.shortcut(), hint_pos, theme.shortcut_hint, theme.fonts.small);
-        ui.tooltip(bounds, tool.hint());
-
         clicked
     }
 
-    /// The button that opens the shed tools' menu: a chevron, and the active
-    /// state while the menu is open. Returns true when clicked.
-    fn render_overflow_button(
-        &self,
-        ui: &mut UIContext,
-        theme: &crate::EditorTheme,
-        bounds: Rect,
-    ) -> bool {
-        if self.overflow_open {
-            ui.rect_rounded(bounds.expand(2.0), theme.toolbar_active, 5.0);
-        }
-        let clicked = ui.button("toolbar_overflow", "", bounds);
-        // Three dots rather than a glyph: the strip must read the same in
-        // every font the editor can be running.
-        let center = bounds.center();
-        for offset in [-6.0, 0.0, 6.0] {
-            ui.circle(Vec2::new(center.x + offset, center.y), 1.5, theme.accent_cyan);
-        }
-        ui.tooltip(bounds, "More");
-        clicked
+    /// The button that opens the shed tools' menu, on while the menu is
+    /// open. Returns true when clicked.
+    fn render_overflow_button(&self, ui: &mut UIContext, theme: &EditorTheme, bounds: Rect) -> bool {
+        let look = if self.overflow_open { ButtonLook::On } else { ButtonLook::Plain };
+        let tooltip = tooltip_text("More", None, "The tools and view toggles the strip has no room for.");
+        segment_button(ui, theme, "toolbar_overflow", Icon::More, bounds, look, &tooltip)
     }
 }
 
@@ -264,7 +338,7 @@ mod tests {
     use crate::play_state::EditorPlayState;
     use crate::test_support::{frame, press_at, release};
     use crate::toolbar_strip::{self, StripLayout};
-    use crate::{EditorAction, EditorBinding, EditorInputMapping, EditorTheme};
+    use crate::{EditorAction, EditorBinding, EditorInputMapping};
 
     /// A strip across a comfortable scene panel, where every tool shows.
     fn wide_strip(toolbar: &Toolbar) -> (Rect, StripLayout) {
@@ -279,9 +353,10 @@ mod tests {
         (strip, laid_out)
     }
 
-    /// The shortcut hint painted on each tool button and the binding
-    /// table that actually switches tools are two tables; this holds them
-    /// together so a rebind cannot leave a stale hint on screen.
+    /// The shortcut a tool's tooltip names and the binding table that
+    /// actually switches tools are two tables; this holds them together so
+    /// a rebind cannot leave a stale shortcut on screen — and holds every
+    /// tooltip to naming one, since the button no longer shows the key.
     #[test]
     fn test_tool_shortcut_hints_match_the_editor_bindings() {
         let mapping = EditorInputMapping::new();
@@ -297,10 +372,49 @@ mod tests {
             let [EditorBinding::Chord { key, ctrl: false, shift: false }] = bindings else {
                 panic!("{tool:?} must have exactly one bare-key chord, got {bindings:?}");
             };
+            let tooltip = tool.tooltip();
+            let named = tooltip
+                .strip_prefix(tool.name())
+                .and_then(|rest| rest.strip_prefix(" ("))
+                .and_then(|rest| rest.split_once(')'))
+                .map(|(shortcut, _)| shortcut);
+            let Some(named) = named else {
+                panic!("{tool:?}'s tooltip names no shortcut: {tooltip:?}");
+            };
             let key_name = format!("{key:?}");
-            let hinted = key_name.strip_prefix("Key").unwrap_or(&key_name);
-            assert_eq!(hinted, tool.shortcut(), "{tool:?}: the hint shows a key that does not select it");
+            let bound = key_name.strip_prefix("Key").unwrap_or(&key_name);
+            assert_eq!(named, bound, "{tool:?}: the tooltip names a key that does not select it");
         }
+    }
+
+    /// The live tool is the one button filled, and it is ringed as well, so
+    /// the state never rests on the fill's colour alone.
+    #[test]
+    fn test_the_live_tool_is_the_one_button_filled_and_ringed() {
+        let mut toolbar = Toolbar::new();
+        toolbar.set_tool(EditorTool::Rotate);
+        let theme = EditorTheme::default();
+        let (_, laid_out) = wide_strip(&toolbar);
+        let rotate = toolbar.button_bounds_at(laid_out.tools_origin, 2);
+        let mut ui = UIContext::new();
+        let input = input::InputHandler::new();
+
+        frame(&mut ui, &input, |ui| toolbar.render(ui, &theme, &laid_out));
+
+        let commands = ui.draw_list().commands();
+        let filled: Vec<Rect> = commands
+            .iter()
+            .filter_map(|command| match command {
+                ui::DrawCommand::Rect { bounds, color, .. } if *color == theme.toolbar_active => Some(*bounds),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(filled, vec![rotate], "exactly one fill, on the live tool");
+        let ringed = commands.iter().any(|command| {
+            matches!(command, ui::DrawCommand::RectBorder { bounds, color, .. }
+                if *bounds == rotate && *color == theme.accent_blue)
+        });
+        assert!(ringed, "the live tool is ringed too");
     }
 
     /// Press in the gap between two tool buttons: the strip's band claims
@@ -317,7 +431,7 @@ mod tests {
         let mut input = input::InputHandler::new();
 
         let first = toolbar.button_bounds_at(laid_out.tools_origin, 0);
-        let gap = Vec2::new(first.right() + toolbar.spacing() * 0.5, first.center().y);
+        let gap = Vec2::new(first.right() + SEGMENT_DIVIDER_GAP * 0.5, first.center().y);
         let move_center = toolbar.button_bounds_at(laid_out.tools_origin, 1).center();
 
         let render = |ui: &mut UIContext, toolbar: &mut Toolbar| {

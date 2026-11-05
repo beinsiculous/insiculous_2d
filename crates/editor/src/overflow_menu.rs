@@ -1,31 +1,63 @@
 //! Overflow menu for the toolbar strip: renders shed tools and/or shed view toggles
 //! when the strip is too narrow to display them directly.
 
-use ui::{Rect, UIContext};
+use ui::{Rect, UIContext, WidgetState};
 
-use crate::toolbar::{EditorTool, Toolbar};
+use crate::icons::{draw_icon, Icon};
+use crate::toolbar::{EditorTool, Toolbar, ICON_BOX_SIZE, ICON_STROKE_WEIGHT, TOOL_BUTTON_SIZE};
 use crate::layout::ROW_HEIGHT;
 use crate::toolbar_strip::StripLayout;
 use crate::view_toggles::{ViewToggle, ViewToggles};
 use crate::EditorTheme;
 
-/// Width of the overflow menu: wide enough for labels, shortcuts and checkmarks.
-pub const OVERFLOW_MENU_WIDTH: f32 = 140.0;
+/// Width of the overflow menu: wide enough for a check mark and the item's
+/// icon in a lane of [`TOOL_BUTTON_SIZE`] at the left, then its label and
+/// shortcut.
+pub const OVERFLOW_MENU_WIDTH: f32 = 140.0 + TOOL_BUTTON_SIZE;
 
 /// Side of the check square drawn on an on-toggle's row.
 const CHECK_SIZE: f32 = 6.0;
 
+/// Distance from a row's left edge to its check square.
+const CHECK_INSET: f32 = 2.0;
+
 /// Where the menu hangs: under its button, and never past the window's
-/// bottom — a short embedded canvas would otherwise put the last rows
-/// (Reset Layout, at the end) out of reach. Shifted up rather than flipped,
-/// and no higher than `floor` — the strip's top: the strip's buttons are
-/// drawn after the menu and its blocking rect reaches them, but the menu
-/// bar above the strip is drawn before it and would not be protected. In a
-/// canvas too short for even that, the last rows fall off the bottom.
+/// bottom or its right edge — a short embedded canvas would otherwise put
+/// the last rows (Reset Layout, at the end) out of reach, and a narrow one
+/// the labels and the shortcut hints, since the button sits past the tools
+/// that fit and the menu is wider than the strip's room to its right.
+/// Shifted rather than flipped: up, and no higher than `floor` — the
+/// strip's top: the strip's buttons are drawn after the menu and its
+/// blocking rect reaches them, but the menu bar above the strip is drawn
+/// before it and would not be protected; left, and no further than the
+/// window's left edge. In a canvas too short or too narrow for even that,
+/// the far rows or columns fall off.
 pub fn overflow_menu_bounds(button: Rect, total_height: f32, window: glam::Vec2, floor: f32) -> Rect {
     let below = button.bottom() + 2.0;
     let y = below.min(window.y - total_height).max(floor);
-    Rect::new(button.x, y, OVERFLOW_MENU_WIDTH, total_height)
+    let x = button.x.min(window.x - OVERFLOW_MENU_WIDTH).max(0.0);
+    Rect::new(x, y, OVERFLOW_MENU_WIDTH, total_height)
+}
+
+/// A row's button: the stock button's frame and fills from the ui theme,
+/// with no text of its own. `ui.button` draws a placeholder bar for an
+/// empty label, and the row draws its label beside the icon instead.
+/// Returns true on the click's release frame.
+fn row_button(ui: &mut UIContext, id: &str, row: Rect) -> bool {
+    let result = ui.interact(id, row, true);
+    let style = &ui.theme().button;
+    let background = match result.state {
+        WidgetState::Normal => style.background,
+        WidgetState::Hovered => style.background_hovered,
+        WidgetState::Active => style.background_pressed,
+        WidgetState::Disabled => style.background_disabled,
+    };
+    let (border, border_width, corner_radius) = (style.border, style.border_width, style.corner_radius);
+    ui.rect_rounded(row, background, corner_radius);
+    if border_width > 0.0 {
+        ui.rect_border(row, border, border_width, corner_radius);
+    }
+    result.clicked
 }
 
 /// An item selected from the overflow menu.
@@ -40,6 +72,18 @@ enum MenuItemKind {
     Tool(EditorTool),
     Toggle(ViewToggle),
     ResetLayout,
+}
+
+impl MenuItemKind {
+    /// The icon the item's button carries on the strip, so a shed item is
+    /// recognised by the same shape in the menu.
+    fn icon(&self) -> Icon {
+        match self {
+            MenuItemKind::Tool(tool) => tool.icon(),
+            MenuItemKind::Toggle(toggle) => toggle.icon(),
+            MenuItemKind::ResetLayout => Icon::ResetLayout,
+        }
+    }
 }
 
 struct OverflowRowItem {
@@ -152,7 +196,24 @@ pub fn render_overflow_menu(
             ROW_HEIGHT,
         );
         let id = format!("toolbar_overflow_{}", item.label);
-        if ui.button(id.as_str(), item.label, row) {
+        let clicked = row_button(ui, &id, row);
+        let label_bounds = Rect::new(row.x + TOOL_BUTTON_SIZE, row.y, row.width - TOOL_BUTTON_SIZE, row.height);
+        ui.label_in_bounds_styled(
+            item.label,
+            label_bounds,
+            ui::TextAlign::Center,
+            theme.text_primary,
+            theme.fonts.body,
+            0.0,
+        );
+        let icon_bounds = Rect::new(
+            row.x + TOOL_BUTTON_SIZE - ICON_BOX_SIZE,
+            row.center().y - ICON_BOX_SIZE / 2.0,
+            ICON_BOX_SIZE,
+            ICON_BOX_SIZE,
+        );
+        draw_icon(ui, item.kind.icon(), icon_bounds, theme.icon_stroke, ICON_STROKE_WEIGHT);
+        if clicked {
             picked = match item.kind {
                 MenuItemKind::Tool(tool) => Some(OverflowPick::Tool(tool)),
                 MenuItemKind::Toggle(toggle) => Some(OverflowPick::Toggle(toggle)),
@@ -161,10 +222,11 @@ pub fn render_overflow_menu(
         }
 
         // The same check the View menu draws: a small accent square on the
-        // row's left edge — a primitive, so no font-coverage risk.
+        // row's left edge, before the icon — a primitive, so no
+        // font-coverage risk.
         if item.checked == Some(true) {
             ui.rect(
-                Rect::new(row.x + 4.0, row.center().y - CHECK_SIZE / 2.0, CHECK_SIZE, CHECK_SIZE),
+                Rect::new(row.x + CHECK_INSET, row.center().y - CHECK_SIZE / 2.0, CHECK_SIZE, CHECK_SIZE),
                 theme.accent_cyan,
             );
         }
@@ -210,7 +272,7 @@ mod tests {
     /// (Reset Layout) stays clickable.
     #[test]
     fn test_the_menu_shifts_up_to_stay_inside_a_short_window() {
-        let button = Rect::new(8.0, 48.0, 34.0, 30.0);
+        let button = Rect::new(8.0, 48.0, TOOL_BUTTON_SIZE, TOOL_BUTTON_SIZE);
         let seven_rows = 7.0 * ROW_HEIGHT + 6.0 + 8.0;
 
         let strip_top = 43.0;
@@ -226,6 +288,99 @@ mod tests {
         // top rather than covering the menu bar drawn before it.
         let tiny = overflow_menu_bounds(button, seven_rows, Vec2::new(390.0, 150.0), strip_top);
         assert_eq!(tiny.y, strip_top, "the menu never climbs above the strip");
+    }
+
+    /// A narrow canvas that fits every tool puts the overflow button far to
+    /// the right, where the menu under it would run past the window; the
+    /// menu slides left to the edge instead, so through the real layout at
+    /// 250 px every row, its label and its shortcut hint stay inside the
+    /// window and the rows remain clickable where they are drawn.
+    #[test]
+    fn test_the_menu_slides_left_to_stay_inside_a_narrow_window() {
+        let content = Rect::new(0.0, 48.0, 250.0, 560.0);
+        let window = Vec2::new(content.width, content.bottom());
+        let strip = toolbar_strip::split(content).0;
+        let theme = EditorTheme::default();
+        let mut toolbar = Toolbar::new();
+        let toggles = ViewToggles::default();
+        let layout = toolbar_strip::layout(strip, &toolbar, &PlayControls::new(), EditorPlayState::Editing);
+        let button = layout.overflow_button.expect("the shed view group needs a menu to live in");
+        assert!(
+            button.x + OVERFLOW_MENU_WIDTH > window.x,
+            "the premise: under its button the menu would leave the window"
+        );
+        toolbar.toggle_overflow();
+        let mut ui = UIContext::new();
+        let input = input::InputHandler::new();
+
+        ui.begin_frame(&input, window);
+        render_overflow_menu(&mut toolbar, &mut ui, &theme, &layout, &toggles);
+        ui.end_frame();
+
+        let menu = overflow_menu_bounds(button, 5.0 * ROW_HEIGHT + 8.0, window, strip.y);
+        assert!(menu.x >= 0.0 && menu.right() <= window.x, "the menu {menu:?} leaves a {} px window", window.x);
+        let button_centre_x = button.center().x;
+        assert!(
+            button_centre_x >= menu.x && button_centre_x <= menu.right(),
+            "the menu {menu:?} still hangs under its button {button:?}"
+        );
+        let texts: Vec<(String, Vec2)> = ui
+            .draw_list()
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                ui::DrawCommand::TextPlaceholder { text, position, .. } => Some((text.clone(), *position)),
+                _ => None,
+            })
+            .collect();
+        for expected in ["Grid", "Colliders", "Game Frame", "Snap", "Reset Layout", "G", "C", "S"] {
+            let Some((_, position)) = texts.iter().find(|(text, _)| text == expected) else {
+                panic!("{expected} is not drawn: {texts:?}");
+            };
+            assert!(
+                position.x >= menu.x && position.x < menu.right(),
+                "{expected} at {position:?} is outside the menu {menu:?}"
+            );
+        }
+    }
+
+    /// A row carries its item's icon in a lane at its left and its label to
+    /// the right of that lane, and draws no text of its own beyond the label
+    /// and the shortcut — an empty button label drew a placeholder bar across
+    /// every row.
+    #[test]
+    fn test_every_row_labels_right_of_its_icon_lane_and_draws_no_empty_text() {
+        use crate::test_support::frame;
+
+        let strip = toolbar_strip::split(Rect::new(0.0, 48.0, TOOLBAR_STRIP_MIN_WIDTH - 1.0, 560.0)).0;
+        let mut toolbar = Toolbar::new();
+        let toggles = ViewToggles::default();
+        let theme = EditorTheme::default();
+        let layout = toolbar_strip::layout(strip, &toolbar, &PlayControls::new(), EditorPlayState::Editing);
+        let button = layout.overflow_button.expect("the shed group needs a menu to live in");
+        toolbar.toggle_overflow();
+        let mut ui = UIContext::new();
+        let input = input::InputHandler::new();
+
+        frame(&mut ui, &input, |ui| render_overflow_menu(&mut toolbar, ui, &theme, &layout, &toggles));
+
+        let lane_right = button.x + 4.0 + TOOL_BUTTON_SIZE;
+        let texts: Vec<(String, Vec2)> = ui
+            .draw_list()
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                ui::DrawCommand::TextPlaceholder { text, position, .. } => Some((text.clone(), *position)),
+                _ => None,
+            })
+            .collect();
+        assert!(texts.iter().all(|(text, _)| !text.is_empty()), "no empty text: {texts:?}");
+        for label in ["Grid", "Colliders", "Game Frame", "Snap", "Reset Layout"] {
+            let Some((_, position)) = texts.iter().find(|(text, _)| text == label) else {
+                panic!("{label} has no row: {texts:?}");
+            };
+            assert!(position.x >= lane_right, "{label} starts at {} inside the icon lane", position.x);
+        }
     }
 
     /// One pixel under the minimum the view group is shed, and through the

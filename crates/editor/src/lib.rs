@@ -62,6 +62,7 @@ mod clipboard;
 mod grid;
 mod entity_names;
 mod hierarchy;
+pub mod icons;
 mod inspector;
 mod inspector_state;
 mod menu;

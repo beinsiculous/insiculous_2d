@@ -7,11 +7,12 @@
 
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
-use ui::{Color, Rect, UIContext, WidgetState};
+use ui::{Rect, UIContext};
 
-use crate::layout::GAP;
+use crate::icons::Icon;
 use crate::menu::MenuBar;
 use crate::theme::EditorTheme;
+use crate::toolbar::{draw_segment, segment_button, tooltip_text, ButtonLook, SEGMENT_DIVIDER_GAP, TOOL_BUTTON_SIZE};
 
 /// The four view toggles as an enum.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -51,13 +52,13 @@ impl ViewToggle {
         }
     }
 
-    /// Single character glyph drawn in the toggle button.
-    pub fn glyph(self) -> &'static str {
+    /// The icon the toggle's button carries.
+    pub fn icon(self) -> Icon {
         match self {
-            Self::Grid => "#",
-            Self::Colliders => "O",
-            Self::GameFrame => "[]",
-            Self::Snap => "%",
+            Self::Grid => Icon::Grid,
+            Self::Colliders => Icon::Colliders,
+            Self::GameFrame => Icon::GameFrame,
+            Self::Snap => Icon::Snap,
         }
     }
 
@@ -71,21 +72,27 @@ impl ViewToggle {
         }
     }
 
-    /// The one line this toggle's button explains itself with on hover: what
-    /// the overlay is, and the key that flips it where one is bound.
+    /// One sentence on what the toggle shows or does — the tail of its
+    /// [`tooltip`](Self::tooltip), after the name and the key.
     ///
     /// The game frame's names no size. The rect is the world the game shows
     /// at the size its config declares, so a resized window or a preview
     /// box of another size shows more or less of the world than it does.
     pub fn hint(self) -> &'static str {
         match self {
-            Self::Grid => "Grid (G)",
-            Self::Colliders => "Collider outlines (C)",
+            Self::Grid => "Draw the authoring grid over the scene.",
+            Self::Colliders => "Outline every collider in the scene.",
             Self::GameFrame => {
-                "Game frame: the game's configured size; a resized window shows more or less"
+                "Outline the game's configured size; a resized window shows more or less."
             }
-            Self::Snap => "Snap to the grid (S)",
+            Self::Snap => "Snap gizmo drags to the grid; holding Ctrl snaps one drag.",
         }
+    }
+
+    /// The toggle button's tooltip: name, key where one is bound, and hint,
+    /// in [`tooltip_text`]'s shape — the button itself carries only its icon.
+    pub fn tooltip(self) -> String {
+        tooltip_text(self.name(), self.shortcut(), self.hint())
     }
 
     /// Corresponding editor action.
@@ -176,19 +183,19 @@ pub enum ViewGroupAction {
     ResetLayout,
 }
 
-/// Side of a view toggle button: the 24 px minimum target WCAG 2.5.8 asks
-/// for, so it is not tied to a row token that may drift below it.
-const TOGGLE_BUTTON_SIZE: f32 = 24.0;
-/// Extra gap before the Reset Layout button — wider than [`GAP`] so Reset
-/// Layout reads as an action beside the toggles rather than one of them.
+/// Gap before the Reset Layout button, inside the segment — wider than the
+/// segment's divider gap so Reset Layout reads as an action beside the
+/// toggles rather than one of them. Its divider sits at its centre.
 const RESET_GAP: f32 = 8.0;
 
-/// Total width of the strip's right view-controls group:
-/// 4 toggles (24px) at 4px gaps (3 * 4 = 12px), an 8px gap, and Reset Layout (24px).
-/// 4 * 24 + 12 + 8 + 24 = 140px.
-pub const VIEW_GROUP_WIDTH: f32 = 4.0 * TOGGLE_BUTTON_SIZE + 3.0 * GAP + RESET_GAP + TOGGLE_BUTTON_SIZE;
+/// Total width of the strip's right view-controls group: one segment of
+/// four toggles at the divider gap, the wider gap, and Reset Layout.
+pub const VIEW_GROUP_WIDTH: f32 =
+    5.0 * TOOL_BUTTON_SIZE + 3.0 * SEGMENT_DIVIDER_GAP + RESET_GAP;
 
-/// Render the view toggles group (the 4 toggles + Reset Layout button) at `origin`.
+/// Render the view toggles group (the 4 toggles + Reset Layout button) at `origin`,
+/// as one segment with the strip's separator before it. A toggle that is on
+/// is filled and ringed.
 ///
 /// Must be called inside the strip's scope (`toolbar_strip::begin`/`end`).
 pub fn render_group(
@@ -197,61 +204,42 @@ pub fn render_group(
     origin: Vec2,
     toggles: &ViewToggles,
 ) -> Option<ViewGroupAction> {
+    crate::toolbar_strip::draw_separator_before(ui, theme, origin);
+    let stride = TOOL_BUTTON_SIZE + SEGMENT_DIVIDER_GAP;
+    let toggle_bounds = |index: usize| {
+        Rect::new(origin.x + index as f32 * stride, origin.y, TOOL_BUTTON_SIZE, TOOL_BUTTON_SIZE)
+    };
+    let reset_bounds = Rect::new(
+        origin.x + VIEW_GROUP_WIDTH - TOOL_BUTTON_SIZE,
+        origin.y,
+        TOOL_BUTTON_SIZE,
+        TOOL_BUTTON_SIZE,
+    );
+    let mut buttons: Vec<Rect> = (0..ViewToggle::ALL.len()).map(toggle_bounds).collect();
+    buttons.push(reset_bounds);
+    draw_segment(ui, theme, &buttons);
+
     let mut picked = None;
-    let mut current_x = origin.x;
-
-    for toggle in ViewToggle::ALL {
-        let bounds = Rect::new(current_x, origin.y, TOGGLE_BUTTON_SIZE, TOGGLE_BUTTON_SIZE);
+    for (index, toggle) in ViewToggle::ALL.into_iter().enumerate() {
         let id = format!("view_toggle_{}", toggle.name());
-        let active = toggles.is_on(toggle);
-
-        let result = ui.interact(id.as_str(), bounds, true);
-        if active {
-            ui.rect_rounded(bounds, theme.toolbar_active, 3.0);
-            ui.panel_styled(bounds, Color::TRANSPARENT, theme.accent_blue, 1.0);
-        } else if result.state == WidgetState::Hovered || result.dragging {
-            ui.rect_rounded(bounds, theme.hover_fill, 3.0);
-        }
-
-        let glyph = toggle.glyph();
-        let text_color = if active { theme.text_primary } else { theme.text_secondary };
-        ui.label_in_bounds_styled(
-            glyph,
-            bounds,
-            ui::TextAlign::Center,
-            text_color,
-            theme.fonts.small,
-            0.0,
-        );
-
-        if result.clicked {
+        let look = if toggles.is_on(toggle) { ButtonLook::On } else { ButtonLook::Plain };
+        if segment_button(ui, theme, &id, toggle.icon(), toggle_bounds(index), look, &toggle.tooltip()) {
             picked = Some(ViewGroupAction::Toggle(toggle));
         }
-        ui.tooltip(bounds, toggle.hint());
-
-        current_x += TOGGLE_BUTTON_SIZE + GAP;
     }
 
-    current_x += RESET_GAP - GAP;
-
-    // Reset Layout button
-    let reset_bounds = Rect::new(current_x, origin.y, TOGGLE_BUTTON_SIZE, TOGGLE_BUTTON_SIZE);
-    let reset_result = ui.interact("strip_reset_layout", reset_bounds, true);
-    if reset_result.state == WidgetState::Hovered || reset_result.dragging {
-        ui.rect_rounded(reset_bounds, theme.hover_fill, 3.0);
-    }
-    ui.label_in_bounds_styled(
-        "R",
+    let reset_tooltip = tooltip_text("Reset Layout", None, "Put every panel back where it started.");
+    if segment_button(
+        ui,
+        theme,
+        "strip_reset_layout",
+        Icon::ResetLayout,
         reset_bounds,
-        ui::TextAlign::Center,
-        theme.text_secondary,
-        theme.fonts.small,
-        0.0,
-    );
-    if reset_result.clicked {
+        ButtonLook::Plain,
+        &reset_tooltip,
+    ) {
         picked = Some(ViewGroupAction::ResetLayout);
     }
-    ui.tooltip(reset_bounds, "Reset Layout: put every panel back where it started");
 
     picked
 }
@@ -269,20 +257,23 @@ mod tests {
         assert!(!toggles.snap);
     }
 
-    /// A button's tooltip is read where the button's own caption is one
-    /// character, so the key it advertises is the whole of the instruction.
-    /// Held to `shortcut()` — the table the hint used to be a copy of.
+    /// A toggle's button carries an icon and no caption, so its tooltip is
+    /// where the key that flips it is read. Held to `shortcut()`: a bound
+    /// key is named in parentheses after the name, and a toggle without
+    /// one advertises none.
     #[test]
     fn test_a_toggles_hint_advertises_the_key_that_flips_it() {
         for toggle in ViewToggle::ALL {
+            let tooltip = toggle.tooltip();
+            assert!(tooltip.starts_with(toggle.name()), "{toggle:?}'s tooltip leads with its name");
             match toggle.shortcut() {
                 Some(key) => assert!(
-                    toggle.hint().contains(&format!("({key})")),
-                    "{toggle:?}'s hint does not name {key}"
+                    tooltip.contains(&format!("({key})")),
+                    "{toggle:?}'s tooltip does not name {key}"
                 ),
                 None => assert!(
-                    !toggle.hint().contains('('),
-                    "{toggle:?} has no bound key but its hint advertises one"
+                    !tooltip.contains('('),
+                    "{toggle:?} has no bound key but its tooltip advertises one"
                 ),
             }
         }

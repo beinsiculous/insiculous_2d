@@ -81,12 +81,21 @@ pub struct EditorTheme {
     /// Active tool button background (toolbar)
     pub toolbar_active: Color,
 
+    // ── Toolbar strip ───────────────────────────────────────────
+    /// Background of a segment of buttons on the toolbar strip: one ladder
+    /// step above the strip's `surface_1`, so a group reads as one object.
+    pub toolbar_segment: Color,
+    /// The strokes of the toolbar strip's icons — the buttons' only labels,
+    /// so ≥3:1 on every fill a button can wear (WCAG 1.4.11).
+    pub icon_stroke: Color,
+
     // ── Menu ────────────────────────────────────────────────────
     /// Background highlight behind an open menu title
     pub menu_open_highlight: Color,
     /// Separator lines inside menu dropdowns
     pub menu_separator: Color,
-    /// Keyboard shortcut hint text (menus, toolbar)
+    /// Keyboard shortcut hint text in menus, the toolbar strip's overflow
+    /// menu among them (a strip button names its shortcut in its tooltip)
     pub shortcut_hint: Color,
 
     // ── Inspector field labels ──────────────────────────────────
@@ -182,6 +191,7 @@ impl Default for EditorTheme {
         // and the panel headings are the same "this is live" signal, so the
         // two tokens are defined once and cannot drift apart.
         let accent_cyan = Color::from_hex(0x00d9ff);
+        let text_primary = Color::WHITE;
 
         Self {
             // Typography
@@ -204,7 +214,7 @@ impl Default for EditorTheme {
             border_subtle: Color::from_hex(0x333333),
 
             // Text
-            text_primary: Color::WHITE,
+            text_primary,
             text_secondary: Color::from_hex(0xcccccc),
             text_muted: Color::from_hex(0x888888),
 
@@ -227,6 +237,10 @@ impl Default for EditorTheme {
             selection_fill: Color::new(0.3, 0.5, 0.8, 0.5),
             hover_fill: Color::new(0.5, 0.5, 0.5, 0.2),
             toolbar_active: Color::new(0.3, 0.5, 0.8, 1.0),
+
+            // Toolbar strip
+            toolbar_segment: surface_2,
+            icon_stroke: text_primary,
 
             // Menu
             menu_open_highlight: Color::new(0.2, 0.2, 0.2, 1.0),

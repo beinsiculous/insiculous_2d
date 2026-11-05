@@ -1,12 +1,13 @@
 //! The scene view's toolbar strip: an opaque band across the top of the
-//! scene panel holding the tools on the left and the play controls at the
-//! centre.
+//! scene panel holding three segments of icon buttons — the tools on the
+//! left, the play controls at the centre, the view toggles at the right —
+//! with a separator line in the gap between each two.
 //!
 //! The strip owns two things the rest of the editor asks it for: the
 //! **split** of the scene panel's content area into the band and the
 //! viewport below it (so no overlay, scissor or pick ever maps through the
-//! band), and the **layout** of the two widget groups inside the band at any
-//! width, down to viewports too narrow to show every tool.
+//! band), and the **layout** of the groups inside the band at any width,
+//! down to viewports too narrow to show every tool.
 
 use glam::Vec2;
 use ui::{Rect, UIContext};
@@ -15,33 +16,32 @@ use crate::layout::{PADDING, TOOLBAR_STRIP_HEIGHT};
 use crate::play_controls::PlayControls;
 use crate::play_state::EditorPlayState;
 use crate::theme::EditorTheme;
-use crate::toolbar::Toolbar;
+use crate::toolbar::{Toolbar, SEGMENT_DIVIDER_GAP, TOOL_BUTTON_SIZE};
 
-/// Gap between the tool group and the play controls, and between the play
-/// controls and the group that joins them at the right.
-/// The play controls are a group of their own among the tools, so they
-/// stand off further than the shared [`crate::layout::GAP`].
-const GROUP_GAP: f32 = 8.0;
+/// Gap between two groups on the strip — the tools and the play controls,
+/// the play controls and the view toggles. Wider than a segment's own
+/// divider gap, so each group reads as a whole; the separator line a group
+/// draws before itself ([`draw_separator_before`]) sits at its centre.
+pub(crate) const GROUP_GAP: f32 = 8.0;
 
-/// Width of the button that opens the shed tools' menu. Square at the
-/// button height, plus room for the chevron beside the glyph.
-const OVERFLOW_BUTTON_WIDTH: f32 = 34.0;
+/// How far a separator line stops short of a segment's top and bottom.
+const SEPARATOR_INSET: f32 = 4.0;
 
-/// Total width of the strip's right view-controls group:
-/// 4 toggles (24px) at 4px gaps, an 8px gap, and Reset Layout (24px).
+/// Total width of the strip's right view-controls group: the four toggles
+/// and Reset Layout as one segment.
 pub const VIEW_GROUP_WIDTH: f32 = crate::view_toggles::VIEW_GROUP_WIDTH;
 
 /// The width below which the strip can no longer hold its groups side by
 /// side at their natural positions: the padding, the overflow button, the
-/// play controls in their widest state, and the view group.
+/// play controls in their widest state, the view group, and the gap before
+/// each of the last two.
 ///
 /// Also the dock's minimum centre width — below it the side panels stop
 /// taking an edge allocation (see [`crate::dock`]), because a centre
 /// narrower than this cannot show the play controls at all.
 pub const TOOLBAR_STRIP_MIN_WIDTH: f32 = PADDING * 2.0
-    + OVERFLOW_BUTTON_WIDTH
+    + TOOL_BUTTON_SIZE
     + GROUP_GAP
-    + PlayControls::LEAD_WIDTH
     + PlayControls::WIDEST_CONTENT_WIDTH
     + GROUP_GAP
     + VIEW_GROUP_WIDTH;
@@ -87,6 +87,21 @@ pub fn end(ui: &mut UIContext) {
     ui.end_overlay();
 }
 
+/// The one-pixel separator line in the [`GROUP_GAP`] before a group whose
+/// first button's top-left corner is `group_origin`. A group after the
+/// first draws its own, so a shed group takes its separator with it.
+pub(crate) fn draw_separator_before(ui: &mut UIContext, theme: &EditorTheme, group_origin: Vec2) {
+    // The line is a pixel wide from the gap's centre rightwards, inside the
+    // half of the gap the group's chrome claims.
+    let line_x = group_origin.x - GROUP_GAP / 2.0 + 0.5;
+    ui.line(
+        Vec2::new(line_x, group_origin.y + SEPARATOR_INSET),
+        Vec2::new(line_x, group_origin.y + TOOL_BUTTON_SIZE - SEPARATOR_INSET),
+        theme.separator,
+        1.0,
+    );
+}
+
 /// Where the strip's groups sit, and how much of the tool and view groups fit.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StripLayout {
@@ -121,7 +136,7 @@ pub fn layout(
     play_controls: &PlayControls,
     play_state: EditorPlayState,
 ) -> StripLayout {
-    let button_top = strip.y + ((strip.height - toolbar.button_height()) * 0.5).max(0.0);
+    let button_top = strip.y + ((strip.height - TOOL_BUTTON_SIZE) * 0.5).max(0.0);
     let left = strip.x + PADDING;
     let right = strip.right() - PADDING;
 
@@ -141,8 +156,8 @@ pub fn layout(
     }
     .max(left + PlayControls::LEAD_WIDTH);
 
-    // The separator the play controls draw to their left belongs to them.
-    let tools_limit = play_x - PlayControls::LEAD_WIDTH - GROUP_GAP;
+    // The play controls' separator stands inside this gap, not beside it.
+    let tools_limit = play_x - GROUP_GAP;
     let (visible_tools, overflow_button) =
         fit_tools(toolbar, left, tools_limit, button_top, view_group.is_none());
 
@@ -171,7 +186,7 @@ fn fit_tools(
     let stride = toolbar.button_stride();
     let available = limit - left;
 
-    if !view_group_shed && fitting_count(available, stride, toolbar.spacing()) >= total {
+    if !view_group_shed && fitting_count(available, stride, SEGMENT_DIVIDER_GAP) >= total {
         return (total, None);
     }
 
@@ -181,17 +196,12 @@ fn fit_tools(
     // after the last tool.
     let max_tools = if view_group_shed { total } else { total.saturating_sub(1) };
     let visible = fitting_count(
-        available - OVERFLOW_BUTTON_WIDTH - toolbar.spacing(),
+        available - TOOL_BUTTON_SIZE - SEGMENT_DIVIDER_GAP,
         stride,
-        toolbar.spacing(),
+        SEGMENT_DIVIDER_GAP,
     )
     .min(max_tools);
-    let overflow = Rect::new(
-        left + visible as f32 * stride,
-        top,
-        OVERFLOW_BUTTON_WIDTH,
-        toolbar.button_height(),
-    );
+    let overflow = Rect::new(left + visible as f32 * stride, top, TOOL_BUTTON_SIZE, TOOL_BUTTON_SIZE);
     (visible, Some(overflow))
 }
 
@@ -213,11 +223,15 @@ mod tests {
     /// A comfortable scene panel and the one a 390px page produces once the
     /// dock has gone narrow (the centre takes the whole width).
     const COMFORTABLE: Rect = Rect { x: 200.0, y: 48.0, width: 800.0, height: 600.0 };
-    /// Narrow widths below the 391px minimum width (where the view group sheds).
+    /// The phone widths: a 390px page and a 360px Android one, the centre
+    /// taking the whole width.
     const NARROW: Rect = Rect { x: 0.0, y: 48.0, width: 390.0, height: 560.0 };
     const ANDROID: Rect = Rect { x: 0.0, y: 48.0, width: 360.0, height: 560.0 };
     const JUST_OVER_THE_MINIMUM: Rect =
         Rect { x: 0.0, y: 48.0, width: TOOLBAR_STRIP_MIN_WIDTH + 7.0, height: 560.0 };
+    /// Under the minimum, where the view group sheds and the tools follow.
+    const UNDER_THE_MINIMUM: Rect =
+        Rect { x: 0.0, y: 48.0, width: TOOLBAR_STRIP_MIN_WIDTH - 40.0, height: 560.0 };
 
     fn strip_of(content: Rect) -> Rect {
         split(content).0
@@ -278,9 +292,9 @@ mod tests {
     }
 
     /// The groups laid out in one strip never overlap, and every
-    /// button stays inside the strip — at a comfortable width, at the widths
-    /// 390px and 360px produce (below the 391px min where view group sheds),
-    /// and in the band just over the minimum where the centre is preferred.
+    /// button stays inside the strip — at a comfortable width, at the two
+    /// phone widths, in the band just over the minimum where the centre is
+    /// preferred, and under the minimum where the view group sheds.
     /// Reachability, not merely non-overlap: every tool is a button or an
     /// entry in the overflow menu.
     #[test]
@@ -288,7 +302,7 @@ mod tests {
         let toolbar = Toolbar::new();
         let controls = PlayControls::new();
 
-        for content in [COMFORTABLE, NARROW, ANDROID, JUST_OVER_THE_MINIMUM] {
+        for content in [COMFORTABLE, NARROW, ANDROID, JUST_OVER_THE_MINIMUM, UNDER_THE_MINIMUM] {
             let strip = strip_of(content);
             for state in [EditorPlayState::Editing, EditorPlayState::Playing, EditorPlayState::Paused] {
                 let laid_out = layout(strip, &toolbar, &controls, state);
@@ -313,7 +327,7 @@ mod tests {
                     );
                 }
                 if let Some(view_origin) = laid_out.view_group {
-                    let view_rect = Rect::new(view_origin.x, view_origin.y, VIEW_GROUP_WIDTH, toolbar.button_height());
+                    let view_rect = Rect::new(view_origin.x, view_origin.y, VIEW_GROUP_WIDTH, TOOL_BUTTON_SIZE);
                     assert!(
                         contains_rect(strip, view_rect),
                         "{state:?} at {}px: view group clips",
@@ -335,7 +349,7 @@ mod tests {
         }
     }
 
-    /// At the exact minimum width (391px) the view group shows whole; one pixel under (390px),
+    /// At the exact minimum width the view group shows whole; one pixel under,
     /// the view group sheds and the overflow button exists even if all tools fit.
     #[test]
     fn test_view_group_shows_whole_at_minimum_and_sheds_one_pixel_under() {
@@ -390,7 +404,7 @@ mod tests {
         let dialog = ConfirmDialog::keep_paused_edits(1);
         let laid_out = layout(strip, &toolbar, &controls, EditorPlayState::Paused);
         controls.position = laid_out.play_controls_origin;
-        let resume = Vec2::new(controls.position.x + 4.0, controls.position.y + controls.height * 0.5);
+        let resume = Vec2::new(controls.position.x + 4.0, controls.position.y + TOOL_BUTTON_SIZE * 0.5);
         let mut ui = UIContext::new();
         let mut input = input::InputHandler::new();
 
@@ -416,14 +430,14 @@ mod tests {
             (0, None) => return None,
             (_, Some(overflow)) => overflow.right(),
             (count, None) => {
-                laid_out.tools_origin.x + count as f32 * toolbar.button_stride() - toolbar.spacing()
+                laid_out.tools_origin.x + count as f32 * toolbar.button_stride() - SEGMENT_DIVIDER_GAP
             }
         };
         Some(Rect::new(
             laid_out.tools_origin.x,
             laid_out.tools_origin.y,
             right - laid_out.tools_origin.x,
-            toolbar.button_height(),
+            TOOL_BUTTON_SIZE,
         ))
     }
 

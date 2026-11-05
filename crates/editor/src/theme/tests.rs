@@ -22,6 +22,45 @@ fn test_adjacent_surfaces_are_distinguishable() {
     }
 }
 
+/// A toolbar segment reads as one object on the strip, and the live tool's
+/// fill reads against the segment it sits in, both at the ladder's 1.35:1.
+#[test]
+fn test_a_toolbar_segment_and_its_active_cell_read_apart_like_the_ladder() {
+    let theme = EditorTheme::default();
+    let pairs = [
+        ("toolbar_segment/surface_1", theme.toolbar_segment, theme.surface_1),
+        ("toolbar_active/toolbar_segment", theme.toolbar_active, theme.toolbar_segment),
+    ];
+    for (name, fill, under) in pairs {
+        let ratio = fill.contrast_ratio(under);
+        assert!(ratio >= 1.35, "{name} contrast {ratio:.3} < 1.35");
+    }
+    assert!(
+        theme.toolbar_segment.luminance() > theme.surface_1.luminance(),
+        "the segment stands a step above the strip"
+    );
+}
+
+/// An icon is its button's only label, so its stroke holds WCAG 1.4.11's
+/// 3:1 non-text contrast on every fill a strip button can wear: the
+/// segment, the live tool or an on toggle, the hover, and the Play and
+/// Stop tints.
+#[test]
+fn test_an_icon_reads_at_three_to_one_on_every_fill_its_button_can_wear() {
+    let theme = EditorTheme::default();
+    let fills = [
+        ("toolbar_segment", theme.toolbar_segment),
+        ("toolbar_active", theme.toolbar_active),
+        ("menu_open_highlight", theme.menu_open_highlight),
+        ("play_button_bg", theme.play_button_bg),
+        ("stop_button_bg", theme.stop_button_bg),
+    ];
+    for (name, fill) in fills {
+        let ratio = theme.icon_stroke.contrast_ratio(fill);
+        assert!(ratio >= 3.0, "icon stroke vs {name}: {ratio:.2} < 3.0");
+    }
+}
+
 /// A popup reads as an object above the panel (≥1.35:1 against the panel
 /// body) with a border of at least 3:1 against its own surface (§5.3).
 #[test]
