@@ -140,13 +140,12 @@ fn test_render_derives_the_gpu_camera_and_scissor_from_the_dock() {
     let mut editor_game = editor_game();
     let window_size = Vec2::new(1600.0, 900.0);
     editor_game.editor.update_layout(window_size);
-    editor_game.editor.viewport.set_viewport_bounds(common::Rect::new(300.0, 100.0, 800.0, 600.0));
     editor_game.editor.viewport.set_camera_position(Vec2::new(120.0, -40.0));
     editor_game.editor.viewport.set_camera_zoom(2.0);
 
     let (camera, scissor) = render_with(&mut editor_game, window_size);
 
-    let expected = editor_game.editor.viewport.to_window_render_camera(window_size);
+    let expected = editor_game.editor.viewport.to_window_render_camera(window_size, 1.0);
     assert_eq!(camera, expected);
     assert_eq!(camera.zoom, 2.0);
     assert_eq!(camera.viewport_size, window_size);

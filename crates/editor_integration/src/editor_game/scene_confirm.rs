@@ -155,7 +155,7 @@ impl<G: Game> EditorGame<G> {
         // Enter pressed since last frame = the primary action;
         // mouse clicks come from the rendered buttons.
         let key_choice = self.scene_confirm.pending_choice.take();
-        let choice = dialog.render(ctx.ui, ctx.window_size, &self.editor.theme).or(key_choice);
+        let choice = dialog.render(ctx.ui, self.points_window_size(ctx.window_size), &self.editor.theme).or(key_choice);
         if action.document() == Document::Song {
             if let Some(choice) = choice {
                 self.resolve_song_choice(action, choice);

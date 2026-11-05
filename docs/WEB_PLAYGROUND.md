@@ -278,12 +278,18 @@ wakes it. The numbers it moves are in § Budget.
 
 ## Preferences
 
-Editor preferences (camera, grid, panel layout) persist through `save_store` under the
+Editor preferences (camera, grid, panel layout, UI scale) persist through `save_store` under the
 localStorage key `beinsiculous.playground.editor_prefs`, the same JSON document the native
 `editor_prefs.json` holds. The editor writes on a **settle rule**: once the preferences have
 been unchanged for 0.5 s of frame time (a pan writes once, after the hand lifts), plus an
 immediate write on the Play transition (with the editing camera, before the game camera
 takes the viewport), after Stop, and on exit. Nothing is written during Play or Pause.
+
+The `ui_scale` key is `"follow"` (also the default when absent), or a numeric percentage.
+View → UI Scale offers Follow the display and 100, 125, 150, 175 and 200 %. Follow shows
+the live display percentage. Ctrl+= / Ctrl+- step the scale; Ctrl+0 returns to Follow.
+The browser may take Ctrl+= first, so the menu is the path that always works. Fonts and
+layout scale together; a 1024 px window at 200 % uses the dock's narrow layout.
 
 ## Export and import
 

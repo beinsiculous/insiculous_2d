@@ -24,6 +24,9 @@ pub fn open_project_item(tool: ToolName, desktop: bool) -> (String, bool) {
 
 /// Menu label → editor action. The menu bar speaks labels; everything after it speaks actions.
 pub fn action_for_menu_label(label: &str) -> Option<EditorAction> {
+    if let Some(preference) = super::scale::preference_for_label(label) {
+        return Some(EditorAction::SetUiScale(preference));
+    }
     if let Some(panel) = panel_id_for_menu_label(label) {
         return Some(EditorAction::TogglePanel(panel));
     }

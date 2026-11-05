@@ -1,3 +1,4 @@
+//! Bounds and window clamps in this module are UI points.
 //! Overflow menu for the toolbar strip: renders shed tools and/or shed view toggles
 //! when the strip is too narrow to display them directly.
 

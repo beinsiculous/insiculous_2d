@@ -65,7 +65,7 @@ fn test_main_camera_rotation_is_never_mirrored_onto_the_viewport() {
     press_play(&mut editor_game, &mut world);
     editor_game.sync_viewport_from_main_camera(&world);
 
-    let rendered = editor_game.editor.viewport.to_window_render_camera(window);
+    let rendered = editor_game.editor.viewport.to_window_render_camera(window, 1.0);
     assert_eq!(rendered.rotation, 0.0, "rotation is deliberately not synced");
     assert_eq!(rendered.zoom, GAME_ZOOM, "position and zoom still are");
 }
@@ -192,6 +192,7 @@ fn test_play_transition_cancels_pending_viewport_gesture() {
         &mut editor_game.editor.viewport,
         &editor_game.editor.input_mapping,
         &input,
+        1.0,
     );
     assert!(editor_game.editor.viewport_input.has_pending_marquee());
 

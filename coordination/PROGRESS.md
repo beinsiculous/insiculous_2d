@@ -828,3 +828,11 @@ Map (no entry existed for the new `game_impl.rs`). Gates green at every round: 9
 both clippy invocations, `check_wasm.sh`, all re-run by the planner independently of every
 report. Filed: nothing new — one out-of-scope defect the first round surfaced (an
 out-of-project-root save misreporting "saved") was already filed as #143. Closes #125.
+
+2026-11-05 — Editor UX UI scale implementation: UIContext now converts points at its
+boundary, including physical text rasterization, hit regions, clips and deferred tooltips.
+The editor resolves and persists Follow/percentage scale, uses a points window for chrome,
+scales viewport input and GPU camera/scissor at their seams, and brackets the inner game
+and engine UI tail at 1.0. Nested View → UI Scale menus support pointer and arrow navigation
+with narrow-window overlap handling. The executor's validation and stills are recorded in
+`review/editor-ux/report-2.md`; the staged batch awaits the planner's independent review.

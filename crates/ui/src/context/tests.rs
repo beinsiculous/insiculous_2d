@@ -7,6 +7,7 @@
 use input::prelude::KeyCode;
 
 use super::*;
+use crate::Color;
 use crate::test_support::{
     focus_field, frame, idle, move_to, press_at, release, type_key, FIXTURE_FONT,
 };
@@ -66,11 +67,11 @@ fn test_label_without_a_font_emits_a_placeholder_carrying_text_position_color_an
 }
 
 #[test]
-fn test_measure_text_without_a_font_is_the_character_count_estimate() {
+fn test_measure_text_without_a_font_rounds_the_character_count_estimate_up() {
     // The estimate is the same one the placeholder path draws with, so
     // centering and alignment computed against it match what appears.
     let ui = UIContext::new();
-    let cases = [("hello", 16.0, Vec2::new(48.0, 19.2)), ("hello", 12.0, Vec2::new(36.0, 14.4)), ("", 16.0, Vec2::new(0.0, 19.2))];
+    let cases = [("hello", 16.0, Vec2::new(48.0, 20.0)), ("hello", 12.0, Vec2::new(36.0, 15.0)), ("", 16.0, Vec2::new(0.0, 20.0))];
 
     for (text, font_size, expected) in cases {
         let measured = ui.measure_text_styled(text, font_size);

@@ -110,6 +110,14 @@ pub enum EditorAction {
     SongPlayStop,
 
     // ---- View / play ----
+    /// Raise the editor UI to the next explicit scale step.
+    UiScaleUp,
+    /// Lower the editor UI to the previous explicit scale step.
+    UiScaleDown,
+    /// Follow the display's live scale again.
+    UiScaleReset,
+    /// Choose a scale from the View menu.
+    SetUiScale(crate::editor_preferences::UiScale),
     /// Toggle grid display
     ToggleGrid,
     /// Toggle collider overlay
@@ -359,6 +367,9 @@ impl EditorInputMapping {
         // Exact chord wins over the KeyAnyMods(F) focus binding on the
         // event path — F alone still frames the selection.
         self.bind(ToggleCameraFollow, B::ctrl_shift(KeyCode::KeyF));
+        self.bind(UiScaleUp, B::ctrl(KeyCode::Equal));
+        self.bind(UiScaleDown, B::ctrl(KeyCode::Minus));
+        self.bind(UiScaleReset, B::ctrl(KeyCode::Digit0));
     }
 
     /// Bind an input to an action. Rebinding EVICTS only the exact same
@@ -455,8 +466,8 @@ impl EditorInputMapping {
             .any(|b| Self::binding_pressed(b, input, true))
     }
 
-    /// Update input state from InputHandler.
-    pub fn update_state(&self, input: &InputHandler) -> EditorInputState {
+    /// Convert physical pointer position and motion to editor points; wheel notches stay unchanged.
+    pub fn update_state(&self, input: &InputHandler, scale: f32) -> EditorInputState {
         let mouse_pos = input.mouse_position();
         let mouse_delta = input.mouse_movement_delta();
 
@@ -464,8 +475,8 @@ impl EditorInputMapping {
             pan_modifier: self.is_action_pressed(EditorAction::Pan, input),
             add_modifier: self.is_action_pressed(EditorAction::AddToSelection, input),
             toggle_modifier: self.is_action_pressed(EditorAction::ToggleSelection, input),
-            mouse_position: glam::Vec2::new(mouse_pos.x, mouse_pos.y),
-            mouse_delta: glam::Vec2::new(mouse_delta.0, mouse_delta.1),
+            mouse_position: glam::Vec2::new(mouse_pos.x, mouse_pos.y) / scale,
+            mouse_delta: glam::Vec2::new(mouse_delta.0, mouse_delta.1) / scale,
             scroll_delta: input.mouse_wheel_delta(),
             primary_button: ButtonState {
                 pressed: input.is_mouse_button_pressed(MouseButton::Left),

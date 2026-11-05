@@ -292,6 +292,14 @@ let roots = world.get_root_entities();
 **Files:** `ecs/lib.rs`, `ecs/component.rs`, `ecs/entity.rs`, `ecs/world.rs`, `ecs/hierarchy_extension.rs`
 
 ### Immediate-Mode UI Pattern
+`UIContext` layout and text sizes are points. `set_pixels_per_point` converts rectangles,
+positions and scalar lengths at the boundary; host input and the frame's incoming window
+size remain physical, and the stored draw list is physical. Text rasterizes at size × scale,
+measurements round physical dimensions up before returning points, and wheel deltas remain
+notches. A caller may change scale mid-frame: existing hit regions remain physical and a
+tooltip retains its offered scale. The editor brackets the game's update and engine UI tail
+at 1.0 while its own chrome uses the resolved preference.
+
 UI described every frame rather than retained state:
 
 ```rust

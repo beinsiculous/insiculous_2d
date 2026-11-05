@@ -12,9 +12,9 @@ use crate::{FontHandle, Rect, ScrubState, WidgetId};
 use super::edit_field::{EditFieldEvent, EditFieldParams};
 use super::UIContext;
 
-/// Pointer travel (pixels) that turns a press on an unfocused float input
+/// Pointer travel (points) that turns a press on an unfocused float input
 /// into a drag-scrub instead of a click-to-focus.
-const SCRUB_THRESHOLD_PX: f32 = 4.0;
+const SCRUB_THRESHOLD: f32 = 4.0;
 
 /// Options for a [`UIContext::float_input`].
 ///
@@ -30,7 +30,7 @@ pub struct FloatFieldOpts {
     pub max: f32,
     /// Also clamp typed commits to `min..=max`.
     pub hard_clamp: bool,
-    /// Arrow-nudge increment AND scrub units per pixel. Shift makes arrows
+    /// Arrow-nudge increment AND scrub units per point. Shift makes arrows
     /// coarser (×10) and scrubbing finer (×0.1).
     pub step: f32,
     /// Display-only suffix (e.g. `"°"`); never part of the edit buffer.
@@ -111,7 +111,7 @@ impl UIContext {
     /// only clamps unless `opts.hard_clamp`); Escape cancels.
     ///
     /// Dragging horizontally on an unfocused field scrubs the value
-    /// (`opts.step` per pixel, Shift for fine ×0.1 control, Ctrl snaps to
+    /// (`opts.step` per point, Shift for fine ×0.1 control, Ctrl snaps to
     /// whole `opts.step` multiples — applied to the modifier-adjusted value,
     /// snap first, clamp last; clamped to the
     /// soft range); a press that travels less than the threshold is a plain
@@ -125,12 +125,12 @@ impl UIContext {
     ) -> FloatInputResult {
         let id = id.into();
         self.interaction.register_editable_field(id);
-        let result = self.interaction.interact(id, bounds, true);
+        let result = self.interact(id, bounds, true);
         let was_focused = self.interaction.is_focused(id);
 
         // Snapshot keyboard/mouse state before mutating persistent state
         let input = self.interaction.input().clone();
-        let mouse_in_bounds = bounds.contains(input.mouse_pos);
+        let mouse_in_bounds = bounds.contains(self.to_points(input.mouse_pos));
         let font = self.resolve_font(opts.font);
 
         // ---- drag-scrub (unfocused only) ------------------------------
@@ -151,7 +151,7 @@ impl UIContext {
         }
 
         if scrub_was_active {
-            let hovered = bounds.contains(input.mouse_pos);
+            let hovered = bounds.contains(self.to_points(input.mouse_pos));
             self.draw_float_value(bounds, value, opts.suffix, hovered, font);
             return FloatInputResult::unchanged(value);
         }
@@ -251,15 +251,15 @@ impl UIContext {
         }
 
         if input.mouse_down {
-            let pointer_travel_x = input.mouse_pos.x - scrub.press_x;
+            let pointer_travel_points = (input.mouse_pos.x - scrub.press_x) / self.pixels_per_point;
             let mut scrub = scrub;
-            if !scrub.active && pointer_travel_x.abs() >= SCRUB_THRESHOLD_PX {
+            if !scrub.active && pointer_travel_points.abs() >= SCRUB_THRESHOLD {
                 scrub.active = true;
             }
             self.interaction.get_state(id).scrub = Some(scrub);
             if scrub.active {
                 let step = opts.step * if input.shift_down { 0.1 } else { 1.0 };
-                let mut scrubbed = scrub.start_value + pointer_travel_x * step;
+                let mut scrubbed = scrub.start_value + pointer_travel_points * step;
                 // Ctrl snaps the scrub to whole steps — applied to
                 // whatever value the modifiers produced (Shift fine mode
                 // included), then clamped: snap first, clamp last.

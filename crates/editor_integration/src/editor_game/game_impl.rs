@@ -83,8 +83,8 @@ impl<G: Game> Game for EditorGame<G> {
     }
 
     fn update(&mut self, ctx: &mut GameContext) {
-        let window_size = ctx.window_size;
         self.prepare_frame(ctx);
+        let window_size = self.points_window_size(ctx.window_size);
         self.render_early_overlays(ctx);
         // Before the menu bar handles this frame's press: an open dropdown is chrome and
         // keeps the Conductor panel's keyboard, which the dropdown closing would hide.
@@ -135,15 +135,16 @@ impl<G: Game> Game for EditorGame<G> {
         // them. Games that hand-write `ctx.camera` in a custom `render()`
         // are overridden here — the supported path inside the editor is a
         // main-camera entity (mirrored onto the viewport while Playing).
-        *ctx.camera = self.editor.viewport.to_window_render_camera(ctx.window_size);
+        let mut viewport = self.editor.viewport.clone();
+        viewport.set_viewport_bounds(self.editor.scene_view_bounds()
+            .unwrap_or(common::Rect::new(0.0, 0.0, 0.0, 0.0)));
+        *ctx.camera = viewport.to_window_render_camera(ctx.window_size, self.resolved_ui_scale);
         // Bound the game-world passes to the scene panel: the
         // game stops painting over editor chrome and the GPU stops shading
         // the whole window. A hidden/collapsed panel yields a zero-size
         // rect — no game world at all — never None (full window).
         *ctx.viewport_scissor = Some(
-            self.editor
-                .scene_view_bounds()
-                .unwrap_or(common::Rect::new(0.0, 0.0, 0.0, 0.0)),
+            viewport.physical_viewport_bounds(self.resolved_ui_scale),
         );
     }
 

@@ -2,6 +2,14 @@
 
 Immediate-mode UI framework with fontdue text rendering. The dual glyph cache is intentional: `ui` caches rasterized bitmaps (`font/glyph_cache.rs`) to avoid re-rasterization, while `engine_core` caches GPU textures (`glyph_texture_cache.rs`) to avoid re-uploads.
 
+`UIContext` accepts layout positions, rectangles, font sizes and scalar lengths in **points**.
+`set_pixels_per_point` converts at the boundary; host input and the `begin_frame*` window size
+are physical, retained interaction/clip/tooltip geometry and the draw list are physical, and
+`mouse_pos`, `window_size` and `measure_text*` return points. Text rasterizes at size × scale,
+measurement rounds physical dimensions up before dividing, and wheel deltas stay in notches.
+A scale may change mid-frame without moving earlier hit regions; a tooltip remembers the scale
+of its offer. Theme metrics remain points. Widget internals draw through the same boundary.
+
 ## Pattern
 ```rust
 ui.begin_frame(&input, window_size);
@@ -22,6 +30,11 @@ ui.end_frame(); // collects draw commands
 ## Pitfalls and their guard tests
 | Pitfall | Guard Test |
 |---|---|
+| Scaled rectangles, clips and scalar strokes must cross the boundary exactly once | `src/context/scale_tests.rs points_become_physical_rects_clips_and_strokes` |
+| Fonts must rasterize at their physical size and long labels must round up before returning points | `src/context/scale_tests.rs a_scaled_label_rasterizes_at_the_physical_font_size` `src/context/scale_tests.rs a_long_label_measures_in_points_and_covers_its_physical_advance` |
+| A physical pointer must hit the scaled button, and a scale-1 game must still respect editor blocking regions | `src/context/scale_tests.rs a_points_button_only_clicks_at_its_scaled_physical_position` `src/context/scale_tests.rs a_physical_game_pointer_is_blocked_by_scaled_editor_chrome` |
+| End-of-frame tooltips must use the scale of their anchor even after the game changes it | `src/context/scale_tests.rs a_tooltip_keeps_its_offered_scale_when_the_frame_ends_at_another_scale` |
+| Text fields must scrub in points and draw inside their scaled box | `src/context/scale_tests.rs a_scaled_field_scrubs_by_points_and_places_its_text_inside_its_box` |
 | UI text y = baseline in `label_styled`; text inside a box must use `label_in_bounds_styled` to center via font metrics | `src/context/tests.rs test_label_in_bounds_styled_keeps_glyphs_inside_bounds_at_every_alignment` |
 | An elevated `UiLayer` (Floating/Modal) must physically escape a Content-layer clip pair | `src/draw/tests.rs test_elevated_layer_escapes_content_clip_pair` |
 | The release frame of a click is NOT `WidgetState::Active`, so consumers must gate on `wants_mouse` rather than widget state | `src/interaction/tests.rs test_wants_mouse_holds_from_widget_press_through_release_frame` |

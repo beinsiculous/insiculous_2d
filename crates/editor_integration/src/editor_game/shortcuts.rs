@@ -15,6 +15,7 @@ use super::EditorGame;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum KeyRoute {
     Consumed,
+    Menu,
     PlayControl(PlayControlAction),
     ForwardToGame,
     Editor { action: EditorAction, shift: bool },
@@ -54,6 +55,10 @@ impl<G: Game> EditorGame<G> {
             return KeyRoute::Consumed;
         }
 
+        if self.editor.menu_bar.is_open() && !self.editor.context_menu.is_open() {
+            return KeyRoute::Menu;
+        }
+
         // A focused text input (inspector value box) owns the keyboard:
         // Delete/Backspace edit the buffer, they must not delete the entity.
         // Enter/Tab/Escape are handled by the widget itself, which clears focus.
@@ -62,6 +67,10 @@ impl<G: Game> EditorGame<G> {
         }
 
         let action = self.editor.input_mapping.resolve(key, modifiers.ctrl, modifiers.shift);
+
+        if let Some(action @ (EditorAction::UiScaleUp | EditorAction::UiScaleDown | EditorAction::UiScaleReset)) = action {
+            return KeyRoute::Editor { action, shift: false };
+        }
 
         // Play-control actions (always intercepted, in any play state)
         match action {
@@ -142,6 +151,11 @@ impl<G: Game> EditorGame<G> {
         let modifiers = editor::Modifiers::read(ctx.input);
         match self.route_editor_key(key, wants_keyboard, modifiers) {
             KeyRoute::Consumed => {}
+            KeyRoute::Menu => {
+                if let Some(label) = self.editor.menu_bar.handle_key(key) {
+                    self.dispatch_menu_label(&label, ctx);
+                }
+            }
             KeyRoute::PlayControl(play_action) => {
                 let stopped = play_action == PlayControlAction::Stop;
                 if self.handle_play_action(play_action, ctx.world) && stopped {
@@ -164,6 +178,20 @@ impl<G: Game> EditorGame<G> {
     /// Whether a gizmo drag is live, telling the user to finish or Escape it first: a
     /// transform- or existence-mutating action — or any history operation — landing
     /// mid-drag would be swallowed by the drag's one commit.
+    /// Whether any pointer gesture is live — a gizmo drag, a pan, a marquee, or a widget's
+    /// own (a numeric scrub): each holds its anchors in the points of its press, which a
+    /// scale change would rebase, so the gesture would land displaced on release.
+    pub(super) fn refuse_during_gesture(&mut self, ui: &ui::UIContext) -> bool {
+        let gesture_live = self.gizmo_drag.is_some()
+            || self.editor.viewport_input.is_panning()
+            || self.editor.viewport_input.has_pending_marquee()
+            || ui.wants_mouse();
+        if gesture_live {
+            self.editor.status_bar.show_message("Finish or Escape the gesture first");
+        }
+        gesture_live
+    }
+
     pub(super) fn refuse_during_drag(&mut self) -> bool {
         let drag_live = self.gizmo_drag.is_some();
         if drag_live {
@@ -329,6 +357,12 @@ impl<G: Game> EditorGame<G> {
     fn dispatch_view_action(&mut self, action: EditorAction, ctx: &mut GameContext) {
         use EditorAction as A;
         match action {
+            A::SetUiScale(_) | A::UiScaleUp | A::UiScaleDown | A::UiScaleReset
+                if self.refuse_during_gesture(ctx.ui) => {}
+            A::SetUiScale(preference) => self.ui_scale = preference,
+            A::UiScaleUp => self.ui_scale = self.ui_scale.stepped(ctx.display_scale, true),
+            A::UiScaleDown => self.ui_scale = self.ui_scale.stepped(ctx.display_scale, false),
+            A::UiScaleReset => self.ui_scale = editor::editor_preferences::UiScale::FollowDisplay,
             A::ZoomIn => self.editor.zoom_camera(1.1),
             A::ZoomOut => self.editor.zoom_camera(0.9),
             A::ResetZoom => self.editor.reset_camera(),
@@ -401,7 +435,8 @@ impl<G: Game> EditorGame<G> {
 
             A::FocusConductor | A::SongPlayStop => self.dispatch_song_action(action),
 
-            A::ZoomIn
+            A::UiScaleUp | A::UiScaleDown | A::UiScaleReset | A::SetUiScale(_)
+            | A::ZoomIn
             | A::ZoomOut
             | A::ResetZoom
             | A::ToggleGrid

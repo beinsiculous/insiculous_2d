@@ -9,19 +9,21 @@ use crate::test_support::test_viewport;
 /// Asserts the viewport overlay mapping and the GPU render-camera mapping
 /// agree for a spread of world points — one view, two consumers.
 fn assert_overlay_matches_render_camera(viewport: &SceneViewport, window_size: Vec2) {
-    let camera = viewport.to_window_render_camera(window_size);
+    for scale in [1.0, 1.5, 2.0] {
+    let camera = viewport.to_window_render_camera(window_size, scale);
     for world in [
         Vec2::ZERO,
         Vec2::new(100.0, 50.0),
         Vec2::new(-3.5, 77.25),
         Vec2::new(-250.0, -125.0),
     ] {
-        let overlay = viewport.world_to_screen(world);
+        let overlay = viewport.world_to_screen(world) * scale;
         let gpu = camera.world_to_screen(world);
         assert!(
             (overlay - gpu).length() < 0.01,
             "mismatch at {world}: overlay {overlay} vs gpu {gpu}"
         );
+    }
     }
 }
 
@@ -122,9 +124,17 @@ fn test_overlay_matches_gpu_camera_at_a_panel_offset_and_the_play_follow_pose() 
 
     // And screen_to_world is the GPU camera's inverse: clicks land on the
     // sprite under the cursor.
-    let camera = viewport.to_window_render_camera(window);
+    let camera = viewport.to_window_render_camera(window, 1.0);
     for screen in [Vec2::new(700.0, 400.0), Vec2::new(310.0, 110.0), Vec2::new(1050.0, 650.0)] {
         let back = camera.world_to_screen(viewport.screen_to_world(screen));
         assert!((back - screen).length() < 0.01, "roundtrip mismatch at {screen}: got {back}");
     }
+}
+
+#[test]
+fn test_the_physical_scissor_covers_the_last_fractional_pixel_on_every_edge() {
+    let mut viewport = test_viewport();
+    viewport.set_viewport_bounds(Rect::new(0.25, 10.5, 10.0, 20.0));
+    assert_eq!(viewport.physical_viewport_bounds(1.5), Rect::new(0.0, 15.0, 16.0, 31.0));
+    assert_eq!(viewport.physical_viewport_bounds(1.0), Rect::new(0.0, 10.0, 11.0, 21.0));
 }

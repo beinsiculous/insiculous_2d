@@ -1,6 +1,7 @@
 //! Immediate-mode UI context managing frame lifecycle, layout, and widget interactions.
 
 mod cursor;
+mod scale;
 mod edit_field;
 mod text;
 mod text_input;
@@ -18,6 +19,8 @@ mod tests;
 mod tooltip_tests;
 #[cfg(test)]
 mod traversal_tests;
+#[cfg(test)]
+mod scale_tests;
 
 use glam::Vec2;
 use input::InputHandler;
@@ -35,7 +38,7 @@ pub enum TextAlign {
 }
 
 use crate::{
-    Color, DrawList, FontError, FontHandle, FontManager, InteractionManager, InteractionResult,
+    DrawList, FontError, FontHandle, FontManager, InteractionManager, InteractionResult,
     Rect, Theme, UiLayer, WidgetId,
 };
 
@@ -71,7 +74,8 @@ pub struct UIContext {
     draw_list: DrawList,
     /// Current theme
     theme: Theme,
-    /// Window size for layout calculations
+    pixels_per_point: f32,
+    /// Physical window size supplied by the host
     window_size: Vec2,
     /// Font manager for text rendering
     font_manager: FontManager,
@@ -101,6 +105,7 @@ impl UIContext {
             tooltip_state: TooltipState::default(),
             requested_cursor: CursorIcon::Default,
             theme: Theme::default(),
+            pixels_per_point: 1.0,
             window_size: Vec2::new(800.0, 600.0),
             font_manager: FontManager::new(),
         }
@@ -130,7 +135,7 @@ impl UIContext {
 
     // ================== Frame Lifecycle ==================
 
-    /// Begin a new frame. Call this at the start of each frame.
+    /// Begin a new frame from physical host input and a physical window size.
     ///
     /// Key repeat paces off an assumed 60 FPS frame delta; prefer
     /// [`Self::begin_frame_dt`] when a real delta time is available.
@@ -143,7 +148,7 @@ impl UIContext {
         self.requested_cursor = CursorIcon::Default;
     }
 
-    /// Begin a new frame with an explicit frame delta (seconds). The delta
+    /// Begin from physical host input and window size with a frame delta (seconds). The delta
     /// paces held-key repeat in text inputs.
     pub fn begin_frame_dt(&mut self, input: &InputHandler, window_size: Vec2, dt: f32) {
         self.interaction.begin_frame_dt(input, dt);
@@ -179,14 +184,14 @@ impl UIContext {
         self.theme = theme;
     }
 
-    /// Get the window size.
+    /// Get the window size in points.
     pub fn window_size(&self) -> Vec2 {
-        self.window_size
+        self.to_points(self.window_size)
     }
 
-    /// Get the current mouse position.
+    /// Get the current mouse position in points.
     pub fn mouse_pos(&self) -> Vec2 {
-        self.interaction.mouse_pos()
+        self.to_points(self.interaction.mouse_pos())
     }
 
     /// Whether the left mouse button was pressed this frame.
@@ -227,7 +232,7 @@ impl UIContext {
         self.interaction.input().mouse_just_released
     }
 
-    /// Mouse wheel scroll delta for this frame.
+    /// Mouse wheel notches for this frame, independent of the UI scale.
     pub fn scroll_delta(&self) -> f32 {
         self.interaction.input().scroll_delta
     }
@@ -325,7 +330,7 @@ impl UIContext {
     /// overlays back-to-back instead.
     pub fn begin_overlay_in(&mut self, layer: UiLayer, blocking_rect: Rect) {
         self.draw_list.push_layer(layer);
-        self.interaction.push_blocking_rect(blocking_rect, layer);
+        self.interaction.push_blocking_rect(self.to_physical(blocking_rect), layer);
         self.interaction.set_overlay_scope(Some(layer));
     }
 
@@ -340,60 +345,13 @@ impl UIContext {
     /// (dropdown/popup). Raw-input consumers (e.g. viewport picking) should
     /// check this before acting on mouse events.
     pub fn is_input_blocked_at(&self, pos: Vec2) -> bool {
-        self.interaction.is_blocked_at(pos)
-    }
-
-    // ================== Drawing Primitives ==================
-
-    /// Draw a colored rectangle.
-    pub fn rect(&mut self, bounds: Rect, color: Color) {
-        self.draw_list.rect(bounds, color);
-    }
-
-    /// Draw a colored rectangle with rounded corners.
-    pub fn rect_rounded(&mut self, bounds: Rect, color: Color, corner_radius: f32) {
-        self.draw_list.rect_rounded(bounds, color, corner_radius);
-    }
-
-    /// Draw a rectangle outline with the given stroke width and corner radius.
-    pub fn rect_border(&mut self, bounds: Rect, color: Color, width: f32, corner_radius: f32) {
-        self.draw_list.rect_border_rounded(bounds, color, width, corner_radius);
-    }
-
-    /// Draw a textured image by renderer texture id (thumbnails, previews).
-    pub fn image(&mut self, bounds: Rect, texture_id: u32, tint: Color) {
-        self.draw_list.image(bounds, texture_id, tint);
-    }
-
-    /// Draw a circle.
-    pub fn circle(&mut self, center: Vec2, radius: f32, color: Color) {
-        self.draw_list.circle(center, radius, color);
-    }
-
-    /// Draw a line.
-    pub fn line(&mut self, start: Vec2, end: Vec2, color: Color, width: f32) {
-        self.draw_list.line(start, end, color, width);
-    }
-
-    /// Begin clipping all subsequent draws to the given bounds.
-    ///
-    /// Use this to prevent content from rendering outside panel boundaries.
-    /// Must be paired with `pop_clip_rect()`. Clip regions can be nested.
-    pub fn push_clip_rect(&mut self, bounds: Rect) {
-        self.draw_list.push_clip_rect(bounds);
-    }
-
-    /// End the current clip region, restoring the previous clip state.
-    ///
-    /// If no clip region is active, this resets to the full viewport.
-    pub fn pop_clip_rect(&mut self) {
-        self.draw_list.pop_clip_rect();
+        self.interaction.is_blocked_at(pos * self.pixels_per_point)
     }
 
     // ================== Custom Widget Hooks ==================
 
     /// Get raw interaction result for custom widgets.
     pub fn interact(&mut self, id: impl Into<WidgetId>, bounds: Rect, enabled: bool) -> InteractionResult {
-        self.interaction.interact(id.into(), bounds, enabled)
+        self.interaction.interact(id.into(), self.to_physical(bounds), enabled)
     }
 }

@@ -206,7 +206,7 @@ fn fit_tools(
 }
 
 /// How many buttons of `stride` (button plus the gap after it) fit in
-/// `available` px, counting that the last button needs no trailing gap.
+/// `available` points, counting that the last button needs no trailing gap.
 fn fitting_count(available: f32, stride: f32, spacing: f32) -> usize {
     if available <= 0.0 || stride <= 0.0 {
         return 0;

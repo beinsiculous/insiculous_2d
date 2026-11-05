@@ -7,6 +7,65 @@ use serde::{Deserialize, Serialize};
 
 use crate::dock::{DockArea, DockPosition, PanelId};
 
+/// The editor's scale preference; old documents follow the display.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum UiScale {
+    #[default]
+    FollowDisplay,
+    Percent(u16),
+}
+
+/// The explicit scale choices in the menu and keyboard step sequence.
+pub const UI_SCALE_PERCENTAGES: [u16; 5] = [100, 125, 150, 175, 200];
+
+impl Serialize for UiScale {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::FollowDisplay => serializer.serialize_str("follow"),
+            Self::Percent(percent) => serializer.serialize_u16(*percent),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for UiScale {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Value { Text(String), Percent(u16) }
+        match Value::deserialize(deserializer)? {
+            Value::Text(text) if text == "follow" => Ok(Self::FollowDisplay),
+            Value::Percent(percent) => Ok(Self::Percent(percent)),
+            Value::Text(_) => Err(serde::de::Error::custom("UI scale must be 'follow' or a percentage")),
+        }
+    }
+}
+
+/// Resolve one finite pixels-per-point value for all editor coordinate conversions.
+/// Zero and non-finite values fall back to 1.0; other values clamp to 0.5 through 4.0.
+pub fn resolve_ui_scale(preference: &UiScale, display_scale: f32) -> f32 {
+    let scale = match preference {
+        UiScale::FollowDisplay => display_scale,
+        UiScale::Percent(percent) => f32::from(*percent) / 100.0,
+    };
+    if !scale.is_finite() || scale == 0.0 { 1.0 } else { scale.clamp(0.5, 4.0) }
+}
+
+impl UiScale {
+    /// Choose the next explicit menu step above or below the currently resolved scale; past
+    /// the last step the preference is returned unchanged.
+    pub fn stepped(self, display_scale: f32, increase: bool) -> Self {
+        let current_percent = resolve_ui_scale(&self, display_scale) * 100.0;
+        // Past the last step in either direction the preference stays: a display at 250 %
+        // stepped up must not drop to 200 %, nor one at 75 % stepped down rise to 100 %.
+        let percent = if increase {
+            UI_SCALE_PERCENTAGES.into_iter().find(|percent| f32::from(*percent) > current_percent)
+        } else {
+            UI_SCALE_PERCENTAGES.into_iter().rev().find(|percent| f32::from(*percent) < current_percent)
+        };
+        percent.map(Self::Percent).unwrap_or(self)
+    }
+}
+
 /// Persisted layout state for one dock panel.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PanelPrefs {
@@ -23,6 +82,9 @@ pub struct PanelPrefs {
 /// Persistent editor preferences saved between sessions.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EditorPreferences {
+    /// Scale for the editor chrome and viewport, independent of the game HUD.
+    #[serde(default)]
+    pub ui_scale: UiScale,
     /// Last camera position (x, y)
     pub camera_position: (f32, f32),
     /// Last camera zoom level
@@ -50,6 +112,7 @@ pub struct EditorPreferences {
 impl Default for EditorPreferences {
     fn default() -> Self {
         Self {
+            ui_scale: UiScale::FollowDisplay,
             camera_position: (0.0, 0.0),
             camera_zoom: 1.0,
             last_scene_path: None,
@@ -137,6 +200,41 @@ mod tests {
     use super::*;
     use crate::dock::DockPanel;
 
+    #[test]
+    fn scale_preferences_round_trip_and_old_files_follow_the_display() {
+        for preference in [UiScale::FollowDisplay, UiScale::Percent(150), UiScale::Percent(0), UiScale::Percent(65535)] {
+            let preferences = EditorPreferences { ui_scale: preference, ..Default::default() };
+            let json = preferences.to_json().unwrap();
+            assert_eq!(EditorPreferences::from_json(&json).unwrap().ui_scale, preference);
+            let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+            assert_eq!(value["ui_scale"], match preference {
+                UiScale::FollowDisplay => serde_json::json!("follow"),
+                UiScale::Percent(percent) => serde_json::json!(percent),
+            });
+        }
+        let mut old = serde_json::to_value(EditorPreferences::default()).unwrap();
+        old.as_object_mut().unwrap().remove("ui_scale");
+        assert_eq!(EditorPreferences::from_json(&old.to_string()).unwrap().ui_scale, UiScale::FollowDisplay);
+    }
+
+    #[test]
+    fn malformed_scale_values_cannot_zero_or_poison_layout_and_steps_use_the_live_scale() {
+        for (preference, display, expected) in [
+            (UiScale::Percent(0), 2.0, 1.0), (UiScale::Percent(1), 2.0, 0.5),
+            (UiScale::Percent(65535), 1.0, 4.0), (UiScale::FollowDisplay, f32::NAN, 1.0),
+            (UiScale::FollowDisplay, 0.0, 1.0), (UiScale::FollowDisplay, f32::INFINITY, 1.0),
+            (UiScale::FollowDisplay, 1.5, 1.5),
+        ] {
+            assert_eq!(resolve_ui_scale(&preference, display), expected);
+        }
+        assert_eq!(UiScale::FollowDisplay.stepped(1.5, true), UiScale::Percent(175));
+        assert_eq!(UiScale::FollowDisplay.stepped(1.5, false), UiScale::Percent(125));
+        assert_eq!(UiScale::FollowDisplay.stepped(2.5, true), UiScale::FollowDisplay);
+        assert_eq!(UiScale::FollowDisplay.stepped(0.75, false), UiScale::FollowDisplay);
+        assert_eq!(UiScale::Percent(200).stepped(1.0, true), UiScale::Percent(200));
+        assert_eq!(UiScale::Percent(100).stepped(1.0, false), UiScale::Percent(100));
+    }
+
     const HIERARCHY_MIN_WIDTH: f32 = 150.0;
 
     /// Dock area with the editor's default panel set (minus theme concerns).
@@ -165,6 +263,7 @@ mod tests {
         dock.set_panel_visible(PanelId::INSPECTOR, false);
         dock.get_panel_mut(PanelId::INSPECTOR).expect("inspector").size = 333.0;
         let mut prefs = EditorPreferences {
+            ui_scale: UiScale::Percent(150),
             camera_position: (100.0, 200.0),
             camera_zoom: 2.5,
             last_scene_path: Some("scenes/test.ron".to_string()),

@@ -25,7 +25,7 @@ use glam::Vec2;
 
 use common::Rect;
 
-/// Pixels a panel scrolls per wheel notch. One mouse notch should move a
+/// Points a panel scrolls per wheel notch. One mouse notch should move a
 /// readable amount of a list without losing the reader's place; a trackpad
 /// arrives as fractions of a notch, and at 100 px to the notch this keeps
 /// the content moving about as far as the finger did.
@@ -84,6 +84,22 @@ impl ScrollState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_wheel_notch_scrolls_the_same_points_at_every_scale() {
+        for scale in [1.0, 2.0] {
+            let mut ui = ui::UIContext::new();
+            let mut input = input::InputHandler::new();
+            input.mouse_mut().update_position(50.0 * scale, 50.0 * scale);
+            input.mouse_mut().update_wheel_delta(-1.0);
+            ui.set_pixels_per_point(scale);
+            ui.begin_frame(&input, Vec2::new(800.0, 600.0));
+            let mut scroll = ScrollState::default();
+            scroll.end_frame(500.0, 100.0);
+            assert_eq!(scroll.begin_frame(bounds(), ui.mouse_pos(), ui.scroll_delta(), 100.0), WHEEL_STEP);
+            ui.end_frame();
+        }
+    }
 
     const INSIDE: Vec2 = Vec2::new(50.0, 50.0);
 

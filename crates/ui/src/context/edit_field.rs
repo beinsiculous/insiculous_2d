@@ -11,7 +11,7 @@ const CARET_WIDTH: f32 = 1.0;
 /// How far the focus ring's rect sits outside the field's own bounds. The
 /// ring is outset so it reads as a ring AROUND the field rather than a
 /// second, thicker border.
-const FOCUS_RING_OFFSET_PX: f32 = 2.0;
+const FOCUS_RING_OFFSET: f32 = 2.0;
 
 /// Event emitted by the shared `edit_field` shell.
 #[derive(Debug, Clone, PartialEq)]
@@ -82,7 +82,7 @@ impl UIContext {
         is_valid: impl Fn(&str) -> bool,
     ) -> EditFieldEvent {
         self.interaction.register_editable_field(id);
-        let result = self.interaction.interact(id, bounds, true);
+        let result = self.interact(id, bounds, true);
         let was_focused = self.interaction.is_focused(id);
         let params = EditFieldParams { bounds, font, display_text, result, was_focused };
         self.edit_field_click(id, &params, seed_on_focus);
@@ -116,7 +116,7 @@ impl UIContext {
         let is_pending_target = self.interaction.pending_focus_target() == Some(id);
         let blocked = self
             .interaction
-            .is_blocked_for_scope(self.interaction.overlay_scope(), params.bounds.center());
+            .is_blocked_for_scope(self.interaction.overlay_scope(), self.to_physical(params.bounds).center());
         if is_pending_target && blocked {
             // Still the scheduled target, but an overlay covers it: leave it
             // pending (the aging logic already tolerates this indefinitely),
@@ -140,7 +140,7 @@ impl UIContext {
             return;
         }
         // Click inside while editing: place the cursor at the click
-        let mouse_x = self.interaction.input().mouse_pos.x;
+        let mouse_x = self.mouse_pos().x;
         let padding = self.theme.text_input.padding;
         let font_size = self.theme.text_input.font_size;
         let text = self.interaction.get_state(id).edit.text.clone();
@@ -158,7 +158,7 @@ impl UIContext {
         is_valid: impl Fn(&str) -> bool,
     ) -> EditFieldEvent {
         let input = self.interaction.input().clone();
-        let mouse_in_bounds = params.bounds.contains(input.mouse_pos);
+        let mouse_in_bounds = params.bounds.contains(self.to_points(input.mouse_pos));
 
         if self.interaction.is_focused(id) {
             // Cancel on Escape
@@ -204,7 +204,7 @@ impl UIContext {
         EditFieldEvent::Idle { hovered }
     }
 
-    /// Pixel widths of every prefix of `text` at `font_size`:
+    /// Point widths of every prefix of `text` at `font_size`:
     /// `result[i]` = width of the first `i` chars (so `len + 1` entries).
     /// Used to place the caret, the selection band, and click-to-cursor.
     pub(crate) fn prefix_widths(&self, text: &str, font_size: f32, font: Option<FontHandle>) -> Vec<f32> {
@@ -235,17 +235,16 @@ impl UIContext {
         // The focus ring, drawn under the box so the field's own edge stays
         // crisp. It stays up for an invalid buffer too: it says where the
         // keystrokes go, which is exactly when the red border needs it.
-        let ring = bounds.expand(FOCUS_RING_OFFSET_PX);
-        self.draw_list.rect_border_rounded(
+        let ring = bounds.expand(FOCUS_RING_OFFSET);
+        self.rect_border(
             ring,
             style.focus_ring,
             style.focus_ring_width,
-            style.corner_radius + FOCUS_RING_OFFSET_PX,
+            style.corner_radius + FOCUS_RING_OFFSET,
         );
 
-        self.draw_list.rect_rounded(bounds, style.background_focused, style.corner_radius);
-        self.draw_list
-            .rect_border_rounded(bounds, border, style.border_width, style.corner_radius);
+        self.rect_rounded(bounds, style.background_focused, style.corner_radius);
+        self.rect_border(bounds, border, style.border_width, style.corner_radius);
 
         self.push_clip_rect(bounds);
 
@@ -259,7 +258,7 @@ impl UIContext {
         if let Some((start, end)) = edit.selected_range() {
             let x0 = text_origin_x + widths[start.min(widths.len() - 1)];
             let x1 = text_origin_x + widths[end.min(widths.len() - 1)];
-            self.draw_list.rect(
+            self.rect(
                 Rect::new(x0, band_y, x1 - x0, band_height),
                 style.selection_color,
             );
@@ -272,7 +271,7 @@ impl UIContext {
 
         // Caret at the cursor position
         let caret_x = text_origin_x + widths[edit.cursor.min(widths.len() - 1)];
-        self.draw_list.rect(
+        self.rect(
             Rect::new(caret_x, band_y, CARET_WIDTH, band_height),
             style.cursor_color,
         );
@@ -286,9 +285,8 @@ impl UIContext {
         let background = if highlighted { style.background_focused } else { style.background };
         let border = if highlighted { style.border_focused } else { style.border };
 
-        self.draw_list.rect_rounded(bounds, background, style.corner_radius);
-        self.draw_list
-            .rect_border_rounded(bounds, border, style.border_width, style.corner_radius);
+        self.rect_rounded(bounds, background, style.corner_radius);
+        self.rect_border(bounds, border, style.border_width, style.corner_radius);
 
         let text_pos = self.text_pos_in_bounds_with_font(
             text, bounds, TextAlign::Left, style.font_size, style.padding, font,

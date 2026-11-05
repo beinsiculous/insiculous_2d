@@ -65,7 +65,7 @@ impl<G: Game> EditorGame<G> {
         // the stop actually retained, which can be fewer.
         let key_choice = self.stop_confirm.pending_choice.take();
         let choice = dialog
-            .render(ctx.ui, ctx.window_size, &self.editor.theme)
+            .render(ctx.ui, self.points_window_size(ctx.window_size), &self.editor.theme)
             .or(key_choice);
         match choice {
             Some(ConfirmChoice::Confirm) => {

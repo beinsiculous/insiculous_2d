@@ -33,6 +33,8 @@ use input::InputHandler;
 use renderer::sprite::SpriteBatcher;
 
 mod app_handler;
+mod context;
+pub(super) use context::build_context;
 // `pub(crate)` for `step_world_systems`: the scripting tests drive the tail's
 // system order rather than a copy of it.
 pub(crate) mod frame_tail;
@@ -270,33 +272,6 @@ pub(crate) struct GameRunner<G: Game> {
     scripts: crate::scripting::ScriptRunner,
 }
 
-macro_rules! build_context {
-    ($runner:expr, $assets:expr, $delta_time:expr, $window_size:expr) => {
-        crate::contexts::GameContext {
-            input: &$runner.input,
-            players: &mut $runner.player_input,
-            world: &mut $runner.scene.world,
-            assets: $assets,
-            audio: &mut $runner.audio_manager,
-            sources: &mut $runner.sound_sources,
-            emitters: &mut $runner.sound_emitters,
-            ui: &mut $runner.ui,
-            delta_time: $delta_time,
-            window_size: $window_size,
-            chaos_mode: $runner.config.chaos_mode,
-            time_scale: $runner.time_scale,
-            requests: crate::contexts::FrameRequests::default(),
-            achievements: &mut $runner.achievements,
-            scores: &mut $runner.scores,
-            particles: &mut $runner.particles,
-            lines: &mut $runner.lines,
-            strings: &mut $runner.localization.strings,
-            #[cfg(feature = "physics")]
-            scripts: &mut $runner.scripts,
-        }
-    };
-}
-pub(super) use build_context;
 
 impl<G: Game> GameRunner<G> {
     fn new(game: G, config: GameConfig) -> Self {

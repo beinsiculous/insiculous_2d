@@ -233,6 +233,14 @@ impl WindowManager {
         self.scale_factor
     }
 
+    /// Native display scaling, or the live browser ratio for the canvas surface.
+    pub fn display_scale(&self) -> f32 {
+        #[cfg(target_arch = "wasm32")]
+        { renderer::display_scale() as f32 }
+        #[cfg(not(target_arch = "wasm32"))]
+        { self.scale_factor() as f32 }
+    }
+
     /// Update the scale factor (call on ScaleFactorChanged event).
     pub fn set_scale_factor(&mut self, scale: f64) {
         self.scale_factor = scale;

@@ -3,6 +3,7 @@
 //! menu's check marks and disabled entries are what the host set.
 
 use super::*;
+use glam::Vec2;
 use crate::test_support::{frame, press_at, press_button, release, WINDOW};
 use crate::theme::EditorTheme;
 

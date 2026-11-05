@@ -77,8 +77,13 @@ pub struct GameContext<'a> {
     pub ui: &'a mut UIContext,
     /// Delta time since last frame in seconds
     pub delta_time: f32,
-    /// Current window size
+    /// Current window size in physical pixels
     pub window_size: Vec2,
+    /// Display pixels per logical point; native window scale or the browser's device ratio.
+    pub display_scale: f32,
+    /// Scale requested for engine-authored UI after this update. None preserves the caller's
+    /// scale; editor hosts request 1.0 so scene UI keeps the game's physical coordinates.
+    pub ui_scale_for_engine_tail: Option<f32>,
     /// Project-wide gameplay intensity theme. Seeded from `GameConfig` and
     /// **read-write**: assign to it when the player picks a mode at runtime
     /// and the engine persists the change, so `ctx.chaos_mode` is always the
@@ -155,6 +160,7 @@ pub struct FrameRequests {
     pub(crate) exit: bool,
     pub(crate) window_title: Option<String>,
     pub(crate) engine_ui_clip: Option<common::Rect>,
+    pub(crate) ui_scale_for_engine_tail: Option<f32>,
     pub(crate) idle_throttle_ok: bool,
 }
 
@@ -184,6 +190,7 @@ impl FrameRequests {
             self.window_title = Some(title);
         }
         self.engine_ui_clip = incoming.engine_ui_clip;
+        self.ui_scale_for_engine_tail = incoming.ui_scale_for_engine_tail;
         self.idle_throttle_ok = incoming.idle_throttle_ok;
     }
 }
@@ -213,9 +220,13 @@ impl GameContext<'_> {
     }
 
     /// Clip the ENGINE's post-update UI draws (scene-authored elements, toasts) to `bounds`.
+    /// Bounds are in the current UI points and are retained in physical pixels.
     /// Editor hosts only; plain games never call it.
     pub fn clip_engine_ui(&mut self, bounds: common::Rect) {
-        self.requests.engine_ui_clip = Some(bounds);
+        let scale = self.ui.pixels_per_point();
+        self.requests.engine_ui_clip = Some(common::Rect::new(
+            bounds.x * scale, bounds.y * scale, bounds.width * scale, bounds.height * scale,
+        ));
     }
 
     /// Permit the engine to skip its animation frames while the window sits
@@ -228,7 +239,8 @@ impl GameContext<'_> {
     }
 
     /// Consume the context and hand back what the engine must absorb. Ends every borrow.
-    pub(crate) fn into_outcome(self) -> FrameOutcome {
+    pub(crate) fn into_outcome(mut self) -> FrameOutcome {
+        self.requests.ui_scale_for_engine_tail = self.ui_scale_for_engine_tail;
         FrameOutcome {
             chaos_mode: self.chaos_mode,
             time_scale: self.time_scale,

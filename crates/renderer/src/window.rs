@@ -117,6 +117,12 @@ pub fn insert_canvas_into_dom(window: &Window) {
     focus_before_winit_does(&document);
 }
 
+/// The live display ratio shared by canvas sizing and editor UI scaling.
+#[cfg(target_arch = "wasm32")]
+pub fn display_scale() -> f64 {
+    web_sys::window().map(|window| window.device_pixel_ratio()).unwrap_or(1.0)
+}
+
 /// The size the canvas is shown at, in physical pixels: its client box times the device
 /// pixel ratio, or `None` before it has a box. The client box is the content plus any
 /// padding, and winit measures the content box and reads the pointer from the padding
@@ -136,7 +142,7 @@ pub fn insert_canvas_into_dom(window: &Window) {
 pub fn shown_size(window: &Window) -> Option<(u32, u32)> {
     use winit::platform::web::WindowExtWebSys;
     let canvas = window.canvas()?;
-    let ratio = web_sys::window().map(|w| w.device_pixel_ratio()).unwrap_or(1.0);
+    let ratio = display_scale();
     let width = (canvas.client_width() as f64 * ratio).round() as u32;
     let height = (canvas.client_height() as f64 * ratio).round() as u32;
     (width > 0 && height > 0).then_some((width, height))

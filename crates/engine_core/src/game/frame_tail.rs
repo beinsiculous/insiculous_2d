@@ -117,9 +117,14 @@ impl<G: Game> GameRunner<G> {
     /// (plain games leave it None — unclipped). UI element presses buffer until the next
     /// frame's event flush.
     fn draw_scene_ui(&mut self, window_size: Vec2, delta_time: f32) {
+        let previous_scale = self.ui.pixels_per_point();
+        if let Some(scale) = self.requests.ui_scale_for_engine_tail.take() {
+            self.ui.set_pixels_per_point(scale);
+        }
         if let Some(clip) = self.requests.engine_ui_clip {
+            let scale = self.ui.pixels_per_point();
             self.ui
-                .push_clip_rect(ui::Rect::new(clip.x, clip.y, clip.width, clip.height));
+                .push_clip_rect(ui::Rect::new(clip.x / scale, clip.y / scale, clip.width / scale, clip.height / scale));
         }
         let ui_presses = crate::ui_element_system::draw_ui_elements(
             &self.scene.world,
@@ -134,6 +139,7 @@ impl<G: Game> GameRunner<G> {
         if self.requests.engine_ui_clip.take().is_some() {
             self.ui.pop_clip_rect();
         }
+        self.ui.set_pixels_per_point(previous_scale);
     }
 
     /// Apply per-frame requests made during init or update.

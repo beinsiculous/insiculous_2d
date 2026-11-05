@@ -3,13 +3,14 @@
 //! Provides a standard menu bar with File, Edit, View menus and
 //! support for keyboard shortcuts.
 
-use glam::Vec2;
 use ui::{Rect, UIContext};
 
 use crate::theme::EditorTheme;
-use crate::layout::{PADDING, ROW_HEIGHT};
 
 mod actions;
+mod dropdown;
+mod keyboard;
+mod scale;
 pub use actions::{action_for_menu_label, open_project_item, EXTERNAL_TOOLS_LABEL, OPEN_PROJECT_PREFIX};
 
 /// Menu dropdown layout constants. The row height and the item padding are
@@ -155,6 +156,9 @@ pub struct MenuBar {
     item_padding: f32,
     /// Currently open menu index
     open_menu: Option<usize>,
+    submenu_path: Vec<usize>,
+    keyboard_cursor: Option<usize>,
+    last_pointer: Option<glam::Vec2>,
 }
 
 impl Default for MenuBar {
@@ -172,6 +176,9 @@ impl MenuBar {
             item_spacing: 16.0,
             item_padding: 8.0,
             open_menu: None,
+            submenu_path: Vec::new(),
+            keyboard_cursor: None,
+            last_pointer: None,
         }
     }
 
@@ -250,6 +257,7 @@ impl MenuBar {
         }
         bar.add_menu(Menu::new("Entity").with_items(entity_items));
 
+        bar.sync_ui_scale(crate::editor_preferences::UiScale::FollowDisplay, 1.0);
         bar
     }
 
@@ -371,6 +379,8 @@ impl MenuBar {
     /// it was already open.
     fn apply_toggle(&mut self, toggled: Option<usize>) {
         if let Some(index) = toggled {
+            self.submenu_path.clear();
+            self.keyboard_cursor = None;
             self.open_menu = if self.open_menu == Some(index) {
                 None
             } else {
@@ -379,159 +389,10 @@ impl MenuBar {
         }
     }
 
-    /// Phase 4 — render the dropdown for the open menu (if any) and handle
-    /// item clicks. A click on an item — or a press of either button outside
-    /// the dropdown — closes the menu; an item click returns its label.
-    fn render_open_dropdown(&mut self, ui: &mut UIContext, theme: &EditorTheme) -> Option<String> {
-        let open_index = self.open_menu?;
-        self.menus[open_index].dropdown_width = Self::measured_width(ui, &self.menus[open_index], theme);
-        let menu = &self.menus[open_index];
-        let dropdown_bounds = Self::dropdown_bounds(menu, menu.bounds);
 
-        // Either button: a right press beside the dropdown opens a context menu, and
-        // the two must never be open together, the hidden one taking the click.
-        if (ui.mouse_just_pressed() || ui.mouse_right_just_pressed())
-            && Self::should_close_on_press(ui.mouse_pos(), dropdown_bounds, menu.bounds)
-        {
-            self.open_menu = None;
-            return None;
-        }
-
-        // Overlay: render on top of panels/toolbar and swallow clicks so
-        // they don't pass through to widgets underneath.
-        ui.begin_overlay(dropdown_bounds);
-        let clicked = Self::render_dropdown_static(ui, menu, dropdown_bounds, theme);
-        ui.end_overlay();
-
-        if clicked.is_some() {
-            self.open_menu = None;
-        }
-        clicked
-    }
-
-    /// Compute the dropdown bounds for a menu anchored below its title — or below any
-    /// rect: the context menu anchors at a point.
-    pub(crate) fn dropdown_bounds(menu: &Menu, anchor: Rect) -> Rect {
-        let dropdown_height = menu.items.len() as f32 * ROW_HEIGHT + 8.0;
-        Rect::new(
-            anchor.x,
-            anchor.y + anchor.height,
-            menu.dropdown_width,
-            dropdown_height,
-        )
-    }
-
-    /// The width at which every item's centred label clears its shortcut, drawn at the
-    /// row's right edge: twice the shortcut and its gaps, either side of the label; a label
-    /// with no shortcut needs its own width and the padding.
-    pub(crate) fn measured_width(ui: &UIContext, menu: &Menu, theme: &EditorTheme) -> f32 {
-        menu.items
-            .iter()
-            .filter_map(|item| match item {
-                MenuItem::Action { label, shortcut: Some(shortcut), .. } => {
-                    let label_width = ui.measure_text(label).x;
-                    let shortcut_width = ui.measure_text_styled(shortcut, theme.fonts.small).x;
-                    Some(label_width + 2.0 * (shortcut_width + 2.0 * PADDING) + 8.0)
-                }
-                MenuItem::Action { label, shortcut: None, .. } => Some(ui.measure_text(label).x + 2.0 * PADDING),
-                _ => None,
-            })
-            .fold(DROPDOWN_WIDTH, f32::max)
-    }
-
-    /// Whether a mouse press at `mouse` should close the open dropdown.
-    ///
-    /// Presses inside the dropdown are item interactions; presses on the open
-    /// menu's own title must NOT close here because the title's click fires on
-    /// mouse *release* — closing on press would make the release re-toggle the
-    /// menu open (close/reopen flicker). Pressing a different title closes
-    /// here, then that title's release opens its menu.
-    fn should_close_on_press(mouse: Vec2, dropdown: Rect, title: Rect) -> bool {
-        !dropdown.contains(mouse) && !title.contains(mouse)
-    }
-
-    /// The row a dropdown draws item `index` in; a separator takes a row too.
-    pub(crate) fn dropdown_item_bounds(dropdown_bounds: Rect, index: usize) -> Rect {
-        Rect::new(
-            dropdown_bounds.x + 4.0,
-            dropdown_bounds.y + 4.0 + index as f32 * ROW_HEIGHT,
-            dropdown_bounds.width - 8.0,
-            ROW_HEIGHT,
-        )
-    }
-
-    /// Render a dropdown menu (static method to avoid borrow issues), returning the
-    /// label of the item clicked this frame.
-    pub(crate) fn render_dropdown_static(ui: &mut UIContext, menu: &Menu, dropdown_bounds: Rect, theme: &EditorTheme) -> Option<String> {
-        // Floating surface + bounded border: a dropdown must
-        // read as an object ABOVE the panel, not blend into it.
-        ui.panel_styled(dropdown_bounds, theme.surface_4, theme.popup_border, 1.0);
-
-        for (i, item) in menu.items.iter().enumerate() {
-            let item_bounds = Self::dropdown_item_bounds(dropdown_bounds, i);
-            match item {
-                MenuItem::Action { label, shortcut, enabled, checked } => {
-
-                    let id = format!("menu_item_{}_{}", menu.title, i);
-
-                    if ui.button_styled(id.as_str(), label, item_bounds, *enabled) {
-                        return Some(label.clone());
-                    }
-
-                    // Check indicator: a small accent square on the item's
-                    // left edge (a primitive, so no font-coverage risk).
-                    if *checked {
-                        let check_size = 6.0;
-                        ui.rect(
-                            Rect::new(
-                                item_bounds.x + PADDING / 2.0,
-                                item_bounds.center().y - check_size / 2.0,
-                                check_size,
-                                check_size,
-                            ),
-                            theme.accent_cyan,
-                        );
-                    }
-
-                    if let Some(shortcut) = shortcut {
-                        // In the row's box, not at a guessed width from a baseline: a raised,
-                        // misplaced hint ran into the label it belongs to.
-                        let shortcut_bounds = Rect::new(
-                            item_bounds.x,
-                            item_bounds.y,
-                            item_bounds.width - PADDING,
-                            item_bounds.height,
-                        );
-                        ui.label_in_bounds_styled(
-                            shortcut,
-                            shortcut_bounds,
-                            ui::TextAlign::Right,
-                            theme.shortcut_hint,
-                            theme.fonts.small,
-                            0.0,
-                        );
-                    }
-                }
-                MenuItem::Separator => {
-                    let sep_y = item_bounds.center().y;
-                    ui.line(
-                        Vec2::new(dropdown_bounds.x + 8.0, sep_y),
-                        Vec2::new(dropdown_bounds.x + dropdown_bounds.width - 8.0, sep_y),
-                        theme.menu_separator,
-                        1.0,
-                    );
-                }
-                MenuItem::Submenu { label, .. } => {
-                    // For now, just render the label with an arrow indicator
-                    let id = format!("menu_submenu_{}_{}", menu.title, i);
-                    ui.button(id.as_str(), &format!("{} >", label), item_bounds);
-                }
-            }
-        }
-
-        None
-    }
 }
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod nested_tests;

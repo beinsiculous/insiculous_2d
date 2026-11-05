@@ -13,7 +13,7 @@ impl UIContext {
 
     /// Get the background color for a widget based on its state and the button style
     fn widget_background_color(&self, state: WidgetState) -> Color {
-        let style = &self.theme.button;
+        let style = self.theme.button.clone();
         match state {
             WidgetState::Normal => style.background,
             WidgetState::Hovered => style.background_hovered,
@@ -45,8 +45,8 @@ impl UIContext {
         enabled: bool,
     ) -> bool {
         let id = id.into();
-        let result = self.interaction.interact(id, bounds, enabled);
-        let style = &self.theme.button;
+        let result = self.interact(id, bounds, enabled);
+        let style = self.theme.button.clone();
         let background = self.widget_background_color(result.state);
         let text_color = if enabled {
             style.text_color
@@ -58,12 +58,11 @@ impl UIContext {
         let corner_radius = style.corner_radius;
 
         // Draw button background
-        self.draw_list.rect_rounded(bounds, background, corner_radius);
+        self.rect_rounded(bounds, background, corner_radius);
 
         // Draw border
         if border_width > 0.0 {
-            self.draw_list
-                .rect_border_rounded(bounds, border, border_width, corner_radius);
+            self.rect_border(bounds, border, border_width, corner_radius);
         }
 
         // Draw label centered in the button
@@ -76,25 +75,25 @@ impl UIContext {
 
     /// Create a panel (container background).
     pub fn panel(&mut self, bounds: Rect) {
-        let style = &self.theme.panel;
+        let style = self.theme.panel.clone();
         self.draw_list.panel(
-            bounds,
+            self.to_physical(bounds),
             style.background,
             style.border,
-            style.border_width,
-            style.corner_radius,
+            self.to_physical_length(style.border_width),
+            self.to_physical_length(style.corner_radius),
         );
     }
 
     /// Create a panel with custom styling.
     pub fn panel_styled(&mut self, bounds: Rect, background: Color, border: Color, border_width: f32) {
-        let style = &self.theme.panel;
+        let style = self.theme.panel.clone();
         self.draw_list.panel(
-            bounds,
+            self.to_physical(bounds),
             background,
             border,
-            border_width,
-            style.corner_radius,
+            self.to_physical_length(border_width),
+            self.to_physical_length(style.corner_radius),
         );
     }
 
@@ -120,7 +119,7 @@ impl UIContext {
         bounds: Rect,
     ) -> f32 {
         let id = id.into();
-        let style = &self.theme.slider;
+        let style = self.theme.slider.clone();
 
         // Normalize value to 0-1 range
         let normalized = ((value - min) / (max - min)).clamp(0.0, 1.0);
@@ -135,7 +134,7 @@ impl UIContext {
         let thumb_center = Vec2::new(thumb_x, thumb_y);
 
         // Check interaction with the entire slider area (not just thumb)
-        let result = self.interaction.interact(id, bounds, true);
+        let result = self.interact(id, bounds, true);
 
         let thumb_color = match result.state {
             WidgetState::Normal => style.thumb_color,
@@ -146,9 +145,9 @@ impl UIContext {
 
         // Draw slider
         self.draw_list.slider(crate::draw::SliderVisual {
-            track_bounds,
-            thumb_center,
-            thumb_radius: style.thumb_radius,
+            track_bounds: self.to_physical(track_bounds),
+            thumb_center: thumb_center * self.pixels_per_point,
+            thumb_radius: self.to_physical_length(style.thumb_radius),
             track_background: style.track_background,
             track_fill: style.track_fill,
             thumb_color,
@@ -157,7 +156,7 @@ impl UIContext {
 
         // Calculate new value if dragging
         if result.dragging {
-            let mouse_x = self.interaction.mouse_pos().x;
+            let mouse_x = self.mouse_pos().x;
             let new_normalized = ((mouse_x - bounds.x) / bounds.width).clamp(0.0, 1.0);
             min + new_normalized * (max - min)
         } else {
@@ -170,23 +169,20 @@ impl UIContext {
     /// Returns `true` if the checkbox was toggled this frame.
     pub fn checkbox(&mut self, id: impl Into<WidgetId>, checked: bool, bounds: Rect) -> bool {
         let id = id.into();
-        let result = self.interaction.interact(id, bounds, true);
-        let style = &self.theme.button;
+        let result = self.interact(id, bounds, true);
+        let style = self.theme.button.clone();
         let background = self.widget_background_color(result.state);
 
         // Draw checkbox background
-        self.draw_list
-            .rect_rounded(bounds, background, style.corner_radius);
+        self.rect_rounded(bounds, background, style.corner_radius);
 
         // Draw border
-        self.draw_list
-            .rect_border_rounded(bounds, style.border, style.border_width, style.corner_radius);
+        self.rect_border(bounds, style.border, style.border_width, style.corner_radius);
 
         // Draw check mark if checked
         if checked {
             let inner = bounds.shrink(bounds.width * 0.25);
-            self.draw_list
-                .rect_rounded(inner, style.text_color, style.corner_radius * 0.5);
+            self.rect_rounded(inner, style.text_color, style.corner_radius * 0.5);
         }
 
         result.clicked
@@ -199,19 +195,17 @@ impl UIContext {
 
     /// Create a progress bar with custom colors.
     pub fn progress_bar_styled(&mut self, value: f32, bounds: Rect, background: Color, fill: Color) {
-        let style = &self.theme.panel;
+        let style = self.theme.panel.clone();
         let normalized = value.clamp(0.0, 1.0);
 
         // Draw background
-        self.draw_list
-            .rect_rounded(bounds, background, style.corner_radius);
+        self.rect_rounded(bounds, background, style.corner_radius);
 
         // Draw fill
         if normalized > 0.0 {
             let fill_width = bounds.width * normalized;
             let fill_bounds = Rect::new(bounds.x, bounds.y, fill_width, bounds.height);
-            self.draw_list
-                .rect_rounded(fill_bounds, fill, style.corner_radius);
+            self.rect_rounded(fill_bounds, fill, style.corner_radius);
         }
     }
 }

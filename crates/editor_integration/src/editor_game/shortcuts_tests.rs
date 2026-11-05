@@ -113,6 +113,7 @@ fn test_escape_cancels_one_live_thing_per_press() {
         &mut game.editor.viewport,
         &game.editor.input_mapping,
         &input,
+        1.0,
     );
     assert!(game.editor.viewport_input.has_pending_marquee());
     game.cancel_cascade(&mut world);

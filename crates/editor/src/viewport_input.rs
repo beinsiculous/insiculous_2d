@@ -274,8 +274,9 @@ impl ViewportInputHandler {
         viewport: &mut SceneViewport,
         input_mapping: &EditorInputMapping,
         input_handler: &input::InputHandler,
+        scale: f32,
     ) -> ViewportInputResult {
-        let input_state = input_mapping.update_state(input_handler);
+        let input_state = input_mapping.update_state(input_handler, scale);
         let viewport_contains_mouse = viewport.contains_screen_point(input_state.mouse_position);
 
         self.handle_input(
@@ -335,19 +336,19 @@ mod tests {
         viewport.set_camera_zoom(2.0);
 
         press_button(&mut input, MouseButton::Middle, PANEL_CENTER);
-        let pressed = handler.handle_input_simple(&mut viewport, &mapping, &input);
+        let pressed = handler.handle_input_simple(&mut viewport, &mapping, &input, 1.0);
         assert!(pressed.consumed, "a pan claims the input");
         assert!(handler.is_panning());
         assert_eq!(viewport.camera_position(), Vec2::ZERO, "the press frame only anchors the drag");
 
         move_mouse(&mut input, PANEL_CENTER + Vec2::new(100.0, 40.0));
-        handler.handle_input_simple(&mut viewport, &mapping, &input);
+        handler.handle_input_simple(&mut viewport, &mapping, &input, 1.0);
         // Screen right/down at zoom 2 drags the world with the cursor, so the
         // camera moves left/up by half the pixels: (-dx/zoom, +dy/zoom).
         assert_eq!(viewport.camera_position(), Vec2::new(-50.0, 20.0));
 
         release_button(&mut input, MouseButton::Middle);
-        let released = handler.handle_input_simple(&mut viewport, &mapping, &input);
+        let released = handler.handle_input_simple(&mut viewport, &mapping, &input, 1.0);
         assert!(!handler.is_panning());
         assert!(!released.clicked, "a pan is never a pick");
         assert_eq!(viewport.camera_position(), Vec2::new(-50.0, 20.0), "release moves nothing");
@@ -360,7 +361,7 @@ mod tests {
         let (mut viewport, mapping, mut input, mut handler) = rig();
         input.mouse_mut().update_position(600.0, 200.0);
         input.mouse_mut().update_wheel_delta(0.25);
-        handler.handle_input_simple(&mut viewport, &mapping, &input);
+        handler.handle_input_simple(&mut viewport, &mapping, &input, 1.0);
         assert!(
             (viewport.target_camera_zoom() - 1.1f32.powf(0.25)).abs() < 1e-6,
             "a quarter line zooms by the quarter power of the factor"
@@ -373,7 +374,7 @@ mod tests {
         let (mut viewport, mapping, mut input, mut handler) = rig();
         input.mouse_mut().update_position(600.0, 200.0);
         input.mouse_mut().update_wheel_delta(40.0);
-        handler.handle_input_simple(&mut viewport, &mapping, &input);
+        handler.handle_input_simple(&mut viewport, &mapping, &input, 1.0);
         assert!((viewport.target_camera_zoom() - 1.1).abs() < 1e-6, "clamped to one notch");
     }
 
@@ -386,7 +387,7 @@ mod tests {
         input.mouse_mut().update_position(cursor.x, cursor.y);
 
         input.mouse_mut().update_wheel_delta(1.0);
-        let zoomed = handler.handle_input_simple(&mut viewport, &mapping, &input);
+        let zoomed = handler.handle_input_simple(&mut viewport, &mapping, &input, 1.0);
         assert!(zoomed.consumed, "a wheel notch claims the input");
         assert!((viewport.target_camera_zoom() - 1.1).abs() < 1e-6, "scroll up zooms in by zoom_factor");
         viewport.update(1.0 / 60.0);
@@ -397,14 +398,14 @@ mod tests {
 
         next_frame(&mut input);
         input.mouse_mut().update_wheel_delta(-1.0);
-        handler.handle_input_simple(&mut viewport, &mapping, &input);
+        handler.handle_input_simple(&mut viewport, &mapping, &input, 1.0);
         assert!((viewport.target_camera_zoom() - 1.0).abs() < 1e-6, "scroll down divides by the same factor");
 
         for (start, notch, clamped) in [(10.0, 1.0, 10.0), (0.1, -1.0, 0.1)] {
             viewport.set_camera_zoom(start);
             next_frame(&mut input);
             input.mouse_mut().update_wheel_delta(notch);
-            handler.handle_input_simple(&mut viewport, &mapping, &input);
+            handler.handle_input_simple(&mut viewport, &mapping, &input, 1.0);
             assert_eq!(viewport.target_camera_zoom(), clamped, "zoom clamps at the {clamped} end");
         }
 
@@ -412,7 +413,7 @@ mod tests {
         viewport.set_camera_zoom(1.0);
         next_frame(&mut input);
         input.mouse_mut().update_wheel_delta(1.0);
-        handler.handle_input_simple(&mut viewport, &mapping, &input);
+        handler.handle_input_simple(&mut viewport, &mapping, &input, 1.0);
         assert!((viewport.target_camera_zoom() - 1.0 / 1.1).abs() < 1e-6, "invert_zoom flips the direction");
     }
 

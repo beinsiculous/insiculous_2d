@@ -2,6 +2,8 @@
 //!
 //! The SceneViewport handles rendering game entities within the scene view panel,
 //! managing camera transforms, and converting between screen and world coordinates.
+//! Editor screen positions, bounds and zoom are in points. Only the GPU camera and its
+//! scissor convert to physical pixels; picking, pan, marquee and gizmos stay in points.
 
 use common::{Camera, Rect};
 use glam::Vec2;
@@ -244,22 +246,27 @@ impl SceneViewport {
         )
     }
 
-    /// Render camera that reproduces this viewport's world→screen mapping
-    /// when the GPU renders to a full-window surface of `window_size`.
-    ///
-    /// The GPU projection centers the world on the window; this viewport
-    /// centers it on the scene panel. Offsetting the camera position by the
-    /// panel-center-to-window-center delta (Y flipped for the Y-up world,
-    /// zoom-scaled) makes both transforms produce identical screen
-    /// coordinates, so sprites land exactly where the editor overlay
-    /// (gizmo, picking, grid) expects them.
-    pub fn to_window_render_camera(&self, window_size: Vec2) -> Camera {
-        let viewport_center = self.viewport_center();
+    /// The physical scene scissor: near edges floored, far edges ceiled, so every
+    /// fractional pixel of the panel is covered. The render camera uses this same rect so
+    /// fractional scales cannot disagree at the edges.
+    pub fn physical_viewport_bounds(&self, scale: f32) -> Rect {
+        let bounds = self.viewport_bounds;
+        let (left, top) = ((bounds.x * scale).floor(), (bounds.y * scale).floor());
+        let (right, bottom) = ((bounds.right() * scale).ceil(), (bounds.bottom() * scale).ceil());
+        Rect::new(left, top, right - left, bottom - top)
+    }
+
+    /// Render camera for a physical full-window surface, aligned to the snapped scene
+    /// scissor. Overlay coordinates multiplied by scale agree within the pixel snap.
+    pub fn to_window_render_camera(&self, window_physical: Vec2, scale: f32) -> Camera {
+        let viewport_physical = self.physical_viewport_bounds(scale);
+        let center_physical = viewport_physical.center();
+        let zoom_physical = self.camera_zoom * scale;
         let offset = Vec2::new(
-            (window_size.x * 0.5 - viewport_center.x) / self.camera_zoom,
-            (viewport_center.y - window_size.y * 0.5) / self.camera_zoom,
+            (window_physical.x * 0.5 - center_physical.x) / zoom_physical,
+            (center_physical.y - window_physical.y * 0.5) / zoom_physical,
         );
-        Camera::new(self.camera_position + offset, window_size).with_zoom(self.camera_zoom)
+        Camera::new(self.camera_position + offset, window_physical).with_zoom(zoom_physical)
     }
 
     /// Focus the camera on multiple positions (center of bounding box).

@@ -3,6 +3,28 @@
 You are working in the editor crate. UI panels, tools, inspector, hierarchy — the editor's data and widgets.
 This crate has NO dependency on engine_core. It depends on: ecs, ui, input, renderer, physics, common, and music_midi without its `synth` feature (the Conductor panel edits and saves songs, never renders them — `cargo test -p editor` alone is what proves that build).
 
+## UI scale
+
+`EditorPreferences.ui_scale` is `UiScale::FollowDisplay` (JSON `"follow"`, also the default
+when absent) or `Percent(u16)` (JSON number). `resolve_ui_scale` is the single finite
+0.5–4.0 pixels-per-point resolver, with zero and non-finite values falling back to 1.0.
+View → UI Scale offers Follow the display with its live percentage and 100–200 % in 25 %
+steps; Ctrl+= / Ctrl+- step and Ctrl+0 returns to Follow. All layout tokens, icon weights,
+fonts and overflow clamps are points. The physical minimum remains 1024×720, so at 200 %
+a 1024 px window is 512 pt and the dock deliberately goes narrow.
+
+The three physical seams are `EditorInputMapping::update_state(input, scale)` (pointer
+position and motion to points, not wheel notches), `SceneViewport::to_window_render_camera`
+(window in physical pixels plus scale), and `physical_viewport_bounds` (near edges floored,
+far edges ceiled, shared by the GPU camera and scissor). The editor camera, picking, pan,
+marquee and gizmos stay in points. `ViewportInputHandler::handle_input_simple` forwards
+the resolved scale to the input boundary.
+
+`menu/dropdown.rs` lays child dropdowns to the right, else left, else clamped over their
+parent. The topmost region owns pointer input when they overlap. `menu/keyboard.rs`
+walks the open path with Up/Down, Right/Enter and Left; Escape closes the whole path.
+The host routes every key to the open menu before panel or game shortcuts.
+
 ## Architecture
 ```
 EditorContext (selection, tool state, play state, camera, theme, status_bar, fonts, inspector_scroll)
@@ -81,6 +103,10 @@ EditorContext (selection, tool state, play state, camera, theme, status_bar, fon
 ## Pitfalls and their guard tests
 | Pitfall | Guard Test |
 |---|---|
+| Scale preferences must round-trip and old files must follow the display; invalid values must never divide layout by zero | `src/editor_preferences.rs scale_preferences_round_trip_and_old_files_follow_the_display` `src/editor_preferences.rs malformed_scale_values_cannot_zero_or_poison_layout_and_steps_use_the_live_scale` |
+| Pointer motion scales to points, but a wheel notch must move the same number of points at every scale | `src/editor_input_tests.rs physical_pointer_position_and_motion_become_points_but_wheel_stays_notches` `src/scroll.rs a_wheel_notch_scrolls_the_same_points_at_every_scale` |
+| A clamped child menu must own rows it covers and keep its action reachable by pointer and keys; a child opened by a press frame would take that press on its first row, so a press opens it on release, and Enter with no row highlighted fires nothing | `src/menu/nested_tests.rs narrow_submenus_stay_in_the_window_and_the_child_blocks_covered_parent_rows` `src/menu/nested_tests.rs arrows_walk_children_left_returns_and_escape_closes_every_level` `src/menu/nested_tests.rs a_move_and_press_in_one_frame_on_a_narrow_submenu_opens_it_on_release_and_selects_nothing` `src/menu/nested_tests.rs enter_with_nothing_highlighted_fires_nothing` |
+| UI Scale must check the preference while showing the live display percentage | `src/menu/nested_tests.rs scale_menu_checks_the_preference_and_names_the_live_display` |
 | Continuous edits on different entities must never merge even when sharing a field hint | `src/commands/tests.rs test_edits_on_different_entities_never_merge_even_with_the_same_field_hint` |
 | Continuous edits merge by field hint until `break_merge()` seals the gesture into distinct history entries | `src/commands/dirty_tests.rs test_break_merge_seals_the_gesture_so_two_scrubs_are_two_entries` |
 | Adjacent surfaces in the editor theme ladder must maintain WCAG contrast (≥1.35:1 adjacent / ≥3:1 border) | `src/theme/tests.rs test_adjacent_surfaces_are_distinguishable` |

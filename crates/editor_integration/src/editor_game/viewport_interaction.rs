@@ -59,6 +59,7 @@ impl<G: Game> EditorGame<G> {
             &mut self.editor.viewport,
             &self.editor.input_mapping,
             input,
+            ui.pixels_per_point(),
         );
         if input_result.consumed {
             self.break_camera_follow();
@@ -175,6 +176,7 @@ impl<G: Game> EditorGame<G> {
             &mut self.editor.viewport,
             &self.editor.input_mapping,
             input,
+            ui.pixels_per_point(),
         );
         // A manual pan/zoom while Paused breaks the camera follow, exactly
         // like one while Playing — otherwise Resume snaps the view back to

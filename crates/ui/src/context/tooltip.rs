@@ -39,6 +39,7 @@ struct Candidate {
     /// judged against, since the overlay it lives in must not blind it.
     layer: Option<UiLayer>,
     text: String,
+    pixels_per_point: f32,
 }
 
 /// The tooltip a frame may raise.
@@ -54,6 +55,7 @@ pub(crate) struct TooltipState {
     anchor_layer: Option<UiLayer>,
     /// The sentence the anchor's owner named.
     text: String,
+    pixels_per_point: f32,
     /// Seconds the pointer has rested on the anchor without moving.
     hovered_for: f32,
     /// Pointer position at the previous frame's end — a moving pointer
@@ -73,6 +75,7 @@ pub(crate) struct TooltipState {
 impl TooltipState {
     /// Take up a new anchor, restarting the delay at zero.
     fn take_up(&mut self, candidate: Candidate, pointer: Vec2) {
+        self.pixels_per_point = candidate.pixels_per_point;
         self.anchor = Some(candidate.anchor);
         self.anchor_layer = candidate.layer;
         self.text = candidate.text;
@@ -120,6 +123,7 @@ impl UIContext {
     /// and ends inside one frame included — and stays down for as long as
     /// the button is held: a gesture is not a rest.
     pub fn tooltip(&mut self, anchor: Rect, text: &str) {
+        let anchor = self.to_physical(anchor);
         let pointer = self.interaction.mouse_pos();
         // An anchor the pointer is not on says nothing about the tooltip:
         // every other widget on screen calls this too, and the ones under
@@ -137,6 +141,7 @@ impl UIContext {
             anchor,
             layer: self.interaction.overlay_scope(),
             text: text.to_owned(),
+            pixels_per_point: self.pixels_per_point,
         });
     }
 
@@ -168,7 +173,7 @@ impl UIContext {
             None => state.drop_all(),
             Some(candidate) => {
                 match state.anchor {
-                    Some(current) if current == candidate.anchor => {
+                    Some(current) if current == candidate.anchor && state.pixels_per_point == candidate.pixels_per_point => {
                         // A pointer still travelling is not resting; once
                         // the panel is up it stays, which is what makes it
                         // readable.
@@ -188,7 +193,10 @@ impl UIContext {
             }
         }
         if self.tooltip_state.due().is_some() {
-            self.draw_tooltip(pointer);
+            let previous_scale = self.pixels_per_point;
+            self.set_pixels_per_point(self.tooltip_state.pixels_per_point);
+            self.draw_tooltip(self.to_points(pointer));
+            self.set_pixels_per_point(previous_scale);
         }
     }
 
@@ -201,7 +209,7 @@ impl UIContext {
         let text_size =
             self.measure_text_with_font(&text, tooltip.font_size, self.font_manager.default_font());
         let size = text_size + Vec2::splat(TEXT_PADDING * 2.0);
-        let window = self.window_size;
+        let window = self.window_size();
         // Clamp rather than flip: a panel that fits stays whole, and one
         // wider than the window pins to the left edge instead of hanging
         // off the right.
@@ -213,9 +221,8 @@ impl UIContext {
         );
 
         self.draw_list.push_layer(UiLayer::Tooltip);
-        self.draw_list.rect_rounded(bounds, tooltip.background, CORNER_RADIUS);
-        self.draw_list
-            .rect_border_rounded(bounds, tooltip.border, 1.0, CORNER_RADIUS);
+        self.rect_rounded(bounds, tooltip.background, CORNER_RADIUS);
+        self.rect_border(bounds, tooltip.border, 1.0, CORNER_RADIUS);
         self.label_in_bounds_styled(
             &text,
             bounds,

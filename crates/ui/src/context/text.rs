@@ -30,8 +30,8 @@ impl UIContext {
         /// Ascent as a fraction of font size when metrics are unavailable.
         const ASCENT_FACTOR: f32 = 0.8;
         let ascent = font_handle
-            .and_then(|fh| self.font_manager.metrics(fh, font_size))
-            .map(|m| m.ascent)
+            .and_then(|fh| self.font_manager.metrics(fh, self.to_physical_length(font_size)))
+            .map(|metrics| metrics.ascent / self.pixels_per_point)
             .unwrap_or(font_size * ASCENT_FACTOR);
         text_top + ascent
     }
@@ -96,17 +96,19 @@ impl UIContext {
         color: Color,
         font_size: f32,
     ) {
+        let position_physical = position * self.pixels_per_point;
+        let font_size_physical = self.to_physical_length(font_size);
         if let Some(font) = font {
-            match self.font_manager.layout_text(font, text, font_size) {
+            match self.font_manager.layout_text(font, text, font_size_physical) {
                 Ok(layout) => {
-                    let text_data = Self::layout_to_draw_data(&layout, text, position, color, font_size, font);
+                    let text_data = Self::layout_to_draw_data(&layout, text, position_physical, color, font_size_physical, font);
                     self.draw_list.text(text_data);
                     return;
                 }
                 Err(e) => log::warn!("Font layout failed: {}", e),
             }
         }
-        self.draw_list.text_placeholder(text, position, color, font_size);
+        self.draw_list.text_placeholder(text, position_physical, color, font_size_physical);
     }
 
     /// Draw text at a baseline position using the default font (or a
@@ -250,7 +252,10 @@ impl UIContext {
     /// resolves) falls back to the character-count estimate the placeholder
     /// draw path uses, so measurement and drawing stay in step.
     pub fn measure_text_with_font(&self, text: &str, font_size: f32, font: Option<FontHandle>) -> Vec2 {
-        font.and_then(|fh| self.font_manager.measure_text(fh, text, font_size).ok())
-            .unwrap_or_else(|| Self::estimate_text_size(text, font_size))
+        let font_size_physical = self.to_physical_length(font_size);
+        let size_physical = font
+            .and_then(|handle| self.font_manager.measure_text(handle, text, font_size_physical).ok())
+            .unwrap_or_else(|| Self::estimate_text_size(text, font_size_physical));
+        self.to_points(size_physical.ceil())
     }
 }

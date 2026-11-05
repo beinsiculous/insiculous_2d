@@ -12,8 +12,8 @@ use ui::{Color, Rect, UIContext, WidgetState};
 use crate::icons::{draw_icon, Icon};
 use crate::theme::EditorTheme;
 
-/// Side of every button on the toolbar strip: square, room for a 16 px
-/// icon and its margin, and over the 24 px target WCAG 2.5.8 asks for.
+/// Side of every button on the toolbar strip: square, room for a 16 pt
+/// icon and its margin, and over the 24 pt target WCAG 2.5.8 asks for.
 pub const TOOL_BUTTON_SIZE: f32 = 28.0;
 
 /// Space between two neighbouring buttons of a segment; the segment's
@@ -23,7 +23,7 @@ pub const SEGMENT_DIVIDER_GAP: f32 = 4.0;
 /// Side of the box a strip icon is drawn in, centred in its button.
 pub const ICON_BOX_SIZE: f32 = 20.0;
 
-/// Width of a strip icon's strokes, in pixels.
+/// Width of a strip icon's strokes, in points.
 pub const ICON_STROKE_WEIGHT: f32 = 1.5;
 
 /// Corner radius of a segment's background.

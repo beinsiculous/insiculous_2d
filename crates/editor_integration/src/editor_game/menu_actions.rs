@@ -41,14 +41,18 @@ impl<G: Game> EditorGame<G> {
     /// action through the one dispatcher; while Playing only the actions
     /// that allow it run, the rest are dropped silently.
     pub(super) fn handle_menu_bar(&mut self, ctx: &mut GameContext, window_size: Vec2) {
+        self.editor.menu_bar.sync_ui_scale(self.ui_scale, ctx.display_scale);
         self.sync_view_menu_checks();
         self.sync_open_project_item();
         let Some(label) = self.editor.menu_bar.render(ctx.ui, window_size.x, &self.editor.theme) else {
             return;
         };
-        log::info!("Menu action: {}", label);
+        self.dispatch_menu_label(&label, ctx);
+    }
 
-        match editor::action_for_menu_label(&label) {
+    pub(super) fn dispatch_menu_label(&mut self, label: &str, ctx: &mut GameContext) {
+        log::info!("Menu action: {}", label);
+        match editor::action_for_menu_label(label) {
             Some(action) if !self.editor.is_playing() || action.allowed_while_playing() => {
                 self.dispatch_editor_action(action, false, ctx);
             }

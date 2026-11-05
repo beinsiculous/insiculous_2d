@@ -1,4 +1,24 @@
 use super::*;
+
+#[test]
+fn physical_pointer_position_and_motion_become_points_but_wheel_stays_notches() {
+    let mut input = InputHandler::new();
+    input.mouse_mut().update_position(150.0, 225.0);
+    input.update();
+    input.mouse_mut().update_position(300.0, 300.0);
+    input.mouse_mut().handle_button_press(MouseButton::Left);
+    input.mouse_mut().update_wheel_delta(1.0);
+    let mapping = EditorInputMapping::new();
+    let state = mapping.update_state(&input, 1.5);
+    assert_eq!(state.mouse_position, glam::Vec2::splat(200.0));
+    assert_eq!(state.mouse_delta, glam::Vec2::new(100.0, 50.0));
+    assert!(state.primary_button.just_pressed);
+    assert_eq!(state.scroll_delta, 1.0);
+    for (key, action) in [(KeyCode::Equal, EditorAction::UiScaleUp),
+        (KeyCode::Minus, EditorAction::UiScaleDown), (KeyCode::Digit0, EditorAction::UiScaleReset)] {
+        assert_eq!(mapping.resolve(key, true, false), Some(action));
+    }
+}
 use EditorAction as A;
 
 /// The whole default shortcut table, event path: every chord an editor
