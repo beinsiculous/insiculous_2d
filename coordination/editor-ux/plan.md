@@ -1073,6 +1073,76 @@ shapes: § A. Gates: the standard set; `check_games.sh` (the editor crate). Revi
 with the stills § A names. Leaves out: § A's list. Executor's first step: report the measured
 `TOOLBAR_STRIP_MIN_WIDTH` before and after, and the dock's narrow threshold with it.
 
+**Re-verified 2026-11-05 against 564de49 (External Tools done; the tree is clean on `jesse`).**
+Every file § What the tree holds names for the strip is where it said, at the sizes it said
+(`toolbar_strip.rs` 449, `toolbar.rs` 376, `play_controls.rs` 301, `view_toggles.rs` 303,
+`overflow_menu.rs` 331, `theme/mod.rs` 445, `theme/tests.rs` 199); `icons.rs` does not exist;
+`Rect::expand`/`shrink` exist (`common/src/rect.rs:132,143`); the eleven theme tokens the strip
+and this batch read are all declared (`toolbar_active` :82, `menu_open_highlight` :86,
+`shortcut_hint` :90, `play_button_bg` :118, `stop_button_bg` :120, `separator` :124, `surface_1`
+:19, `accent_blue` :36, `accent_cyan` :38, `border_subtle` :42, `text_primary` :46). What moved
+or was misread, and binds the executor:
+
+- **The ui draws strokes with `line`, `circle` and `rect_border` only** (`ui/src/context/mod.rs:
+  349-377`): `circle` is a *filled* disc and there is no arc command. So § A's `Stroke` is
+  `Line(a, b) | Disc(c, r) | Ring(c, r)` — a ring is `rect_border` on the circle's bounding
+  square with `corner_radius = r` (the stroke width is `weight`); an arc (Rotate's open ring,
+  Resume's curve) is a polyline of `line` segments, eight to a quarter turn, and `icon_strokes`
+  returns the segments so the inside-the-box test still covers it. No new draw command in the
+  ui crate: the chevrons (`dock/render.rs:57-72`) and the overflow dots (`toolbar.rs:249-254`)
+  already live on these three.
+- **The tool button width is a fixed 64.0** at `Toolbar::new` (`toolbar.rs:101`), with
+  `button_height` 30.0 and `spacing` 6.0; the doc comment at :78-80 claims it is sized for the
+  longest tool name — it is not, and nothing measures text. § A's "sized for the longest tool
+  name at the body size (:79-83)" is corrected to this; the batch replaces all three with
+  `TOOL_BUTTON_SIZE` and the segment's divider gap, and the comment goes with them.
+- **The strip's tests start at `toolbar_strip.rs:208`**, not :224; the seven test names are
+  `test_split_tiles_the_content_area_into_a_strip_and_the_viewport`,
+  `test_split_never_yields_a_negative_viewport`,
+  `test_every_tool_shows_and_the_play_controls_hold_the_centre_when_there_is_room`,
+  `test_the_groups_never_overlap_or_clip_at_the_narrow_width_or_a_comfortable_one`,
+  `test_view_group_shows_whole_at_minimum_and_sheds_one_pixel_under`,
+  `test_below_the_minimum_width_the_play_controls_take_the_right_edge_and_tools_shed`,
+  `test_a_modal_scrim_keeps_the_strips_play_controls_inert`. The four § A calls "the layout
+  tests" are the third through sixth. `play_controls.rs`'s pin is
+  `test_the_widest_state_is_the_constant_the_strip_budgets_for` (:224, `WIDEST_CONTENT_WIDTH`
+  176.0 at :69); `view_toggles.rs`'s is `test_a_toggles_hint_advertises_the_key_that_flips_it`
+  (:276); `overflow_menu.rs`'s three tests build their strip from `TOOLBAR_STRIP_MIN_WIDTH - 1.0`
+  (:236, :283) and keep passing against the new constant. `dock/mod.rs:16`'s
+  `MIN_CENTER_WIDTH = TOOLBAR_STRIP_MIN_WIDTH` is the narrow threshold the first step reports.
+- **Tooltips exist on every strip button already** — `toolbar.rs:232` (`tool.hint()`),
+  `play_controls.rs:156-200` (the transport's, each ending in its chord), `view_toggles.rs:230,254`
+  (`toggle.hint()`, Reset Layout's sentence). The batch *rewrites* them to the one shape
+  "Name (Shortcut) — hint", not adds them; `ViewToggle::shortcut` returns `Option` (:65), so a
+  toggle without a key has no parenthesis. `test_tool_shortcut_hints_match_the_editor_bindings`
+  (`toolbar.rs:286`) reads the shortcut from the caption today; after the batch it reads the
+  tooltip text, and `view_toggles.rs:276`'s test does the same.
+- **The overflow menu's rows** are `OverflowRowItem { label, hint, checked, kind }`
+  (`overflow_menu.rs:45-50`) drawn with `ui.button(id, item.label, row)` (:154-155); the icon
+  goes at the row's left and the label shifts right by `TOOL_BUTTON_SIZE` — the menu's width
+  constant (:12) grows by the same.
+- **Two guides name the numbers that change**: `crates/editor/CLAUDE.md:37` says
+  `VIEW_GROUP_WIDTH` is 140 px and `TOOLBAR_STRIP_MIN_WIDTH` 391 px — both are re-pinned to the
+  new values in the same batch; `crates/editor_integration/CLAUDE.md:61` describes the strip's
+  draw order and stays true, read and left alone unless the batch moves the order.
+- **The stills.** No headless draw-list dump of the strip exists in the tree (Playground UX's
+  stills were real screenshots; `test_support::frame` drives the input handler only, and
+  `GameHarness::ui_commands` is the engine's draw list, not a renderer). The stills are real
+  screenshots of `cargo run --example editor_demo --features editor` (1280×720, `editor_demo.rs:
+  30`): the strip in each of the three play states at that width, and one at a window narrowed
+  under `TOOLBAR_STRIP_MIN_WIDTH` with the overflow menu open — four PNGs under
+  `review/editor-ux/batch1-strip-{editing,playing,paused,overflow}.png`, copied to
+  `coordination/editor-ux/screenshots/batch-1/` and staged. The 1200 px draw-list stills § A
+  names are replaced by these; the `icon_strokes` unit test is the headless half.
+- **`editor_prefs.json` is tracked** and an editor run rewrites it; the executor restores it
+  after the stills and never stages it.
+- **The comment-tag grep's two standing hits** are string literals the batch does not touch:
+  `engine_core/src/scene_serializer/dynamic_and_scripts_tests.rs:74` and
+  `editor/src/command_api/specs.rs:99`.
+- **The code review is round 5** of `review/editor-ux/` (plan rounds 1–4 are spent); reviewers
+  kimi and codex with the four stills, the planner's own review beside them. **The executor is
+  Claude Opus 5.5 in Jesse's other window**, as for every External Tools batch.
+
 **Batch 2 — UI scale (§ B), closes #179. Issue #241.** Files: `crates/ui/src/context/mod.rs` (+ the
 `to_physical`/`to_points` seam; split `context/scale.rs` if `mod.rs` nears the ceiling),
 `context/text.rs`, `context/widgets.rs`, `interaction/` (the tooltip's recorded scale),
