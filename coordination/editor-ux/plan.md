@@ -1385,6 +1385,62 @@ engine_core); `check_games.sh`. Reviewers: kimi, gemini (the vfs seam, native an
 (three stills). Leaves out: rename and delete (4b); § D's list; the convention doc and the trees
 (batch 6).
 
+**Re-verified 2026-11-05 against 32682df (batch 3 landed; the tree is clean on `jesse`).**
+Every file, line and count above and in § D checked; what the executor builds on:
+
+- **Roster (the ground rule's correction):** reviewers kimi and deepseek (deepseek takes gemini's
+  angle, the vfs seam native and web), the planner is the UI eye over the stills; codex is the
+  executor and never reviews. Where § D's *Tests* says "stills for codex", read the planner.
+  The code review is round 11.
+- **Lines that hold exactly:** `vfs/mod.rs` 424 (`list_entries`, `create_dir_all`, `exists`,
+  `write_new` are all new → `vfs/entries.rs`; `set_write_observer` :29; the memory store's
+  `remove_prefix` slash :396); `asset_browser.rs` 433, `kind_for_path` :176 with the `.ron` arm
+  :183; `panel_renderer/asset_browser.rs` 583 (the split into `header.rs` and `mutate.rs` comes
+  first, behaviour unchanged, `cargo test -p editor_integration` green between); `archive.rs:255`;
+  `song/io/samples.rs:55`; `file_type.rs:173`; `EDITOR_COMMAND_API.md:193`;
+  `playground-scripts-panel.ts:20,36`; `sheet_file.rs:188` (273 lines; `write_sheet_file` is new).
+  `persist/queue.rs`'s `on_vfs_remove` is at :83 now (4b's item).
+- **Stale:** `external-tools/plan.md:1626` — External Tools landed 2026-11-03 (its plan is archived
+  under `review/_archive/external-tools/`) and shipped no File ▸ New Song and no
+  `EditorAction::NewSong` (the composer pivot, #217 re-scoped); nothing changes for 4a: `song init`
+  (`song/io/init.rs`) stays the sidecar's one creation, and *New Song sidecar* calls it.
+- **Batch 3 moved these:** `ContextMenuAction` is `Open | Dock(DockAction)` (`context_menu.rs:30`,
+  264 lines) — `Asset(AssetAction)` joins it; the one dispatch is `run_context_menu_action` in
+  `editor_game/menu_actions.rs:14` (220 lines), not `asset_browser_keys.rs:114` — the Asset arm
+  goes beside Dock. The Assets panel is a tab of the bottom group: its content is `Rect::default()`
+  while another tab is active, `panel_press` already refuses an inactive tab, and the browser's
+  keyboard is released by `release_inactive_panel_focus` — the prompt dialog needs nothing from the
+  dock but `dialog_up()`: `game_impl.rs:101-105` closes the menu bar, the toolbar overflow and the
+  tab overflow while a dialog is up, so `dialog_up` must count the prompt (the confirm dialog's
+  model). The drag's spring-loaded tabs (`tab_rested_on`) are a dock rule; a folder tile is not a
+  drop target in 4a.
+- **Named today, by name:** `AssetBrowserState.selected: Option<usize>` (`asset_browser.rs:59-85`,
+  an index into `entries`) → `TileId` as § D says; `scan_assets(base, daw) -> Vec<AssetEntry>`
+  :195 → `AssetScan`; `confirm_dialog.rs` (297) and `text_field.rs` (87) are the model and the
+  field for `prompt_dialog.rs`; `icons.rs` (292) holds the strip's glyphs only — `Folder`, `Up`,
+  `New` join `Icon`; "through the serializer" is `scene_serializer::serialize_to_ron(&SceneData)`
+  (:78); the sheet sidecar's default cell is the image's size as the host already reads it for
+  the thumbnail (`panel_renderer/asset_browser.rs:265`, `assets.get_texture(..).width/height`),
+  so *New Sheet sidecar* is enabled once the selected PNG's thumbnail has loaded and says
+  "loading…" before; `write_new`'s web half is the memory store's compare-and-swap
+  (`playground/src/store/memory.rs:51-81`, `base_revision`), as § D says.
+- **The site half, corrected:** the bridge's response channel is one JSON line per dispatched
+  line and the embed shifts a sink per line (`playground-embed.ts:163-168`), so an unsolicited
+  `files-changed` line there would misattribute the next answer. The notice gets its own drain:
+  `playground_poll_file_changes() -> string[]` in `playground/src/bridge.rs` (relative paths the
+  editor wrote or created since the last poll, fed by the write observer persistence already
+  registers), polled by the embed beside `pollResponses` and handed to a hook the scripts panel
+  registers, which re-lists through `playground_list_files` (its `enable()` list, :122-129,
+  becomes a `refreshList` it calls then and on the hook). Site branch `jesse`, clean; the site's
+  gate is `npm run verify`; its diff is reviewed under `../insiculous_web/review/editor-ux/`
+  (the planner creates it).
+- **Sizes near the ceiling:** `panel_renderer/asset_browser.rs` 583 and `asset_browser.rs` 433
+  (both split, above); `vfs/mod.rs` 424 (`entries.rs`); `editor_preferences.rs` 401 —
+  `current_folder` is one `#[serde(default)]` field there. `check_wasm.sh` applies (common,
+  engine_core); `check_project_layout.sh` does not exist yet (batch 6), so it is no gate here.
+- **Stills:** `batch4a-assets-{root,sprites,new-menu}.png` at 1280×800 — the root with its folder
+  tiles and breadcrumb, inside `sprites/` with a badged tile, the New ▾ menu open.
+
 **Batch 4b — the asset browser: rename and delete (§ D, *Rename and delete*). Gated on 4a; Jesse
 kept it 2026-11-03. Issue #244.** Files: `vfs/entries.rs` (`remove_file`, `remove_dir_all`, `rename` — the two
 native algorithms — the web ordering, the failure-injection hook on the memory store),
