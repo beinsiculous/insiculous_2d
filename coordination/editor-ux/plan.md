@@ -1183,6 +1183,55 @@ stills and the 390 px playground). Leaves out: § B's list. Standing rule from P
 batch 10b that binds here: a gesture that reads raw mouse state must run the blocking test on its
 arming press — at scale, in the same units.
 
+**Re-verified 2026-11-05 against 4d3c0b9 (batch 1 landed; the tree is clean on `jesse`).**
+§ B's seams are where it says: `ui/src/context/mod.rs:148 begin_frame_dt`, `:183 window_size`,
+`:188 mouse_pos`, `:231 scroll_delta`; `context/text.rs:240-252` the three `measure_text*`;
+`font/layout.rs:71` hands `font_size` to `glyph_cache.rs:81 get_or_rasterize`;
+`interaction/mod.rs:141 blocking_regions`, `:370 push_blocking_rect`; `engine_core/src/game.rs:
+274-287 build_context!`, `:416 window_size`, `:484 update_ui_begin`, `:532` the `post_update` call
+(`game/frame_tail.rs:31`, `:119 draw_scene_ui`), `contexts.rs:217 clip_engine_ui`;
+`window_manager.rs:232 scale_factor`; `renderer/src/window.rs:136-143 shown_size` reading
+`device_pixel_ratio`; `editor/src/editor_input.rs:459-472 update_state` with the one raw
+`mouse_position()` at :460; `viewport/mod.rs:256 to_window_render_camera`, `:200 screen_to_world`,
+`:216 world_to_screen`, `:113 camera_zoom`; `game_impl.rs:138-147` the camera and the scissor;
+`editor_game/mod.rs:342-346` the font swap the scale bracket joins; `menu/mod.rs:524-527` the
+dead submenu button; `confirm_dialog.rs:153 panel_rect`; `constants.rs:20 MIN_EDITOR_WINDOW_WIDTH`.
+None of `pixels_per_point`, `display_scale`, `points_window_size`, `resolve_ui_scale`, `UiScale`
+exists yet. #179 is open. What moved or was misread, and binds the executor:
+
+- **Paths.** The scale-factor event is handled in `engine_core/src/game/app_handler.rs:337`
+  (under `game/`); the tooltip lives in `ui/src/context/tooltip.rs` (`:122 tooltip`, `:152
+  end_frame_tooltip`), not under `interaction/` — the recorded scale goes there; `WHEEL_STEP` is
+  the editor's (`editor/src/scroll.rs:32,54`), not the ui's: the ui's `scroll_delta` stays in
+  notches and the editor multiplies, so neither file converts it; `ui_theme()` is at
+  `theme/mod.rs:351`.
+- **The chrome consumers of `ctx.window_size`**, counted: `editor_game/mod.rs:399
+  update_layout` (the dock), `:437 → console.rs:47 draw_status_bar`, `menu_actions.rs:46` (the
+  menu bar's width), `scene_confirm.rs:158`, `stop_confirm.rs:68`; the add-component popup
+  reads `ui.window_size()` (`add_component_popup.rs:130`) and follows the ui's conversion for
+  free. Six sites take `points_window_size()`; `game_impl.rs:138,143` keep the physical size.
+- **`engine_core/src/game.rs` is 568 lines — at the ceiling.** `display_scale` on the context and
+  the `ui_scale_for_engine_tail` request add to `build_context!` and `GameContext`
+  (`contexts.rs`, 287), not to `game.rs`'s body; if a line must go into `game.rs`, split a
+  module out first as its own step and say so. `editor_game/mod.rs` is 561 and `menu/mod.rs`
+  537 — the splits the section already orders (`editor_game/` first, `menu/dropdown.rs`) stand;
+  `interaction/mod.rs` is 517 and gains the point conversion of `is_blocked_at` — watch it.
+- **Batch 1's constants are points.** `TOOL_BUTTON_SIZE`, `SEGMENT_DIVIDER_GAP`, `ICON_BOX_SIZE`,
+  `ICON_STROKE_WEIGHT` (`toolbar.rs`), `GROUP_GAP`, `TOOLBAR_STRIP_MIN_WIDTH` (`toolbar_strip.rs`),
+  `OVERFLOW_MENU_WIDTH` and `overflow_menu_bounds`'s window clamp (`overflow_menu.rs`) ride the
+  scale like `layout.rs`'s; `draw_icon`'s `weight` is a scalar length (`to_physical_length`), and
+  `icons.rs`'s inside-the-box test holds in points. The dock's narrow threshold is
+  `MIN_CENTER_WIDTH` in points against a points window, so at 200 % a 1024 px window is 512 pt
+  and goes narrow — § B's *Minimums* says that is designed.
+- **The stills, under the new roster** (the executor is Astra; kimi and the planner are the UI
+  eye): three real screenshots — the editor_demo at 100 % and at 150 % at 1280×720
+  (`editor_demo.rs:30`), and the playground at 390 px via `scripts/build_wasm.sh … --serve` and
+  Chromium — saved as `review/editor-ux/batch2-scale-{100,150,playground-390}.png`, copied to
+  `coordination/editor-ux/screenshots/batch-2/` and staged, each described in one line in the
+  report beside its path. `editor_prefs.json` is restored after every editor run.
+- **The code review is round 7**; reviewers kimi and gemini (the ui boundary is the seam), the
+  planner's own review beside them; codex does not review its own vendor's batch.
+
 **Batch 3 — the dock: tab groups, the Window menu, the keyboard route, the vertical budget
 (§ C). After External Tools batch 7 (ruling (e)). Issue #242.** Files:
 `crates/editor/src/dock/{mod,groups,layout,render,focus,tests}.rs` (the split first),
