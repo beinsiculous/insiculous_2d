@@ -583,6 +583,16 @@ variant, `enum DockAction { MoveTo(PanelId, DockPosition), GroupWith(PanelId, Pa
 Hide(PanelId) }`, dispatched by `menu_actions.rs`. View keeps its five panel items as toggles
 (they call `show_panel` / hide) — the two menus agree because both read the dock.
 
+**Corrected after batch 3 (2026-11-05):** each panel row's last item is `Show` for a hidden panel
+and `Hide` for a visible one — `DockAction::Show(PanelId)` joins the enum — and opening a row's
+submenu changes nothing; the diagram above had no way to show a hidden panel, and the executor
+filled the gap by revealing the panel whenever its submenu opened, which round 9 removed (browsing
+to Reset Layout rearranged the dock). A tab click, an overflow row and a move reveal through
+`DockArea::reveal`: activation within a group already showing content, `show_panel` otherwise,
+so a visit to the narrow overlay never writes the saved collapse flag. A dragged payload's target
+comes forward after it rests on the tab for `DRAG_DWELL_FRAMES` (host rule in `frame.rs`), and
+`MIN_CENTER_HEIGHT` is the scene's header, its toolbar and 120 pt of viewport.
+
 **The keyboard route** (codex F12 — a menu that only a pointer reaches is no alternative to a
 drag). `F6` cycles the ui's focus across the group tab strips (the focus ring the Playground UX
 batch 12 gave the editor); with a strip focused, `Left`/`Right` move among its visible tabs,
@@ -1337,6 +1347,27 @@ What moved or was misread since § C was written, and binds the executor:
   report. `editor_prefs.json` is restored after every run.
 - **The code review is round 9**; reviewers kimi and deepseek, the planner's own review and the
   UI eye beside them; codex does not review its own vendor's batch.
+
+**Done 2026-11-05: 32682df** (executor Astra/codex, `report-3.md` COMPLETE, 50 files; code round 9 —
+kimi 5 (6 m 28 s), deepseek 7 (16 m 30 s, the arm's first run), the planner 6 with the UI eye over
+the three stills — all three "do not merge" on one regression: Assets and the Conductor as tabs of
+one group left a dragged sample no Conductor to land on; round 10 on the planner's fix diff — kimi 1,
+deepseek 5). The accepted findings, fixed by the planner: spring-loaded tabs under a drag (a
+payload resting on a tab for `DRAG_DWELL_FRAMES` brings it forward, within a group already
+showing content, never under an overlay); tabs sized by their titles (48–192 pt) instead of an
+even split; a `Show` item instead of the executor's reveal on submenu open (§ C's correction
+below); unfocused Enter and the menu key forwarded to the game; a tab click, an overflow row and
+a move through `DockArea::reveal`, which keeps the saved collapse flag inside the narrow overlay;
+View → a panel brings a visible back tab forward; the stale overflow index cleared in `layout`;
+right-press menus on narrow tabs and collapsed strips; `MIN_CENTER_HEIGHT` counting the scene
+header (the budget had left 96 pt of viewport); the budget ranked by distance from the centre
+across both edges. Rebutted: a `panels` downgrade projection (this section's one-way migration);
+the hover reveal (removed, not completed). Jesse's two rulings during the batch: the migration
+clamps Assets' legacy 180 pt to the group's 200 pt minimum; Ctrl++ / Ctrl+- step the UI scale with
+their hints in View ▸ UI Scale. #233 closed by the batch (menus and both overflow menus on Modal
+above the dock's overlays). Filed: #250 (the first content row draws under the header —
+pre-existing, in batch 2's stills too). `rebuttal-9.md`, `rebuttal-10.md`; the ledger's rounds 9
+and 10.
 
 **Batch 4a — the asset browser: folders and create (§ D, the first half). Issue #243.** Files:
 `crates/common/src/vfs/mod.rs` (+ `vfs/entries.rs`: `list_entries`, `create_dir_all`, `exists` —
