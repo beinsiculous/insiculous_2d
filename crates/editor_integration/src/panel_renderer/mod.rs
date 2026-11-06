@@ -411,7 +411,7 @@ fn render_default(ctx: &mut GameContext, content_x: f32, y: f32) {
 }
 
 mod add_component_popup;
-mod asset_browser;
+pub(crate) mod asset_browser;
 pub(crate) mod color_editor;
 pub(crate) mod conductor;
 mod console;

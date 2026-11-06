@@ -341,8 +341,9 @@ impl<G: Game> EditorGame<G> {
     /// or a dialog holds it.
     fn reload_is_held(&self, edit_field_focused: bool) -> bool {
         let gesture_live = self.editor.gizmo_has_priority() || edit_field_focused;
-        let dialog_up = self.scene_confirm.pending_action.is_some() || self.stop_confirm.pending;
-        self.editor.in_play_session() || gesture_live || dialog_up
+        // One rule for "a dialog is up", the prompt included: a reload under a modal would
+        // replace the document the modal is asking about, or stack a confirm under it.
+        self.editor.in_play_session() || gesture_live || self.dialog_up()
     }
 
     /// Replace the open scene with the file on disk; a file that does not load leaves the

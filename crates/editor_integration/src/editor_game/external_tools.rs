@@ -154,7 +154,7 @@ impl<G: Game> super::EditorGame<G> {
             &self.editor.asset_browser.entries
         } else {
             scanned = editor::scan_assets(&self.asset_base, &self.editor.external_tools.daw_project_extensions);
-            &scanned
+            &scanned.files
         };
         let kinds: &[AssetKind] = match category {
             ToolCategory::Code => &[AssetKind::Script, AssetKind::Scene],

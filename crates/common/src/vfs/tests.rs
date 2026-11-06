@@ -348,3 +348,112 @@ fn test_native_remove_prefix_never_notifies_the_remove_observer() -> io::Result<
     );
     Ok(())
 }
+
+#[test]
+fn test_directory_entries_include_empty_folders_and_direct_files_only() -> io::Result<()> {
+    let directory = TempDir::new("vfs_entries")?;
+    let root = directory.path();
+    create_dir_all(&root.join("empty"))?;
+    write(&root.join("nested/deeper/file.rhai"), b"script")?;
+    write(&root.join("root.png"), b"image")?;
+    assert_eq!(list_entries(root)?, vec![
+        DirEntry { path: root.join("empty"), is_dir: true },
+        DirEntry { path: root.join("nested"), is_dir: true },
+        DirEntry { path: root.join("root.png"), is_dir: false },
+    ]);
+    assert!(exists(&root.join("empty")));
+    assert!(exists(&root.join("root.png")));
+    assert!(!exists(&root.join("absent")));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn test_directory_entries_follow_the_root_but_never_a_file_or_directory_symlink_entry() -> io::Result<()> {
+    let directory = TempDir::new("vfs_entry_symlinks")?;
+    let root = directory.path().join("root");
+    write(&root.join("real/file.png"), b"image")?;
+    std::os::unix::fs::symlink(root.join("real/file.png"), root.join("file_link"))?;
+    std::os::unix::fs::symlink(root.join("real"), root.join("directory_link"))?;
+    std::os::unix::fs::symlink(&root, directory.path().join("root_link"))?;
+    assert_eq!(list_entries(&root)?, vec![DirEntry { path: root.join("real"), is_dir: true }]);
+    // A project whose asset root is itself a link still lists, as `list_files` lists it.
+    let root_link = directory.path().join("root_link");
+    assert_eq!(list_entries(&root_link)?, vec![DirEntry { path: root_link.join("real"), is_dir: true }]);
+    Ok(())
+}
+
+#[test]
+fn test_memory_directory_entries_derive_each_folder_once_and_include_keep_files() -> io::Result<()> {
+    let mut filesystem = MemFs::default();
+    let root = Path::new(BASE);
+    filesystem.insert(root.join("sprites/props/hero.png").to_string_lossy().into_owned(), vec![1]);
+    filesystem.insert(root.join("sprites/props/coin.png").to_string_lossy().into_owned(), vec![2]);
+    filesystem.insert(root.join("root.scene.ron").to_string_lossy().into_owned(), vec![3]);
+    filesystem.create_dir_all(&root.join("scenes/levels"))?;
+    assert_eq!(filesystem.list_entries(root)?, vec![
+        DirEntry { path: root.join("root.scene.ron"), is_dir: false },
+        DirEntry { path: root.join("scenes"), is_dir: true },
+        DirEntry { path: root.join("sprites"), is_dir: true },
+    ]);
+    assert_eq!(filesystem.list_entries(&root.join("scenes/levels"))?, vec![
+        DirEntry { path: root.join("scenes/levels/.keep"), is_dir: false },
+    ]);
+    assert_eq!(filesystem.read(&root.join("scenes/levels/.keep"))?, b"");
+    assert!(filesystem.exists(&root.join("scenes/levels")));
+    assert!(filesystem.exists(&root.join("root.scene.ron")));
+    assert!(!filesystem.exists(&root.join("scene")), "directory prefixes have a boundary");
+    assert!(!filesystem.exists(&root.join("absent")));
+    Ok(())
+}
+
+#[test]
+fn test_write_new_refuses_live_paths_preserves_bytes_and_notifies_only_success() -> io::Result<()> {
+    thread_local! {
+        static CREATED_PATHS: std::cell::RefCell<Vec<PathBuf>> = const { std::cell::RefCell::new(Vec::new()) };
+    }
+    fn on_write(path: &Path) {
+        CREATED_PATHS.with(|paths| paths.borrow_mut().push(path.to_path_buf()));
+    }
+    let directory = TempDir::new("vfs_exclusive")?;
+    let path = directory.path().join("new.rhai");
+    set_write_observer(on_write);
+    write_new(&path, b"first")?;
+    assert_eq!(write_new(&path, b"replacement").map_err(|error| error.kind()), Err(io::ErrorKind::AlreadyExists));
+    assert_eq!(read(&path)?, b"first");
+    assert_eq!(CREATED_PATHS.with(|paths| paths.borrow().clone()), vec![path]);
+    assert_eq!(write_new(directory.path(), b"file").map_err(|error| error.kind()), Err(io::ErrorKind::AlreadyExists));
+    Ok(())
+}
+
+#[test]
+fn test_memory_exclusive_create_refuses_live_files_and_directory_collisions_but_recreates_removed_paths() -> io::Result<()> {
+    let mut filesystem = MemFs::default();
+    let root = Path::new(BASE);
+    filesystem.create_dir_all(&root.join("scripts"))?;
+    let path = root.join("scripts/hero.rhai");
+    filesystem.write_new(&path, b"first")?;
+    assert_eq!(filesystem.write_new(&path, b"replacement").map_err(|error| error.kind()), Err(io::ErrorKind::AlreadyExists));
+    assert_eq!(filesystem.read(&path)?, b"first");
+    assert_eq!(filesystem.write_new(&root.join("scripts"), b"file").map_err(|error| error.kind()), Err(io::ErrorKind::AlreadyExists));
+    assert_eq!(filesystem.write_new(&path.join("child"), b"file").map_err(|error| error.kind()), Err(io::ErrorKind::NotADirectory));
+    assert_eq!(filesystem.create_dir_all(&path.join("child")).map_err(|error| error.kind()), Err(io::ErrorKind::NotADirectory));
+    assert_eq!(filesystem.write_new(&root.join("absent/child"), b"file").map_err(|error| error.kind()), Err(io::ErrorKind::NotFound));
+    filesystem.remove_prefix(&path);
+    assert!(!filesystem.exists(&path));
+    filesystem.write_new(&path, b"recreated")?;
+    assert_eq!(filesystem.read(&path)?, b"recreated");
+    Ok(())
+}
+
+#[test]
+fn test_directory_and_exclusive_create_operations_refuse_empty_paths() {
+    let mut filesystem = MemFs::default();
+    let empty = Path::new("");
+    assert_eq!(list_entries(empty).map_err(|error| error.kind()), Err(io::ErrorKind::InvalidInput));
+    assert_eq!(create_dir_all(empty).map_err(|error| error.kind()), Err(io::ErrorKind::InvalidInput));
+    assert_eq!(write_new(empty, b"file").map_err(|error| error.kind()), Err(io::ErrorKind::InvalidInput));
+    assert_eq!(filesystem.list_entries(empty).map_err(|error| error.kind()), Err(io::ErrorKind::InvalidInput));
+    assert_eq!(filesystem.create_dir_all(empty).map_err(|error| error.kind()), Err(io::ErrorKind::InvalidInput));
+    assert_eq!(filesystem.write_new(empty, b"file").map_err(|error| error.kind()), Err(io::ErrorKind::InvalidInput));
+}

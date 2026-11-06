@@ -63,7 +63,7 @@ Cross-cutting glue biases toward `engine_core`: `ui` defines `DrawCommand` (rend
 - `scene_data.rs` — `SceneData` schema; Sprite `emissive`/`tex_region`/`visible` require named serde defaults to avoid blanking old sprites. `SoundEmitter` is typed for its load-time checks (a binding that is spatial or loops, a negative or non-finite volume — a `ComponentError` naming the entity; `max_distance` floored), never for resolution: nothing at load touches audio.
 - `script_data.rs` — script wire schema: entity params persist by name, auto-named at save and resolved post-instantiate.
 - `texture_ref.rs` — scene texture reference resolution (`#white`, `#solid:RRGGBB`, file paths); `TextureResolver` trait is the GPU/filesystem seam.
-- `sheet_file.rs` — `.sheet.ron` schema and validation (`parse_sheet_file` and `into_parts`); `sidecar_path_for` holds the naming rule.
+- `sheet_file.rs` — `.sheet.ron` schema and validation (`parse_sheet_file`, `write_sheet_file`, and `into_parts`); the writer uses the schema serializer and its output is parsed before a new companion is written; `sidecar_path_for` holds the naming rule.
 - `assets/sprite_sheet.rs` — `AssetManager::load_sprite_sheet` order: read sidecar, parse, probe PNG dims, validate, then load texture so bad sheets leave no handle.
 - `assets.rs` — asset loading; `create_texture_from_rgba` validates before device with `"#rgba"` sentinel (does not survive save/load).
 - `behavior_runner/` — entity behavior system: runner dispatch loop, handlers, and `CameraFollow` with look-ahead.
@@ -90,6 +90,7 @@ Cross-cutting glue biases toward `engine_core`: `ui` defines `DrawCommand` (rend
 | Achievement unlocks merge across concurrent managers and atomic saves leave no temp files | `src/achievements/tests.rs concurrent_managers_merge_unlocks_instead_of_clobbering` |
 | Atomic save write-then-read leaves no temp files on disk | `src/save_store/mod.rs test_write_then_read_round_trips_and_leaves_no_temp_file` |
 | Sidecar validation must run before texture allocation so invalid sheet files leave no texture handle | `src/assets/sprite_sheet.rs prepare_sheet_fails_before_any_texture_is_loaded` |
+| A new one-cell sheet companion must read back with its cell size, nearest filter, and idle frame intact | `src/sheet_file.rs written_sheet_sidecar_round_trips_a_single_cell_idle_clip` |
 | Sidecar path replaces file extension with `.sheet.ron` rather than appending | `src/sheet_file.rs sidecar_path_replaces_the_extension_never_appends` |
 | Frame indices past grid bounds in `.sheet.ron` must be rejected naming the invalid clip | `src/sheet_file.rs frame_index_past_the_grid_is_rejected_naming_the_clip` |
 | Sheet grid derivation from PNG dimensions truncates partial trailing cells | `src/sheet_file.rs into_parts_derives_the_grid_from_png_dimensions_excluding_a_partial_trailing_cell` |

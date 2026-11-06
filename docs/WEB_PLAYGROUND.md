@@ -26,7 +26,7 @@ playground/<version>/
 
 Invocation of record, run from the engine root:
 ```sh
-scripts/build_wasm.sh crates/playground playground --kind playground --version v2 \
+scripts/build_wasm.sh crates/playground playground --kind playground --version v3 \
     --project examples=Examples=examples \
     --project pong=Pong=crates/playground/assets/projects/pong \
     --project game-template="Game Template"=../games/game-template \
@@ -42,7 +42,7 @@ Each entry carries:
 {
   "slug": "examples",
   "title": "Examples",
-  "bundle_version": "v2",
+  "bundle_version": "v3",
   "content_hash": "<sha256-hex>",
   "origin": "bundled"
 }
@@ -52,16 +52,16 @@ the project's `<dir>/assets`.
 
 ## The bundle contract
 
-`ASSET_BASE = "/playground/v2/assets"` and `BUNDLE_VERSION = "v2"` (`web_entry.rs`). The
+`ASSET_BASE = "/playground/v3/assets"` and `BUNDLE_VERSION = "v3"` (`web_entry.rs`). The
 version token appears in five places, listed in that file's header: the deployed directory
-`public/playground/v2/`, the asset URLs the engine fetches, `projects.json`'s
+`public/playground/v3/`, the asset URLs the engine fetches, `projects.json`'s
 `bundle_version`, the build script's output directory, and every `StoredFile`'s
 `bundle_version`. Bumping it is a coordinated change across all five.
 
 A project's root is computed, never stored: `{ASSET_BASE}/projects/<slug>` on the web,
 `<dir>/projects/<slug>` natively; its asset base is `{root}/assets`. Every file the engine
 reads or writes is keyed by that base-joined string (`common::vfs`'s canonical key), e.g.
-`/playground/v2/assets/projects/examples/assets/scenes/behavior_demo.scene.ron`. A relative
+`/playground/v3/assets/projects/examples/assets/scenes/behavior_demo.scene.ron`. A relative
 key never resolves; relative paths given to the editor or the API are joined to the open
 project's asset base first.
 
@@ -216,11 +216,15 @@ commits the in-flight transaction on its own.
 All paths are project-relative (`assets/scripts/ball.rhai`); the bridge joins the open
 project's root and refuses an empty path, a leading `/` or `\`, and any `..` component.
 The command channel is a 1024-line FIFO; responses come back in order.
+File changes have their own drain, fed by the persistence write observer: a notice never
+consumes a command response. The embed polls it and calls the Scripts panel’s registered
+hook, which refreshes its list while keeping the selected script and its unsaved buffer.
 
 | export | shape | notes |
 |---|---|---|
 | `playground_dispatch(line)` | `→ bool` | `false` on a full queue or a whitespace-only line (never dropped, never enqueued) |
 | `playground_poll_responses()` | `→ string[]` | drains every response line so far |
+| `playground_poll_file_changes()` | `→ string[]` | drains project-relative paths written or created since the last poll, each path once; independent of command responses |
 | `playground_is_dirty()` | `→ bool` | command-history dirty OR `is_pending()`; the page confirms before any switch, import or reset |
 | `playground_write_file(path, text)` | `→ Result` | through `vfs::write_string`; a `.rhai` write runs the `source_check` hook first, and a refused script is not written |
 | `playground_read_file(path)` | `→ Result<string>` | |
@@ -291,6 +295,10 @@ the live display percentage. Larger text and Smaller text show their Ctrl++ / Ct
 beside the menu rows; Follow the display shows Ctrl+0. Ctrl+= also increases the scale.
 The number pad’s Ctrl+Add and Ctrl+Subtract work too. The browser may take Ctrl++ first, so the menu is the path that always works. Fonts and
 layout scale together; a 1024 px window at 200 % uses the dock's narrow layout.
+
+The `current_folder` key saves the asset browser’s folder relative to the asset root;
+`""` means the root and is the default for older preferences. A saved folder that no
+longer exists falls back to the root.
 
 The `groups` key saves each tab group's `position`, `size`, `collapsed`, ordered `panels`,
 `active` panel and `hidden` panel ids. Scene stays outside those groups. Older `panels`

@@ -222,6 +222,7 @@ impl<G: Game> EditorGame<G> {
     /// Early modal overlays: confirm dialog scrim must land before the drag ghost
     /// can arm a gesture, so no widget arms under a modal.
     pub(super) fn render_early_overlays(&mut self, ctx: &mut GameContext) {
+        panel_renderer::asset_browser::mutate::render_prompt(&mut self.editor, ctx);
         self.render_scene_confirm_dialog(ctx);
         if self.render_stop_confirm_dialog(ctx) {
             self.inner.on_play_stopped(ctx);

@@ -30,6 +30,28 @@ pub(super) fn create_test_zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
 }
 
 #[test]
+fn test_an_empty_folder_marker_survives_export_import_and_reappears_in_memory() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path();
+    common::vfs::write(&root.join("assets/scenes/levels/.keep"), b"").unwrap();
+    let manifest: ProjectManifest = ron::from_str(&valid_manifest_ron("empty-folder")).unwrap();
+
+    let archive = export_project(root, &manifest).unwrap();
+    let (_, imported) = import_project(&archive, "v1").unwrap();
+    assert_eq!(imported.len(), 1);
+    assert_eq!(imported[0].path, "assets/scenes/levels/.keep");
+
+    let mut files = common::vfs::MemFs::default();
+    for file in imported {
+        files.insert(root.join(file.path).to_string_lossy().into_owned(), file.bytes);
+    }
+    let entries = files.list_entries(&root.join("assets/scenes")).unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].path, root.join("assets/scenes/levels"));
+    assert!(entries[0].is_dir);
+}
+
+#[test]
 fn test_export_then_import_round_trip_valid_project() {
     let temp_dir = tempfile::tempdir().unwrap();
     let root = temp_dir.path();

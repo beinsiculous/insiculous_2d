@@ -206,3 +206,40 @@ fn test_a_failed_removal_strands_the_head_and_the_retry_lands_it() {
     assert!(stored_file(&memory, "music/theme.mid.new").unwrap().deleted);
     assert!(!chains.is_pending());
 }
+
+#[test]
+fn test_exclusive_create_recreates_a_tombstone_and_refuses_the_live_file() {
+    let memory = MemoryStore::new();
+    let relative_path = "assets/scripts/move.rhai";
+    let tombstone = crate::store::StoredFile {
+        project: "pong".to_string(),
+        path: relative_path.to_string(),
+        bytes: Vec::new(),
+        revision: 1,
+        bundle_version: "v1".to_string(),
+        deleted: true,
+    };
+    pollster::block_on(memory.replace_project("pong", vec![tombstone], super::test_manifest("pong"))).unwrap();
+    let mut chains = pong_chains(Arc::new(memory.clone()));
+    chains.seed(&pollster::block_on(memory.load_project("pong")).unwrap());
+
+    let mut files = common::vfs::MemFs::default();
+    let path = std::path::Path::new(super::PONG_ROOT).join(relative_path);
+    files.create_dir_all(path.parent().unwrap()).unwrap();
+    files.write_new(&path, b"fn update(me, view, params, cmd, dt) {}").unwrap();
+    chains.on_vfs_write(&path, &files.read(&path).unwrap()).unwrap();
+    for _ in 0..8 {
+        if !chains.has_active() { break; }
+        poll_once(&mut chains);
+    }
+    assert!(!chains.is_pending(), "the tombstone's revision must be the create's CAS base");
+    let stored = stored_file(&memory, relative_path).unwrap();
+    assert_eq!(stored.revision, 2);
+    assert!(!stored.deleted);
+    assert_eq!(stored.bytes, files.read(&path).unwrap());
+
+    let error = files.write_new(&path, b"replacement").unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
+    assert_eq!(files.read(&path).unwrap(), stored.bytes);
+    assert_eq!(stored_file(&memory, relative_path).unwrap().revision, 2);
+}

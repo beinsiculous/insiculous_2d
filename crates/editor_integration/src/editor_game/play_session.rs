@@ -137,6 +137,8 @@ impl<G: Game> EditorGame<G> {
     /// here: a popup's sliders would write into the live world, and a
     /// rename field keeps focus and eats the game's keys.
     fn enter_playing(&mut self) {
+        self.editor.asset_prompt.close();
+        self.editor.asset_creation = None;
         self.editor.dock_area.clear_tab_focus();
         self.editor.dock_area.close_tab_overflow();
         self.leave_conductor();
@@ -286,6 +288,7 @@ impl<G: Game> EditorGame<G> {
         if !matches!(action, PlayControlAction::ToggleCameraFollow) {
             self.editor.viewport_input.cancel_marquee();
         }
+        if self.editor.asset_prompt.is_open() { return false; }
         match action {
             PlayControlAction::Play => {
                 if self.editor.is_editing() {

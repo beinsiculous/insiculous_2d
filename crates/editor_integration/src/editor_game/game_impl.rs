@@ -33,6 +33,7 @@ impl<G: Game> Game for EditorGame<G> {
         // Delegate to inner game
         self.inner.init(ctx);
         self.asset_base = std::path::PathBuf::from(ctx.assets.base_path());
+        panel_renderer::asset_browser::ensure_scanned(&mut self.editor, ctx.assets, ctx.scripts.registry());
         // The editor starts silent: while editing, music is the Conductor panel's to start and
         // stop. Whatever the game's init asked for — a song or a recorded track, playing or
         // waiting for the web's first gesture — is remembered and stopped here; a Play

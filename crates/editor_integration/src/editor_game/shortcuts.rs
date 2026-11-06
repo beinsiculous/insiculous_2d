@@ -52,7 +52,7 @@ impl<G: Game> EditorGame<G> {
         // text-focus gate (a focused field must not swallow
         // the modal's keys): Escape cancels, Enter saves, everything else
         // is swallowed.
-        if self.confirm_dialog_consumes_key(key) {
+        if self.editor.asset_prompt.consumes_key(key) || self.confirm_dialog_consumes_key(key) {
             return KeyRoute::Consumed;
         }
 

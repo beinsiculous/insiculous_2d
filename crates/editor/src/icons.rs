@@ -42,16 +42,22 @@ pub enum Icon {
     ResetLayout,
     /// The overflow menu's button: a double chevron.
     More,
+    /// A directory: tab and body.
+    Folder,
+    /// Parent directory: chevron and stem.
+    Up,
+    /// Create an asset: a plus.
+    New,
 }
 
 impl Icon {
     /// Every icon: the tools, the transport, the view toggles, Reset Layout
     /// and the overflow button.
-    pub const ALL: [Icon; 15] = [
+    pub const ALL: [Icon; 18] = [
         Icon::Select, Icon::Move, Icon::Rotate, Icon::Scale,
         Icon::Play, Icon::Pause, Icon::Resume, Icon::Stop, Icon::Follow,
         Icon::Grid, Icon::Colliders, Icon::GameFrame, Icon::Snap,
-        Icon::ResetLayout, Icon::More,
+        Icon::ResetLayout, Icon::More, Icon::Folder, Icon::Up, Icon::New,
     ];
 }
 
@@ -136,6 +142,9 @@ pub fn icon_strokes(icon: Icon) -> Vec<Stroke> {
             polylines(&[&[(0.38, 0.14), (0.38, 0.86)], &[(0.38, 0.56), (0.92, 0.56)]]),
         ]
         .concat(),
+        Icon::Folder => closed_polyline(&[(0.08, 0.25), (0.08, 0.82), (0.92, 0.82), (0.92, 0.33), (0.48, 0.33), (0.38, 0.18), (0.08, 0.18)]),
+        Icon::Up => polylines(&[&[(0.22, 0.42), (0.5, 0.14), (0.78, 0.42)], &[(0.5, 0.14), (0.5, 0.86)]]),
+        Icon::New => polylines(&[&[(0.5, 0.15), (0.5, 0.85)], &[(0.15, 0.5), (0.85, 0.5)]]),
         Icon::More => polylines(&[&[(0.2, 0.2), (0.48, 0.5), (0.2, 0.8)], &[(0.52, 0.2), (0.8, 0.5), (0.52, 0.8)]]),
     }
 }

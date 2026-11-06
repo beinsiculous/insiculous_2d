@@ -96,7 +96,7 @@ pub(crate) fn init_from(
     let text = write_song_file(&sidecar.display().to_string(), &file)
         .map_err(|error| write_failed(error.to_string()))?;
     store
-        .write(&sidecar, text.as_bytes())
+        .write_new(&sidecar, text.as_bytes())
         .map_err(|error| write_failed(error.to_string()))?;
     Ok(sidecar)
 }

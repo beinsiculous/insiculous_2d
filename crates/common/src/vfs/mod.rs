@@ -15,16 +15,19 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
+pub mod entries;
+pub use entries::{create_dir_all, exists, list_entries, write_new, DirEntry};
+
 #[cfg(any(target_arch = "wasm32", test))]
 thread_local! {
     static WRITE_OBSERVER: std::cell::Cell<Option<fn(&Path)>> = const { std::cell::Cell::new(None) };
     static REMOVE_OBSERVER: std::cell::Cell<Option<fn(&Path)>> = const { std::cell::Cell::new(None) };
 }
 
-/// Set a callback invoked whenever [`write`] completes on wasm.
+/// Set a callback invoked whenever a file write completes on wasm.
 ///
-/// Called exactly once per [`write`] or [`write_string`]. Boot-phase
-/// [`insert`] does not invoke this observer.
+/// Called exactly once per [`write`], [`write_string`], [`write_new`], or the
+/// `.keep` marker of [`create_dir_all`]. Boot-phase [`insert`] does not invoke it.
 #[cfg(any(target_arch = "wasm32", test))]
 pub fn set_write_observer(observer: fn(&Path)) {
     WRITE_OBSERVER.with(|slot| slot.set(Some(observer)));

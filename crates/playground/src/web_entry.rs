@@ -2,11 +2,11 @@
 //!
 //! # Version contract
 //! `ASSET_BASE` and `BUNDLE_VERSION` are tied to deployment routes:
-//! 1. `ASSET_BASE` = `"/playground/v2/assets"`
-//! 2. `BUNDLE_VERSION` = `"v2"`
-//! 3. Deployed assets live at `insiculous_web/public/playground/v2/assets/`
-//! 4. Projects metadata served from `/playground/v2/assets/projects.json`
-//! 5. `scripts/build_wasm.sh` produces `playground/v2/`
+//! 1. `ASSET_BASE` = `"/playground/v3/assets"`
+//! 2. `BUNDLE_VERSION` = `"v3"`
+//! 3. Deployed assets live at `insiculous_web/public/playground/v3/assets/`
+//! 4. Projects metadata served from `/playground/v3/assets/projects.json`
+//! 5. `scripts/build_wasm.sh` produces `playground/v3/`
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -27,9 +27,9 @@ use crate::store::memory::MemoryStore;
 use crate::store::ProjectStore;
 
 /// Canonical asset base path for the deployed playground.
-pub const ASSET_BASE: &str = "/playground/v2/assets";
+pub const ASSET_BASE: &str = "/playground/v3/assets";
 /// Bundle version contract string.
-pub const BUNDLE_VERSION: &str = "v2";
+pub const BUNDLE_VERSION: &str = "v3";
 
 thread_local! {
     static ACTIVE_STORE: RefCell<Option<Arc<dyn ProjectStore>>> = const { RefCell::new(None) };
@@ -233,6 +233,7 @@ async fn run_playground() -> Result<(), String> {
 
     // The VFS write and remove observers feed the chains
     common::vfs::set_write_observer(|path| {
+        crate::bridge::record_file_change(path);
         let bytes = common::vfs::read(path).unwrap_or_default();
         let write_result = with_active_chains(|chains| {
             chains.on_vfs_write(path, &bytes)

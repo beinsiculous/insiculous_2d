@@ -156,6 +156,7 @@ impl InterruptedStore {
 }
 
 impl SongStore for InterruptedStore {
+    fn write_new(&mut self, path: &Path, bytes: &[u8]) -> io::Result<()> { VfsStore.write_new(path, bytes) }
     fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
         VfsStore.read(path)
     }
@@ -185,6 +186,7 @@ impl SongStore for InterruptedStore {
 pub(super) struct RenameFailingStore;
 
 impl SongStore for RenameFailingStore {
+    fn write_new(&mut self, path: &Path, bytes: &[u8]) -> io::Result<()> { VfsStore.write_new(path, bytes) }
     fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
         VfsStore.read(path)
     }
@@ -246,6 +248,7 @@ impl RewritingStore {
 }
 
 impl SongStore for RewritingStore {
+    fn write_new(&mut self, path: &Path, bytes: &[u8]) -> io::Result<()> { VfsStore.write_new(path, bytes) }
     fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
         VfsStore.read(path)
     }

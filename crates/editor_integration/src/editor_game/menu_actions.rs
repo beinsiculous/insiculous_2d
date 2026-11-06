@@ -15,6 +15,7 @@ impl<G: Game> EditorGame<G> {
         match action {
             editor::context_menu::ContextMenuAction::Open(request) => self.editor.open_requests.push(request),
             editor::context_menu::ContextMenuAction::Dock(action) => self.run_dock_action(action),
+            editor::context_menu::ContextMenuAction::Asset(action) => crate::panel_renderer::asset_browser::mutate::begin_creation(&mut self.editor, &self.asset_base, action),
         }
     }
 

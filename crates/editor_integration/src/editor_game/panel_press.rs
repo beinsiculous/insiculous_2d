@@ -27,7 +27,7 @@ pub(super) enum PanelPress {
 impl<G: Game> EditorGame<G> {
     /// Whether a confirm dialog is up: it owns the frame's presses.
     pub(super) fn dialog_up(&self) -> bool {
-        self.scene_confirm.pending_action.is_some() || self.stop_confirm.pending
+        self.scene_confirm.pending_action.is_some() || self.stop_confirm.pending || self.editor.asset_prompt.is_open()
     }
 
     /// Where this frame's press landed for `panel`; `None` while the panel is hidden or

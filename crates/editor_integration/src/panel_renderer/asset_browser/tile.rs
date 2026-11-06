@@ -5,7 +5,11 @@
 use common::clock::Instant;
 use glam::Vec2;
 
-use editor::{AssetKind, DragDropState, DragPayload, EditorContext, EditorTheme};
+use editor::{AssetKind, DragDropState, DragPayload, EditorContext, EditorTheme, TileId, Tile};
+use editor::fit_rect;
+use engine_core::AssetManager;
+use renderer::texture::TextureHandle;
+use super::{TILE_SIZE, TILE_LABEL_HEIGHT};
 
 /// What one tile did this frame.
 pub(super) struct TileInteraction {
@@ -20,21 +24,22 @@ pub(super) struct TileInteraction {
 /// What the grid's tiles did this frame, by tile index.
 #[derive(Debug, Default)]
 pub(super) struct TilePresses {
-    pub(super) clicked: Option<usize>,
-    pressed: Option<usize>,
-    right_pressed: Option<usize>,
+    pub(super) clicked: Option<TileId>,
+    pressed: Option<TileId>,
+    right_pressed: Option<TileId>,
 }
 
 impl TilePresses {
-    pub(super) fn record(&mut self, index: usize, tile: &TileInteraction) {
+    pub(super) fn has_right_press(&self) -> bool { self.right_pressed.is_some() }
+    pub(super) fn record(&mut self, identity: &TileId, tile: &TileInteraction) {
         if tile.clicked {
-            self.clicked = Some(index);
+            self.clicked = Some(identity.clone());
         }
         if tile.pressed {
-            self.pressed = Some(index);
+            self.pressed = Some(identity.clone());
         }
         if tile.right_pressed {
-            self.right_pressed = Some(index);
+            self.right_pressed = Some(identity.clone());
         }
     }
 }
@@ -47,25 +52,22 @@ pub(super) fn open_from_presses(editor: &mut EditorContext, presses: &TilePresse
     if editor.drag_drop.suppresses_click() {
         editor.asset_browser.last_press.forget();
     }
-    if let Some(index) = presses.pressed {
-        if let Some(request) = editor.asset_browser.press_tile(index, Instant::now(), mouse_pos) {
+    if let Some(identity) = &presses.pressed {
+        if let Some(request) = editor.asset_browser.press_tile(identity, Instant::now(), mouse_pos) {
             editor.open_requests.push(request);
         }
     }
-    if let Some(index) = presses.right_pressed {
-        super::select_tile(editor, index);
+    if let Some(identity) = &presses.right_pressed {
+        super::select_tile(editor, identity);
         editor.asset_browser.holds_keyboard = true;
-        open_tile_menu(editor, index, mouse_pos);
+        open_tile_menu(editor, mouse_pos);
     }
 }
 
 /// Open the context menu over tile `index` with its corner at `anchor`; on the web its
 /// items are disabled, since no program can be launched there.
-pub(super) fn open_tile_menu(editor: &mut EditorContext, index: usize, anchor: Vec2) {
-    if let Some(entry) = editor.asset_browser.entries.get(index) {
-        let desktop = cfg!(not(target_arch = "wasm32"));
-        editor.context_menu.open_for_file(anchor, &entry.relative_path, &editor.external_tools, desktop);
-    }
+pub(super) fn open_tile_menu(editor: &mut EditorContext, anchor: Vec2) {
+    super::header::open_new_menu(editor, anchor);
 }
 
 /// Press arms a drag (images, .rhai scripts, sounds, songs and SoundFonts); a plain click
@@ -75,12 +77,12 @@ pub(super) fn tile_interaction(
     drag_drop: &mut DragDropState,
     theme: &EditorTheme,
     entry: &editor::AssetEntry,
-    index: usize,
+    identity: &TileId,
     slot: common::Rect,
     mouse_pos: Vec2,
 ) -> TileInteraction {
     let slot_ui = ui::Rect::new(slot.x, slot.y, slot.width, slot.height);
-    let result = ui.interact(ui::WidgetId::from_str_index("asset_tile", index), slot_ui, true);
+    let result = ui.interact(ui::WidgetId::hashed(&format!("asset_file:{}", identity.path)), slot_ui, true);
     let hovered = slot_ui.contains(mouse_pos);
     if hovered {
         ui.rect_border(slot_ui, theme.hover_fill, 1.5, 4.0);
@@ -132,6 +134,116 @@ pub(super) fn tile_interaction(
     }
 }
 
+pub(super) fn render_tile(
+    ui: &mut ui::UIContext,
+    theme: &editor::EditorTheme,
+    assets: &AssetManager,
+    entry: &editor::AssetEntry,
+    slot: common::Rect,
+    selected: bool,
+) {
+    let slot_ui = ui::Rect::new(slot.x, slot.y, slot.width, slot.height);
+
+    // Tile background + content
+    let background = if selected { theme.selection_fill } else { theme.surface_3 };
+    ui.rect_rounded(slot_ui, background, 4.0);
+    match (entry.kind, entry.texture_handle) {
+        (AssetKind::Image, Some(handle)) => {
+            let (width, height) = assets
+                .get_texture(TextureHandle { id: handle })
+                .map(|t| (t.width, t.height))
+                .unwrap_or((1, 1));
+            let img = fit_rect(width, height, common::Rect::new(slot.x + 3.0, slot.y + 3.0, slot.width - 6.0, slot.height - 6.0));
+            ui.image(
+                ui::Rect::new(img.x, img.y, img.width, img.height),
+                handle,
+                ui::Color::WHITE,
+            );
+        }
+        (AssetKind::Image, None) => {
+            let color = if entry.load_failed { theme.error_red } else { theme.text_muted };
+            ui.label_in_bounds_styled(
+                if entry.load_failed { "!" } else { "…" },
+                slot_ui,
+                ui::TextAlign::Center,
+                color,
+                theme.fonts.heading,
+                0.0,
+            );
+        }
+        (AssetKind::Scene, _) => {
+            // Simple scene glyph: an accent page outline with a fold tick
+            let page = ui::Rect::new(slot.x + 20.0, slot.y + 12.0, slot.width - 40.0, slot.height - 24.0);
+            ui.rect_border(page, theme.accent_cyan, 1.5, 2.0);
+            ui.rect(
+                ui::Rect::new(page.x + page.width - 12.0, page.y, 12.0, 2.0),
+                theme.accent_cyan,
+            );
+        }
+        (_, _) => {
+            let extension = std::path::Path::new(&entry.name)
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .unwrap_or("")
+                .to_ascii_uppercase();
+            ui.label_in_bounds_styled(
+                &extension,
+                slot_ui,
+                ui::TextAlign::Center,
+                theme.accent_cyan,
+                theme.fonts.heading,
+                0.0,
+            );
+        }
+    }
+
+    if entry.has_sidecar && entry.kind == AssetKind::Image {
+        let badge = ui::Rect::new(slot.right() - 39.0, slot.y + 3.0, 36.0, 18.0);
+        ui.rect_rounded(badge, theme.surface_4, 2.0);
+        ui.label_in_bounds_styled("sheet", badge, ui::TextAlign::Center, theme.text_primary, theme.fonts.small, 0.0);
+    }
+
+    // A name wider than the tile would bleed into its neighbours, so it is
+    // truncated here; the tile's tooltip and the status bar carry the full
+    // path.
+    let label = tile_label(&entry.name, |text| {
+        ui.measure_text_styled(text, theme.fonts.small).x
+    });
+    ui.label_in_bounds_styled(
+        &label,
+        ui::Rect::new(slot.x, slot.y + TILE_SIZE, TILE_SIZE, TILE_LABEL_HEIGHT),
+        ui::TextAlign::Center,
+        theme.text_secondary,
+        theme.fonts.small,
+        0.0,
+    );
+}
+
+/// The filename as it is drawn under a tile: truncated with an ellipsis to
+/// the tile's own width according to the caller's measurement.
+pub(super) fn tile_label(name: &str, measure: impl Fn(&str) -> f32) -> String {
+    editor::ellipsize(name, TILE_SIZE, measure)
+}
+
+pub(super) fn render_folder(ui: &mut ui::UIContext, theme: &EditorTheme, tile: &Tile, slot: common::Rect, selected: bool) {
+    ui.rect_rounded(slot, if selected { theme.selection_fill } else { theme.surface_3 }, 4.0);
+    let icon = if tile.name == ".." { editor::icons::Icon::Up } else { editor::icons::Icon::Folder };
+    editor::icons::draw_icon(ui, icon, slot.shrink(16.0), theme.accent_cyan, 2.0);
+    let label = tile_label(&tile.name, |text| ui.measure_text_styled(text, theme.fonts.small).x);
+    ui.label_in_bounds_styled(&label, common::Rect::new(slot.x, slot.bottom(), TILE_SIZE, TILE_LABEL_HEIGHT), ui::TextAlign::Center, theme.text_secondary, theme.fonts.small, 0.0);
+}
+
+pub(super) fn folder_interaction(ui: &mut ui::UIContext, theme: &EditorTheme, tile: &Tile, slot: common::Rect) -> TileInteraction {
+    let result = ui.interact(ui::WidgetId::hashed(&format!("asset_folder:{}", tile.id.path)), slot, true);
+    if result.state == ui::WidgetState::Hovered { ui.rect_border(slot, theme.hover_fill, 1.5, 4.0); }
+    ui.tooltip(slot, if tile.name == ".." { "Parent folder" } else { &tile.id.path });
+    TileInteraction {
+        clicked: result.clicked,
+        pressed: result.state == ui::WidgetState::Active && ui.mouse_just_pressed(),
+        right_pressed: result.state == ui::WidgetState::Hovered && ui.mouse_right_just_pressed(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -143,13 +255,15 @@ mod tests {
 
     fn editor_with_a_song_tile() -> EditorContext {
         let mut editor = EditorContext::new();
-        editor.asset_browser.apply_scan(vec![AssetEntry {
+        editor.asset_browser.current_folder = "music".into();
+        editor.asset_browser.apply_scan(editor::AssetScan { files: vec![AssetEntry {
             name: "theme.mid".to_string(),
             relative_path: "music/theme.mid".to_string(),
             kind: AssetKind::Song,
             texture_handle: None,
             load_failed: false,
-        }]);
+            has_sidecar: false, image_size: None,
+        }], folders: vec![editor::AssetFolder { name: "music".into(), relative_path: "music".into() }] });
         editor
     }
 
@@ -160,9 +274,9 @@ mod tests {
         ui.begin_frame_dt(input, Vec2::new(800.0, 600.0), 0.016);
         editor.drag_drop.begin_frame(pointer, ui.mouse_down(), ui.mouse_just_released());
         let entry = editor.asset_browser.entries[0].clone();
-        let tile = tile_interaction(ui, &mut editor.drag_drop, &editor.theme, &entry, 0, SLOT, pointer);
+        let tile = tile_interaction(ui, &mut editor.drag_drop, &editor.theme, &entry, &editor::TileId::file(&entry.relative_path), SLOT, pointer);
         let mut presses = TilePresses::default();
-        presses.record(0, &tile);
+        presses.record(&editor::TileId::file(&entry.relative_path), &tile);
         open_from_presses(editor, &presses, pointer);
         ui.end_frame();
     }
@@ -193,11 +307,49 @@ mod tests {
         let (mut ui, mut input) = (ui::UIContext::new(), input::InputHandler::new());
         click(&mut editor, &mut ui, &mut input, MouseButton::Right);
 
-        assert_eq!(editor.asset_browser.selected, Some(0));
+        assert_eq!(editor.asset_browser.selected, Some(editor::TileId::file("music/theme.mid")));
         assert!(editor.asset_browser.holds_keyboard);
-        assert_eq!(editor.context_menu.labels(), vec!["Open with the system default", "Open containing folder"]);
+        assert_eq!(editor.context_menu.labels(), vec!["New Folder…", "New Scene…", "New Script…", "New Sheet sidecar", "New Song sidecar", "Open with the system default", "Open containing folder"]);
         let bounds = editor.context_menu.bounds(&ui, &editor.theme).map(|bounds| (bounds.x, bounds.y));
         assert_eq!(bounds, Some((SLOT.center().x, SLOT.center().y)), "the menu opens at the press");
         assert!(editor.open_requests.is_empty() && editor.drag_drop.dragging_payload().is_none(), "a right press arms no drag");
+    }
+}
+
+#[cfg(test)]
+mod folder_tests {
+    use super::*;
+
+    #[test]
+    fn a_folder_double_press_enters_without_opening_a_file_or_arming_a_drag() {
+        let mut editor = EditorContext::new();
+        editor.asset_browser.apply_scan(editor::AssetScan { files: vec![], folders: vec![editor::AssetFolder { name: "sprites".into(), relative_path: "sprites".into() }] });
+        let identity = editor::TileId::folder("sprites");
+        let tile = editor.asset_browser.visible_tiles()[0].clone();
+        let mut ui = ui::UIContext::new();
+        let mut input = input::InputHandler::new();
+        let slot = common::Rect::new(40.0, 40.0, 72.0, 72.0);
+        input.mouse_mut().update_position(60.0, 60.0);
+        for _ in 0..2 {
+            input.update();
+            input.mouse_mut().handle_button_press(input::prelude::MouseButton::Left);
+            ui.begin_frame(&input, Vec2::new(800.0, 600.0));
+            let interaction = folder_interaction(&mut ui, &editor.theme, &tile, slot);
+            let mut presses = TilePresses::default();
+            presses.record(&identity, &interaction);
+            open_from_presses(&mut editor, &presses, Vec2::new(60.0, 60.0));
+            ui.end_frame();
+            input.update();
+            input.mouse_mut().handle_button_release(input::prelude::MouseButton::Left);
+            ui.begin_frame(&input, Vec2::new(800.0, 600.0));
+            folder_interaction(&mut ui, &editor.theme, &tile, slot);
+            ui.end_frame();
+        }
+        assert_eq!(editor.asset_browser.current_folder, "sprites");
+        assert!(editor.open_requests.is_empty());
+        assert!(editor.drag_drop.dragging_payload().is_none());
+        // The release's click names the folder just entered, which the new grid does not show.
+        super::super::select_tile(&mut editor, &identity);
+        assert_eq!(editor.asset_browser.selected, None, "a tile outside the grid is never selected");
     }
 }

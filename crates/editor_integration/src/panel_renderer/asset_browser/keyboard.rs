@@ -23,12 +23,12 @@ pub(super) fn follow_grid(editor: &mut EditorContext, columns: usize, viewport_h
     if !std::mem::take(&mut state.reveal_selected) {
         return;
     }
-    if let Some(index) = state.selected {
+    if let Some(index) = state.selected_index() {
         let row_top = (index / columns.max(1)) as f32 * (TILE_SIZE + TILE_LABEL_HEIGHT + TILE_GAP);
         let row_bottom = row_top + TILE_SIZE + TILE_LABEL_HEIGHT;
         let offset = reveal_offset(row_top, row_bottom, state.scroll.offset(), viewport_height);
         state.scroll.scroll_to(offset);
-        super::select_tile(editor, index);
+        if let Some(identity) = editor.asset_browser.selected.clone() { super::select_tile(editor, &identity); }
     }
 }
 
@@ -51,14 +51,14 @@ pub(super) fn mark_selected_tile(
     slot_of: impl Fn(usize) -> common::Rect,
 ) {
     let state = &mut editor.asset_browser;
-    let Some(index) = state.selected.filter(|_| state.holds_keyboard) else {
+    let Some(index) = state.selected_index().filter(|_| state.holds_keyboard) else {
         state.menu_requested = false;
         return;
     };
     let slot = slot_of(index);
     ui.rect_border(slot.expand(FOCUS_RING_OFFSET), editor.theme.focus_ring, 2.0, 4.0 + FOCUS_RING_OFFSET);
     if std::mem::take(&mut editor.asset_browser.menu_requested) {
-        super::tile::open_tile_menu(editor, index, Vec2::new(slot.x, slot.y + slot.height));
+        super::tile::open_tile_menu(editor, Vec2::new(slot.x, slot.y + slot.height));
     }
 }
 
@@ -90,20 +90,22 @@ mod tests {
     #[test]
     fn test_the_selected_tile_wears_the_focus_ring_only_while_the_browser_holds_the_keyboard() {
         let mut editor = EditorContext::new();
-        editor.asset_browser.apply_scan(vec![AssetEntry {
+        editor.asset_browser.current_folder = "sprites".into();
+        editor.asset_browser.apply_scan(editor::AssetScan { files: vec![AssetEntry {
             name: "hero.png".to_string(),
             relative_path: "sprites/hero.png".to_string(),
             kind: AssetKind::Image,
             texture_handle: None,
             load_failed: false,
-        }]);
-        editor.asset_browser.selected = Some(0);
+            has_sidecar: false, image_size: None,
+        }], folders: vec![editor::AssetFolder { name: "sprites".into(), relative_path: "sprites".into() }] });
+        editor.asset_browser.selected = Some(editor::TileId::file("sprites/hero.png"));
         assert!(rings_drawn(&mut editor).is_empty(), "a selected tile without the keyboard has no ring");
 
         editor.asset_browser.holds_keyboard = true;
         editor.asset_browser.menu_requested = true;
         assert_eq!(rings_drawn(&mut editor), vec![SLOT.expand(FOCUS_RING_OFFSET)]);
-        assert_eq!(editor.context_menu.labels(), vec!["Open with the system default", "Open containing folder"]);
+        assert_eq!(editor.context_menu.labels(), vec!["New Folder…", "New Scene…", "New Script…", "New Sheet sidecar (loading…)", "New Song sidecar", "Open with the system default", "Open containing folder"]);
         assert!(!editor.asset_browser.menu_requested, "the request is answered once");
     }
 
@@ -116,14 +118,16 @@ mod tests {
             kind: AssetKind::Image,
             texture_handle: None,
             load_failed: false,
+            has_sidecar: false, image_size: None,
         };
-        editor.asset_browser.apply_scan(vec![tile("hero.png"), tile("enemy.png")]);
-        editor.asset_browser.selected = Some(0);
+        editor.asset_browser.current_folder = "sprites".into();
+        editor.asset_browser.apply_scan(editor::AssetScan { files: vec![tile("hero.png"), tile("enemy.png")], folders: vec![editor::AssetFolder { name: "sprites".into(), relative_path: "sprites".into() }] });
+        editor.asset_browser.selected = Some(editor::TileId::file("sprites/enemy.png"));
         editor.asset_browser.step_selection(editor::TileStep::Right);
 
         follow_grid(&mut editor, 2, 200.0);
 
-        assert_eq!(editor.status_bar.message(), Some("sprites/enemy.png"));
+        assert_eq!(editor.status_bar.message(), Some("sprites/hero.png"));
     }
 
     #[test]

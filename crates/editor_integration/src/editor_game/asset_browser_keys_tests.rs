@@ -20,10 +20,11 @@ const WINDOW: Vec2 = Vec2::new(1280.0, 720.0);
 fn image(name: &str) -> AssetEntry {
     AssetEntry {
         name: name.to_string(),
-        relative_path: format!("sprites/{name}"),
+        relative_path: name.to_string(),
         kind: AssetKind::Image,
         texture_handle: None,
         load_failed: false,
+            has_sidecar: false, image_size: None,
     }
 }
 
@@ -33,7 +34,7 @@ fn browser_session(world: &mut World) -> (EditorGame<DummyGame>, ecs::EntityId) 
     let mut editor = editor_game();
     editor.editor.dock_area.set_bounds(ui::Rect::new(0.0, 24.0, WINDOW.x, WINDOW.y - 48.0));
     editor.editor.dock_area.set_panel_visible(PanelId::ASSET_BROWSER, true);
-    editor.editor.asset_browser.apply_scan(vec![image("a.png"), image("b.png"), image("c.png")]);
+    editor.editor.asset_browser.apply_scan(editor::AssetScan { files: vec![image("a.png"), image("b.png"), image("c.png")], folders: Vec::new() });
     editor.editor.asset_browser.columns = 2;
     let entity = spawn_at(world, Vec2::ZERO);
     editor.editor.selection.select(entity);
@@ -90,7 +91,7 @@ fn while_the_browser_holds_the_keyboard_an_arrow_steps_the_tile_and_nudges_no_en
     for key in steps {
         assert!(matches!(press_key(&mut editor, key, PLAIN), KeyRoute::AssetBrowser(BrowserKey::Step(_))));
     }
-    assert_eq!(editor.editor.asset_browser.selected, Some(1), "the first step selects, then right; down has no tile under it");
+    assert_eq!(editor.editor.asset_browser.selected, Some(editor::TileId::file("b.png")), "the first step selects, then right; down has no tile under it");
     assert_eq!(position_of(&world, entity), Some(Vec2::ZERO), "no arrow nudged the selected entity");
     assert!(!matches!(press_key(&mut editor, KeyCode::KeyG, PLAIN), KeyRoute::AssetBrowser(_)), "a key it does not use goes on");
 
@@ -111,7 +112,7 @@ fn enter_files_the_selected_tiles_request_and_the_menu_key_or_shift_f10_asks_for
     editor.editor.asset_browser.step_selection(TileStep::Down);
 
     assert_eq!(press_key(&mut editor, KeyCode::Enter, PLAIN), KeyRoute::AssetBrowser(BrowserKey::Open));
-    assert_eq!(editor.editor.open_requests, vec![editor::open_file_request("sprites/a.png")]);
+    assert_eq!(editor.editor.open_requests, vec![editor::open_file_request("a.png")]);
 
     let shift = Modifiers { ctrl: false, shift: true };
     for (key, modifiers) in [(KeyCode::ContextMenu, PLAIN), (KeyCode::F10, shift)] {
@@ -130,7 +131,7 @@ fn an_open_context_menu_takes_every_key_and_down_then_enter_files_its_second_ite
     let mut world = World::new();
     let (mut editor, entity) = browser_session(&mut world);
     let config = editor.editor.external_tools.clone();
-    editor.editor.context_menu.open_for_file(Vec2::new(100.0, 400.0), "sprites/a.png", &config, true);
+    editor.editor.context_menu.open_for_file(Vec2::new(100.0, 400.0), "a.png", &config, true);
 
     for key in [KeyCode::ArrowRight, KeyCode::ArrowLeft, KeyCode::Delete] {
         assert!(matches!(press_key(&mut editor, key, PLAIN), KeyRoute::Consumed | KeyRoute::AssetBrowser(BrowserKey::Menu(_))), "the open menu swallows {key:?}");
@@ -141,7 +142,7 @@ fn an_open_context_menu_takes_every_key_and_down_then_enter_files_its_second_ite
         KeyRoute::AssetBrowser(BrowserKey::Menu(ContextMenuKey::Down))
     );
     press_key(&mut editor, KeyCode::Enter, PLAIN);
-    assert_eq!(editor.editor.open_requests, vec![editor::open_folder_request("sprites/a.png")]);
+    assert_eq!(editor.editor.open_requests, vec![editor::open_folder_request("a.png")]);
     assert!(!editor.editor.context_menu.is_open());
     assert_eq!(position_of(&world, entity), Some(Vec2::ZERO));
 }
@@ -152,7 +153,7 @@ fn entering_play_lets_the_keyboard_go_and_closes_the_context_menu() {
     let (mut editor, _) = browser_session(&mut world);
     press_in(&mut editor, PanelId::ASSET_BROWSER);
     let config = editor.editor.external_tools.clone();
-    editor.editor.context_menu.open_for_file(Vec2::new(100.0, 400.0), "sprites/a.png", &config, true);
+    editor.editor.context_menu.open_for_file(Vec2::new(100.0, 400.0), "a.png", &config, true);
 
     press_play(&mut editor, &mut world);
 
@@ -184,7 +185,7 @@ fn a_confirm_dialog_coming_up_closes_the_context_menu() {
     let mut world = World::new();
     let (mut editor, _) = browser_session(&mut world);
     let config = editor.editor.external_tools.clone();
-    editor.editor.context_menu.open_for_file(Vec2::new(100.0, 400.0), "sprites/a.png", &config, true);
+    editor.editor.context_menu.open_for_file(Vec2::new(100.0, 400.0), "a.png", &config, true);
     editor.stop_confirm.pending = true;
     let dialog_up = editor.dialog_up();
 
@@ -194,4 +195,64 @@ fn a_confirm_dialog_coming_up_closes_the_context_menu() {
     ui.end_frame();
 
     assert!(!editor.editor.context_menu.is_open(), "the menu shares the dialog's band and closes under it");
+}
+
+#[test]
+fn asset_actions_open_a_modal_that_closes_menus_and_refuses_play_and_browser_keys() {
+    use editor::context_menu::{AssetAction, ContextMenuAction};
+    use engine_core::{GameConfig, test_support::GameHarness};
+    use input::InputEvent;
+    let mut harness = GameHarness::new(editor_game(), GameConfig { width: 1280, height: 800, ..Default::default() });
+    harness.step(1.0 / 60.0, &[]);
+    harness.step(1.0 / 60.0, &[InputEvent::MouseMoved(40.0, 12.0), InputEvent::MouseButtonPressed(MouseButton::Left)]);
+    harness.step(1.0 / 60.0, &[InputEvent::MouseButtonReleased(MouseButton::Left)]);
+    assert!(harness.game().editor.menu_bar.is_open());
+    let game = harness.game_mut();
+    game.editor.toolbar.toggle_overflow();
+    game.run_context_menu_action(ContextMenuAction::Asset(AssetAction::NewScene));
+    game.editor.context_menu.open_for_tab(Vec2::new(100.0, 100.0), PanelId::HIERARCHY, &game.editor.dock_area);
+    assert!(game.dialog_up());
+    game.editor.asset_browser.holds_keyboard = true;
+    let before = game.editor.asset_browser.selected.clone();
+    assert_eq!(game.route_editor_key(KeyCode::ArrowDown, false, PLAIN), KeyRoute::Consumed);
+    assert_eq!(game.editor.asset_browser.selected, before);
+    harness.step(1.0 / 60.0, &[]);
+    let game = harness.game();
+    assert!(!game.editor.menu_bar.is_open());
+    assert!(!game.editor.toolbar.is_overflow_open());
+    assert!(!game.editor.context_menu.is_open());
+    harness.context(|game, context| press_play(game, context.world));
+    assert!(harness.game().editor.is_editing());
+    assert!(harness.game().editor.asset_prompt.is_open());
+    harness.game_mut().route_editor_key(KeyCode::Escape, false, PLAIN);
+    harness.step(1.0 / 60.0, &[]);
+    assert!(!harness.game().dialog_up());
+}
+
+#[test]
+fn enter_and_backspace_navigate_folders_and_saved_missing_folders_fall_back_to_root() {
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(directory.path().join("sprites/props")).unwrap();
+    let mut game = editor_game();
+    game.asset_base = directory.path().to_path_buf();
+    game.editor.asset_browser.apply_scan(editor::scan_assets(directory.path(), &[]));
+    game.editor.asset_browser.holds_keyboard = true;
+    game.editor.asset_browser.selected = Some(editor::TileId::folder("sprites"));
+    press_key(&mut game, KeyCode::Enter, PLAIN);
+    assert_eq!(game.editor.asset_browser.current_folder, "sprites");
+    assert!(game.editor.open_requests.is_empty());
+    game.editor.asset_browser.enter("sprites/props");
+    let preferences = game.capture_preferences();
+    let slot = directory.path().join("editor_prefs.json");
+    std::fs::write(&slot, preferences.to_json().unwrap()).unwrap();
+    game.editor.asset_browser.up();
+    game.load_preferences_from(&slot);
+    game.editor.asset_browser.apply_scan(editor::scan_assets(directory.path(), &[]));
+    assert_eq!(game.editor.asset_browser.current_folder, "sprites/props");
+    press_key(&mut game, KeyCode::Backspace, PLAIN);
+    assert_eq!(game.editor.asset_browser.current_folder, "sprites");
+    std::fs::remove_dir(directory.path().join("sprites/props")).unwrap();
+    game.load_preferences_from(&slot);
+    game.editor.asset_browser.apply_scan(editor::scan_assets(directory.path(), &[]));
+    assert_eq!(game.editor.asset_browser.current_folder, "");
 }

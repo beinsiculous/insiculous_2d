@@ -11,15 +11,22 @@ use std::path::Path;
 use glam::Vec2;
 
 use editor::layout::PADDING;
-use editor::{fit_rect, scan_assets, AssetKind, CommandHistory, EditorContext};
+use editor::{scan_assets, AssetKind, CommandHistory, EditorContext, TileId, TileKind};
 use engine_core::contexts::GameContext;
 use engine_core::AssetManager;
-use renderer::texture::TextureHandle;
+
 
 use crate::entity_ops;
 
 pub(super) mod keyboard;
 mod tile;
+mod header;
+pub(crate) mod mutate;
+use header::render_header;
+#[cfg(test)]
+use header::can_assign_selection;
+#[cfg(test)]
+use tile::tile_label;
 use tile::{tile_interaction, TilePresses};
 
 /// Thumbnail tile edge in pixels.
@@ -32,13 +39,7 @@ const TILE_GAP: f32 = 10.0;
 /// Height of the panel's own header row: not the dock's
 /// [`editor::layout::HEADER_HEIGHT`], because this row holds buttons and
 /// counts rather than a title.
-const HEADER_HEIGHT: f32 = 26.0;
-/// Header button size, shared by Rescan and Assign.
-const HEADER_BUTTON_SIZE: Vec2 = Vec2::new(70.0, 20.0);
-/// Gap between the header's button and the label beside it: wider than the
-/// shared [`editor::layout::GAP`] so a count reads as a caption, not as part
-/// of the button.
-const HEADER_GAP: f32 = 10.0;
+const HEADER_HEIGHT: f32 = 42.0;
 /// Cap on texture loads per frame so a big folder doesn't hitch one frame.
 const MAX_THUMBNAIL_LOADS_PER_FRAME: usize = 4;
 
@@ -102,7 +103,8 @@ pub(super) fn render_asset_browser(
 
     let grid_origin = Vec2::new(bounds.x + PADDING, bounds.y + HEADER_HEIGHT + PADDING);
     let columns = (((bounds.width - PADDING * 2.0) / (TILE_SIZE + TILE_GAP)) as usize).max(1);
-    let rows = editor.asset_browser.entries.len().div_ceil(columns);
+    let tiles = editor.asset_browser.visible_tiles();
+    let rows = tiles.len().div_ceil(columns);
     let content_height = rows as f32 * (TILE_SIZE + TILE_LABEL_HEIGHT + TILE_GAP);
     let viewport_height = bounds.height - HEADER_HEIGHT - PADDING;
     // The grid's height is known up front (entry count), so record it
@@ -120,29 +122,33 @@ pub(super) fn render_asset_browser(
     let mouse_pos = ctx.ui.mouse_pos();
     let mut presses = TilePresses::default();
 
-    for index in 0..editor.asset_browser.entries.len() {
+    for (index, visible) in tiles.iter().enumerate() {
         let slot = tile_rect(index, columns, grid_origin, scroll);
-        // Cull tiles fully outside the panel (the clip rect trims partials)
-        if slot.y + TILE_SIZE + TILE_LABEL_HEIGHT < bounds.y || slot.y > bounds.y + bounds.height {
-            continue;
-        }
-
-        let selected = editor.asset_browser.selected == Some(index);
-        let entry = &editor.asset_browser.entries[index];
-        render_tile(ctx.ui, &editor.theme, ctx.assets, entry, slot, selected);
-
-        if !is_playing {
-            let tile = tile_interaction(
-                ctx.ui, &mut editor.drag_drop, &editor.theme, entry, index, slot, mouse_pos,
-            );
-            presses.record(index, &tile);
+        if slot.y + TILE_SIZE + TILE_LABEL_HEIGHT < grid_origin.y || slot.y > bounds.bottom() { continue; }
+        let selected = editor.asset_browser.selected.as_ref() == Some(&visible.id);
+        let entry = editor.asset_browser.entries.iter().find(|entry| entry.relative_path == visible.id.path);
+        if visible.id.kind == TileKind::Folder {
+            tile::render_folder(ctx.ui, &editor.theme, visible, slot, selected);
+            if !is_playing {
+                let interaction = tile::folder_interaction(ctx.ui, &editor.theme, visible, slot);
+                presses.record(&visible.id, &interaction);
+            }
+        } else if let Some(entry) = entry {
+            tile::render_tile(ctx.ui, &editor.theme, ctx.assets, entry, slot, selected);
+            if !is_playing {
+                let interaction = tile_interaction(ctx.ui, &mut editor.drag_drop, &editor.theme, entry, &visible.id, slot, mouse_pos);
+                presses.record(&visible.id, &interaction);
+            }
         }
     }
 
-    if let Some(index) = presses.clicked {
-        select_tile(editor, index);
-    }
+    if let Some(selected) = &presses.clicked { select_tile(editor, selected); }
     tile::open_from_presses(editor, &presses, mouse_pos);
+    let grid = common::Rect::new(bounds.x, grid_origin.y, bounds.width, viewport_height);
+    if !is_playing && grid.contains(mouse_pos) && ctx.ui.mouse_right_just_pressed()
+        && !ctx.ui.is_input_blocked_at(mouse_pos) && !presses.has_right_press() {
+        header::open_new_menu(editor, mouse_pos);
+    }
     keyboard::mark_selected_tile(editor, ctx.ui, |index| tile_rect(index, columns, grid_origin, scroll));
 
     if assign_clicked {
@@ -154,75 +160,14 @@ pub(super) fn render_asset_browser(
 /// label under the tile is ellipsized, so the path is only readable in full
 /// on the click that selects it and on the tile's tooltip. An error on the
 /// bar stays: selecting a tile is not clearing a failed save.
-fn select_tile(editor: &mut EditorContext, index: usize) {
-    editor.asset_browser.selected = Some(index);
-    if editor.status_bar.is_showing_error() {
-        return;
+fn select_tile(editor: &mut EditorContext, tile: &TileId) {
+    // The release after a double press that entered a folder clicks the folder's own tile,
+    // which is no longer in the grid: selecting it would point past the visible tiles.
+    if !editor.asset_browser.visible_tiles().iter().any(|visible| visible.id == *tile) { return; }
+    editor.asset_browser.selected = Some(tile.clone());
+    if !editor.status_bar.is_showing_error() {
+        editor.status_bar.show_message(tile.path.clone());
     }
-    if let Some(entry) = editor.asset_browser.entries.get(index) {
-        let path = entry.relative_path.clone();
-        editor.status_bar.show_message(path);
-    }
-}
-
-/// Draw the header row and report whether Assign was clicked this frame.
-fn render_header(
-    editor: &mut EditorContext,
-    ui: &mut ui::UIContext,
-    assets: &AssetManager,
-    registry: &engine_core::scripting::ScriptRegistry,
-    world: &ecs::World,
-    bounds: common::Rect,
-) -> bool {
-    let rescan_bounds = ui::Rect::new(
-        bounds.x + PADDING,
-        bounds.y + 2.0,
-        HEADER_BUTTON_SIZE.x,
-        HEADER_BUTTON_SIZE.y,
-    );
-    let rescan_clicked = ui.button("asset_rescan", "Rescan", rescan_bounds);
-    if !editor.asset_browser.scanned {
-        ensure_scanned(editor, assets, registry);
-    } else if rescan_clicked {
-        refresh_assets(editor, assets, registry);
-    }
-
-    let assign_bounds = ui::Rect::new(
-        rescan_bounds.x + rescan_bounds.width + HEADER_GAP,
-        rescan_bounds.y,
-        HEADER_BUTTON_SIZE.x,
-        HEADER_BUTTON_SIZE.y,
-    );
-    let assign_clicked = ui.button_styled(
-        "asset_assign",
-        "Assign",
-        assign_bounds,
-        !editor.is_playing() && can_assign_selection(editor, world),
-    );
-
-    let count_label = format!("{} assets", editor.asset_browser.entries.len());
-    ui.label_styled(
-        &count_label,
-        Vec2::new(assign_bounds.x + assign_bounds.width + HEADER_GAP, bounds.y + 16.0),
-        editor.theme.text_muted,
-        editor.theme.fonts.small,
-    );
-
-    assign_clicked
-}
-
-/// Whether Assign has something to do: a loaded image tile is selected and
-/// the primary selection is an entity that carries a Sprite.
-fn can_assign_selection(editor: &EditorContext, world: &ecs::World) -> bool {
-    let has_texture = editor
-        .asset_browser
-        .selected_entry()
-        .is_some_and(|entry| entry.kind == AssetKind::Image && entry.texture_handle.is_some());
-    has_texture
-        && editor
-            .selection
-            .primary()
-            .is_some_and(|entity| world.get::<ecs::Sprite>(entity).is_some())
 }
 
 fn load_pending_thumbnails(
@@ -236,7 +181,10 @@ fn load_pending_thumbnails(
         }
         if entry.kind == AssetKind::Image && entry.texture_handle.is_none() && !entry.load_failed {
             match assets.load_texture(&entry.relative_path) {
-                Ok(handle) => entry.texture_handle = Some(handle.id),
+                Ok(handle) => {
+                    entry.texture_handle = Some(handle.id);
+                    entry.image_size = assets.get_texture(handle).map(|texture| (texture.width, texture.height));
+                },
                 Err(error) => {
                     entry.load_failed = true;
                     log::warn!("Asset browser: failed to load '{}': {error}", entry.relative_path);
@@ -245,91 +193,6 @@ fn load_pending_thumbnails(
             loads += 1;
         }
     }
-}
-
-fn render_tile(
-    ui: &mut ui::UIContext,
-    theme: &editor::EditorTheme,
-    assets: &AssetManager,
-    entry: &editor::AssetEntry,
-    slot: common::Rect,
-    selected: bool,
-) {
-    let slot_ui = ui::Rect::new(slot.x, slot.y, slot.width, slot.height);
-
-    // Tile background + content
-    let background = if selected { theme.selection_fill } else { theme.surface_3 };
-    ui.rect_rounded(slot_ui, background, 4.0);
-    match (entry.kind, entry.texture_handle) {
-        (AssetKind::Image, Some(handle)) => {
-            let (width, height) = assets
-                .get_texture(TextureHandle { id: handle })
-                .map(|t| (t.width, t.height))
-                .unwrap_or((1, 1));
-            let img = fit_rect(width, height, common::Rect::new(slot.x + 3.0, slot.y + 3.0, slot.width - 6.0, slot.height - 6.0));
-            ui.image(
-                ui::Rect::new(img.x, img.y, img.width, img.height),
-                handle,
-                ui::Color::WHITE,
-            );
-        }
-        (AssetKind::Image, None) => {
-            let color = if entry.load_failed { theme.error_red } else { theme.text_muted };
-            ui.label_in_bounds_styled(
-                if entry.load_failed { "!" } else { "…" },
-                slot_ui,
-                ui::TextAlign::Center,
-                color,
-                theme.fonts.heading,
-                0.0,
-            );
-        }
-        (AssetKind::Scene, _) => {
-            // Simple scene glyph: an accent page outline with a fold tick
-            let page = ui::Rect::new(slot.x + 20.0, slot.y + 12.0, slot.width - 40.0, slot.height - 24.0);
-            ui.rect_border(page, theme.accent_cyan, 1.5, 2.0);
-            ui.rect(
-                ui::Rect::new(page.x + page.width - 12.0, page.y, 12.0, 2.0),
-                theme.accent_cyan,
-            );
-        }
-        (AssetKind::Script | AssetKind::Sound | AssetKind::Song | AssetKind::DawProject | AssetKind::SoundFont, _) => {
-            let extension = std::path::Path::new(&entry.name)
-                .extension()
-                .and_then(|ext| ext.to_str())
-                .unwrap_or("")
-                .to_ascii_uppercase();
-            ui.label_in_bounds_styled(
-                &extension,
-                slot_ui,
-                ui::TextAlign::Center,
-                theme.accent_cyan,
-                theme.fonts.heading,
-                0.0,
-            );
-        }
-    }
-
-    // A name wider than the tile would bleed into its neighbours, so it is
-    // truncated here; the tile's tooltip and the status bar carry the full
-    // path.
-    let label = tile_label(&entry.name, |text| {
-        ui.measure_text_styled(text, theme.fonts.small).x
-    });
-    ui.label_in_bounds_styled(
-        &label,
-        ui::Rect::new(slot.x, slot.y + TILE_SIZE, TILE_SIZE, TILE_LABEL_HEIGHT),
-        ui::TextAlign::Center,
-        theme.text_secondary,
-        theme.fonts.small,
-        0.0,
-    );
-}
-
-/// The filename as it is drawn under a tile: truncated with an ellipsis to
-/// the tile's own width according to the caller's measurement.
-fn tile_label(name: &str, measure: impl Fn(&str) -> f32) -> String {
-    editor::ellipsize(name, TILE_SIZE, measure)
 }
 
 /// Assign the selected tile's texture to the primary selection, as one undo
@@ -377,6 +240,7 @@ mod tests {
             kind: AssetKind::Image,
             texture_handle: Some(handle),
             load_failed: false,
+            has_sidecar: false, image_size: None,
         }
     }
 
@@ -387,7 +251,8 @@ mod tests {
         world.add_component(&entity, Sprite::new(0)).ok();
 
         let mut editor = EditorContext::new();
-        editor.asset_browser.apply_scan(vec![image_entry("hero.png", 7)]);
+        editor.asset_browser.current_folder = "sprites".into();
+        editor.asset_browser.apply_scan(editor::AssetScan { files: vec![image_entry("hero.png", 7)], folders: vec![editor::AssetFolder { name: "sprites".into(), relative_path: "sprites".into() }] });
         editor.selection.select(entity);
         (editor, world, entity)
     }
@@ -396,9 +261,9 @@ mod tests {
     fn test_a_click_selects_the_tile_without_touching_the_entity() {
         let (mut editor, world, entity) = editor_with_sprite_and_asset();
 
-        select_tile(&mut editor, 0);
+        select_tile(&mut editor, &editor::TileId::file("sprites/hero.png"));
 
-        assert_eq!(editor.asset_browser.selected, Some(0));
+        assert_eq!(editor.asset_browser.selected, Some(editor::TileId::file("sprites/hero.png")));
         assert_eq!(
             world.get::<Sprite>(entity).map(|sprite| sprite.texture_handle),
             Some(0),
@@ -418,7 +283,7 @@ mod tests {
     fn test_a_click_puts_the_path_on_the_bar_and_leaves_an_error_alone() {
         let (mut editor, _, _) = editor_with_sprite_and_asset();
 
-        select_tile(&mut editor, 0);
+        select_tile(&mut editor, &editor::TileId::file("sprites/hero.png"));
         assert_eq!(
             editor.status_bar.message(),
             Some("sprites/hero.png"),
@@ -426,7 +291,7 @@ mod tests {
         );
 
         editor.status_bar.show_error("Failed to save");
-        select_tile(&mut editor, 0);
+        select_tile(&mut editor, &editor::TileId::file("sprites/hero.png"));
         assert_eq!(editor.status_bar.message(), Some("Failed to save"), "a click never erases an error");
         assert!(editor.status_bar.is_showing_error());
     }
@@ -450,7 +315,7 @@ mod tests {
         // rest is past the tooltip's rest-to-show delay.
         for _ in 0..3 {
             ui.begin_frame_dt(&input, Vec2::new(800.0, 600.0), 0.5);
-            tile_interaction(&mut ui, &mut drag_drop, &theme, &entry, 0, slot, pointer);
+            tile_interaction(&mut ui, &mut drag_drop, &theme, &entry, &editor::TileId::file(&entry.relative_path), slot, pointer);
             ui.end_frame();
         }
 
@@ -484,6 +349,7 @@ mod tests {
                 kind,
                 texture_handle: None,
                 load_failed: false,
+            has_sidecar: false, image_size: None,
             };
             let slot = common::Rect::new(40.0, 40.0, TILE_SIZE, TILE_SIZE + TILE_LABEL_HEIGHT);
             let pointer = Vec2::new(slot.x + TILE_SIZE * 0.5, slot.y + TILE_SIZE * 0.5);
@@ -494,7 +360,7 @@ mod tests {
             input.mouse_mut().handle_button_press(input::prelude::MouseButton::Left);
 
             ui.begin_frame_dt(&input, Vec2::new(800.0, 600.0), 0.016);
-            tile_interaction(&mut ui, &mut drag_drop, &theme, &entry, 0, slot, pointer);
+            tile_interaction(&mut ui, &mut drag_drop, &theme, &entry, &editor::TileId::file(&entry.relative_path), slot, pointer);
             ui.end_frame();
             drag_drop.begin_frame(pointer + Vec2::new(20.0, 0.0), true, false);
 
@@ -506,7 +372,7 @@ mod tests {
     fn test_assign_sets_the_texture_and_undo_puts_the_old_one_back() {
         let (mut editor, mut world, entity) = editor_with_sprite_and_asset();
         let mut history = CommandHistory::new();
-        select_tile(&mut editor, 0);
+        select_tile(&mut editor, &editor::TileId::file("sprites/hero.png"));
 
         assign_selected_texture(&mut editor, &mut world, &mut history);
         assert_eq!(
@@ -526,7 +392,7 @@ mod tests {
         let (mut editor, world, _) = editor_with_sprite_and_asset();
         assert!(!can_assign_selection(&editor, &world), "nothing is selected yet");
 
-        select_tile(&mut editor, 0);
+        select_tile(&mut editor, &editor::TileId::file("sprites/hero.png"));
         assert!(can_assign_selection(&editor, &world));
 
         editor.selection.clear();
@@ -548,16 +414,18 @@ mod tests {
     #[test]
     fn test_a_rescan_keeps_the_selection_on_the_file_it_pointed_at() {
         let mut editor = EditorContext::new();
-        editor.asset_browser.apply_scan(vec![image_entry("hero.png", 7)]);
-        select_tile(&mut editor, 0);
+        editor.asset_browser.current_folder = "sprites".into();
+        editor.asset_browser.apply_scan(editor::AssetScan { files: vec![image_entry("hero.png", 7)], folders: vec![editor::AssetFolder { name: "sprites".into(), relative_path: "sprites".into() }] });
+        select_tile(&mut editor, &editor::TileId::file("sprites/hero.png"));
 
         // A new file sorts ahead of the selected one, moving its index.
         editor
             .asset_browser
-            .apply_scan(vec![image_entry("armour.png", 8), image_entry("hero.png", 7)]);
-        assert_eq!(editor.asset_browser.selected, Some(1));
+            .apply_scan(editor::AssetScan { files: vec![image_entry("armour.png", 8), image_entry("hero.png", 7)], folders: vec![editor::AssetFolder { name: "sprites".into(), relative_path: "sprites".into() }] });
+        assert_eq!(editor.asset_browser.selected, Some(editor::TileId::file("sprites/hero.png")));
 
-        editor.asset_browser.apply_scan(vec![image_entry("armour.png", 8)]);
+        editor.asset_browser.current_folder = "sprites".into();
+        editor.asset_browser.apply_scan(editor::AssetScan { files: vec![image_entry("armour.png", 8)], folders: vec![editor::AssetFolder { name: "sprites".into(), relative_path: "sprites".into() }] });
         assert_eq!(editor.asset_browser.selected, None, "a deleted file drops the selection");
     }
 

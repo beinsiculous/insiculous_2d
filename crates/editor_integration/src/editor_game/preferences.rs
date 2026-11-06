@@ -26,6 +26,8 @@ impl<G: Game> super::EditorGame<G> {
             }
         };
         self.ui_scale = prefs.ui_scale;
+        self.editor.asset_browser.current_folder = prefs.current_folder.clone();
+        self.editor.asset_browser.scanned = false;
         self.editor.set_camera_offset(Vec2::new(prefs.camera_position.0, prefs.camera_position.1));
         self.editor.set_camera_zoom(prefs.camera_zoom);
         self.editor.view = prefs.view;
@@ -44,6 +46,7 @@ impl<G: Game> super::EditorGame<G> {
     pub(super) fn capture_preferences(&self) -> EditorPreferences {
         let mut prefs = EditorPreferences {
             ui_scale: self.ui_scale,
+            current_folder: self.editor.asset_browser.current_folder.clone(),
             camera_position: (self.editor.camera_offset().x, self.editor.camera_offset().y),
             camera_zoom: self.editor.camera_zoom(),
             last_scene_path: self

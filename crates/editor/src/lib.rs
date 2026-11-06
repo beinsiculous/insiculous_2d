@@ -35,6 +35,8 @@ pub use archetype::Archetype;
 pub mod command_api;
 mod behavior_editor;
 mod confirm_dialog;
+mod prompt_dialog;
+pub use prompt_dialog::{PromptDialog, PromptOutcome};
 mod script_editor;
 mod collider_overlay;
 pub mod color_editor_popup;
@@ -101,7 +103,8 @@ mod test_support;
 
 // Re-export main types
 pub use asset_browser::{
-    fit_rect, open_file_request, open_folder_request, scan_assets, AssetBrowserState, AssetEntry, AssetKind, TileStep,
+    fit_rect, open_file_request, open_folder_request, scan_assets, AssetBrowserState, AssetEntry, AssetKind, TileStep, Tile, TileId, TileKind, AssetScan, AssetFolder,
+    kind_root, validate_name, validate_folder, route_new_file, companion_path,
 };
 pub use behavior_editor::edit_behavior;
 pub use confirm_dialog::{ConfirmChoice, ConfirmDialog};

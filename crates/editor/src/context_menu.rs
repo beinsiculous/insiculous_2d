@@ -32,6 +32,19 @@ pub enum ContextMenuAction {
     Open(OpenRequest),
     /// Apply a tab layout action.
     Dock(crate::DockAction),
+    /// Create an asset or open its companion.
+    Asset(AssetAction),
+}
+
+/// An asset menu operation; sidecars carry their primary's relative path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AssetAction {
+    NewFolder,
+    NewScene,
+    NewScript,
+    NewSheetSidecar(String),
+    NewSongSidecar(String),
+    OpenSidecar(String),
 }
 
 /// One row of the menu.
@@ -137,7 +150,7 @@ impl ContextMenu {
         if let Some(popup) = &self.dock_popup {
             return popup.menus().iter().flat_map(|menu| menu.items.iter().filter_map(MenuItem::label)).collect();
         }
-        self.open.iter().flat_map(|open| open.items.iter().map(|item| item.label.as_str())).collect()
+        self.open.iter().flat_map(|open| open.items.iter().filter(|item| !item.label.is_empty()).map(|item| item.label.as_str())).collect()
     }
 
     /// Answer one of the menu's keys; a chosen item closes the menu and returns its action.
@@ -224,7 +237,7 @@ impl OpenMenu {
         let mut items: Vec<MenuItem> = self
             .items
             .iter()
-            .map(|item| MenuItem::action(item.label.clone()).with_enabled(item.enabled))
+            .map(|item| if item.label.is_empty() { MenuItem::separator() } else { MenuItem::action(item.label.clone()).with_enabled(item.enabled) })
             .collect();
         if let Some(note) = &self.note {
             items.push(MenuItem::separator());
@@ -251,7 +264,7 @@ fn inside_window(bounds: Rect, window_size: Vec2) -> Rect {
 }
 
 /// `text` with its first letter capitalized, as a line of its own.
-fn sentence(text: &str) -> String {
+pub fn sentence(text: &str) -> String {
     let mut characters = text.chars();
     characters
         .next()

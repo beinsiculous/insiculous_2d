@@ -76,6 +76,9 @@ pub struct EditorPreferences {
     /// Scale for the editor chrome and viewport, independent of the game HUD.
     #[serde(default)]
     pub ui_scale: UiScale,
+    /// Folder shown by the asset browser, relative to its asset root.
+    #[serde(default)]
+    pub current_folder: String,
     /// Last camera position (x, y)
     pub camera_position: (f32, f32),
     /// Last camera zoom level
@@ -107,6 +110,7 @@ impl Default for EditorPreferences {
     fn default() -> Self {
         Self {
             ui_scale: UiScale::FollowDisplay,
+            current_folder: String::new(),
             camera_position: (0.0, 0.0),
             camera_zoom: 1.0,
             last_scene_path: None,
@@ -228,6 +232,7 @@ mod tests {
         dock.groups[inspector_group].size = 333.0;
         let mut prefs = EditorPreferences {
             ui_scale: UiScale::Percent(150),
+            current_folder: "sprites/props".into(),
             camera_position: (100.0, 200.0),
             camera_zoom: 2.5,
             last_scene_path: Some("scenes/test.ron".to_string()),

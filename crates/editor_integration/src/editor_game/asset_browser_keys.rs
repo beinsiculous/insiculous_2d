@@ -32,6 +32,7 @@ pub(super) enum BrowserKey {
     /// Open the selected tile's context menu, at the tile
     OpenMenu,
     Release,
+    Parent,
 }
 
 impl<G: Game> EditorGame<G> {
@@ -68,6 +69,7 @@ impl<G: Game> EditorGame<G> {
             KeyCode::ContextMenu => BrowserKey::OpenMenu,
             KeyCode::F10 if modifiers.shift => BrowserKey::OpenMenu,
             KeyCode::Escape => BrowserKey::Release,
+            KeyCode::Backspace => BrowserKey::Parent,
             _ => return None,
         };
         Some(KeyRoute::AssetBrowser(browser_key))
@@ -93,6 +95,7 @@ impl<G: Game> EditorGame<G> {
                 browser.reveal_selected = browser.menu_requested;
             }
             BrowserKey::Release => browser.release_keyboard(),
+            BrowserKey::Parent => browser.up(),
         }
     }
 

@@ -90,6 +90,20 @@ pub fn parse_sheet_file(label: &str, ron_str: &str) -> Result<SheetFile, AssetEr
     Ok(file)
 }
 
+/// Serialize a sheet through its schema, with a header identifying its companion format.
+/// The schema contains only serializable scalar and sequence fields. If a future schema
+/// adds a fallible serializer, return a diagnostic that [`parse_sheet_file`] rejects;
+/// callers validate the result before writing so that failure never becomes a sidecar.
+pub fn write_sheet_file(file: &SheetFile) -> String {
+    match ron::ser::to_string(file) {
+        Ok(text) => format!("// Sprite sheet companion\n{text}\n"),
+        Err(error) => {
+            log::error!("Cannot serialize sprite sheet: {error}");
+            format!("// Cannot serialize sprite sheet: {error}\n")
+        }
+    }
+}
+
 impl SheetFile {
     /// Everything checkable without the PNG: version, cell size, and each
     /// clip's frame list and rate.
@@ -185,7 +199,7 @@ mod tests {
         assert_eq!(sheet.clips[1].1.fps, 10.0);
         assert!(!sheet.clips[1].1.looping);
         // Written back out, it reads as the same file.
-        let text = ron::ser::to_string(&sheet).expect("serialize");
+        let text = write_sheet_file(&sheet);
         assert_eq!(parse(&text)?, sheet);
 
         // The whole point of the pipeline: pixel art must not blur because
@@ -269,5 +283,19 @@ mod tests {
         assert_eq!(sidecar_path_for("tiles.png"), PathBuf::from("tiles.sheet.ron"));
         assert_eq!(sidecar_path_for("sprites/deion_16.png"), PathBuf::from("sprites/deion_16.sheet.ron"));
         assert_ne!(sidecar_path_for("tiles.png"), PathBuf::from("tiles.png.sheet.ron"));
+    }
+
+    #[test]
+    fn written_sheet_sidecar_round_trips_a_single_cell_idle_clip() -> Result<(), AssetError> {
+        let sheet = SheetFile {
+            version: SHEET_FILE_VERSION,
+            cell: (480, 288),
+            filter: TextureFilter::Nearest,
+            clips: vec![("idle".to_string(), ClipData { frames: vec![0], fps: 6.0, looping: true })],
+        };
+        let text = write_sheet_file(&sheet);
+        assert!(text.starts_with("// Sprite sheet companion\n"));
+        assert_eq!(parse_sheet_file("hero.sheet.ron", &text)?, sheet);
+        Ok(())
     }
 }

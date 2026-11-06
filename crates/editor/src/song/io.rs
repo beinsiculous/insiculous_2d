@@ -161,6 +161,8 @@ pub(crate) trait SongStore {
     /// The file's bytes; `NotFound` when there is none.
     fn read(&self, path: &Path) -> io::Result<Vec<u8>>;
     fn write(&mut self, path: &Path, bytes: &[u8]) -> io::Result<()>;
+    /// Exclusively create the initial sidecar.
+    fn write_new(&mut self, path: &Path, bytes: &[u8]) -> io::Result<()>;
     /// Move the file at `from` over `to`, replacing it whole: a reader of `to` sees the old
     /// file or the new one, never part of either.
     fn rename(&mut self, from: &Path, to: &Path) -> io::Result<()>;
@@ -174,6 +176,7 @@ pub(crate) trait SongStore {
 pub(crate) struct VfsStore;
 
 impl SongStore for VfsStore {
+    fn write_new(&mut self, path: &Path, bytes: &[u8]) -> io::Result<()> { common::vfs::write_new(path, bytes) }
     fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
         common::vfs::read(path)
     }

@@ -34,6 +34,7 @@ pub struct Hooks {
 thread_local! {
     static REQUEST_SENDER: RefCell<Option<SyncSender<String>>> = const { RefCell::new(None) };
     static RESPONSE_RECEIVER: RefCell<Option<Receiver<String>>> = const { RefCell::new(None) };
+    static FILE_CHANGES: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
     static CURRENT_PROJECT_ROOT: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
     static HOOKS: RefCell<Hooks> = RefCell::new(Hooks::default());
 }
@@ -47,6 +48,7 @@ pub fn setup_bridge(
     REQUEST_SENDER.with(|sender_cell| *sender_cell.borrow_mut() = Some(request_sender));
     RESPONSE_RECEIVER.with(|receiver_cell| *receiver_cell.borrow_mut() = Some(response_receiver));
     CURRENT_PROJECT_ROOT.with(|root_cell| *root_cell.borrow_mut() = Some(project_root));
+    FILE_CHANGES.with(|changes| changes.borrow_mut().clear());
 }
 
 /// Set the scripting hooks for syntax checking and runtime errors.
@@ -134,6 +136,34 @@ pub fn playground_poll_responses() -> Vec<JsValue> {
         }
         responses
     })
+}
+
+/// Record one successful VFS write, independently of the command-response FIFO.
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) fn record_file_change(path: &Path) {
+    let root = CURRENT_PROJECT_ROOT.with(|root_cell| root_cell.borrow().clone());
+    let Some(root) = root else { return };
+    let Ok(relative) = path.strip_prefix(root) else { return };
+    let relative_path = relative.components()
+        .map(|component| component.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>().join("/");
+    if !relative_path_is_safe(&relative_path) { return; }
+    FILE_CHANGES.with(|changes| {
+        let mut changes = changes.borrow_mut();
+        if !changes.contains(&relative_path) { changes.push(relative_path); }
+    });
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn take_file_changes() -> Vec<String> {
+    FILE_CHANGES.with(|changes| std::mem::take(&mut *changes.borrow_mut()))
+}
+
+/// Drain the project-relative paths written since the last poll, each path once.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn playground_poll_file_changes() -> Vec<JsValue> {
+    take_file_changes().into_iter().map(|path| JsValue::from_str(&path)).collect()
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -512,66 +542,5 @@ pub fn playground_script_errors() -> Vec<String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::mpsc::sync_channel;
-
-    #[test]
-    fn test_validate_bridge_path_rules() {
-        let root = Path::new("/playground/v1/assets/projects/pong");
-
-        // Valid relative paths
-        assert_eq!(
-            validate_bridge_path(root, "scenes/main.scene.ron"),
-            Ok(root.join("scenes/main.scene.ron"))
-        );
-        assert_eq!(
-            validate_bridge_path(root, "scripts/sub/ball.rhai"),
-            Ok(root.join("scripts/sub/ball.rhai"))
-        );
-
-        // Refused cases
-        assert!(validate_bridge_path(root, "").is_err());
-        assert!(validate_bridge_path(root, "/etc/passwd").is_err());
-        assert!(validate_bridge_path(root, "\\windows\\system32").is_err());
-        assert!(validate_bridge_path(root, "../sibling/file").is_err());
-        assert!(validate_bridge_path(root, "scenes/../../outside").is_err());
-    }
-
-    #[test]
-    fn test_can_dispatch_refuses_empty_whitespace_and_full_channel() {
-        let (request_sender, _request_receiver) = sync_channel::<String>(2);
-
-        // Refuses empty/whitespace
-        assert!(!can_dispatch("", &request_sender));
-        assert!(!can_dispatch("   ", &request_sender));
-        assert!(!can_dispatch("\t\n", &request_sender));
-
-        // Accepts valid lines until capacity
-        assert!(can_dispatch("query", &request_sender));
-        assert!(can_dispatch("select 1", &request_sender));
-
-        // Queue full (capacity 2): refuses next line
-        assert!(!can_dispatch("create player", &request_sender));
-    }
-
-    #[test]
-    fn test_dirty_or_combination() {
-        assert!(!dirty_or(false, false));
-        assert!(dirty_or(true, false));
-        assert!(dirty_or(false, true));
-        assert!(dirty_or(true, true));
-    }
-
-    #[test]
-    fn test_relative_path_is_safe_rules() {
-        assert!(relative_path_is_safe("assets/scenes/main.scene.ron"));
-        assert!(relative_path_is_safe("project.ron"));
-        assert!(!relative_path_is_safe(""));
-        assert!(!relative_path_is_safe("/etc/passwd"));
-        assert!(!relative_path_is_safe("\\windows\\system32"));
-        assert!(!relative_path_is_safe("../escaped"));
-        assert!(!relative_path_is_safe("assets/../../outside"));
-        assert!(!relative_path_is_safe("C:drive"));
-    }
-}
+#[path = "bridge/tests.rs"]
+mod tests;

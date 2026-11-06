@@ -18,7 +18,7 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
   - `assets.rs` - Asset loading and caching (tracks handle→path for scene save)
   - `assets/sprite_sheet.rs` - `AssetManager::load_sprite_sheet` (PNG + sidecar → `SpriteSheet`), `SidecarCache` (one sidecar read per path per scene load, cleared at the top of every load)
   - `assets/sound_library.rs` - the sound tier: `AssetManager::resolve_sound` (a recorded sound by path, loaded once, a failed path warned once and remembered, both cleared by `set_base_path`)
-  - `sheet_file.rs` - **the `.sheet.ron` schema** (`SheetFile` v1, `parse_sheet_file`, `into_parts`, `sidecar_path_for`); all sidecar validation lives here
+  - `sheet_file.rs` - **the `.sheet.ron` schema** (`SheetFile` v1, `parse_sheet_file`, `write_sheet_file`, `into_parts`, `sidecar_path_for`); all sidecar validation lives here
   - `texture_filter_serde.rs` - shared serde bridge for `TextureFilter` (renderer stays serde-free); used by `GameConfig.texture_filter` and `SheetFile.filter`
   - `scene.rs` / `scene_loader.rs` / `scene_data.rs` / `scene_serializer.rs` - Scene lifecycle, RON load, schema, World→RON save (the ONLY save pipeline)
   - `behavior_runner/` (`mod.rs` + `handlers.rs` + `camera.rs`) - Behavior system; `scene_data::BehaviorData` is a type alias of the wire-frozen `ecs::Behavior`

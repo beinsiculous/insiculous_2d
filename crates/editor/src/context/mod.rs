@@ -86,6 +86,9 @@ pub struct EditorContext {
     pub drag_drop: crate::DragDropState,
     /// Asset browser panel state (scan results, scroll)
     pub asset_browser: crate::AssetBrowserState,
+    /// The asset creation prompt and the operation it is naming.
+    pub asset_prompt: crate::PromptDialog,
+    pub asset_creation: Option<crate::context_menu::AssetAction>,
     /// The editor's own UI faces (regular/bold/mono), loaded at init from
     /// the crate-shipped bytes — never from the opened project's assets.
     pub fonts: crate::fonts::EditorFonts,
@@ -165,6 +168,8 @@ impl EditorContext {
             external_tools: crate::external_tools::ExternalToolsConfig::default(),
             drag_drop: crate::DragDropState::new(),
             asset_browser: crate::AssetBrowserState::default(),
+            asset_prompt: crate::PromptDialog::default(),
+            asset_creation: None,
             script_catalog: Vec::new(),
             script_picker_open: false,
             inspector_state: crate::InspectorState::default(),
