@@ -191,7 +191,8 @@ under it, never a silent rewrite.
   export *keeps* (the importer drops directory entries, so the file is what carries the folder
   through a round trip — round 2, kimi F11); a folder made today is there tomorrow (round 1,
   gemini F4); natively `mkdir` is enough.
-- **(j) — PROPOSED after round 4, Jesse's to rule — the native file rename's residual.** A
+- **(j) — RULED by Jesse 2026-11-06 ("go ahead and accept the residual") — the native file rename's
+  residual is accepted, stated in the panel's doc comment; no `libc`.** Proposed after round 4. A
   rename refuses an existing target through `hard_link(from, to)` then an inode-and-length check
   then `remove_file(from)`; between the check and the unlink there are two adjacent syscalls in
   which an external tool that atomically replaces the very file being renamed loses its new bytes
@@ -1516,10 +1517,11 @@ executor builds on:
 
 - **Roster (the ground rule's correction):** reviewers kimi and deepseek (deepseek takes gemini's
   angle — the web ordering and the tombstone), the planner is the UI eye over the two stills;
-  codex is the executor and never reviews. The engine's code review is round 14 (round 13 reviewed this
-  re-verification), the site half's round 3 under `../insiculous_web/review/editor-ux/`. **Gate before the handoff: ruling (j)**, still
-  PROPOSED — the plan assumes the residual (one sentence in the panel's doc comment, no `libc`),
-  and the handoff is not written until Jesse rules.
+  codex is the executor and never reviews. The engine's code review is round 14 (round 13 reviewed
+  this re-verification), the site half's round 3 under `../insiculous_web/review/editor-ux/`.
+  **Ruling (j) is Jesse's since 2026-11-06:** the residual is accepted — one sentence in the panel's
+  doc comment names the two adjacent syscalls, no `libc` — so the handoff follows this
+  re-verification.
 - **Lines that hold, moved by 4a:** `vfs/entries.rs` 186 (`list_entries` :21, `create_dir_all`
   :43, `exists` :58, `write_new` :72, the `MemFs` twins :100–150, `remove_if_same_file` :160) —
   `remove_file`, `remove_dir_all` and `rename` join it with their twins; `vfs/tests.rs` is 459, so
