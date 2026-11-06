@@ -701,7 +701,8 @@ pub struct AssetScan { pub files: Vec<AssetEntry>, pub folders: Vec<AssetFolder>
 pub fn scan_assets(base: &Path, daw: &[String]) -> AssetScan;   // folders from vfs::list_entries
 impl AssetBrowserState {
     pub current_folder: String,                 // "" = the root; persisted in prefs
-    pub pending_folders: Vec<String>,           // created this session, empty so far (ruling (i))
+    // no pending_folders cache (4a retired the planned field, round 11): the scan is
+    // authoritative — read_dir lists an empty directory natively, its .keep does on the web
     pub selected: Option<TileId>,               // TileId { kind: Folder | File, path }: an index into
                                                 // the file-only list names the wrong thing once
                                                 // folders sort first (kimi F9, round 2)
@@ -784,6 +785,23 @@ tile, reveal it, status line "Created scenes/level2.scene.ron". **A failed mutat
 denied, disk full, a parent half-created — kimi F13) keeps the prompt open with the error text
 under the field; the browser's state changes only after the vfs call returned `Ok`; a folder
 operation that did part of its work names what it did.
+
+**Corrected after batch 4a (2026-11-05, rounds 11–12 and the site's rounds 1–2).** `write_new`'s
+native half removes the half file a failed `write_all` leaves, by inode and device (Unix) so a
+replacement another program put at the path in the window is never touched; elsewhere the half
+file stays and the error names it. The atomic form — a temporary sibling published with
+no-overwrite semantics — needs the hard-link primitive 4b introduces and lands there. The
+`pending_folders` cache above is gone (it resurrected a folder deleted outside the editor);
+`list_entries` follows the configured root as `list_files` does and never a symlink entry below
+it, and one unreadable entry is skipped, not its folder. The site's drain is
+`playground_poll_file_changes()` (writes and creations only, until 4b records removals and
+renames), and the scripts panel never replaces or clears a dirty buffer on a refresh, reloads a
+clean one only when the bytes differ (its own Save fires the observer too), and clears only the
+error its own refresh wrote. **The playground bundle is never rebuilt in place:** the site's
+`README.md` ("Don't overwrite builds in place — bump the version folder") and `build_wasm.sh`'s
+refusal of a populated target make every rebuild a new version folder — 4a shipped **v3** (the
+handoff had said v2, the planner's error), so every "v3" this section and batch 6 wrote before
+2026-11-05 reads as *the version after the previous batch's*.
 
 **Rename and delete (4b).** On a selected tile or folder: *Rename…* (the prompt, pre-filled) and
 *Delete…* (the confirm dialog, the folder's file count named). **Pairs move together** (gemini F5,
@@ -1015,7 +1033,9 @@ the site's, in TypeScript, because the Rust side never touches `localStorage` to
 lives in the playground crate, not in `editor_integration`, so batch 5 stays disjoint from
 External Tools batch 7 (ruling (e)). No bundle version bump: the glue grows two exports the v2 bundle's
 `game.js` must carry, so the bundle is rebuilt in place as part of the batch (as batch 6 of
-Playground UX rebuilt it), and `WEB_PLAYGROUND.md` § The preview window gains a sibling § The
+Playground UX rebuilt it) — **wrong since 2026-11-05: the site never rebuilds a deployed version
+folder in place (its README), so batch 5's two exports are a new bundle version, like 4a's v3 and
+4b's v4 (the 4a done-mark)** — and `WEB_PLAYGROUND.md` § The preview window gains a sibling § The
 editor window with the protocol table.
 
 **Gates.** `npm run verify` whole (axe over the four new pages, the phone and 125 % shots, the
@@ -1441,6 +1461,42 @@ Every file, line and count above and in § D checked; what the executor builds o
 - **Stills:** `batch4a-assets-{root,sprites,new-menu}.png` at 1280×800 — the root with its folder
   tiles and breadcrumb, inside `sprites/` with a badged tile, the New ▾ menu open.
 
+**Done 2026-11-05: 1d18b1a (engine) and insiculous_web 8f2fb19 (site)** (executor Astra/codex,
+`report-4a.md` COMPLETE, 49 engine files and a 17-path site half; engine round 11 — kimi 3
+(4 m 51 s), deepseek 8 (11 m 47 s), the planner 6 with the UI eye over the three stills; site
+round 1, the new subject `../insiculous_web/review/editor-ux/` — kimi 3 (2 m 51 s), deepseek 6
+(5 m 45 s); the fix rounds, engine 12 — kimi 3 (2 m 06 s), deepseek 4 (5 m 19 s) — and site 2 —
+kimi 2 (2 m 20 s), deepseek 4 (8 m 34 s); every finding applied in its named shape, no round 13).
+Both commits are Jesse's, made from the IDE on 2026-11-05 under its generated summary ("Remove
+editor asset browser module and add midi-evil VCS mapping" — it is this batch: the asset browser
+*module* became the `asset_browser/` directory), verified by the planner on 2026-11-06 as
+byte-for-byte the reviewed fixed snapshots (`review/editor-ux/draft-4a-fixed.diff`; the site's
+`draft-4a-site-fixed.diff` over its reviewed files) plus, in the engine, the ledger's rows and, in
+the site, the generated v3 bundle and Jesse's own devlog post. The message carries no `fixes`
+line, so #243 closes by hand. Accepted and fixed by the planner: the half file a failed `write_new`
+left (removed by inode; the atomic publish waits for 4b's hard link); `pending_folders` retired;
+a linked asset root followed, a bad entry skipped; Assign gated on Play alone; the web tile menu's
+desktop-only note; Open sidecar gated like the New items; the hot-reload hold reading
+`dialog_up()`; a folder double-click's release selecting nothing; the prompt's error lines
+word-wrapped, an overlong word split; the guides' one Pitfalls table; `FILE_CHANGES` as a
+`RefCell`; on the site the dirty-buffer guards, the bytes-compared reload, the feature-detected
+drain, the refresh's own error alone, and the missing-file copy. **The big one was the planner's:**
+the handoff said `--version v2 --sync`; the site's README forbids overwriting a deployed version
+folder and `build_wasm.sh` refused without `--force`, which the executor passed as told — v2
+restored as deployed, the crate's five-place version v3, the bundle built and synced as
+`/playground/v3/`, the embed, the preview page, the postbuild check and `WEB_PLAYGROUND.md`
+naming it. Rebutted: the Conductor demo scene's missing wiring (pre-existing; #251, batch 6's);
+removals in the drain (4b's); the v3 record schema in v2's database (verified: `deleted` is
+`serde(default)`, `DB_VERSION` 1 — the reverse hazard, a cached v2 glue after a v3 session
+reading a tombstone as an empty file, is the tombstone design's own, noted here for the next
+bundle bump); the "bundled project changed" note every stored project shows once after a bump
+(the compare's designed meaning; batch 6's migration may revisit it). Lessons: a reviewer packet
+cut with `git diff <tree> -- src` picks up another author's untracked-then-staged files (exclude
+`src/content`); the harness cwd follows the last `cd` in parallel calls (absolute paths in every
+heredoc); a handoff that names a bundle version says "a NEW version folder". `rebuttal-11.md`,
+`rebuttal-12.md`, the site's `rebuttal-1.md` and `rebuttal-2.md`; the ledger's eight rows for
+rounds 11, 12, site 1 and site 2 (landed in 1d18b1a).
+
 **Batch 4b — the asset browser: rename and delete (§ D, *Rename and delete*). Gated on 4a; Jesse
 kept it 2026-11-03. Issue #244.** Files: `vfs/entries.rs` (`remove_file`, `remove_dir_all`, `rename` — the two
 native algorithms — the web ordering, the failure-injection hook on the memory store),
@@ -1527,7 +1583,10 @@ tree and list each violation in the report before a file moves (kimi F11). Gates
 set; the checker over every tree it names; `check_wasm.sh`; `npm run verify` on the site for the
 bundle. Reviewers: kimi, gemini (the checker, the bundle bump and the migration are seams). Leaves
 out: the six games' `sprites/` (DEION_STYLE's); renaming anything under `deion_assets`; a
-font's filename (the stated exception).
+font's filename (the stated exception). **Corrected 2026-11-06:** this batch's bundle is **v5**, not v3 — 4a shipped v3 and 4b
+ships v4, because the site never rebuilds a deployed version folder in place (the 4a done-mark);
+"v3" in this paragraph names the bundle after 4b's and "v2" a visitor's pre-convention scenes,
+and the migration's trigger is "stored version predates this batch's", whatever the numbers.
 
 **Batch 7 — tab drag (§ C, the gesture). Runs in this effort (Jesse, 2026-11-03), after batch 3
 has shipped and Jesse has lived with the menu-driven model for at least one batch. Issue #247.** Drag a
