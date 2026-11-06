@@ -1510,6 +1510,173 @@ as recovery). Gates: as 4a, plus `check_audio_provenance.sh` over a renamed song
 gemini (the ordering), codex (the rename prompt and the refusal, two stills). Leaves out: a journal;
 undo.
 
+**Re-verified 2026-11-06 against 1d18b1a (batch 4a landed and pushed; the tree is clean on
+`jesse`).** Every file, line and count above and in § D's *Rename and delete* checked; what the
+executor builds on:
+
+- **Roster (the ground rule's correction):** reviewers kimi and deepseek (deepseek takes gemini's
+  angle — the web ordering and the tombstone), the planner is the UI eye over the two stills;
+  codex is the executor and never reviews. The engine's code review is round 14 (round 13 reviewed this
+  re-verification), the site half's round 3 under `../insiculous_web/review/editor-ux/`. **Gate before the handoff: ruling (j)**, still
+  PROPOSED — the plan assumes the residual (one sentence in the panel's doc comment, no `libc`),
+  and the handoff is not written until Jesse rules.
+- **Lines that hold, moved by 4a:** `vfs/entries.rs` 186 (`list_entries` :21, `create_dir_all`
+  :43, `exists` :58, `write_new` :72, the `MemFs` twins :100–150, `remove_if_same_file` :160) —
+  `remove_file`, `remove_dir_all` and `rename` join it with their twins; `vfs/tests.rs` is 459, so
+  4b's vfs tests go in a new `vfs/mutate_tests.rs`. `vfs/mod.rs` 427: the public `remove_prefix`
+  is :225, `MemFs::remove_prefix` :396 (the slash; the dropped keys returned); **`set_remove_observer`
+  (:50) already exists**, firing once per key `remove_prefix` drops on wasm — the web halves notify
+  through it, and a web `rename` is its destination puts through the write observer *then* its
+  source removes through the remove observer: the ordering contract, made of the two observers.
+- **The bundled-only tombstone, precisely:** `persist/queue.rs` (269) `on_vfs_remove` :83–98 returns
+  when the path has no chain (`is_none_or(conflicted)`), and a chain exists only for a path seeded
+  from the store (`persist/mod.rs:137`) or written in this tab — a bundled-only path has none, so
+  `Operation::Remove` (:28) is never queued for it. All three stores answer an absent record at
+  base 0 with `Ok(())` — `store/memory.rs:87`, `store/directory.rs:149`, `store/indexed_db/mod.rs:349`
+  — § D's no-op. 4b: `on_vfs_remove` creates the chain at revision 0 for a project-relative path
+  without one, and each store writes a tombstone for an absent record at base 0 (`deleted`, empty
+  bytes, revision 1, the current `bundle_version`); the boot already drops a tombstoned path's
+  bundled copy (`WEB_PLAYGROUND.md` :172–179; the playground guide's row :47). **Two seams the
+  tombstone must carry with it (round 13, kimi F1/F2 = deepseek F2/F1):** `ProjectStore::remove_file`
+  (`store.rs:85`) takes the manifest and **upserts it as `put` does** (`memory.rs:75–80`'s rule, in
+  all three stores, atomically with the tombstone) — the boot (`web_entry.rs:193–200`) wipes stored
+  files that have no stored manifest as an interrupted import, so a visitor whose one change is a
+  bundled-only delete would see the file back on reload, and `projects.rs:76–86` would never mark
+  the project modified; and it **returns the resulting revision** (`Result<u64, _>`), so the queue's
+  `start_operation` drops its "at revision zero nothing was tombstoned" case (`queue.rs:234–238`,
+  which records `revision_after = 0` and makes the next put on the path — a recreate, a rename back —
+  conflict terminally against its own revision-1 tombstone). Tests: a first-ever bundled-only delete
+  run through the boot's stored-file selection over a tombstone-only store, and a same-`Chains`
+  delete-then-recreate with no reseed. Testable natively in
+  `store/tests.rs` (224) and `persist/tests/`; the memory store has **no failure-injection hook
+  yet** (`store/memory.rs`, 174) — 4b adds the one § D's test needs.
+- **The family, in one place:** `asset_browser/tree.rs` (154) has `companion_path(primary)` :40
+  (PNG → `.sheet.ron`, MIDI → `<path>.ron`) and `kind_for_path` :22, which classes every
+  `.sheet.ron` and `<midi>.ron` as `AssetKind::Companion`, which `visible_tiles`
+  (`asset_browser/mod.rs:171`) hides — so **an orphan companion is hidden today**; 4b shows a
+  companion whose primary is absent as a tile with an "orphan" badge (text, never colour alone)
+  that offers *Delete…* alone — *Rename…* is disabled on it with the note "an orphan companion is
+  deleted, or paired by adding its primary" (`validate_name` refuses every `Companion`,
+  `tree.rs:121`, and no inverse of `companion_path` exists or is built — round 13, kimi F3,
+  deepseek F5) — and adds `asset_family(primary) -> Vec<String>` (primary, companion, the
+  `.recovered-*` siblings) beside `companion_path`, read by rename, delete and the collision
+  preflight alike. **The rename validator is its own** (kimi F3): `validate_name` (:112–133) is
+  creation-specific — Song accepts `.mid` only, Sound `.wav` only — so a pre-filled `theme.midi`
+  would be refused; `validate_rename(name, kind, current_extension)` beside it keeps the asset's
+  own extension (`.midi`, `.ogg`, `.jpg`) and applies the snake_case rule to the stem, with tests
+  for `.midi` and an alternate sound and image extension.
+  **No writer of `.recovered-*` names exists in the tree** (the pattern is only in
+  `file_type.rs:280`'s test): the family keeps the pattern for files brought in by hand, tested
+  with a fixture, and 4b builds no writer.
+- **Named today, by name:** `TileId` (`asset_browser/mod.rs:82`), `selected: Option<TileId>` :105,
+  `apply_scan` :139 (a selection no longer visible clears itself, so a deleted tile's does; a
+  renamed tile is reselected by its new identity as `confirm_creation` does). `context_menu.rs`
+  (277): `AssetAction` :41 gains `Rename(TileId)` and `Delete(TileId)`, dispatched by the one arm
+  in `menu_actions.rs:18`; the tile menu is `header.rs:59–90` (`open_new_menu`; Open sidecar :83)
+  — *Rename…* and *Delete…* go before the Open items. `panel_renderer/asset_browser/mutate.rs`
+  (216): `begin_creation` :14 (`editor.asset_creation: Option<AssetAction>` is the pending
+  operation, `editor.asset_prompt` the dialog), `render_prompt` :38, `confirm_creation` :52 —
+  rename and delete go in a sibling `remove.rs` (delete and its confirm) and `rename.rs`;
+  `render_prompt` routes a confirmed name by the pending action's variant. `prompt_dialog.rs`
+  (158): `open(title, initial)` :34 pre-fills, but the button says "Create" — a confirm-label
+  parameter joins it. `confirm_dialog.rs` (297): `ConfirmDialog` is plain data (:27–35) with one
+  constructor per prompt (:45–142) — `delete_asset(name, file_count)` (Delete · Cancel),
+  `rename_despite_references(count, names)` (Rename anyway · Cancel) and
+  `save_and_rename(document)` (Save and rename · Cancel) join them, parked and routed through
+  `scene_confirm.rs`'s `PendingSceneAction` (:27–43 — one variant each), so `dialog_up`
+  (`panel_press.rs:29`, already counting the asset prompt) counts them for free.
+- **Open documents:** the scene's path is `EditorContext::scene_path()` / `set_scene_path`
+  (`context/mod.rs:365,370`); the song's is `SongDocument::path()` (`song/mod.rs:110`; the field
+  :69 is private, no setter) — 4b adds `SongDocument::follow_rename(new_path)`, path only,
+  fingerprints kept, and `song_io.rs:93` then saves to it. The hot-reload watcher recomputes
+  `watched_paths` from the documents each tick (`hot_reload.rs:149`), so a renamed open scene is
+  watched at its new path once `set_scene_path` ran — but the old path's disappearance reaches
+  `dispatch_file_change` (:240–246) as a non-`Changed` event and prints "was deleted on disk"; a
+  rename must not report its own move — and `note_written` cannot carry it: with no stamp the
+  worker only echoes `Noted` (`hot_reload/worker.rs:106–110`), and two polls before the host's
+  next tick still emit `Deleted` (kimi F5, round 13) — so the watcher gets a removal-specific note
+  (`WatchMessage::Removed(path)`, recorded as absent) sent before the move, and the test runs two
+  old-path polls before the host tick and asserts no such line. Natively only; the web has no
+  watcher. **Save and rename has three outcomes** (deepseek F4): `save_song(None)`
+  (`song_io.rs:63–74`) answers `Ok(Some)` saved — the rename proceeds; `Ok(None)` parked behind
+  the Overwrite prompt — the rename is dropped with the status line "the save is waiting on
+  Overwrite — rename after it"; `Err` — the rename aborts naming the error. And *Rename…* of the
+  open scene or song is refused outright while a confirm is parked (`scene_confirm.pending_action`)
+  or a reload waits (`waiting_scene`, `waiting_song_map`, `hot_reload.rs:82`), so `follow_rename`
+  never races a parked old path.
+- **Songs — the planner's finding, a correction to § D's family:** a song's sample folder is named
+  from its *path* (`song/io/paths.rs:92 sample_directory`: `music/theme.mid` →
+  `music/samples/theme`, `music/a/theme.mid` → `music/samples/a__theme`) and that folder's
+  `LICENSE` names its owner (`samples.rs:129 check_folder_owner` reads `Source:`). After a rename
+  the sidecar's sample paths still point at the old folder (the song loads), but the next Save
+  computes the *new* folder, finds it free, copies the samples there and leaves the old folder
+  behind with a `LICENSE` naming a song that no longer exists — an orphan the provenance gate
+  passes. **4b's rule:** *Rename…* of a song whose sample folder exists is **refused**, naming the
+  folder and pointing at the Conductor panel's Save As; *Delete…* of a song includes its existing
+  sample folder in the family (the confirm names it and its count). A `.mid` rename target must
+  pass `saveable_song_path` (`paths.rs:53`), or the renamed song could never save. **A file under a
+  song's sample folder** (`music/samples/<flat>/`, `SAMPLES_FOLDER` at `paths.rs:11`) is a `Sound`
+  tile today and **refuses both *Rename…* and *Delete…***, naming the song ("ping.wav is one of
+  ai_demo.mid's samples — edit it from the Conductor panel"): a renamed sample breaks the sidecar
+  that names it, and the folder's own `LICENSE` is neither a home `LICENSE` nor `sounds/LICENSE`
+  (deepseek F3, round 13). **The stanza:**
+  `rewrite_home_license` (`samples.rs:195`) and `paragraphs`/`files_of`/`with_files` (:250–300)
+  are private; 4b adds one public helper beside them, `rename_in_license(text, &[(old, new)]) ->
+  Option<String>` (the whole family's renames at once, so a song stanza's `.mid` and `.mid.ron`
+  tokens move together — deepseek F6), rewriting the `Files:` tokens of the stanza that names the
+  file — a song's home
+  `LICENSE` and a sound's `sounds/LICENSE` alike (Debian copyright format, whole tokens with
+  continuation lines, as `check_audio_provenance.sh` reads them); the preflight computes the new
+  text before anything moves.
+- **The site half, corrected:** the bridge has **no JS-callback hook** — `Hooks` (`bridge.rs:21–32`)
+  are Rust-side. So: a new export `playground_set_file_mutation_guard(function: js_sys::Function)`
+  keeps the function in a thread-local, in a new `bridge/files.rs` (`bridge.rs` is 546 lines;
+  `bridge/tests.rs` already makes it a directory); `EditorRunOptions` (`run_options.rs:14–43`)
+  gains `file_mutation_guard: Option<FileMutationGuard>`, `pub type FileMutationGuard =
+  fn(&FileMutation) -> Result<(), String>`, `FileMutation { phase: Prepare | Done | Failed,
+  removed: Vec<String>, renamed: Vec<(String, String)> }` project-relative; the web entry (`web_entry.rs:294–307`) installs the
+  `fn` that calls the stored function with the mutation as JSON and reads a string back (empty =
+  proceed, text = the refusal under the prompt's field); natively `None`; rename and delete call
+  the guard *before* their first vfs step. The scripts panel registers its guard beside
+  `registerFileChanges` (`playground-scripts-panel.ts:13–15`): a dirty open script refuses its
+  delete, asks before its rename through `window.confirm` (the call is synchronous inside the
+  frame), saves through `saveCurrent` (:57) when told to, and **blocks its own saves** until the
+  outcome: the guard is called twice — `Prepare` before the first vfs step, `Done` or `Failed`
+  after — and the panel moves `currentPath` (:23) to the new path only on `Done`, releasing the
+  block on either (kimi F4, round 13: a path moved at Prepare and a rename that then failed made
+  the next Save create the new path beside the untouched old one); a guard-approved rename whose
+  vfs step fails is tested; `refreshList` (:156) already copes with the open file leaving the list
+  (:183–190). The drain: `record_file_change` (`bridge.rs:142`) records writes only — 4b records
+  removals and both ends of a rename, so the list refreshes after the move (site round 1, F6).
+  `playground-embed.ts` (548) gains the one registration line.
+- **The bundle is v4.** A new export changes the glue, and the site never rebuilds a deployed
+  version folder in place (its README :136; `build_wasm.sh` refuses a populated target): the five
+  places (`web_entry.rs` header :3–9, `ASSET_BASE` :30, `BUNDLE_VERSION` :32; `--version v4 --sync
+  ../insiculous_web/public`; `projects.json`; the site's `PlaygroundEmbed.astro`, `preview.astro`,
+  `scripts/postbuild-check.mjs`) plus `WEB_PLAYGROUND.md` § The bundle contract (:55) and every
+  playground-bundle v3 line in it; `public/playground/v3/` stays untouched. The record schema does
+  not change; every visitor with stored files sees the "bundled project changed" note once.
+- **Sizes near the ceiling:** `bridge.rs` 546 (→ `bridge/files.rs`); `vfs/tests.rs` 459 (a new
+  test file); `song/io.rs` 493 (the helper lives in `samples.rs`, 305); `panel_renderer/
+  asset_browser.rs` 451; `tile.rs` 355; `shortcuts.rs` 583 (untouched: no new key).
+- **Gates:** 4a's set; `check_wasm.sh` (common changes); `check_audio_provenance.sh <root>` over a
+  scratch copy of `examples/` in which the batch's own `vfs::rename` plus the stanza helper renamed
+  `sounds/snd_jump.wav` to `sounds/jump.wav` — a one-file stanza and no sample folder; `ai_demo.mid`
+  has one, so the UI refuses it, and the gate never reads `Source:` (deepseek F6, round 13); the
+  script takes a root, :22–26 — its clean output in the report beside the engine-root run, plus the
+  two unit tests (a song stanza's two tokens moved together; the sample-folder refusal); the site's
+  `npm run verify` over v4.
+- **Docs the batch changes:** `WEB_PLAYGROUND.md` (414) § Persistence :150–180 (the ordering
+  contract, "a duplicate is the recovery", the bundled-only tombstone) and § The bridge's table
+  :214–235 (the guard export, the drain's removals); the guides' rows — `common/CLAUDE.md` :10–11,
+  :25, :29–32; `editor/CLAUDE.md` :100, :174; `editor_integration/CLAUDE.md` :52, :71, :78;
+  `playground/CLAUDE.md` :21, :27, :45–47, :59 — and `training.md` where it names the browser.
+- **Stills:** `batch4b-assets-{rename,refusal}.png` at 1280×800 — the rename prompt pre-filled over
+  a badged tile, and a refusal (the open scene's delete, named).
+- **Leaves out, beyond § D's:** a Delete or F2 key on a selected tile (menu items only; a follow-up
+  at close-out); renaming a song with samples (Save As is its path); `EDITOR_COMMAND_API.md` is
+  unchanged (#112's per-file delete verb is what this batch's web delete enables).
+
 **Batch 5 — the editor in its own window (§ E). Issues #245 (engine) and insiculous_web#79
 (site). NOT SETTLED — its design continues under
 `review/editor-ux-window/`; its issue is filed blocked on that review. Site + playground crate +
