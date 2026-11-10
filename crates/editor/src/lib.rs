@@ -104,7 +104,7 @@ mod test_support;
 // Re-export main types
 pub use asset_browser::{
     fit_rect, open_file_request, open_folder_request, scan_assets, AssetBrowserState, AssetEntry, AssetKind, TileStep, Tile, TileId, TileKind, AssetScan, AssetFolder,
-    kind_root, validate_name, validate_folder, route_new_file, companion_path,
+    kind_root, validate_name, validate_rename, validate_folder, route_new_file, asset_family, companion_path, companion_on_disk,
 };
 pub use behavior_editor::edit_behavior;
 pub use confirm_dialog::{ConfirmChoice, ConfirmDialog};

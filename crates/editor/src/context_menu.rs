@@ -14,7 +14,7 @@ use glam::Vec2;
 use ui::{Rect, UIContext};
 use winit::keyboard::KeyCode;
 
-use crate::asset_browser::{open_file_request, open_folder_request};
+use crate::asset_browser::{open_file_request, open_folder_request, TileId};
 use crate::external_tools::{ExternalToolsConfig, FileType, OpenRequest, DESKTOP_ONLY_HINT};
 use crate::menu::{Menu, MenuBar, MenuItem};
 use crate::theme::EditorTheme;
@@ -32,7 +32,7 @@ pub enum ContextMenuAction {
     Open(OpenRequest),
     /// Apply a tab layout action.
     Dock(crate::DockAction),
-    /// Create an asset or open its companion.
+    /// Create, rename or delete an asset, or open its companion.
     Asset(AssetAction),
 }
 
@@ -45,6 +45,8 @@ pub enum AssetAction {
     NewSheetSidecar(String),
     NewSongSidecar(String),
     OpenSidecar(String),
+    Rename(TileId),
+    Delete(TileId),
 }
 
 /// One row of the menu.

@@ -50,6 +50,7 @@ mod samples;
 pub use init::{init_song, SongInitError};
 pub use open::{OpenedSong, SongOpenError};
 pub use paths::{sample_directory, saveable_song_path, HOME_DIRECTORIES};
+pub use samples::{remove_from_license, rename_in_license};
 use paths::{home_of, is_grandfathered, is_in_home_directory, slash_path};
 
 use std::io;

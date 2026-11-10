@@ -143,6 +143,8 @@ impl<G: Game> EditorGame<G> {
         let opened =
             SongDocument::open(path, &self.asset_base).map_err(|error| error.to_string())?;
         self.song = Some(opened.document);
+        self.record_document_stamp(path);
+        self.record_document_stamp(&editor::external_tools::midi_sidecar_path(path));
         self.song_generation += 1;
         self.follow_song();
         self.editor.conductor.rescan_songs(&self.asset_base);

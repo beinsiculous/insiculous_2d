@@ -14,7 +14,10 @@ const SCRIPT_TEMPLATE: &str = "// @param speed: f32 = 250.0\n\nfn update(me, vie
 pub(crate) fn begin_creation(editor: &mut EditorContext, base: &Path, action: AssetAction) {
     if editor.in_play_session() || editor.asset_prompt.is_open() { return; }
     if let AssetAction::OpenSidecar(path) = action {
-        editor.open_requests.push(editor::open_file_request(&path));
+        let spelled = editor::companion_on_disk(&base.join(&path).to_string_lossy())
+            .and_then(|found| Path::new(&found).file_name().map(|name| name.to_string_lossy().into_owned()))
+            .map(|name| path.rsplit_once('/').map_or(name.clone(), |(folder, _)| format!("{folder}/{name}")));
+        editor.open_requests.push(editor::open_file_request(spelled.as_deref().unwrap_or(&path)));
         return;
     }
     let (title, initial, immediate) = match &action {
@@ -26,18 +29,21 @@ pub(crate) fn begin_creation(editor: &mut EditorContext, base: &Path, action: As
             let name = Path::new(&path).file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
             ("New sidecar", name, true)
         }
-        AssetAction::OpenSidecar(_) => return,
+        AssetAction::OpenSidecar(_) | AssetAction::Rename(_) | AssetAction::Delete(_) => return,
     };
     editor.asset_creation = Some(action);
-    editor.asset_prompt.open(title, &initial);
+    editor.asset_prompt.open(title, &initial, "Create");
     editor.context_menu.close();
     if immediate { confirm_creation(editor, base, &initial); }
 }
 
 /// Draw before the chrome and commit only a confirmed, validated name.
-pub(crate) fn render_prompt(editor: &mut EditorContext, ctx: &mut GameContext) {
+pub(crate) fn render_prompt(editor: &mut EditorContext, ctx: &mut GameContext) -> Option<(TileId, String)> {
     match editor.asset_prompt.render(ctx.ui, &editor.theme) {
         PromptOutcome::Confirmed(name) => {
+            if let Some(AssetAction::Rename(tile)) = &editor.asset_creation {
+                return Some((tile.clone(), name));
+            }
             if confirm_creation(editor, Path::new(ctx.assets.base_path()), &name) {
                 ctx.ui.clear_text_focus();
                 super::refresh_assets(editor, ctx.assets, ctx.scripts.registry());
@@ -46,6 +52,7 @@ pub(crate) fn render_prompt(editor: &mut EditorContext, ctx: &mut GameContext) {
         PromptOutcome::Cancelled => editor.asset_creation = None,
         PromptOutcome::Open => {},
     }
+    None
 }
 
 /// Apply the pending creation. Refusals leave the draft and browser intact.
@@ -212,5 +219,16 @@ mod tests {
         assert_eq!(editor.asset_browser.selected, Some(TileId::folder("sprites/props")));
         editor.asset_browser.apply_scan(editor::scan_assets(base, &[]));
         assert!(editor.asset_browser.visible_tiles().iter().any(|tile| tile.id == TileId::folder("sprites/props")));
+    }
+
+    #[test]
+    fn open_sidecar_asks_for_the_companion_as_the_folder_spells_it() {
+        let directory = tempfile::tempdir().unwrap();
+        let base = directory.path();
+        vfs::write(&base.join("sprites/hero.png"), b"image").unwrap();
+        vfs::write(&base.join("sprites/hero.SHEET.RON"), b"sheet").unwrap();
+        let mut editor = EditorContext::new();
+        begin_creation(&mut editor, base, AssetAction::OpenSidecar("sprites/hero.sheet.ron".into()));
+        assert_eq!(editor.open_requests, vec![editor::open_file_request("sprites/hero.SHEET.RON")]);
     }
 }

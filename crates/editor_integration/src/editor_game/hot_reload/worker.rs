@@ -8,6 +8,8 @@
 
 #[cfg(not(target_arch = "wasm32"))]
 pub(in crate::editor_game) use native::WatchWorker;
+#[cfg(all(test, not(target_arch = "wasm32")))]
+pub(in crate::editor_game) use native::poll_after_removal;
 #[cfg(target_arch = "wasm32")]
 pub(in crate::editor_game) use web::WatchWorker;
 
@@ -27,6 +29,7 @@ mod native {
         /// The paths to watch, and those among them the editor expects missing.
         Register(BTreeSet<PathBuf>, BTreeSet<PathBuf>),
         Written(PathBuf, Option<ChangeStamp>),
+        Removed(PathBuf),
     }
 
     /// The handle the frame holds: messages out, events back. Dropping it hangs up on the
@@ -67,6 +70,10 @@ mod native {
             self.send(WatchMessage::Written(path, stamp));
         }
 
+        pub(in crate::editor_game) fn note_removed(&self, path: PathBuf) {
+            self.send(WatchMessage::Removed(path));
+        }
+
         /// Every event the thread has sent since the last call, in order, never blocking.
         pub(in crate::editor_game) fn take_events(&self) -> Vec<WatchEvent> {
             self.events.try_iter().collect()
@@ -99,16 +106,7 @@ mod native {
         loop {
             let wait = next_poll.saturating_duration_since(Instant::now());
             let sent = match messages.recv_timeout(wait) {
-                Ok(WatchMessage::Register(paths, expected_absent)) => {
-                    watch.set_registered(paths, &expected_absent);
-                    Ok(())
-                }
-                Ok(WatchMessage::Written(path, stamp)) => {
-                    if let Some(stamp) = stamp {
-                        watch.note_written(&path, stamp);
-                    }
-                    events.send(WatchEvent::Noted(path))
-                }
+                Ok(message) => apply_message(&mut watch, message, events),
                 Err(RecvTimeoutError::Timeout) => {
                     let sent = watch.poll().into_iter().try_for_each(|change| events.send(WatchEvent::Change(change)));
                     next_poll = Instant::now() + interval;
@@ -120,6 +118,31 @@ mod native {
                 return;
             }
         }
+    }
+
+    fn apply_message(watch: &mut FileWatch, message: WatchMessage, events: &Sender<WatchEvent>) -> Result<(), mpsc::SendError<WatchEvent>> {
+        match message {
+            WatchMessage::Register(paths, expected_absent) => { watch.set_registered(paths, &expected_absent); Ok(()) }
+            WatchMessage::Written(path, stamp) => {
+                if let Some(stamp) = stamp { watch.note_written(&path, stamp); }
+                events.send(WatchEvent::Noted(path))
+            }
+            WatchMessage::Removed(path) => { watch.note_removed(&path); events.send(WatchEvent::Noted(path)) }
+        }
+    }
+
+    #[cfg(test)]
+    pub(in crate::editor_game) fn poll_after_removal(path: PathBuf, mutation: impl FnOnce()) -> Vec<WatchEvent> {
+        let mut watch = FileWatch::new();
+        let (sender, receiver) = mpsc::channel();
+        apply_message(&mut watch, WatchMessage::Register([path.clone()].into(), BTreeSet::new()), &sender).unwrap();
+        assert!(watch.poll().is_empty());
+        apply_message(&mut watch, WatchMessage::Removed(path), &sender).unwrap();
+        mutation();
+        for _ in 0..2 {
+            for change in watch.poll() { sender.send(WatchEvent::Change(change)).unwrap(); }
+        }
+        receiver.try_iter().collect()
     }
 }
 
@@ -144,6 +167,8 @@ mod web {
         pub(in crate::editor_game) fn register(&self, _paths: BTreeSet<PathBuf>, _expected_absent: BTreeSet<PathBuf>) {}
 
         pub(in crate::editor_game) fn note_written(&self, _path: PathBuf, _stamp: Option<ChangeStamp>) {}
+
+        pub(in crate::editor_game) fn note_removed(&self, _path: PathBuf) {}
 
         pub(in crate::editor_game) fn take_events(&self) -> Vec<WatchEvent> {
             Vec::new()

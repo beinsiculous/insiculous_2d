@@ -160,10 +160,13 @@ impl<G: Game> EditorGame<G> {
     /// the bar, a refusal at error severity. Bytes that do not read as MIDI change nothing,
     /// and bytes the document already holds — another program wrote the file back as it was
     /// — change nothing and stop no preview.
-    fn adopt_score_bytes(&mut self, midi: &Path, bytes: Vec<u8>) {
+    pub(in crate::editor_game) fn adopt_score_bytes(&mut self, midi: &Path, bytes: Vec<u8>) {
         let shown = self.asset_relative(midi);
         let Some(song) = self.song.as_mut() else { return };
         if song.source_bytes() == bytes.as_slice() {
+            // The file's stamp moved though its bytes did not; unrecorded, a later rename
+            // would refuse the song as changed on disk.
+            self.record_document_stamp(midi);
             return self.report(Severity::Info, format!("{shown} was written as the song holds it"), None);
         }
         let before = TrackListing::of(song.file(), song.data());
@@ -172,6 +175,7 @@ impl<G: Game> EditorGame<G> {
             return self.report(Severity::Error, message, None);
         }
         let diff = diff_tracks(&before, &TrackListing::of(song.file(), song.data()));
+        self.record_document_stamp(midi);
         self.stop_preview_for_external_change();
         self.sync_dirty_mirror();
         let mut lines = diff_lines(&diff);
@@ -231,6 +235,7 @@ impl<G: Game> EditorGame<G> {
             });
         match reloaded {
             Ok(()) => {
+                self.record_document_stamp(&sidecar);
                 self.stop_preview_for_external_change();
                 self.sync_dirty_mirror();
                 self.report(Severity::Info, format!("{shown}: map reloaded from disk"), None);

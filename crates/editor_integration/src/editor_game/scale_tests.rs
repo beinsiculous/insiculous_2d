@@ -107,6 +107,15 @@ fn fractional_scissors_and_gpu_centers_share_the_same_snapped_rect() {
     assert!((center - scissor.center()).length() < 0.001);
 }
 
+/// Where the dialog drew `label`, in physical pixels, nudged into the glyphs from the
+/// baseline-left origin the text command carries: a press there lands in the button.
+fn drawn_label(harness: &GameHarness<EditorGame<DummyGame>>, label: &str) -> Vec2 {
+    harness.ui_commands().iter().find_map(|command| match command {
+        DrawCommand::Text { data, .. } if data.text == label => Some(data.position + Vec2::new(8.0, -4.0)),
+        _ => None,
+    }).unwrap_or_else(|| panic!("the dialog drew {label}"))
+}
+
 fn assert_dialog_and_buttons_inside(harness: &GameHarness<EditorGame<DummyGame>>, labels: &[&str]) {
     let panel = editor::ConfirmDialog::panel_rect(WINDOW / 2.0);
     let physical = Rect::new(panel.x * 2.0, panel.y * 2.0, panel.width * 2.0, panel.height * 2.0);
@@ -125,7 +134,7 @@ fn the_scene_dialog_is_inside_a_double_scale_window_and_its_cancel_button_works(
     harness.game_mut().scene_confirm.pending_action = Some(super::scene_confirm::PendingSceneAction::NewScene);
     harness.step(STEP, &[]);
     assert_dialog_and_buttons_inside(&harness, &["Save", "Discard", "Cancel"]);
-    let cancel = editor::ConfirmDialog::button_rects(WINDOW / 2.0).2.center() * 2.0;
+    let cancel = drawn_label(&harness, "Cancel");
     harness.step(STEP, &[pointer(cancel), InputEvent::MouseButtonPressed(MouseButton::Left)]);
     harness.step(STEP, &[InputEvent::MouseButtonReleased(MouseButton::Left)]);
     assert!(harness.game().scene_confirm.pending_action.is_none());
@@ -137,7 +146,7 @@ fn the_stop_dialog_is_inside_a_double_scale_window_and_its_cancel_button_works()
     harness.game_mut().stop_confirm.pending = true;
     harness.step(STEP, &[]);
     assert_dialog_and_buttons_inside(&harness, &["Keep", "Discard", "Cancel"]);
-    let cancel = editor::ConfirmDialog::button_rects(WINDOW / 2.0).2.center() * 2.0;
+    let cancel = drawn_label(&harness, "Cancel");
     harness.step(STEP, &[pointer(cancel), InputEvent::MouseButtonPressed(MouseButton::Left)]);
     harness.step(STEP, &[InputEvent::MouseButtonReleased(MouseButton::Left)]);
     assert!(!harness.game().stop_confirm.pending);

@@ -116,6 +116,16 @@ impl FileWatch {
         }
     }
 
+    /// The editor is removing `path` itself. Settle it as absent even before its first
+    /// poll, so the old path of a rename cannot report the editor's move as a deletion.
+    pub fn note_removed(&mut self, path: &Path) {
+        if self.registered.contains(path) {
+            self.observed.insert(path.to_path_buf(), Observation {
+                settled: Some(Observed::Absent), pending: None,
+            });
+        }
+    }
+
     /// Read every registered path from disk and report what has settled.
     pub fn poll(&mut self) -> Vec<FileChange> {
         self.poll_with(read_from_disk)

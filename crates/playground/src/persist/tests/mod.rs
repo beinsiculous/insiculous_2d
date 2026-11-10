@@ -67,8 +67,10 @@ impl ProjectStore for GatedStore {
         self.gate(self.inner.put(file, base_revision, manifest))
     }
 
-    fn remove_file(&self, slug: &str, path: &str, base_revision: u64) -> Fut<Result<(), StoreError>> {
-        self.gate(self.inner.remove_file(slug, path, base_revision))
+    fn remove_file(
+        &self, slug: &str, path: &str, base_revision: u64, manifest: &ProjectManifest,
+    ) -> Fut<Result<u64, StoreError>> {
+        self.gate(self.inner.remove_file(slug, path, base_revision, manifest))
     }
 
     fn replace_project(
@@ -219,6 +221,7 @@ pub(crate) fn temp_directory_store() -> (TestTempDir, crate::store::directory::D
 }
 
 mod chains;
+mod mutations;
 mod queue;
 mod song_saves;
 mod stores;

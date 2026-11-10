@@ -13,6 +13,8 @@ use crate::store::{Fut, ProjectStore, StoredFile, StoreError};
 struct MemoryState {
     files: HashMap<(String, String), StoredFile>,
     manifests: HashMap<String, ProjectManifest>,
+    #[cfg(test)]
+    fail_after: Option<usize>,
 }
 
 /// Thread-safe in-memory project store.
@@ -25,6 +27,12 @@ impl MemoryStore {
     /// Create a new empty in-memory store.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Fail one mutation after `successful_mutations` more successful attempts.
+    #[cfg(test)]
+    pub(crate) fn fail_after(&self, successful_mutations: usize) {
+        self.state.lock().expect("memory store lock").fail_after = Some(successful_mutations);
     }
 }
 
@@ -55,6 +63,14 @@ impl ProjectStore for MemoryStore {
         let manifest = manifest.clone();
         Box::pin(async move {
             let mut guard = state.lock().map_err(|error| StoreError::Backend(error.to_string()))?;
+            #[cfg(test)]
+            if let Some(remaining) = guard.fail_after.as_mut() {
+                if *remaining == 0 {
+                    guard.fail_after = None;
+                    return Err(StoreError::Backend("injected mutation failure".to_string()));
+                }
+                *remaining -= 1;
+            }
             let key = (file.project.clone(), file.path.clone());
             if let Some(existing) = guard.files.get(&key) {
                 if existing.revision != base_revision {
@@ -84,29 +100,25 @@ impl ProjectStore for MemoryStore {
         })
     }
 
-    fn remove_file(&self, slug: &str, path: &str, base_revision: u64) -> Fut<Result<(), StoreError>> {
-        let state = self.state.clone();
-        let key = (slug.to_string(), path.to_string());
-        Box::pin(async move {
-            let mut guard = state.lock().map_err(|error| StoreError::Backend(error.to_string()))?;
-            let Some(existing) = guard.files.get_mut(&key) else {
-                return if base_revision == 0 {
-                    Ok(())
-                } else {
-                    Err(StoreError::StaleRevision { stored: 0, base: base_revision })
-                };
-            };
-            if existing.revision != base_revision {
-                return Err(StoreError::StaleRevision {
-                    stored: existing.revision,
-                    base: base_revision,
-                });
-            }
-            existing.bytes.clear();
-            existing.deleted = true;
-            existing.revision = base_revision + 1;
-            Ok(())
-        })
+    fn remove_file(
+        &self,
+        slug: &str,
+        path: &str,
+        base_revision: u64,
+        manifest: &ProjectManifest,
+    ) -> Fut<Result<u64, StoreError>> {
+        self.put(
+            StoredFile {
+                project: slug.to_string(),
+                path: path.to_string(),
+                bytes: Vec::new(),
+                revision: 0,
+                bundle_version: manifest.bundle_version.clone(),
+                deleted: true,
+            },
+            base_revision,
+            manifest,
+        )
     }
 
     fn replace_project(
@@ -122,6 +134,14 @@ impl ProjectStore for MemoryStore {
             guard.files.retain(|(project_slug, _), _| project_slug != &slug);
             for mut file in files {
                 file.project = slug.clone();
+                #[cfg(test)]
+                if let Some(remaining) = guard.fail_after.as_mut() {
+                    if *remaining == 0 {
+                        guard.fail_after = None;
+                        return Err(StoreError::Backend("injected mutation failure".to_string()));
+                    }
+                    *remaining -= 1;
+                }
                 let key = (file.project.clone(), file.path.clone());
                 guard.files.insert(key, file);
             }

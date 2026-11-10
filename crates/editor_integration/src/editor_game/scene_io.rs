@@ -198,6 +198,7 @@ impl<G: Game> EditorGame<G> {
         log::info!("Scene loaded from: {:?} ({} entities)", path, scene_instance.entity_count);
 
         self.editor.set_scene_path(Some(path.to_path_buf()));
+        self.record_document_stamp(path);
         self.reset_session(world);
         if let Some(first) = scene_instance.load_warnings.first() {
             // Non-fatal load diagnostics reach the user, not just the log.

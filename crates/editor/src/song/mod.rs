@@ -48,7 +48,7 @@ use music_midi::{SongData, SongError, SongFile, SONG_FILE_VERSION};
 pub use edit::{SongEdit, SongEditError};
 pub use history::{Gesture, SongHistory};
 pub use io::{
-    init_song, midi_fingerprint, sample_directory, saveable_song_path, OpenedSong, SaveIntent,
+    init_song, midi_fingerprint, remove_from_license, rename_in_license, sample_directory, saveable_song_path, OpenedSong, SaveIntent,
     SidecarIntent, SongInitError, SongOpenError, SongSaveError, HOME_DIRECTORIES,
 };
 /// The author and license `SongEdit::SetProvenance` carries, re-exported so a host names it
@@ -109,6 +109,11 @@ impl SongDocument {
     /// The `.mid` the song saves to, once it has one.
     pub fn path(&self) -> Option<&Path> {
         self.path.as_deref()
+    }
+
+    /// Follow a successful file rename without changing the loaded bytes, fingerprints or history.
+    pub fn follow_rename(&mut self, new_path: PathBuf) {
+        self.path = Some(new_path);
     }
 
     /// The file the song was imported from; Save never writes it.

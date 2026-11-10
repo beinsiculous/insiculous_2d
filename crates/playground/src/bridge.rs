@@ -2,6 +2,8 @@
 //!
 //! Provides the Stage D JavaScript command and file interface for the web editor.
 
+pub(crate) mod files;
+
 use std::cell::RefCell;
 use std::path::{Component, Path, PathBuf};
 use std::rc::Rc;
@@ -138,7 +140,7 @@ pub fn playground_poll_responses() -> Vec<JsValue> {
     })
 }
 
-/// Record one successful VFS write, independently of the command-response FIFO.
+/// Record one successful VFS write or removal, independently of the command-response FIFO.
 #[cfg(any(target_arch = "wasm32", test))]
 pub(crate) fn record_file_change(path: &Path) {
     let root = CURRENT_PROJECT_ROOT.with(|root_cell| root_cell.borrow().clone());
@@ -159,7 +161,7 @@ fn take_file_changes() -> Vec<String> {
     FILE_CHANGES.with(|changes| std::mem::take(&mut *changes.borrow_mut()))
 }
 
-/// Drain the project-relative paths written since the last poll, each path once.
+/// Drain written and removed project-relative paths, including both ends of a rename.
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 pub fn playground_poll_file_changes() -> Vec<JsValue> {

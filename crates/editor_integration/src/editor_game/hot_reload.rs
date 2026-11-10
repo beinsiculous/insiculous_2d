@@ -17,6 +17,8 @@ mod sample;
 mod sheet;
 mod song;
 mod worker;
+#[cfg(all(test, not(target_arch = "wasm32")))]
+pub(super) use worker::poll_after_removal;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -82,6 +84,10 @@ pub(super) struct HotReload {
     pub(super) waiting_song_map: Option<PathBuf>,
     /// Each sheet the play session reloaded, by PNG path, for Stop to apply again.
     session_sheets: BTreeMap<String, ReloadedSheet>,
+    /// The stamp each open document's file had when the editor last read or wrote it: a
+    /// rename of the document compares against it, since the rename's own removal note
+    /// would otherwise swallow an external change the watcher had not yet reported.
+    pub(super) document_stamps: BTreeMap<PathBuf, Option<common::vfs::ChangeStamp>>,
 }
 
 /// A worker on its own, for the thread's test.
@@ -202,11 +208,53 @@ impl<G: Game> EditorGame<G> {
     /// is the watcher's baseline, and a change for it is dropped until the worker acknowledges
     /// the note. The one stamp the frame ever reads.
     pub(super) fn note_written(&mut self, path: &Path) {
+        let stamp = common::vfs::change_stamp(path).ok().flatten();
+        self.hot_reload.document_stamps.insert(super::menu_actions::same_path_key(path), stamp);
         // Before the worker starts nothing it sends can predate the save, and a count no
         // acknowledgement answers would hold back every later change to the file.
         let Some(worker) = &self.hot_reload.worker else { return };
-        let stamp = common::vfs::change_stamp(path).ok().flatten();
         worker.note_written(path.to_path_buf(), stamp);
+        *self.hot_reload.awaiting_note.entry(path.to_path_buf()).or_default() += 1;
+    }
+
+    /// The stamp a document's file has now is what a later rename compares against.
+    pub(super) fn record_document_stamp(&mut self, path: &Path) {
+        let path = self.resolve_asset_path(path);
+        let stamp = common::vfs::change_stamp(&path).ok().flatten();
+        self.hot_reload.document_stamps.insert(super::menu_actions::same_path_key(&path), stamp);
+    }
+
+    /// A stamp for each path that has none yet, taken before a mutation so a survivor of a
+    /// failed one is compared against what the editor saw; the keys recorded here are
+    /// returned for `forget_stamps`, since only documents keep a stamp past the mutation.
+    pub(super) fn stamp_unrecorded(&mut self, paths: &[PathBuf]) -> Vec<PathBuf> {
+        let mut recorded = Vec::new();
+        for path in paths {
+            let key = super::menu_actions::same_path_key(path);
+            if self.hot_reload.document_stamps.contains_key(&key) { continue; }
+            self.hot_reload.document_stamps.insert(key.clone(), common::vfs::change_stamp(path).ok().flatten());
+            recorded.push(key);
+        }
+        recorded
+    }
+
+    pub(super) fn forget_stamps(&mut self, keys: &[PathBuf]) {
+        for key in keys { self.hot_reload.document_stamps.remove(key); }
+    }
+
+    /// Whether `path` changed on disk since the editor last read or wrote it, by the stamp
+    /// recorded then; a path never recorded, or one with no stamp (the web), is unchanged.
+    pub(super) fn document_changed_on_disk(&self, path: &Path) -> bool {
+        match self.hot_reload.document_stamps.get(&super::menu_actions::same_path_key(path)) {
+            Some(Some(recorded)) => common::vfs::change_stamp(path).ok().flatten().as_ref() != Some(recorded),
+            _ => false,
+        }
+    }
+
+    /// The editor is about to remove this path; absence is the worker's next baseline.
+    pub(super) fn note_removed(&mut self, path: &Path) {
+        let Some(worker) = &self.hot_reload.worker else { return; };
+        worker.note_removed(path.to_path_buf());
         *self.hot_reload.awaiting_note.entry(path.to_path_buf()).or_default() += 1;
     }
 

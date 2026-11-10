@@ -323,7 +323,7 @@ ui.end_frame();
 **Files:** `ui/lib.rs`, `ui/context/`, `ui/draw.rs`
 
 ### Asset Manager Pattern
-Centralized asset loading with caching (reads use `common::vfs::read`; edits and new files write through `common::vfs::write` / `vfs::write_string`):
+Centralized asset loading with caching (reads use `common::vfs::read`; edits write through `common::vfs::write` / `vfs::write_string`, and new assets use exclusive `vfs::write_new`). The asset browser renames/deletes whole companion families, preflights references and audio LICENSE stanzas, and protects open documents and song samples. File mutations have no undo; browser persistence queues all destination puts before source removals, so interrupted renames recover as visible duplicates:
 
 ```rust
 // Load textures

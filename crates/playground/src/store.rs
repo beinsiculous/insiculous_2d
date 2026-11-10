@@ -79,10 +79,16 @@ pub trait ProjectStore {
     /// Compare-and-swap removal of a single file, written as a tombstone.
     ///
     /// Refuses with [`StoreError::StaleRevision`] unless the stored revision equals
-    /// `base_revision`; on success the record stays, marked deleted with empty bytes
-    /// at revision `base_revision + 1`. A record that is absent with `base_revision`
-    /// zero is already gone: `Ok`, and nothing is written.
-    fn remove_file(&self, slug: &str, path: &str, base_revision: u64) -> Fut<Result<(), StoreError>>;
+    /// `base_revision` (zero for an absent record). Writes empty bytes marked deleted
+    /// at the returned revision `base_revision + 1`, even for a bundled-only file.
+    /// Upserts `manifest` in the same transaction, exactly as `put` does.
+    fn remove_file(
+        &self,
+        slug: &str,
+        path: &str,
+        base_revision: u64,
+        manifest: &ProjectManifest,
+    ) -> Fut<Result<u64, StoreError>>;
 
     /// Atomically replace all files and manifest for a project.
     fn replace_project(
@@ -100,6 +106,20 @@ pub trait ProjectStore {
 
     /// Remove stored files whose project slug has no manifest and is not in `bundled`.
     fn sweep_orphans(&self, bundled: &[String]) -> Fut<Result<(), StoreError>>;
+}
+
+/// Select stored records for boot, including tombstones. Manifest-less records belong
+/// to an interrupted import and must be removed instead of shadowing the bundle.
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) fn stored_files_for_boot(
+    stored_files: Vec<StoredFile>,
+    has_stored_manifest: bool,
+) -> Option<Vec<StoredFile>> {
+    if !stored_files.is_empty() && !has_stored_manifest {
+        None
+    } else {
+        Some(stored_files)
+    }
 }
 
 pub mod directory;

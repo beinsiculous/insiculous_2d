@@ -146,31 +146,25 @@ impl ProjectStore for DirectoryStore {
         })
     }
 
-    fn remove_file(&self, slug: &str, path: &str, base_revision: u64) -> Fut<Result<(), StoreError>> {
-        let project_directory = self.project_directory(slug);
-        let file_path = self.file_path(slug, path);
-        Box::pin(async move {
-            let _lock = ProjectLock::acquire(&project_directory)?;
-            let Some(mut existing) = read_stored(&file_path)? else {
-                return if base_revision == 0 {
-                    Ok(())
-                } else {
-                    Err(StoreError::StaleRevision { stored: 0, base: base_revision })
-                };
-            };
-            if existing.revision != base_revision {
-                return Err(StoreError::StaleRevision {
-                    stored: existing.revision,
-                    base: base_revision,
-                });
-            }
-            existing.bytes.clear();
-            existing.deleted = true;
-            existing.revision = base_revision + 1;
-            let json_content = serde_json::to_string_pretty(&existing)
-                .map_err(|error| StoreError::Backend(error.to_string()))?;
-            fs::write(&file_path, json_content).map_err(|error| StoreError::Backend(error.to_string()))
-        })
+    fn remove_file(
+        &self,
+        slug: &str,
+        path: &str,
+        base_revision: u64,
+        manifest: &ProjectManifest,
+    ) -> Fut<Result<u64, StoreError>> {
+        self.put(
+            StoredFile {
+                project: slug.to_string(),
+                path: path.to_string(),
+                bytes: Vec::new(),
+                revision: 0,
+                bundle_version: manifest.bundle_version.clone(),
+                deleted: true,
+            },
+            base_revision,
+            manifest,
+        )
     }
 
     fn replace_project(

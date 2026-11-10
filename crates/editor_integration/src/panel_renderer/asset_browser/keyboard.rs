@@ -105,7 +105,7 @@ mod tests {
         editor.asset_browser.holds_keyboard = true;
         editor.asset_browser.menu_requested = true;
         assert_eq!(rings_drawn(&mut editor), vec![SLOT.expand(FOCUS_RING_OFFSET)]);
-        assert_eq!(editor.context_menu.labels(), vec!["New Folder…", "New Scene…", "New Script…", "New Sheet sidecar (loading…)", "New Song sidecar", "Open with the system default", "Open containing folder"]);
+        assert_eq!(editor.context_menu.labels(), vec!["New Folder…", "New Scene…", "New Script…", "New Sheet sidecar (loading…)", "New Song sidecar", "Rename…", "Delete…", "Open with the system default", "Open containing folder"]);
         assert!(!editor.asset_browser.menu_requested, "the request is answered once");
     }
 

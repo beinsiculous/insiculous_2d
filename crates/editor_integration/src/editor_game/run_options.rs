@@ -10,9 +10,34 @@ use engine_core::{Game, GameConfig};
 
 use super::EditorGame;
 
+/// A synchronous host check before a file mutation, followed by its outcome.
+pub type FileMutationGuard = fn(&FileMutation) -> Result<(), String>;
+
+/// When the host must settle its buffer, or follow the completed mutation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MutationPhase {
+    Prepare,
+    Done,
+    Failed,
+}
+
+/// Files affected by one asset operation, relative to the editor's asset root, including
+/// folder contents. Hosts whose project root contains that root translate at their bridge.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileMutation {
+    /// Prepare may refuse; Done and Failed release the host's save block.
+    pub phase: MutationPhase,
+    /// Every deleted file, including a selected folder's contents.
+    pub removed: Vec<String>,
+    /// Each old/new file pair; directories are expanded to their files.
+    pub renamed: Vec<(String, String)>,
+}
+
 /// Options for [`run_game_with_editor_opts`].
 #[derive(Default)]
 pub struct EditorRunOptions {
+    /// Settle an external script buffer before moving its file and report the outcome.
+    pub file_mutation_guard: Option<FileMutationGuard>,
     /// Command-API request channel.
     pub api_rx: Option<Receiver<String>>,
     /// A scene to open through the editor's load path right after init —
@@ -91,6 +116,7 @@ pub fn run_game_with_editor_opts<G: Game>(
     editor_game.preview_open = options.preview_open;
     editor_game.open_song_mirror = options.open_song;
     editor_game.song_import = options.song_import;
+    editor_game.file_mutation_guard = options.file_mutation_guard;
     engine_core::run_game(editor_game, config)
 }
 

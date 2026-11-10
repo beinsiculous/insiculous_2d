@@ -19,7 +19,7 @@ use crate::double_click::DoubleClick;
 use crate::external_tools::{Location, OpenRequest};
 
 mod tree;
-pub use tree::{scan_assets, kind_root, validate_name, validate_folder, route_new_file, companion_path, AssetFolder, AssetScan};
+pub use tree::{scan_assets, kind_root, validate_name, validate_rename, validate_folder, route_new_file, asset_family, companion_path, companion_on_disk, AssetFolder, AssetScan};
 #[cfg(test)]
 use tree::kind_for_path;
 
@@ -42,7 +42,7 @@ pub enum AssetKind {
     DawProject,
     /// A SoundFont bank (.sf2), dropped on the Conductor panel as an instrument
     SoundFont,
-    /// A sidecar belonging to an image or MIDI file; never a separate tile.
+    /// A sidecar belonging to an image or MIDI file; a tile only when its primary is absent.
     Companion,
     /// A folder name, used by the creation validator.
     Folder,
@@ -158,7 +158,7 @@ impl AssetBrowserState {
     }
 
     /// The immediate children of the current folder, parent first, folders by name,
-    /// then files by kind and name. Hidden companions never enter the grid.
+    /// then files by kind and name. A companion enters the grid only as an orphan.
     pub fn visible_tiles(&self) -> Vec<Tile> {
         let mut folders: Vec<Tile> = self.folders.iter()
             .filter(|folder| parent_path(&folder.relative_path) == self.current_folder)
@@ -167,8 +167,13 @@ impl AssetBrowserState {
         if !self.current_folder.is_empty() {
             folders.insert(0, Tile { id: TileId::folder(parent_path(&self.current_folder)), name: "..".into() });
         }
+        // Paired as the scanner classes files: the stem as spelled, the suffix in any case —
+        // one key per expected companion, looked up once per companion tile.
+        let paired: std::collections::HashSet<String> = self.entries.iter()
+            .filter_map(|primary| companion_path(&primary.relative_path)).map(|path| tree::companion_key(&path)).collect();
+        let is_paired = |companion: &str| paired.contains(&tree::companion_key(companion));
         let mut files: Vec<&AssetEntry> = self.entries.iter().filter(|entry| {
-            entry.kind != AssetKind::Companion && entry.name != ".keep"
+            (entry.kind != AssetKind::Companion || !is_paired(&entry.relative_path)) && entry.name != ".keep"
                 && parent_path(&entry.relative_path) == self.current_folder
         }).collect();
         files.sort_by(|first, second| first.kind.cmp(&second.kind).then(first.name.cmp(&second.name)));
@@ -280,3 +285,5 @@ pub fn fit_rect(tex_w: u32, tex_h: u32, slot: common::Rect) -> common::Rect {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod mutation_tests;

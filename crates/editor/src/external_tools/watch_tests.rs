@@ -41,6 +41,24 @@ fn changed(path: &str) -> FileChange {
 }
 
 #[test]
+fn an_editor_removal_suppresses_two_old_path_polls_even_before_the_first_baseline() {
+    for baseline_first in [false, true] {
+        let mut disk = FakeDisk::default();
+        disk.write("scene.ron", 10);
+        let mut watch = watching(&["scene.ron"]);
+        if baseline_first { poll(&mut watch, &disk); }
+        watch.note_removed(Path::new("scene.ron"));
+        disk.remove("scene.ron");
+        for _ in 0..2 {
+            assert!(poll(&mut watch, &disk).is_empty(), "the host has not registered its new path yet");
+        }
+        disk.write("scene.ron", 12);
+        assert!(poll(&mut watch, &disk).is_empty());
+        assert_eq!(poll(&mut watch, &disk), [changed("scene.ron")], "a later external creation is still reported");
+    }
+}
+
+#[test]
 fn a_change_that_holds_one_poll_is_reported_once() {
     let mut disk = FakeDisk::default();
     disk.write("scene.ron", 10);

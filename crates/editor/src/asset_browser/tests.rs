@@ -195,7 +195,7 @@ fn folders_precede_root_files_and_companions_and_markers_never_become_tiles() ->
     let mut browser = AssetBrowserState::default();
     browser.apply_scan(scan_assets(directory.path(), &[]));
     let names: Vec<_> = browser.visible_tiles().into_iter().map(|tile| tile.name).collect();
-    assert_eq!(names, ["music", "scenes", "sprites", "root.png"]);
+    assert_eq!(names, ["music", "scenes", "sprites", "root.png", "orphan.sheet.ron"]);
     browser.enter("sprites/props");
     assert_eq!(browser.visible_tiles().iter().map(|tile| tile.name.as_str()).collect::<Vec<_>>(), ["..", "hero.png"]);
     browser.selected = Some(TileId::file("sprites/props/hero.png"));

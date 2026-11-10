@@ -16,7 +16,10 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 pub mod entries;
-pub use entries::{create_dir_all, exists, list_entries, write_new, DirEntry};
+pub use entries::{
+    create_dir_all, exists, list_entries, remove_dir, remove_file, rename,
+    write_new, DirEntry,
+};
 
 #[cfg(any(target_arch = "wasm32", test))]
 thread_local! {
@@ -51,7 +54,7 @@ pub fn set_remove_observer(observer: fn(&Path)) {
     REMOVE_OBSERVER.with(|slot| slot.set(Some(observer)));
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
 fn notify_remove_observer(path: &Path) {
     REMOVE_OBSERVER.with(|slot| {
         if let Some(observer) = slot.get() {
@@ -425,3 +428,6 @@ fn not_in_map(path: &Path) -> io::Error {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod mutate_tests;

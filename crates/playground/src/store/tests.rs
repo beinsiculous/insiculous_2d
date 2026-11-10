@@ -124,26 +124,33 @@ async fn run_removal_contract(store: &dyn ProjectStore) {
     };
 
     assert_eq!(
-        store.remove_file("gamma", "music/never.wav", 0).await,
-        Ok(()),
-        "an absent record at revision zero is already gone"
+        store.remove_file("gamma", "music/never.wav", 0, &manifest).await,
+        Ok(1),
+        "a bundled-only file needs a tombstone to suppress its bundled copy"
     );
     assert_eq!(
-        store.remove_file("gamma", "music/never.wav", 3).await,
-        Err(StoreError::StaleRevision { stored: 0, base: 3 })
+        store.remove_file("gamma", "music/never.wav", 3, &manifest).await,
+        Err(StoreError::StaleRevision { stored: 1, base: 3 })
     );
-    assert!(store.load_project("gamma").await.expect("load").is_empty(), "nothing was written");
+    let bundled_tombstone = store.load_project("gamma").await.expect("load");
+    assert_eq!(bundled_tombstone.len(), 1);
+    assert!(bundled_tombstone[0].deleted);
+    assert!(bundled_tombstone[0].bytes.is_empty());
+    assert_eq!(bundled_tombstone[0].revision, 1);
+    assert_eq!(bundled_tombstone[0].bundle_version, manifest.bundle_version);
+    assert!(store.manifests().await.iter().any(|saved| saved.slug == "gamma" && saved.origin == ProjectOrigin::Saved));
 
     store.put(file(b"journal"), 0, &manifest).await.expect("first put");
     assert_eq!(
-        store.remove_file("gamma", "music/theme.mid.new", 0).await,
+        store.remove_file("gamma", "music/theme.mid.new", 0, &manifest).await,
         Err(StoreError::StaleRevision { stored: 1, base: 0 }),
         "a removal from a tab that never saw revision 1 is stale"
     );
-    store.remove_file("gamma", "music/theme.mid.new", 1).await.expect("removal at the stored revision");
+    store.remove_file("gamma", "music/theme.mid.new", 1, &manifest).await.expect("removal at the stored revision");
 
     let loaded = store.load_project("gamma").await.expect("load");
-    assert_eq!(loaded.len(), 1, "the tombstone is returned with its revision");
+    assert_eq!(loaded.len(), 2, "both tombstones are returned with their revisions");
+    let loaded = loaded.iter().filter(|file| file.path == "music/theme.mid.new").collect::<Vec<_>>();
     assert!(loaded[0].deleted);
     assert!(loaded[0].bytes.is_empty());
     assert_eq!(loaded[0].revision, 2);
@@ -155,6 +162,7 @@ async fn run_removal_contract(store: &dyn ProjectStore) {
     );
     assert_eq!(store.put(file(b"again"), 2, &manifest).await, Ok(3));
     let recreated = store.load_project("gamma").await.expect("load");
+    let recreated = recreated.iter().filter(|file| file.path == "music/theme.mid.new").collect::<Vec<_>>();
     assert!(!recreated[0].deleted);
     assert_eq!(recreated[0].bytes, b"again");
 }
@@ -220,5 +228,27 @@ fn test_directory_store_first_put_upserts_manifest_and_sweep_orphans_keeps_files
         assert_eq!(loaded[0].bytes, b"demo");
 
         let _ = std::fs::remove_dir_all(&temporary_directory);
+    });
+}
+
+#[test]
+fn test_first_bundled_only_delete_survives_boot_selection_and_marks_project_modified() {
+    pollster::block_on(async {
+        let store = MemoryStore::new();
+        let manifest = dummy_manifest("bundled");
+        assert_eq!(store.remove_file("bundled", "assets/sprites/hero.png", 0, &manifest).await, Ok(1));
+        let manifests = store.manifests().await;
+        let records = store.load_project("bundled").await.unwrap();
+        let selected = super::stored_files_for_boot(
+            records.clone(), manifests.iter().any(|saved| saved.slug == "bundled")
+        ).expect("a tombstone-only store has a manifest, so boot keeps it");
+        assert_eq!(selected.len(), 1);
+        assert!(selected[0].deleted);
+        assert!(selected[0].bytes.is_empty());
+        assert_eq!(selected[0].path, "assets/sprites/hero.png");
+        let projects = crate::projects::list_projects(&[manifest], &manifests);
+        assert!(projects[0].has_stored_files, "the project picker marks even a delete-only project modified");
+        assert!(super::stored_files_for_boot(records, false).is_none(), "interrupted imports still load bundled-only");
+        assert!(super::stored_files_for_boot(Vec::new(), false).unwrap().is_empty());
     });
 }

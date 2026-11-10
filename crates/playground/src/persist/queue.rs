@@ -78,8 +78,8 @@ impl Chains {
         Ok(())
     }
 
-    /// Handle a VFS removal notification: queue a tombstone for a path the store may
-    /// hold. A path never loaded nor written in this tab has no chain and nothing stored.
+    /// Queue a tombstone, including for a bundled-only path with no stored revision,
+    /// so its bundled copy stays removed on reload.
     pub fn on_vfs_remove(&mut self, path: &Path) {
         if self.draining {
             return;
@@ -87,11 +87,9 @@ impl Chains {
         let Some(relative_path) = self.project_relative_path(path, false) else {
             return;
         };
-        if self
-            .chains
-            .get(&relative_path)
-            .is_none_or(|chain| chain.conflicted)
-        {
+        let chain = self.chains.entry(relative_path.clone())
+            .or_insert_with(|| PathChain::new(relative_path.clone(), 0));
+        if chain.conflicted {
             return;
         }
         self.enqueue(relative_path, Operation::Remove);
@@ -232,10 +230,9 @@ impl Chains {
                 self.store.put(file, base_revision, &self.manifest)
             }
             Operation::Remove => {
-                let removal = self.store.remove_file(&self.project_slug, path, base_revision);
-                // At revision zero the store held nothing, so nothing was tombstoned.
-                let revision_after = if base_revision == 0 { 0 } else { base_revision + 1 };
-                Box::pin(async move { removal.await.map(|()| revision_after) })
+                let mut manifest = self.manifest.clone();
+                manifest.bundle_version = self.bundle_version.clone();
+                self.store.remove_file(&self.project_slug, path, base_revision, &manifest)
             }
         }
     }

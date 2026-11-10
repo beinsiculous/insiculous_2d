@@ -187,7 +187,11 @@ pub fn midi_sidecar_path(midi_path: &Path) -> PathBuf {
 /// The MIDI file a song sidecar sits beside — [`midi_sidecar_path`]'s inverse: `.ron` taken
 /// off, and `None` unless what is left is a MIDI file's name.
 pub fn sidecar_midi_path(sidecar: &Path) -> Option<PathBuf> {
-    let midi = Path::new(sidecar.to_str()?.strip_suffix(".ron")?);
+    // The suffix in any case, as the scanner classes it — `theme.mid.RON` is the song's.
+    let text = sidecar.to_str()?;
+    let split = text.len().checked_sub(".ron".len()).filter(|split| text.is_char_boundary(*split))?;
+    if !text[split..].eq_ignore_ascii_case(".ron") { return None; }
+    let midi = Path::new(&text[..split]);
     is_midi_path(midi).then(|| midi.to_path_buf())
 }
 
@@ -281,6 +285,7 @@ mod tests {
             assert_eq!(sidecar_midi_path(&midi_sidecar_path(Path::new(midi))), Some(PathBuf::from(midi)));
         }
         assert_eq!(sidecar_midi_path(Path::new("scenes/level.ron")), None, "a .ron beside no MIDI file");
+        assert_eq!(sidecar_midi_path(Path::new("music/theme.mid.RON")), Some(PathBuf::from("music/theme.mid")), "the suffix in any case, as the scanner classes it");
         assert_eq!(sidecar_midi_path(Path::new("music/theme.mid")), None);
     }
 }

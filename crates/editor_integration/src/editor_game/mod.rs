@@ -54,11 +54,12 @@ mod shortcuts;
 mod viewport_interaction;
 
 pub(crate) use viewport_interaction::{build_pickable_entities, chrome_owns_mouse};
-pub use run_options::{run_game_with_editor, run_game_with_editor_opts, EditorRunOptions, SongImport};
+pub use run_options::{run_game_with_editor, run_game_with_editor_opts, EditorRunOptions, SongImport, FileMutation, FileMutationGuard, MutationPhase};
 pub use snapshot::{Completion, SceneSnapshot, SceneSnapshotRequest};
 
 /// Wraps a user's `Game` with the full editor UI overlay.
 struct EditorGame<G: Game> {
+    file_mutation_guard: Option<FileMutationGuard>,
     inner: G,
     editor: EditorContext,
     font_loaded: bool,
@@ -145,6 +146,7 @@ struct EditorGame<G: Game> {
 impl<G: Game> EditorGame<G> {
     fn new(game: G) -> Self {
         Self {
+            file_mutation_guard: None,
             inner: game,
             editor: EditorContext::new(),
             font_loaded: false,
@@ -317,3 +319,5 @@ mod scale_tests;
 
 #[cfg(test)]
 mod dock_keys_tests;
+#[cfg(all(test, unix))]
+mod asset_mutation_tests;

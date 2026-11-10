@@ -67,7 +67,7 @@ pub(super) fn open_from_presses(editor: &mut EditorContext, presses: &TilePresse
 /// Open the context menu over tile `index` with its corner at `anchor`; on the web its
 /// items are disabled, since no program can be launched there.
 pub(super) fn open_tile_menu(editor: &mut EditorContext, anchor: Vec2) {
-    super::header::open_new_menu(editor, anchor);
+    super::header::open_new_menu(editor, anchor, true);
 }
 
 /// Press arms a drag (images, .rhai scripts, sounds, songs and SoundFonts); a plain click
@@ -202,6 +202,11 @@ pub(super) fn render_tile(
         ui.rect_rounded(badge, theme.surface_4, 2.0);
         ui.label_in_bounds_styled("sheet", badge, ui::TextAlign::Center, theme.text_primary, theme.fonts.small, 0.0);
     }
+    if entry.kind == AssetKind::Companion {
+        let badge = ui::Rect::new(slot.right() - 47.0, slot.y + 3.0, 44.0, 18.0);
+        ui.rect_rounded(badge, theme.surface_4, 2.0);
+        ui.label_in_bounds_styled("orphan", badge, ui::TextAlign::Center, theme.text_primary, theme.fonts.small, 0.0);
+    }
 
     // A name wider than the tile would bleed into its neighbours, so it is
     // truncated here; the tile's tooltip and the status bar carry the full
@@ -309,7 +314,7 @@ mod tests {
 
         assert_eq!(editor.asset_browser.selected, Some(editor::TileId::file("music/theme.mid")));
         assert!(editor.asset_browser.holds_keyboard);
-        assert_eq!(editor.context_menu.labels(), vec!["New Folder…", "New Scene…", "New Script…", "New Sheet sidecar", "New Song sidecar", "Open with the system default", "Open containing folder"]);
+        assert_eq!(editor.context_menu.labels(), vec!["New Folder…", "New Scene…", "New Script…", "New Sheet sidecar", "New Song sidecar", "Rename…", "Delete…", "Open with the system default", "Open containing folder"]);
         let bounds = editor.context_menu.bounds(&ui, &editor.theme).map(|bounds| (bounds.x, bounds.y));
         assert_eq!(bounds, Some((SLOT.center().x, SLOT.center().y)), "the menu opens at the press");
         assert!(editor.open_requests.is_empty() && editor.drag_drop.dragging_payload().is_none(), "a right press arms no drag");

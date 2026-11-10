@@ -22,6 +22,8 @@ pub(super) mod keyboard;
 mod tile;
 mod header;
 pub(crate) mod mutate;
+pub(crate) mod rename;
+pub(crate) mod remove;
 use header::render_header;
 #[cfg(test)]
 use header::can_assign_selection;
@@ -147,7 +149,7 @@ pub(super) fn render_asset_browser(
     let grid = common::Rect::new(bounds.x, grid_origin.y, bounds.width, viewport_height);
     if !is_playing && grid.contains(mouse_pos) && ctx.ui.mouse_right_just_pressed()
         && !ctx.ui.is_input_blocked_at(mouse_pos) && !presses.has_right_press() {
-        header::open_new_menu(editor, mouse_pos);
+        header::open_new_menu(editor, mouse_pos, false);
     }
     keyboard::mark_selected_tile(editor, ctx.ui, |index| tile_rect(index, columns, grid_origin, scroll));
 

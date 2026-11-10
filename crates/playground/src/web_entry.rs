@@ -2,11 +2,11 @@
 //!
 //! # Version contract
 //! `ASSET_BASE` and `BUNDLE_VERSION` are tied to deployment routes:
-//! 1. `ASSET_BASE` = `"/playground/v3/assets"`
-//! 2. `BUNDLE_VERSION` = `"v3"`
-//! 3. Deployed assets live at `insiculous_web/public/playground/v3/assets/`
-//! 4. Projects metadata served from `/playground/v3/assets/projects.json`
-//! 5. `scripts/build_wasm.sh` produces `playground/v3/`
+//! 1. `ASSET_BASE` = `"/playground/v4/assets"`
+//! 2. `BUNDLE_VERSION` = `"v4"`
+//! 3. Deployed assets live at `insiculous_web/public/playground/v4/assets/`
+//! 4. Projects metadata served from `/playground/v4/assets/projects.json`
+//! 5. `scripts/build_wasm.sh` produces `playground/v4/`
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -27,9 +27,9 @@ use crate::store::memory::MemoryStore;
 use crate::store::ProjectStore;
 
 /// Canonical asset base path for the deployed playground.
-pub const ASSET_BASE: &str = "/playground/v3/assets";
+pub const ASSET_BASE: &str = "/playground/v4/assets";
 /// Bundle version contract string.
-pub const BUNDLE_VERSION: &str = "v3";
+pub const BUNDLE_VERSION: &str = "v4";
 
 thread_local! {
     static ACTIVE_STORE: RefCell<Option<Arc<dyn ProjectStore>>> = const { RefCell::new(None) };
@@ -191,13 +191,9 @@ async fn run_playground() -> Result<(), String> {
 
     // 6. Load stored files and overwrite onto MemFs
     let stored_files = store.load_project(&project_slug).await.unwrap_or_default();
-    let stored_files_for_chains = if !stored_files.is_empty() && !has_stored_manifest {
-        log::warn!("project '{project_slug}' has stored files but no stored manifest (an interrupted import); removing them and loading bundled only");
-        if let Err(error) = store.remove_project(&project_slug).await {
-            log::warn!("could not remove the manifest-less files of '{project_slug}': {error}");
-        }
-        Vec::new()
-    } else {
+    let stored_files_for_chains = if let Some(stored_files) =
+        crate::store::stored_files_for_boot(stored_files, has_stored_manifest)
+    {
                 for file in &stored_files {
             let vfs_path = format!("{root_string}/{}", file.path);
             if file.deleted {
@@ -210,6 +206,12 @@ async fn run_playground() -> Result<(), String> {
             }
         }
         stored_files
+    } else {
+        log::warn!("project '{project_slug}' has stored files but no stored manifest (an interrupted import); removing them and loading bundled only");
+        if let Err(error) = store.remove_project(&project_slug).await {
+            log::warn!("could not remove the manifest-less files of '{project_slug}': {error}");
+        }
+        Vec::new()
     };
 
     // 7. Chains and persistence listeners
@@ -245,6 +247,7 @@ async fn run_playground() -> Result<(), String> {
         drive_started_operations();
     });
     common::vfs::set_remove_observer(|path| {
+        crate::bridge::record_file_change(path);
         with_active_chains(|chains| chains.on_vfs_remove(path));
         drive_started_operations();
     });
@@ -304,6 +307,7 @@ async fn run_playground() -> Result<(), String> {
         preview_open: Some(preview_open),
         open_song: Some(open_song),
         song_import: Some(song_import),
+        file_mutation_guard: Some(crate::bridge::files::guard_file_mutation),
     };
 
     let config = GameConfig::new("Insiculous Playground")

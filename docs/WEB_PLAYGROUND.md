@@ -26,7 +26,7 @@ playground/<version>/
 
 Invocation of record, run from the engine root:
 ```sh
-scripts/build_wasm.sh crates/playground playground --kind playground --version v3 \
+scripts/build_wasm.sh crates/playground playground --kind playground --version v4 \
     --project examples=Examples=examples \
     --project pong=Pong=crates/playground/assets/projects/pong \
     --project game-template="Game Template"=../games/game-template \
@@ -42,7 +42,7 @@ Each entry carries:
 {
   "slug": "examples",
   "title": "Examples",
-  "bundle_version": "v3",
+  "bundle_version": "v4",
   "content_hash": "<sha256-hex>",
   "origin": "bundled"
 }
@@ -52,16 +52,16 @@ the project's `<dir>/assets`.
 
 ## The bundle contract
 
-`ASSET_BASE = "/playground/v3/assets"` and `BUNDLE_VERSION = "v3"` (`web_entry.rs`). The
+`ASSET_BASE = "/playground/v4/assets"` and `BUNDLE_VERSION = "v4"` (`web_entry.rs`). The
 version token appears in five places, listed in that file's header: the deployed directory
-`public/playground/v3/`, the asset URLs the engine fetches, `projects.json`'s
+`public/playground/v4/`, the asset URLs the engine fetches, `projects.json`'s
 `bundle_version`, the build script's output directory, and every `StoredFile`'s
 `bundle_version`. Bumping it is a coordinated change across all five.
 
 A project's root is computed, never stored: `{ASSET_BASE}/projects/<slug>` on the web,
 `<dir>/projects/<slug>` natively; its asset base is `{root}/assets`. Every file the engine
 reads or writes is keyed by that base-joined string (`common::vfs`'s canonical key), e.g.
-`/playground/v3/assets/projects/examples/assets/scenes/behavior_demo.scene.ron`. A relative
+`/playground/v4/assets/projects/examples/assets/scenes/behavior_demo.scene.ron`. A relative
 key never resolves; relative paths given to the editor or the API are joined to the open
 project's asset base first.
 
@@ -154,8 +154,10 @@ head; on wasm the layer around it spawns the started operation and feeds the res
 and the result issues the next. The vfs write observer (`common::vfs::set_write_observer`,
 wasm-only) fires once per `vfs::write`; the boot-phase `vfs::insert` never fires it, so
 seeding is not a save. Its twin, `set_remove_observer`, fires once for every key
-`vfs::remove_prefix` drops (on wasm only; natively the filesystem is the only copy), so a
-save's removed temporary files and pruned samples leave the store too.
+`vfs::remove_prefix` or `remove_file` drops (on wasm only; natively the
+filesystem is the only copy), so removed assets, temporary files and pruned samples leave
+the store too. Rename reports every destination write and every source removal through
+those same observers; the page's file-change drain includes both ends.
 
 **One operation at a time, in write order** (`persist/queue.rs`). Every write is a put and
 every removal a tombstone, each its own entry in one FIFO; nothing coalesces, and the next
@@ -169,14 +171,23 @@ path's removal waits for it, queued or issued, and lands one revision above the 
 a removal cancelled would leave the store out of write order. A save makes one store round
 trip per file, in sequence.
 
-**Removals are tombstones.** `remove_file(slug, path, base_revision)` keeps the record,
-marked `deleted` with empty bytes, one revision up, so revisions stay monotonic across a
-delete and a recreate; `load_project` returns tombstones, `seed` records their revisions,
-and the boot puts no tombstone's bytes in MemFs and drops its path, the bundled copy with
-it. A removal of a path this tab never loaded
-or wrote queues nothing; one that finds a newer revision — another tab rewrote the file —
-is dropped with a log line and the queue moves on, the other tab's write winning, never a
-conflict. Tombstones grow only with distinct removed names (a song's two temporary paths
+**Rename puts every destination before removing any source**, including across a folder.
+If persistence stops between those boundaries, a reload may show a duplicate: that visible
+duplicate is the recovery, and neither source is silently lost. A failed head prevents all
+later removals; a successful retry finishes the queue. File mutations have no journal and
+no undo command.
+
+**Removals are tombstones.** `remove_file(slug, path, base_revision, manifest)` writes a
+record marked `deleted` with empty bytes, at the returned next revision, so revisions stay
+monotonic across a delete and a recreate. A bundled-only path gets a chain at base zero
+and a revision-one tombstone carrying the current bundle version. Each store upserts its
+manifest in the same transaction, just as `put` does: the boot would otherwise discard a
+tombstone-only project as an interrupted import, and the project picker would miss its
+modified state. `load_project` returns tombstones, `seed` records their revisions, and the
+boot puts no tombstone's bytes in MemFs and drops its path, the bundled copy with it. A
+recreate in the same tab uses revision one without a reseed. A removal that finds a newer
+revision — another tab rewrote the file — is dropped with a log line and the queue moves
+on, the other tab's write winning, never a conflict. Tombstones grow only with distinct removed names (a song's two temporary paths
 are reused by every save).
 
 Path states: **idle** · **in flight** (this path's operation is the one running) · **queued**
@@ -216,7 +227,7 @@ commits the in-flight transaction on its own.
 All paths are project-relative (`assets/scripts/ball.rhai`); the bridge joins the open
 project's root and refuses an empty path, a leading `/` or `\`, and any `..` component.
 The command channel is a 1024-line FIFO; responses come back in order.
-File changes have their own drain, fed by the persistence write observer: a notice never
+File changes have their own drain, fed by the persistence write and remove observers: a notice never
 consumes a command response. The embed polls it and calls the Scripts panel’s registered
 hook, which refreshes its list while keeping the selected script and its unsaved buffer.
 
@@ -224,12 +235,13 @@ hook, which refreshes its list while keeping the selected script and its unsaved
 |---|---|---|
 | `playground_dispatch(line)` | `→ bool` | `false` on a full queue or a whitespace-only line (never dropped, never enqueued) |
 | `playground_poll_responses()` | `→ string[]` | drains every response line so far |
-| `playground_poll_file_changes()` | `→ string[]` | drains project-relative paths written or created since the last poll, each path once; independent of command responses |
+| `playground_poll_file_changes()` | `→ string[]` | drains written or removed project-relative paths, both ends of a rename included, each path once; independent of command responses |
+| `playground_set_file_mutation_guard(function)` | `(JSON string → string) → void` | registers synchronous file coordination: `{phase: "prepare"/"done"/"failed", removed: string[], renamed: [old, new][]}`; paths project-relative, empty return proceeds and text refuses |
 | `playground_is_dirty()` | `→ bool` | command-history dirty OR `is_pending()`; the page confirms before any switch, import or reset |
 | `playground_write_file(path, text)` | `→ Result` | through `vfs::write_string`; a `.rhai` write runs the `source_check` hook first, and a refused script is not written |
 | `playground_read_file(path)` | `→ Result<string>` | |
 | `playground_list_files()` | `→ Result<string[]>` | project-relative |
-| `playground_list_projects()` | `→ ProjectEntry[]` | bundled merged with stored; stored wins on a slug clash; `has_stored_files` gates Reset. The stored list is a boot snapshot: an edit's first put upserts a manifest the list shows after the next reload |
+| `playground_list_projects()` | `→ ProjectEntry[]` | bundled merged with stored; stored wins on a slug clash; `has_stored_files` gates Reset. The stored list is a boot snapshot: the first put or removal upserts a manifest the list shows after the next reload |
 | `playground_open_project(slug)` | `→ Promise` | drains, then resolves; the PAGE sets `?project=<slug>` and reloads |
 | `playground_reset_project(slug)` | `→ Promise` | drains, `remove_project`, resolves; the page reloads and the bundled files come back |
 | `playground_export_zip()` | `→ Promise<Uint8Array>` | the open project's `assets/**` plus `project.ron` and a README as zip bytes, with the **live** scene in place of the saved one — the visitor exports the work they are looking at. A snapshot already in flight is joined, not refused, so Export a moment after Play ↗ works. Refused during Play or Pause, like `playground_snapshot`: the live world is the simulation then, and the saved scene would drop the unsaved edits made before Play — stop first. Refuses an archive over 64 MiB (the importer's archive cap; its decompressed-bytes cap is not mirrored, so a highly compressible project over 64 MiB unpacked exports but does not re-import) |
@@ -242,6 +254,17 @@ hook, which refreshes its list while keeping the selected script and its unsaved
 | `playground_conflicted_paths()` | `→ string[]` | sorted project-relative paths currently in conflicted state |
 | `playground_script_errors()` | `→ string[]` | runtime errors recorded by `ScriptRunner` during the current Play session |
 | `playground_save_state()` | `→ string` | `{"state": "unsaved" \| "saving" \| "saved" \| "failed", "reason": ""}`: a conflicted or stranded path is `failed` with `reason` naming the first such path in sorted order — **conflicted outranks stranded**, a conflict being terminal while a stranded path retries on `visibilitychange`, on the next write and at a switch — an in-flight or queued put is `saving`, a dirty command history is `unsaved`, and neither is `saved` |
+
+The editor guard receives asset-relative names; `bridge/files.rs` prefixes the project’s asset-directory path before sending JSON, so its `assets/scripts/…` names match `playground_list_files`, file reads/writes and the Scripts panel’s open path.
+
+The file guard is called before the first VFS step, then with `done` or `failed` after the
+operation. The Scripts panel refuses a dirty script's deletion and asks to save before its
+rename. Once prepared, it blocks saves until the outcome; only `done` changes its save
+target, while `failed` keeps the old path. A folder operation lists every affected script.
+The guard runs synchronously inside the editor frame, so its rename question uses
+`window.confirm`. The page registers it from its `playground-ready` listener, behind a
+`typeof` check: every glue export dereferences the module `init()` assigns, so a
+registration made before `init()` resolves throws and takes the boot with it.
 
 The engine cannot swap a running project; every switch is a page reload with the query
 string naming the slug. An unknown `?project=` redirects to the first bundled project.

@@ -136,9 +136,41 @@ fn test_a_removal_of_a_never_persisted_path_enqueues_nothing() {
     let memory = MemoryStore::new();
     let mut chains = pong_chains(Arc::new(memory.clone()));
 
-    remove_project_file(&mut chains, "music/samples/theme/never.wav");
-    assert!(!chains.is_pending(), "no chain, so nothing was ever stored to remove");
+    // A bundled-only path in this project now needs a tombstone; the no-op case is
+    // a path owned by another project, which these chains must never persist.
+    chains.on_vfs_remove(std::path::Path::new("/projects/another/music/samples/theme/never.wav"));
+    assert!(!chains.is_pending(), "a path outside this project never queues a removal");
     assert!(pollster::block_on(memory.load_project("pong")).unwrap().is_empty());
+}
+
+#[test]
+fn test_bundled_only_delete_then_recreate_without_reseed_lands_at_revision_two() {
+    let memory = MemoryStore::new();
+    let mut chains = pong_chains(Arc::new(memory.clone()));
+    remove_project_file(&mut chains, "assets/scripts/paddle.rhai");
+    write_project_file(&mut chains, "assets/scripts/paddle.rhai", b"recreated");
+    for _ in 0..4 {
+        if !chains.has_active() { break; }
+        poll_once(&mut chains);
+    }
+    assert!(!chains.is_pending());
+    let recreated = stored_file(&memory, "assets/scripts/paddle.rhai").unwrap();
+    assert_eq!(recreated.revision, 2);
+    assert!(!recreated.deleted);
+    assert_eq!(recreated.bytes, b"recreated");
+    assert_eq!(chains.base_revision("assets/scripts/paddle.rhai"), 2);
+}
+
+#[test]
+fn test_bundled_only_tombstone_records_the_running_bundle_version() {
+    let memory = MemoryStore::new();
+    let mut chains = crate::persist::Chains::new(
+        "pong".to_string(), super::PONG_ROOT.to_string(), "v4".to_string(),
+        super::test_manifest("pong"), Arc::new(memory.clone()), None,
+    );
+    remove_project_file(&mut chains, "assets/scripts/paddle.rhai");
+    assert!(poll_once(&mut chains));
+    assert_eq!(stored_file(&memory, "assets/scripts/paddle.rhai").unwrap().bundle_version, "v4");
 }
 
 #[test]

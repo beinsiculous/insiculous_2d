@@ -16,10 +16,11 @@ const PADDING: f32 = 14.0;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PromptOutcome { Confirmed(String), Cancelled, Open }
 
-/// A single name field and Create/Cancel, owning the whole window while open.
+/// A single name field and a named action/Cancel, owning the whole window while open.
 #[derive(Debug, Default)]
 pub struct PromptDialog {
     title: String,
+    confirm_label: String,
     name: String,
     error: Option<String>,
     open: bool,
@@ -30,8 +31,8 @@ pub struct PromptDialog {
 
 impl PromptDialog {
     /// Open a fresh prompt, replacing the previous draft and error.
-    pub fn open(&mut self, title: &str, initial: &str) {
-        *self = Self { title: title.into(), name: initial.into(), open: true, focus_name: true, ..Self::default() };
+    pub fn open(&mut self, title: &str, initial: &str, confirm_label: &str) {
+        *self = Self { title: title.into(), confirm_label: confirm_label.into(), name: initial.into(), open: true, focus_name: true, ..Self::default() };
     }
     /// Whether the prompt owns the frame and the keyboard.
     pub fn is_open(&self) -> bool { self.open }
@@ -72,8 +73,8 @@ impl PromptDialog {
             ui.label_styled(line, Vec2::new(panel.x + PADDING, panel.y + 82.0 + index as f32 * 18.0), theme.status_error, theme.fonts.small);
         }
         let cancel_bounds = Rect::new(panel.right() - PADDING - 88.0, panel.bottom() - PADDING - 24.0, 88.0, 24.0);
-        let create_bounds = Rect::new(cancel_bounds.x - 98.0, cancel_bounds.y, 88.0, 24.0);
-        let confirmed = std::mem::take(&mut self.confirm) | ui.button("asset_prompt_create", "Create", create_bounds);
+        let confirm_bounds = Rect::new(cancel_bounds.x - 98.0, cancel_bounds.y, 88.0, 24.0);
+        let confirmed = std::mem::take(&mut self.confirm) | ui.button("asset_prompt_create", &self.confirm_label, confirm_bounds);
         let cancelled = std::mem::take(&mut self.cancel) | ui.button("asset_prompt_cancel", "Cancel", cancel_bounds);
         ui.end_overlay();
         if cancelled { self.close(); ui.clear_text_focus(); PromptOutcome::Cancelled }
@@ -85,7 +86,7 @@ impl PromptDialog {
 /// Wrap at spaces to the width, so an error breaks between words; a word wider than the
 /// whole line (an overlong file name) is split at characters, since a line that cannot wrap
 /// would run out of the dialog and hide the very name to correct.
-fn wrap_error(text: &str, width: f32, measure: impl Fn(&str) -> f32) -> Vec<String> {
+pub(crate) fn wrap_error(text: &str, width: f32, measure: impl Fn(&str) -> f32) -> Vec<String> {
     let mut lines = Vec::new();
     let mut line = String::new();
     for word in text.split(' ') {
@@ -119,7 +120,7 @@ mod tests {
         let mut ui = UIContext::new();
         let mut input = input::InputHandler::new();
         let theme = EditorTheme::default();
-        prompt.open("New scene", "initial");
+        prompt.open("New scene", "initial", "Create");
         frame(&mut ui, &input, |ui| prompt.render(ui, &theme));
         ui.focus_text_input(NAME_FIELD, "level_two");
         input.keyboard_mut().handle_key_press(KeyCode::Enter);
@@ -139,6 +140,20 @@ mod tests {
         assert_eq!(frame(&mut ui, &input, |ui| prompt.render(ui, &theme)), PromptOutcome::Cancelled);
         assert!(!prompt.is_open());
         assert!(!ui.wants_keyboard());
+    }
+
+    #[test]
+    fn a_rename_prompt_prefills_the_filename_and_names_its_action() {
+        let mut prompt = PromptDialog::default();
+        let mut ui = UIContext::new();
+        let input = input::InputHandler::new();
+        let theme = EditorTheme::default();
+        prompt.open("Rename asset", "hero.png", "Rename");
+        frame(&mut ui, &input, |ui| prompt.render(ui, &theme));
+        let text = drawn_text(&ui);
+        assert!(text.contains("hero.png") && text.contains("Rename") && !text.contains("Create"), "{text}");
+        prompt.consumes_key(KeyCode::Enter);
+        assert_eq!(frame(&mut ui, &input, |ui| prompt.render(ui, &theme)), PromptOutcome::Confirmed("hero.png".into()));
     }
 }
 

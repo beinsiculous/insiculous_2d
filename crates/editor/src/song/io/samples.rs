@@ -246,6 +246,44 @@ fn rewrite_home_license(existing: Option<&str>, midi: &str, provenance: &Provena
     text
 }
 
+/// Rename whole `Files:` tokens together, including continuation lines, without changing
+/// their provenance or other stanzas. Paths are relative to the folder holding the LICENSE.
+/// Returns `None` when no stanza names a source token.
+pub fn rename_in_license(text: &str, renames: &[(&str, &str)]) -> Option<String> {
+    let mut changed = false;
+    let rewritten: Vec<String> = paragraphs(text).into_iter().map(|paragraph| {
+        let mut paragraph_changed = false;
+        let files: Vec<String> = files_of(&paragraph).into_iter().map(|file| {
+            if let Some((_, destination)) = renames.iter().find(|(source, _)| *source == file) {
+                paragraph_changed = true;
+                destination.to_string()
+            } else { file }
+        }).collect();
+        if paragraph_changed {
+            changed = true;
+            with_files(&paragraph, &files).join("\n")
+        } else { paragraph.join("\n") }
+    }).collect();
+    changed.then(|| format!("{}\n", rewritten.join("\n\n")))
+}
+
+/// Drop the `Files:` tokens of deleted paths, and a stanza left naming no file with them,
+/// so a later file under a reused name does not inherit the old attribution. Paths are
+/// relative to the folder holding the LICENSE. Returns `None` when no stanza names one.
+pub fn remove_from_license(text: &str, removed: &[&str]) -> Option<String> {
+    let mut changed = false;
+    let rewritten: Vec<String> = paragraphs(text).into_iter().filter_map(|paragraph| {
+        let files = files_of(&paragraph);
+        let kept: Vec<String> = files.iter().filter(|file| !removed.contains(&file.as_str())).cloned().collect();
+        if kept.len() == files.len() {
+            return Some(paragraph.join("\n"));
+        }
+        changed = true;
+        (!kept.is_empty()).then(|| with_files(&paragraph, &kept).join("\n"))
+    }).collect();
+    changed.then(|| format!("{}\n", rewritten.join("\n\n")))
+}
+
 /// A `LICENSE`'s paragraphs, each its lines, split at blank lines.
 fn paragraphs(text: &str) -> Vec<Vec<String>> {
     let mut paragraphs = Vec::new();
@@ -302,4 +340,33 @@ fn with_files(paragraph: &[String], files: &[String]) -> Vec<String> {
         }
     }
     rewritten
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{remove_from_license, rename_in_license};
+
+    #[test]
+    fn a_license_removal_drops_the_token_and_a_stanza_left_empty_but_keeps_the_rest() {
+        let text = "Format: copyright-1.0\n\nFiles: snd_jump.wav\nCopyright: Sound author\nLicense: CC0\n\nFiles: beep.wav boop.wav\nLicense: MIT\n";
+        assert_eq!(remove_from_license(text, &["snd_jump.wav"]).unwrap(), "Format: copyright-1.0\n\nFiles: beep.wav boop.wav\nLicense: MIT\n");
+        assert_eq!(remove_from_license(text, &["boop.wav"]).unwrap(), "Format: copyright-1.0\n\nFiles: snd_jump.wav\nCopyright: Sound author\nLicense: CC0\n\nFiles: beep.wav\nLicense: MIT\n");
+        assert_eq!(remove_from_license(text, &["hop.wav"]), None);
+    }
+
+    #[test]
+    fn a_license_rename_moves_both_song_tokens_and_leaves_another_stanza_alone() {
+        let other = "Files: theme.mid.bak other.mid\n other.mid.ron\nCopyright: Another author\nLicense: MIT";
+        let text = format!("Format: copyright-1.0\n\nFiles: theme.mid\n theme.mid.ron\nCopyright: Song author\nLicense: CC0\n\n{other}\n");
+        let renamed = rename_in_license(&text, &[("theme.mid", "march.mid"), ("theme.mid.ron", "march.mid.ron")]).unwrap();
+        assert!(renamed.contains("Files: march.mid march.mid.ron\nCopyright: Song author\nLicense: CC0"));
+        assert!(renamed.ends_with(&format!("{other}\n")), "another stanza stays verbatim");
+    }
+
+    #[test]
+    fn a_sound_license_rename_matches_whole_tokens_and_absent_names_change_nothing() {
+        let text = "Files: snd_jump.wav\nCopyright: Sound author\nLicense: CC0\n\nFiles: snd_jump.wav.bak\nLicense: MIT\n";
+        assert_eq!(rename_in_license(text, &[("snd_jump.wav", "jump.wav")]).unwrap(), text.replacen("Files: snd_jump.wav\n", "Files: jump.wav\n", 1));
+        assert_eq!(rename_in_license(text, &[("jump.wav", "hop.wav")]), None);
+    }
 }

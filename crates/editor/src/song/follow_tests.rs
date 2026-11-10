@@ -94,3 +94,25 @@ fn a_reloaded_map_replaces_the_map_and_drops_its_history() {
     assert!(error.to_string().contains("napolitan.mid.ron"), "{error}");
     assert_eq!(document.file().parts[0].name, "drums", "a refused reload changes nothing");
 }
+
+#[test]
+fn following_a_rename_keeps_fingerprints_and_dirty_history_and_saves_to_the_new_path() {
+    let folder = AssetFolder::new();
+    let mut document = mapped_napolitan(&folder);
+    let score_fingerprint = document.score_fingerprint();
+    let map_fingerprint = document.map_fingerprint();
+    document.apply(SongEdit::SetLoop { looping: false }, Gesture::Discrete).unwrap();
+    let renamed = folder.path("music/march.mid");
+    std::fs::rename(folder.path(SONG), &renamed).unwrap();
+    std::fs::rename(folder.path("music/napolitan.mid.ron"), folder.path("music/march.mid.ron")).unwrap();
+    document.follow_rename(renamed.clone());
+    assert_eq!(document.score_fingerprint(), score_fingerprint);
+    assert_eq!(document.map_fingerprint(), map_fingerprint);
+    assert!(document.is_dirty());
+    document.save(document.path().unwrap().to_path_buf().as_path(), folder.base()).unwrap();
+    assert!(!folder.path(SONG).exists(), "Save does not recreate the old score");
+    assert!(!folder.path("music/napolitan.mid.ron").exists(), "Save does not recreate the old map");
+    let opened = SongDocument::open(&renamed, folder.base()).unwrap().document;
+    assert!(!opened.file().looping, "the edit was saved at the renamed path");
+    assert_eq!(document.undo(), Some("SetLoop"), "the history followed the path");
+}

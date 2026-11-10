@@ -26,6 +26,9 @@ use super::EditorGame;
 /// An action awaiting the user's choice about the edits it would lose.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum PendingSceneAction {
+    DeleteAsset(crate::panel_renderer::asset_browser::remove::DeletePlan),
+    RenameAsset(crate::panel_renderer::asset_browser::rename::RenameRequest, Vec<String>),
+    SaveAndRenameAsset(crate::panel_renderer::asset_browser::rename::RenameRequest, Vec<String>),
     NewScene,
     OpenScene(PathBuf),
     OpenSong(PathBuf),
@@ -62,6 +65,8 @@ impl PendingSceneAction {
     /// The "…before X?" phrase for the dialog message.
     fn phrase(&self) -> &'static str {
         match self {
+            PendingSceneAction::DeleteAsset(_) => "deleting the asset",
+            PendingSceneAction::RenameAsset(..) | PendingSceneAction::SaveAndRenameAsset(..) => "renaming the asset",
             PendingSceneAction::NewScene => "creating a new scene",
             PendingSceneAction::OpenScene(_) => "opening another scene",
             PendingSceneAction::OpenSong(_) => "opening another song",
@@ -76,6 +81,8 @@ impl PendingSceneAction {
 
     pub(super) fn document(&self) -> Document {
         match self {
+            PendingSceneAction::DeleteAsset(_) | PendingSceneAction::RenameAsset(..)
+            | PendingSceneAction::SaveAndRenameAsset(..) => Document::Scene,
             PendingSceneAction::NewScene
             | PendingSceneAction::OpenScene(_)
             | PendingSceneAction::ReloadFromDisk(_) => Document::Scene,
@@ -132,14 +139,29 @@ impl<G: Game> EditorGame<G> {
     /// right after the drag ghost (frame step 2c): the modal's full-window
     /// blocking rect makes every later widget this frame inert.
     pub(super) fn render_scene_confirm_dialog(&mut self, ctx: &mut GameContext) {
-        let Some(action) = self.scene_confirm.pending_action.clone() else {
+        let Some(mut action) = self.scene_confirm.pending_action.clone() else {
             return;
         };
+        let texture_path_fn = |handle: u32| -> String { super::scene_io::texture_ref_for_save(handle, ctx.assets.texture_path(handle)) };
+        if let PendingSceneAction::DeleteAsset(plan) = &action {
+            if !plan.live_scanned {
+                let live = self.unsaved_document_texts(ctx.world, &texture_path_fn);
+                let Some(rescanned) = self.scan_delete_plan_live(plan.clone(), &live) else {
+                    self.scene_confirm.pending_action = None;
+                    return;
+                };
+                action = PendingSceneAction::DeleteAsset(rescanned);
+                self.scene_confirm.pending_action = Some(action.clone());
+            }
+        }
         // A modal is keyboard-modal: whatever text field held focus loses
         // it, so it neither swallows the dialog's keys nor keeps receiving
         // typed characters underneath.
         ctx.ui.clear_text_focus();
         let dialog = match (&action, action.document()) {
+            (PendingSceneAction::DeleteAsset(plan), _) => ConfirmDialog::delete_asset(&plan.label(), &plan.files, &plan.references),
+            (PendingSceneAction::RenameAsset(_, names), _) => ConfirmDialog::rename_despite_references(names.len(), &names[..names.len().min(3)]),
+            (PendingSceneAction::SaveAndRenameAsset(request, family), _) => ConfirmDialog::save_and_rename(&self.affected_document_label(&request.tile, family)),
             (PendingSceneAction::StartPlay, _) => ConfirmDialog::play_with_unsaved_song(self.song_saved_exists()),
             (PendingSceneAction::OverwriteSong(path, OverwriteCause::AnotherSong), _) => {
                 ConfirmDialog::overwrite_song(path)
@@ -156,6 +178,28 @@ impl<G: Game> EditorGame<G> {
         // mouse clicks come from the rendered buttons.
         let key_choice = self.scene_confirm.pending_choice.take();
         let choice = dialog.render(ctx.ui, self.points_window_size(ctx.window_size), &self.editor.theme).or(key_choice);
+        if matches!(&action, PendingSceneAction::DeleteAsset(_) | PendingSceneAction::RenameAsset(..) | PendingSceneAction::SaveAndRenameAsset(..)) {
+            if let Some(choice) = choice {
+                self.scene_confirm.pending_action = None;
+                if choice == ConfirmChoice::Confirm {
+                    match action {
+                        PendingSceneAction::DeleteAsset(plan) => {
+                            let live = self.unsaved_document_texts(ctx.world, &texture_path_fn);
+                            self.perform_asset_delete(plan, &live)
+                        }
+                        PendingSceneAction::RenameAsset(request, _) => self.request_asset_rename(request, true, Vec::new()),
+                        PendingSceneAction::SaveAndRenameAsset(request, _) => {
+                            self.save_before_asset_rename(request, ctx.world, ctx.assets, &texture_path_fn)
+                        }
+                        _ => log::error!("A document confirm was routed as an asset operation"),
+                    }
+                } else {
+                    self.editor.asset_creation = None;
+                    self.editor.status_bar.show_message("Cancelled");
+                }
+            }
+            return;
+        }
         if action.document() == Document::Song {
             if let Some(choice) = choice {
                 self.resolve_song_choice(action, choice);
@@ -303,7 +347,8 @@ impl<G: Game> EditorGame<G> {
                 self.report_song_failure("Song save", result);
             }
             PendingSceneAction::ReloadSongMap(path) => self.reload_song_map(&path),
-            PendingSceneAction::NewScene | PendingSceneAction::OpenScene(_) | PendingSceneAction::ReloadFromDisk(_) => {
+            PendingSceneAction::NewScene | PendingSceneAction::OpenScene(_) | PendingSceneAction::ReloadFromDisk(_)
+            | PendingSceneAction::DeleteAsset(_) | PendingSceneAction::RenameAsset(..) | PendingSceneAction::SaveAndRenameAsset(..) => {
                 log::error!("{action:?} is a scene action, routed by the scene's Save branch");
             }
         }
@@ -348,6 +393,7 @@ impl<G: Game> EditorGame<G> {
             winit::keyboard::KeyCode::Escape => {
                 self.scene_confirm.pending_action = None;
                 self.scene_confirm.pending_choice = None;
+                self.editor.asset_creation = None;
                 self.editor.status_bar.show_message("Cancelled");
             }
             winit::keyboard::KeyCode::Enter | winit::keyboard::KeyCode::NumpadEnter => {
