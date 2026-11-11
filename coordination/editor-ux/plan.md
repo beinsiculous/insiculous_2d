@@ -1895,6 +1895,36 @@ the parked card, the owner card. Both issues were filed blocked on the review an
 unblocked by this line; their bodies still describe the transfer and are rewritten from § E
 when the handoff is written.
 
+**Done 2026-11-11: db9a569 (engine), insiculous_web 613143d (site)** (executor Claude Opus 5.5,
+`report-5.md` COMPLETE with one stated limit; 22 engine paths, 64 site paths with the v6 bundle;
+code round 38 — kimi 4 (2 m 02 s), codex 2 (4 m 51 s), the planner 2; site round 7 — kimi 3
+(4 m 13 s), codex 2 with the three stills (5 m 21 s), the planner 4; the planner's fix hunks
+went to kimi as engine round 39 (none) and site round 8 (1, applied in its shape);
+`rebuttal-38.md`, `rebuttal-39.md` here and `rebuttal-7.md`, `rebuttal-8.md` in the site's
+`review/editor-ux/`). Follow-ups filed: #254 (an open API batch against the scene-loss guards
+and the GUI save), #255 (a project generation for pages that hold no lock), insiculous_web#81
+(headless Chromium loses the WebGPU device, so five of § E's browser scenarios are a person's
+check), insiculous_web#82 (`playground-embed.ts` at 600 lines: split before its next change).
+
+**§ E as built, where it differs from § E as written:**
+- **The sweep reads the manifest keys once more.** `sweep_orphans(known)` in IndexedDB reads the
+  projects store's keys in its own transaction, never decoded, and spares a slug that holds a
+  manifest record at that moment: without it a project another tab imported between the boot's
+  manifest read and its sweep was deleted. "Reads the projects store no second time" is wrong.
+- **The windowed layout keeps the wordmark nav and a one-line footer.** The announce gate requires
+  a `navigation` and a `contentinfo` landmark on every page, and the window is not exempt.
+- **A third refusal before the window opens:** this page's Play preview open → "Close the preview
+  window first — it stays with this page". The preview's reservation names the source tab, so the
+  window could not re-take it and its next Play would start a second simulation.
+- **One more stop in the boot:** the opened project's own manifest record undecodable, bundled or
+  not, files or none. Opened, its first save wrote files beside a record `put` takes for a
+  manifest, and every later boot stopped.
+- **A window whose navigation throws is closed only while it still reads `about:blank`.**
+- **A boot card hides the Project field**, which the engine never ran to fill.
+- **The revision stamp is best effort for a page holding no lock** (a first-time create, or a
+  Reset or an empty import between two imports, leaves nothing to conflict with): #255.
+- The cards name the project by its slug; the title is not known before the engine boots.
+
 **Batch 6 — the convention: `docs/PROJECT_LAYOUT.md`, the checker, the trees (§ D's other
 half). Issue #246.** Files: `docs/PROJECT_LAYOUT.md` (new), `scripts/check_project_layout.sh` (new),
 `scripts/check_games.sh` (calls it per game), `examples/assets/images/` → `sprites/` with
