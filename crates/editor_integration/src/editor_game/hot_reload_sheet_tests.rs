@@ -25,7 +25,7 @@ fn sidecar(cell: u32, filter: &str, walk_frames: &str) -> String {
 /// A project holding the playground's 16 × 16 paddle as a sheet cut by `sidecar_text`.
 fn sheet_session(sidecar_text: &str) -> Session {
     let session = Session::new();
-    let source = concat!(env!("CARGO_MANIFEST_DIR"), "/../playground/assets/projects/pong/assets/images/paddle_16px.png");
+    let source = concat!(env!("CARGO_MANIFEST_DIR"), "/../playground/assets/projects/pong/assets/sprites/paddle_16px.png");
     std::fs::create_dir_all(session.path("sprites")).expect("the sprites folder");
     std::fs::copy(source, session.path(PNG)).expect("a copy of the test PNG");
     session.write(SIDECAR, sidecar_text);

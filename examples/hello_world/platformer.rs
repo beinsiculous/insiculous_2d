@@ -3,9 +3,10 @@ use engine_core::prelude::*;
 use input::{InputMapping, InputSource};
 use std::path::Path;
 
-/// Anchor all asset paths to the repository so the example runs from any
-/// working directory.
-pub const EXAMPLES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples");
+/// The examples' asset base, anchored to the repository so the example runs from any
+/// working directory; every asset path below is relative to it, as a game's are to its
+/// `assets/`.
+pub const ASSET_BASE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/assets");
 
 /// Where the player respawns on reset (matches the scene file's spawn point).
 const PLAYER_SPAWN: Vec2 = Vec2::new(-200.0, 100.0);
@@ -154,7 +155,7 @@ impl PlatformerGame {
     }
 
     fn load_level(&mut self, ctx: &mut GameContext) {
-        let scene_path = Path::new(EXAMPLES_DIR).join("assets/scenes/hello_world.scene.ron");
+        let scene_path = Path::new(ASSET_BASE).join("scenes/hello_world.scene.ron");
 
         match SceneLoader::load_and_instantiate(&scene_path, ctx.world, ctx.assets) {
             Ok(instance) => {
@@ -220,7 +221,7 @@ impl PlatformerGame {
     /// The jump sound and the first coin's beep are the scene's `SoundEmitter`s; only
     /// the music is started from code.
     fn load_audio(&mut self, ctx: &mut GameContext) {
-        match ctx.audio.play_music(Path::new(EXAMPLES_DIR).join("assets/sounds/music.ogg")) {
+        match ctx.audio.play_music(Path::new(ASSET_BASE).join("sounds/music.ogg")) {
             Ok(()) => log::info!("Playing background music"),
             Err(_error) => {
                 log::info!("No background music found. Add music.ogg to examples/assets/sounds/");
@@ -229,7 +230,7 @@ impl PlatformerGame {
     }
 
     fn load_font(&mut self, ctx: &mut GameContext) {
-        let bundled_font = format!("{EXAMPLES_DIR}/assets/fonts/font.ttf");
+        let bundled_font = format!("{ASSET_BASE}/fonts/font.ttf");
         if ctx.ui.load_font_file(&bundled_font).is_ok() {
             self.font_loaded = true;
             log::info!("Font loaded - text will render with actual glyphs!");

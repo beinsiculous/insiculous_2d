@@ -10,11 +10,12 @@ Comment: Jesse's source asset, added in 06d71c4 (2026-08-27, "Log the audio/wasm
  was a copy of it.
 License: MIT
 
-Files: snd_jump.wav
+Files: jump.wav snd_jump.wav
 Copyright: magicjedi90 (Jesse)
 Comment: Jesse's own recording, made with his voice on his iPad well before it was
  added in 94aa5ae (2026-01-11, with the first version of the audio crate); confirmed
- by him on 2026-10-20.
+ by him on 2026-10-20. snd_jump.wav is the file's former name: a browser project made
+ before the rename still holds a copy under it, and its export names both.
 License: MIT
 
 License: MIT

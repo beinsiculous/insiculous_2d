@@ -117,6 +117,7 @@ Insiculous 2D is a lightweight, modular game engine designed for creating 2D gam
   - `conductor_demo.rs` + `conductor_demo/{enemies,tests}.rs` - Two enemy kinds on one shared part of `assets/music/ai_demo.mid` (a sine-bank hummer, a sample pinger), cadences on one game clock, attacks minted only in the camera's view and the source ended on leaving it, D despawn / R respawn, Space game pause against P song pause, M/S bus mutes, `--stress spread|burst|saturate`; its asset base is `examples/assets/`, and its tests run under `cargo test` (`test = true`)
   - `conductor_background.rs` - A MIDI fixture through `ctx.audio.play_song` (copied with its written sidecar into a temporary directory) — by default the *Napolitan Dance* cast fixture with keys 1–4 triggering two parts on two instruments through `ctx.audio.trigger`, Left Shift the melody through a script's `cmd.trigger` (`examples/assets/scripts/conductor_trigger.rhai`), key 5 the left hand on a sample instrument with `--sample`, M and S muting the music and sfx buses — with render-cost, drain-gap, trigger-counter, sample-voice and limiter log lines from `song_position` and `song_snapshot`
   - Real games live in `../games/` (pong, breakout, space_invaders, snake, asteroids) — see `PROJECT_ROADMAP.md`
+- **A project's asset tree** — a game's, the examples', a bundled playground project's — follows `docs/PROJECT_LAYOUT.md`, which `scripts/check_project_layout.sh` enforces
 
 ## Coding Guidelines
 

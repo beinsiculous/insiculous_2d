@@ -1,0 +1,10 @@
+// Sprite sheet companion: one cell, the whole image. Linear, the filter it was drawn with
+// before it had a sidecar — a scene takes its texture's filter from here.
+SheetFile(
+    version: 1,
+    cell: (16, 16),
+    filter: Linear,
+    clips: [
+        ("idle", (frames: [0], fps: 6.0, looping: true)),
+    ],
+)

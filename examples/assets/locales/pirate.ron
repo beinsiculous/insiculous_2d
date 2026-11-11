@@ -3,8 +3,8 @@
 LocaleFile(
     version: 1,
     display_name: "Pirate",
-    // Relative to the asset base path (the examples/ directory).
-    font: Some("assets/fonts/BlackSamsGold-ej5e.ttf"),
+    // Relative to the asset base path (the examples/assets/ directory).
+    font: Some("fonts/BlackSamsGold-ej5e.ttf"),
     strings: {
         "panel.title": "Ship's Riggin'",
         "panel.score": "Booty",

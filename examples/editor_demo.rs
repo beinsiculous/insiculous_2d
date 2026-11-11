@@ -29,8 +29,8 @@ fn main() {
     let config = GameConfig::new("Insiculous 2D - Editor Demo")
         .with_size(1280, 720)
         .with_clear_color(0.1, 0.1, 0.15, 1.0)
-        .with_asset_base_path(platformer::EXAMPLES_DIR)
-        .with_locales_dir("assets/locales");
+        .with_asset_base_path(platformer::ASSET_BASE)
+        .with_locales_dir("locales");
 
     if let Err(error) = run_game_with_editor(platformer::PlatformerGame::new(), config) {
         log::error!("Editor error: {}", error);

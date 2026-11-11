@@ -1,0 +1,5 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+
+Files: snd_jump.wav BigBoom.wav two.dots.wav
+Copyright: none (fixture)
+License: public-domain

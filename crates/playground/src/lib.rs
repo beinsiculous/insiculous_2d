@@ -2,6 +2,7 @@
 
 pub mod archive;
 pub mod bridge;
+pub mod legacy_paths;
 pub mod persist;
 pub mod preview;
 pub mod projects;

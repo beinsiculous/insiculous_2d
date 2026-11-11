@@ -2,11 +2,11 @@
 //!
 //! # Version contract
 //! `ASSET_BASE` and `BUNDLE_VERSION` are tied to deployment routes:
-//! 1. `ASSET_BASE` = `"/playground/v4/assets"`
-//! 2. `BUNDLE_VERSION` = `"v4"`
-//! 3. Deployed assets live at `insiculous_web/public/playground/v4/assets/`
-//! 4. Projects metadata served from `/playground/v4/assets/projects.json`
-//! 5. `scripts/build_wasm.sh` produces `playground/v4/`
+//! 1. `ASSET_BASE` = `"/playground/v5/assets"`
+//! 2. `BUNDLE_VERSION` = `"v5"`
+//! 3. Deployed assets live at `insiculous_web/public/playground/v5/assets/`
+//! 4. Projects metadata served from `/playground/v5/assets/projects.json`
+//! 5. `scripts/build_wasm.sh` produces `playground/v5/`
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -27,9 +27,9 @@ use crate::store::memory::MemoryStore;
 use crate::store::ProjectStore;
 
 /// Canonical asset base path for the deployed playground.
-pub const ASSET_BASE: &str = "/playground/v4/assets";
+pub const ASSET_BASE: &str = "/playground/v5/assets";
 /// Bundle version contract string.
-pub const BUNDLE_VERSION: &str = "v4";
+pub const BUNDLE_VERSION: &str = "v5";
 
 thread_local! {
     static ACTIVE_STORE: RefCell<Option<Arc<dyn ProjectStore>>> = const { RefCell::new(None) };
@@ -194,6 +194,14 @@ async fn run_playground() -> Result<(), String> {
     let stored_files_for_chains = if let Some(stored_files) =
         crate::store::stored_files_for_boot(stored_files, has_stored_manifest)
     {
+        // Before the records are laid down, so a stored file at an old key replaces its alias.
+        crate::legacy_paths::lay_aliases(
+            &root_string,
+            &crate::legacy_paths::selected_aliases(&project_slug, &stored_files),
+            common::vfs::read,
+            common::vfs::exists,
+            common::vfs::insert,
+        );
                 for file in &stored_files {
             let vfs_path = format!("{root_string}/{}", file.path);
             if file.deleted {

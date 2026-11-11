@@ -1,0 +1,6 @@
+# Fixture art, as sync_sprites.py lays it.
+#
+# deion_assets 0123456789abcdef0123456789abcdef01234567
+ai/sidescroller/tong_left/ai_tong_left.png
+  ai/sidescroller/props/court_edge.png -> ai_Court_Edge.png  
+

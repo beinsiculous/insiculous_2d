@@ -70,7 +70,7 @@ SceneData(
             components: [
                 Transform2D(position: (0.0, 0.0), scale: (1.0, 1.0)),
                 Sprite(
-                    texture: "assets/images/wood_texture.png",
+                    texture: "sprites/wood_texture.png",
                     color: (1.0, 1.0, 1.0, 1.0),
                 ),
                 RigidBody(
@@ -130,7 +130,7 @@ SceneData(
             // The jump sound, named by path; the game plays it with
             // `ctx.emitters.play(player, ctx.world)` on every jump.
             components: [
-                SoundEmitter(sound: Path("assets/sounds/snd_jump.wav"), volume: 0.8),
+                SoundEmitter(sound: Path("sounds/jump.wav"), volume: 0.8),
             ],
             // Child entities using inline children syntax (demonstrates hierarchy)
             children: [
@@ -287,7 +287,7 @@ SceneData(
             overrides: [ Transform2D(position: (100.0, 20.0), scale: (0.3, 0.3), rotation: 0.785) ],
             components: [
                 SoundEmitter(
-                    sound: Path("assets/sounds/beep_e.wav"),
+                    sound: Path("sounds/beep_e.wav"),
                     play_on_spawn: true,
                     spatial: Some(Spatial(max_distance: 8.0)),
                 ),

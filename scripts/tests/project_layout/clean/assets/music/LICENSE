@@ -1,0 +1,6 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+
+Files: theme.mid theme.mid.ron theme.recovered-1.mid theme.recovered-1.mid.ron a/theme.mid a/theme.mid.ron
+ march.midi march.midi.ron march.recovered-1.midi march.recovered-1.midi.ron imports/blip.wav
+Copyright: none (fixture)
+License: public-domain

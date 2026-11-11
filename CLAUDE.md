@@ -349,6 +349,7 @@ scripts/check_games.sh --test        # Test every game in its GAMES list (defaul
 scripts/check_guide_tests.sh         # Every crate guide's pitfall-table citation names a test that exists
 scripts/check_features.sh            # engine_core compiles and is clippy-clean with --no-default-features
 scripts/check_audio_provenance.sh    # Every audio file under assets/{music,soundfonts,sounds} or a crate's fixtures/ is named in a LICENSE beside it
+scripts/check_project_layout.sh examples  # A project's asset tree follows docs/PROJECT_LAYOUT.md (also each crates/playground/assets/projects/*; check_games.sh runs it per game)
 ```
 
 **Key Files:**

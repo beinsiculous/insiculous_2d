@@ -26,7 +26,7 @@ playground/<version>/
 
 Invocation of record, run from the engine root:
 ```sh
-scripts/build_wasm.sh crates/playground playground --kind playground --version v4 \
+scripts/build_wasm.sh crates/playground playground --kind playground --version v5 \
     --project examples=Examples=examples \
     --project pong=Pong=crates/playground/assets/projects/pong \
     --project game-template="Game Template"=../games/game-template \
@@ -42,7 +42,7 @@ Each entry carries:
 {
   "slug": "examples",
   "title": "Examples",
-  "bundle_version": "v4",
+  "bundle_version": "v5",
   "content_hash": "<sha256-hex>",
   "origin": "bundled"
 }
@@ -52,16 +52,16 @@ the project's `<dir>/assets`.
 
 ## The bundle contract
 
-`ASSET_BASE = "/playground/v4/assets"` and `BUNDLE_VERSION = "v4"` (`web_entry.rs`). The
+`ASSET_BASE = "/playground/v5/assets"` and `BUNDLE_VERSION = "v5"` (`web_entry.rs`). The
 version token appears in five places, listed in that file's header: the deployed directory
-`public/playground/v4/`, the asset URLs the engine fetches, `projects.json`'s
+`public/playground/v5/`, the asset URLs the engine fetches, `projects.json`'s
 `bundle_version`, the build script's output directory, and every `StoredFile`'s
 `bundle_version`. Bumping it is a coordinated change across all five.
 
 A project's root is computed, never stored: `{ASSET_BASE}/projects/<slug>` on the web,
 `<dir>/projects/<slug>` natively; its asset base is `{root}/assets`. Every file the engine
 reads or writes is keyed by that base-joined string (`common::vfs`'s canonical key), e.g.
-`/playground/v4/assets/projects/examples/assets/scenes/behavior_demo.scene.ron`. A relative
+`/playground/v5/assets/projects/examples/assets/scenes/behavior_demo.scene.ron`. A relative
 key never resolves; relative paths given to the editor or the API are joined to the open
 project's asset base first.
 
@@ -136,7 +136,8 @@ between them, and the second write would silently overwrite it. `put` also upser
 slug's manifest when the store has none (origin `saved`). `remove_file` is the same
 compare-and-swap and writes a tombstone — the record kept, `deleted`, empty bytes, one
 revision up — so a put that recreates the file names that revision; an absent record at
-base 0 is `Ok` with nothing written (§ Persistence). `replace_project` and
+base 0 gets its tombstone too, at revision 1 with the manifest upserted as `put` does, so
+deleting a file only the bundle holds survives a reload (§ Persistence). `replace_project` and
 `remove_project` are one transaction each across both stores, the manifest written last as
 the commit marker. `sweep_orphans(bundled)` at boot removes files whose slug has neither a
 manifest nor a bundled entry (an interrupted import); the open project's own
@@ -146,6 +147,50 @@ manifest-less files are removed at boot too, and the bundled files load instead.
 `complete`/`error`/`abort` events into a future. Every dependent request is issued
 synchronously inside the previous request's `onsuccess` — never after an `await`, when the
 transaction is already inactive.
+
+### Old paths
+
+The project layout (`docs/PROJECT_LAYOUT.md`) renamed five bundled files from the v5 bundle
+on. A visitor's store keeps what it held, and a stored scene or script made before the rename
+still names the old paths, so boot lays the bundle's file in memory under each old key such a
+file names (`legacy_paths.rs`):
+
+| project | old key (project-relative) | the bundle's file |
+|---|---|---|
+| `examples` | `assets/images/wood_texture.png` | `assets/sprites/wood_texture.png` |
+| `examples` | `assets/sounds/snd_jump.wav` | `assets/sounds/jump.wav` |
+| `pong` | `assets/images/ball_8px.png` | `assets/sprites/ball_8px.png` |
+| `pong` | `assets/images/paddle_16px.png` | `assets/sprites/paddle_16px.png` |
+| `game-template` | `assets/images/ball_8px.png` | `assets/sprites/ball_8px.png` |
+
+The table is exact files, not a prefix, and never grows with the bundle; the new sidecars
+have no row.
+
+**The rule.** A row is laid when a live stored record of its project — not a tombstone —
+whose path ends in `.ron` or `.rhai`, in any case, contains the row's old key less its
+`assets/` (`images/paddle_16px.png`, as a scene spells it) as a plain substring. Nothing
+else is read: not the manifest, not its `bundle_version`, since a tab left open across a
+deploy saves its old scene after a newer tab has stamped the manifest. A plain substring
+over-selects on purpose — a spare key costs nothing, a missed one is a scene that will not
+load. A project with no stored files, or whose files are dropped as an interrupted import,
+lays nothing.
+
+**The order.** Boot's step 6, after the bundle's preload and before the stored records are
+laid down: the bundle's bytes go under the old key when the bundle's file is readable and the
+old key is absent. Then the records are laid as always, so a stored record at an old key
+replaces its alias and a stored tombstone there removes it. The write and remove observers
+are installed after, so an alias queues nothing, seeds no chain and is never a stored record:
+a later save over an aliased path is the ordinary first put of a bundled-only file, and a
+delete of one is a bundled-only tombstone. Nothing is written to the store.
+
+**The cost, stated.** One direction only: nothing puts a visitor's old-key file under the new
+key — two keys for one file is a second store invented at boot. A visitor who changed one of
+the five files under v4 without saving a scene sees the stock file in the bundle's new scene;
+their file is still theirs, at its old key in the `images/` folder, and pointing the scene at
+it is one assignment. A file they deleted under its old name is back under its new one. A
+pre-rename project shows an `images/` folder beside `sprites/`, and its export carries both
+copies. A stored `hello_world` scene's `assets/…` paths are not helped: they never resolved
+on the web.
 
 ## Persistence: one queue, in write order
 

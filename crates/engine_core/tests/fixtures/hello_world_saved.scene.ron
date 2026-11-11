@@ -63,7 +63,7 @@
                     visible: true,
                 ),
                 SoundEmitter(
-                    sound: Path("assets/sounds/snd_jump.wav"),
+                    sound: Path("sounds/jump.wav"),
                     volume: 0.8,
                     play_on_spawn: false,
                     looping: false,
@@ -618,7 +618,7 @@
                     visible: true,
                 ),
                 SoundEmitter(
-                    sound: Path("assets/sounds/beep_e.wav"),
+                    sound: Path("sounds/beep_e.wav"),
                     volume: 1.0,
                     play_on_spawn: true,
                     looping: false,

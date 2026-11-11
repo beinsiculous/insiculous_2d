@@ -42,7 +42,7 @@ SceneData(
             components: [
                 Transform2D(position: (-370.0, 0.0), scale: (0.25, 1.5)),
                 Sprite(
-                    texture: "images/paddle_16px.png",
+                    texture: "sprites/paddle_16px.png",
                     color: (1.0, 0.3, 0.3, 1.0),
                     emissive: 1.5,
                 ),
@@ -70,7 +70,7 @@ SceneData(
             components: [
                 Transform2D(position: (370.0, 0.0), scale: (0.25, 1.5)),
                 Sprite(
-                    texture: "images/paddle_16px.png",
+                    texture: "sprites/paddle_16px.png",
                     scale: (-1.0, 1.0),
                     color: (0.3, 0.5, 1.0, 1.0),
                     emissive: 1.5,
@@ -100,7 +100,7 @@ SceneData(
             components: [
                 Transform2D(position: (0.0, 0.0), scale: (0.25, 0.25)),
                 Sprite(
-                    texture: "images/ball_8px.png",
+                    texture: "sprites/ball_8px.png",
                     emissive: 2.5,
                 ),
                 RigidBody(

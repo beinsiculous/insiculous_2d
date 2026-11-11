@@ -14,9 +14,9 @@
 use engine_core::prelude::*;
 use std::path::Path;
 
-/// Anchor asset paths to the repository so the example runs from any
+/// The examples' asset base, anchored to the repository so the example runs from any
 /// working directory.
-const EXAMPLES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples");
+const ASSET_BASE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/assets");
 
 struct BehaviorDemo {
     behaviors: BehaviorRunner,
@@ -36,7 +36,7 @@ impl BehaviorDemo {
 
 impl Game for BehaviorDemo {
     fn init(&mut self, ctx: &mut GameContext) {
-        let scene_path = Path::new(EXAMPLES_DIR).join("assets/scenes/behavior_demo.scene.ron");
+        let scene_path = Path::new(ASSET_BASE).join("scenes/behavior_demo.scene.ron");
 
         match SceneLoader::load_and_instantiate(&scene_path, ctx.world, ctx.assets) {
             Ok(instance) => {
@@ -98,7 +98,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = GameConfig::new("Behavior Demo - Insiculous 2D")
         .with_size(800, 600)
         .with_clear_color(0.1, 0.1, 0.12, 1.0)
-        .with_asset_base_path(EXAMPLES_DIR);
+        .with_asset_base_path(ASSET_BASE);
 
     run_game(BehaviorDemo::new(), config)?;
     Ok(())

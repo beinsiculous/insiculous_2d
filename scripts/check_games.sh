@@ -6,6 +6,9 @@
 # src/web_entry.rs is cfg(target_arch = "wasm32"), so no native check ever compiles
 # it, and both branches now ship — the plain one as the game's bundle, the feature
 # one as its editor bundle. Needs the wasm target installed (asserted below).
+#
+# Each game's asset tree is checked against docs/PROJECT_LAYOUT.md first
+# (scripts/check_project_layout.sh), since a misplaced file builds fine and fails later.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -23,6 +26,8 @@ fi
 GAMES=(pong snake breakout frogger asteroids space_invaders game-template)
 
 for game in "${GAMES[@]}"; do
+    echo "==> project layout $game"
+    scripts/check_project_layout.sh "../games/$game"
     echo "==> cargo $CMD -p $game (default)"
     cargo $CMD --manifest-path "../games/$game/Cargo.toml"
     echo "==> cargo clippy -p $game (default)"
@@ -37,4 +42,4 @@ for game in "${GAMES[@]}"; do
     cargo check --manifest-path "../games/$game/Cargo.toml" --lib --target wasm32-unknown-unknown --features editor
 done
 
-echo "All the games passed cargo $CMD + clippy (default + editor features) and both wasm32 --lib checks."
+echo "All the games passed the project layout gate, cargo $CMD + clippy (default + editor features) and both wasm32 --lib checks."
