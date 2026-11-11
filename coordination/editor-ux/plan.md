@@ -2158,6 +2158,109 @@ group's tab strip (join) and four edge zones (new group); drop calls `group_pane
 (new), `render.rs`, `editor_game/mod.rs`, `drag_drop.rs` (a `DragPayload::Panel`), the guide.
 Reviewers: kimi, codex. Leaves out: dragging a panel out to a floating window.
 
+**Re-verified 2026-11-11 against 7b31178; where this and the paragraph above differ, this wins.**
+
+*One change of design: the tab drag is the dock's own gesture, not a `DragPayload`.* The paragraph
+above routes it through `drag_drop.rs`. Read against the tree, a `DragPayload::Panel` would have to
+be refused at four consumers that call `take_drop_in` before they look at the payload
+(`viewport_interaction.rs:34`, `texture_field.rs:97`, `sound_field.rs:51`,
+`panel_renderer/conductor.rs:103`), added to three exhaustive matches (`drag_ghost.rs:13`,
+`hierarchy/mod.rs:411–421`, `conductor/mod.rs:109–131`), and would count as a payload for the
+spring-loaded tabs (`frame.rs:93`), so a dragged tab would bring other tabs forward as it passed.
+A tab is already a widget — `ui.interact("dock_tab_{id}")`, `dock/render.rs:226` — whose
+`InteractionResult.dragging` says the press is still held, and an active widget already makes
+`ui.wants_mouse()` true, which is what keeps the viewport, the other panels and the scale actions
+(`refuse_during_gesture`, `shortcuts.rs:190–199`) out of the gesture. So: **`drag_drop.rs` and
+every file that matches on `DragPayload` are untouched**, and the asset drag's spring-loaded tabs
+are untouched.
+
+*What the tree holds.* `crates/editor/src/dock/`: `mod.rs` 288 (`DockArea` `:174`, its state
+`:175–190`, `DockAction` `:101–106`, `DockPosition` `:85` — Left, Right, Top, Bottom, Center),
+`groups.rs` 173 (`can_move_panel_to_edge` `:37`, `move_panel_to_edge` `:53`, `group_panel_with`
+`:66` — it detaches and inserts after `other`, so within one group it reorders; `finish_move`
+`:83–88`; `reveal` `:94–96`), `render.rs` 331 (`tab_layout` `:173–195`, `tab_at` `:137–147`, the
+tab loop `:222–246` with the click deferred to `:118`, the collapsed strip `:207–215`, the narrow
+tab `:294–299`, the overflow button and its menu `:246–277`), `layout.rs` 154, `focus.rs` 44,
+`tests.rs` 416, `group_tests.rs` 303. `DRAG_THRESHOLD = 4.0` is `drag_drop.rs:14`, public.
+`UiLayer::DragGhost` is `crates/ui/src/draw/mod.rs:40`. In `editor_integration`:
+`run_dock_action` (`menu_actions.rs:396–413`; `MoveTo` checks the guard, says why not on the
+status bar, moves, then `show_panel`; `GroupWith` calls `group_panel_with`), `render_panels`
+(`frame.rs:102–137`, 299 lines), `dock_key_route` (`dock_keys.rs:29–43`, 66 lines, reached from
+`shortcuts.rs:110` before the cancel cascade). **At the ceiling, not to grow:** `shortcuts.rs`
+583 and `menu_actions.rs` 595 — this batch adds no line to either.
+
+*The gesture.*
+- **Start.** A left press on any drawn full tab — an expanded strip's, or a collapsed top or
+  bottom group's, which keeps its tabs — that moves `DRAG_THRESHOLD` points from its press point
+  while still held becomes a drag of that panel. Crossing the threshold clears text focus, as
+  the tab's click does (`render.rs:118`): a focused inspector field owns the keyboard
+  (`shortcuts.rs:65–67` returns before the dock's route), and Escape must reach the drag. It
+  also latches the press: **its release is never a click**, dropped, cancelled or released back
+  on its own tab, so a drag that moves nothing reveals nothing and changes no saved `active`.
+  Below the threshold the release is today's click, unchanged. No drag starts from a collapsed
+  side strip (it draws no tabs), a narrow tab, the overflow menu's rows, or while the narrow
+  overlay is open. The right press is unchanged.
+- **While dragging** the drag itself changes nothing in the layout, and it holds no rectangle
+  from an earlier frame: the target is resolved each frame from that frame's layout. The dock's
+  own keys (`dock_key_route`: F6, the arrows, Enter, the tab menu) are consumed without effect
+  while a drag is live; Escape cancels it. A chip with the panel's title follows the
+  pointer on `UiLayer::DragGhost`, and the one target under the pointer is drawn: a tab strip gets
+  an insertion bar after the tab the panel would follow; an edge gets a band the width or height
+  of a new group's header along that edge, outlined, with the edge's name in it ("Left", "Right",
+  "Bottom", "Top") — text and shape, never colour alone, all from `EditorTheme` tokens.
+- **Targets, in precedence order.** (1) Any drawn tab, the source's own group included and
+  whatever its group's collapse: the panel is inserted after that tab
+  (`GroupWith(panel, that_tab)`); over a strip's empty run, after its last tab; on its own tab,
+  nothing. (2) A collapsed side strip, which draws no tabs: join that group after its active
+  panel. (3) An edge zone — the outer 48 points of the dock's bounds on each of the four edges,
+  corners going to the nearer side edge — only where `can_move_panel_to_edge` says yes; a zone
+  that would refuse is not drawn and takes no drop. A tab or a strip always wins over the zone
+  it sits in. Anywhere else there is no target.
+- **Drop** on a target yields one `DockAction` — `GroupWith` or `MoveTo` — run through
+  `run_dock_action`: the menu's path, its refusal message and its `show_panel` included. One
+  path for the menu and the gesture. **The drop is taken and run in `render_panels` before
+  `dock_area.render`**, resolved against this frame's layout (`tab_layout` needs no drawing), so
+  the release frame already lays out and draws the new groups; taken after the render, as the
+  click is, the frame would draw the old panels in the old rectangles
+  (`frame.rs:105`, `:117–133`). A dragged panel that is hidden or gone by the release is a cancel.
+- **Cancel.** Escape (through `dock_key_route`, ahead of the tab-focus release), a release over
+  no target, a dialog or menu opening, Play starting and Reset Layout each end the drag with
+  nothing moved. **Not a cancel, stated:** the window losing focus with the button held. Nothing
+  in `input` or `engine_core` handles `WindowEvent::Focused(false)`, so a release the window
+  never saw leaves every held gesture — this one, the gizmo's, the marquee's, the asset drag's —
+  live until the next release; the chip is on screen meanwhile and Escape ends it. Filed as #256,
+  not fixed here.
+- **Persistence** is the moves' own: the settle rule saves the new groups
+  (`preferences.rs:116–137`). No new preference.
+
+*Files.* `crates/editor/src/dock/drag.rs` (new — the drag's state, the pure target resolution
+from a pointer position and the frame's tab and group rectangles, the ghost and target drawing),
+`dock/render.rs` (the tab loop reports the held press; the drop is taken beside the deferred
+click), `dock/mod.rs` (the state field, the accessors, `mod drag`), `dock/drag_tests.rs` (new —
+`tests.rs` is 416), `crates/editor_integration/src/editor_game/frame.rs` (the drop's action to
+`run_dock_action`; the cancels named above), `dock_keys.rs` (Escape), a test file beside
+`dock_keys_tests.rs` (203) or in it, both crate guides (a pitfall row per guard test),
+`docs/WEB_PLAYGROUND.md` § the dock prose (`:488–497`) and the editor's user-facing dock text
+wherever batch 3 put it. **No bundle in this batch:** the site carries tab drag from the next
+bundle, which the close-out builds as v7.
+
+*Tests (native, headless).* The target resolution, pure: each strip position, the empty run, the
+source's own tab, a collapsed strip, each edge zone and a corner, a refusing edge, nowhere. Through
+`DockArea` with a scripted pointer: a press released under the threshold reveals and moves
+nothing; a drag dropped on another group's tab joins it after that tab; a drag within one group
+reorders; a drop on a collapsed bottom group's tab joins it and makes no new group; a drop on an
+edge makes the new group and drops the emptied one; Escape then the release, a drag released back
+on its own tab, a release over nothing and Play each leave the layout and the captured
+preferences identical — `active` included; no layout field changes on any frame before the drop;
+F6, an arrow and Enter during a drag change nothing. Through the host (`EditorGame`): Escape
+cancels a drag begun while an inspector text field held focus; the frame of a cross-group drop
+draws the dragged panel's content in its new group's rectangle; the asset drag's `a_drag_resting_on_the_conductor_tab_brings_it_forward…` still passes
+untouched. One mutation check, said in the report.
+
+*Stills,* 1280×800, from `editor_demo`: `batch7-drag-strip.png` (mid-drag over another group's
+strip, the chip and the insertion bar) and `batch7-drag-edge.png` (mid-drag over an edge band).
+Reviewers: kimi, then codex with the stills; the UI eye is the planner's.
+
 **Batch 8 — close-out (planner). Issue #248.** Milestone closed when `jesse` merges; `log_archive.md` §
 Editor UX with the lessons; the scorecard's totals; the review record archived to
 `review/_archive/editor-ux/`; the follow-ups filed (§ Follow-ups).
