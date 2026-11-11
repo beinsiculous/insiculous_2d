@@ -1,5 +1,11 @@
 # Editor UX — the plan
 
+**2026-11-11, Jesse's ruling: batch 5 is settled, as a navigation and a lock.** Ruling (h′)
+replaces (h): where the round summaries below describe the window as a two-phase transfer —
+the owner record, the invitation, the freeze and retire, *Take over*, *Bring it back* — that
+design is withdrawn after six rounds under `review/editor-ux-window/` (rebuttal-1 to -6
+there). § Design E and the batch 5 paragraph are the text of record.
+
 **2026-11-11, Jesse's ruling: batch 6 migrates nothing.** Where the round summaries below say
 batch 6 migrates a visitor's stored scenes — the marker, puts → references → tombstones — that
 design is withdrawn; a stored pre-convention project keeps loading through five boot aliases
@@ -175,19 +181,24 @@ under it, never a silent rewrite.
   layout is `DEION_STYLE.md` §6's, which this plan does not re-rule. The one rename the
   convention forces is **`images/` → `sprites/`** (three trees use `images/`, six games use
   `sprites/`). Jesse ruled 2026-11-03: `sprites/` wins.
-- **(h) On the web, opening the editor in a window is an acknowledged hand-off: one writer per
-  project, always.** The engine's event loop cannot be stopped once booted
-  (`playground-embed.ts:113-118`), and two editors on one IndexedDB project would write over each
-  other. So a project has an **owner record** (`localStorage`, one key per slug) and a transfer is
-  two-phase in both directions: the destination boots and loads, says *ready*; the source freezes,
-  saves, drains its persistence, says *retired*, and parks itself on a card (*Focus it* · *Bring it
-  back*); the destination unfreezes. A boot that fails, a window that closes early or a deadline
-  that passes leaves the source editing. A second tab on the same project meets the owner record
-  and offers *Take over* through the same transfer. The Playground refuses the window while its
-  store is the in-memory fallback (its only copy would not survive the navigation); a Rust game's
-  editor page, whose edits never persist, warns while dirty before opening. § Design E. *Amended
-  after round 2 (2026-11-03): a Web Lock decides ownership and the record only describes it; the
-  destination loads after the source retires; an invitation bypasses the card for one boot.*
+- **(h′) On the web, a Playground project is open in one page at a time, and moving the editor
+  to a window is a navigation, not a transfer.** Every Playground editor page takes a Web Lock
+  named for its project **before** it boots the engine and holds it until the page goes; a page
+  that cannot have the lock says so on a card and does not start. *Open in a window* requires
+  everything saved, then opens the window and sends the page itself to a parked card; the
+  window boots as any page does. To come back, the visitor closes the window and presses *Bring
+  the editor back here* on the parked card. There is no *Take over* and no *Move back* button:
+  a page gives a project up by closing or by moving it forward, never by being asked from
+  elsewhere. The Playground refuses the window while its store is the in-memory fallback. A
+  Rust game's editor page stores nothing, so it takes no lock and its window is a second,
+  independent editor — the bar says so.
+  *What (h) promised and (h′) does not:* a window that fails to start no longer leaves the
+  source editing — the source has already parked, with everything saved; closing the failed
+  window and one click on the card bring the editor back. And the return is two actions, not
+  one.
+  *Ruled by Jesse 2026-11-11 ("replace it with your plan"), replacing (h) of 2026-11-03 — the
+  two-phase transfer with an owner record, a freeze and *Take over* — after its design drew a
+  critical in each of five rounds, eight in the last.*
 - **(i) Rename and delete land with create, in their own batch (4b); there is no trash.** Delete
   asks through the existing confirm dialog and removes the file (or the folder, named with its
   count). A paired asset — a `.png` with its `.sheet.ron`, a `.mid` with its `.mid.ron` and any
@@ -873,191 +884,354 @@ persistence journal (ordering is the contract).
 
 ### E. The editor in its own window (web)
 
-**The pages.** Two routes per editor surface, one layout prop. `pages/playground/window.astro`
-renders `PlaygroundEmbed` + `PlaygroundToolbar` (the Playground's shape, project controls
-included); `pages/playground/[slug]/window.astro` renders `GameEmbed` with `fill` + the game
-page's bar (the `[slug].astro` shape — a Rust game's editor is its own bundle through `GameEmbed`,
-not the Playground's; codex F9). Both inside `AppLayout` with a new `windowed` prop: the studio
-wordmark nav, the footer and the visible heading row go (the `h1` stays, visually hidden — every
-page keeps its name for the audits), the Aa controls and the skip link stay, the bar is the
-window's top edge, and `main` fills the viewport. `noindex`; the routes carry `data-wasm-src` like
-the others, so `postbuild-check.mjs` resolves them. The dock (scripts, console) is in the
-Playground's window too — it is the accessible half of the editor (#187) and travels with it.
+**Settled 2026-11-11 under ruling (h′), after six rounds in `review/editor-ux-window/`** (kimi
+and codex each round; round 6: codex "ship after addressing F1–F2", kimi two criticals in the
+store and none in the move — all six folded in; the text below has not been read by a round
+since, and its batch section is re-verified against the tree before its handoff, as every
+batch's is).
 
-**The owner and the lock** (ruling (h); round 1 gemini F2, kimi F4; round 2 kimi F2, F7, codex
-F3, F5). An editor holds a **Web Lock** for its lifetime —
-`navigator.locks.request('beinsiculous.playground.<surface>:<slug>', { ifAvailable: true }, hold)`
-— because a `localStorage` read-then-write is not a lock: two tabs booting at once both read
-nothing and both win (kimi F2). `<surface>` is `playground` or `game`, because the bundled data
-project `pong` and the Rust game page `/playground/pong/` share a slug and nothing else (kimi F7);
-the window name and every channel message carry the same pair. Beside the lock, the **owner
-record** `localStorage['beinsiculous.playground.owner.<surface>:<slug>']` =
-`{ token, generation, windowName?, windowRoute, returnRoute }` exists for the *text* of the cards,
-for reacquiring the window by name and for the parked page's next generation number (a static
-page has no other memory of `N`, gemini F3 round 3); it is never what decides ownership. A boot that cannot get the
-lock stops at the card "This project is open in another tab or window — *Take over* · *Close*"
-(Take over runs the transfer below with the holder as the source); a lock that is free is taken
-and the record overwritten. **Storage that throws** (a browser policy, codex F5): the lock request
-and the record read are each in try/catch; without the lock API or with storage denied, the
-*Open in a window* button is disabled with its reason in the bar note and the page runs exactly
-as today. Nothing here precedes the memory-store fallback. **Ownership is of the mutation's
-target, not of the active page** (codex F3, round 3): `playground_import_zip` replaces the project
-the *archive's* manifest names (`bridge.rs:437-455`), so import and reset act on the owned slug
-only, and an archive naming another slug takes that slug's lock (`ifAvailable`) first or is refused
-naming the holder. A tab from the release before this one holds no lock and is not fenced — today
-two tabs already both write, so the window after a deploy is the state we have now, ending when
-that tab reloads; `WEB_PLAYGROUND.md` says the guarantee is among clients of one release.
+**Why this is not the transfer v6 carried.** Draft 1 handed a live editor from one page to another while both ran: an invitation, a queued
+lock, a freeze, a retire, a commit point, a deferred load, a rollback. Four plan rounds found a
+critical in it each time, and round 1 of this subject found eight more, every one checked
+against the tree: the deferred load reads files under a manifest flag taken before the source
+saved and deletes them as an interrupted import (`web_entry.rs:170–222`); a rollback after
+`drain_then_epoch` leaves `Chains.draining` set, so the thawed source cannot save
+(`persist/mod.rs:333`, `persist/queue.rs:62`); the freeze does not reach commands already in the
+bridge's channel or an import already awaiting IndexedDB; a canvas text field has no
+commit-on-focus-loss path to "settle" (`ui/src/context/edit_field.rs:171`); *Take over* retires
+a memory-backed source's only copy; the six game bundles carry none of the new exports. Each
+needs a new seam, and each new seam is the next round's critical.
 
-**The transfer** — one protocol, both directions, a named state machine with a commit point
-(round 1 gemini F1, kimi F1–F2, codex F1, F10; round 2 kimi F1, F3, F4, gemini F1–F3, codex F1,
-F2, F4, F14). `BroadcastChannel('beinsiculous.playground.transfer')`, every message carrying the
-surface, the slug, a generation and the sender's token; `playground-window-protocol.ts` defines
-the states and the messages as `playground-preview-protocol.ts` does for the preview, and its
-reducer is unit-tested in TypeScript. **Every continuation re-reads the state and the generation
-after each `await`; a cancelled transfer's continuations are no-ops** (codex F4: a `ready` that
-lands at 19.9 s must not let the save's continuation park a source whose transfer already rolled
-back).
+**The observation that removes the mechanism:** the Playground already hands a project from one
+page load to the next, safely, every time a visitor switches project — the embed asks about
+unsaved edits, calls `playground_open_project` (which is `drain_then_epoch`, `bridge.rs:286`),
+and navigates (`playground-embed.ts:350–375`). The engine's event loop cannot be stopped once
+booted (`playground-embed.ts:111–118`), but it does not need to be: a page that navigates away
+is retired by the browser. So the window is **that same flow with a different destination**, and
+the one thing it lacks — two pages must never run the same project at once — is a lock taken
+**before the engine boots**, in the page's own script, where nothing has been read yet.
 
-1. **Open** (the bar button **Open in a window ↗**, beside Play ↗, enabled on `playground-ready`
-   while the lock is held and storage works). In the click handler, *synchronously*: `handle =
-   window.open('about:blank', windowName, 'popup,width=1280,height=800')` — the activation is
-   spent here, before any `await` (gemini F3, round 1); `null` → the static `#window-blocked`
-   alert with *Try again*, the preview's pattern. Then `handle.location = windowRoute +
-   '?project=<slug>&invite=<token>:<N+1>'`, `N` the owner record's generation. The source keeps
-   editing. State `inviting`.
-2. **Ready — queued, without the project.** The window boots, reads the invitation, and **does
-   not load the project**: an invited boot whose `invite` is `<holder token>:<holder generation
-   + 1>` skips the owner card (kimi F3, gemini F2, round 2) — **one admission rule in both
-   directions** (gemini F3, codex F5, round 4: the record holds `N`, every invitation is `N+1`,
-   and the commit writes `N+1`); a stale, consumed or absent invitation stops at the card as any
-   boot does. It **requests the lock with a normal, queued
-   request** — not `ifAvailable` — under an `AbortSignal` of 30 s, so it stands in the
-   LockManager's queue behind the source (kimi F3, gemini F1, codex F8, round 3: a third tab's
-   `ifAvailable` request now sees a pending request ahead and gets `null`, and the grant cannot
-   lose to the manager's latency). Then it shows "Taking over…" and posts `ready(generation)`.
-3. **Retire.** The source, on `ready`, runs **one privileged operation, `playground_retire()`**
-   (kimi F1, codex F7, round 3: the Save button's `playground_dispatch('save')` only `try_send`s
-   onto a channel for a later frame, `bridge.rs:101-106`, and a frozen bridge would refuse it as
-   the write it is): it **freezes** public mutation — the frame driver hands the editor an empty
-   input frame (no key reaches `handle_editor_key`, no press reaches a widget: the ui's blocking
-   region alone would leave Ctrl+Z live, codex F2), every public write export answers `frozen`,
-   the embed disables every bar control (Project, Save, Export, Import, Reset — DOM, outside the
-   ui, kimi F4) — then **settles** the DOM editors (the Scripts panel's `saveCurrent()`,
-   `playground-scripts-panel.ts:50`, whose buffer the navigation would otherwise destroy; a canvas
-   text field mid-edit by the path a focus loss takes today, which the executor names), **saves**
-   the scene and the song through the internal save path, **drains** persistence through
-   `drain_then_epoch` (`persist/mod.rs:333`, whose IndexedDB transactions settle on `oncomplete`,
-   `store/idb_transaction.rs:46-83` — gemini F2 round 4, rebutted), **verifies** nothing is dirty,
-   and resolves — or rejects with the first error, and the source thaws with the banner. **This
-   operation needs a seam in `editor_integration`** (codex F6 round 4): keys reach the editor as
-   `WindowEvent` callbacks into `Game::on_key_pressed` (`app_handler.rs:341`), not through a frame's
-   input, and `EditorRunOptions` (`run_options.rs:15`) exposes neither a gate nor a save — so
-   `EditorGame` gains `set_frozen(bool)` (drops key callbacks and widget input while set) and
-   `retire() -> Result<(), String>` (the saves), reached through a host handle on the options; batch
-   5 therefore touches `editor_integration` and ruling (e)'s exception is withdrawn. **On a game
-   surface, this step is where the unconditional loss dialog lives** (kimi F3, codex F2 round 4):
-   *Open in a window*, *Take over* and *Bring it back* all retire the source, and a game surface's
-   retire asks "Your edits here will be lost — *Continue* · *Cancel*" every time; Cancel keeps
-   ownership and editing where they are, and the window's own edits on return are covered by the
-   same step. Then the embed **commits**: writes the owner record with the window's token and the
-   generation *before* releasing anything — a write that throws aborts here and the source thaws
-   (codex F5) — releases the lock, posts `retired(generation)`, and navigates to
-   `/playground/parked/?project=<surface>:<slug>`.
-4. **Live.** The window's queued request is **granted** — that grant, not `retired`, is the
-   authority (a source that dies after releasing still hands the lock to the queued destination;
-   `retired` is informational). On the grant the window **consumes the invitation**
-   (`history.replaceState` strips `invite` so a reload is an ordinary boot, kimi F4 round 3),
-   **loads the project** — the bytes the source just flushed, so there is no stale copy and no
-   `StaleRevision` on its first save (round 2's three F1s) — thaws, and is the editor. **A load
-   that fails after the grant is a recovery card** (kimi F5, codex F7 round 4): the boot's
-   `load_project(...).await.unwrap_or_default()` (`web_entry.rs:193`) would show the bundled
-   project as if nothing were stored; on this path a failed read keeps the destination frozen with
-   *Retry* · *Return* and holds the lock, and a destination whose store is the memory fallback
-   refuses before `ready`.
-5. **Failure.** Before the commit: the window's boot fails, the window closes before `ready`, or
-   20 s pass (`PREVIEW_BOOT_DEADLINE_MS`) — the source thaws, closes the handle, shows the banner
-   "The window did not start — the editor stayed here", and holds the lock throughout; a
-   `retire()` that rejects does the same with its error. After the commit the source never
-   thaws: a destination whose grant does not come within its 30 s (the lock went elsewhere, or
-   the manager never answered) aborts its request and stops at the owner card with *Take over*,
-   and the parked page's *Bring it back* recovers the project.
+What that buys: no freeze, no retire, no deferred load, no `editor_integration` seam; no
+protocol — no invitation, no generation, no commit point, no rollback, **no message between
+pages at all**; and the game surfaces need no ownership, because a game page stores nothing.
+The engine's share is small and none of it is machinery for the move: two read-only exports,
+boot reads that fail instead of deleting, one more term in the dirty flag, and the new bundle
+version folder those require (§ What changes where).
 
-**Bring it back** is the same transfer with the parked page as the destination: *Bring it back
-here* reads `generation` from the owner record and navigates the parked page to `returnRoute +
-'?project=<slug>&invite=<windowToken>:<N+1>'`; that page boots, finds the invitation valid, queues
-for the lock, posts `ready` without loading; the window runs step 3 (`retire()`, commit, release,
-`retired`) and shows its card "The editor moved back to the page — *Close*"; the page's grant
-lands, it loads, goes live. The deadline on this side leaves the
-page at the owner card with *Take over* (which repeats the request) and *Focus it*.
+**What rounds 2 and 3 taught, and draft 4 does about it.** Every finding of those rounds landed
+on something draft 2 had kept from the transfer: a queue (a waiting tab granted ahead of the
+window), a named window (re-opened, it navigates whatever that window has become), a broadcast
+(a return posted to nobody, or to two parked tabs), a failure signal (one startup path that
+never raises it). Draft 4 keeps none of them. Pages do not talk to each other; the lock is the
+only shared thing, and a person closing a window is the only way a project changes hands
+backwards.
 
-**The parked page** (`pages/playground/parked.astro`, static, `AppLayout`, no engine): "The editor
-for *Pong* is open in its own window." · **Focus it** — pings the window (2 s, inside the click)
-and, on an answer, `window.open('', windowName)` reacquires the live window by name, because the
-original handle did not survive the source's navigation (kimi F2, round 1); no answer and a free
-lock → the page returns by itself; no answer and a held lock → "the window is not answering",
-nothing is opened (an unanswered `window.open` by name creates and flashes a blank popup, gemini
-F8 round 3) · **Bring it back here**. **The page
-never polls the name**: `window.open` from a timer has no activation and returns `null` or a
-blocked popup, which proves nothing (gemini F3, codex F14). Instead the window posts
-`closing(surface, slug, token)` on `pagehide` — **a hint, not proof** (kimi F4 round 3: a reload
-fires it too): **the parked page never navigates on it** (gemini F1 round 4: a cold wasm reload takes longer
-than any timer, and a timer that fires first steals the project from the reloading window): the
-card changes to "The window closed — *Bring it back here*", and the click decides; the click's
-own ping and `navigator.locks.query()` tell a reloaded window from a gone one. A parked page that
-boots (or returns from a hidden tab, `visibilitychange`) pings once with a 2 s window, the one
-ping the heartbeat refusal allows; no answer and a free lock → it returns by itself; no answer
-and a held lock → the window is alive but throttled, and the card waits.
+#### The lock
 
-**A window closed by the browser** (round 1 gemini F1, kimi F2, codex F2): the window page sets
-`beforeunload` to warn while any document is dirty (the browser's own prompt — the only one it
-allows); an autosave in flight at unload is not guaranteed to land, and `WEB_PLAYGROUND.md` says
-so: a direct close returns the page to the last *durable* save. The card's *Close* button is the
-clean path (save, flush, release, close). The lock is released by the browser when the window
-goes, whatever the path.
+`navigator.locks.request('beinsiculous.playground:<slug>', { ifAvailable: true }, hold)`, made
+by the embed script **before** `wasm.default()` (`playground-embed.ts:536`), on every Playground
+editor boot: the page, the window, a reload. `hold` returns a promise the page never resolves,
+so the lock lasts the document's life and the browser releases it when the page navigates or
+closes, whatever the path. **No page ever waits in the lock's queue** (round 2 codex F5, round
+3 kimi F2, F3, codex F5: a queued request outlives the intent that made it and is granted ahead
+of whatever the visitor asks for next).
 
-**Two refusals** (codex F2, round 1; gemini F4, round 2). The Playground's button is disabled, with
-its reason in the bar note, while the store is the in-memory fallback (IndexedDB unavailable — the
-banner already says edits will not persist; parking would discard the only copy). A game surface
-**always** confirms before it retires — "**Your edits here will be lost** — the window starts from
-the game's bundled scene. *Continue* · *Cancel*" — at every entry (v3 said "do not travel", which
-implied they stayed; the source navigates away and they do not, gemini F4 round 2; it asked only
-while *dirty*, but a game-page Save clears the flag while the bytes live only in that page's memory
-store, codex F6 round 3; and it asked only at the button, while *Take over* and *Bring it back*
-retire too, kimi F3 and codex F2 round 4 — so the dialog is unconditional and lives in the retire
-step). A game page has no
-store, so its transfer is steps 1, 2, the commit and the park with no save. A snapshot transfer or
-an in-place park (the frozen engine kept alive under an overlay) is not built: the game bundle has
-no load-from-snapshot path in editor mode, an in-place park keeps a second live engine per bundle,
-and the page's contract is "nothing persists" — Jesse ruled 2026-11-03 that the dialog is enough.
+- **The slug is fixed before the request, or the page does not boot** (round 2 kimi F3). A URL
+  without `?project=` lets the engine pick the first bundled project after boot
+  (`web_entry.rs:145–168`), so the embed resolves it first: it fetches the bundle's
+  `projects.json` (the list the engine reads), takes the first slug, and
+  `history.replaceState`s `?project=<slug>` onto the URL before anything else — the engine then
+  reads the same parameter the lock was named from. **A fetch that fails, does not answer in
+  10 s (an `AbortSignal`; round 6 kimi F4), or a list that is empty or will not parse, stops the
+  page before the engine** with "The project list did not
+  load — *Try again*": a guessed name would lock one project while the engine, whose own fetch
+  may succeed a moment later, opens another (round 4 kimi F3, round 5 codex F2). A slug the
+  engine does not know is redirected by the engine as today (`location.set_search`), which is a
+  new boot with an explicit parameter.
+- **Granted** → the grant is kept for the document: the embed's existing *Try again* after a
+  rejected `wasm.default()` (`playground-embed.ts:552–554`) boots under the lock the page
+  already holds and never asks a second time (round 4 kimi F5). The boot continues exactly as
+  today, and everything the engine reads from the
+  store — the manifest list, the files, the orphan sweep — is read after the grant, because the
+  engine has not started.
+- **Not granted** → the **owner card** in place of the loading status: "*Pong* is open in
+  another tab or window. Close it, then *Try again*." with **Try again** (the same request once
+  more) and **Close this page** (a window closes itself; a tab navigates to the plain parked
+  card). The card is an `aria-live="polite"` region.
+- **A boot that arrives by a hand-off** — the URL carries `&move=1`, set by *Open in a window*,
+  by *Bring the editor back here* and by the post-drain recovery navigation, the three places
+  a page is sent to a project that was just saved elsewhere — may find the lock still held,
+  because its source is still unloading. It shows
+  "Moving the editor…" and asks again every 100 ms for at most 5 s (a bounded count of
+  `ifAvailable` requests, never a queued one), then falls to the owner card like any boot. The
+  embed strips `move` from the URL at `playground-ready` (`history.replaceState`), so a reload
+  is an ordinary boot — not earlier, because the engine reads it once (below).
+- **A page whose engine fails to start keeps its lock until it is closed.** There is no
+  failure signal to release it on — the engine reports a failed start as status text from more
+  than one place (`web_entry.rs:79–82`; the renderer's, `engine_core/src/game/web.rs:125`,
+  after `wasm.default()` has resolved; round 3 codex F3) — and none is added: a failed page is
+  closed like any other, which is what every card already asks for.
+- **The lock API absent or throwing** (an old browser, a policy): the page boots as it does
+  today, *Open in a window* is disabled with its reason in the bar note, and `WEB_PLAYGROUND.md`
+  says the one-page guarantee holds among pages that have the API.
+- **Import of an archive that names another project is fenced** (round 2 codex F3: the store's
+  revisions do **not** catch it — an import stamps every file revision 1, `archive.rs:376`, so a
+  page holding that project at revision 1 overwrites the import with no conflict). A new
+  read-only export `playground_archive_slug(bytes) -> Result<String, JsValue>` (the manifest's
+  slug through `archive::import_project`'s own validation) tells the embed the target before
+  anything is written; when it is not the open project, the embed takes that project's lock
+  with `ifAvailable` and runs `playground_import_zip` inside the callback — refused with "*X* is
+  open in another tab or window — close it before importing over it" when the lock is held.
+  The revision-1 collision itself is a store bug that exists without this batch; it is filed,
+  not fixed here.
+- **Not fenced, stated:** a page from the release before this one holds no lock; it ends when
+  that tab reloads.
 
-**The playground crate.** Three bridge exports — `playground_retire()` (freeze, settle, save,
-drain, verify — the one privileged path; `playground_set_frozen(bool)` is its first step and the
-destination's own freeze), `playground_load_project()` (the deferred load a boot with an invitation
-skips) and the `files-changed` response the Scripts panel reads (§ D) — in `bridge.rs`
-+ `persist/` + `web_entry.rs` (the invitation read beside `?project=`; the lock and the record are
-the site's, in TypeScript, because the Rust side never touches `localStorage` today). The freeze
-lives in the playground crate, not in `editor_integration`, so batch 5 stays disjoint from
-External Tools batch 7 (ruling (e)). No bundle version bump: the glue grows two exports the v2 bundle's
-`game.js` must carry, so the bundle is rebuilt in place as part of the batch (as batch 6 of
-Playground UX rebuilt it) — **wrong since 2026-11-05: the site never rebuilds a deployed version
-folder in place (its README), so batch 5's two exports are a new bundle version, like 4a's v3 and
-4b's v4 (the 4a done-mark)** — and `WEB_PLAYGROUND.md` § The preview window gains a sibling § The
-editor window with the protocol table.
+Project switching inside the Playground — in the page or in the window — is already a
+navigation (`?project=<slug>`), so the new boot asks for the new slug's lock as any boot does,
+and the old slug's lock went with the old document.
 
-**Gates.** `npm run verify` whole (axe over the four new pages, the phone and 125 % shots, the
-announce check — the parked page's card and the owner card are live regions), the engine set +
-`check_wasm.sh` for the crate; a Playwright test of the protocol over the memory store if the
-site's screenshot harness can host two pages (the executor reports whether it can; if not, the
-protocol's state machine is unit-tested in TypeScript and the two-page run is Jesse's). Jesse's
-Chromium check: open in a window, edit, *Bring it back*, the edit is there; close the window with
-the card's *Close*, the page returns; the blocked-popup path; *Focus it*; a second tab on the same
-project meets the owner card and takes over.
+#### Open in a window (the Playground)
 
-**Leaves out.** Opening a *panel* in its own window (the engine has one canvas per page);
-remembering the window's size and position (the browser does); Firefox's popup heuristics beyond
-the blocked alert; a snapshot transfer for a dirty game page (ruled out 2026-11-03); a heartbeat
-(the preview protocol's reasoning: a hidden window's timers are throttled, so silence cannot tell
-dead from sleeping — `ping` is asked only at a boot, with a 2 s answer window, never as a pulse).
+The bar button **Open in a window ↗**, beside Play ↗, enabled on `playground-ready` when the
+lock API exists and the engine's store persists (below). On click, in order:
+
+1. **Synchronously**, before any `await`: if `isDirty()` (`playground-embed.ts:143` — the
+   engine's flag, pending persistence, or the Scripts panel's buffer) the bar note says "Save
+   first — the window opens the saved project" and nothing else happens. Otherwise `handle =
+   window.open('about:blank', '_blank', 'popup,width=1280,height=800')` — **always a new,
+   unnamed window** (round 3 codex F2: a window named for the project is still that window
+   after the visitor switches project inside it, and re-opening the name would navigate
+   whatever it has become). The click's activation is spent here; `null` → the static
+   `#window-blocked` alert with *Try again*, the preview's pattern
+   (`playground-preview-launch.ts`), and nothing else happens.
+2. The page covers itself with an inert "Moving the editor to its window…" panel — every bar
+   control, the Scripts panel and the console are under it, so the page submits nothing more —
+   and **settles what the bridge has already accepted**: it sends one read-only query line
+   (`selection`) through `playground_dispatch` with a sink of its own and waits for that
+   line's response. The bridge answers in the order it accepted (`responseSinks`,
+   `playground-embed.ts:206–210`, polled on a 100 ms interval that hidden tabs slow but do not
+   stop), so when the barrier's answer arrives, every command accepted before the click has run
+   — however many updates that took (the engine takes at most 256 a frame,
+   `editor_game/api.rs:215`, on a 100 ms timer when idle). Nothing here waits on an animation
+   frame: a popup that opens as a foreground tab hides the source, and a hidden document's
+   frames do not come (round 3 codex F1; round 4 kimi F2, codex F3, F4). Then `isDirty()` is
+   read again. Dirty, the barrier refused (the channel full), or no answer in 5 s →
+   `handle.close()`, the panel goes, and the bar note says which.
+3. `await wasm.playground_open_project(slug)` — the drain the project switch runs. It rejects →
+   `handle.close()`, the panel goes, the banner shows the error: the project-switch branch's own
+   failure path (`playground-embed.ts:371–375`), unchanged.
+4. **If `handle.closed`** — the visitor shut the blank window during the drain — the page
+   navigates itself to `/playground/?project=<slug>&move=1` instead of parking under
+   a card that names a window that does not exist (round 4 kimi F6). Otherwise `handle.location
+   = '/playground/window/?project=<slug>&move=1'` (in try/catch, the same fallback on a throw),
+   `leavingByChoice = true`, `window.location.replace('/playground/parked/?project=<slug>')`.
+   The panel carries one link, **Reload this page**, for the visitor who stops that navigation:
+   after a successful drain the page cannot save again (`persist/queue.rs:62`), and the panel
+   is what they are left with, not a live editor that silently drops saves (round 2 codex F4).
+
+**"Everything saved" has three parts, and each has an owner.**
+- *Nothing else is in flight.* The embed's imports, archive import, reset and project switch
+  each run to completion under one shared in-flight count (the import path already disables
+  the transition controls, `setTransitionControlsDisabled`; a file import does not — it joins),
+  and the button refuses while the count is not zero: "Wait for the import to finish" (round 4
+  kimi F1: a file read that resolves after the drain writes bytes persistence refuses).
+- *An open command batch is unsaved work.* `batch begin` followed by an edit applies the edit
+  and keeps it out of the history until `batch end` (`command_api/write/mod.rs:49`), so the
+  dirty mirror (`editor_game/mod.rs:233`) reads clean over a changed world (round 4 codex F2).
+  The mirror gains one term — an open API batch holding at least one command is dirty — which
+  also makes the page's existing `beforeunload` warning tell the truth about it.
+- *The store agrees.* `isDirty()` already covers pending persistence, and the drain is step 3.
+
+There is no step in which both pages edit, and nothing to roll back after step 3: from the
+drain on, the source is leaving, as it is in a project switch.
+
+**Storage that does not persist.** The engine falls back to an in-memory store when IndexedDB
+will not open (`web_entry.rs:95–103`) and keeps that choice for the life of the page, so the
+button asks the engine, not the browser (round 2 kimi F1, codex F1). A new read-only export
+`playground_storage_persists() -> bool` answers from the store the engine chose; `false`
+disables the button with "This browser is not keeping your edits, so the editor cannot move —
+it would lose them" in the bar note. **A hand-off's destination does not fall back** (round 3 codex F4, round 5 kimi F2, round 6
+codex F2 — the return and the recovery navigation carry `move=1` for this reason, or the
+prescribed way back would itself open the bundled project in memory): an engine boot whose
+URL carries `move=1` and whose IndexedDB open fails stops there — before project
+selection, so an imported-only project is not redirected to a bundled one — with the
+startup-failed status "This window could not open your saved project. Close it and choose
+*Bring the editor back here* on the page." The saved project is untouched in the store.
+
+**A boot that cannot read the store stops; it never deletes and never substitutes** (round 1
+kimi F1, codex F1; round 4 kimi F4, codex F1 — raised in every round, and a prerequisite now:
+after a move the source's copy is gone, so the destination's boot is the only reader). Today
+`IndexedDbStore::manifests` turns a failed read into an empty list (`indexed_db/mod.rs:452–462`)
+and a record that will not decode is skipped, the boot then takes stored files without a
+manifest for an interrupted import and **removes them** (`web_entry.rs:193–222`), and
+`load_project(...).unwrap_or_default()` (`:193`) turns a failed read into the bundled project.
+This batch makes the reads strict, and scoped to the project being opened so one bad record
+does not lock a visitor out of the others (round 5 codex F3):
+- `ProjectStore::manifests` returns `Fut<Result<ManifestList, StoreError>>`, `ManifestList {
+  manifests, undecodable: Vec<String> }` — the keys of records that would not decode (four
+  implementations, one caller, `web_entry.rs:142`). A failed read is an `Err`.
+- `load_project` returns an `Err` for a record of that project whose value will not read or
+  decode — today `load_project_cursor` skips it and answers `Ok` (`cursors.rs:85–89`; round 5
+  kimi F3, codex F1) — and `put` refuses to write over an existing record it cannot decode
+  instead of treating it as revision 0 (`indexed_db/mod.rs:278`).
+- The boot reads the manifests **first** (today the sweep runs before them,
+  `web_entry.rs:134–142`) and stops with the existing "Startup failed: …" status, **before
+  `sweep_orphans`, before the unknown-project redirect, before the interrupted-import removal,
+  before any write**, on: a failed manifest read; a failed or undecodable file read; **a
+  requested slug that is not bundled and not in the decoded list while any manifest was
+  undecodable** (it may be this one — today that redirects to the first bundled project,
+  `web_entry.rs:151–164`; round 6 kimi F3, codex F1); or stored files for the opened slug with
+  no manifest while any manifest was undecodable.
+- `sweep_orphans` takes the validated list — `sweep_orphans(&self, known: &[String])`, the
+  bundled slugs and the decoded manifests' — instead of reading the projects store a second
+  time with a callback that ignores a failed read and then deletes every non-bundled file
+  (`cursors.rs:261–268`; round 6 kimi F2); it runs only when nothing was undecodable, and its
+  own `Result`, discarded today (`web_entry.rs:139`), stops the boot.
+- **`replace_project` never moves a revision backwards** (rounds 2, 5 and 6 — codex F3, kimi
+  F1 twice): an import stamps every file revision 1 (`archive.rs:376`) and the stores write it
+  as given, so a page holding the project at revision 1 saves over the import with no conflict
+  — the one path a tab from the release before this one, which holds no lock, can still take.
+  Each store stamps a replaced project's files one above the highest revision any record of
+  that project held, tombstones included; a path the import drops is absent, which no non-zero
+  base matches. A stale page's next save is `StaleRevision`, as the queue already reports it. The interrupted-import removal stays for the case it was written for: a
+  complete, successfully read list that does not name the project.
+- Tests: over `MemoryStore` with read-failure injection — a failed manifest read and a failed
+  file read each stop the boot with every record intact; two healthy projects beside one
+  undecodable manifest both open and the third's files survive; and **over the real IndexedDB
+  store in the browser test** — a file record with malformed metadata and intact bytes stops
+  the boot and is byte-identical afterwards; an imported-only project whose own manifest is
+  undecodable stops the boot with its URL unchanged and its files intact; a failed read inside
+  the sweep deletes nothing; a page holding a project at revision 1 gets `StaleRevision` after
+  another page imports over it.
+
+**A canvas text field mid-edit** (a name being typed, not yet committed) is not a dirty
+document, and clicking a bar button does not commit it — exactly as with the project switch,
+Export, or a reload today. The window opens the saved project; `WEB_PLAYGROUND.md` § The editor
+window says so in one sentence.
+
+#### The window
+
+`pages/playground/window.astro` renders `PlaygroundEmbed` + `PlaygroundToolbar` inside
+`AppLayout` with a new `windowed` prop: the studio wordmark nav, the footer and the visible
+heading row go (the `h1` stays, visually hidden — every page keeps its name for the audits), the
+Aa controls and the skip link stay, the bar is the window's top edge, and `main` fills the
+viewport. `noindex`; the route carries `data-wasm-src` like the others, so `postbuild-check.mjs`
+resolves it. The dock (scripts, console) travels with it — it is the accessible half of the
+editor. In the window the bar has no *Open in a window*; its note reads "To move the editor
+back: close this window, then choose *Bring the editor back here* on the page."
+
+The window is an ordinary editor page: it takes the lock, boots, edits, saves, switches
+project. Its `beforeunload` warns while anything is dirty, as the page's does today.
+
+#### Coming back
+
+**The parked page** (`pages/playground/parked.astro`, static, `AppLayout`, no engine, no
+script beyond one link): "The editor for *Pong* is open in its own window. To work here again,
+close that window, then:" **Bring the editor back here** → `/playground/?project=<slug>&move=1`. The
+window closed → the editor starts. The window still open → "Moving the editor…" for its 5 s of
+asking, then the owner card,
+"Close it, then *Try again*". Nothing is asked of the window and nothing is taken from it; the
+parked page listens to nothing and decides nothing — not on silence, a timer, `pagehide` or
+`visibilitychange`. Opened without `?project=` (the owner card's *Close this page* in a tab) it
+is the plain card "This page is closed — *Open the Playground*".
+
+#### A Rust game's editor page
+
+`pages/playground/[slug]/window.astro` renders `GameEmbed` with `fill` + the game page's bar in
+the same `windowed` layout. A game page has no store — its edits live in that page's memory and
+nothing persists — so there is nothing two pages could write over: **it takes no lock, parks
+nothing and needs nothing from the game's bundle.** *Open in a window ↗* on a game page is
+`window.open('/playground/<slug>/window/', '_blank', 'popup,…')` — a new window every time,
+never a named one, so a second click cannot navigate a window that holds unsaved edits (round 2
+kimi F2, codex F2); `null` → the same blocked alert (round 3 kimi F5). The bar note says "The
+window starts from the game's own scene — edits on this page stay on this page." The source
+page keeps running. No dialog, because nothing is lost.
+
+#### What changes where
+
+`insiculous_web`:
+- `src/layouts/AppLayout.astro` — the `windowed` prop.
+- `src/pages/playground/window.astro`, `src/pages/playground/[slug]/window.astro`,
+  `src/pages/playground/parked.astro` — new.
+- `src/components/PlaygroundToolbar.astro` — the button, the window's note, the blocked alert,
+  the owner card's and the two panels' markup. `src/components/GameEmbed.astro` — the game
+  page's button and note.
+- `src/scripts/playground-project-lock.ts` — new, pure where it can be: the lock name, the slug
+  resolution and its refusal, the `ifAvailable` request, the move boot's bounded retries, the
+  absent-API path, the fenced import. Unit-tested with a fake `LockManager` and a fake `fetch`.
+- `src/scripts/playground-window.ts` — new: the open click's four steps over injected `open`,
+  `barrier`, `isDirty`, `inFlight`, `drain`, `navigate`; the storage question on both sides.
+  Unit-tested with fakes: dirty or in-flight refuses before `open`; a blocked popup stops before
+  anything; dirty after the barrier, a refused barrier and a barrier that never answers each
+  close the handle; a failed drain closes the handle and leaves the page; a handle closed during
+  the drain sends the page to the ordinary editor; the order open → barrier → drain → window
+  location → own navigation.
+- `src/scripts/playground-embed.ts` (557 lines) — the lock awaited before `wasm.default()`, the
+  button's wiring, the import's fence, the shared in-flight count, the barrier's sink. It must not cross 600; the new logic lives in the two
+  new files.
+- `scripts/postbuild-check.mjs` — the new routes, if they need naming. `README.md` § the
+  playground, `docs/roadmap.md` one line.
+
+`insiculous_2d`:
+- `crates/playground/src/bridge/window.rs` (new; `bridge.rs` is 548 lines) —
+  `playground_storage_persists()` and `playground_archive_slug(bytes)`, both read-only.
+- `crates/playground/src/store.rs` and its four implementations (`memory.rs`, `directory.rs`,
+  `indexed_db/mod.rs` + `cursors.rs`, the test-only `GatedStore`) — `manifests` returns a
+  `Result<ManifestList, _>`, `load_project` and `put` no longer read an undecodable record as
+  absent, `sweep_orphans` takes the known slugs, `replace_project` stamps above the project's
+  highest revision; `web_entry.rs` — the strict reads above, the `move=1` boot that does not fall back,
+  and the store choice kept where the export reads it.
+- `crates/editor_integration/src/editor_game/mod.rs` — `sync_dirty_mirror`'s one term for an
+  open API batch, with its test.
+- **A NEW bundle version folder** (the site never rebuilds a deployed one in place — the
+  version after the newest deployed, v6 once batch 6's v5 has landed) with the five version
+  places and the site's three pins.
+- `docs/WEB_PLAYGROUND.md` — § The editor window (the lock, the move, coming back, the fenced
+  import, what is not fenced) beside § The preview window; the bridge table's two rows; § The
+  store's line on a boot that cannot read.
+
+**No freeze, no retire, no host handle; `persist/` and `engine_core` untouched;
+`EDITOR_COMMAND_API.md` unchanged.**
+
+**A cost, stated** (round 5 kimi F4): nothing reserves the window's turn. A second tab sitting
+on its owner card whose *Try again* is pressed in the moment between the source parking and the
+window asking gets the project, and the window shows the owner card. Everything is saved;
+closing that tab and *Try again* in the window finishes the move. A reservation is the queue
+rounds 2 and 3 removed.
+
+#### Gates
+
+The engine's standard set, `check_games.sh` (`editor_integration` changes) and `check_wasm.sh`; `npm run verify`
+whole — axe over the three new pages, the phone and 125 % shots, the announce check (the owner
+card and the two panels are live regions; every button is reachable and named by keyboard
+alone). The two new scripts' unit tests in the site's existing test harness
+(`tests/playground_scripts_panel.mjs` is the shape). **One browser test with real Web Locks and
+real IndexedDB**, pages in one context, driven the way `insiculous_web#80`'s boot check is
+(headless Chromium over the built site): page A boots, edits, saves; *Open in a window*; the
+window shows the saved edit and A is the parked card; the window edits and saves and is closed;
+*Bring the editor back here* shows the window's edit; with the window still open, the same
+button meets the owner card and *Try again* starts it once the window is closed; a second tab
+on the same project meets the owner card; `/playground/` and `/playground/?project=<first
+slug>` in two tabs meet the same lock; a page whose engine fell back to the memory store has
+the button disabled; an archive naming a project open in another tab is refused; **the move
+made with the source tab hidden the moment the window opens** (the barrier must not need a
+frame); a command batch left open refuses the move. If the harness
+cannot host several pages the executor says so and the run is Jesse's check. Jesse's Chromium
+check besides: the blocked-popup path on both surfaces; the game page's independent window.
+
+Reviewers: kimi and codex (the lock and the move; the window, the parked card and the owner
+card — three stills), the planner's own review beside them.
+
+#### Leaves out
+
+*Take over* and *Move back* — asking a live page to give up its project, or one page telling
+another to start (both are the transfer again); *Go to the window* (the browser's own window
+list does it, and a named window is what round 3 broke); releasing a failed page's lock; any
+freeze, retire or snapshot of a running editor; a recovery card for a boot that cannot read
+(the startup-failed status is the answer); a game-page transfer of unsaved edits (a game
+page persists nothing — ruled 2026-11-03); opening a *panel* in its own window; remembering the
+window's size and position; a heartbeat, a channel, or any decision made on a page's silence.
 
 ## Ground rules for every batch
 
@@ -1706,34 +1880,20 @@ bundle is v4, rebuilt from the final tree before the site commit (the executor's
 the fix rounds). Follow-ups: #252 (Windows file rename), #80 (a boot smoke test in `verify`), a
 backlog line on #99 (a mis-cased sidecar is paired by the browser and unread by the loaders).
 
-**Batch 5 — the editor in its own window (§ E). Issues #245 (engine) and insiculous_web#79
-(site). NOT SETTLED — its design continues under
-`review/editor-ux-window/`; its issue is filed blocked on that review. Site + playground crate +
-the retire seam in `editor_integration` (codex F6 round 4), so it queues like every other batch.**
-Files, `insiculous_2d`: `crates/editor_integration/src/editor_game/{mod,run_options}.rs` (the
-`set_frozen` / `retire` seam on a host handle), `web_entry.rs:193` (the strict post-grant load);
-`insiculous_web`: `src/layouts/AppLayout.astro` (`windowed`), `src/pages/playground/window.astro`,
-`src/pages/playground/[slug]/window.astro`, `src/pages/playground/parked.astro`,
-`src/components/PlaygroundToolbar.astro` (the button, the blocked alert, the owner card),
-`src/components/GameEmbed.astro` (the game page's button and dialog),
-`src/scripts/playground-window-protocol.ts` (new: the owner record, the channel, the message
-shapes, the names), `playground-window-launch.ts` (new: the transfer's source side),
-`playground-window-boot.ts` (new: the destination side — the owner check, `ready`, the freeze),
-`playground-embed.ts` (wire both; every bar control disabled from launch to live-or-rollback),
-`src/scripts/playground-window-protocol.ts` + `playground-window-launch.ts` (new: the state
-machine and its reducer, the lock, the invitation, the `closing` listener — the preview pair's
-shape), `scripts/postbuild-check.mjs` if the new routes need naming,
-`README.md` § Content / the playground section, `docs/roadmap.md` one line. `insiculous_2d`:
-`crates/playground/src/bridge.rs` + `persist/` (`playground_flush`, `playground_set_frozen`,
-`playground_load_project`; the frozen refusal in every write export), `web_entry.rs` (the
-invitation read beside `?project=`; the deferred load), `docs/WEB_PLAYGROUND.md` § The editor
-window, the v2 bundle rebuilt and synced (`scripts/build_wasm.sh … --sync ../insiculous_web/public`,
-the invocation of record in `WEB_PLAYGROUND.md` § The bundle). Gates: `npm run verify` in
-`insiculous_web`; the standard engine set + `check_wasm.sh` in `insiculous_2d`; the protocol's
-state machine unit-tested with the cancelled-continuation case; a two-tab lock race in the
-browser harness if it can host two pages; Jesse's browser check (§ E). Reviewers: kimi, gemini
-(the protocol), codex (the window, the parked card and the owner card — three stills). Leaves
-out: § E's list.
+**Batch 5 — the editor in its own window (§ E, ruling (h′)). Issues #245 (engine) and
+insiculous_web#79 (site). SETTLED 2026-11-11; runs after batch 6.** Site + the playground
+crate's stores and boot + one term in `editor_integration`'s dirty mirror. The files, the
+gates and what is left out are § E's *What changes where*, *Gates* and *Leaves out*, which are
+this batch's section. In order: the store and boot hardening first, with its tests (strict
+manifest and file reads, the sweep over the validated list, `replace_project`'s revisions, a
+`move=1` boot that does not fall back) — it stands alone and is worth landing if the rest
+slips; then the two exports and the dirty term; then the site (the lock, the move, the window
+and parked pages, the fenced import); then the new bundle version folder — v6, batch 6 having
+shipped v5 — and the browser test. Executor and reviewers: Jesse's roster at the handoff
+(batch 6's was Claude Opus 5.5 with kimi and codex); three stills for the UI eye — the window,
+the parked card, the owner card. Both issues were filed blocked on the review and are
+unblocked by this line; their bodies still describe the transfer and are rewritten from § E
+when the handoff is written.
 
 **Batch 6 — the convention: `docs/PROJECT_LAYOUT.md`, the checker, the trees (§ D's other
 half). Issue #246.** Files: `docs/PROJECT_LAYOUT.md` (new), `scripts/check_project_layout.sh` (new),
@@ -1946,6 +2106,19 @@ above disagree, this block is the batch.
   rewriting of a stored scene's references; retiring the aliases (they cost five keys); a
   stored `hello_world` scene's `assets/…` paths; a stored non-bundled project; any change to
   the router.
+
+**Done 2026-11-11: d848a9a (engine), insiculous_web 7c22f8d (site), game-template 38a458c**
+(executor Claude Opus 5.5, `report-6.md` COMPLETE, 100 engine files, 45 site paths with the v5
+bundle, 4 in the template; code round 37 — kimi 2 (2 m 23 s), codex 4 (4 m 29 s), the planner
+4 — `rebuttal-37.md`; the planner's fix hunks touched no Rust). What the round settled beyond
+the block: the gate accepts `music/imports/` (the playground's sample import writes there),
+a recovered `.midi`, a recovered song's sample folder and `.jpg`/`.jpeg`/`.bmp` sprites, and
+names a plain `.ron` under `scenes/` for what it is; the four new sidecars say `Linear`, the
+filter each texture was drawn with before it had one; `EXAMPLES_DIR` is `ASSET_BASE`.
+`examples/music/` and `examples/soundfonts/`, left outside the new base, were deleted on
+Jesse's word (0795225). A scratch scene saved under `examples/` before this batch names
+`assets/…` paths and is re-saved or deleted (codex, rounds 33 and 37, rebutted as policy).
+Follow-up: #253 (the editor's default scene name, `scene.ron`, fails the gate).
 
 **Batch 7 — tab drag (§ C, the gesture). Runs in this effort (Jesse, 2026-11-03), after batch 3
 has shipped and Jesse has lived with the menu-driven model for at least one batch. Issue #247.** Drag a
