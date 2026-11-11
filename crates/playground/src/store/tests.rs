@@ -39,7 +39,7 @@ pub async fn run_store_contract_suite(store: &dyn ProjectStore) {
     assert_eq!(loaded_alpha[0].bytes, b"alpha v1");
 
     // 2. manifest upsert: manifest for "alpha" was upserted with origin Saved
-    let manifests = store.manifests().await;
+    let manifests = store.manifests().await.expect("manifests read").manifests;
     let alpha_saved = manifests.iter().find(|manifest| manifest.slug == "alpha").expect("alpha manifest found");
     assert_eq!(alpha_saved.origin, ProjectOrigin::Saved);
 
@@ -88,6 +88,10 @@ pub async fn run_store_contract_suite(store: &dyn ProjectStore) {
     assert_eq!(alpha_after_replace.len(), 1);
     assert_eq!(alpha_after_replace[0].path, "scenes/replaced.ron");
     assert_eq!(alpha_after_replace[0].bytes, b"alpha replaced");
+    assert_eq!(
+        alpha_after_replace[0].revision, 2,
+        "a replaced project's files are stamped one above the highest revision it held, never as given"
+    );
 
     let beta_after_replace = store.load_project("beta").await.expect("load beta");
     assert_eq!(beta_after_replace.len(), 1);
@@ -138,7 +142,7 @@ async fn run_removal_contract(store: &dyn ProjectStore) {
     assert!(bundled_tombstone[0].bytes.is_empty());
     assert_eq!(bundled_tombstone[0].revision, 1);
     assert_eq!(bundled_tombstone[0].bundle_version, manifest.bundle_version);
-    assert!(store.manifests().await.iter().any(|saved| saved.slug == "gamma" && saved.origin == ProjectOrigin::Saved));
+    assert!(store.manifests().await.expect("manifests read").manifests.iter().any(|saved| saved.slug == "gamma" && saved.origin == ProjectOrigin::Saved));
 
     store.put(file(b"journal"), 0, &manifest).await.expect("first put");
     assert_eq!(
@@ -165,6 +169,46 @@ async fn run_removal_contract(store: &dyn ProjectStore) {
     let recreated = recreated.iter().filter(|file| file.path == "music/theme.mid.new").collect::<Vec<_>>();
     assert!(!recreated[0].deleted);
     assert_eq!(recreated[0].bytes, b"again");
+
+    run_import_over_a_held_project_contract(store).await;
+}
+
+/// An import stamps every file revision 1. A page still holding the project at revision
+/// 1 must meet a conflict on its next save, not write over the import — so the replaced
+/// files land one above every revision the project held, its tombstones included.
+async fn run_import_over_a_held_project_contract(store: &dyn ProjectStore) {
+    let manifest = dummy_manifest("delta");
+    let saved = |path: &str, bytes: &[u8]| StoredFile {
+        project: "delta".to_string(),
+        path: path.to_string(),
+        bytes: bytes.to_vec(),
+        revision: 0,
+        bundle_version: "v1".to_string(),
+        deleted: false,
+    };
+    assert_eq!(store.put(saved("scenes/main.ron", b"held"), 0, &manifest).await, Ok(1));
+    assert_eq!(store.put(saved("scripts/old.rhai", b"one"), 0, &manifest).await, Ok(1));
+    assert_eq!(store.put(saved("scripts/old.rhai", b"two"), 1, &manifest).await, Ok(2));
+    assert_eq!(store.remove_file("delta", "scripts/old.rhai", 2, &manifest).await, Ok(3));
+
+    let mut imported = saved("scenes/main.ron", b"imported");
+    imported.revision = 1;
+    store.replace_project("delta", vec![imported], manifest.clone()).await.expect("import replaces");
+
+    let after_import = store.load_project("delta").await.expect("load");
+    assert_eq!(after_import.len(), 1, "the import's file set is the whole project");
+    assert_eq!(after_import[0].revision, 4, "one above the tombstone's 3, the highest the project held");
+    assert_eq!(
+        store.put(saved("scenes/main.ron", b"the held page saves"), 1, &manifest).await,
+        Err(StoreError::StaleRevision { stored: 4, base: 1 }),
+        "the page that held revision 1 conflicts instead of overwriting the import"
+    );
+    assert_eq!(
+        store.put(saved("scripts/old.rhai", b"recreated"), 3, &manifest).await,
+        Err(StoreError::StaleRevision { stored: 0, base: 3 }),
+        "a path the import dropped is absent, which no non-zero base matches"
+    );
+    assert_eq!(store.load_project("delta").await.expect("load")[0].bytes, b"imported");
 }
 
 #[test]
@@ -218,7 +262,7 @@ fn test_directory_store_first_put_upserts_manifest_and_sweep_orphans_keeps_files
         let revision = store.put(file, 0, &bundled_manifest).await.expect("put succeeds");
         assert_eq!(revision, 1);
 
-        let manifests = store.manifests().await;
+        let manifests = store.manifests().await.expect("manifests read").manifests;
         let starter_manifest = manifests.iter().find(|manifest| manifest.slug == "starter").expect("manifest exists");
         assert_eq!(starter_manifest.origin, ProjectOrigin::Saved);
 
@@ -237,7 +281,7 @@ fn test_first_bundled_only_delete_survives_boot_selection_and_marks_project_modi
         let store = MemoryStore::new();
         let manifest = dummy_manifest("bundled");
         assert_eq!(store.remove_file("bundled", "assets/sprites/hero.png", 0, &manifest).await, Ok(1));
-        let manifests = store.manifests().await;
+        let manifests = store.manifests().await.expect("manifests read").manifests;
         let records = store.load_project("bundled").await.unwrap();
         let selected = super::stored_files_for_boot(
             records.clone(), manifests.iter().any(|saved| saved.slug == "bundled")

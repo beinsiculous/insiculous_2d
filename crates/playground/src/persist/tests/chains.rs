@@ -99,16 +99,19 @@ fn test_seed_then_save_advances_revision_without_conflict() {
         None,
     );
 
-    let seeded = vec![StoredFile {
+    let saved_at = |bytes: &[u8]| StoredFile {
         project: "pong".to_string(),
         path: "scenes/main.ron".to_string(),
-        bytes: b"loaded_rev_3".to_vec(),
-        revision: 3,
+        bytes: bytes.to_vec(),
+        revision: 0,
         bundle_version: "v1".to_string(),
         deleted: false,
-    }];
-    pollster::block_on(async {
-        memory.replace_project("pong", seeded.clone(), test_manifest("pong")).await.unwrap();
+    };
+    let seeded = pollster::block_on(async {
+        for (base_revision, bytes) in [(0, b"rev_1"), (1, b"rev_2"), (2, b"rev_3")] {
+            memory.put(saved_at(bytes), base_revision, &test_manifest("pong")).await.unwrap();
+        }
+        memory.load_project("pong").await.unwrap()
     });
     chains.seed(&seeded);
     assert_eq!(chains.base_revision("scenes/main.ron"), 3);
@@ -154,7 +157,7 @@ fn test_writes_during_a_drain_are_refused_until_the_epoch_is_restored() {
 fn test_conflicted_path_never_reissued() {
     let memory = MemoryStore::new();
     let mut chains = pong_chains(Arc::new(memory.clone()));
-    store_another_tabs_file(&memory, "a.txt", 2);
+    store_another_tabs_file(&memory, "a.txt");
 
     write_project_file(&mut chains, "a.txt", b"mine");
     settle(&mut chains);
@@ -408,7 +411,7 @@ fn test_a_stranded_head_is_retried_by_the_drain_once_not_by_visibility_during_it
 fn test_a_conflicted_put_holds_the_queue_and_names_its_path() {
     let memory = MemoryStore::new();
     let mut chains = pong_chains(Arc::new(memory.clone()));
-    store_another_tabs_file(&memory, "z.ron", 1);
+    store_another_tabs_file(&memory, "z.ron");
 
     write_project_file(&mut chains, "z.ron", b"mine");
     write_project_file(&mut chains, "a.txt", b"behind the conflict");

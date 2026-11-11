@@ -230,10 +230,13 @@ impl<G: Game> EditorGame<G> {
     /// written; it runs in `finish_frame` and after a save or a document reset,
     /// so anything reading dirtiness earlier in a frame consults the histories.
     /// The host's two flags carry either document's edits, so the playground's
-    /// unsaved-work checks cover the song without a bridge change.
+    /// unsaved-work checks cover the song without a bridge change. An open API batch
+    /// holding a command counts as a recorded command: its edits are already applied
+    /// to the world and stay out of the history until `batch end`.
     pub(super) fn sync_dirty_mirror(&mut self) {
         self.editor.conductor.reconcile_active_track(self.song.as_ref());
-        let is_command_dirty = self.command_history.is_dirty();
+        let has_open_batch_edits = self.api.batch.as_ref().is_some_and(|batch| !batch.commands.is_empty());
+        let is_command_dirty = self.command_history.is_dirty() || has_open_batch_edits;
         let is_song_dirty = self.song.as_ref().is_some_and(editor::SongDocument::is_dirty);
         let is_persist_pending = self
             .persist_pending

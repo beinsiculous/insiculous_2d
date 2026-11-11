@@ -25,7 +25,7 @@ fn bundled_files() -> MemFs {
 
 fn reload(memory: &MemoryStore) -> MemFs {
     let records = pollster::block_on(memory.load_project("pong")).unwrap();
-    let has_manifest = pollster::block_on(memory.manifests()).iter().any(|manifest| manifest.slug == "pong");
+    let has_manifest = pollster::block_on(memory.manifests()).unwrap().manifests.iter().any(|manifest| manifest.slug == "pong");
     let selected = crate::store::stored_files_for_boot(records, has_manifest)
         .expect("a successful mutation always stores the manifest with its record");
     let mut files = bundled_files();

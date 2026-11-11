@@ -8,7 +8,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::projects::{ProjectManifest, ProjectOrigin};
-use crate::store::{Fut, ProjectStore, StoredFile, StoreError};
+use crate::store::{replacement_revision, Fut, ManifestList, ProjectStore, StoredFile, StoreError};
 
 /// Filesystem-backed project store rooted at `root`.
 #[derive(Clone)]
@@ -49,6 +49,31 @@ fn read_stored(file_path: &Path) -> Result<Option<StoredFile>, StoreError> {
         .map_err(|error| StoreError::Backend(error.to_string()))
 }
 
+/// Every record in `files_directory`, strictly: a record that will not read or decode
+/// is an `Err`. A staging directory's leftovers (`.new`, `.old`) are not records.
+fn read_records(files_directory: &Path) -> Result<Vec<StoredFile>, StoreError> {
+    if !files_directory.exists() {
+        return Ok(Vec::new());
+    }
+    let read_directory = fs::read_dir(files_directory).map_err(|error| StoreError::Backend(error.to_string()))?;
+    let mut stored_files = Vec::new();
+    for entry in read_directory {
+        let path = entry.map_err(|error| StoreError::Backend(error.to_string()))?.path();
+        let file_name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default();
+        if file_name.ends_with(".new") || file_name.ends_with(".old") {
+            continue;
+        }
+        if path.extension().and_then(|extension| extension.to_str()) == Some("json") {
+            let content = fs::read_to_string(&path).map_err(|error| StoreError::Backend(error.to_string()))?;
+            let file: StoredFile = serde_json::from_str(&content)
+                .map_err(|error| StoreError::Backend(format!("{}: {error}", path.display())))?;
+            stored_files.push(file);
+        }
+    }
+    stored_files.sort_by(|first, second| first.path.cmp(&second.path));
+    Ok(stored_files)
+}
+
 struct ProjectLock {
     lock_file: PathBuf,
 }
@@ -79,29 +104,7 @@ impl Drop for ProjectLock {
 impl ProjectStore for DirectoryStore {
     fn load_project(&self, slug: &str) -> Fut<Result<Vec<StoredFile>, StoreError>> {
         let files_directory = self.project_directory(slug).join("files");
-        Box::pin(async move {
-            if !files_directory.exists() {
-                return Ok(Vec::new());
-            }
-            let read_directory = fs::read_dir(&files_directory).map_err(|error| StoreError::Backend(error.to_string()))?;
-            let mut stored_files = Vec::new();
-            for entry in read_directory.flatten() {
-                let path = entry.path();
-                let file_name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default();
-                if file_name.ends_with(".new") || file_name.ends_with(".old") {
-                    continue;
-                }
-                if path.extension().and_then(|extension| extension.to_str()) == Some("json") {
-                    let content = fs::read_to_string(&path)
-                        .map_err(|error| StoreError::Backend(error.to_string()))?;
-                    let file: StoredFile = serde_json::from_str(&content)
-                        .map_err(|error| StoreError::Backend(error.to_string()))?;
-                    stored_files.push(file);
-                }
-            }
-            stored_files.sort_by(|first, second| first.path.cmp(&second.path));
-            Ok(stored_files)
-        })
+        Box::pin(async move { read_records(&files_directory) })
     }
 
     fn put(
@@ -182,6 +185,7 @@ impl ProjectStore for DirectoryStore {
         let slug_string = slug.to_string();
         Box::pin(async move {
             let _lock = ProjectLock::acquire(&project_directory)?;
+            let revision = replacement_revision(read_records(&files_directory)?.iter().map(|file| file.revision));
 
             if files_new_directory.exists() {
                 fs::remove_dir_all(&files_new_directory).map_err(|error| StoreError::Backend(error.to_string()))?;
@@ -196,6 +200,7 @@ impl ProjectStore for DirectoryStore {
             fs::create_dir_all(&files_new_directory).map_err(|error| StoreError::Backend(error.to_string()))?;
             for mut file in files {
                 file.project = slug_string.clone();
+                file.revision = revision;
                 let sanitized = file.path.replace('/', "__");
                 let file_path = files_new_directory.join(format!("{sanitized}.json"));
                 let json_content = serde_json::to_string_pretty(&file)
@@ -237,41 +242,41 @@ impl ProjectStore for DirectoryStore {
         })
     }
 
-    fn manifests(&self) -> Fut<Vec<ProjectManifest>> {
+    fn manifests(&self) -> Fut<Result<ManifestList, StoreError>> {
         let root = self.root.clone();
         Box::pin(async move {
-            let Ok(read_directory) = fs::read_dir(&root) else {
-                return Vec::new();
-            };
-            let mut manifests_list = Vec::new();
-            for entry in read_directory.flatten() {
+            let read_directory = fs::read_dir(&root).map_err(|error| StoreError::Backend(error.to_string()))?;
+            let mut list = ManifestList::default();
+            for entry in read_directory {
+                let entry = entry.map_err(|error| StoreError::Backend(error.to_string()))?;
                 let path = entry.path();
                 let directory_name = entry.file_name().to_string_lossy().into_owned();
                 if directory_name.ends_with(".new") || directory_name.ends_with(".old") || directory_name.starts_with('.') {
                     continue;
                 }
-                if path.is_dir() {
-                    let manifest_file = path.join("manifest.json");
-                    if manifest_file.exists() {
-                        if let Ok(content) = fs::read_to_string(&manifest_file) {
-                            if let Ok(manifest) = serde_json::from_str::<ProjectManifest>(&content) {
-                                manifests_list.push(manifest);
-                            }
-                        }
+                let manifest_file = path.join("manifest.json");
+                if path.is_dir() && manifest_file.exists() {
+                    let content = fs::read_to_string(&manifest_file)
+                        .map_err(|error| StoreError::Backend(error.to_string()))?;
+                    match serde_json::from_str::<ProjectManifest>(&content) {
+                        Ok(manifest) => list.manifests.push(manifest),
+                        Err(_) => list.undecodable.push(directory_name),
                     }
                 }
             }
-            manifests_list.sort_by(|first, second| first.slug.cmp(&second.slug));
-            manifests_list
+            list.manifests.sort_by(|first, second| first.slug.cmp(&second.slug));
+            list.undecodable.sort();
+            Ok(list)
         })
     }
 
-    fn sweep_orphans(&self, bundled_slugs: &[String]) -> Fut<Result<(), StoreError>> {
+    fn sweep_orphans(&self, known: &[String]) -> Fut<Result<(), StoreError>> {
         let root = self.root.clone();
-        let bundled_slugs = bundled_slugs.to_vec();
+        let known = known.to_vec();
         Box::pin(async move {
             let read_directory = fs::read_dir(&root).map_err(|error| StoreError::Backend(error.to_string()))?;
-            for entry in read_directory.flatten() {
+            for entry in read_directory {
+                let entry = entry.map_err(|error| StoreError::Backend(error.to_string()))?;
                 let path = entry.path();
                 let directory_name = entry.file_name().to_string_lossy().into_owned();
                 if directory_name.ends_with(".new") || directory_name.ends_with(".old") || directory_name.starts_with('.') {
@@ -280,7 +285,7 @@ impl ProjectStore for DirectoryStore {
                 if path.is_dir() {
                     let slug = directory_name;
                     let manifest_file = path.join("manifest.json");
-                    if !manifest_file.exists() && !bundled_slugs.contains(&slug) {
+                    if !manifest_file.exists() && !known.contains(&slug) {
                         fs::remove_dir_all(&path).map_err(|error| StoreError::Backend(error.to_string()))?;
                     }
                 }

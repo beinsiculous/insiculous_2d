@@ -3,6 +3,7 @@
 //! Provides the Stage D JavaScript command and file interface for the web editor.
 
 pub(crate) mod files;
+pub(crate) mod window;
 
 use std::cell::RefCell;
 use std::path::{Component, Path, PathBuf};

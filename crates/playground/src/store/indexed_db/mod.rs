@@ -21,7 +21,7 @@ use crate::store::idb_transaction::{from_javascript_value, to_javascript_value, 
 use crate::store::indexed_db::cursors::{
     attach_request_callback, extract_request_target_and_result, CallbackCell, EventClosure,
 };
-use crate::store::{Fut, ProjectStore, StoredFile, StoreError};
+use crate::store::{Fut, ManifestList, ProjectStore, StoredFile, StoreError};
 
 const DB_NAME: &str = "beinsiculous.playground";
 const DB_VERSION: u32 = 1;
@@ -277,10 +277,19 @@ impl ProjectStore for IndexedDbStore {
 
             let stored_revision = if result.is_null() || result.is_undefined() {
                 0
-            } else if let Ok(stored_file) = from_javascript_value::<StoredFile>(&result) {
-                stored_file.revision
             } else {
-                0
+                match from_javascript_value::<StoredFile>(&result) {
+                    Ok(stored_file) => stored_file.revision,
+                    Err(error) => {
+                        let _ = target.transaction().map(|transaction| transaction.abort());
+                        *result_cell_clone.borrow_mut() = Some(Err(StoreError::Backend(format!(
+                            "refusing to write over the stored record {}/{}, which cannot be decoded: {error}",
+                            file.project, file.path
+                        ))));
+                        let _ = callback_clone.borrow_mut().take();
+                        return;
+                    }
+                }
             };
 
             if stored_revision != base_revision {
@@ -430,40 +439,26 @@ impl ProjectStore for IndexedDbStore {
         Box::pin(future)
     }
 
-    fn manifests(&self) -> Fut<Vec<ProjectManifest>> {
-        // An empty list here is indistinguishable from "nothing stored" to the page, so every
-        // failure path says why before returning it.
+    fn manifests(&self) -> Fut<Result<ManifestList, StoreError>> {
         let transaction = match self.transaction(&[STORE_PROJECTS], IdbTransactionMode::Readonly) {
             Ok(transaction) => transaction,
-            Err(error) => {
-                log::warn!("manifests: {error}");
-                return Box::pin(async move { Vec::new() });
-            }
+            Err(error) => return Box::pin(async move { Err(error) }),
         };
 
         let (result_cell, future) = IdbTransactionFuture::new(&transaction);
         let projects_store = match transaction.object_store(STORE_PROJECTS) {
             Ok(store) => store,
-            Err(error) => {
-                log::warn!("manifests: projects store unavailable: {error:?}");
-                return Box::pin(async move { Vec::new() });
-            }
+            Err(error) => return Box::pin(async move { Err(StoreError::Backend(format!("{error:?}"))) }),
         };
 
         if let Err(error) = cursors::manifests_cursor(&projects_store, result_cell) {
-            log::warn!("manifests: {error}");
-            return Box::pin(async move { Vec::new() });
+            return Box::pin(async move { Err(error) });
         }
 
-        Box::pin(async move {
-            future.await.unwrap_or_else(|error| {
-                log::warn!("manifests: {error}");
-                Vec::new()
-            })
-        })
+        Box::pin(future)
     }
 
-    fn sweep_orphans(&self, bundled_slugs: &[String]) -> Fut<Result<(), StoreError>> {
+    fn sweep_orphans(&self, known: &[String]) -> Fut<Result<(), StoreError>> {
         let transaction = match self.transaction(&[STORE_FILES, STORE_PROJECTS], IdbTransactionMode::Readwrite) {
             Ok(transaction) => transaction,
             Err(error) => return Box::pin(async move { Err(error) }),
@@ -482,7 +477,7 @@ impl ProjectStore for IndexedDbStore {
         if let Err(error) = cursors::sweep_orphans_cursor(
             &files_store,
             &projects_store,
-            bundled_slugs,
+            known,
             result_cell,
         ) {
             return Box::pin(async move { Err(error) });

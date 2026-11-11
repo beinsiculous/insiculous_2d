@@ -74,3 +74,29 @@ fn test_history_dirty_flag_carries_the_songs_edits_so_the_playground_sees_them()
     editor.sync_dirty_mirror();
     assert!(!reads(&history_only), "a closed song leaves nothing unsaved");
 }
+
+#[test]
+fn test_an_open_api_batch_holding_an_edit_reads_dirty_and_an_empty_one_does_not() {
+    let mut world = World::new();
+    let mut editor = super::test_support::editor_game();
+    let combined = flag();
+    let history_only = flag();
+    editor.dirty_flag = Some(combined.clone());
+    editor.history_dirty_flag = Some(history_only.clone());
+
+    super::test_support::assert_ok(&super::test_support::api_line(&mut editor, &mut world, "batch begin moves"));
+    editor.sync_dirty_mirror();
+    assert!(!reads(&history_only), "an empty open batch changed nothing");
+    assert!(!reads(&combined));
+
+    super::test_support::assert_ok(&super::test_support::api_line(&mut editor, &mut world, "create empty Marker"));
+    assert!(!editor.command_history.is_dirty(), "the batch keeps its edit out of the history until it ends");
+    editor.sync_dirty_mirror();
+    assert!(reads(&history_only), "the edit is in the world, so the page's unsaved-work check must see it");
+    assert!(reads(&combined), "and the title and beforeunload with it");
+    assert!(editor.editor.is_dirty());
+
+    super::test_support::assert_ok(&super::test_support::api_line(&mut editor, &mut world, "batch abort"));
+    editor.sync_dirty_mirror();
+    assert!(!reads(&history_only), "an aborted batch undid its edit");
+}

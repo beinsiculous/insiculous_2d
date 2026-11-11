@@ -6,7 +6,7 @@ use std::pin::Pin;
 use crate::persist::Chains;
 use crate::projects::ProjectManifest;
 use crate::store::memory::MemoryStore;
-use crate::store::{Fut, ProjectStore, StoredFile, StoreError};
+use crate::store::{Fut, ManifestList, ProjectStore, StoredFile, StoreError};
 
 #[derive(Clone)]
 pub(crate) struct GatedStore {
@@ -86,12 +86,12 @@ impl ProjectStore for GatedStore {
         self.inner.remove_project(slug)
     }
 
-    fn manifests(&self) -> Fut<Vec<ProjectManifest>> {
+    fn manifests(&self) -> Fut<Result<ManifestList, StoreError>> {
         self.inner.manifests()
     }
 
-    fn sweep_orphans(&self, bundled_slugs: &[String]) -> Fut<Result<(), StoreError>> {
-        self.inner.sweep_orphans(bundled_slugs)
+    fn sweep_orphans(&self, known: &[String]) -> Fut<Result<(), StoreError>> {
+        self.inner.sweep_orphans(known)
     }
 }
 
@@ -178,17 +178,17 @@ pub(crate) fn stored_bytes(store: &dyn ProjectStore, relative_path: &str) -> Opt
         .map(|file| file.bytes)
 }
 
-/// Another tab's save of `relative_path` at `revision`, written straight to the store.
-pub(crate) fn store_another_tabs_file(store: &MemoryStore, relative_path: &str, revision: u64) {
+/// Another tab's first save of `relative_path`, written straight to the store at revision 1.
+pub(crate) fn store_another_tabs_file(store: &MemoryStore, relative_path: &str) {
     let file = StoredFile {
         project: "pong".to_string(),
         path: relative_path.to_string(),
         bytes: b"other tab".to_vec(),
-        revision,
+        revision: 0,
         bundle_version: "v1".to_string(),
         deleted: false,
     };
-    pollster::block_on(store.replace_project("pong", vec![file], test_manifest("pong"))).unwrap();
+    pollster::block_on(store.put(file, 0, &test_manifest("pong"))).unwrap();
 }
 
 pub(crate) struct TestTempDir(std::path::PathBuf);

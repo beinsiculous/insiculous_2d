@@ -2,11 +2,11 @@
 //!
 //! # Version contract
 //! `ASSET_BASE` and `BUNDLE_VERSION` are tied to deployment routes:
-//! 1. `ASSET_BASE` = `"/playground/v5/assets"`
-//! 2. `BUNDLE_VERSION` = `"v5"`
-//! 3. Deployed assets live at `insiculous_web/public/playground/v5/assets/`
-//! 4. Projects metadata served from `/playground/v5/assets/projects.json`
-//! 5. `scripts/build_wasm.sh` produces `playground/v5/`
+//! 1. `ASSET_BASE` = `"/playground/v6/assets"`
+//! 2. `BUNDLE_VERSION` = `"v6"`
+//! 3. Deployed assets live at `insiculous_web/public/playground/v6/assets/`
+//! 4. Projects metadata served from `/playground/v6/assets/projects.json`
+//! 5. `scripts/build_wasm.sh` produces `playground/v6/`
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -22,14 +22,15 @@ use wasm_bindgen::prelude::*;
 
 use crate::persist::{drive_started_operations, install_listeners, set_active_chains, set_dom_banner, with_active_chains, Chains};
 use crate::projects::{project_asset_base, project_root, ProjectManifest, ProjectOrigin};
+use crate::store::boot;
 use crate::store::indexed_db::IndexedDbStore;
 use crate::store::memory::MemoryStore;
 use crate::store::ProjectStore;
 
 /// Canonical asset base path for the deployed playground.
-pub const ASSET_BASE: &str = "/playground/v5/assets";
+pub const ASSET_BASE: &str = "/playground/v6/assets";
 /// Bundle version contract string.
-pub const BUNDLE_VERSION: &str = "v5";
+pub const BUNDLE_VERSION: &str = "v6";
 
 thread_local! {
     static ACTIVE_STORE: RefCell<Option<Arc<dyn ProjectStore>>> = const { RefCell::new(None) };
@@ -38,6 +39,7 @@ thread_local! {
     static DIRTY_FLAG: RefCell<Option<Arc<AtomicBool>>> = const { RefCell::new(None) };
     static HISTORY_DIRTY_FLAG: RefCell<Option<Arc<AtomicBool>>> = const { RefCell::new(None) };
     static ACTIVE_MANIFEST: RefCell<Option<ProjectManifest>> = const { RefCell::new(None) };
+    static STORAGE_PERSISTS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 pub fn active_store() -> Option<Arc<dyn ProjectStore>> {
@@ -54,6 +56,12 @@ pub fn bundled_manifests() -> Vec<ProjectManifest> {
 
 pub fn stored_manifests() -> Vec<ProjectManifest> {
     STORED_MANIFESTS.with(|manifests_cell| manifests_cell.borrow().clone())
+}
+
+/// Whether the store this page chose keeps edits past the page: false before the boot
+/// chose one and for the whole life of a page that fell back to memory.
+pub fn storage_persists() -> bool {
+    STORAGE_PERSISTS.with(std::cell::Cell::get)
 }
 
 pub fn dirty_flag() -> Option<Arc<AtomicBool>> {
@@ -91,10 +99,17 @@ async fn run_playground() -> Result<(), String> {
         return Err(format!("asset preload failed: {error:?}"));
     }
 
-    // 1. Open IndexedDB store or fall back to MemoryStore
+    let is_move_boot = boot::is_move_boot(query_param("move").as_deref());
     let store: Arc<dyn ProjectStore> = match IndexedDbStore::open().await {
-        Ok(indexed_db_store) => Arc::new(indexed_db_store),
+        Ok(indexed_db_store) => {
+            STORAGE_PERSISTS.with(|persists| persists.set(true));
+            Arc::new(indexed_db_store)
+        }
         Err(error) => {
+            if let Some(refusal) = boot::memory_fallback_refusal(is_move_boot) {
+                log::error!("IndexedDB open failed ({error}) on a hand-off's destination");
+                return Err(refusal.to_string());
+            }
             log::warn!("IndexedDB open failed ({error}); falling back to memory store");
             set_dom_banner("Storage unavailable (private browsing?) — edits will not persist across reloads");
             Arc::new(MemoryStore::new())
@@ -102,7 +117,6 @@ async fn run_playground() -> Result<(), String> {
     };
     ACTIVE_STORE.with(|store_cell| *store_cell.borrow_mut() = Some(store.clone()));
 
-    // 2. Read bundled projects.json
     let projects_json_path = format!("{ASSET_BASE}/projects.json");
     let bundled_manifests_list: Vec<ProjectManifest> = match common::vfs::read_to_string(std::path::Path::new(&projects_json_path)) {
         Ok(json_content) => match serde_json::from_str(&json_content) {
@@ -131,49 +145,20 @@ async fn run_playground() -> Result<(), String> {
     };
     BUNDLED_MANIFESTS.with(|manifests_cell| *manifests_cell.borrow_mut() = bundled_manifests_list.clone());
 
-    // 3. Sweep orphans (files of slugs absent from projects store and projects.json)
-    let bundled_slugs: Vec<String> = bundled_manifests_list
-        .iter()
-        .map(|manifest| manifest.slug.clone())
-        .collect();
-    let _ = store.sweep_orphans(&bundled_slugs).await;
-
-    // 4. Stored manifests
-    let stored_manifests_list = store.manifests().await;
-    STORED_MANIFESTS.with(|manifests_cell| *manifests_cell.borrow_mut() = stored_manifests_list.clone());
-
-    // 5. Select project from query param
-    let first_bundled_slug = bundled_manifests_list
-        .first()
-        .map(|manifest| manifest.slug.clone())
-        .unwrap_or_else(|| "examples".to_string());
-
-    let requested_slug = query_param("project");
-    let project_slug = match requested_slug {
-        Some(ref slug) => {
-            let is_bundled = bundled_manifests_list.iter().any(|manifest| &manifest.slug == slug);
-            let is_stored = stored_manifests_list.iter().any(|manifest| &manifest.slug == slug);
-            if is_bundled || is_stored {
-                slug.clone()
-            } else {
-                log::warn!("requested project '{slug}' is unknown; redirecting to '{first_bundled_slug}'");
-                if let Some(window) = web_sys::window() {
-                    let location = window.location();
-                    let _ = location.set_search(&format!("?project={first_bundled_slug}"));
-                }
-                return Ok(());
+    let opened = match boot::plan_boot(store.as_ref(), &bundled_manifests_list, query_param("project").as_deref()).await? {
+        boot::BootPlan::Open(opened) => opened,
+        boot::BootPlan::Redirect(first_bundled_slug) => {
+            if let Some(window) = web_sys::window() {
+                let _ = window.location().set_search(&format!("?project={first_bundled_slug}"));
             }
+            return Ok(());
         }
-        None => first_bundled_slug,
     };
+    STORED_MANIFESTS.with(|manifests_cell| *manifests_cell.borrow_mut() = opened.stored_manifests.clone());
+    let project_slug = opened.slug;
 
-    let stored_manifest_option = stored_manifests_list
-        .iter()
-        .find(|manifest| manifest.slug == project_slug)
-        .cloned();
-    let has_stored_manifest = stored_manifest_option.is_some();
-
-    let manifest = stored_manifest_option
+    let manifest = opened
+        .stored_manifest
         .or_else(|| bundled_manifests_list.iter().find(|manifest| manifest.slug == project_slug).cloned())
         .unwrap_or_else(|| ProjectManifest {
             slug: project_slug.clone(),
@@ -189,40 +174,27 @@ async fn run_playground() -> Result<(), String> {
     let root_path = PathBuf::from(&root_string);
     let asset_base_string = project_asset_base(&root_string);
 
-    // 6. Load stored files and overwrite onto MemFs
-    let stored_files = store.load_project(&project_slug).await.unwrap_or_default();
-    let stored_files_for_chains = if let Some(stored_files) =
-        crate::store::stored_files_for_boot(stored_files, has_stored_manifest)
-    {
-        // Before the records are laid down, so a stored file at an old key replaces its alias.
-        crate::legacy_paths::lay_aliases(
-            &root_string,
-            &crate::legacy_paths::selected_aliases(&project_slug, &stored_files),
-            common::vfs::read,
-            common::vfs::exists,
-            common::vfs::insert,
-        );
-                for file in &stored_files {
-            let vfs_path = format!("{root_string}/{}", file.path);
-            if file.deleted {
-                // A tombstone keeps a removed file's revision for the chains and no bytes,
-                // and unseats the bundled copy the preload put here; the observers are not
-                // installed yet, so nothing is queued.
-                let _ = common::vfs::remove_prefix(std::path::Path::new(&vfs_path));
-            } else {
-                common::vfs::insert(vfs_path, file.bytes.clone());
-            }
+    let stored_files_for_chains = opened.stored_files;
+    // Before the records are laid down, so a stored file at an old key replaces its alias.
+    crate::legacy_paths::lay_aliases(
+        &root_string,
+        &crate::legacy_paths::selected_aliases(&project_slug, &stored_files_for_chains),
+        common::vfs::read,
+        common::vfs::exists,
+        common::vfs::insert,
+    );
+    for file in &stored_files_for_chains {
+        let vfs_path = format!("{root_string}/{}", file.path);
+        if file.deleted {
+            // A tombstone keeps a removed file's revision for the chains and no bytes,
+            // and unseats the bundled copy the preload put here; the observers are not
+            // installed yet, so nothing is queued.
+            let _ = common::vfs::remove_prefix(std::path::Path::new(&vfs_path));
+        } else {
+            common::vfs::insert(vfs_path, file.bytes.clone());
         }
-        stored_files
-    } else {
-        log::warn!("project '{project_slug}' has stored files but no stored manifest (an interrupted import); removing them and loading bundled only");
-        if let Err(error) = store.remove_project(&project_slug).await {
-            log::warn!("could not remove the manifest-less files of '{project_slug}': {error}");
-        }
-        Vec::new()
-    };
+    }
 
-    // 7. Chains and persistence listeners
     let dirty_atomic = Arc::new(AtomicBool::new(false));
     let history_dirty_atomic = Arc::new(AtomicBool::new(false));
     let pending_atomic = Arc::new(AtomicBool::new(false));
@@ -262,7 +234,6 @@ async fn run_playground() -> Result<(), String> {
 
     install_listeners();
 
-    // 8. Bridge setup (FIFO 1024)
     let (request_sender, request_receiver) = sync_channel::<String>(1024);
     let (response_sender, response_receiver) = channel::<String>();
     crate::bridge::setup_bridge(request_sender, response_receiver, root_path.clone());
@@ -298,7 +269,6 @@ async fn run_playground() -> Result<(), String> {
         }
     }
 
-    // 9. Initial scene and options
     let scenes_directory = root_path.join("assets").join("scenes");
     let initial_scene = SceneLoader::first_scene_in(&scenes_directory);
 

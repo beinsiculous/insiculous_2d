@@ -26,7 +26,7 @@ playground/<version>/
 
 Invocation of record, run from the engine root:
 ```sh
-scripts/build_wasm.sh crates/playground playground --kind playground --version v5 \
+scripts/build_wasm.sh crates/playground playground --kind playground --version v6 \
     --project examples=Examples=examples \
     --project pong=Pong=crates/playground/assets/projects/pong \
     --project game-template="Game Template"=../games/game-template \
@@ -42,7 +42,7 @@ Each entry carries:
 {
   "slug": "examples",
   "title": "Examples",
-  "bundle_version": "v5",
+  "bundle_version": "v6",
   "content_hash": "<sha256-hex>",
   "origin": "bundled"
 }
@@ -52,16 +52,16 @@ the project's `<dir>/assets`.
 
 ## The bundle contract
 
-`ASSET_BASE = "/playground/v5/assets"` and `BUNDLE_VERSION = "v5"` (`web_entry.rs`). The
+`ASSET_BASE = "/playground/v6/assets"` and `BUNDLE_VERSION = "v6"` (`web_entry.rs`). The
 version token appears in five places, listed in that file's header: the deployed directory
-`public/playground/v5/`, the asset URLs the engine fetches, `projects.json`'s
+`public/playground/v6/`, the asset URLs the engine fetches, `projects.json`'s
 `bundle_version`, the build script's output directory, and every `StoredFile`'s
 `bundle_version`. Bumping it is a coordinated change across all five.
 
 A project's root is computed, never stored: `{ASSET_BASE}/projects/<slug>` on the web,
 `<dir>/projects/<slug>` natively; its asset base is `{root}/assets`. Every file the engine
 reads or writes is keyed by that base-joined string (`common::vfs`'s canonical key), e.g.
-`/playground/v5/assets/projects/examples/assets/scenes/behavior_demo.scene.ron`. A relative
+`/playground/v6/assets/projects/examples/assets/scenes/behavior_demo.scene.ron`. A relative
 key never resolves; relative paths given to the editor or the API are joined to the open
 project's asset base first.
 
@@ -137,11 +137,41 @@ slug's manifest when the store has none (origin `saved`). `remove_file` is the s
 compare-and-swap and writes a tombstone — the record kept, `deleted`, empty bytes, one
 revision up — so a put that recreates the file names that revision; an absent record at
 base 0 gets its tombstone too, at revision 1 with the manifest upserted as `put` does, so
-deleting a file only the bundle holds survives a reload (§ Persistence). `replace_project` and
-`remove_project` are one transaction each across both stores, the manifest written last as
-the commit marker. `sweep_orphans(bundled)` at boot removes files whose slug has neither a
-manifest nor a bundled entry (an interrupted import); the open project's own
-manifest-less files are removed at boot too, and the bundled files load instead.
+deleting a file only the bundle holds survives a reload (§ Persistence). A stored record
+`put` or `remove_file` cannot decode is refused, never read as revision 0 and written over.
+`replace_project` and `remove_project` are one transaction each across both stores, the
+manifest written last as the commit marker. **`replace_project` never moves a revision
+backwards**: it stamps every file one above the highest revision any record of the project
+held, tombstones included, whatever revision the file carries. An import stamps every file
+1, so without this a page still holding the project at revision 1 — a tab from the release
+before the lock, which holds none — would save over the import with no conflict; now its
+next save is `StaleRevision`, and a path the import dropped is absent, which no non-zero base
+matches. A project with a record that will not decode refuses the replacement.
+`sweep_orphans(known)` at boot removes the files of every slug not in `known` — the bundled
+slugs and the decoded manifests' — that has no manifest record at the moment of the sweep,
+decodable or not (an interrupted import); IndexedDB reads those keys in the sweep's own
+transaction, so an import another tab committed after this boot read its manifests is
+never taken for an orphan. The open project's own manifest-less files are removed at boot
+too, and the bundled files load instead.
+
+**A boot that cannot read the store stops; it never deletes and never substitutes.** After
+a move to a window (§ The editor window) the source's copy is gone and the destination's
+boot is the only reader, so every read it makes is strict (`store/boot.rs`, its tests in
+`store/boot_tests.rs`). `manifests()` answers `Result<ManifestList>` — the manifests that
+decoded and the keys of the records that did not — and a failed read is an `Err`, never an
+empty list; `load_project` is an `Err` on any record of that project that will not read or
+decode, never a file left out. The boot reads the manifests first and stops with the
+"Startup failed: …" status, before the sweep, the unknown-project redirect, the
+interrupted-import removal or any write, on: a failed manifest read; a failed or
+undecodable record of the opened project; a requested slug that is neither bundled nor
+decoded while a manifest would not decode (it may be that one); stored files for the opened
+slug with no manifest while a manifest would not decode. One bad record does not lock a
+visitor out of the others: another project still opens, and the sweep simply does not run
+while anything is undecodable. The sweep's own failure stops the boot too. A boot whose URL
+carries `move=1` — a hand-off's destination — does not fall back to the memory store when
+IndexedDB will not open: it stops before project selection with "This window could not open
+your saved project. Close it and choose "Bring the editor back here" on the page.", and the
+saved project is untouched. There is no recovery card: the status is the answer.
 
 `IdbTransactionFuture` (`store/idb_transaction.rs`) turns a transaction's
 `complete`/`error`/`abort` events into a future. Every dependent request is issued
@@ -175,7 +205,7 @@ over-selects on purpose — a spare key costs nothing, a missed one is a scene t
 load. A project with no stored files, or whose files are dropped as an interrupted import,
 lays nothing.
 
-**The order.** Boot's step 6, after the bundle's preload and before the stored records are
+**The order.** At boot, after the bundle's preload and before the stored records are
 laid down: the bundle's bytes go under the old key when the bundle's file is readable and the
 old key is absent. Then the records are laid as always, so a stored record at an old key
 replaces its alias and a stored tombstone there removes it. The write and remove observers
@@ -282,7 +312,7 @@ hook, which refreshes its list while keeping the selected script and its unsaved
 | `playground_poll_responses()` | `→ string[]` | drains every response line so far |
 | `playground_poll_file_changes()` | `→ string[]` | drains written or removed project-relative paths, both ends of a rename included, each path once; independent of command responses |
 | `playground_set_file_mutation_guard(function)` | `(JSON string → string) → void` | registers synchronous file coordination: `{phase: "prepare"/"done"/"failed", removed: string[], renamed: [old, new][]}`; paths project-relative, empty return proceeds and text refuses |
-| `playground_is_dirty()` | `→ bool` | command-history dirty OR `is_pending()`; the page confirms before any switch, import or reset |
+| `playground_is_dirty()` | `→ bool` | command-history dirty — an open API batch holding a command counts, its edits already in the world — OR `is_pending()`; the page confirms before any switch, import or reset, and refuses *Open in a window* |
 | `playground_write_file(path, text)` | `→ Result` | through `vfs::write_string`; a `.rhai` write runs the `source_check` hook first, and a refused script is not written |
 | `playground_read_file(path)` | `→ Result<string>` | |
 | `playground_list_files()` | `→ Result<string[]>` | project-relative |
@@ -293,6 +323,8 @@ hook, which refreshes its list while keeping the selected script and its unsaved
 | `playground_snapshot(generation)` | `→ Promise<{ sceneEntry, bytes }>` | the project archive with the active scene's entry replaced by the live world as RON, every other file kept. Answered on the editor's next frame, 5 s cap, then rejected with "the editor did not answer — is its tab visible?". Refused during Play or Pause, and while another generation is pending. **Reserves the preview as it files**, and clears the reservation if it rejects |
 | `playground_set_preview_open(open)` | `→ void` | while true, in-editor Play is refused with "A preview window is open — close it to Play here". The page clears it on `preview-failed`, `preview-closed`, or a window it finds closed — never on silence |
 | `playground_import_zip(bytes)` | `→ Promise<string>` | validates, drains, replaces the project in the store, resolves with the slug; the PAGE then sets `?project=<slug>` and reloads — REQUIRED, same slug or not, as for switch and reset: the drain leaves writes refused until the reload |
+| `playground_archive_slug(bytes)` | `→ Result<string>` | read-only (`bridge/window.rs`): the slug the archive would import as, through the importer's whole validation, so the page can take that project's lock before `playground_import_zip` writes anything |
+| `playground_storage_persists()` | `→ bool` | read-only (`bridge/window.rs`): whether the store the engine chose at boot keeps edits past the page — `false` for a page that fell back to memory, for the whole life of that page |
 | `playground_read_file_bytes(path)` | `→ Result<Uint8Array>` | project-relative binary read through `vfs::read` |
 | `playground_write_file_bytes(name, bytes, replace)` | `→ Result<string>` | imports one song, sample or SoundFont by its file name (`upload.rs`), answering the JSON `{written, kind, destination, referenced_by, sidecar_lost, open_song_replaced}`. The name must match `[A-Za-z0-9._-]+` (a sample's or a SoundFont's whitespace becomes `_`; a song's name is held to the song path rule, `docs/SONG_FORMAT.md` § How the Conductor panel saves); the file is refused by its size against its loader's limit (`MIDI_BYTE_LIMIT` 1 MiB, `SAMPLE_BYTE_LIMIT` 4 MiB, `SOUND_FONT_BYTE_LIMIT` 48 MiB) and then by the loader itself before anything is written. A `.mid` or `.midi` lands in `assets/music/`, a `.wav` in `assets/music/imports/`, an `.sf2` in `assets/soundfonts/`. A taken name answers `written: false` unless `replace`; a replaced MIDI file keeps its sidecar: the new score is the score changed outside, which the song follows with its map and the track diff's lines (`sidecar_lost` is `true` when that song has a sidecar — the score changes and the map is kept) — at its next open, or at once when it is the Conductor panel's open song (`open_song_replaced`), whose document the editor hands the bytes through its import mailbox, since the browser has no file watcher |
 | `playground_sample_references(path)` | `→ Result<string[]>` | every song under `music/` and `ai/music/` whose sidecar names the file at `path`, by its `.mid` |
@@ -312,7 +344,8 @@ The guard runs synchronously inside the editor frame, so its rename question use
 registration made before `init()` resolves throws and takes the boot with it.
 
 The engine cannot swap a running project; every switch is a page reload with the query
-string naming the slug. An unknown `?project=` redirects to the first bundled project.
+string naming the slug. An unknown `?project=` redirects to the first bundled project — unless
+a stored manifest would not decode, when the boot stops instead (§ The store).
 
 ## The preview window
 
@@ -347,6 +380,90 @@ and only while no simulation is running — the engine's own time freeze outside
 already means nothing is animating — so a game window and a play session keep their full
 frame rate. A `resize` or a `RedrawRequested` is window management, not input, and never
 wakes it. The numbers it moves are in § Budget.
+
+## The editor window
+
+A Playground project is open in one page at a time, and moving the editor to a window is a
+navigation, not a transfer. The site's half is `playground-project-lock.ts` and
+`playground-window.ts`; the engine's is two read-only exports, the strict boot of § The
+store, and the dirty flag's open-batch term.
+
+**The lock.** Every Playground editor boot — the page, the window, a reload — asks for the
+Web Lock `beinsiculous.playground:<slug>` with `ifAvailable`, in the embed's own script,
+before `wasm.default()`: nothing has been read from the store yet. The callback's promise
+never settles, so the lock lasts the document's life and the browser releases it when the
+page goes, whatever the path. No page ever waits in the lock's queue. The slug is fixed
+first: without `?project=` the embed fetches the bundle's `projects.json`, takes its first
+slug and writes `?project=` onto the URL, so the engine opens the project the lock names; a
+list that fails, takes over 10 s, is empty or will not parse stops the page on "The project
+list did not load — Try again". Not granted, the page shows the owner card — "*pong* is open
+in another tab or window. Close it, then Try again." — with **Try again** (the same request
+once more) and **Close this page** (a window closes itself; a tab goes to the plain parked
+card). A grant is kept for the document, so a retried boot never asks twice. A page whose
+engine fails to start keeps its lock until it is closed. Where the browser has no Web Locks,
+or refuses them, the page boots as before and *Open in a window* is disabled with its reason
+in the bar: the one-page guarantee holds among pages that have the API.
+
+**The move.** *Open in a window ↗*, beside Play ↗, is enabled at `playground-ready` when the
+page holds its lock and `playground_storage_persists()` is true ("This browser is not
+keeping your edits, so the editor cannot move — it would lose them" otherwise). On a click:
+1. Synchronously: dirty (the engine's flag, pending persistence, or the Scripts panel's
+   buffer) → "Save first — the window opens the saved project"; an import, archive import,
+   reset or switch in flight → "Wait for the import to finish"; this page's Play preview open →
+   "Close the preview window first — it stays with this page" (its reservation names this
+   tab, so the window could not re-take it). Otherwise `window.open(
+   'about:blank', '_blank', 'popup,width=1280,height=800')` — always a new, unnamed window;
+   a blocked popup shows the static alert with *Try again* and nothing else happens.
+2. An inert "Moving the editor to its window…" panel covers the page, and one read-only
+   `selection` line goes through `playground_dispatch` with its own place in the response
+   queue. The bridge answers in the order it accepted, so its answer means every command
+   accepted before the click has run; nothing waits on an animation frame, which a hidden
+   tab never gets. Dirty again, the line refused, or no answer in 5 s → the window closes,
+   the panel goes, and the bar says which.
+3. `playground_open_project(slug)` — the project switch's drain. Rejected → the window
+   closes and the banner shows the error, as for a switch.
+4. The window closed meanwhile → this page goes to `/playground/?project=<slug>&move=1`.
+   Otherwise the window goes to `/playground/window/?project=<slug>&move=1` and this page to
+   `/playground/parked/?project=<slug>`. The panel carries **Reload this page** for a visitor
+   who stops that navigation: after the drain this page cannot save again.
+
+**A canvas text field mid-edit** — a name typed and not yet committed — is not a dirty
+document, and clicking a bar button does not commit it, exactly as with a switch, Export or
+a reload: the window opens the saved project.
+
+A boot that arrives with `move=1` may find its source still unloading, so it says "Moving the
+editor…" and asks again every 100 ms for at most 5 s — a bounded count of `ifAvailable`
+requests, never a queued one — before the owner card. The embed strips `move` at
+`playground-ready`, so a reload is an ordinary boot. Such a boot never falls back to memory
+(§ The store).
+
+**The window** (`/playground/window/`) is an ordinary editor page in the `windowed` layout:
+it takes the lock, boots, edits, saves and switches project. Its bar has no *Open in a
+window*; its note says "To move the editor back: close this window, then choose "Bring the
+editor back here" on the page."
+
+**Coming back.** The parked page (`/playground/parked/`) listens to nothing and decides
+nothing. **Bring the editor back here** goes to `/playground/?project=<slug>&move=1`: with the
+window closed the editor starts; with it still open, the boot asks for its 5 s and then shows
+the owner card. Nothing is asked of the window and nothing is taken from it.
+
+**The fenced import.** An archive is read for its slug first (`playground_archive_slug`).
+When it names a project other than the open one, the page takes that project's lock with
+`ifAvailable` and imports inside it — refused with "*X* is open in another tab or window —
+close it before importing over it" when another page holds it.
+
+**Not fenced, stated.** A page from the release before this one holds no lock; it ends when
+that tab reloads, and its saves over an import meet `StaleRevision` (§ The store) for each
+path the import or the store still holds a record of — best effort, not a fence: a file that
+page creates anew has no record to conflict with, and a Reset or an import with no files
+between two imports leaves no revision to stamp above. Nothing
+reserves the window's turn either: a second tab whose *Try again* lands between the source
+parking and the window asking gets the project, and the window shows the owner card;
+everything is saved, and closing that tab and *Try again* in the window finishes the move.
+
+**A Rust game's editor page** stores nothing, so it takes no lock and parks nothing. Its
+*Open in a window ↗* opens `/playground/<slug>/window/` — a new window every time — as a
+second, independent editor that starts from the game's own scene; the page keeps running.
 
 ## Preferences
 
