@@ -1,5 +1,10 @@
 # Editor UX — the plan
 
+**2026-11-11, Jesse's ruling: batch 6 migrates nothing.** Where the round summaries below say
+batch 6 migrates a visitor's stored scenes — the marker, puts → references → tombstones — that
+design is withdrawn; a stored pre-convention project keeps loading through five boot aliases
+and its store is never written. The batch 6 section is the text of record.
+
 **v6 — 2026-11-03, after round 4 — SETTLED for batches 1–4b and 6–8; § E / batch 5 continues
 under its own review subject, `review/editor-ux-window/`.** Jesse's word (2026-11-03): if round 4
 still found criticals in the hand-off, the other seven batches settle, the plan commits and the
@@ -1679,6 +1684,28 @@ executor builds on:
   at close-out); renaming a song with samples (Save As is its path); `EDITOR_COMMAND_API.md` is
   unchanged (#112's per-file delete verb is what this batch's web delete enables).
 
+**Done 2026-11-09: b443470 (engine) and insiculous_web 75c5405 (site)** (executor Astra/codex,
+`report-4b.md` COMPLETE, 54 engine files and 45 site paths with the v4 bundle; engine round 14 —
+kimi 5 (5 m 27 s), deepseek 10 (15 m 11 s), the planner 9 with the UI eye over the three stills;
+site round 3 — kimi 4, deepseek 5, both finding the guard registered before the wasm module was
+initialised, which the planner's own review missed and which `verify` did not catch (#80 filed);
+site rounds 4–6 settled the site; engine fix rounds 15 to 28 and 30 — round 29 is no review, the
+session ended under it — each kimi and deepseek over the whole fixed snapshot, rebuttal-14 to
+-28 and -30). Sixteen fix rounds is the effort's record and the lesson is in the last one:
+round 30's deepseek found a critical in the planner's own round-27 fix — the sample-owner guard
+resolved a LICENSE's `Source:` against the home folder, `music/music/<song>`, so no real song's
+samples were protected, and the tests passed because they spelled the header relative to the home,
+which nothing writes. **A test fixture is spelled as production writes it, and a guard's test is
+mutation-checked once** (the old line restored, the test seen to fail). Corrections to § D the
+rounds settled: `remove_dir_all` and `set_asset_root` are gone — a folder is emptied file by file
+and its folders go deepest first; a companion is paired in any case of its suffix and opened as
+spelled; a delete gets the reference scan and the LICENSE stanza removal; the scan reads unsaved
+documents; `asset_family` returns `io::Result` and a folder read short refuses the mutation;
+`write_new` publishes through a hard link with a direct-write fallback on FAT and exFAT; the
+bundle is v4, rebuilt from the final tree before the site commit (the executor's bundle predated
+the fix rounds). Follow-ups: #252 (Windows file rename), #80 (a boot smoke test in `verify`), a
+backlog line on #99 (a mis-cased sidecar is paired by the browser and unread by the loaders).
+
 **Batch 5 — the editor in its own window (§ E). Issues #245 (engine) and insiculous_web#79
 (site). NOT SETTLED — its design continues under
 `review/editor-ux-window/`; its issue is filed blocked on that review. Site + playground crate +
@@ -1721,41 +1748,204 @@ paths, `../games/game-template/assets/images/` → `sprites/` + sidecar + `main.
 table in `editor`, the doc quotes it; the checker greps the same table so the three agree), the
 v3 playground bundle (#159 — the bundled pong's tree changed; the bundle's version token moves in
 the five places `WEB_PLAYGROUND.md` § The bundle contract lists, and the site's `public/playground/
-v3/` lands with it), and **a visitor's stored v2 scenes migrated** (codex F3): a saved scene
-over the bundled pong names `images/paddle_16px.png`, and the v3 bundle has only `sprites/`; the
-store already knows a stored file's `bundle_version` (`projects.rs:25,82`), so the boot migrates
-a project whose stored version predates v3 — **the whole `images/` family, not the references
-alone** (kimi F5, codex F6): every stored file under `assets/images/` (a customised paddle, a
-visitor's own `custom.png`, each sidecar) is put under `assets/sprites/` and its old record
-tombstoned; a tombstone under `images/` becomes one under `sprites/`, so a deliberately deleted
-bundled paddle stays deleted. **A content collision** — `images/hero.png` and `sprites/hero.png`
-both stored and different — **leaves that family unmigrated and its references untouched**, named
-in the console, never substituted (round 3 kimi F7, codex F1: the stored `images/` file still
-loads from the map). **The order is puts, then references, then tombstones**, so a run cut at any
-point is loadable — both paths exist until the scenes name the new one (gemini F4 round 3).
-**Before a tombstone, the old record's content hash is compared with what was copied; changed,
-the put is redone** (kimi F2 round 4: the editor opens between boots and a visitor may save over
-the old path). **While the marker is present, a read of `assets/images/<x>` that is not stored
-resolves to the bundle's `sprites/<x>`, tombstones respected** (codex F4 round 4: a visitor who
-stored only the scene names a bundled `images/` file the v3 bundle no longer has). **A collision
-goes to `skipped`**, beside `remaining`, so the migration completes and the banner shows once
-(gemini F5 round 4). **Progress is a marker in the manifest**, `migration: { images_to_sprites: {
-remaining: [...], skipped: [...] } }`, not `bundle_version` (round 3 kimi F2, codex F9: an ordinary save stamps v3 on an unconverted
-scene, and a tombstone keeps v2 and would be "migrated" again into deleting the new file); each
-transition is idempotent, a reboot is tested after every boundary, and the marker is cleared only
-when nothing remains; a boot whose migration fails continues into the editor with a banner naming
-the count left. Tests over a real v2 saved scene: a customised bundled file, a visitor-only file, a tombstone, a
-collision left in place and listed as skipped, an ordinary save over the old path during a
-half-done migration (the redone put), a scene-only visitor's bundled reference while incomplete,
-and a reboot after each boundary. **First step:** run the new checker over every current
+v3/` lands with it), and **a visitor's stored pre-convention scenes keep loading** (codex F3): a saved scene
+over the bundled pong names `images/paddle_16px.png`, and this batch's bundle has only
+`sprites/`. **Ruled 2026-11-11 (Jesse): boot aliases, not a store migration** — the journaled
+migration this paragraph carried through plan rounds 3 and 4 (puts, references, tombstones, a
+marker in the manifest) drew a data-loss critical in each of rounds 31 and 32 and is withdrawn;
+the re-verification block below holds the design that replaces it, and nothing in this batch
+writes to a visitor's store. **First step:** run the new checker over every current
 tree and list each violation in the report before a file moves (kimi F11). Gates: the standard
 set; the checker over every tree it names; `check_wasm.sh`; `npm run verify` on the site for the
-bundle. Reviewers: kimi, gemini (the checker, the bundle bump and the migration are seams). Leaves
+bundle. Reviewers: kimi, codex (the checker, the bundle bump and the aliases are seams). Leaves
 out: the six games' `sprites/` (DEION_STYLE's); renaming anything under `deion_assets`; a
 font's filename (the stated exception). **Corrected 2026-11-06:** this batch's bundle is **v5**, not v3 — 4a shipped v3 and 4b
 ships v4, because the site never rebuilds a deployed version folder in place (the 4a done-mark);
 "v3" in this paragraph names the bundle after 4b's and "v2" a visitor's pre-convention scenes,
-and the migration's trigger is "stored version predates this batch's", whatever the numbers.
+and the aliases' trigger is "stored version predates this batch's", whatever the numbers.
+
+**Re-verified 2026-11-09 against batch 4b's tree (as reviewed through round 30).** Every file,
+line and count above and in § D's *The convention* checked; where this block and the paragraph
+above disagree, this block is the batch.
+
+- **Roster (Jesse, 2026-11-11):** executor Claude Opus 5.5 in Jesse's window, as in batch 1;
+  reviewers kimi and codex (Astra reviews what she did not build), the planner's own review
+  beside them. No still: the batch draws nothing new. Engine code review is the next free round under
+  `review/editor-ux/`, the site half's under `../insiculous_web/review/editor-ux/`.
+- **Already there, so not built here:** the kind table. 4a landed it as `CONVENTIONS` in
+  `crates/editor/src/asset_browser/tree.rs:194` (eight rows: kind, root, extension; `kind_root`,
+  `validate_name`, `validate_folder`, `route_new_file` read it, and its doc comment carries the
+  nine-row folder table). This batch changes no line of the router: `docs/PROJECT_LAYOUT.md`
+  quotes the table, and the checker parses the ordered `(root, extension)` pairs out of the
+  `Convention { … }` rows in that file and out of the doc's table, and fails on any difference —
+  a row changed, duplicated, reordered or dropped on either side (a count alone would pass a
+  renamed root; round 31 kimi F3). `ai/` and `LICENSE` are the checker's own two additions,
+  stated in the doc and excluded from the comparison by name.
+- **Stale, dropped:** `training.md` names no `images/` path and no `snd_` file any more (its
+  scene example already says `sounds/jump.wav`); it gains one line pointing at
+  `docs/PROJECT_LAYOUT.md` and nothing else. `docs/PROJECT_LAYOUT.md` and
+  `scripts/check_project_layout.sh` do not exist; `scripts/check_games.sh:23` holds the `GAMES`
+  list the per-game call joins (`game-template` is in it).
+- **The trees, as they stand.** `examples/assets/images/wood_texture.png` (one file, no sidecar);
+  `examples/assets/sounds/snd_jump.wav` with its stanza at `sounds/LICENSE:13`;
+  `crates/playground/assets/projects/pong/assets/images/{ball_8px,paddle_16px}.png` (no sidecars),
+  named at `pong.scene.ron:45,73,103`; `../games/game-template/assets/images/ball_8px.png`, named at
+  `main.scene.ron:48,115` and `README.md:54`. Every other caller of an old path:
+  `crates/editor_integration/src/editor_game/hot_reload_sheet_tests.rs:28` (the pong paddle by
+  path), `crates/engine_core/tests/fixtures/hello_world_saved.scene.ron:66` (the golden fixture
+  `tests/hello_world_golden.rs` compares a save against — it changes with the scene). **Left as
+  they are:** `crates/playground/src/archive/tests.rs` (`assets/images/x.png` is an imported
+  archive's own path, which the convention does not reach) and the `snd_jump.wav` strings in
+  4b's `LICENSE` and rename tests (temporary directories, not the tree).
+- **The `assets/` prefix, resolved (the question § What the tree holds left for here).**
+  `hello_world.scene.ron` names three files with it — `:73` the texture, `:133` and `:290` the two
+  sounds — because `hello_world.rs:24`, `editor_demo.rs:32` and `behavior_demo.rs:101` run with the
+  asset base `examples/` (`EXAMPLES_DIR`), one folder above the asset root. On the web the
+  project's base is `…/projects/examples/assets` (`projects.rs` `project_asset_base`), so the same
+  three paths resolve to `…/assets/assets/…` and load nothing: the scene has never shown its
+  texture or played its sounds in the playground. **This batch makes `examples/assets` the base,
+  as `conductor_demo.rs` already has it:** the three examples pass `examples/assets`, their
+  `with_locales_dir("assets/locales")` becomes `"locales"`, `hello_world/platformer.rs:157,223,232`
+  and `behavior_demo.rs:39` lose the `assets/` segment, the scene's three paths become
+  `sprites/wood_texture.png`, `sounds/jump.wav`, `sounds/beep_e.wav`, the golden fixture follows,
+  and **`examples/assets/locales/pirate.ron:7`** — `font: Some("assets/fonts/BlackSamsGold-ej5e.ttf")`,
+  resolved against the asset base — becomes `fonts/BlackSamsGold-ej5e.ttf`, its comment at `:6`
+  ("the examples/ directory") corrected (round 31 deepseek F4; `en.ron` names no path). First step
+  for this item: a test that loads `hello_world.scene.ron` against `examples/assets`, finds all
+  three files and resolves the Pirate locale's font — it fails before the change and is the pin
+  after.
+- **The bundle carries three projects, not one** (`scripts/build_wasm.sh --project examples=… pong=…
+  game-template=…`, the invocation of record in `WEB_PLAYGROUND.md:29`), and all three trees move.
+- **A stored pre-convention project keeps loading through boot aliases — no store write, no
+  marker, no migration** (Jesse's ruling, 2026-11-11, after round 32: kimi found a crash window
+  between the source tombstone and its journaled phase and a two-tab resume, each deleting the
+  migrated copy a scene already named; round 31 had found two more. A design that can lose a
+  file to repair a path is the wrong size for five renamed files). The whole mechanism:
+
+  | slug | old key (project-relative) | the bundle's file |
+  |---|---|---|
+  | `examples` | `assets/images/wood_texture.png` | `assets/sprites/wood_texture.png` |
+  | `examples` | `assets/sounds/snd_jump.wav` | `assets/sounds/jump.wav` |
+  | `pong` | `assets/images/ball_8px.png` | `assets/sprites/ball_8px.png` |
+  | `pong` | `assets/images/paddle_16px.png` | `assets/sprites/paddle_16px.png` |
+  | `game-template` | `assets/images/ball_8px.png` | `assets/sprites/ball_8px.png` |
+
+  The table is exact files, not a prefix: it is the list of what this batch renames, it never
+  grows with the bundle, and a sprite a later bundle adds is not mirrored under `images/`. The
+  new sidecars are not aliased — the old paths had none, and an aliased file behaves as it did
+  before this batch.
+- **When: a row is aliased when a stored file names it.** A row's *reference token* is its old
+  key without the `assets/` prefix — `images/paddle_16px.png`, `sounds/snd_jump.wav` — which is
+  how a scene or a script spells the path (`pong.scene.ron:45`). At boot, over the same vector
+  of stored files the overlay loop is about to lay down, a row of the project's slug is selected
+  when any live (not tombstoned) stored record whose path ends in `.ron` or `.rhai` — **compared
+  without regard to case**, as `SceneLoader::first_scene_in` and 4b's reference scan compare
+  (`rename.rs:187`; round 36 kimi F1) — contains its token as a plain substring. Nothing else is consulted — not the manifest, not `bundle_version`. The first
+  draft of this bullet gated on the manifest's version and round 33 broke it (codex F1): a tab
+  left open across the deploy saves its old scene after a new tab's first save has already
+  stamped the manifest v5, and the scene's `images/` paths resolve to nothing. The content rule
+  has no such window, covers a hand-built archive, and still leaves a project that names only
+  new paths with no `images/` folder. A plain substring over-selects on purpose — a stored
+  `hello_world` scene's `"assets/images/wood_texture.png"` selects the texture's row, whose
+  alias that scene's path does not reach — because a spare key costs nothing and a missed one
+  is a scene that will not load. A project with no stored files, or whose stored files were
+  dropped as an interrupted import (`stored_files_for_boot` → `None`), selects nothing.
+- **Where and in what order.** `web_entry.rs` step 6 (`:193`), between the bundle's preload and
+  the loop that lays the stored files over the memory filesystem: for each selected row, when
+  the bundle's file is readable and the old key is absent, the bundle's bytes are inserted under
+  the old key (`common::vfs::insert`, the call the overlay loop itself uses). Then the existing
+  loop runs unchanged, so **a stored record at an old key replaces the alias and a stored
+  tombstone at an old key removes it** — a customised paddle is still the visitor's, and an
+  old key they deleted stays deleted. The write and remove observers are installed after step 7
+  (`:233` on), so an alias queues nothing, seeds no chain and is never a stored record; a later
+  save over an aliased path is the ordinary first put of a bundled-only file, and a delete of
+  one is 4b's bundled-only tombstone.
+- **One direction only, and its cost, stated.** The aliases put the bundle's file under an old
+  key; nothing puts a visitor's old-key file under the new key. Rounds 34 to 36 tried that
+  mirror and each form of it drew a critical of its own — a mirrored tombstone deleting the
+  file a saved scene names, a deleted source taking the only stored copy of a customised image
+  with it, a sidecar attached to another image, two tabs disagreeing about which key is newer
+  (rebuttal-34 to -36) — because two keys for one file is a second store invented at boot. So:
+  a visitor who changed one of the five files under v4 **without saving a scene** (4b's rename
+  can do that) sees the stock file in the bundle's new scene; their file is still theirs, live
+  and untouched at its old key in the `images/` folder, and pointing the scene at it is one
+  assignment. A file they deleted under its old name is back under its new one. Nothing is
+  lost, no stored scene fails to load, and nothing is written.
+- **The shape.** A new `crates/playground/src/legacy_paths.rs`: the table as a `const`;
+  `pub fn selected_aliases(slug: &str, stored_files: &[StoredFile]) -> Vec<(&'static str,
+  &'static str)>` — pure, compiled natively, empty for an unbundled slug; and one function that
+  lays a list of pairs over a filesystem through three closures (read, exists, insert), so the
+  native tests drive it over `common::vfs::MemFs` (as `archive/tests.rs:44` does) and
+  `web_entry.rs` passes the global's. `web_entry.rs` (323 lines) gains that one call. No trait
+  method, no manifest field, no banner: `ProjectStore`, `ProjectManifest`, `persist/` and
+  `bridge.rs` (548) are untouched by this batch.
+- **Tests** (native, over `MemFs`, each fixture spelled as the store writes it — the stored
+  scene is the real pre-batch `pong.scene.ron`, copied into the test's fixtures before the tree
+  moves): a scene-only stored `pong` reads `assets/images/paddle_16px.png` and gets the
+  bundle's bytes; **the same stored scene under a manifest stamped `v5`** is aliased all the
+  same (round 33 codex F1's two-tab order); a stored customised
+  `assets/images/paddle_16px.png` wins over the alias; a stored tombstone at the old key leaves
+  it absent; a tombstoned scene selects nothing; a stored scene naming only `sprites/` paths, and
+  a project with no stored files, get no old key; a stored `.rhai` naming `sounds/snd_jump.wav`
+  selects the `examples` row; a row whose bundle file is missing inserts nothing. **A stored scene named
+  `assets/scenes/LEVEL.SCENE.RON` selects as its lowercase twin does**; and the stated cost is
+  pinned so it is never mistaken for a bug: a stored customised
+  `assets/images/paddle_16px.png` with no stored scene leaves the old key holding the
+  visitor's bytes and `assets/sprites/paddle_16px.png` holding the bundle's. And one that
+  reads the table against the tree: every `examples` and `pong` row's bundle file exists under
+  `examples/` or `crates/playground/assets/projects/pong/` after the moves and no row's old key
+  does; **the `game-template` row is checked only when `../games/game-template` is there** — a
+  standalone engine checkout has no sibling, and `cargo test --workspace` must pass in one
+  (round 33 kimi F1; `preview.rs:233` returns early the same way for the deployed bundle).
+- **What a visitor sees, stated.** A pre-convention project shows an `images/` folder holding
+  the aliased files beside the bundle's `sprites/`; New and the router still place new files by
+  the convention. Its export carries both copies (`collect_asset_entries` lists the filesystem),
+  which makes the archive self-contained. **An import is not aliased and does not need to be:**
+  an export carries every file under `assets/`, the bundled ones included (`archive.rs:144`), so
+  an archive made by any earlier bundle holds its own `images/` files and resolves them from the
+  store (round 32 kimi F3 named an archive that relies on the bundle for a file — only a
+  hand-built one does, and the content rule covers that one too). **An export is a backup
+  of what the visitor has, not a convention-clean tree:** unzipped over the template it brings
+  its `images/` folder, and the new checker says so — which is the checker's job, and
+  `docs/PROJECT_LAYOUT.md` says how to move the files (round 35 kimi F3). For the renamed
+  sound, the `Files:` field of `snd_jump.wav`'s stanza in `examples/assets/sounds/LICENSE`
+  becomes `jump.wav snd_jump.wav`, its comment saying the second is the file's former name
+  — so an export of a project that stored no `LICENSE` of its own names both files
+  (`check_audio_provenance.sh` asks only that each audio file is a token of a `Files:`
+  field); a project whose stored `LICENSE` predates the batch keeps its own text, and no
+  provenance is reconciled in memory (round 34 kimi F3, codex F2; round 35 kimi F4, codex
+  F2). A stored `hello_world` scene's three `assets/…` paths are not helped:
+  they never resolved on the web, and the aliases keep what this batch would break, not what
+  was already broken. `list_projects`' `differs_from_bundle` (`projects.rs:82`) is unchanged.
+- **Native has no compatibility layer, stated** (round 33 codex F2). `examples/` is the engine's
+  own demo tree, not a project a user keeps: its three scenes are tracked
+  (`behavior_demo`, `conductor_demo`, `hello_world` — only the last names an `assets/…` path)
+  and all move with the base in this batch. A scratch scene someone saved under `examples/`
+  from `editor_demo` before this batch names `assets/…` paths and is re-saved or deleted; the
+  done line says so. **The template** is copied, not followed — *Use this template* cuts the
+  history — so a clone keeps its own tree; for the one who merges it anyway, the template's
+  `README.md` gains a line under its layout section naming the rename (`images/` →
+  `sprites/`, scenes follow) (round 34 kimi F1).
+- **The bundle is v5, a NEW version folder** — never a rebuild of `public/playground/v4/`. The
+  five places as they stand: `web_entry.rs` header `:5–9`, `ASSET_BASE` `:30`, `BUNDLE_VERSION`
+  `:32`; the build's `--version v5` (`build_wasm.sh:138` checks the constant);
+  `projects.json`; the site's `src/components/PlaygroundEmbed.astro:26`,
+  `src/pages/playground/preview.astro:31`, `scripts/postbuild-check.mjs:48–49`; plus
+  `docs/WEB_PLAYGROUND.md` § The bundle (`:29`, `:45`) and § The bundle contract (`:55–64`),
+  which also gains § Old paths under § The store (the table, the rule, the order).
+- **Sizes near the ceiling:** `store/indexed_db/mod.rs` 493 and `bridge.rs` 548 (both untouched here),
+  `editor_game/menu_actions.rs` 595 (untouched here), `vfs/entries.rs` 584 (untouched here).
+- **The template repo** is on `jesse` on this machine, clean; its half (the folder, a sidecar for
+  `ball_8px.png`, `main.scene.ron`, `README.md:54`) is staged there by the executor and committed
+  by the planner on that branch, before the bundle is built from it.
+- **Gates, beyond the standard set:** the new checker green over `examples/`, each
+  `crates/playground/assets/projects/*`, and each game `check_games.sh` lists; `check_wasm.sh`
+  (the playground crate changes); `scripts/check_audio_provenance.sh` (the `sounds/LICENSE`
+  stanza moves with the file); `npm run verify` on the site over v5.
+- **Leaves out, beyond the paragraph above:** any write to a visitor's store, and with it the
+  rewriting of a stored scene's references; retiring the aliases (they cost five keys); a
+  stored `hello_world` scene's `assets/…` paths; a stored non-bundled project; any change to
+  the router.
 
 **Batch 7 — tab drag (§ C, the gesture). Runs in this effort (Jesse, 2026-11-03), after batch 3
 has shipped and Jesse has lived with the menu-driven model for at least one batch. Issue #247.** Drag a
