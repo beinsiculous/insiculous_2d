@@ -1,4 +1,6 @@
 {
+  "ui_scale": 100,
+  "current_folder": "music",
   "camera_position": [
     -303.20044,
     -80.12799
@@ -10,32 +12,57 @@
   "colliders_visible": true,
   "game_frame_visible": true,
   "snap_to_grid": false,
-  "panels": [
+  "groups": [
     {
-      "id": 2,
-      "visible": true,
+      "position": "Right",
+      "size": 254.27502,
       "collapsed": false,
-      "size": 180.63641
+      "panels": [
+        1,
+        6
+      ],
+      "active": 1,
+      "hidden": [
+        6
+      ]
     },
     {
-      "id": 1,
-      "visible": true,
+      "position": "Bottom",
+      "size": 211.11548,
       "collapsed": false,
-      "size": 334.3922
+      "panels": [
+        3,
+        5,
+        4
+      ],
+      "active": 3,
+      "hidden": [
+        4
+      ]
     },
     {
-      "id": 3,
-      "visible": true,
+      "position": "Left",
+      "size": 211.11548,
       "collapsed": false,
-      "size": 211.11548
-    },
-    {
-      "id": 5,
-      "visible": true,
-      "collapsed": false,
-      "size": 260.0
+      "panels": [
+        2
+      ],
+      "active": 2,
+      "hidden": []
     }
   ],
-  "ide_command": null,
+  "external_tools": {
+    "code": "OsDefault",
+    "music": "OsDefault",
+    "sample": "OsDefault",
+    "art": "OsDefault",
+    "overrides": {},
+    "daw_project_extensions": [
+      ".evil",
+      ".prj",
+      ".nsp"
+    ],
+    "programs": {}
+  },
   "collapsed_components": []
 }
