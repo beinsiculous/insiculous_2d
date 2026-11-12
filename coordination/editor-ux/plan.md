@@ -2261,6 +2261,32 @@ untouched. One mutation check, said in the report.
 strip, the chip and the insertion bar) and `batch7-drag-edge.png` (mid-drag over an edge band).
 Reviewers: kimi, then codex with the stills; the UI eye is the planner's.
 
+**Done 2026-11-11: 057d52e** (executor Claude Opus 5.5, `report-7.md` COMPLETE, 13 paths; code
+round 41 — kimi 1 (4 m 01 s), codex 2 with the two stills (3 m 18 s), the planner 1; the planner's
+fix hunks went to kimi as round 42 (2, both faults in those hunks, applied in their shapes);
+`rebuttal-41.md`, `rebuttal-42.md`; Jesse drove the gesture in `editor_demo` before the commit).
+Follow-ups filed: #256 (a window losing focus with a button held), #257 (a narrow side tab and a
+group's first position as drop targets), #258 (the edge names in two tables).
+
+**As built, where it differs from the block above:**
+- **The drop runs in `update`, after the menu bar and before the toolbar strip** — where a
+  Window-menu move runs — not inside `render_panels`: taken there, the release frame drew the
+  strip in the old layout.
+- **Escape takes any tab press, moved or not** (`DockArea::cancel_tab_press`, latched): a key
+  arrives before the frame that promotes a press to a drag, and an Escaped press that had not
+  moved must not click. A menu or a dialog opening still forgets a press under the threshold
+  (`cancel_tab_drag`), so a press that closes a menu stays the tab's click.
+- **The press has three phases** — held, dragging, ended — not a latch bit: a cancel ends the
+  drag and keeps the latch until the release.
+- **A panel alone in the dock's last group is offered no drop on its own edge**: that move
+  detaches the group and pushes it back where it was. Any earlier lone group is still offered
+  its edge — groups are allocated in their order, and re-pushing one last moves the corners.
+- **A drag can start during Play**, as the Window menu's moves can; Escape is taken from a
+  Playing game while a drag is live, and the strip's other keys stay the game's.
+- The drop reaches `run_dock_action` through `run_context_menu_action`'s Dock arm, which is
+  that call; the chip sits beside the pointer, and a side band's name is kept inside the dock.
+- **The close-out builds bundle v7**: `docs/WEB_PLAYGROUND.md` already describes the gesture.
+
 **Batch 8 — close-out (planner). Issue #248.** Milestone closed when `jesse` merges; `log_archive.md` §
 Editor UX with the lessons; the scorecard's totals; the review record archived to
 `review/_archive/editor-ux/`; the follow-ups filed (§ Follow-ups).
