@@ -29,6 +29,7 @@ const NARROW_TAB_LENGTH: f32 = 96.0;
 /// immediate at 60 Hz.
 pub const DRAG_DWELL_FRAMES: u32 = 12;
 
+mod drag;
 mod focus;
 mod groups;
 mod layout;
@@ -38,6 +39,8 @@ mod render;
 mod tests;
 #[cfg(test)]
 mod group_tests;
+#[cfg(test)]
+mod drag_tests;
 
 /// Unique identifier for a dock panel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -188,6 +191,8 @@ pub struct DockArea {
     title_widths: Vec<(PanelId, f32)>,
     /// The tab a dragged payload rests on and for how many frames.
     drag_dwell: Option<(PanelId, u32)>,
+    /// The left press on a tab, and the drag it became past the threshold.
+    tab_press: Option<drag::TabPress>,
 }
 
 impl Default for DockArea {
@@ -202,7 +207,7 @@ impl DockArea {
             bounds: Rect::default(), resize_handle_size: RESIZE_HANDLE_SIZE,
             narrow: false, narrow_overlay: None, budget_collapsed: Vec::new(),
             focused_tab: None, context_request: None, overflow_group: None,
-            title_widths: Vec::new(), drag_dwell: None,
+            title_widths: Vec::new(), drag_dwell: None, tab_press: None,
         }
     }
 
@@ -263,6 +268,29 @@ impl DockArea {
     pub fn close_narrow_overlay(&mut self) {
         self.narrow_overlay = None;
         self.layout();
+    }
+
+    /// The panel a live tab drag holds: past the threshold, not yet dropped or cancelled.
+    pub fn dragged_tab(&self) -> Option<PanelId> {
+        self.tab_press.and_then(|press| press.dragging())
+    }
+
+    /// Whether a left press on a tab is a drag or may still become one. A key arrives before
+    /// the frame that promotes a press past the threshold, so Escape asks this, not `dragged_tab`.
+    pub fn tab_press_pending(&self) -> bool {
+        self.tab_press.is_some_and(|press| press.pending())
+    }
+
+    /// Escape's cancel: a tab's press ends latched whether or not it had become a drag, so its
+    /// release moves nothing and is not the tab's click either.
+    pub fn cancel_tab_press(&mut self) {
+        self.tab_press = self.tab_press.map(|press| press.ended());
+    }
+
+    /// End a live tab drag with nothing moved; its release stays no click. A press still under
+    /// the threshold is forgotten, so its release is the tab's click and it never becomes a drag.
+    pub fn cancel_tab_drag(&mut self) {
+        self.tab_press = self.tab_press.and_then(|press| press.cancelled());
     }
 
     /// Whether this panel is its group's active visible member (the scene is always active).

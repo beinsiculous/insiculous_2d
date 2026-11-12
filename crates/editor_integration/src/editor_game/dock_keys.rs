@@ -6,7 +6,7 @@ use winit::keyboard::KeyCode;
 use super::{EditorGame, shortcuts::KeyRoute};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum DockKey { Cycle, Step(bool), Activate, Menu, Release }
+pub(super) enum DockKey { Cycle, Step(bool), Activate, Menu, Release, CancelDrag }
 
 impl<G: Game> EditorGame<G> {
     /// Any pointer press or play session yields the strip's keyboard.
@@ -27,8 +27,26 @@ impl<G: Game> EditorGame<G> {
     }
 
     pub(super) fn dock_key_route(&self, key: KeyCode, modifiers: Modifiers) -> Option<KeyRoute> {
-        if self.editor.in_play_session() || self.editor.context_menu.is_open() { return None; }
+        if self.editor.context_menu.is_open() { return None; }
         let action = self.editor.input_mapping.resolve(key, modifiers.ctrl, modifiers.shift);
+        // A tab press takes Escape ahead of the strip's release — held as well as dragging: a
+        // move past the threshold and Escape can arrive before the frame that starts the drag,
+        // and Escape would clear the selection and the drag start anyway. Under a live drag the
+        // strip's other keys do nothing, so no key rearranges the dock mid-drag. While Playing
+        // those keys are the game's, and only Escape is the drag's.
+        if action == Some(EditorAction::Cancel) && self.editor.dock_area.tab_press_pending() {
+            return Some(KeyRoute::DockTabs(DockKey::CancelDrag));
+        }
+        if self.editor.dock_area.dragged_tab().is_some() {
+            match action {
+                Some(EditorAction::FocusDockTabs | EditorAction::NudgeLeft | EditorAction::NudgeRight
+                    | EditorAction::ActivateDockTab | EditorAction::DockTabMenu) if !self.editor.is_playing() => {
+                    return Some(KeyRoute::Consumed);
+                }
+                _ => {}
+            }
+        }
+        if self.editor.in_play_session() { return None; }
         if action == Some(EditorAction::FocusDockTabs) { return Some(KeyRoute::DockTabs(DockKey::Cycle)); }
         self.editor.dock_area.focused_tab()?;
         let key = match action {
@@ -43,10 +61,13 @@ impl<G: Game> EditorGame<G> {
     }
 
     pub(super) fn run_dock_key(&mut self, key: DockKey) {
-        self.leave_conductor();
-        self.editor.asset_browser.release_keyboard();
-        self.editor.console.release_keyboard();
-        self.editor.settings.release_keyboard();
+        // Escape under a drag ends the drag alone: no panel's keyboard is the drag's to release.
+        if key != DockKey::CancelDrag {
+            self.leave_conductor();
+            self.editor.asset_browser.release_keyboard();
+            self.editor.console.release_keyboard();
+            self.editor.settings.release_keyboard();
+        }
         match key {
             DockKey::Cycle => self.editor.dock_area.cycle_tab_focus(),
             DockKey::Step(forward) => self.editor.dock_area.step_tab_focus(forward),
@@ -61,6 +82,7 @@ impl<G: Game> EditorGame<G> {
                 }
             }
             DockKey::Release => self.editor.dock_area.clear_tab_focus(),
+            DockKey::CancelDrag => self.editor.dock_area.cancel_tab_press(),
         }
     }
 }

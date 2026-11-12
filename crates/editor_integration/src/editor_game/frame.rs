@@ -99,6 +99,20 @@ impl<G: Game> EditorGame<G> {
         if !dock.is_active(id) && dock.group_shows_content(id) { self.editor.dock_area.activate(id); }
     }
 
+    /// A dragged tab lands where a Window-menu move does — after the menu bar, before the
+    /// toolbar strip and the dock draw — and through that menu's own path, its refusal and its
+    /// `show_panel` included, so the release frame draws the strip and the panels in the new
+    /// layout; taken after the dock draws, as a click is, that frame would draw the old panels
+    /// in the old rectangles. A dialog or a menu ends the drag with nothing moved.
+    pub(super) fn drop_a_dragged_tab(&mut self, ui: &ui::UIContext) {
+        let chrome_open = self.dialog_up() || self.editor.menu_bar.is_open()
+            || self.editor.context_menu.is_open() || self.editor.toolbar.is_overflow_open();
+        if chrome_open { self.editor.dock_area.cancel_tab_drag(); }
+        if let Some(action) = self.editor.dock_area.take_tab_drop(ui) {
+            self.run_context_menu_action(editor::context_menu::ContextMenuAction::Dock(action));
+        }
+    }
+
     pub(super) fn render_panels(&mut self, ctx: &mut GameContext, pickables: &[editor::PickableEntity]) {
         self.bring_forward_the_tab_under_a_drag(ctx.ui);
         let theme = &self.editor.theme;
@@ -189,7 +203,10 @@ impl<G: Game> EditorGame<G> {
         self.resolved_ui_scale = editor::editor_preferences::resolve_ui_scale(&self.ui_scale, ctx.display_scale);
         ctx.ui.set_pixels_per_point(self.resolved_ui_scale);
         // First, so the session's first frame runs at the game's own time scale.
+        let editing = !self.editor.in_play_session();
         self.start_armed_play(ctx.world);
+        // A tab drag begun before Play ends with nothing moved when the session starts.
+        if editing && self.editor.in_play_session() { self.editor.dock_area.cancel_tab_drag(); }
         // Freeze engine-side time unless we're Playing. Set before the
         // inner game runs so a Playing game's own write to `time_scale`
         // (a pause menu, say) is the value that survives the frame.

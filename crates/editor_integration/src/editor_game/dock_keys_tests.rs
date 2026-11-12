@@ -201,3 +201,136 @@ fn view_menu_brings_a_visible_back_tab_forward_and_hides_it_only_from_the_front(
     harness.context(|game, context| game.dispatch_editor_action(EditorAction::TogglePanel(PanelId::INSPECTOR), false, context));
     assert!(!harness.game().editor.dock_area.get_panel(PanelId::INSPECTOR).unwrap().visible, "and from the front it hides");
 }
+
+/// The dock's groups as a drag must leave them until its drop.
+fn groups_of(game: &EditorGame<DummyGame>) -> Vec<(DockPosition, Vec<PanelId>, PanelId, bool)> {
+    game.editor.dock_area.groups().iter()
+        .map(|group| (group.position, group.panels.clone(), group.active, group.collapsed)).collect()
+}
+
+fn tab_center(harness: &GameHarness<EditorGame<DummyGame>>, id: PanelId) -> Vec2 {
+    harness.game().editor.dock_area.tab_bounds(id).expect("a drawn tab").center()
+}
+
+/// Press `id`'s tab and carry it to `to`; the button stays down.
+fn drag_tab(harness: &mut GameHarness<EditorGame<DummyGame>>, id: PanelId, to: Vec2) {
+    let from = tab_center(harness, id);
+    harness.step(STEP, &[InputEvent::MouseMoved(from.x, from.y), InputEvent::MouseButtonPressed(MouseButton::Left)]);
+    harness.step(STEP, &[InputEvent::MouseMoved(to.x, to.y)]);
+    assert_eq!(harness.game().editor.dock_area.dragged_tab(), Some(id), "fixture: the drag is live");
+}
+
+fn named_entity(harness: &mut GameHarness<EditorGame<DummyGame>>, name: &str) -> ecs::EntityId {
+    harness.context(|_, context| {
+        let entity = context.world.create_entity();
+        context.world.add_component(&entity, ecs::Name::new(name)).ok();
+        entity
+    })
+}
+
+#[test]
+fn escape_cancels_a_tab_drag_begun_while_an_inspector_text_field_held_focus() {
+    let mut harness = GameHarness::new(editor_game(), GameConfig { width: 1280, height: 800, ..Default::default() });
+    harness.step(STEP, &[]);
+    let hero = named_entity(&mut harness, "Hero");
+    harness.game_mut().editor.selection.select(hero);
+    harness.step(STEP, &[]);
+    let name_field = editor::FieldId::new(0, 0, 0);
+    harness.context(|_, context| context.ui.focus_text_input(name_field, "Hero"));
+    harness.step(STEP, &[]);
+    assert!(harness.context(|_, context| context.ui.is_focused(name_field)), "fixture: the inspector's Name field holds the keyboard");
+    // A field its panel stops drawing keeps the keyboard until it is drawn again, so a press
+    // elsewhere — the tab's — never reaches it to commit and let go.
+    harness.game_mut().editor.selection.clear();
+    harness.step(STEP, &[]);
+    assert!(harness.context(|_, context| context.ui.is_focused(name_field)), "fixture: the undrawn field still holds it");
+    let before = groups_of(harness.game());
+    let inspector_tab = tab_center(&harness, PanelId::INSPECTOR);
+    drag_tab(&mut harness, PanelId::HIERARCHY, inspector_tab);
+    assert!(!harness.context(|_, context| context.ui.wants_keyboard()), "past the threshold no field keeps the keyboard");
+    harness.step(STEP, &[InputEvent::KeyPressed(KeyCode::Escape)]);
+    assert_eq!(harness.game().editor.dock_area.dragged_tab(), None, "Escape reached the drag");
+    harness.step(STEP, &[InputEvent::KeyReleased(KeyCode::Escape), InputEvent::MouseButtonReleased(MouseButton::Left)]);
+    assert_eq!(groups_of(harness.game()), before, "the release over the Inspector's tab moved nothing");
+}
+
+#[test]
+fn escape_in_the_same_step_as_the_threshold_crossing_move_ends_the_press_and_keeps_the_selection() {
+    let mut harness = GameHarness::new(editor_game(), GameConfig { width: 1280, height: 800, ..Default::default() });
+    harness.step(STEP, &[]);
+    let hero = named_entity(&mut harness, "Hero");
+    harness.game_mut().editor.selection.select(hero);
+    harness.step(STEP, &[]);
+    let before = groups_of(harness.game());
+    let from = tab_center(&harness, PanelId::HIERARCHY);
+    let to = tab_center(&harness, PanelId::INSPECTOR);
+    harness.step(STEP, &[InputEvent::MouseMoved(from.x, from.y), InputEvent::MouseButtonPressed(MouseButton::Left)]);
+    // The key handler runs before the frame that would promote the press to a drag.
+    harness.step(STEP, &[InputEvent::MouseMoved(to.x, to.y), InputEvent::KeyPressed(KeyCode::Escape)]);
+    assert!(harness.game().editor.selection.contains(hero), "Escape was the press's, not the selection's");
+    assert_eq!(harness.game().editor.dock_area.dragged_tab(), None, "the press never became a drag");
+    harness.step(STEP, &[InputEvent::KeyReleased(KeyCode::Escape), InputEvent::MouseButtonReleased(MouseButton::Left)]);
+    assert_eq!(groups_of(harness.game()), before, "the release over the Inspector's tab moved nothing");
+
+    // Escape on a press that never moved: the release on that same tab is not its click.
+    let dock = &mut harness.game_mut().editor.dock_area;
+    dock.show_panel(PanelId::CONDUCTOR);
+    dock.activate(PanelId::ASSET_BROWSER);
+    harness.step(STEP, &[InputEvent::MouseMoved(1.0, 1.0)]);
+    assert!(!harness.game().editor.dock_area.is_active(PanelId::CONDUCTOR), "fixture: the Conductor is a back tab");
+    let conductor = tab_center(&harness, PanelId::CONDUCTOR);
+    harness.step(STEP, &[InputEvent::MouseMoved(conductor.x, conductor.y), InputEvent::MouseButtonPressed(MouseButton::Left)]);
+    harness.step(STEP, &[InputEvent::KeyPressed(KeyCode::Escape)]);
+    harness.step(STEP, &[InputEvent::KeyReleased(KeyCode::Escape), InputEvent::MouseButtonReleased(MouseButton::Left)]);
+    assert!(!harness.game().editor.dock_area.is_active(PanelId::CONDUCTOR), "the cancelled press did not bring the tab forward");
+}
+
+#[test]
+fn the_frame_of_a_cross_group_drop_draws_the_dragged_panels_content_in_its_new_groups_rectangle() {
+    let mut harness = GameHarness::new(editor_game(), GameConfig { width: 1280, height: 800, ..Default::default() });
+    harness.step(STEP, &[]);
+    named_entity(&mut harness, "Hero");
+    harness.step(STEP, &[]);
+    let hero_row = |harness: &GameHarness<EditorGame<DummyGame>>| harness.ui_commands().iter().find_map(|command| match command {
+        ui::DrawCommand::Text { data, .. } if data.text.contains("Hero") => Some(data.position),
+        ui::DrawCommand::TextPlaceholder { text, position, .. } if text.contains("Hero") => Some(*position),
+        _ => None,
+    });
+    let dock = &harness.game().editor.dock_area;
+    let left = dock.groups()[dock.group_of(PanelId::HIERARCHY).unwrap()].bounds();
+    let right = dock.groups()[dock.group_of(PanelId::INSPECTOR).unwrap()].bounds();
+    assert!(hero_row(&harness).is_some_and(|row| left.contains(row)), "fixture: the hierarchy draws its row in the left group");
+    let inspector_tab = tab_center(&harness, PanelId::INSPECTOR);
+    drag_tab(&mut harness, PanelId::HIERARCHY, inspector_tab);
+    harness.step(STEP, &[InputEvent::MouseButtonReleased(MouseButton::Left)]);
+    let row = hero_row(&harness).expect("the release frame draws the hierarchy");
+    assert!(right.contains(row), "the release frame draws the row in the right group, not the old left one: {row:?}");
+    assert_eq!(harness.game().editor.dock_area.group_of(PanelId::HIERARCHY), harness.game().editor.dock_area.group_of(PanelId::INSPECTOR));
+}
+
+#[test]
+fn f6_an_arrow_and_enter_during_a_tab_drag_change_nothing_and_play_starting_ends_it() {
+    let mut harness = GameHarness::new(editor_game(), GameConfig { width: 1280, height: 800, ..Default::default() });
+    harness.step(STEP, &[]);
+    let before = groups_of(harness.game());
+    let scene = harness.game().editor.dock_area.get_panel(PanelId::SCENE_VIEW).unwrap().content_bounds().center();
+    drag_tab(&mut harness, PanelId::ASSET_BROWSER, scene);
+    for key in [KeyCode::F6, KeyCode::ArrowRight, KeyCode::Enter] {
+        assert_eq!(harness.game_mut().route_editor_key(key, false, PLAIN), KeyRoute::Consumed, "{key:?} under a drag");
+        harness.step(STEP, &[InputEvent::KeyPressed(key)]);
+        harness.step(STEP, &[InputEvent::KeyReleased(key)]);
+    }
+    let dock = &harness.game().editor.dock_area;
+    assert_eq!(dock.focused_tab(), None, "F6 focused no strip");
+    assert_eq!(dock.dragged_tab(), Some(PanelId::ASSET_BROWSER), "and the drag is still live");
+    assert_eq!(groups_of(harness.game()), before);
+
+    harness.step(STEP, &[InputEvent::KeyPressed(KeyCode::F5)]);
+    harness.step(STEP, &[InputEvent::KeyReleased(KeyCode::F5)]);
+    harness.step(STEP, &[]);
+    assert!(harness.game().editor.in_play_session(), "fixture: F5 started Play");
+    assert_eq!(harness.game().editor.dock_area.dragged_tab(), None, "Play's start ended the drag");
+    let inspector_tab = tab_center(&harness, PanelId::INSPECTOR);
+    harness.step(STEP, &[InputEvent::MouseMoved(inspector_tab.x, inspector_tab.y), InputEvent::MouseButtonReleased(MouseButton::Left)]);
+    assert_eq!(groups_of(harness.game()), before, "its release over a tab moved nothing");
+}

@@ -107,6 +107,7 @@ impl<G: Game> Game for EditorGame<G> {
         panel_renderer::color_editor::render_color_editor_pass(&mut self.editor, ctx.ui, dialog_up);
         self.render_context_menu(ctx.ui, dialog_up);
         self.handle_menu_bar(ctx, window_size);
+        self.drop_a_dragged_tab(ctx.ui);
         self.render_toolbar_and_play_controls(ctx);
         // Before the API drain, which skips mid-drag: this path only reads
         // the world, and the bridge's caller gives up after five seconds.

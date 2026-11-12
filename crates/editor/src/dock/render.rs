@@ -78,6 +78,7 @@ pub(super) fn chevron_bounds(group: &TabGroup) -> Rect {
 impl DockArea {
     /// Draw each visible group's header and return only active, expanded content rectangles.
     pub fn render(&mut self, ui: &mut UIContext, theme: &EditorTheme) -> Vec<(PanelId, Rect)> {
+        self.follow_tab_press(ui);
         self.render_tab_overflow(ui, theme);
         // A tab clicked this frame is revealed once every group's chrome has drawn, so no
         // group draws from a layout the click already changed.
@@ -116,6 +117,7 @@ impl DockArea {
             ui.label_in_bounds_styled(&scene.title, header, ui::TextAlign::Left, theme.text_primary, theme.fonts.body, 8.0);
         }
         if let Some(id) = clicked_tab { ui.clear_text_focus(); self.reveal(id); }
+        self.finish_tab_press_frame(ui, theme);
         self.panels.iter().filter(|panel| panel.content.width > 0.0 && panel.content.height > 0.0)
             .map(|panel| (panel.id, panel.content)).collect()
     }
@@ -170,7 +172,7 @@ impl DockArea {
         measured.clamp(MIN_TAB_WIDTH, MAX_TAB_WIDTH)
     }
 
-    fn tab_layout(&self, index: usize) -> (Vec<(PanelId, Rect)>, Option<Rect>) {
+    pub(super) fn tab_layout(&self, index: usize) -> (Vec<(PanelId, Rect)>, Option<Rect>) {
         let group = &self.groups[index];
         let visible = self.visible_tabs(index);
         if visible.is_empty() { return (Vec::new(), None); }
@@ -239,9 +241,11 @@ impl DockArea {
                 self.focused_tab = Some(id);
                 self.context_request = Some((id, Vec2::new(bounds.x, bounds.bottom())));
             }
+            self.note_tab_press(ui, id, result);
             // A click reveals, not merely selects: on a collapsed or budget-collapsed group a
-            // bare activation moved the highlight behind a strip and opened nothing.
-            if result.clicked { clicked = Some(id); }
+            // bare activation moved the highlight behind a strip and opened nothing. A press
+            // that became a drag is latched, and its release is never a click.
+            if result.clicked && !self.tab_press_latched(id) { clicked = Some(id); }
         }
         if let Some(button) = overflow {
             if ui.button_styled(format!("dock_overflow_{index}").as_str(), "»", button, true) {

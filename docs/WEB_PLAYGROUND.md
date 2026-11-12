@@ -493,7 +493,11 @@ An all-hidden legacy group keeps its default size and primary tab, expanded but 
 Unknown ids are skipped; newly registered panels missing from the file join their default
 groups with default visibility. New saves write `groups` and omit the old `panels` key.
 Window and each tab's context menu offer Move to, Group with and Show or Hide, plus Window's
-Reset Layout; browsing a Window row changes nothing. A sample dragged from Assets onto the
+Reset Layout; browsing a Window row changes nothing. A tab dragged past a few points becomes
+a chip under the pointer: over another strip a bar marks the tab it would follow, and near
+the dock's edge a band named Left, Right, Top or Bottom marks the new group it would start.
+Escape, or a release over neither, leaves the layout as it was; the Window menu is the
+keyboard's path to the same moves. A sample dragged from Assets onto the
 Conductor's tab brings the Conductor forward for the drop. F6 reaches the tab strips; arrows walk tabs, Enter activates, Menu/Shift+F10 opens
 the actions and Escape leaves the menu, then the strip. Window size pressure changes only
 effective allocations; the saved sizes return when the window grows.
