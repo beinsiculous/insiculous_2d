@@ -114,3 +114,32 @@ baseline.
 | batch 7 (code round 41, with the two stills) | codex | 2 | 2 | 0 | 0 | the same Escape ordering, dispatched after kimi exited — not counted as independent; and "drops redraw panels with stale scene chrome" — the drop ran after the toolbar strip had drawn; moved to where a Window-menu move runs | 3 m 18 s |
 | batch 7 (code round 41) | planner | 1 | 1 | 0 | 0 | an edge band offered where the move changed nothing — and the planner's first fix for it was wrong (next row) | — |
 | batch 7, the planner's fix hunks (code round 42) | kimi | 2 | 2 | 0 | 0 | "The 'no-op' edge filter suppresses real dock reordering" — groups are allocated in their order across every edge, so a lone group re-pushed last hands its corners over; and Escape on a press that had not moved left its click alive. Both in the planner's own fixes | 2 m 29 s |
+| the close-out — bundle v7's version bump and the record (code round 43) | kimi | 3 | 3 | 0 | 0 | nothing on the bump; "several required close-out follow-ups were not filed" — the plan's own § Follow-ups; the archive the record pointed to did not exist yet; a follow-up still describing *Take over* | 2 m 26 s |
+
+## Totals (2026-11-11, the effort closed)
+
+One hundred and six rows: engine rounds 1 to 43, the site's rounds 1 to 8 and the window's six
+plan rounds, summed by the `findings`, `real`, `false` and `policy` columns (`real + false +
+policy` can differ from `findings` where a row split one finding or scored a disposition the
+reviewer never wrote).
+
+| reviewer | rows | findings | real | false | policy | real share |
+|---|---|---|---|---|---|---|
+| kimi | 52 | 205 | 181 | 9 | 18 | 88 % |
+| deepseek | 29 | 161 | 112 | 33 | 17 | 70 % |
+| codex | 17 | 103 | 99 | 1 | 5 | 96 % |
+| gemini | 5 | 40 | 34 | 6 | 0 | 85 % |
+| the planner | 3 | 7 | 5 | 0 | 1 | 71 % |
+
+Against External Tools' baseline (kimi 92 %, gemini 59 %, codex 91 %): kimi held, and was the
+reviewer of every round — its misses were the ones a checkout confines it to (the site's round 7
+"critical" was the engine's behaviour, read from the site). Deepseek, the second reviewer of
+batches 3 to 4b, found the most per round and misread the most, and its two best catches were
+criticals in the planner's own fixes; it left the roster at batch 6 for cost in wall time (15 to
+30 minutes a round), not for quality. Codex read every plan and screen from batch 6 on and was
+wrong once in 103 — dispatched after kimi exits, so its agreement with kimi is not counted as
+independent. Gemini ran five rounds before its tool gate broke (insiculous#45). The planner's own
+rows are few because its findings were mostly folded into a batch's fix round unnumbered; the
+fix rounds are where the planner's own work was caught — four of the last six findings of the
+effort were faults in the planner's fixes. Kimi stays the default; codex wherever a plan or a
+screen is; a fix that changes behaviour always goes back for a round.

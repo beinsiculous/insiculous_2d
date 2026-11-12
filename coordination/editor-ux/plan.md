@@ -1,5 +1,13 @@
 # Editor UX — the plan
 
+**DONE — 2026-11-11.** Eight build batches (1, 2, 3, 4a, 4b, 5, 6, 7) over seven days, Nov 5 to
+Nov 11, engine commits 4df27b1 to 057d52e with the site's and the template's beside them, and
+the close-out's bundle v7; 43 engine review rounds, 8 on the site and 6 on the window's design
+(the scorecard's § Totals); the review record is archived at `review/_archive/editor-ux/`; the
+lessons are `log_archive.md` § Editor UX. Each batch's section carries its done line and what was
+built differently from what was written. Open after the effort: #249 to #260 here and
+insiculous_web#80 to #83.
+
 **2026-11-11, Jesse's ruling: batch 5 is settled, as a navigation and a lock.** Ruling (h′)
 replaces (h): where the round summaries below describe the window as a two-phase transfer —
 the owner record, the invitation, the freeze and retire, *Take over*, *Bring it back* — that
@@ -2298,9 +2306,9 @@ read without labels, tooltips name the shortcuts; View ▸ UI Scale ▸ 200 % ke
 at 1280×800; Window ▸ Console ▸ Group with ▸ Inspector puts Console beside Inspector and a restart
 keeps it there; Reset Layout restores the three default groups; New Scene from inside `sprites/`
 lands in `scenes/` and opens; a renamed sprite warns about the scenes naming it; on the web,
-*Open in a window* parks the page, the window edits and saves, closing it brings the page back
-with the edit; the parked page's *Focus it* raises the window; a second tab on the open project
-shows the owner card and *Take over* moves the editor there; drag the Console tab onto the right
+*Open in a window* parks the page, the window edits and saves, and after closing it *Bring the
+editor back here* shows the edit; a second tab on the open project shows the owner card with
+*Try again* (ruling (h′): no *Focus it*, no *Take over*); drag the Console tab onto the right
 edge, it becomes its own group and a restart keeps it; `npm run verify` green; `cargo test
 --workspace` green; `check_games.sh` green; `check_project_layout.sh` green over every tree.
 
@@ -2315,8 +2323,11 @@ undo of file operations and a persistence journal; a snapshot transfer for a dir
 
 ## Follow-ups to file at close-out
 
-- A separate main-font-size knob if the one scale proves not enough (after Jesse has lived with
-  batch 2).
-- Drag a tile into a folder in the asset browser; a kind filter.
-- A read-only second tab on an owned project (the owner card offers only *Take over* today).
-- Floating panels (the drag batch's natural next step).
+Filed 2026-11-11, at the close-out:
+
+- Drag a tile into a folder in the asset browser; a kind filter — #259.
+- A read-only second tab on a project open elsewhere (the owner card offers *Try again* and
+  *Close this page*; there is no *Take over*, ruling (h′)) — insiculous_web#83.
+- Floating panels (the drag batch's natural next step) — #260.
+- **Not filed, Jesse's call:** a separate main-font-size knob, which the plan made conditional on
+  the one scale proving not enough after he has lived with it.

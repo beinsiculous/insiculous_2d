@@ -12,6 +12,53 @@ TECH_DEBT/ROADMAP docs — is what the sections below refer to.)
 
 ---
 
+## Editor UX effort — DONE Nov 11 2026
+
+Eight build batches in seven days (Nov 5 – Nov 11), planned by Claude Fable and built from handoff
+docs — batch 1 and batches 5 to 7 by a Claude Opus 5.5 session, batches 2 to 4b by Astra (codex) —
+reviewed by kimi at every round, by deepseek through batch 4b and by codex from batch 6 (43 engine
+rounds, 8 on the site, 6 on the window's design; 106 scorecard rows —
+`coordination/editor-ux/reviewer-comparison.md`; the plan with every batch's done note and
+as-built corrections `coordination/editor-ux/plan.md`; the review record
+`review/_archive/editor-ux/`, untracked). Engine commits 4df27b1 to 057d52e, with halves in
+`insiculous_web` and `games/game-template`. What landed: the toolbar strip as a toolbar with drawn
+icons and an overflow menu; UI scale in points at the ui boundary, with View ▸ UI Scale; the dock
+as tab groups with the Window menu, F6 and spring-loaded tabs; the asset browser's folders, New
+items, rename and delete over whole companion families with a reference scan; the project-layout
+convention, its gate and the boot aliases for projects stored before it; the Playground editor in
+its own window — one page per project by a Web Lock, a boot that stops instead of deleting when it
+cannot read the store; and tab drag. Bundles v3 to v7.
+
+**Lessons that outlive the plan.**
+- **Cut a mechanism that draws a critical every round; do not add a rule per finding.** The
+  window's two-phase transfer drew eight criticals in one round and was replaced by a navigation
+  and a lock; batch 6's store migration, and the planner's own "mirror" beside it, each drew a
+  critical a round until they were withdrawn for five boot aliases. State the cost of the cut in
+  the plan instead.
+- **A fix that changes behaviour goes back for a round, the planner's included.** Four of the
+  effort's last six findings were faults in the planner's own fix hunks: a cleanup that could
+  close a window the visitor had navigated elsewhere, an edge filter that suppressed a real
+  reorder, an Escape that left a click alive.
+- **Verify a "this changes nothing" claim against how the layout is ordered before filtering it
+  out.** Dock groups are allocated in their global order; re-pushing a lone group last moves the
+  corners.
+- **A reviewer confined to one checkout calls cross-repo behaviour broken.** Both "criticals" of
+  the site's round 7 were the engine's behaviour, unreadable from the site. Say in the packet
+  what the other repository does.
+- **A fast reviewer's file feeds a slow one in the same round.** Dispatch codex after kimi exits,
+  and do not count their agreement as independent.
+- **A handoff that names a menu's items names the one that undoes Hide; one that names a bundle
+  version says "a NEW version folder".** Each gap was built literally and cost a round.
+- **A guard's test must fail without the guard.** Fixtures spelled as production writes them, and
+  one mutation check a batch: a test that passed with the focus clear removed, and a fixture
+  format nothing writes, both read green.
+- **Headless Chromium loses the WebGPU device a few frames after boot** (insiculous_web#81), so
+  anything that needs a frame is a person's browser pass; the lock, the store and the cards can
+  be driven headless because they run before the engine.
+- **When a design promise has no signal in the engine, cut the promise and file it** (window
+  focus loss, #256) instead of widening the batch into another crate.
+- Never `cargo fmt` here; absolute paths and `git -C` in every command; a lone commit per call.
+
 ## External Tools effort — DONE Nov 3 2026
 
 Eight batches in eight days (Oct 27 – Nov 3), planned by Claude Fable and built by a Claude Opus 5.5

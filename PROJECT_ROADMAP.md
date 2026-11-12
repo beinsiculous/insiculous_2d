@@ -107,6 +107,14 @@ save, a song at its next bar line; the composer is trimmed into the Conductor pa
 the lessons are `log_archive.md` § External Tools. Open: #219's hand matrix on macOS and Windows,
 deferred.
 
+**Nov 11 2026: Editor UX shipped** — eight build batches over seven days (Nov 5 – Nov 11): the
+toolbar strip, UI scale in points, the dock's tab groups with the Window menu and tab drag, the
+asset browser's folders with New, rename and delete, the project-layout convention
+(`docs/PROJECT_LAYOUT.md`) and its gate, and the Playground editor in its own window with one page
+per project. The plan and its scorecard are `coordination/editor-ux/`; the review record is
+`review/_archive/editor-ux/` (untracked); the lessons are `log_archive.md` § Editor UX. Open:
+#249 to #260, and insiculous_web#80 to #83.
+
 **Editor**: the Playground UX sprint shipped Sep 12 2026 (its own section below); no
 editor sprint is queued next. **Web Playground** shipped Sep 2026; `docs/WEB_PLAYGROUND.md`.
 
