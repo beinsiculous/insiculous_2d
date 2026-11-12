@@ -2,11 +2,11 @@
 //!
 //! # Version contract
 //! `ASSET_BASE` and `BUNDLE_VERSION` are tied to deployment routes:
-//! 1. `ASSET_BASE` = `"/playground/v6/assets"`
-//! 2. `BUNDLE_VERSION` = `"v6"`
-//! 3. Deployed assets live at `insiculous_web/public/playground/v6/assets/`
-//! 4. Projects metadata served from `/playground/v6/assets/projects.json`
-//! 5. `scripts/build_wasm.sh` produces `playground/v6/`
+//! 1. `ASSET_BASE` = `"/playground/v7/assets"`
+//! 2. `BUNDLE_VERSION` = `"v7"`
+//! 3. Deployed assets live at `insiculous_web/public/playground/v7/assets/`
+//! 4. Projects metadata served from `/playground/v7/assets/projects.json`
+//! 5. `scripts/build_wasm.sh` produces `playground/v7/`
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -28,9 +28,9 @@ use crate::store::memory::MemoryStore;
 use crate::store::ProjectStore;
 
 /// Canonical asset base path for the deployed playground.
-pub const ASSET_BASE: &str = "/playground/v6/assets";
+pub const ASSET_BASE: &str = "/playground/v7/assets";
 /// Bundle version contract string.
-pub const BUNDLE_VERSION: &str = "v6";
+pub const BUNDLE_VERSION: &str = "v7";
 
 thread_local! {
     static ACTIVE_STORE: RefCell<Option<Arc<dyn ProjectStore>>> = const { RefCell::new(None) };
