@@ -2,12 +2,14 @@
 """Source preservation checks for the shared authoring command."""
 import json
 import os
-from build_music import SNAKE_CASE_PATTERN
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
+
+sys.dont_write_bytecode = True
+from build_music import SNAKE_CASE_PATTERN
 
 TOOL = Path(__file__).with_name('build_music.py')
 
