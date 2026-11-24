@@ -82,6 +82,7 @@ suffix_homes=$( { printf '%s\n' "$router_table" | awk '{ sub(/\/$/, "", $1); pri
     awk -F: '{ print length($1) " " $0 }' | sort -rn | cut -d' ' -f2-)
 
 is_kind_root() { printf '%s\n' "$kind_roots" | grep -qxF "$1"; }
+# Mirrored by build_music.py:SNAKE_CASE_PATTERN; test_build_music.py holds parity.
 is_snake_case() { [[ $1 =~ ^[a-z][a-z0-9]*(_[a-z0-9]+)*$ ]]; }
 # A song's sample folder: its path under its home, each `/` written `__` — a recovered score's
 # included, whose stem carries `.recovered-<token>`.

@@ -55,3 +55,49 @@ reported; that detection does not roll back another application's MIDI export.
 
 Any declared Sample instrument, bound or unused, makes a map ineligible for this
 SoundFont-only tool; edit mixed maps with the Conductor panel instead.
+
+## Rebuilding a game's MIDI Evil sources
+
+```sh
+python3 scripts/build_music.py PROJECT.evil OUTPUT_STEM [STAGING_DIRECTORY]
+```
+
+The default staging directory is `rendered/` beside the project. The stem is a
+snake_case filename without extension (for example `ai_food_pyramid`). Unknown or
+extra arguments and invalid stems are rejected before any directory is created.
+Keep `bank.json` and `render.json` beside the project. The latter's `renders` list
+contains `instrument`, `key`, `ticks` and `wav` for each original one-shot. WAV
+basenames must be unique; every bank zone must reference a declared render. The
+staging recipe rewrites zone paths to those basenames. Other recipe fields pass
+through to the packer's validation unchanged.
+
+The script locates `midi-evil/` beside the engine checkout, builds its public
+`evil-exports` example `project_audio`, exports MIDI, renders each note, then calls
+`pack_soundfont.py`. It stages `<stem>.mid`, `<stem>.sf2`, `bank.json` and WAVs; it
+never installs assets or edits sidecars. Run it serially per staging directory.
+A failed build can leave partial staging outputs; install only after success and
+closure validation. Game wrappers should only supply project/stem and forward the
+optional directory. Python's standard library is sufficient. Runtime games need
+only their committed asset closure, not this build tool or MIDI Evil.
+
+Compare two fresh staging directories byte-for-byte on the same toolchain/platform,
+then copy MIDI and bank into the game, retaining the existing sidecar, and remap
+through SongDocument. MIDI Evil owns synthesis/export; the engine owns packaging
+and sidecar save. See the game's source README for exact patches, seeds and gates.
+
+The staging directory must differ from the source directory and must not alias its
+bank recipe. Use a fresh empty directory for reproducibility comparisons: builds
+replace current outputs but do not delete obsolete files in a reused staging area.
+Install only the named MIDI and bank, never a wildcard sweep of staging. Render
+instrument/key/ticks fields are JSON integers; key is 0–127 and ticks is positive.
+Cargo reports the executable path, so configured target directories are supported.
+Every zone must name the exact render path and declare that render's pitch as its
+root. Only staging flattens paths to unique basenames; directory typos cannot select
+another render accidentally. `rendered/` WAVs are disposable generated outputs of
+this pipeline; authored synthesis lives in the MIDI Evil project and patches.
+The render instrument is a project instrument index, not a MIDI program number.
+MIDI Evil validates that index and limits rendered duration using the project's
+tempo; the orchestrator does not impose a second, potentially inconsistent tick cap.
+This source-regeneration workflow and its file-link preservation tests are verified
+with Python 3.12 on Linux; same-platform reproducibility is the supported guarantee.
+The staging recipe is installed by atomic replacement, never by truncating a link.
