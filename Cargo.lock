@@ -884,6 +884,7 @@ dependencies = [
  "music_midi",
  "physics",
  "renderer",
+ "rustysynth",
  "serde",
  "serde_json",
  "tempfile",

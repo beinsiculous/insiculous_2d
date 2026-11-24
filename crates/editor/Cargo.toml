@@ -27,5 +27,11 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+rustysynth = { workspace = true }
+music_midi = { path = "../music_midi", features = ["synth"] }
 env_logger = { workspace = true }
 tempfile = "3"
+
+[[example]]
+name = "remap_soundfont"
+test = true
