@@ -746,10 +746,10 @@ carries no card of its own — the art is the game's, synced like any sheet.
 ```rust
 let config = GameConfig::new("Tong")
     .with_startup_splashes([
-        "sprites/ai_be_insiculous_320x192.png",             // the studio card first
-        "sprites/ai_insiculous_2d_maxwell_splash_320x192.png", // then the engine's
+        "sprites/ai_be_insiculous_320x192.png",            // the studio card first
+        "sprites/ai_insiculous_2d_cubert_splash_320x192.png", // then the engine's
     ])
-    .with_window_icon("sprites/ai_insiculous_2d_maxwell_icon_64x64.png");
+    .with_window_icon("sprites/ai_insiculous_2d_cubert_icon_64x64.png");
 ```
 
 What the engine guarantees, so a game needs nothing else:
